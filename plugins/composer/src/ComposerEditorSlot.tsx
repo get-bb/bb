@@ -82,8 +82,8 @@ export function ComposerEditorSlot({
             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-subtle-foreground",
-            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-light",
-            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-70",
+            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-normal",
+            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-85",
           )}
         />
       </PromptMentionLinkContext.Provider>

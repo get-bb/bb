@@ -7,6 +7,8 @@ export const catppuccinThemeCss = `
   /* Accent: Mauve */
   --primary: #8839ef;
   --primary-foreground: #eff1f5;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --timeline-accent: #1e66f5; /* Blue — the timeline tint */
   --file-accent: var(--timeline-accent);
 
@@ -54,6 +56,8 @@ export const catppuccinThemeCss = `
   /* Accent: Mauve */
   --primary: #cba6f7;
   --primary-foreground: #1e1e2e;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --timeline-accent: #89b4fa; /* Blue */
   --file-accent: var(--timeline-accent);
 

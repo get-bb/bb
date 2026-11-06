@@ -4,6 +4,8 @@ export const solarizedThemeCss = `
   --ink: #073642;
   --primary: #268bd2;
   --primary-foreground: #fdf6e3;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
   --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
   --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
@@ -58,6 +60,8 @@ export const solarizedThemeCss = `
   --ink: #93a1a1;
   --primary: #268bd2;
   --primary-foreground: #002b36;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --timeline-accent: #2aa198;
   --file-accent: var(--timeline-accent);
   --destructive: #dc322f;

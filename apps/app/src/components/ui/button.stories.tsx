@@ -11,6 +11,7 @@ type ButtonSize = NonNullable<ButtonProps["size"]>;
 
 const variants: readonly ButtonVariant[] = [
   "default",
+  "brand",
   "secondary",
   "outline",
   "ghost",
@@ -22,6 +23,7 @@ const sizes: readonly ButtonSize[] = ["sm", "default", "lg", "icon"];
 
 const VARIANT_LABEL: Record<ButtonVariant, string> = {
   default: "Save changes",
+  brand: "Send",
   secondary: "Cancel",
   outline: "Connect repo",
   ghost: "Settings",

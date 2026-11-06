@@ -35,7 +35,7 @@ export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
-export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
+export const HEADER_SEAM_CLASS = "border-b border-border-seam";
 
 export const APP_PAGE_HEADER_SURFACE_CLASS = "bg-surface-scrim";
 

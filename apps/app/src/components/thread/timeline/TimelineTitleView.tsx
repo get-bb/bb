@@ -45,9 +45,9 @@ interface TimelineTitleViewProps {
 function emToneClass(tone: TimelineTitleTone): string {
   switch (tone) {
     case "default":
-      return "font-medium text-foreground opacity-70";
+      return "font-medium text-foreground";
     case "summary":
-      return "text-subtle-foreground";
+      return "text-muted-foreground";
     default:
       return assertNever(tone);
   }
@@ -74,7 +74,7 @@ function plainToneClass(tone: TimelineTitleTone): string {
     case "default":
       return "text-muted-foreground";
     case "summary":
-      return "text-subtle-foreground";
+      return "text-muted-foreground";
     default:
       return assertNever(tone);
   }

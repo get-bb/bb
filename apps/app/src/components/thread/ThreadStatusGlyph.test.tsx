@@ -50,13 +50,13 @@ describe("ThreadStatusGlyph", () => {
     expect(Array.from(runtime.classList)).toContain("motion-reduce:animate-none");
   });
 
-  it("draws unread success as a dot and nothing for none", () => {
+  it("draws unread success as a check and nothing for none", () => {
     const { container, rerender } = render(
       <ThreadStatusGlyph indicator="unread-success" />,
     );
-    expect(screen.getByLabelText("Unread thread succeeded").tagName).toBe(
-      "SPAN",
-    );
+    expect(
+      screen.getByLabelText("Unread thread succeeded").getAttribute("data-icon"),
+    ).toBe("Check");
 
     rerender(<ThreadStatusGlyph indicator="none" />);
     expect(container.firstChild).toBeNull();

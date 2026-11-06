@@ -4,6 +4,8 @@ export const gruvboxThemeCss = `
   --ink: #3c3836;
   --primary: #076678;
   --primary-foreground: #fbf1c7;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
   --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
   --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
@@ -58,6 +60,8 @@ export const gruvboxThemeCss = `
   --ink: #ebdbb2;
   --primary: #83a598;
   --primary-foreground: #282828;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --timeline-accent: #83a598;
   --file-accent: var(--timeline-accent);
   --destructive: #fb4934;

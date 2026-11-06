@@ -6,9 +6,9 @@ import {
 } from "./RootComposeMobileRecents";
 
 describe("getCompactHomeLeadingSpace", () => {
-  it("rests the list low so 4.5 rows show above the composer before scrolling", () => {
+  it("rests the list low so 7 whole rows show above the composer before scrolling", () => {
     const restingBandPx =
-      4.5 * MOBILE_RECENT_ROW_HEIGHT_PX + MOBILE_RECENT_LABEL_HEIGHT_PX;
+      7 * MOBILE_RECENT_ROW_HEIGHT_PX + MOBILE_RECENT_LABEL_HEIGHT_PX;
 
     expect(
       56 +

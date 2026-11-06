@@ -33,7 +33,7 @@ const MOCK_ROW_CLASS_CONTRACTS = [
     name: "SIDEBAR_ROW_SELECTED_STATE_CLASS",
     value: SIDEBAR_ROW_SELECTED_STATE_CLASS,
     classes: [
-      "bg-state-active",
+      "bg-sidebar-selected",
       "bb-sidebar-selected-row",
       "text-sidebar-foreground",
     ],
@@ -275,7 +275,7 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
       classLists: [
         ["rounded-lg", "border", "border-border", "bg-card", "px-4", "py-3.5"],
         ["flex-col", "gap-2.5"],
-        ["text-xs", "leading-snug", "text-subtle-foreground/75"],
+        ["text-xs", "leading-snug", "text-subtle-foreground"],
       ],
       because:
         "The Appearance projection keeps BB's section card, responsive rows, and supporting-copy hierarchy.",

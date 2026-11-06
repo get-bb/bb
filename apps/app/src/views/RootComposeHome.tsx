@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { BbLogo } from "@/components/ui/bb-logo";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { ComposerMaxHeightContext } from "@/components/promptbox/composer-max-height";
 import { composerRootWithin } from "@/lib/pane-composer-focus";
@@ -12,7 +12,7 @@ import {
 const COMPACT_HOME_CHROME_OFFSET_PX = 56;
 const COMPACT_HOME_COLUMN_CLASS = "mx-auto w-full max-w-[760px] px-4";
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
-const COMPACT_HOME_REST_VISIBLE_ROWS = 4.5;
+const COMPACT_HOME_REST_VISIBLE_ROWS = 7;
 const COMPACT_HOME_REST_BAND_PX =
   COMPACT_HOME_REST_VISIBLE_ROWS * MOBILE_RECENT_ROW_HEIGHT_PX +
   MOBILE_RECENT_LABEL_HEIGHT_PX;
@@ -135,7 +135,7 @@ export function RootComposeHome({
       className={
         isCompact
           ? "@container/page flex min-h-0 flex-1 flex-col"
-          : "@container/page min-h-0 flex-1 overflow-y-auto"
+          : "@container/page flex min-h-0 flex-1 flex-col overflow-y-auto"
       }
       style={isCompact ? PAGE_SHELL_CONTENT_STYLE : undefined}
     >
@@ -146,7 +146,7 @@ export function RootComposeHome({
           isCompact
             ? "relative min-h-0 flex-1"
             : cn(
-                "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
+                "mx-auto my-auto flex w-full flex-col px-4 pb-[12vh] pt-2",
                 ROOT_COMPOSE_MAX_WIDTH_CLASS,
                 wideContentClassName,
               )
@@ -170,7 +170,10 @@ export function RootComposeHome({
                 ref={leadingSpacerRef}
                 aria-hidden
                 data-testid="root-compose-compact-leading-spacer"
-              />
+                className="flex items-center justify-center overflow-hidden"
+              >
+                <BbLogo className="size-9 opacity-85" />
+              </div>
               <div className={COMPACT_HOME_COLUMN_CLASS}>
                 {compactScrollContent}
                 {homepageSections}
@@ -189,10 +192,13 @@ export function RootComposeHome({
           className={isCompact ? "absolute inset-x-0 bottom-0 z-10" : undefined}
         >
           <div ref={composerFadeRef} data-testid="root-compose-compact-fade">
-            {isCompact ? (
-              <OverflowFade placement="above" tone="background" size="lg" />
-            ) : null}
+            {isCompact ? <div className="h-px bg-border-seam" /> : null}
           </div>
+          {isCompact ? null : (
+            <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight text-foreground">
+              What should we build?
+            </h1>
+          )}
           <div className={isCompact ? "bg-background pb-4" : undefined}>
             <div className={isCompact ? COMPACT_HOME_COLUMN_CLASS : undefined}>
               <ComposerMaxHeightContext.Provider

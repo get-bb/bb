@@ -13,7 +13,7 @@ import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   SIDEBAR_STATUS_ICON_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
-  SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
+  SIDEBAR_UNREAD_STATUS_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "@bb/shared-ui/sidebar-row-classes";
 
@@ -144,7 +144,12 @@ export function ThreadStatusGlyph({
       return (
         <Icon
           name={WAITING_ICONS[indicator]}
-          className={cn("text-muted-foreground/75", iconSizeClass)}
+          className={cn(
+            indicator === "waiting-for-input"
+              ? "text-warning-text"
+              : "text-muted-foreground/75",
+            iconSizeClass,
+          )}
           aria-label={threadIndicatorLabel(indicator) ?? undefined}
         />
       );
@@ -188,8 +193,9 @@ export function ThreadStatusGlyph({
       );
     case "unread-success":
       return (
-        <span
-          className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
+        <Icon
+          name="Check"
+          className={cn(SIDEBAR_UNREAD_STATUS_CLASS, iconSizeClass)}
           aria-label={threadIndicatorLabel(indicator) ?? undefined}
         />
       );

@@ -32,6 +32,9 @@
   --color-subtle-foreground: var(--subtle-foreground);
   --color-readback-foreground: var(--readback-foreground);
   --color-timeline-accent: var(--timeline-accent);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-sidebar-selected: var(--sidebar-selected);
   --color-version-upgrade: var(--version-upgrade);
   --color-file-accent: var(--file-accent);
   --color-accent: var(--accent);

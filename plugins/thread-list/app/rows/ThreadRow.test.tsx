@@ -406,7 +406,15 @@ afterEach(() => {
 });
 
 describe("ThreadRow", () => {
-  it("shows the registered provider icon by default and keeps it visible during inline rename", async () => {
+  it("hides provider icons by default", () => {
+    const slot = renderThreadRow();
+    expect(
+      slot.container.querySelector("[data-sidebar-thread-provider]"),
+    ).toBeNull();
+  });
+
+  it("shows the registered provider icon when enabled and keeps it visible during inline rename", async () => {
+    getDefaultStore().set(sidebarShowProviderIconsAtom, true);
     const provider: PluginProvidersState["providers"][number] = {
       id: "provider-test",
       pluginId: "provider-test",

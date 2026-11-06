@@ -319,7 +319,7 @@ function MockSidebarRow({
     MOCK_SIDEBAR_ROW_CLASS,
     state === "hover" && "bg-sidebar-accent text-sidebar-accent-foreground",
     state === "selected" &&
-      "bb-sidebar-selected-row bg-state-active text-sidebar-foreground",
+      "bb-sidebar-selected-row bg-sidebar-selected text-sidebar-foreground",
     state === "split" && "bb-sidebar-open-in-split-row",
   );
   if (interactive) {

@@ -129,7 +129,7 @@ describe("theme.css neutral ramp", () => {
     )?.[1];
 
     expect(rule).toContain(
-      "linear-gradient(var(--state-active), var(--state-active))",
+      "linear-gradient(var(--sidebar-selected), var(--sidebar-selected))",
     );
     expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });

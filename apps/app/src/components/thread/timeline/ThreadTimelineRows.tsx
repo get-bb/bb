@@ -1538,7 +1538,7 @@ function DelegationRowBody({ row }: { row: TimelineViewDelegationWorkRow }) {
   );
 }
 
-export const PAST_ROW_DIM_CLASS_NAME = "opacity-40";
+export const PAST_ROW_DIM_CLASS_NAME = "opacity-85";
 
 export function pastRowDimClassName({
   activeLatestBundleId,

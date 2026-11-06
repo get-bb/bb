@@ -74,7 +74,7 @@ describe("RootComposeHome", () => {
     const bottomSpacer = screen.getByTestId(
       "root-compose-compact-bottom-spacer",
     );
-    expect(leadingSpacer.style.height).toBe("314px");
+    expect(leadingSpacer.style.height).toBe("164px");
     expect(bottomSpacer.style.height).toBe("188px");
   });
 

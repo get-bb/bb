@@ -305,7 +305,7 @@ function PromptSubmitButton({
       data-promptbox-submit-action=""
       type="submit"
       size={isCompact ? "icon" : "sm"}
-      variant="default"
+      variant="brand"
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
@@ -361,6 +361,7 @@ function PromptSubmitButton({
       }}
       className={cn(
         className,
+        "disabled:bg-secondary disabled:text-subtle-foreground disabled:opacity-100",
         label !== undefined && !isCompact && "size-auto h-8 gap-1.5 px-2.5",
       )}
     >
@@ -371,7 +372,7 @@ function PromptSubmitButton({
         />
       ) : (
         <>
-          <SdkIcon name={icon ?? "CornerDownLeft"} className="size-4" />
+          <SdkIcon name={icon ?? "ArrowUp"} className="size-4" />
           {label !== undefined && !isCompact ? (
             <span data-promptbox-submit-label="">{label}</span>
           ) : null}
@@ -3549,7 +3550,7 @@ export function PromptBoxInternal({
                     delivery={voice.delivery}
                     stream={voice.stream}
                     microphoneWarning={voice.microphoneWarning}
-                    submitIcon={submitIcon ?? "CornerDownLeft"}
+                    submitIcon={submitIcon ?? "ArrowUp"}
                     onConfirm={voice.stop}
                     onSend={voice.send}
                     onCancel={cancelVoiceInput}
@@ -3655,7 +3656,7 @@ export function PromptBoxInternal({
                         data-promptbox-submit-action=""
                         type="button"
                         size={showCompactLayout ? "icon" : "sm"}
-                        variant="default"
+                        variant="secondary"
                         aria-label="Start voice input"
                         onPointerDown={handleVoicePointerDown}
                         onClick={startVoiceInput}

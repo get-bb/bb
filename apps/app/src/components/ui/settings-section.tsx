@@ -46,7 +46,7 @@ export function SettingsSection({
             </h2>
           </div>
           {description ? (
-            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground">
               {description}
             </p>
           ) : null}
@@ -146,7 +146,8 @@ export function SettingsWithControl({
   return (
     <div
       data-settings-anchor={label}
-      className="@container/settings w-full min-w-0"
+      data-settings-control-row=""
+      className="@container/settings w-full min-w-0 [[data-settings-control-row]+&]:border-t [[data-settings-control-row]+&]:border-border-hairline/70 [[data-settings-control-row]+&]:pt-5"
     >
       <div
         data-control-placement={controlPlacement}
@@ -171,7 +172,7 @@ export function SettingsWithControl({
             {labelBadge ? <SettingsBadge>{labelBadge}</SettingsBadge> : null}
           </div>
           {description ? (
-            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground">
               {description}
             </p>
           ) : null}

@@ -765,7 +765,7 @@ function MarkdownCodeBlock({
   }
 
   return (
-    <div className="my-2 overflow-hidden rounded-md border border-border bg-surface-recessed">
+    <div className="my-2 overflow-hidden rounded-lg border border-border bg-surface-recessed">
       <div
         data-clipboard-ignore
         className="flex items-center justify-between pl-3 pr-1.5 pt-1.5"
@@ -800,7 +800,7 @@ function MarkdownCodeBlock({
           "bb-code-highlight px-3 pb-3 pt-1",
           softWrap
             ? "whitespace-pre-wrap [overflow-wrap:anywhere]"
-            : "overflow-x-auto",
+            : "overflow-x-auto max-md:[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]",
         )}
       >
         {highlightedMarkup === null ? (

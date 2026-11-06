@@ -42,6 +42,9 @@
   --color-readback-foreground: var(--readback-foreground);
   --color-version-upgrade: var(--version-upgrade);
   --color-timeline-accent: var(--timeline-accent);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-sidebar-selected: var(--sidebar-selected);
   --color-file-accent: var(--file-accent);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
@@ -109,7 +112,8 @@
 /*
  * Typography scale overrides.
  *
- * Desktop gets tighter copy (~13px text-sm, ~15px text-base) for denser UI.
+ * Desktop body copy is 14px text-sm, the reading size shared by the sidebar,
+ * transcript, composer, and settings, with 15px text-base for larger prose.
  * On narrow touch viewports (<768px with a coarse pointer) we bump xs/sm/base
  * back up so dense copy lands at a legible size. The 767px breakpoint matches
  * Tailwind's md:, where the sidebar switches to a drawer and the rest of the
@@ -121,7 +125,8 @@
  * collide with base classes in the cascade.
  */
 @theme {
-  --text-sm: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
   --text-base: 0.9375rem;
   --text-base--line-height: 1.375rem;
   /* Cadence chrome size (unread divider, count chips, ids) — 10px. Chrome only;
@@ -255,7 +260,7 @@
   [data-sidebar-sticky-stack]
     [data-sidebar-sticky-tier].bb-sidebar-selected-row {
     background-image:
-      linear-gradient(var(--state-active), var(--state-active)),
+      linear-gradient(var(--sidebar-selected), var(--sidebar-selected)),
       linear-gradient(var(--sidebar), var(--sidebar));
   }
 
@@ -508,6 +513,9 @@
    * achromatic timeline. ~5.0:1 on white. */
   --timeline-accent: oklch(0.55 0.1 250);
   --file-accent: var(--timeline-accent);
+  --brand: oklch(0.56 0.16 258);
+  --brand-foreground: oklch(1 0 0);
+  --sidebar-selected: color-mix(in oklab, var(--brand) 12%, transparent);
   /* Interactive-state fills: translucent ink so the same hover/active step
    * reads consistently on canvas, cards, and recessed surfaces alike. Over the
    * canvas these match an opaque ink-over-canvas mix exactly; on elevated
@@ -538,9 +546,9 @@
   /* Compatibility alias for plugin CSS authored before shell seams unified. */
   --border-seam-vertical: var(--border-seam);
   --input: color-mix(in oklch, var(--ink) 29.5%, var(--canvas));
-  /* Focus ring shares the primary accent — kept as one value so they can't
-   * drift apart. */
-  --ring: var(--primary);
+  /* Focus ring uses the brand accent so keyboard focus reads as color, not as
+   * another gray outline. */
+  --ring: var(--brand);
   /* Inset panel tints on the ink ramp: recessed a clear sunken step, raised a
    * faint lift, both translucent so they read on card or page alike. */
   --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
@@ -616,7 +624,7 @@
     oklch(0.8 0.13 88),
     var(--canvas) 76%
   );
-  --sidebar-ring: var(--primary);
+  --sidebar-ring: var(--brand);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono:
@@ -712,10 +720,9 @@
 .dark {
   color-scheme: dark;
   --canvas: oklch(0.195 0 0);
-  /* Softened from a brighter near-white so dark-mode foreground text reads a
-   * touch less intense; the whole achromatic ramp is anchored here, so chrome
-   * follows by an imperceptible amount. */
-  --ink: oklch(0.81 0 0);
+  /* Body text sits clearly above the muted (0.8) and subtle (0.71) tiers so
+   * the hierarchy survives; the whole achromatic ramp is anchored here. */
+  --ink: oklch(0.87 0 0);
   --background: var(--canvas);
   --foreground: var(--ink);
   /* Card and popover stay flush with the canvas here too — elevation comes from
@@ -734,15 +741,18 @@
   --accent: color-mix(in oklch, var(--ink) 13%, var(--canvas));
   --accent-foreground: var(--ink);
   --muted: color-mix(in oklch, var(--ink) 16%, var(--canvas));
-  --muted-foreground: oklch(0.78 0 0);
-  --subtle-foreground: oklch(0.68 0 0);
-  /* Recede tier between muted (9.14:1) and subtle (6.35:1); ~7.24:1 on canvas. */
-  --readback-foreground: oklch(0.715 0 0);
+  --muted-foreground: oklch(0.8 0 0);
+  --subtle-foreground: oklch(0.71 0 0);
+  /* Recede tier between muted and subtle, well above AA on the canvas. */
+  --readback-foreground: oklch(0.745 0 0);
   /* See the light block: the version an update would move you to. */
   --version-upgrade: color-mix(in oklch, var(--ink) 96%, var(--canvas));
   /* Soft "paper blue" timeline accent, lifted for the dark canvas (~6:1). */
   --timeline-accent: oklch(0.72 0.09 250);
   --file-accent: var(--timeline-accent);
+  --brand: oklch(0.64 0.15 258);
+  --brand-foreground: oklch(1 0 0);
+  --sidebar-selected: color-mix(in oklab, var(--brand) 20%, transparent);
   /* Interactive-state fills: translucent ink so the same hover/active step
   * reads consistently on canvas, cards, and recessed surfaces alike. */
   --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);
@@ -762,19 +772,19 @@
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
   --brand-discord: var(--foreground);
-  --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
-  --border-hairline: color-mix(in oklch, var(--ink) 21%, var(--canvas));
+  --border: color-mix(in oklch, var(--ink) 21%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 22.5%, var(--canvas));
   /* One app-shell seam for top nav, sidebar, split, and panel boundaries. */
   --border-seam: color-mix(in oklch, var(--ink) 11%, var(--canvas));
   /* Compatibility alias for plugin CSS authored before shell seams unified. */
   --border-seam-vertical: var(--border-seam);
   --input: color-mix(in oklch, var(--ink) 32.6%, var(--canvas));
-  --ring: var(--primary);
+  --ring: var(--brand);
   /* Same model as light; ink is light here, so these lift the dark canvas. */
-  --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  --surface-recessed: color-mix(in oklab, var(--ink) 8%, transparent);
   /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
      queued-list scroll fades) that must not double the translucent tint. */
-  --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 8%, var(--canvas));
   --surface-recessed-soft-solid: color-mix(
     in oklch,
     var(--ink) 4.2%,
@@ -836,7 +846,7 @@
     oklch(0.8 0.13 88),
     var(--canvas) 80%
   );
-  --sidebar-ring: var(--primary);
+  --sidebar-ring: var(--brand);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono:
@@ -908,6 +918,16 @@
   --diffs-dark: var(--foreground);
   --diffs-dark-addition-color: var(--diff-added);
   --diffs-dark-deletion-color: var(--diff-removed);
+  --diffs-bg-addition-override: color-mix(
+    in oklch,
+    var(--diff-added) 12%,
+    var(--background)
+  );
+  --diffs-bg-deletion-override: color-mix(
+    in oklch,
+    var(--diff-removed) 12%,
+    var(--background)
+  );
 }
 
 @layer base {

@@ -4,6 +4,8 @@ export const nordThemeCss = `
   --ink: #2e3440;
   --primary: #5e81ac;
   --primary-foreground: #eceff4;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
   --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
   --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
@@ -58,6 +60,8 @@ export const nordThemeCss = `
   --ink: #d8dee9;
   --primary: #88c0d0;
   --primary-foreground: #2e3440;
+  --brand: var(--primary);
+  --brand-foreground: var(--primary-foreground);
   --timeline-accent: #88c0d0;
   --file-accent: var(--timeline-accent);
   --destructive: #bf616a;

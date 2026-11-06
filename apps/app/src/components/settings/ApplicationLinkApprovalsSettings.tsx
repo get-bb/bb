@@ -32,7 +32,7 @@ export function ApplicationLinkApprovalsSettings() {
     <div className="border-border not-first:border-t not-first:pt-5">
       <SettingsWithControl
         label="App links"
-        description="BB asks before opening links like linear:// in another app. Approvals stay on this device and aren't synced."
+        description="bb asks before opening links like linear:// in another app. Approvals stay on this device and aren't synced."
         controlPlacement="below"
       >
         {approvals.isPending ? (

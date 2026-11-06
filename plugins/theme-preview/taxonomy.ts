@@ -34,7 +34,7 @@ export const COLOR_GROUPS = [
     title: "Accent",
     band: "palette",
     contrast: "none",
-    tokens: ["primary", "file-accent", "timeline-accent", "surface-selected", "state-hover", "state-active"],
+    tokens: ["primary", "brand", "file-accent", "timeline-accent", "surface-selected", "sidebar-selected", "state-hover", "state-active"],
   },
   {
     id: "status",

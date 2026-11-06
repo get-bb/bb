@@ -1078,7 +1078,7 @@ export function ModelReasoningPicker({
                     LIST_HOVER_TRANSITION,
                     COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
                     isActive
-                      ? "border-foreground text-foreground"
+                      ? "border-brand text-foreground"
                       : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                 >
