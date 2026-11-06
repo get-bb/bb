@@ -51,6 +51,7 @@ import {
   useHostProviderCliStatus,
   useSystemConfig,
   useSystemProviderStates,
+  useSetupGuideFeaturedPlugins,
   useSystemProviders,
 } from "@/hooks/queries/system-queries";
 import {
@@ -96,6 +97,7 @@ import {
   defaultSelectedRepoPaths,
   agentContinueDisabled,
   ONBOARDING_PLUGIN_ENTRY_IDS,
+  featuredPluginEntryIds,
   hasReadyAgent,
   operationFailureReason,
   projectsPrimaryAction,
@@ -1044,6 +1046,7 @@ function PluginsStepContainer({
   entry: onboardingEntry,
   trackInstall,
   switches,
+  onFeaturedPluginsShown,
   onBack,
   onContinue,
   onSkip,
@@ -1053,11 +1056,14 @@ function PluginsStepContainer({
   entry: OnboardingEntry;
   trackInstall: TrackPluginInstall;
   switches: OnboardingPluginSwitches;
+  onFeaturedPluginsShown: () => void;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
 }) {
+  const redesign = setupGuide.variant === "new";
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
+  const featuredQuery = useSetupGuideFeaturedPlugins({ enabled: redesign });
   useLoadFailureTelemetry({
     entry: onboardingEntry,
     step: "plugins",
@@ -1078,11 +1084,16 @@ function PluginsStepContainer({
     void refetchCatalog();
   }, [installedCount, refetchCatalog]);
 
-  const redesign = setupGuide.variant === "new";
+  const featuredEntryIds = useMemo(() => {
+    if (!redesign) return ONBOARDING_PLUGIN_ENTRY_IDS;
+    return featuredQuery.isPending
+      ? null
+      : featuredPluginEntryIds(featuredQuery.data);
+  }, [redesign, featuredQuery.isPending, featuredQuery.data]);
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
-    if (all === undefined) return null;
-    return ONBOARDING_PLUGIN_ENTRY_IDS.flatMap((entryId) => {
+    if (all === undefined || featuredEntryIds === null) return null;
+    return featuredEntryIds.flatMap((entryId) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
@@ -1090,15 +1101,20 @@ function PluginsStepContainer({
       );
       return entry === undefined ? [] : [entry];
     });
-  }, [catalogQuery.data?.entries]);
+  }, [catalogQuery.data?.entries, featuredEntryIds]);
+  const featuredShown =
+    redesign && featuredQuery.data !== undefined && entries !== null;
+  useEffect(() => {
+    if (featuredShown) onFeaturedPluginsShown();
+  }, [featuredShown, onFeaturedPluginsShown]);
   const isEnabled = (entry: PluginCatalogSearchEntry) =>
     entry.installed &&
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
       ?.enabled ??
       false);
-  const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
+  const isChosen = (entry: PluginCatalogSearchEntry) =>
     redesign
-      ? switches.shown(entry.pluginId, isEnabled(entry))
+      ? switches.changed(entry.pluginId, isEnabled(entry))
       : isEnabled(entry);
 
   const [recommendationIds] = useState(() => new Map<string, string>());
@@ -1139,7 +1155,7 @@ function PluginsStepContainer({
       {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (!(entries ?? []).some(isShownEnabled)) onSkip();
+        if (!(entries ?? []).some(isChosen)) onSkip();
         else onContinue();
       }}
       onSecondary={onSkip}
@@ -1148,7 +1164,9 @@ function PluginsStepContainer({
       <OnboardingPluginGrid compact={chrome.compact} showHelp={!redesign}>
         {entries === null ? (
           <OnboardingPluginGridSkeleton
-            count={ONBOARDING_PLUGIN_ENTRY_IDS.length}
+            count={
+              featuredEntryIds?.length ?? ONBOARDING_PLUGIN_ENTRY_IDS.length
+            }
           />
         ) : (
           entries.map((entry) => (
@@ -1346,6 +1364,15 @@ export function OnboardingFlow({
     exposedRef.current = true;
     recordTelemetryEvent({ name: "onboarding_exposed", properties: { entry } });
   }, [entry]);
+  const featuredPluginsExposedRef = useRef(false);
+  const recordFeaturedPluginsExposure = useCallback(() => {
+    if (featuredPluginsExposedRef.current) return;
+    featuredPluginsExposedRef.current = true;
+    recordTelemetryEvent({
+      name: "onboarding_featured_plugins_exposed",
+      properties: { entry },
+    });
+  }, [entry]);
   const navigationProjects = useSidebarNavigation().data?.projects;
   const [projectIdsAtOpen, setProjectIdsAtOpen] =
     useState<ReadonlySet<string> | null>(null);
@@ -1494,6 +1521,7 @@ export function OnboardingFlow({
           entry={entry}
           trackInstall={trackPluginInstall}
           switches={pluginSwitches}
+          onFeaturedPluginsShown={recordFeaturedPluginsExposure}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}

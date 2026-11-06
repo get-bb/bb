@@ -4033,6 +4033,11 @@ the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
 `setup_guide_variant` as a person property (`$set`), and sends
 `$feature_flag_called` when the variant came from the PostHog flag. Every
 setup-guide event gets `setup_guide_variant` from the server.
+`onboarding_featured_plugins_exposed` (`entry`) marks the Plugins step first
+showing its featured plugins; the server handles it the same way for the
+`onboarding-featured-plugins` flag (`featured_plugins_variant`,
+`featured_plugins_source`), and every setup-guide event also gets
+`featured_plugins_variant`.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.

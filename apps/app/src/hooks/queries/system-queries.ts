@@ -38,6 +38,7 @@ import {
   hostProviderCliStatusQueryKey,
   systemCliCommandQueryKey,
   systemSetupGuideQueryKey,
+  systemSetupGuideFeaturedPluginsQueryKey,
   systemCliSkillsQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
@@ -50,7 +51,10 @@ import {
   uiPreferencesQueryKey,
 } from "./query-keys";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
-import { fetchSetupGuideAssignment } from "./setup-guide-requests";
+import {
+  fetchSetupGuideAssignment,
+  fetchSetupGuideFeaturedPlugins,
+} from "./setup-guide-requests";
 import {
   SERVER_SESSION_QUERY_POLICY,
   SESSION_STATIC_QUERY_POLICY,
@@ -593,6 +597,16 @@ export function useSetupGuideAssignment(options?: QueryOptions) {
     queryKey: systemSetupGuideQueryKey(),
     queryFn: ({ signal }) => fetchSetupGuideAssignment(signal),
     enabled: options?.enabled ?? true,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+export function useSetupGuideFeaturedPlugins(options: { enabled: boolean }) {
+  return useQuery({
+    queryKey: systemSetupGuideFeaturedPluginsQueryKey(),
+    queryFn: ({ signal }) => fetchSetupGuideFeaturedPlugins(signal),
+    enabled: options.enabled,
     staleTime: Infinity,
     retry: false,
   });

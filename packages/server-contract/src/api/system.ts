@@ -369,6 +369,12 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .strict(),
   z
     .object({
+      name: z.literal("onboarding_featured_plugins_exposed"),
+      properties: z.object({ entry: onboardingEntryTelemetrySchema }).strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("onboarding_started"),
       properties: z
         .object({ agent_installed: z.boolean(), agent_ready: z.boolean() })
@@ -453,6 +459,13 @@ export const systemSetupGuideResponseSchema = z.object({
 });
 export type SystemSetupGuideResponse = z.infer<
   typeof systemSetupGuideResponseSchema
+>;
+
+export const systemSetupGuideFeaturedPluginsResponseSchema = z.object({
+  entryIds: z.array(z.string().min(1)).nullable(),
+});
+export type SystemSetupGuideFeaturedPluginsResponse = z.infer<
+  typeof systemSetupGuideFeaturedPluginsResponseSchema
 >;
 
 export const serverAccessStatusSchema = z.object({

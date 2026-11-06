@@ -9,105 +9,55 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
-import { Route as UninstallRouteImport } from "./routes/uninstall";
-import { Route as SitemapDotxmlRouteImport } from "./routes/sitemap[.]xml";
-import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
-import { Route as PrivacyRouteImport } from "./routes/privacy";
-import { Route as PluginGuideRouteImport } from "./routes/plugin-guide";
-import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
-import { Route as LinkRouteImport } from "./routes/link";
-import { Route as DashboardRouteImport } from "./routes/dashboard";
-import { Route as ChangelogRouteImport } from "./routes/changelog";
-import { Route as BrandRouteImport } from "./routes/brand";
-import { Route as BlogRouteImport } from "./routes/blog";
-import { Route as SlugRouteImport } from "./routes/$slug";
 import { Route as IndexRouteImport } from "./routes/index";
-import { Route as OauthTokenRouteImport } from "./routes/oauth.token";
-import { Route as OauthRevokeRouteImport } from "./routes/oauth.revoke";
-import { Route as OauthAuthorizeRouteImport } from "./routes/oauth.authorize";
-import { Route as MarketplacePluginIdRouteImport } from "./routes/marketplace_.$pluginId";
-import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
-import { Route as DownloadIndexRouteImport } from "./routes/download.index";
-import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
-import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
-import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
-import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
-import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
-import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
-import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from "./routes/[.]well-known.oauth-authorization-server";
-import { Route as DotwellKnownBbConnectGateKeysDotjsonRouteImport } from "./routes/[.]well-known.bb-connect-gate-keys[.]json";
-import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
+import { Route as SlugRouteImport } from "./routes/$slug";
+import { Route as BlogRouteImport } from "./routes/blog";
+import { Route as BrandRouteImport } from "./routes/brand";
+import { Route as ChangelogRouteImport } from "./routes/changelog";
+import { Route as DashboardRouteImport } from "./routes/dashboard";
+import { Route as LinkRouteImport } from "./routes/link";
+import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
+import { Route as PluginGuideRouteImport } from "./routes/plugin-guide";
+import { Route as PrivacyRouteImport } from "./routes/privacy";
+import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
+import { Route as SitemapDotxmlRouteImport } from "./routes/sitemap[.]xml";
+import { Route as UninstallRouteImport } from "./routes/uninstall";
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from "./routes/[.]well-known.apple-app-site-association";
-import { Route as MarketplaceAuthorGithubRouteImport } from "./routes/marketplace_.author.$github";
-import { Route as MarketplaceV2SplatRouteImport } from "./routes/marketplace.v2.$";
-import { Route as MarketplaceV1SplatRouteImport } from "./routes/marketplace.v1.$";
-import { Route as MarketplaceOgPluginIdRouteImport } from "./routes/marketplace.og.$pluginId";
-import { Route as MarketplaceBuiltinPluginRouteImport } from "./routes/marketplace.builtin.$plugin";
-import { Route as ApiMcpGrantsRouteImport } from "./routes/api.mcp.grants";
-import { Route as ApiConnectRevokeMachineRouteImport } from "./routes/api.connect.revoke-machine";
-import { Route as ApiConnectRedeemMachineRouteImport } from "./routes/api.connect.redeem-machine";
-import { Route as ApiConnectRedeemRouteImport } from "./routes/api.connect.redeem";
-import { Route as ApiConnectMachineCodeLookupRouteImport } from "./routes/api.connect.machine-code-lookup";
-import { Route as ApiConnectMachineCodeRouteImport } from "./routes/api.connect.machine-code";
-import { Route as ApiAuthSplatRouteImport } from "./routes/api.auth.$";
+import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
+import { Route as DotwellKnownBbConnectGateKeysDotjsonRouteImport } from "./routes/[.]well-known.bb-connect-gate-keys[.]json";
+import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from "./routes/[.]well-known.oauth-authorization-server";
+import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
+import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
+import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
+import { Route as DownloadIndexRouteImport } from "./routes/download.index";
+import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
+import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
+import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
+import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
+import { Route as MarketplacePluginIdRouteImport } from "./routes/marketplace_.$pluginId";
+import { Route as OauthAuthorizeRouteImport } from "./routes/oauth.authorize";
+import { Route as OauthRevokeRouteImport } from "./routes/oauth.revoke";
+import { Route as OauthTokenRouteImport } from "./routes/oauth.token";
 import { Route as ApiAccountMeRouteImport } from "./routes/api.account.me";
-import { Route as ApiMcpGrantsRevokeRouteImport } from "./routes/api.mcp.grants_.revoke";
-import { Route as ApiAccountLinkStartRouteImport } from "./routes/api.account.link.start";
+import { Route as ApiAuthSplatRouteImport } from "./routes/api.auth.$";
+import { Route as ApiConnectMachineCodeRouteImport } from "./routes/api.connect.machine-code";
+import { Route as ApiConnectMachineCodeLookupRouteImport } from "./routes/api.connect.machine-code-lookup";
+import { Route as ApiConnectRedeemRouteImport } from "./routes/api.connect.redeem";
+import { Route as ApiConnectRedeemMachineRouteImport } from "./routes/api.connect.redeem-machine";
+import { Route as ApiConnectRevokeMachineRouteImport } from "./routes/api.connect.revoke-machine";
+import { Route as ApiMcpGrantsRouteImport } from "./routes/api.mcp.grants";
+import { Route as MarketplaceBuiltinPluginRouteImport } from "./routes/marketplace.builtin.$plugin";
+import { Route as MarketplaceOgPluginIdRouteImport } from "./routes/marketplace.og.$pluginId";
+import { Route as MarketplaceV1SplatRouteImport } from "./routes/marketplace.v1.$";
+import { Route as MarketplaceV2SplatRouteImport } from "./routes/marketplace.v2.$";
+import { Route as MarketplaceAuthorGithubRouteImport } from "./routes/marketplace_.author.$github";
 import { Route as ApiAccountLinkPollRouteImport } from "./routes/api.account.link.poll";
+import { Route as ApiAccountLinkStartRouteImport } from "./routes/api.account.link.start";
+import { Route as ApiMcpGrantsRevokeRouteImport } from "./routes/api.mcp.grants_.revoke";
 
-const UninstallRoute = UninstallRouteImport.update({
-  id: "/uninstall",
-  path: "/uninstall",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: "/sitemap.xml",
-  path: "/sitemap.xml",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
-  id: "/robots.txt",
-  path: "/robots.txt",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: "/privacy",
-  path: "/privacy",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const PluginGuideRoute = PluginGuideRouteImport.update({
-  id: "/plugin-guide",
-  path: "/plugin-guide",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const MarketplaceRoute = MarketplaceRouteImport.update({
-  id: "/marketplace_",
-  path: "/marketplace",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const LinkRoute = LinkRouteImport.update({
-  id: "/link",
-  path: "/link",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const DashboardRoute = DashboardRouteImport.update({
-  id: "/dashboard",
-  path: "/dashboard",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const ChangelogRoute = ChangelogRouteImport.update({
-  id: "/changelog",
-  path: "/changelog",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const BrandRoute = BrandRouteImport.update({
-  id: "/brand",
-  path: "/brand",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const BlogRoute = BlogRouteImport.update({
-  id: "/blog",
-  path: "/blog",
+const IndexRoute = IndexRouteImport.update({
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
 } as any);
 const SlugRoute = SlugRouteImport.update({
@@ -115,81 +65,65 @@ const SlugRoute = SlugRouteImport.update({
   path: "/$slug",
   getParentRoute: () => rootRouteImport,
 } as any);
-const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+const BlogRoute = BlogRouteImport.update({
+  id: "/blog",
+  path: "/blog",
   getParentRoute: () => rootRouteImport,
 } as any);
-const OauthTokenRoute = OauthTokenRouteImport.update({
-  id: "/oauth/token",
-  path: "/oauth/token",
+const BrandRoute = BrandRouteImport.update({
+  id: "/brand",
+  path: "/brand",
   getParentRoute: () => rootRouteImport,
 } as any);
-const OauthRevokeRoute = OauthRevokeRouteImport.update({
-  id: "/oauth/revoke",
-  path: "/oauth/revoke",
+const ChangelogRoute = ChangelogRouteImport.update({
+  id: "/changelog",
+  path: "/changelog",
   getParentRoute: () => rootRouteImport,
 } as any);
-const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
-  id: "/oauth/authorize",
-  path: "/oauth/authorize",
+const DashboardRoute = DashboardRouteImport.update({
+  id: "/dashboard",
+  path: "/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any);
-const MarketplacePluginIdRoute = MarketplacePluginIdRouteImport.update({
-  id: "/$pluginId",
-  path: "/$pluginId",
-  getParentRoute: () => MarketplaceRoute,
-} as any);
-const GuidesSlugRoute = GuidesSlugRouteImport.update({
-  id: "/guides/$slug",
-  path: "/guides/$slug",
+const LinkRoute = LinkRouteImport.update({
+  id: "/link",
+  path: "/link",
   getParentRoute: () => rootRouteImport,
 } as any);
-const DownloadIndexRoute = DownloadIndexRouteImport.update({
-  id: "/download/",
-  path: "/download/",
+const MarketplaceRoute = MarketplaceRouteImport.update({
+  id: "/marketplace_",
+  path: "/marketplace",
   getParentRoute: () => rootRouteImport,
 } as any);
-const DownloadWindowsRoute = DownloadWindowsRouteImport.update({
-  id: "/download/windows",
-  path: "/download/windows",
+const PluginGuideRoute = PluginGuideRouteImport.update({
+  id: "/plugin-guide",
+  path: "/plugin-guide",
   getParentRoute: () => rootRouteImport,
 } as any);
-const DownloadMacosRoute = DownloadMacosRouteImport.update({
-  id: "/download/macos",
-  path: "/download/macos",
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: "/privacy",
+  path: "/privacy",
   getParentRoute: () => rootRouteImport,
 } as any);
-const DownloadLinuxRoute = DownloadLinuxRouteImport.update({
-  id: "/download/linux",
-  path: "/download/linux",
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: "/robots.txt",
+  path: "/robots.txt",
   getParentRoute: () => rootRouteImport,
 } as any);
-const CompareSlugRoute = CompareSlugRouteImport.update({
-  id: "/compare/$slug",
-  path: "/compare/$slug",
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: "/sitemap.xml",
+  path: "/sitemap.xml",
   getParentRoute: () => rootRouteImport,
 } as any);
-const BlogSlugRoute = BlogSlugRouteImport.update({
-  id: "/blog_/$slug",
-  path: "/blog/$slug",
+const UninstallRoute = UninstallRouteImport.update({
+  id: "/uninstall",
+  path: "/uninstall",
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
-  id: "/api/subscribe",
-  path: "/api/subscribe",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const DotwellKnownOauthAuthorizationServerRoute =
-  DotwellKnownOauthAuthorizationServerRouteImport.update({
-    id: "/.well-known/oauth-authorization-server",
-    path: "/.well-known/oauth-authorization-server",
-    getParentRoute: () => rootRouteImport,
-  } as any);
-const DotwellKnownBbConnectGateKeysDotjsonRoute =
-  DotwellKnownBbConnectGateKeysDotjsonRouteImport.update({
-    id: "/.well-known/bb-connect-gate-keys.json",
-    path: "/.well-known/bb-connect-gate-keys.json",
+const DotwellKnownAppleAppSiteAssociationRoute =
+  DotwellKnownAppleAppSiteAssociationRouteImport.update({
+    id: "/.well-known/apple-app-site-association",
+    path: "/.well-known/apple-app-site-association",
     getParentRoute: () => rootRouteImport,
   } as any);
 const DotwellKnownAssetlinksDotjsonRoute =
@@ -198,56 +132,91 @@ const DotwellKnownAssetlinksDotjsonRoute =
     path: "/.well-known/assetlinks.json",
     getParentRoute: () => rootRouteImport,
   } as any);
-const DotwellKnownAppleAppSiteAssociationRoute =
-  DotwellKnownAppleAppSiteAssociationRouteImport.update({
-    id: "/.well-known/apple-app-site-association",
-    path: "/.well-known/apple-app-site-association",
+const DotwellKnownBbConnectGateKeysDotjsonRoute =
+  DotwellKnownBbConnectGateKeysDotjsonRouteImport.update({
+    id: "/.well-known/bb-connect-gate-keys.json",
+    path: "/.well-known/bb-connect-gate-keys.json",
     getParentRoute: () => rootRouteImport,
   } as any);
-const MarketplaceAuthorGithubRoute = MarketplaceAuthorGithubRouteImport.update({
-  id: "/author/$github",
-  path: "/author/$github",
+const DotwellKnownOauthAuthorizationServerRoute =
+  DotwellKnownOauthAuthorizationServerRouteImport.update({
+    id: "/.well-known/oauth-authorization-server",
+    path: "/.well-known/oauth-authorization-server",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
+  id: "/api/subscribe",
+  path: "/api/subscribe",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: "/blog_/$slug",
+  path: "/blog/$slug",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const CompareSlugRoute = CompareSlugRouteImport.update({
+  id: "/compare/$slug",
+  path: "/compare/$slug",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DownloadIndexRoute = DownloadIndexRouteImport.update({
+  id: "/download/",
+  path: "/download/",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DownloadLinuxRoute = DownloadLinuxRouteImport.update({
+  id: "/download/linux",
+  path: "/download/linux",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DownloadMacosRoute = DownloadMacosRouteImport.update({
+  id: "/download/macos",
+  path: "/download/macos",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DownloadWindowsRoute = DownloadWindowsRouteImport.update({
+  id: "/download/windows",
+  path: "/download/windows",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const GuidesSlugRoute = GuidesSlugRouteImport.update({
+  id: "/guides/$slug",
+  path: "/guides/$slug",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const MarketplacePluginIdRoute = MarketplacePluginIdRouteImport.update({
+  id: "/$pluginId",
+  path: "/$pluginId",
   getParentRoute: () => MarketplaceRoute,
 } as any);
-const MarketplaceV2SplatRoute = MarketplaceV2SplatRouteImport.update({
-  id: "/marketplace/v2/$",
-  path: "/marketplace/v2/$",
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: "/oauth/authorize",
+  path: "/oauth/authorize",
   getParentRoute: () => rootRouteImport,
 } as any);
-const MarketplaceV1SplatRoute = MarketplaceV1SplatRouteImport.update({
-  id: "/marketplace/v1/$",
-  path: "/marketplace/v1/$",
+const OauthRevokeRoute = OauthRevokeRouteImport.update({
+  id: "/oauth/revoke",
+  path: "/oauth/revoke",
   getParentRoute: () => rootRouteImport,
 } as any);
-const MarketplaceOgPluginIdRoute = MarketplaceOgPluginIdRouteImport.update({
-  id: "/marketplace/og/$pluginId",
-  path: "/marketplace/og/$pluginId",
+const OauthTokenRoute = OauthTokenRouteImport.update({
+  id: "/oauth/token",
+  path: "/oauth/token",
   getParentRoute: () => rootRouteImport,
 } as any);
-const MarketplaceBuiltinPluginRoute =
-  MarketplaceBuiltinPluginRouteImport.update({
-    id: "/marketplace/builtin/$plugin",
-    path: "/marketplace/builtin/$plugin",
-    getParentRoute: () => rootRouteImport,
-  } as any);
-const ApiMcpGrantsRoute = ApiMcpGrantsRouteImport.update({
-  id: "/api/mcp/grants",
-  path: "/api/mcp/grants",
+const ApiAccountMeRoute = ApiAccountMeRouteImport.update({
+  id: "/api/account/me",
+  path: "/api/account/me",
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
-  id: "/api/connect/revoke-machine",
-  path: "/api/connect/revoke-machine",
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: "/api/auth/$",
+  path: "/api/auth/$",
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiConnectRedeemMachineRoute = ApiConnectRedeemMachineRouteImport.update({
-  id: "/api/connect/redeem-machine",
-  path: "/api/connect/redeem-machine",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const ApiConnectRedeemRoute = ApiConnectRedeemRouteImport.update({
-  id: "/api/connect/redeem",
-  path: "/api/connect/redeem",
+const ApiConnectMachineCodeRoute = ApiConnectMachineCodeRouteImport.update({
+  id: "/api/connect/machine-code",
+  path: "/api/connect/machine-code",
   getParentRoute: () => rootRouteImport,
 } as any);
 const ApiConnectMachineCodeLookupRoute =
@@ -256,24 +225,55 @@ const ApiConnectMachineCodeLookupRoute =
     path: "/api/connect/machine-code-lookup",
     getParentRoute: () => rootRouteImport,
   } as any);
-const ApiConnectMachineCodeRoute = ApiConnectMachineCodeRouteImport.update({
-  id: "/api/connect/machine-code",
-  path: "/api/connect/machine-code",
+const ApiConnectRedeemRoute = ApiConnectRedeemRouteImport.update({
+  id: "/api/connect/redeem",
+  path: "/api/connect/redeem",
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: "/api/auth/$",
-  path: "/api/auth/$",
+const ApiConnectRedeemMachineRoute = ApiConnectRedeemMachineRouteImport.update({
+  id: "/api/connect/redeem-machine",
+  path: "/api/connect/redeem-machine",
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiAccountMeRoute = ApiAccountMeRouteImport.update({
-  id: "/api/account/me",
-  path: "/api/account/me",
+const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
+  id: "/api/connect/revoke-machine",
+  path: "/api/connect/revoke-machine",
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiMcpGrantsRevokeRoute = ApiMcpGrantsRevokeRouteImport.update({
-  id: "/api/mcp/grants_/revoke",
-  path: "/api/mcp/grants/revoke",
+const ApiMcpGrantsRoute = ApiMcpGrantsRouteImport.update({
+  id: "/api/mcp/grants",
+  path: "/api/mcp/grants",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const MarketplaceBuiltinPluginRoute =
+  MarketplaceBuiltinPluginRouteImport.update({
+    id: "/marketplace/builtin/$plugin",
+    path: "/marketplace/builtin/$plugin",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const MarketplaceOgPluginIdRoute = MarketplaceOgPluginIdRouteImport.update({
+  id: "/marketplace/og/$pluginId",
+  path: "/marketplace/og/$pluginId",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const MarketplaceV1SplatRoute = MarketplaceV1SplatRouteImport.update({
+  id: "/marketplace/v1/$",
+  path: "/marketplace/v1/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const MarketplaceV2SplatRoute = MarketplaceV2SplatRouteImport.update({
+  id: "/marketplace/v2/$",
+  path: "/marketplace/v2/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const MarketplaceAuthorGithubRoute = MarketplaceAuthorGithubRouteImport.update({
+  id: "/author/$github",
+  path: "/author/$github",
+  getParentRoute: () => MarketplaceRoute,
+} as any);
+const ApiAccountLinkPollRoute = ApiAccountLinkPollRouteImport.update({
+  id: "/api/account/link/poll",
+  path: "/api/account/link/poll",
   getParentRoute: () => rootRouteImport,
 } as any);
 const ApiAccountLinkStartRoute = ApiAccountLinkStartRouteImport.update({
@@ -281,9 +281,9 @@ const ApiAccountLinkStartRoute = ApiAccountLinkStartRouteImport.update({
   path: "/api/account/link/start",
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiAccountLinkPollRoute = ApiAccountLinkPollRouteImport.update({
-  id: "/api/account/link/poll",
-  path: "/api/account/link/poll",
+const ApiMcpGrantsRevokeRoute = ApiMcpGrantsRevokeRouteImport.update({
+  id: "/api/mcp/grants_/revoke",
+  path: "/api/mcp/grants/revoke",
   getParentRoute: () => rootRouteImport,
 } as any);
 
@@ -310,13 +310,13 @@ export interface FileRoutesByFullPath {
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
-  "/download/": typeof DownloadIndexRoute;
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
   "/oauth/authorize": typeof OauthAuthorizeRoute;
   "/oauth/revoke": typeof OauthRevokeRoute;
   "/oauth/token": typeof OauthTokenRoute;
+  "/download/": typeof DownloadIndexRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -357,13 +357,13 @@ export interface FileRoutesByTo {
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
-  "/download": typeof DownloadIndexRoute;
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
   "/oauth/authorize": typeof OauthAuthorizeRoute;
   "/oauth/revoke": typeof OauthRevokeRoute;
   "/oauth/token": typeof OauthTokenRoute;
+  "/download": typeof DownloadIndexRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -405,13 +405,13 @@ export interface FileRoutesById {
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
-  "/download/": typeof DownloadIndexRoute;
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace_/$pluginId": typeof MarketplacePluginIdRoute;
   "/oauth/authorize": typeof OauthAuthorizeRoute;
   "/oauth/revoke": typeof OauthRevokeRoute;
   "/oauth/token": typeof OauthTokenRoute;
+  "/download/": typeof DownloadIndexRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -454,13 +454,13 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
-    | "/download/"
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace/$pluginId"
     | "/oauth/authorize"
     | "/oauth/revoke"
     | "/oauth/token"
+    | "/download/"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -501,13 +501,13 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
-    | "/download"
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace/$pluginId"
     | "/oauth/authorize"
     | "/oauth/revoke"
     | "/oauth/token"
+    | "/download"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -548,13 +548,13 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
-    | "/download/"
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace_/$pluginId"
     | "/oauth/authorize"
     | "/oauth/revoke"
     | "/oauth/token"
+    | "/download/"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -596,12 +596,12 @@ export interface RootRouteChildren {
   CompareSlugRoute: typeof CompareSlugRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
-  DownloadIndexRoute: typeof DownloadIndexRoute;
   DownloadWindowsRoute: typeof DownloadWindowsRoute;
   GuidesSlugRoute: typeof GuidesSlugRoute;
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute;
   OauthRevokeRoute: typeof OauthRevokeRoute;
   OauthTokenRoute: typeof OauthTokenRoute;
+  DownloadIndexRoute: typeof DownloadIndexRoute;
   ApiAccountMeRoute: typeof ApiAccountMeRoute;
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute;
@@ -621,81 +621,11 @@ export interface RootRouteChildren {
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    "/uninstall": {
-      id: "/uninstall";
-      path: "/uninstall";
-      fullPath: "/uninstall";
-      preLoaderRoute: typeof UninstallRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/sitemap.xml": {
-      id: "/sitemap.xml";
-      path: "/sitemap.xml";
-      fullPath: "/sitemap.xml";
-      preLoaderRoute: typeof SitemapDotxmlRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/robots.txt": {
-      id: "/robots.txt";
-      path: "/robots.txt";
-      fullPath: "/robots.txt";
-      preLoaderRoute: typeof RobotsDottxtRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/privacy": {
-      id: "/privacy";
-      path: "/privacy";
-      fullPath: "/privacy";
-      preLoaderRoute: typeof PrivacyRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/plugin-guide": {
-      id: "/plugin-guide";
-      path: "/plugin-guide";
-      fullPath: "/plugin-guide";
-      preLoaderRoute: typeof PluginGuideRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/marketplace_": {
-      id: "/marketplace_";
-      path: "/marketplace";
-      fullPath: "/marketplace";
-      preLoaderRoute: typeof MarketplaceRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/link": {
-      id: "/link";
-      path: "/link";
-      fullPath: "/link";
-      preLoaderRoute: typeof LinkRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/dashboard": {
-      id: "/dashboard";
-      path: "/dashboard";
-      fullPath: "/dashboard";
-      preLoaderRoute: typeof DashboardRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/changelog": {
-      id: "/changelog";
-      path: "/changelog";
-      fullPath: "/changelog";
-      preLoaderRoute: typeof ChangelogRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/brand": {
-      id: "/brand";
-      path: "/brand";
-      fullPath: "/brand";
-      preLoaderRoute: typeof BrandRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/blog": {
-      id: "/blog";
-      path: "/blog";
-      fullPath: "/blog";
-      preLoaderRoute: typeof BlogRouteImport;
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/$slug": {
@@ -705,116 +635,81 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof SlugRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
+    "/blog": {
+      id: "/blog";
+      path: "/blog";
+      fullPath: "/blog";
+      preLoaderRoute: typeof BlogRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/oauth/token": {
-      id: "/oauth/token";
-      path: "/oauth/token";
-      fullPath: "/oauth/token";
-      preLoaderRoute: typeof OauthTokenRouteImport;
+    "/brand": {
+      id: "/brand";
+      path: "/brand";
+      fullPath: "/brand";
+      preLoaderRoute: typeof BrandRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/oauth/revoke": {
-      id: "/oauth/revoke";
-      path: "/oauth/revoke";
-      fullPath: "/oauth/revoke";
-      preLoaderRoute: typeof OauthRevokeRouteImport;
+    "/changelog": {
+      id: "/changelog";
+      path: "/changelog";
+      fullPath: "/changelog";
+      preLoaderRoute: typeof ChangelogRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/oauth/authorize": {
-      id: "/oauth/authorize";
-      path: "/oauth/authorize";
-      fullPath: "/oauth/authorize";
-      preLoaderRoute: typeof OauthAuthorizeRouteImport;
+    "/dashboard": {
+      id: "/dashboard";
+      path: "/dashboard";
+      fullPath: "/dashboard";
+      preLoaderRoute: typeof DashboardRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/marketplace_/$pluginId": {
-      id: "/marketplace_/$pluginId";
-      path: "/$pluginId";
-      fullPath: "/marketplace/$pluginId";
-      preLoaderRoute: typeof MarketplacePluginIdRouteImport;
-      parentRoute: typeof MarketplaceRoute;
-    };
-    "/guides/$slug": {
-      id: "/guides/$slug";
-      path: "/guides/$slug";
-      fullPath: "/guides/$slug";
-      preLoaderRoute: typeof GuidesSlugRouteImport;
+    "/link": {
+      id: "/link";
+      path: "/link";
+      fullPath: "/link";
+      preLoaderRoute: typeof LinkRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/download/": {
-      id: "/download/";
-      path: "/download";
-      fullPath: "/download/";
-      preLoaderRoute: typeof DownloadIndexRouteImport;
+    "/marketplace_": {
+      id: "/marketplace_";
+      path: "/marketplace";
+      fullPath: "/marketplace";
+      preLoaderRoute: typeof MarketplaceRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/download/windows": {
-      id: "/download/windows";
-      path: "/download/windows";
-      fullPath: "/download/windows";
-      preLoaderRoute: typeof DownloadWindowsRouteImport;
+    "/plugin-guide": {
+      id: "/plugin-guide";
+      path: "/plugin-guide";
+      fullPath: "/plugin-guide";
+      preLoaderRoute: typeof PluginGuideRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/download/macos": {
-      id: "/download/macos";
-      path: "/download/macos";
-      fullPath: "/download/macos";
-      preLoaderRoute: typeof DownloadMacosRouteImport;
+    "/privacy": {
+      id: "/privacy";
+      path: "/privacy";
+      fullPath: "/privacy";
+      preLoaderRoute: typeof PrivacyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/download/linux": {
-      id: "/download/linux";
-      path: "/download/linux";
-      fullPath: "/download/linux";
-      preLoaderRoute: typeof DownloadLinuxRouteImport;
+    "/robots.txt": {
+      id: "/robots.txt";
+      path: "/robots.txt";
+      fullPath: "/robots.txt";
+      preLoaderRoute: typeof RobotsDottxtRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/compare/$slug": {
-      id: "/compare/$slug";
-      path: "/compare/$slug";
-      fullPath: "/compare/$slug";
-      preLoaderRoute: typeof CompareSlugRouteImport;
+    "/sitemap.xml": {
+      id: "/sitemap.xml";
+      path: "/sitemap.xml";
+      fullPath: "/sitemap.xml";
+      preLoaderRoute: typeof SitemapDotxmlRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/blog_/$slug": {
-      id: "/blog_/$slug";
-      path: "/blog/$slug";
-      fullPath: "/blog/$slug";
-      preLoaderRoute: typeof BlogSlugRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/subscribe": {
-      id: "/api/subscribe";
-      path: "/api/subscribe";
-      fullPath: "/api/subscribe";
-      preLoaderRoute: typeof ApiSubscribeRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/.well-known/oauth-authorization-server": {
-      id: "/.well-known/oauth-authorization-server";
-      path: "/.well-known/oauth-authorization-server";
-      fullPath: "/.well-known/oauth-authorization-server";
-      preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/.well-known/bb-connect-gate-keys.json": {
-      id: "/.well-known/bb-connect-gate-keys.json";
-      path: "/.well-known/bb-connect-gate-keys.json";
-      fullPath: "/.well-known/bb-connect-gate-keys.json";
-      preLoaderRoute: typeof DotwellKnownBbConnectGateKeysDotjsonRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/.well-known/assetlinks.json": {
-      id: "/.well-known/assetlinks.json";
-      path: "/.well-known/assetlinks.json";
-      fullPath: "/.well-known/assetlinks.json";
-      preLoaderRoute: typeof DotwellKnownAssetlinksDotjsonRouteImport;
+    "/uninstall": {
+      id: "/uninstall";
+      path: "/uninstall";
+      fullPath: "/uninstall";
+      preLoaderRoute: typeof UninstallRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/.well-known/apple-app-site-association": {
@@ -824,88 +719,109 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/marketplace_/author/$github": {
-      id: "/marketplace_/author/$github";
-      path: "/author/$github";
-      fullPath: "/marketplace/author/$github";
-      preLoaderRoute: typeof MarketplaceAuthorGithubRouteImport;
+    "/.well-known/assetlinks.json": {
+      id: "/.well-known/assetlinks.json";
+      path: "/.well-known/assetlinks.json";
+      fullPath: "/.well-known/assetlinks.json";
+      preLoaderRoute: typeof DotwellKnownAssetlinksDotjsonRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/.well-known/bb-connect-gate-keys.json": {
+      id: "/.well-known/bb-connect-gate-keys.json";
+      path: "/.well-known/bb-connect-gate-keys.json";
+      fullPath: "/.well-known/bb-connect-gate-keys.json";
+      preLoaderRoute: typeof DotwellKnownBbConnectGateKeysDotjsonRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/.well-known/oauth-authorization-server": {
+      id: "/.well-known/oauth-authorization-server";
+      path: "/.well-known/oauth-authorization-server";
+      fullPath: "/.well-known/oauth-authorization-server";
+      preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/subscribe": {
+      id: "/api/subscribe";
+      path: "/api/subscribe";
+      fullPath: "/api/subscribe";
+      preLoaderRoute: typeof ApiSubscribeRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/blog_/$slug": {
+      id: "/blog_/$slug";
+      path: "/blog/$slug";
+      fullPath: "/blog/$slug";
+      preLoaderRoute: typeof BlogSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/compare/$slug": {
+      id: "/compare/$slug";
+      path: "/compare/$slug";
+      fullPath: "/compare/$slug";
+      preLoaderRoute: typeof CompareSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/download/": {
+      id: "/download/";
+      path: "/download";
+      fullPath: "/download/";
+      preLoaderRoute: typeof DownloadIndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/download/linux": {
+      id: "/download/linux";
+      path: "/download/linux";
+      fullPath: "/download/linux";
+      preLoaderRoute: typeof DownloadLinuxRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/download/macos": {
+      id: "/download/macos";
+      path: "/download/macos";
+      fullPath: "/download/macos";
+      preLoaderRoute: typeof DownloadMacosRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/download/windows": {
+      id: "/download/windows";
+      path: "/download/windows";
+      fullPath: "/download/windows";
+      preLoaderRoute: typeof DownloadWindowsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/guides/$slug": {
+      id: "/guides/$slug";
+      path: "/guides/$slug";
+      fullPath: "/guides/$slug";
+      preLoaderRoute: typeof GuidesSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/marketplace_/$pluginId": {
+      id: "/marketplace_/$pluginId";
+      path: "/$pluginId";
+      fullPath: "/marketplace/$pluginId";
+      preLoaderRoute: typeof MarketplacePluginIdRouteImport;
       parentRoute: typeof MarketplaceRoute;
     };
-    "/marketplace/v2/$": {
-      id: "/marketplace/v2/$";
-      path: "/marketplace/v2/$";
-      fullPath: "/marketplace/v2/$";
-      preLoaderRoute: typeof MarketplaceV2SplatRouteImport;
+    "/oauth/authorize": {
+      id: "/oauth/authorize";
+      path: "/oauth/authorize";
+      fullPath: "/oauth/authorize";
+      preLoaderRoute: typeof OauthAuthorizeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/marketplace/v1/$": {
-      id: "/marketplace/v1/$";
-      path: "/marketplace/v1/$";
-      fullPath: "/marketplace/v1/$";
-      preLoaderRoute: typeof MarketplaceV1SplatRouteImport;
+    "/oauth/revoke": {
+      id: "/oauth/revoke";
+      path: "/oauth/revoke";
+      fullPath: "/oauth/revoke";
+      preLoaderRoute: typeof OauthRevokeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/marketplace/og/$pluginId": {
-      id: "/marketplace/og/$pluginId";
-      path: "/marketplace/og/$pluginId";
-      fullPath: "/marketplace/og/$pluginId";
-      preLoaderRoute: typeof MarketplaceOgPluginIdRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/marketplace/builtin/$plugin": {
-      id: "/marketplace/builtin/$plugin";
-      path: "/marketplace/builtin/$plugin";
-      fullPath: "/marketplace/builtin/$plugin";
-      preLoaderRoute: typeof MarketplaceBuiltinPluginRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/mcp/grants": {
-      id: "/api/mcp/grants";
-      path: "/api/mcp/grants";
-      fullPath: "/api/mcp/grants";
-      preLoaderRoute: typeof ApiMcpGrantsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/connect/revoke-machine": {
-      id: "/api/connect/revoke-machine";
-      path: "/api/connect/revoke-machine";
-      fullPath: "/api/connect/revoke-machine";
-      preLoaderRoute: typeof ApiConnectRevokeMachineRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/connect/redeem-machine": {
-      id: "/api/connect/redeem-machine";
-      path: "/api/connect/redeem-machine";
-      fullPath: "/api/connect/redeem-machine";
-      preLoaderRoute: typeof ApiConnectRedeemMachineRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/connect/redeem": {
-      id: "/api/connect/redeem";
-      path: "/api/connect/redeem";
-      fullPath: "/api/connect/redeem";
-      preLoaderRoute: typeof ApiConnectRedeemRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/connect/machine-code-lookup": {
-      id: "/api/connect/machine-code-lookup";
-      path: "/api/connect/machine-code-lookup";
-      fullPath: "/api/connect/machine-code-lookup";
-      preLoaderRoute: typeof ApiConnectMachineCodeLookupRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/connect/machine-code": {
-      id: "/api/connect/machine-code";
-      path: "/api/connect/machine-code";
-      fullPath: "/api/connect/machine-code";
-      preLoaderRoute: typeof ApiConnectMachineCodeRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/auth/$": {
-      id: "/api/auth/$";
-      path: "/api/auth/$";
-      fullPath: "/api/auth/$";
-      preLoaderRoute: typeof ApiAuthSplatRouteImport;
+    "/oauth/token": {
+      id: "/oauth/token";
+      path: "/oauth/token";
+      fullPath: "/oauth/token";
+      preLoaderRoute: typeof OauthTokenRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/api/account/me": {
@@ -915,11 +831,95 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiAccountMeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/api/mcp/grants_/revoke": {
-      id: "/api/mcp/grants_/revoke";
-      path: "/api/mcp/grants/revoke";
-      fullPath: "/api/mcp/grants/revoke";
-      preLoaderRoute: typeof ApiMcpGrantsRevokeRouteImport;
+    "/api/auth/$": {
+      id: "/api/auth/$";
+      path: "/api/auth/$";
+      fullPath: "/api/auth/$";
+      preLoaderRoute: typeof ApiAuthSplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/connect/machine-code": {
+      id: "/api/connect/machine-code";
+      path: "/api/connect/machine-code";
+      fullPath: "/api/connect/machine-code";
+      preLoaderRoute: typeof ApiConnectMachineCodeRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/connect/machine-code-lookup": {
+      id: "/api/connect/machine-code-lookup";
+      path: "/api/connect/machine-code-lookup";
+      fullPath: "/api/connect/machine-code-lookup";
+      preLoaderRoute: typeof ApiConnectMachineCodeLookupRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/connect/redeem": {
+      id: "/api/connect/redeem";
+      path: "/api/connect/redeem";
+      fullPath: "/api/connect/redeem";
+      preLoaderRoute: typeof ApiConnectRedeemRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/connect/redeem-machine": {
+      id: "/api/connect/redeem-machine";
+      path: "/api/connect/redeem-machine";
+      fullPath: "/api/connect/redeem-machine";
+      preLoaderRoute: typeof ApiConnectRedeemMachineRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/connect/revoke-machine": {
+      id: "/api/connect/revoke-machine";
+      path: "/api/connect/revoke-machine";
+      fullPath: "/api/connect/revoke-machine";
+      preLoaderRoute: typeof ApiConnectRevokeMachineRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/mcp/grants": {
+      id: "/api/mcp/grants";
+      path: "/api/mcp/grants";
+      fullPath: "/api/mcp/grants";
+      preLoaderRoute: typeof ApiMcpGrantsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/marketplace/builtin/$plugin": {
+      id: "/marketplace/builtin/$plugin";
+      path: "/marketplace/builtin/$plugin";
+      fullPath: "/marketplace/builtin/$plugin";
+      preLoaderRoute: typeof MarketplaceBuiltinPluginRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/marketplace/og/$pluginId": {
+      id: "/marketplace/og/$pluginId";
+      path: "/marketplace/og/$pluginId";
+      fullPath: "/marketplace/og/$pluginId";
+      preLoaderRoute: typeof MarketplaceOgPluginIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/marketplace/v1/$": {
+      id: "/marketplace/v1/$";
+      path: "/marketplace/v1/$";
+      fullPath: "/marketplace/v1/$";
+      preLoaderRoute: typeof MarketplaceV1SplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/marketplace/v2/$": {
+      id: "/marketplace/v2/$";
+      path: "/marketplace/v2/$";
+      fullPath: "/marketplace/v2/$";
+      preLoaderRoute: typeof MarketplaceV2SplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/marketplace_/author/$github": {
+      id: "/marketplace_/author/$github";
+      path: "/author/$github";
+      fullPath: "/marketplace/author/$github";
+      preLoaderRoute: typeof MarketplaceAuthorGithubRouteImport;
+      parentRoute: typeof MarketplaceRoute;
+    };
+    "/api/account/link/poll": {
+      id: "/api/account/link/poll";
+      path: "/api/account/link/poll";
+      fullPath: "/api/account/link/poll";
+      preLoaderRoute: typeof ApiAccountLinkPollRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/api/account/link/start": {
@@ -929,11 +929,11 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiAccountLinkStartRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/api/account/link/poll": {
-      id: "/api/account/link/poll";
-      path: "/api/account/link/poll";
-      fullPath: "/api/account/link/poll";
-      preLoaderRoute: typeof ApiAccountLinkPollRouteImport;
+    "/api/mcp/grants_/revoke": {
+      id: "/api/mcp/grants_/revoke";
+      path: "/api/mcp/grants/revoke";
+      fullPath: "/api/mcp/grants/revoke";
+      preLoaderRoute: typeof ApiMcpGrantsRevokeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
   }
@@ -979,12 +979,12 @@ const rootRouteChildren: RootRouteChildren = {
   CompareSlugRoute: CompareSlugRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
   DownloadMacosRoute: DownloadMacosRoute,
-  DownloadIndexRoute: DownloadIndexRoute,
   DownloadWindowsRoute: DownloadWindowsRoute,
   GuidesSlugRoute: GuidesSlugRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   OauthRevokeRoute: OauthRevokeRoute,
   OauthTokenRoute: OauthTokenRoute,
+  DownloadIndexRoute: DownloadIndexRoute,
   ApiAccountMeRoute: ApiAccountMeRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,

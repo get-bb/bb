@@ -20,6 +20,7 @@ export interface PluginSwitchRequest {
 
 export interface OnboardingPluginSwitches {
   shown: (pluginId: string, serverEnabled: boolean) => boolean;
+  changed: (pluginId: string, serverEnabled: boolean) => boolean;
   set: (request: PluginSwitchRequest) => void;
 }
 
@@ -61,6 +62,7 @@ export function useOnboardingPluginSwitches(): OnboardingPluginSwitches {
   const appliedRef = useRef(new Map<string, boolean>());
   const requestsRef = useRef(new Map<string, PluginSwitchRequest>());
   const runningRef = useRef(new Set<string>());
+  const enabledBeforeRef = useRef(new Map<string, boolean>());
 
   const settle = useCallback((pluginId: string) => {
     desiredRef.current.delete(pluginId);
@@ -118,6 +120,9 @@ export function useOnboardingPluginSwitches(): OnboardingPluginSwitches {
   const set = useCallback(
     (request: PluginSwitchRequest) => {
       const { pluginId } = request;
+      if (!enabledBeforeRef.current.has(pluginId)) {
+        enabledBeforeRef.current.set(pluginId, request.serverEnabled);
+      }
       if (!appliedRef.current.has(pluginId)) {
         appliedRef.current.set(pluginId, request.serverEnabled);
       }
@@ -135,5 +140,13 @@ export function useOnboardingPluginSwitches(): OnboardingPluginSwitches {
     [desired],
   );
 
-  return { shown, set };
+  const changed = useCallback(
+    (pluginId: string, serverEnabled: boolean) => {
+      const before = enabledBeforeRef.current.get(pluginId);
+      return before !== undefined && shown(pluginId, serverEnabled) !== before;
+    },
+    [shown],
+  );
+
+  return { shown, changed, set };
 }

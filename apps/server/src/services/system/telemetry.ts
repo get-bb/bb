@@ -106,6 +106,15 @@ export type TelemetryEvent =
       };
     }
   | {
+      name: "onboarding_featured_plugins_exposed";
+      properties: {
+        entry: "first_run" | "replay";
+        featured_plugins_variant: "control" | "new";
+        featured_plugins_source: "flag" | "default";
+        $set: { featured_plugins_variant: "control" | "new" };
+      };
+    }
+  | {
       name: "$feature_flag_called";
       properties: {
         $feature_flag: string;
@@ -117,6 +126,12 @@ export type TelemetryEvent =
       name: RecordTelemetryEventRequest["name"];
       properties: Readonly<Record<string, unknown>> & {
         setup_guide_variant: SetupGuideVariant;
+      };
+    }
+  | {
+      name: RecordTelemetryEventRequest["name"];
+      properties: Readonly<Record<string, unknown>> & {
+        featured_plugins_variant: "control" | "new";
       };
     };
 

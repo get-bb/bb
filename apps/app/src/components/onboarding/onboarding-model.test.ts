@@ -26,6 +26,8 @@ import {
   shortRemoteName,
   signInSiteName,
   terminalConnectFlow,
+  featuredPluginEntryIds,
+  ONBOARDING_PLUGIN_ENTRY_IDS,
 } from "./onboarding-model";
 
 function health(
@@ -676,6 +678,16 @@ describe("Pi's sign-in", () => {
 
     expect(connectFlowFailed(flow, PI_LOGIN_OUTPUT)).toBe(false);
     expect(connectFlowFailed(flow, PI_LOGIN_FAILED_OUTPUT)).toBe(true);
+  });
+});
+
+describe("featuredPluginEntryIds", () => {
+  it("falls back to today's plugins without a list or a response", () => {
+    for (const response of [{ entryIds: null }, undefined]) {
+      expect(featuredPluginEntryIds(response)).toBe(
+        ONBOARDING_PLUGIN_ENTRY_IDS,
+      );
+    }
   });
 });
 

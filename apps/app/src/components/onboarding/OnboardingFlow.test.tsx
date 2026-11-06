@@ -21,7 +21,16 @@ import { AppToasterView } from "@/components/AppToasterView";
 import { appToast } from "@/components/ui/app-toast";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
-import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
+import type {
+  PluginCatalogSearchData,
+  PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
+import {
+  pluginCatalogSearchQueryKey,
+  pluginListQueryKey,
+  systemSetupGuideFeaturedPluginsQueryKey,
+} from "@/hooks/queries/query-keys";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -117,6 +126,96 @@ function renderFlow({
     setClosing: (closing: boolean) => view.rerender(flow(closing)),
     unmount: view.unmount,
   };
+}
+
+function catalogEntry(
+  id: string,
+  overrides: Partial<PluginCatalogSearchEntry> = {},
+): PluginCatalogSearchEntry {
+  return {
+    entryId: id,
+    pluginId: id,
+    displayName: id,
+    description: `${id} description`,
+    icon: null,
+    iconUrl: null,
+    iconTinted: false,
+    categoryId: "thread-content",
+    category: "Thread Content",
+    screenshots: [],
+    collections: [],
+    source: `builtin:${id}`,
+    repositoryUrl: null,
+    marketplace: "bb-official",
+    marketplaceDisplayName: "BB Official",
+    publisherKey: "bb-official",
+    publisherLabel: "BB Official",
+    official: true,
+    author: null,
+    installed: false,
+    conflictingInstallSource: null,
+    installedByDefault: false,
+    installs: null,
+    compatible: true,
+    incompatibleReason: null,
+    ...overrides,
+  };
+}
+
+function renderFeaturedPluginsStep(variant: "control" | "new") {
+  const { queryClient } = renderFlow({ initialStep: "plugins", variant });
+  const catalog: PluginCatalogSearchData = {
+    entries: [
+      catalogEntry("memory"),
+      catalogEntry("push-notifications", { installed: true }),
+      catalogEntry("workflows"),
+    ],
+    collections: [],
+    categories: [],
+  };
+  act(() => {
+    queryClient.setQueryData(pluginListQueryKey(true), [
+      makeInstalledPlugin({ id: "push-notifications", enabled: true }),
+    ]);
+    queryClient.setQueryData(pluginCatalogSearchQueryKey(""), catalog);
+    queryClient.setQueryData(systemSetupGuideFeaturedPluginsQueryKey(), {
+      entryIds: ["memory", "push-notifications"],
+    });
+  });
+}
+
+function pluginSwitch(name: string): HTMLButtonElement {
+  const element = screen.getByRole("switch", { name: `Enable ${name}` });
+  if (!(element instanceof HTMLButtonElement)) throw new Error("Not a switch");
+  return element;
+}
+
+function recordedEventNames(): string[] {
+  return vi
+    .mocked(recordTelemetryEvent)
+    .mock.calls.map(([event]) => event.name);
+}
+
+function recommendations(action: string): unknown[] {
+  return vi
+    .mocked(recordTelemetryEvent)
+    .mock.calls.flatMap(([event]) =>
+      event.name === "recommendation" && event.properties.action === action
+        ? [event.properties.resource_id]
+        : [],
+    );
+}
+
+function startedPluginOperations(): unknown[] {
+  return vi
+    .mocked(recordTelemetryEvent)
+    .mock.calls.flatMap(([event]) =>
+      event.name === "onboarding_operation" &&
+      event.properties.step === "plugins" &&
+      event.properties.outcome === "started"
+        ? [`${event.properties.operation} ${event.properties.resource_id}`]
+        : [],
+    );
 }
 
 function button(name: RegExp): HTMLButtonElement {
@@ -264,6 +363,75 @@ describe("OnboardingFlow", () => {
     expect(button(/^Retry$/u)).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
     expect(agentLoadFailures()).toEqual(["timed_out", "timed_out"]);
+  });
+
+  it("shows the flag's list with plugins already on and counts a Continue without changes as skipped in the new guide", async () => {
+    renderFeaturedPluginsStep("new");
+    await screen.findByRole("switch", { name: "Enable memory" });
+
+    expect(
+      screen.queryByRole("switch", { name: "Enable workflows" }),
+    ).toBeNull();
+    expect(pluginSwitch("push-notifications").disabled).toBe(false);
+    expect(
+      pluginSwitch("push-notifications").getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(recommendations("shown")).toEqual(["memory", "push-notifications"]);
+    expect(
+      recordedEventNames().filter(
+        (name) => name === "onboarding_featured_plugins_exposed",
+      ),
+    ).toHaveLength(1);
+
+    fireEvent.click(button(/Continue/u));
+    expect(recordedEventNames()).toContain("onboarding_step_skipped");
+    expect(recordedEventNames()).not.toContain("onboarding_step_completed");
+  });
+
+  it("tracks switching a plugin that was on off and counts it as completed in the new guide", async () => {
+    renderFeaturedPluginsStep("new");
+    await screen.findByRole("switch", { name: "Enable push-notifications" });
+
+    fireEvent.click(pluginSwitch("push-notifications"));
+
+    expect(
+      pluginSwitch("push-notifications").getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(recommendations("deselected")).toEqual(["push-notifications"]);
+    expect(startedPluginOperations()).toEqual(["disable push-notifications"]);
+
+    fireEvent.click(button(/Continue/u));
+    expect(recordedEventNames()).toContain("onboarding_step_completed");
+    expect(recordedEventNames()).not.toContain("onboarding_step_skipped");
+  });
+
+  it("counts switching a plugin that was on off and back on as skipped in the new guide", async () => {
+    renderFeaturedPluginsStep("new");
+    await screen.findByRole("switch", { name: "Enable push-notifications" });
+
+    fireEvent.click(pluginSwitch("push-notifications"));
+    fireEvent.click(pluginSwitch("push-notifications"));
+
+    expect(
+      pluginSwitch("push-notifications").getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(recommendations("deselected")).toEqual(["push-notifications"]);
+    expect(recommendations("selected")).toEqual(["push-notifications"]);
+
+    fireEvent.click(button(/Continue/u));
+    expect(recordedEventNames()).toContain("onboarding_step_skipped");
+    expect(recordedEventNames()).not.toContain("onboarding_step_completed");
+  });
+
+  it("keeps today's featured plugins and sends no featured-plugins exposure in today's guide", async () => {
+    renderFeaturedPluginsStep("control");
+    await screen.findByRole("switch", { name: "Enable workflows" });
+
+    expect(screen.queryByRole("switch", { name: "Enable memory" })).toBeNull();
+    expect(recommendations("shown")).toEqual(["workflows"]);
+    expect(recordedEventNames()).not.toContain(
+      "onboarding_featured_plugins_exposed",
+    );
   });
 
   it.each([
