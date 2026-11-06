@@ -4,61 +4,21 @@ import {
   environmentStatusValues,
   type EnvironmentStatus,
 } from "@bb/domain";
-import { Command } from "commander";
-import type { CommitActionResponse } from "@bb/server-contract";
-import type { EnvironmentUpdateArgs } from "@bb/sdk";
-import { action } from "../action.js";
+import type { Command } from "commander";
+import { environmentSchema } from "@bb/domain";
+import {
+  commitActionResponseSchema,
+  updateEnvironmentRequestSchema,
+  type UpdateEnvironmentRequest,
+} from "@bb/server-contract";
+import { arg, flag, JSON_FLAG_DESCRIPTION } from "../cli-door.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
-import { createCliBbSdk } from "../client.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+} from "../operation-doors.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-import { outputJson, prependErrorContext } from "./helpers.js";
-
-interface EnvironmentCommitCommandOptions {
-  json?: boolean;
-}
-
-interface EnvironmentListCommandOptions {
-  host?: string;
-  instanceKey?: string;
-  json?: boolean;
-  limit?: string;
-  offset?: string;
-  project?: string;
-  provider?: string;
-  status?: string;
-}
-
-interface EnvironmentProvidersCommandOptions {
-  json?: boolean;
-  project?: string;
-  machine?: string;
-  host?: string;
-}
-
-interface EnvironmentShowCommandOptions {
-  json?: boolean;
-}
-
-interface EnvironmentPathsCommandOptions {
-  directories?: boolean;
-  files?: boolean;
-  json?: boolean;
-  limit?: string;
-  query?: string;
-}
-
-interface EnvironmentUpdateCommandOptions {
-  clearMergeBaseBranch?: boolean;
-  clearName?: boolean;
-  json?: boolean;
-  mergeBaseBranch?: string;
-  name?: string;
-}
-
-interface BuildEnvironmentUpdateArgsInput {
-  id: string;
-  opts: EnvironmentUpdateCommandOptions;
-}
 
 const RETIRED_GIT_COMMANDS = [
   "status",
@@ -118,43 +78,309 @@ function booleanQueryValue(value: boolean): "true" | "false" {
   return value ? "true" : "false";
 }
 
-function buildEnvironmentUpdateArgs({
-  id,
-  opts,
-}: BuildEnvironmentUpdateArgsInput): EnvironmentUpdateArgs {
-  if (opts.clearMergeBaseBranch === true) {
-    if (opts.clearName === true) {
-      return { environmentId: id, mergeBaseBranch: null, name: null };
-    }
-    if (opts.name !== undefined) {
-      return { environmentId: id, mergeBaseBranch: null, name: opts.name };
-    }
-    return { environmentId: id, mergeBaseBranch: null };
+function environmentUpdateRequest({
+  mergeBaseBranch,
+  clearMergeBaseBranch,
+  name,
+  clearName,
+}: {
+  mergeBaseBranch: string | undefined;
+  clearMergeBaseBranch: boolean;
+  name: string | undefined;
+  clearName: boolean;
+}): UpdateEnvironmentRequest {
+  if (mergeBaseBranch !== undefined && clearMergeBaseBranch) {
+    throw new Error(
+      "Cannot combine --merge-base-branch with --clear-merge-base-branch.",
+    );
   }
-
-  if (opts.mergeBaseBranch !== undefined) {
-    const mergeBaseBranch = opts.mergeBaseBranch;
-    if (opts.clearName === true) {
-      return { environmentId: id, mergeBaseBranch, name: null };
-    }
-    if (opts.name !== undefined) {
-      return { environmentId: id, mergeBaseBranch, name: opts.name };
-    }
-    return { environmentId: id, mergeBaseBranch };
+  if (name !== undefined && clearName) {
+    throw new Error("Cannot combine --name with --clear-name.");
   }
-
-  if (opts.clearName === true) {
-    return { environmentId: id, name: null };
+  if (name !== undefined && name.trim().length === 0) {
+    throw new Error("Environment name cannot be empty.");
   }
-
-  if (opts.name !== undefined) {
-    return { environmentId: id, name: opts.name };
+  const request: UpdateEnvironmentRequest = {};
+  if (clearMergeBaseBranch) request.mergeBaseBranch = null;
+  else if (mergeBaseBranch !== undefined)
+    request.mergeBaseBranch = mergeBaseBranch;
+  if (clearName) request.name = null;
+  else if (name !== undefined) request.name = name;
+  if (request.mergeBaseBranch === undefined && request.name === undefined) {
+    throw new Error(
+      "No changes requested. Provide --merge-base-branch, --clear-merge-base-branch, --name, or --clear-name.",
+    );
   }
-
-  throw new Error(
-    "No changes requested. Provide --merge-base-branch, --clear-merge-base-branch, --name, or --clear-name.",
-  );
+  return updateEnvironmentRequestSchema.parse(request);
 }
+
+const ID_POSITIONAL = { id: arg("<id>") };
+
+export const environmentCommands = [
+  publicCommand("environments.cleanup", {
+    path: ["environment", "cleanup"],
+    summary: "Clean up an unused provider-managed environment",
+    positionals: ID_POSITIONAL,
+    options: {
+      recover: flag(
+        "--recover",
+        "After inspection, acknowledge interrupted hooks and retry failed cleanup (Linux, same-user cwd/maps guard; inspect other users separately)",
+      ),
+    },
+    prepare: ({ positionals, options }) => ({
+      id: positionals.id,
+      recover: booleanQueryValue(options.recover),
+    }),
+    print: () => "Environment cleanup requested.",
+  }),
+  publicCommand("system.environmentProviders", {
+    path: ["environment", "providers"],
+    summary: "List registered environment providers",
+    options: {
+      project: flag(
+        "--project <id>",
+        "List structurally eligible providers for this project",
+      ),
+      machine: flag(
+        "--machine <id-or-name>",
+        "Scope eligibility to this machine",
+      ),
+      host: flag("--host <id-or-name>", "Alias for --machine"),
+    },
+    prepare: async ({ options }, client) => {
+      const project = options.project;
+      const machineTarget = resolveMachineTargetOption(options);
+      if (machineTarget !== undefined && project === undefined) {
+        throw new Error("--machine or --host requires --project <id>.");
+      }
+      const hostId =
+        machineTarget === undefined
+          ? undefined
+          : await resolveMachineHostId({
+              serverUrl: client.url,
+              target: machineTarget,
+            });
+      return {
+        ...(project === undefined ? {} : { projectId: project }),
+        ...(hostId === undefined ? {} : { hostId }),
+      };
+    },
+    json: (output) => output.providers,
+    print: ({ providers }, input) => {
+      if (providers.length === 0) return "No environment providers available";
+      return providers.map((provider) => {
+        const requirements = Object.entries(provider.requires)
+          .filter(([, required]) => required)
+          .map(([name]) => name)
+          .join(", ");
+        const inputs =
+          provider.inputs === null ? "" : "  takes --environment-inputs";
+        const availability =
+          input.hostId === undefined
+            ? ""
+            : provider.availability === null
+              ? "  availability: unknown"
+              : provider.availability.status === "available"
+                ? "  availability: available"
+                : `  availability: ${provider.availability.status} (${provider.availability.message})`;
+        return `${provider.id}  ${provider.displayName}  ${requirements || "-"}${inputs}${availability}`;
+      });
+    },
+  }),
+  publicCommand("environments.list", {
+    path: ["environment", "list"],
+    summary: "List environments, including destroyed ones when requested",
+    options: {
+      project: flag("--project <id>", "Only environments in this project"),
+      provider: flag(
+        "--provider <id>",
+        "Only environments produced by this environment provider",
+      ),
+      host: flag("--host <id-or-name>", "Only environments on this machine"),
+      instanceKey: flag(
+        "--instance-key <key>",
+        "Only the environment its provider named with this instance key",
+      ),
+      status: flag(
+        "--status <status>",
+        "Only environments in this status: provisioning, ready, error, destroyed",
+      ),
+      limit: flag("--limit <n>", "At most this many rows, oldest first"),
+      offset: flag("--offset <n>", "Skip this many rows"),
+    },
+    prepare: async ({ options }, client) => {
+      const limit = parseNonNegativeIntegerOption(options.limit, "--limit");
+      const offset = parseNonNegativeIntegerOption(options.offset, "--offset");
+      const { host, project, provider, instanceKey, status } = options;
+      const hostId =
+        host === undefined
+          ? undefined
+          : await resolveMachineHostId({ serverUrl: client.url, target: host });
+      return {
+        ...(project ? { projectId: project } : {}),
+        ...(hostId === undefined ? {} : { hostId }),
+        ...(provider ? { environmentProviderId: provider } : {}),
+        ...(instanceKey ? { instanceKey } : {}),
+        ...(status === undefined
+          ? {}
+          : { status: parseEnvironmentStatus(status) }),
+        ...(limit === undefined ? {} : { limit: String(limit) }),
+        ...(offset === undefined ? {} : { offset: String(offset) }),
+      };
+    },
+    print: (rows) =>
+      rows.map(
+        (env) =>
+          `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
+      ),
+  }),
+  clientCommand({
+    path: ["environment", "delete"],
+    summary:
+      "Request provider cleanup; refused while threads are live or stopping",
+    positionals: ID_POSITIONAL,
+    options: { json: flag("--json", JSON_FLAG_DESCRIPTION) },
+    run: async ({ positionals: { id }, options }, client) => {
+      const result = await client.call("environments.delete", { id });
+      const environment = options.json
+        ? null
+        : environmentSchema.parse(
+            await client.call("environments.get", { id }),
+          );
+      return { result, environment };
+    },
+    json: (output) => output.result,
+    print: ({ environment }, { positionals }) =>
+      environment === null
+        ? null
+        : [
+            `Cleanup requested for environment ${positionals.id}.`,
+            `Lifecycle: ${environment.lifecycle.phase}`,
+          ],
+  }),
+  publicCommand("environments.get", {
+    path: ["environment", "show"],
+    summary: "Show environment details",
+    aliases: ["get"],
+    positionals: ID_POSITIONAL,
+    json: (output) => environmentSchema.parse(output),
+    print: (output) => {
+      const env = environmentSchema.parse(output);
+      const lines = [
+        `Environment: ${env.id}`,
+        `  Project: ${env.projectId}`,
+        `  Status: ${env.status}`,
+        `  Lifecycle: ${env.lifecycle.phase}`,
+      ];
+      if (env.lifecycle.retireAt !== null)
+        lines.push(
+          `  Retire at: ${new Date(env.lifecycle.retireAt).toISOString()}`,
+        );
+      if (env.lifecycle.teardown !== null) {
+        lines.push(
+          `  Teardown: ${env.lifecycle.teardown.status} (attempt ${env.lifecycle.teardown.attempt})`,
+        );
+        if (env.lifecycle.teardown.message !== undefined)
+          lines.push(`  Teardown message: ${env.lifecycle.teardown.message}`);
+      }
+      if (env.path) lines.push(`  Path: ${env.path}`);
+      if (env.name) lines.push(`  Name: ${env.name}`);
+      lines.push(
+        `  Provider: ${env.environmentProviderId ?? "none (attached directory)"}`,
+      );
+      if (env.branchName) lines.push(`  Branch: ${env.branchName}`);
+      if (env.defaultBranch)
+        lines.push(`  Default branch: ${env.defaultBranch}`);
+      if (env.mergeBaseBranch)
+        lines.push(`  Merge base: ${env.mergeBaseBranch}`);
+      lines.push(`  Git repo: ${env.isGitRepo}`);
+      lines.push(`  Created: ${new Date(env.createdAt).toLocaleString()}`);
+      lines.push(`  Updated: ${new Date(env.updatedAt).toLocaleString()}`);
+      return lines;
+    },
+  }),
+  publicCommand("environments.paths", {
+    path: ["environment", "paths"],
+    summary: "Search an environment's files and directories",
+    positionals: ID_POSITIONAL,
+    options: {
+      query: flag("--query <query>", "Fuzzy path query"),
+      limit: flag("--limit <count>", "Maximum paths"),
+      files: flag("--files", "Include files"),
+      directories: flag("--directories", "Include directories"),
+    },
+    prepare: ({ positionals, options }) => {
+      const { query, limit, files, directories } = options;
+      validateLimit(limit);
+      return {
+        id: positionals.id,
+        includeFiles: booleanQueryValue(files || !directories),
+        includeDirectories: booleanQueryValue(directories || !files),
+        ...(query !== undefined ? { query } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+      };
+    },
+    print: (result) => {
+      const lines = result.paths.map((entry) => `${entry.kind}\t${entry.path}`);
+      if (result.truncated) lines.push("(results truncated)");
+      return lines;
+    },
+  }),
+  publicCommand("environments.update", {
+    path: ["environment", "update"],
+    summary: "Update environment metadata",
+    positionals: ID_POSITIONAL,
+    options: {
+      mergeBaseBranch: flag(
+        "--merge-base-branch <branch>",
+        "Set the merge-base branch override",
+      ),
+      clearMergeBaseBranch: flag(
+        "--clear-merge-base-branch",
+        "Clear the merge-base branch override",
+      ),
+      name: flag("--name <name>", "Set the environment display name"),
+      clearName: flag("--clear-name", "Clear the environment display name"),
+    },
+    prepare: ({ positionals, options }) => ({
+      id: positionals.id,
+      ...environmentUpdateRequest(options),
+    }),
+    print: (environment, input) => {
+      const lines = [`Environment ${environment.id} updated`];
+      if (input.mergeBaseBranch !== undefined) {
+        lines.push(
+          environment.mergeBaseBranch
+            ? `Merge base branch: ${environment.mergeBaseBranch}`
+            : "Merge base branch cleared",
+        );
+      }
+      if (input.name !== undefined) {
+        lines.push(
+          environment.name ? `Name: ${environment.name}` : "Name cleared",
+        );
+      }
+      return lines;
+    },
+  }),
+  publicCommand("environments.actions", {
+    path: ["environment", "commit"],
+    summary: "Commit changes in an environment",
+    positionals: ID_POSITIONAL,
+    fixed: { action: "commit" },
+    failure: (input) => `Failed to commit in environment ${input.id}`,
+    json: (output) => commitActionResponseSchema.parse(output),
+    print: (output) =>
+      `${commitActionResponseSchema.parse(output).message} [committed]`,
+  }),
+  publicCommand("environments.archiveThreads", {
+    path: ["environment", "archive-threads"],
+    summary: "Archive every active thread in an environment",
+    positionals: ID_POSITIONAL,
+    print: (result, input) =>
+      `Archived ${result.archivedThreadIds.length} thread(s) in environment ${input.id}`,
+  }),
+];
 
 export function registerEnvironmentCommands(
   program: Command,
@@ -163,235 +389,7 @@ export function registerEnvironmentCommands(
   const environment = program
     .command("environment")
     .description("Inspect and operate on first-class environments");
-
-  environment
-    .command("cleanup <id>")
-    .description("Clean up an unused provider-managed environment")
-    .option(
-      "--recover",
-      "After inspection, acknowledge interrupted hooks and retry failed cleanup (Linux, same-user cwd/maps guard; inspect other users separately)",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (id: string, opts: { json?: boolean; recover?: boolean }) => {
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).environments.experimental_cleanup({
-            environmentId: id,
-            recover: opts.recover,
-          });
-          if (!outputJson(opts, result))
-            console.log("Environment cleanup requested.");
-        },
-      ),
-    );
-
-  environment
-    .command("providers")
-    .description("List registered environment providers")
-    .option(
-      "--project <id>",
-      "List structurally eligible providers for this project",
-    )
-    .option("--machine <id-or-name>", "Scope eligibility to this machine")
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: EnvironmentProvidersCommandOptions) => {
-        const machineTarget = resolveMachineTargetOption(opts);
-        if (machineTarget !== undefined && opts.project === undefined) {
-          throw new Error("--machine or --host requires --project <id>.");
-        }
-        const hostId =
-          machineTarget === undefined
-            ? undefined
-            : await resolveMachineHostId({
-                serverUrl: getUrl(),
-                target: machineTarget,
-              });
-        const providers = await createCliBbSdk(
-          getUrl(),
-        ).environments.listProviders({
-          ...(opts.project === undefined ? {} : { projectId: opts.project }),
-          ...(hostId === undefined ? {} : { hostId }),
-        });
-        if (outputJson(opts, providers)) return;
-        if (providers.length === 0) {
-          console.log("No environment providers available");
-          return;
-        }
-        for (const provider of providers) {
-          const requirements = Object.entries(provider.requires)
-            .filter(([, required]) => required)
-            .map(([name]) => name)
-            .join(", ");
-          const inputs =
-            provider.inputs === null ? "" : "  takes --environment-inputs";
-          const availability =
-            hostId === undefined
-              ? ""
-              : provider.availability === null
-                ? "  availability: unknown"
-                : provider.availability.status === "available"
-                  ? "  availability: available"
-                  : `  availability: ${provider.availability.status} (${provider.availability.message})`;
-          console.log(
-            `${provider.id}  ${provider.displayName}  ${requirements || "-"}${inputs}${availability}`,
-          );
-        }
-      }),
-    );
-
-  environment
-    .command("list")
-    .description("List environments, including destroyed ones when requested")
-    .option("--project <id>", "Only environments in this project")
-    .option(
-      "--provider <id>",
-      "Only environments produced by this environment provider",
-    )
-    .option("--host <id-or-name>", "Only environments on this machine")
-    .option(
-      "--instance-key <key>",
-      "Only the environment its provider named with this instance key",
-    )
-    .option(
-      "--status <status>",
-      "Only environments in this status: provisioning, ready, error, destroyed",
-    )
-    .option("--limit <n>", "At most this many rows, oldest first")
-    .option("--offset <n>", "Skip this many rows")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: EnvironmentListCommandOptions) => {
-        const limit = parseNonNegativeIntegerOption(opts.limit, "--limit");
-        const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
-        const sdk = createCliBbSdk(getUrl());
-        const hostId =
-          opts.host === undefined
-            ? undefined
-            : await resolveMachineHostId({
-                serverUrl: getUrl(),
-                target: opts.host,
-              });
-        const rows = await sdk.environments.list({
-          ...(opts.project ? { projectId: opts.project } : {}),
-          ...(opts.provider ? { environmentProviderId: opts.provider } : {}),
-          ...(opts.instanceKey ? { instanceKey: opts.instanceKey } : {}),
-          ...(hostId === undefined ? {} : { hostId }),
-          ...(opts.status === undefined
-            ? {}
-            : { status: parseEnvironmentStatus(opts.status) }),
-          ...(limit === undefined ? {} : { limit }),
-          ...(offset === undefined ? {} : { offset }),
-        });
-        if (outputJson(opts, rows)) return;
-        for (const env of rows) {
-          console.log(
-            `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
-          );
-        }
-      }),
-    );
-
-  environment
-    .command("delete <id>")
-    .description(
-      "Request provider cleanup; refused while threads are live or stopping",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: { json?: boolean }) => {
-        const sdk = createCliBbSdk(getUrl());
-        const result = await sdk.environments.delete({ environmentId: id });
-        if (outputJson(opts, result)) return;
-        const environment = await sdk.environments.get({ environmentId: id });
-        console.log(`Cleanup requested for environment ${id}.`);
-        console.log(`Lifecycle: ${environment.lifecycle.phase}`);
-      }),
-    );
-
-  environment
-    .command("show <id>")
-    .alias("get")
-    .description("Show environment details")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentShowCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const env = await sdk.environments.get({ environmentId: id });
-        if (outputJson(opts, env)) return;
-        console.log(`Environment: ${env.id}`);
-        console.log(`  Project: ${env.projectId}`);
-        console.log(`  Status: ${env.status}`);
-        console.log(`  Lifecycle: ${env.lifecycle.phase}`);
-        if (env.lifecycle.retireAt !== null)
-          console.log(
-            `  Retire at: ${new Date(env.lifecycle.retireAt).toISOString()}`,
-          );
-        if (env.lifecycle.teardown !== null) {
-          console.log(
-            `  Teardown: ${env.lifecycle.teardown.status} (attempt ${env.lifecycle.teardown.attempt})`,
-          );
-          if (env.lifecycle.teardown.message !== undefined)
-            console.log(
-              `  Teardown message: ${env.lifecycle.teardown.message}`,
-            );
-        }
-        if (env.path) {
-          console.log(`  Path: ${env.path}`);
-        }
-        if (env.name) {
-          console.log(`  Name: ${env.name}`);
-        }
-        console.log(
-          `  Provider: ${env.environmentProviderId ?? "none (attached directory)"}`,
-        );
-        if (env.branchName) {
-          console.log(`  Branch: ${env.branchName}`);
-        }
-        if (env.defaultBranch) {
-          console.log(`  Default branch: ${env.defaultBranch}`);
-        }
-        if (env.mergeBaseBranch) {
-          console.log(`  Merge base: ${env.mergeBaseBranch}`);
-        }
-        console.log(`  Git repo: ${env.isGitRepo}`);
-        console.log(`  Created: ${new Date(env.createdAt).toLocaleString()}`);
-        console.log(`  Updated: ${new Date(env.updatedAt).toLocaleString()}`);
-      }),
-    );
-
-  environment
-    .command("paths <id>")
-    .description("Search an environment's files and directories")
-    .option("--query <query>", "Fuzzy path query")
-    .option("--limit <count>", "Maximum paths")
-    .option("--files", "Include files")
-    .option("--directories", "Include directories")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentPathsCommandOptions) => {
-        validateLimit(opts.limit);
-        const includeFiles = opts.files === true || opts.directories !== true;
-        const includeDirectories =
-          opts.directories === true || opts.files !== true;
-        const result = await createCliBbSdk(getUrl()).environments.paths({
-          environmentId: id,
-          includeFiles: booleanQueryValue(includeFiles),
-          includeDirectories: booleanQueryValue(includeDirectories),
-          ...(opts.query !== undefined ? { query: opts.query } : {}),
-          ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        for (const entry of result.paths) {
-          console.log(`${entry.kind}\t${entry.path}`);
-        }
-        if (result.truncated) console.log("(results truncated)");
-      }),
-    );
-
+  mountCommands(program, environmentCommands, { getUrl });
   for (const name of RETIRED_GIT_COMMANDS) {
     environment
       .command(name, { hidden: true })
@@ -409,105 +407,4 @@ export function registerEnvironmentCommands(
         );
       });
   }
-
-  environment
-    .command("update <id>")
-    .description("Update environment metadata")
-    .option(
-      "--merge-base-branch <branch>",
-      "Set the merge-base branch override",
-    )
-    .option("--clear-merge-base-branch", "Clear the merge-base branch override")
-    .option("--name <name>", "Set the environment display name")
-    .option("--clear-name", "Clear the environment display name")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentUpdateCommandOptions) => {
-        const hasMergeBaseBranch = opts.mergeBaseBranch !== undefined;
-        const hasClearMergeBaseBranch = opts.clearMergeBaseBranch === true;
-        const hasName = opts.name !== undefined;
-        const hasClearName = opts.clearName === true;
-
-        if (hasMergeBaseBranch && hasClearMergeBaseBranch) {
-          throw new Error(
-            "Cannot combine --merge-base-branch with --clear-merge-base-branch.",
-          );
-        }
-        if (hasName && hasClearName) {
-          throw new Error("Cannot combine --name with --clear-name.");
-        }
-        if (opts.name !== undefined && opts.name.trim().length === 0) {
-          throw new Error("Environment name cannot be empty.");
-        }
-        if (
-          !hasMergeBaseBranch &&
-          !hasClearMergeBaseBranch &&
-          !hasName &&
-          !hasClearName
-        ) {
-          throw new Error(
-            "No changes requested. Provide --merge-base-branch, --clear-merge-base-branch, --name, or --clear-name.",
-          );
-        }
-
-        const sdk = createCliBbSdk(getUrl());
-        const environment = await sdk.environments.update(
-          buildEnvironmentUpdateArgs({ id, opts }),
-        );
-
-        if (outputJson(opts, environment)) return;
-        console.log(`Environment ${environment.id} updated`);
-        if (hasClearMergeBaseBranch || hasMergeBaseBranch) {
-          console.log(
-            environment.mergeBaseBranch
-              ? `Merge base branch: ${environment.mergeBaseBranch}`
-              : "Merge base branch cleared",
-          );
-        }
-        if (hasClearName || hasName) {
-          console.log(
-            environment.name ? `Name: ${environment.name}` : "Name cleared",
-          );
-        }
-      }),
-    );
-
-  environment
-    .command("commit <id>")
-    .description("Commit changes in an environment")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentCommitCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        let result: CommitActionResponse;
-        try {
-          result = await sdk.environments.commit({ environmentId: id });
-        } catch (err: unknown) {
-          throw prependErrorContext(
-            `Failed to commit in environment ${id}`,
-            err,
-          );
-        }
-        if (outputJson(opts, result)) return;
-        console.log(`${result.message} [committed]`);
-      }),
-    );
-
-  environment
-    .command("archive-threads <id>")
-    .description("Archive every active thread in an environment")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentCommitCommandOptions) => {
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).environments.archiveThreads({
-          environmentId: id,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(
-          `Archived ${result.archivedThreadIds.length} thread(s) in environment ${id}`,
-        );
-      }),
-    );
 }

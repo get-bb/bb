@@ -1,98 +1,25 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
+import { arg, flag } from "../cli-door.js";
 import type {
   CreateProjectSourceRequest,
   HostDiscoveredRepo,
   ProjectResponse,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+} from "../operation-doors.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
 import {
   resolveMachineEnvironmentRouting,
   resolveMachineHostId,
   resolveMachineTargetOption,
 } from "./machine.js";
-
-interface ProjectListCommandOptions {
-  includePersonal?: boolean;
-  json?: boolean;
-}
-
-interface ProjectDiscoverCommandOptions {
-  host?: string;
-  json?: boolean;
-  machine?: string;
-}
-
-interface ProjectCreateCommandOptions {
-  host?: string;
-  machine?: string;
-  name: string;
-  root?: string;
-  json?: boolean;
-}
-
-interface ProjectShowCommandOptions {
-  json?: boolean;
-}
-
-interface ProjectHistoryCommandOptions {
-  json?: boolean;
-  limit?: string;
-}
-
-interface ProjectReorderCommandOptions {
-  after?: string;
-  before?: string;
-  json?: boolean;
-}
-
-interface ProjectDiscoveryCommandOptions {
-  environment?: string;
-  host?: string;
-  machine?: string;
-  json?: boolean;
-  limit?: string;
-  provider?: string;
-  query?: string;
-}
-
-function addProjectWorkspaceRoutingOptions(command: Command): Command {
-  return command
-    .option("--machine <id-or-name>", "Project source machine")
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option(
-      "--environment <id>",
-      "Environment workspace (mutually exclusive with machine)",
-    );
-}
-
-interface ProjectUpdateCommandOptions {
-  name?: string;
-  json?: boolean;
-}
-
-interface ProjectDeleteCommandOptions {
-  yes?: boolean;
-  json?: boolean;
-}
-
-interface ProjectAttachmentUploadCommandOptions {
-  clientFile: string;
-  filename?: string;
-  json?: boolean;
-  mimeType?: string;
-}
-
-interface ProjectAttachmentDownloadCommandOptions {
-  clientFile: string;
-  json?: boolean;
-}
 
 interface ProjectSourceAddCommandOptions {
   clone?: boolean;
@@ -109,11 +36,6 @@ interface ProjectSourceUpdateCommandOptions {
   default?: boolean;
   json?: boolean;
   path?: string;
-}
-
-interface ProjectSourceDeleteCommandOptions {
-  yes?: boolean;
-  json?: boolean;
 }
 
 interface ProjectSourceInputOptions {
@@ -241,6 +163,426 @@ async function attachmentMimeType(
   return typeof inferred === "string" ? inferred : "application/octet-stream";
 }
 
+function machineOptions(options: {
+  machine: string | undefined;
+  host: string | undefined;
+}): { machine?: string; host?: string } {
+  return {
+    ...(options.machine === undefined ? {} : { machine: options.machine }),
+    ...(options.host === undefined ? {} : { host: options.host }),
+  };
+}
+
+function routingOptions(options: {
+  machine: string | undefined;
+  host: string | undefined;
+  environment: string | undefined;
+}): { environment?: string; host?: string; machine?: string } {
+  return {
+    ...machineOptions(options),
+    ...(options.environment === undefined
+      ? {}
+      : { environment: options.environment }),
+  };
+}
+
+const EXECUTION_MACHINE_OPTIONS = {
+  machine: flag(
+    "--machine <id-or-name>",
+    "Execution machine ID or unambiguous name",
+  ),
+  host: flag("--host <id-or-name>", "Alias for --machine"),
+};
+
+const WORKSPACE_ROUTING_OPTIONS = {
+  machine: flag("--machine <id-or-name>", "Project source machine"),
+  host: flag("--host <id-or-name>", "Alias for --machine"),
+  environment: flag(
+    "--environment <id>",
+    "Environment workspace (mutually exclusive with machine)",
+  ),
+};
+
+const ID = { id: arg("<id>") };
+
+const SKIP_CONFIRMATION = { yes: flag("--yes", "Skip confirmation prompt") };
+
+export const projectCommands = [
+  clientCommand({
+    path: ["project", "attachment", "upload"],
+    summary: "Upload a file read from this CLI machine",
+    positionals: ID,
+    options: {
+      clientFile: flag(
+        "--client-file <path>",
+        "File path on this CLI machine (not the thread execution host)",
+        { required: true },
+      ),
+      filename: flag(
+        "--filename <name>",
+        "Filename stored in attachment metadata",
+      ),
+      mimeType: flag(
+        "--mime-type <type>",
+        "MIME type (inferred from filename by default)",
+      ),
+      json: flag("--json", "Print the uploaded attachment DTO"),
+    },
+    run: async ({ positionals, options }, client) => {
+      const filename = options.filename ?? basename(options.clientFile);
+      if (filename.trim().length === 0) {
+        throw new Error("Attachment filename must not be empty.");
+      }
+      const bytes = await readFile(options.clientFile);
+      return client.sdk().projects.attachments.upload({
+        clientFile: bytes,
+        filename,
+        mimeType: await attachmentMimeType(
+          options.clientFile,
+          filename,
+          options.mimeType,
+        ),
+        projectId: positionals.id,
+      });
+    },
+    print: (uploaded) => `Attachment uploaded: ${uploaded.path}`,
+  }),
+  clientCommand({
+    path: ["project", "attachment", "download"],
+    summary: "Download an attachment to this CLI machine",
+    positionals: { id: arg("<id>"), attachmentPath: arg("<attachmentPath>") },
+    options: {
+      clientFile: flag(
+        "--client-file <path>",
+        "Destination path on this CLI machine",
+        { required: true },
+      ),
+      json: flag("--json", "Print machine-readable download metadata"),
+    },
+    run: async ({ positionals, options }, client) => {
+      const downloaded = await client.sdk().projects.attachments.read({
+        path: positionals.attachmentPath,
+        projectId: positionals.id,
+      });
+      await writeFile(options.clientFile, downloaded.bytes);
+      return {
+        attachmentPath: positionals.attachmentPath,
+        clientFile: options.clientFile,
+        mimeType: downloaded.mimeType,
+        sizeBytes: downloaded.sizeBytes,
+      };
+    },
+    print: (_result, { options }) =>
+      `Attachment downloaded: ${options.clientFile}`,
+  }),
+  publicCommand("projects.list", {
+    path: ["project", "list"],
+    summary: "List projects",
+    options: {
+      includePersonal: flag(
+        "--include-personal",
+        "Include the personal project",
+      ),
+    },
+    prepare: ({ options }) =>
+      options.includePersonal ? { includePersonal: "true" as const } : {},
+    print: (projects) => {
+      if (projects.length === 0) return "No projects found";
+      printProjectTable(projects);
+      return null;
+    },
+  }),
+  publicCommand("hosts.discoveredRepos", {
+    path: ["project", "discover"],
+    summary: "Find git repositories used recently on a machine",
+    options: {
+      machine: flag("--machine <id-or-name>", "Machine to scan"),
+      host: flag("--host <id-or-name>", "Alias for --machine"),
+    },
+    prepare: async ({ options }, client) => ({
+      id: await resolveProjectSourceHostId(machineOptions(options), client.url),
+    }),
+    print: (result) => {
+      if (result.repos.length === 0) {
+        console.log("No recently used git repositories found");
+      } else {
+        printDiscoveredRepoTable(result.repos);
+      }
+      if (result.truncated) {
+        console.log("The scan ran out of time, so the list may be partial.");
+      }
+      return null;
+    },
+  }),
+  publicCommand("projects.promptHistory", {
+    path: ["project", "history"],
+    summary: "List a project's prompt history",
+    positionals: ID,
+    options: { limit: flag("--limit <count>", "Maximum history entries") },
+    prepare: ({ positionals, options }) => {
+      if (options.limit !== undefined && !/^\d+$/u.test(options.limit)) {
+        throw new Error("--limit must be a positive integer.");
+      }
+      return {
+        id: positionals.id,
+        ...(options.limit ? { limit: options.limit } : {}),
+      };
+    },
+  }),
+  publicCommand("projects.reorder", {
+    path: ["project", "reorder"],
+    summary: "Move a project between adjacent projects",
+    positionals: ID,
+    options: {
+      after: flag("--after <id>", "Previous project, or omit for the start"),
+      before: flag("--before <id>", "Next project, or omit for the end"),
+    },
+    prepare: ({ positionals, options }) => ({
+      id: positionals.id,
+      previousProjectId: options.after ?? null,
+      nextProjectId: options.before ?? null,
+    }),
+    print: (_result, input) => `Project ${input.id} reordered`,
+  }),
+  publicCommand("projects.branches", {
+    path: ["project", "branches"],
+    summary: "List branches available for a project source",
+    positionals: ID,
+    options: {
+      hostId: flag("--host <id>", "Source machine ID", { required: true }),
+      query: flag("--query <query>", "Branch-name filter"),
+      limit: flag("--limit <count>", "Maximum branches"),
+    },
+  }),
+  publicCommand("projects.paths", {
+    path: ["project", "paths"],
+    summary: "Search project workspace files and directories",
+    positionals: ID,
+    options: {
+      ...WORKSPACE_ROUTING_OPTIONS,
+      query: flag("--query <query>", "Fuzzy path query"),
+      limit: flag("--limit <count>", "Maximum paths"),
+    },
+    prepare: async ({ positionals, options }, client) => ({
+      id: positionals.id,
+      ...(await resolveMachineEnvironmentRouting(
+        routingOptions(options),
+        client.url,
+      )),
+      includeFiles: "true" as const,
+      includeDirectories: "true" as const,
+      ...(options.query ? { query: options.query } : {}),
+      ...(options.limit ? { limit: options.limit } : {}),
+    }),
+  }),
+  publicCommand("projects.commands", {
+    path: ["project", "commands"],
+    summary: "List provider commands and skills available to a project",
+    positionals: ID,
+    options: {
+      ...WORKSPACE_ROUTING_OPTIONS,
+      provider: flag("--provider <id>", "Provider ID", { required: true }),
+    },
+    prepare: async ({ positionals, options }, client) => ({
+      id: positionals.id,
+      provider: options.provider,
+      ...(await resolveMachineEnvironmentRouting(
+        routingOptions(options),
+        client.url,
+      )),
+    }),
+  }),
+  publicCommand("projects.files", {
+    path: ["project", "files"],
+    summary: "List files in a project workspace",
+    positionals: ID,
+    options: {
+      ...WORKSPACE_ROUTING_OPTIONS,
+      query: flag("--query <query>", "Fuzzy file query"),
+      limit: flag("--limit <count>", "Maximum files"),
+    },
+    prepare: async ({ positionals, options }, client) => ({
+      id: positionals.id,
+      ...(await resolveMachineEnvironmentRouting(
+        routingOptions(options),
+        client.url,
+      )),
+      ...(options.query ? { query: options.query } : {}),
+      ...(options.limit ? { limit: options.limit } : {}),
+    }),
+  }),
+  clientCommand({
+    path: ["project", "content"],
+    summary: "Read project workspace file content",
+    positionals: { id: arg("<id>"), path: arg("<path>") },
+    options: WORKSPACE_ROUTING_OPTIONS,
+    run: async ({ positionals, options }, client) =>
+      client.sdk().projects.fileContent({
+        projectId: positionals.id,
+        path: positionals.path,
+        ...(await resolveMachineEnvironmentRouting(
+          routingOptions(options),
+          client.url,
+        )),
+      }),
+    print: (result) => result.content,
+  }),
+  publicCommand("projects.create", {
+    path: ["project", "create"],
+    summary: "Create a project",
+    options: {
+      name: flag("--name <name>", "Project name", { required: true }),
+      root: flag("--root <path>", "Project source path"),
+      ...EXECUTION_MACHINE_OPTIONS,
+    },
+    prepare: async ({ options }, client) => ({
+      name: options.name,
+      source: buildProjectSourceFromOptions({
+        hostId: await resolveProjectSourceHostId(
+          machineOptions(options),
+          client.url,
+        ),
+        path: options.root,
+      }),
+    }),
+    print: (created) => {
+      console.log(`Project created: ${created.id}`);
+      printProject(created);
+      return null;
+    },
+  }),
+  publicCommand("projects.get", {
+    path: ["project", "show"],
+    summary: "Show project details",
+    positionals: ID,
+    print: (found) => {
+      printProject(found);
+      return null;
+    },
+  }),
+  publicCommand("projects.update", {
+    path: ["project", "update"],
+    summary: "Update a project",
+    positionals: ID,
+    options: { name: flag("--name <name>", "Set the project name") },
+    prepare: ({ positionals, options }) => {
+      if (!options.name) {
+        throw new Error("No changes requested. Provide --name.");
+      }
+      return { id: positionals.id, name: options.name };
+    },
+    print: (updated) => {
+      console.log(`Project ${updated.id} updated`);
+      printProject(updated);
+      return null;
+    },
+  }),
+  publicCommand("projects.delete", {
+    path: ["project", "delete"],
+    summary: "Delete a project and all its threads",
+    positionals: ID,
+    options: SKIP_CONFIRMATION,
+    confirm: (input) => `Delete project ${input.id} and all its threads?`,
+    declined: () => ({ message: "Aborted." }),
+    json: (_result, input) => ({ ok: true, id: input.id }),
+    print: (_result, input) => `Project ${input.id} deleted`,
+  }),
+  clientCommand({
+    path: ["project", "source", "add"],
+    summary: "Add a source to a project",
+    positionals: { projectId: arg("<projectId>") },
+    options: {
+      path: flag("--path <path>", "Local path source"),
+      clone: flag("--clone", "Clone the project's Git remote on the machine"),
+      remoteUrl: flag(
+        "--remote-url <url>",
+        "Git remote URL override for --clone",
+      ),
+      targetPath: flag(
+        "--target-path <path>",
+        "Destination path override for --clone",
+      ),
+      ...EXECUTION_MACHINE_OPTIONS,
+      default: flag("--default", "Mark the new source as default"),
+    },
+    run: async ({ positionals, options }, client) => {
+      const sourceOptions: ProjectSourceAddCommandOptions = {
+        ...machineOptions(options),
+        clone: options.clone,
+        default: options.default,
+        path: options.path,
+        remoteUrl: options.remoteUrl,
+        targetPath: options.targetPath,
+      };
+      validateProjectSourceAddOptions(sourceOptions);
+      const hostId = await resolveProjectSourceHostId(
+        sourceOptions,
+        client.url,
+      );
+      const created = await client.call("projects.createSource", {
+        id: positionals.projectId,
+        ...buildProjectSourceAddRequest({ ...sourceOptions, hostId }),
+      });
+      return options.default
+        ? client.call("projects.updateSource", {
+            id: positionals.projectId,
+            sourceId: created.id,
+            isDefault: true,
+            type: "local_path",
+          })
+        : created;
+    },
+    print: (sourceResponse) => {
+      console.log(`Project source added: ${sourceResponse.id}`);
+      printProjectSource(sourceResponse);
+      return null;
+    },
+  }),
+  clientCommand({
+    path: ["project", "source", "update"],
+    summary: "Update a project source",
+    positionals: { projectId: arg("<projectId>"), sourceId: arg("<sourceId>") },
+    options: {
+      path: flag("--path <path>", "New local path for a local path source"),
+      default: flag("--default", "Mark this source as default"),
+    },
+    run: async ({ positionals, options }, client) => {
+      const project = await client.call("projects.get", {
+        id: positionals.projectId,
+      });
+      const existingSource = requireProjectSource(
+        project,
+        positionals.sourceId,
+      );
+      return client.call("projects.updateSource", {
+        id: positionals.projectId,
+        sourceId: positionals.sourceId,
+        ...buildProjectSourceUpdateRequest(existingSource, options),
+      });
+    },
+    print: (updated) => {
+      console.log(`Project source updated: ${updated.id}`);
+      printProjectSource(updated);
+      return null;
+    },
+  }),
+  publicCommand("projects.deleteSource", {
+    path: ["project", "source", "delete"],
+    summary: "Delete a project source",
+    positionals: { id: arg("<projectId>"), sourceId: arg("<sourceId>") },
+    options: SKIP_CONFIRMATION,
+    confirm: (input) =>
+      `Delete project source ${input.sourceId} from project ${input.id}?`,
+    declined: () => ({ message: "Aborted." }),
+    json: (_result, input) => ({
+      ok: true,
+      projectId: input.id,
+      sourceId: input.sourceId,
+    }),
+    print: (_result, input) => `Project source ${input.sourceId} deleted`,
+  }),
+];
+
 export function registerProjectCommands(
   program: Command,
   getUrl: () => string,
@@ -248,462 +590,11 @@ export function registerProjectCommands(
   const project = program
     .command("project")
     .description("Inspect and manage projects");
-  const source = project
-    .command("source")
-    .description("Manage project sources");
-  const attachment = project
+  project.command("source").description("Manage project sources");
+  project
     .command("attachment")
     .description("Upload and download server-managed project attachments");
-
-  attachment
-    .command("upload <id>")
-    .description("Upload a file read from this CLI machine")
-    .requiredOption(
-      "--client-file <path>",
-      "File path on this CLI machine (not the thread execution host)",
-    )
-    .option("--filename <name>", "Filename stored in attachment metadata")
-    .option(
-      "--mime-type <type>",
-      "MIME type (inferred from filename by default)",
-    )
-    .option("--json", "Print the uploaded attachment DTO")
-    .action(
-      action(
-        async (id: string, opts: ProjectAttachmentUploadCommandOptions) => {
-          const filename = opts.filename ?? basename(opts.clientFile);
-          if (filename.trim().length === 0) {
-            throw new Error("Attachment filename must not be empty.");
-          }
-          const bytes = await readFile(opts.clientFile);
-          const uploaded = await createCliBbSdk(
-            getUrl(),
-          ).projects.attachments.upload({
-            clientFile: bytes,
-            filename,
-            mimeType: await attachmentMimeType(
-              opts.clientFile,
-              filename,
-              opts.mimeType,
-            ),
-            projectId: id,
-          });
-          if (outputJson(opts, uploaded)) return;
-          console.log(`Attachment uploaded: ${uploaded.path}`);
-        },
-      ),
-    );
-
-  attachment
-    .command("download <id> <attachmentPath>")
-    .description("Download an attachment to this CLI machine")
-    .requiredOption(
-      "--client-file <path>",
-      "Destination path on this CLI machine",
-    )
-    .option("--json", "Print machine-readable download metadata")
-    .action(
-      action(
-        async (
-          id: string,
-          attachmentPath: string,
-          opts: ProjectAttachmentDownloadCommandOptions,
-        ) => {
-          const downloaded = await createCliBbSdk(
-            getUrl(),
-          ).projects.attachments.read({
-            path: attachmentPath,
-            projectId: id,
-          });
-          await writeFile(opts.clientFile, downloaded.bytes);
-          const result = {
-            attachmentPath,
-            clientFile: opts.clientFile,
-            mimeType: downloaded.mimeType,
-            sizeBytes: downloaded.sizeBytes,
-          };
-          if (outputJson(opts, result)) return;
-          console.log(`Attachment downloaded: ${opts.clientFile}`);
-        },
-      ),
-    );
-
-  project
-    .command("list")
-    .description("List projects")
-    .option("--include-personal", "Include the personal project")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: ProjectListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const projects = await sdk.projects.list({
-          includePersonal: opts.includePersonal,
-        });
-        if (outputJson(opts, projects)) return;
-        if (projects.length === 0) {
-          console.log("No projects found");
-          return;
-        }
-        printProjectTable(projects);
-      }),
-    );
-
-  project
-    .command("discover")
-    .description("Find git repositories used recently on a machine")
-    .option("--machine <id-or-name>", "Machine to scan")
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: ProjectDiscoverCommandOptions) => {
-        const serverUrl = getUrl();
-        const sdk = createCliBbSdk(serverUrl);
-        const hostId = await resolveProjectSourceHostId(opts, serverUrl);
-        const result = await sdk.hosts.experimental_discoverRepos({ hostId });
-        if (outputJson(opts, result)) return;
-        if (result.repos.length === 0) {
-          console.log("No recently used git repositories found");
-        } else {
-          printDiscoveredRepoTable(result.repos);
-        }
-        if (result.truncated) {
-          console.log("The scan ran out of time, so the list may be partial.");
-        }
-      }),
-    );
-
-  project
-    .command("history <id>")
-    .description("List a project's prompt history")
-    .option("--limit <count>", "Maximum history entries")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectHistoryCommandOptions) => {
-        if (opts.limit !== undefined && !/^\d+$/u.test(opts.limit)) {
-          throw new Error("--limit must be a positive integer.");
-        }
-        const result = await createCliBbSdk(getUrl()).projects.promptHistory({
-          projectId: id,
-          ...(opts.limit ? { limit: opts.limit } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-
-  project
-    .command("reorder <id>")
-    .description("Move a project between adjacent projects")
-    .option("--after <id>", "Previous project, or omit for the start")
-    .option("--before <id>", "Next project, or omit for the end")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectReorderCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).projects.reorder({
-          projectId: id,
-          previousProjectId: opts.after ?? null,
-          nextProjectId: opts.before ?? null,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Project ${id} reordered`);
-      }),
-    );
-
-  project
-    .command("branches <id>")
-    .description("List branches available for a project source")
-    .requiredOption("--host <id>", "Source machine ID")
-    .option("--query <query>", "Branch-name filter")
-    .option("--limit <count>", "Maximum branches")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).projects.branches({
-          projectId: id,
-          hostId: opts.host ?? "",
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(opts.limit ? { limit: opts.limit } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-
-  addProjectWorkspaceRoutingOptions(project.command("paths <id>"))
-    .description("Search project workspace files and directories")
-    .option("--query <query>", "Fuzzy path query")
-    .option("--limit <count>", "Maximum paths")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
-        const serverUrl = getUrl();
-        const result = await createCliBbSdk(getUrl()).projects.paths({
-          projectId: id,
-          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
-          includeFiles: "true",
-          includeDirectories: "true",
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(opts.limit ? { limit: opts.limit } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-
-  addProjectWorkspaceRoutingOptions(project.command("commands <id>"))
-    .description("List provider commands and skills available to a project")
-    .requiredOption("--provider <id>", "Provider ID")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
-        const serverUrl = getUrl();
-        const result = await createCliBbSdk(getUrl()).projects.commands({
-          projectId: id,
-          provider: opts.provider ?? "",
-          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-
-  addProjectWorkspaceRoutingOptions(project.command("files <id>"))
-    .description("List files in a project workspace")
-    .option("--query <query>", "Fuzzy file query")
-    .option("--limit <count>", "Maximum files")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
-        const serverUrl = getUrl();
-        const result = await createCliBbSdk(serverUrl).projects.files({
-          projectId: id,
-          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(opts.limit ? { limit: opts.limit } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-
-  addProjectWorkspaceRoutingOptions(project.command("content <id> <path>"))
-    .description("Read project workspace file content")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          id: string,
-          path: string,
-          opts: ProjectDiscoveryCommandOptions,
-        ) => {
-          const serverUrl = getUrl();
-          const result = await createCliBbSdk(serverUrl).projects.fileContent({
-            projectId: id,
-            path,
-            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
-          });
-          if (outputJson(opts, result)) return;
-          console.log(result.content);
-        },
-      ),
-    );
-
-  project
-    .command("create")
-    .description("Create a project")
-    .requiredOption("--name <name>", "Project name")
-    .option("--root <path>", "Project source path")
-    .option(
-      "--machine <id-or-name>",
-      "Execution machine ID or unambiguous name",
-    )
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: ProjectCreateCommandOptions) => {
-        const serverUrl = getUrl();
-        const sdk = createCliBbSdk(serverUrl);
-        const hostId = await resolveProjectSourceHostId(opts, serverUrl);
-        const source = buildProjectSourceFromOptions({
-          hostId,
-          path: opts.root,
-        });
-        const created = await sdk.projects.create({
-          name: opts.name,
-          source,
-        });
-        if (outputJson(opts, created)) return;
-        console.log(`Project created: ${created.id}`);
-        printProject(created);
-      }),
-    );
-
-  project
-    .command("show <id>")
-    .description("Show project details")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectShowCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const found = await sdk.projects.get({ projectId: id });
-        if (outputJson(opts, found)) return;
-        printProject(found);
-      }),
-    );
-
-  project
-    .command("update <id>")
-    .description("Update a project")
-    .option("--name <name>", "Set the project name")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectUpdateCommandOptions) => {
-        if (!opts.name) {
-          throw new Error("No changes requested. Provide --name.");
-        }
-        const sdk = createCliBbSdk(getUrl());
-        const updated = await sdk.projects.update({
-          projectId: id,
-          name: opts.name,
-        });
-        if (outputJson(opts, updated)) return;
-        console.log(`Project ${updated.id} updated`);
-        printProject(updated);
-      }),
-    );
-
-  project
-    .command("delete <id>")
-    .description("Delete a project and all its threads")
-    .option("--yes", "Skip confirmation prompt")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ProjectDeleteCommandOptions) => {
-        if (!opts.yes) {
-          const confirmed = await confirmDestructiveAction(
-            `Delete project ${id} and all its threads?`,
-          );
-          if (!confirmed) {
-            console.log("Aborted.");
-            return;
-          }
-        }
-        const sdk = createCliBbSdk(getUrl());
-        await sdk.projects.delete({ projectId: id });
-        if (outputJson(opts, { ok: true, id })) return;
-        console.log(`Project ${id} deleted`);
-      }),
-    );
-
-  source
-    .command("add <projectId>")
-    .description("Add a source to a project")
-    .option("--path <path>", "Local path source")
-    .option("--clone", "Clone the project's Git remote on the machine")
-    .option("--remote-url <url>", "Git remote URL override for --clone")
-    .option("--target-path <path>", "Destination path override for --clone")
-    .option(
-      "--machine <id-or-name>",
-      "Execution machine ID or unambiguous name",
-    )
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--default", "Mark the new source as default")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (projectId: string, opts: ProjectSourceAddCommandOptions) => {
-          const serverUrl = getUrl();
-          const sdk = createCliBbSdk(serverUrl);
-          validateProjectSourceAddOptions(opts);
-          const hostId = await resolveProjectSourceHostId(opts, serverUrl);
-          const createPayload = buildProjectSourceAddRequest({
-            ...opts,
-            hostId,
-          });
-          const created = await sdk.projects.sources.add({
-            projectId,
-            ...createPayload,
-          });
-
-          const sourceResponse = opts.default
-            ? await sdk.projects.sources.update({
-                projectId,
-                sourceId: created.id,
-                isDefault: true,
-                type: "local_path",
-              })
-            : created;
-
-          if (outputJson(opts, sourceResponse)) return;
-          console.log(`Project source added: ${sourceResponse.id}`);
-          printProjectSource(sourceResponse);
-        },
-      ),
-    );
-
-  source
-    .command("update <projectId> <sourceId>")
-    .description("Update a project source")
-    .option("--path <path>", "New local path for a local path source")
-    .option("--default", "Mark this source as default")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          projectId: string,
-          sourceId: string,
-          opts: ProjectSourceUpdateCommandOptions,
-        ) => {
-          const sdk = createCliBbSdk(getUrl());
-          const project = await sdk.projects.get({ projectId });
-          const existingSource = requireProjectSource(project, sourceId);
-          const updatePayload = buildProjectSourceUpdateRequest(
-            existingSource,
-            opts,
-          );
-          const updated = await sdk.projects.sources.update({
-            projectId,
-            sourceId,
-            ...updatePayload,
-          });
-
-          if (outputJson(opts, updated)) return;
-          console.log(`Project source updated: ${updated.id}`);
-          printProjectSource(updated);
-        },
-      ),
-    );
-
-  source
-    .command("delete <projectId> <sourceId>")
-    .description("Delete a project source")
-    .option("--yes", "Skip confirmation prompt")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          projectId: string,
-          sourceId: string,
-          opts: ProjectSourceDeleteCommandOptions,
-        ) => {
-          if (!opts.yes) {
-            const confirmed = await confirmDestructiveAction(
-              `Delete project source ${sourceId} from project ${projectId}?`,
-            );
-            if (!confirmed) {
-              console.log("Aborted.");
-              return;
-            }
-          }
-
-          const sdk = createCliBbSdk(getUrl());
-          await sdk.projects.sources.delete({ projectId, sourceId });
-          const result = { ok: true, projectId, sourceId };
-          if (outputJson(opts, result)) return;
-          console.log(`Project source ${sourceId} deleted`);
-        },
-      ),
-    );
+  mountCommands(program, projectCommands, { getUrl });
 }
 
 function printProject(project: ProjectResponse): void {

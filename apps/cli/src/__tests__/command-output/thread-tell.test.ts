@@ -12,6 +12,11 @@ import {
 import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import { registerThreadCommands } from "../../commands/thread/index.js";
 
+interface AttachmentUploadRequest {
+  param: { id: string };
+  form: { file: Blob };
+}
+
 describe("bb thread tell command output", () => {
   setupCommandOutputTestEnvironment();
 
@@ -329,22 +334,18 @@ describe("bb thread tell command output", () => {
           }),
         );
         const post = vi.fn(async () => ({ ok: true }));
+        const upload = vi.fn(async (_request: AttachmentUploadRequest) => ({
+          type,
+          path: uploadedPath,
+          name: filename,
+          mimeType,
+          sizeBytes: bytes.byteLength,
+        }));
         stubServerApi({
           "v1.threads.:id.$get": get,
           "v1.threads.:id.send.$post": post,
+          "v1.projects.:id.attachments.$post": upload,
         });
-        vi.mocked(globalThis.fetch).mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              type,
-              path: uploadedPath,
-              name: filename,
-              mimeType,
-              sizeBytes: bytes.byteLength,
-            }),
-            { headers: { "content-type": "application/json" } },
-          ),
-        );
 
         await runCommand(
           [
@@ -360,21 +361,12 @@ describe("bb thread tell command output", () => {
           register,
         );
 
-        expect(get).toHaveBeenCalledWith({
-          param: { id: "thread-attachments" },
-        });
-        expect(globalThis.fetch).toHaveBeenCalledWith(
-          "http://server/api/v1/projects/proj-target/attachments",
-          expect.objectContaining({
-            body: expect.any(FormData),
-            method: "POST",
-          }),
+        expect(get).toHaveBeenCalledWith(
+          expect.objectContaining({ param: { id: "thread-attachments" } }),
         );
-        const uploadBody = vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body;
-        expect(uploadBody).toBeInstanceOf(FormData);
-        if (!(uploadBody instanceof FormData))
-          throw new Error("Missing upload body");
-        const uploadedFile = uploadBody.get("file");
+        expect(upload).toHaveBeenCalledOnce();
+        expect(upload.mock.calls[0]?.[0].param).toEqual({ id: "proj-target" });
+        const uploadedFile = upload.mock.calls[0]?.[0].form.file;
         expect(uploadedFile).toBeInstanceOf(File);
         if (!(uploadedFile instanceof File))
           throw new Error("Missing uploaded file");

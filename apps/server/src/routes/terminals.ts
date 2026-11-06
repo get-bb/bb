@@ -1,79 +1,66 @@
-import {
-  publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
-} from "@bb/server-contract";
-import type { Hono } from "hono";
-import { ApiError } from "../errors.js";
+import { publicApiRoutes } from "@bb/server-contract";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import type { AppDeps } from "../types.js";
 
-export function registerTerminalRoutes(app: Hono, deps: AppDeps): void {
-  const { get, patch, post } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
+export function registerTerminalRoutes(
+  operations: OperationRoutes,
+  deps: AppDeps,
+): void {
   const routes = publicApiRoutes.terminals;
 
-  get(routes.list, (context, query) => {
+  operations.implement(routes.list, (query) => {
     const sessions = deps.terminalSessions.listTerminals({ query });
-    return context.json({ sessions });
+    return { sessions };
   });
 
-  post(routes.create, async (context, payload) => {
-    const session = await deps.terminalSessions.createTerminal({ payload });
-    return context.json(session, 201);
-  });
+  operations.implement(routes.create, async (payload) =>
+    deps.terminalSessions.createTerminal({ payload }),
+  );
 
-  get(routes.get, (context) => {
-    const session = deps.terminalSessions.getTerminal({
-      terminalId: context.req.param("terminalId"),
-    });
-    return context.json(session);
-  });
+  operations.implement(routes.get, ({ terminalId }) =>
+    deps.terminalSessions.getTerminal({
+      terminalId,
+    }),
+  );
 
-  patch(routes.update, (context, payload) => {
-    const session = deps.terminalSessions.renameTerminal({
+  operations.implement(routes.update, ({ terminalId, ...payload }) =>
+    deps.terminalSessions.renameTerminal({
       payload,
-      terminalId: context.req.param("terminalId"),
-    });
-    return context.json(session);
-  });
+      terminalId,
+    }),
+  );
 
-  post(routes.restart, async (context) => {
-    const session = await deps.terminalSessions.restartTerminal({
-      terminalId: context.req.param("terminalId"),
-    });
-    return context.json(session, 201);
-  });
+  operations.implement(routes.restart, async ({ terminalId }) =>
+    deps.terminalSessions.restartTerminal({
+      terminalId,
+    }),
+  );
 
-  post(routes.close, async (context, payload) => {
-    const session = await deps.terminalSessions.closeTerminal({
+  operations.implement(routes.close, async ({ terminalId, ...payload }) =>
+    deps.terminalSessions.closeTerminal({
       payload,
-      terminalId: context.req.param("terminalId"),
-    });
-    return context.json(session);
-  });
+      terminalId,
+    }),
+  );
 
-  post(routes.input, (context, payload) => {
-    const session = deps.terminalSessions.sendTerminalInput({
+  operations.implement(routes.input, ({ terminalId, ...payload }) =>
+    deps.terminalSessions.sendTerminalInput({
       payload,
-      terminalId: context.req.param("terminalId"),
-    });
-    return context.json(session);
-  });
+      terminalId,
+    }),
+  );
 
-  post(routes.resize, (context, payload) => {
-    const session = deps.terminalSessions.resizeTerminal({
+  operations.implement(routes.resize, ({ terminalId, ...payload }) =>
+    deps.terminalSessions.resizeTerminal({
       payload,
-      terminalId: context.req.param("terminalId"),
-    });
-    return context.json(session);
-  });
+      terminalId,
+    }),
+  );
 
-  get(routes.output, async (context, query) => {
-    const output = await deps.terminalSessions.readTerminalOutput({
+  operations.implement(routes.output, async ({ terminalId, ...query }) =>
+    deps.terminalSessions.readTerminalOutput({
       query,
-      terminalId: context.req.param("terminalId"),
-    });
-    return context.json(output);
-  });
+      terminalId,
+    }),
+  );
 }

@@ -17,19 +17,14 @@ import {
   type ReorderQueuedThreadMessageResult,
   type SetQueuedThreadMessageGroupBoundaryResult,
 } from "@bb/db";
-import {
-  publicApiRoutes,
-  typedRoutes,
-  type ThreadListResponse,
-  type PublicApiSchema,
-} from "@bb/server-contract";
-import type { Hono } from "hono";
+import { publicApiRoutes, type ThreadListResponse } from "@bb/server-contract";
 import {
   getRelativeHostPathSegments,
   type ThreadQueuedMessage,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import type { OperationRoutes } from "../../kernel/http-door.js";
 import {
   emitPluginMessageCancelled,
   emitPluginMessageQueued,
@@ -207,21 +202,19 @@ function assertPinnedThreadOrderResult(
   }
 }
 
-export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
+export function registerThreadActionRoutes(
+  operations: OperationRoutes,
+  deps: AppDeps,
+): void {
   const routes = publicApiRoutes.threads;
 
-  post(routes.send, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      await acceptThreadSendRequest(deps, { payload, thread }),
-    );
+  operations.implement(routes.send, async ({ id, ...payload }) => {
+    const thread = requirePublicThread(deps.db, id);
+    return acceptThreadSendRequest(deps, { payload, thread });
   });
 
-  post(routes.editMessage, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.editMessage, async ({ id, ...payload }) => {
+    const thread = requirePublicThread(deps.db, id);
     const environment = await requireThreadCommandEnvironment(deps, {
       thread,
     });
@@ -230,60 +223,68 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       payload,
       thread,
     });
-    return context.json(result);
+    return result;
   });
 
-  post(routes.retry, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.retry, async ({ id, ...payload }) => {
+    const thread = requirePublicThread(deps.db, id);
     ensureThreadIsWritable(thread);
     const result = await retryFailedTurn(deps, { request: payload, thread });
-    return context.json(result);
+    return result;
   });
 
-  post(routes.createQueuedMessage, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const queuedMessage = await createQueuedMessageForThread(deps, {
-      payload,
-      thread,
-    });
-    return context.json(queuedMessage, 201);
-  });
+  operations.implement(
+    routes.createQueuedMessage,
+    async ({ id, ...payload }) => {
+      const thread = requirePublicThread(deps.db, id);
+      const queuedMessage = await createQueuedMessageForThread(deps, {
+        payload,
+        thread,
+      });
+      return queuedMessage;
+    },
+  );
 
-  post(routes.sendQueuedMessage, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadQueueIsWritable(thread);
-    ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
-    const result = await sendQueuedMessageNow(deps, {
-      queuedMessageId: context.req.param("queuedMessageId"),
-      mode: payload.mode,
-      threadId: context.req.param("id"),
-    });
-    return context.json({ ok: true, ...result });
-  });
+  operations.implement(
+    routes.sendQueuedMessage,
+    async ({ id, queuedMessageId, ...payload }) => {
+      const thread = requirePublicThread(deps.db, id);
+      ensureThreadQueueIsWritable(thread);
+      ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
+      const result = await sendQueuedMessageNow(deps, {
+        queuedMessageId: queuedMessageId,
+        mode: payload.mode,
+        threadId: id,
+      });
+      return { ok: true as const, ...result };
+    },
+  );
 
-  patch(routes.reorderQueuedMessage, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadQueueIsWritable(thread);
-    return context.json(
-      toQueuedMessageOrderResponse(
+  operations.implement(
+    routes.reorderQueuedMessage,
+    ({ id, queuedMessageId, ...payload }) => {
+      const thread = requirePublicThread(deps.db, id);
+      ensureThreadQueueIsWritable(thread);
+      return toQueuedMessageOrderResponse(
         reorderQueuedThreadMessage({
           db: deps.db,
           notifier: deps.hub,
           threadId: thread.id,
-          queuedMessageId: context.req.param("queuedMessageId"),
+          queuedMessageId: queuedMessageId,
           previousQueuedMessageId: payload.previousQueuedMessageId,
           nextQueuedMessageId: payload.nextQueuedMessageId,
           groupBoundaryQueuedMessageId: payload.groupBoundaryQueuedMessageId,
         }),
-      ),
-    );
-  });
+      );
+    },
+  );
 
-  patch(routes.setQueuedMessageGroupBoundary, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadQueueIsWritable(thread);
-    return context.json(
-      toQueuedMessageGroupBoundaryResponse(
+  operations.implement(
+    routes.setQueuedMessageGroupBoundary,
+    ({ id, ...payload }) => {
+      const thread = requirePublicThread(deps.db, id);
+      ensureThreadQueueIsWritable(thread);
+      return toQueuedMessageGroupBoundaryResponse(
         setQueuedThreadMessageGroupBoundary({
           db: deps.db,
           notifier: deps.hub,
@@ -292,171 +293,178 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             payload.expectedGroupedPrefixQueuedMessageIds,
           groupBoundaryQueuedMessageId: payload.groupBoundaryQueuedMessageId,
         }),
-      ),
-    );
-  });
+      );
+    },
+  );
 
-  patch(routes.updateQueuedMessage, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadQueueIsWritable(thread);
-    if (
-      payload.sendAt !== undefined &&
-      payload.sendAt !== null &&
-      payload.sendAt <= Date.now()
-    ) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "sendAt must be in the future; pass null to clear the send time",
+  operations.implement(
+    routes.updateQueuedMessage,
+    async ({ id, queuedMessageId, ...payload }) => {
+      const thread = requirePublicThread(deps.db, id);
+      ensureThreadQueueIsWritable(thread);
+      if (
+        payload.sendAt !== undefined &&
+        payload.sendAt !== null &&
+        payload.sendAt <= Date.now()
+      ) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          "sendAt must be in the future; pass null to clear the send time",
+        );
+      }
+      const existingQueuedMessage = getQueuedThreadMessage(
+        deps.db,
+        queuedMessageId,
       );
-    }
-    const existingQueuedMessage = getQueuedThreadMessage(
-      deps.db,
-      context.req.param("queuedMessageId"),
-    );
-    if (
-      payload.input !== undefined &&
-      existingQueuedMessage !== null &&
-      existingQueuedMessage.systemNotice !== null
-    ) {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "bb system notices cannot be edited",
-      );
-    }
-    const content =
-      payload.input === undefined
-        ? null
-        : await resolvePromptAttachmentReferences({
-            db: deps.db,
-            dataDir: deps.config.dataDir,
-            input: payload.input,
-            projectId: thread.projectId,
-            hostId: threadTargetHostId(deps, thread),
-          });
-    const execution = await resolveQueuedMessageExecutionChange(deps, {
-      expectedUpdatedAt: payload.expectedUpdatedAt,
-      queuedMessageId: context.req.param("queuedMessageId"),
-      request: payload,
-      thread,
-    });
-    const result = updateQueuedThreadMessage(deps.db, deps.hub, {
-      content,
-      execution,
-      reschedule:
-        payload.sendAt === undefined ? null : { sendAt: payload.sendAt },
-      expectedUpdatedAt: payload.expectedUpdatedAt,
-      id: context.req.param("queuedMessageId"),
-      threadId: thread.id,
-    });
-    if (result.kind === "not_found") {
-      throw new ApiError(404, "invalid_request", "Queued message not found");
-    }
-    if (result.kind === "claimed") {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "Queued message is already being sent",
-      );
-    }
-    if (result.kind === "stale") {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "Queued message changed since editing began",
-      );
-    }
-    if (result.kind === "invalid_execution_options") {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "This queued message is grouped with messages that use different execution options; ungroup it first",
-      );
-    }
-    const queuedMessage = toThreadQueuedMessage(result.queuedMessage);
-    if (result.rescheduled) {
-      emitPluginMessageQueued(queuedMessage);
-    }
-    if (result.releasedEditHold) {
-      requestEditReleasedQueuedMessageDispatch(deps, {
-        queuedMessageId: queuedMessage.id,
+      if (
+        payload.input !== undefined &&
+        existingQueuedMessage !== null &&
+        existingQueuedMessage.systemNotice !== null
+      ) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "bb system notices cannot be edited",
+        );
+      }
+      const content =
+        payload.input === undefined
+          ? null
+          : await resolvePromptAttachmentReferences({
+              db: deps.db,
+              dataDir: deps.config.dataDir,
+              input: payload.input,
+              projectId: thread.projectId,
+              hostId: threadTargetHostId(deps, thread),
+            });
+      const execution = await resolveQueuedMessageExecutionChange(deps, {
+        expectedUpdatedAt: payload.expectedUpdatedAt,
+        queuedMessageId: queuedMessageId,
+        request: payload,
+        thread,
+      });
+      const result = updateQueuedThreadMessage(deps.db, deps.hub, {
+        content,
+        execution,
+        reschedule:
+          payload.sendAt === undefined ? null : { sendAt: payload.sendAt },
+        expectedUpdatedAt: payload.expectedUpdatedAt,
+        id: queuedMessageId,
         threadId: thread.id,
       });
-    } else if (result.rescheduled && queuedMessage.sendAt === null) {
-      requestQueuedMessageDispatch(deps, {
-        kind: "thread-ready",
+      if (result.kind === "not_found") {
+        throw new ApiError(404, "invalid_request", "Queued message not found");
+      }
+      if (result.kind === "claimed") {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "Queued message is already being sent",
+        );
+      }
+      if (result.kind === "stale") {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "Queued message changed since editing began",
+        );
+      }
+      if (result.kind === "invalid_execution_options") {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "This queued message is grouped with messages that use different execution options; ungroup it first",
+        );
+      }
+      const queuedMessage = toThreadQueuedMessage(result.queuedMessage);
+      if (result.rescheduled) {
+        emitPluginMessageQueued(queuedMessage);
+      }
+      if (result.releasedEditHold) {
+        requestEditReleasedQueuedMessageDispatch(deps, {
+          queuedMessageId: queuedMessage.id,
+          threadId: thread.id,
+        });
+      } else if (result.rescheduled && queuedMessage.sendAt === null) {
+        requestQueuedMessageDispatch(deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
+      }
+      return queuedMessage;
+    },
+  );
+
+  operations.implement(
+    routes.holdQueuedMessageForEdit,
+    ({ id, queuedMessageId }) => {
+      const thread = requirePublicThread(deps.db, id);
+      ensureThreadQueueIsWritable(thread);
+      return holdQueuedMessageForEdit(deps, {
+        queuedMessageId: queuedMessageId,
         threadId: thread.id,
       });
-    }
-    return context.json(queuedMessage);
-  });
+    },
+  );
 
-  post(routes.holdQueuedMessageForEdit, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadQueueIsWritable(thread);
-    return context.json(
-      holdQueuedMessageForEdit(deps, {
-        queuedMessageId: context.req.param("queuedMessageId"),
+  operations.implement(
+    routes.releaseQueuedMessageEditHold,
+    ({ id, queuedMessageId }) => {
+      const thread = requirePublicThread(deps.db, id);
+      releaseQueuedMessageEditHold(deps, {
+        queuedMessageId: queuedMessageId,
         threadId: thread.id,
-      }),
-    );
-  });
+      });
+      return { ok: true as const };
+    },
+  );
 
-  del(routes.releaseQueuedMessageEditHold, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    releaseQueuedMessageEditHold(deps, {
-      queuedMessageId: context.req.param("queuedMessageId"),
-      threadId: thread.id,
-    });
-    return context.json({ ok: true });
-  });
+  operations.implement(
+    routes.deleteQueuedMessage,
+    ({ id, queuedMessageId }) => {
+      const queuedMessage = getQueuedThreadMessage(deps.db, queuedMessageId);
+      if (!queuedMessage || queuedMessage.threadId !== id) {
+        throw new ApiError(404, "invalid_request", "Queued message not found");
+      }
+      const deleted = deleteQueuedThreadMessage(
+        deps.db,
+        deps.hub,
+        queuedMessageId,
+      );
+      if (!deleted) {
+        throw new ApiError(404, "invalid_request", "Queued message not found");
+      }
+      emitPluginMessageCancelled(toThreadQueuedMessage(queuedMessage));
+      return { ok: true as const };
+    },
+  );
 
-  del(routes.deleteQueuedMessage, (context) => {
-    const queuedMessage = getQueuedThreadMessage(
-      deps.db,
-      context.req.param("queuedMessageId"),
-    );
-    if (!queuedMessage || queuedMessage.threadId !== context.req.param("id")) {
-      throw new ApiError(404, "invalid_request", "Queued message not found");
-    }
-    const deleted = deleteQueuedThreadMessage(
-      deps.db,
-      deps.hub,
-      context.req.param("queuedMessageId"),
-    );
-    if (!deleted) {
-      throw new ApiError(404, "invalid_request", "Queued message not found");
-    }
-    emitPluginMessageCancelled(toThreadQueuedMessage(queuedMessage));
-    return context.json({ ok: true });
-  });
-
-  post(routes.stop, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.stop, async ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     const environment = resolveThreadHostCommandEnvironment({
       db: deps.db,
       thread,
     });
     await stopThreadForCurrentState(deps, thread, environment);
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  post(routes.compact, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.compact, async ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     await compactThreadContext(deps, thread);
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  post(routes.clearContext, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.clearContext, async ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     const environment = await requireThreadCommandEnvironment(deps, { thread });
     await clearThreadContext(deps, { environment, thread });
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  post(routes.cancelPlan, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.cancelPlan, async ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     const activity = getThreadPromptBannerActivity(deps, thread);
     if (activity.activePlanModeCount === 0) {
       throw new ApiError(409, "invalid_request", "Plan mode is not active");
@@ -492,11 +500,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "The provider did not confirm that Plan mode exited",
       );
     }
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  post(routes.clearGoal, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.clearGoal, async ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     if (!threadHasGoal(deps, thread)) {
       throw new ApiError(409, "invalid_request", "No Goal to clear");
     }
@@ -539,11 +547,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
           : "The provider did not clear the Goal",
       );
     }
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  post(routes.open, (context, payload) => {
-    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.open, ({ id, ...payload }) => {
+    const publicThread = requirePublicThread(deps.db, id);
     if (
       payload.file !== null &&
       getRelativeHostPathSegments(payload.file.path) === null
@@ -554,49 +562,49 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       { projectId: publicThread.projectId, threadId: publicThread.id },
       { split: payload.split ?? "replace", file: payload.file },
     );
-    return context.json({ delivered });
+    return { delivered };
   });
 
-  post(routes.paneAction, (context, payload) => {
-    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.paneAction, ({ id, ...payload }) => {
+    const publicThread = requirePublicThread(deps.db, id);
     const delivered = deps.hub.notifyThreadPaneAction(
       { projectId: publicThread.projectId, threadId: publicThread.id },
       payload.action,
     );
-    return context.json({ delivered });
+    return { delivered };
   });
 
-  post(routes.pin, (context) => {
-    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.pin, ({ id }) => {
+    const publicThread = requirePublicThread(deps.db, id);
     const thread = pinThread(deps.db, deps.hub, {
       threadId: publicThread.id,
     });
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return toThreadResponseFromThread(deps, { thread });
   });
 
-  post(routes.unpin, (context) => {
-    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.unpin, ({ id }) => {
+    const publicThread = requirePublicThread(deps.db, id);
     const thread = unpinThread(deps.db, deps.hub, {
       threadId: publicThread.id,
     });
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return toThreadResponseFromThread(deps, { thread });
   });
 
-  post(routes.regenerateTitle, async (context) => {
+  operations.implement(routes.regenerateTitle, async ({ id }) => {
     const thread = await regenerateThreadTitle(deps, {
-      thread: requirePublicThread(deps.db, context.req.param("id")),
+      thread: requirePublicThread(deps.db, id),
     });
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return toThreadResponseFromThread(deps, { thread });
   });
 
-  patch(routes.pinOrder, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.pinOrder, ({ id, ...payload }) => {
+    const thread = requirePublicThread(deps.db, id);
     assertPinnedThreadOrderResult(
       reorderPinnedThread({
         db: deps.db,
@@ -606,27 +614,27 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         nextThreadId: payload.nextThreadId,
       }),
     );
-    return context.json(buildActivePinnedThreadRootListResponse(deps));
+    return buildActivePinnedThreadRootListResponse(deps);
   });
 
-  post(routes.archiveAll, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.archiveAll, ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     const archivedThreadIds = archiveThreadAndChildren(deps, {
       parentThread: thread,
     });
-    return context.json({
-      ok: true,
+    return {
+      ok: true as const,
       archivedThreadIds,
-    });
+    };
   });
 
-  post(routes.unarchive, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.archivedAt === null) return context.json({ ok: true });
+  operations.implement(routes.unarchive, ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
+    if (thread.archivedAt === null) return { ok: true as const };
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
     if (!unarchiveThread(deps.db, deps.hub, thread.id)) {
       if (getThread(deps.db, thread.id)?.archivedAt === null)
-        return context.json({ ok: true });
+        return { ok: true as const };
       throw new ApiError(
         409,
         "invalid_request",
@@ -649,11 +657,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         thread,
       });
     }
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  post(routes.restoreEnvironment, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.restoreEnvironment, ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     ensureThreadIsWritable(thread);
     const resolution = resolveThreadEnvironmentRestore(deps, { thread });
     if (!resolution.restorable) {
@@ -681,30 +689,28 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       buildThreadStatusChangeMetadata(deps, restoringThread),
     );
     scheduleThreadProvisioningAdvance(deps, thread.id);
-    return context.json(
-      toThreadResponseFromThread(deps, { thread: restoringThread }),
-    );
+    return toThreadResponseFromThread(deps, { thread: restoringThread });
   });
 
-  post(routes.read, (context) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    const thread = updateThread(deps.db, deps.hub, context.req.param("id"), {
+  operations.implement(routes.read, ({ id }) => {
+    requirePublicThread(deps.db, id);
+    const thread = updateThread(deps.db, deps.hub, id, {
       lastReadAt: Date.now(),
     });
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return toThreadResponseFromThread(deps, { thread });
   });
 
-  post(routes.unread, (context) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    const thread = updateThread(deps.db, deps.hub, context.req.param("id"), {
+  operations.implement(routes.unread, ({ id }) => {
+    requirePublicThread(deps.db, id);
+    const thread = updateThread(deps.db, deps.hub, id, {
       lastReadAt: null,
     });
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return toThreadResponseFromThread(deps, { thread });
   });
 }

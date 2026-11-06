@@ -98,9 +98,9 @@ describe("bb plugin migrate", () => {
     const before = await readFile(join(rootDir, "package.json"), "utf8");
     const logSpy = vi.mocked(console.log);
 
-    await expect(
-      runCommand(["plugin", "migrate", rootDir], register),
-    ).rejects.toThrow("process.exit:1");
+    await runCommand(["plugin", "migrate", rootDir], register);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
 
     const logged = collectLogPayloads(logSpy).join("\n");
     expect(logged).toContain(

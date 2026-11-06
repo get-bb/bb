@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import {
   threadStatusSchema,
   threadStatusValues,
@@ -10,20 +10,10 @@ import {
   type ThreadCountGroupBy,
 } from "@bb/server-contract";
 import type { ThreadCountResult } from "@bb/sdk";
-import { action } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
+import { flag } from "../../cli-door.js";
+import { mountCommand, publicCommand } from "../../operation-doors.js";
 import { columnWidths, printBorderlessTable } from "../../table.js";
-import { joinValues, outputJson } from "../helpers.js";
-
-interface ThreadCountCommandOptions {
-  by?: string;
-  host?: string;
-  json?: boolean;
-  parent?: string;
-  project?: string;
-  provider?: string;
-  status?: string;
-}
+import { joinValues } from "../helpers.js";
 
 const GROUP_COLUMN_HEADS: Record<ThreadCountGroupBy, string> = {
   host: "Machine",
@@ -31,43 +21,49 @@ const GROUP_COLUMN_HEADS: Record<ThreadCountGroupBy, string> = {
   project: "Project",
 };
 
+export const threadCountCommand = publicCommand("threads.count", {
+  path: ["thread", "count"],
+  summary:
+    "Count threads without listing them; excludes archived and hidden threads",
+  options: {
+    status: flag(
+      "--status <status>",
+      `Count threads in this status: ${joinValues(threadStatusValues)}`,
+    ),
+    host: flag(
+      "--host <id>",
+      "Count threads whose environment is on this machine",
+    ),
+    provider: flag("--provider <id>", "Count threads running on this provider"),
+    project: flag("--project <id>", "Count threads in this project"),
+    parent: flag(
+      "--parent <id|none>",
+      `Count children of this thread, or '${THREAD_COUNT_ROOT_PARENT}' for threads with no parent`,
+    ),
+    by: flag(
+      "--by <dimension>",
+      "Group the count by host, provider, or project",
+    ),
+  },
+  prepare: ({ options }) => {
+    const groupBy = parseGroupBy(options.by || undefined);
+    return {
+      ...(options.status ? { status: parseStatus(options.status) } : {}),
+      ...(options.host ? { hostId: options.host } : {}),
+      ...(options.provider ? { providerId: options.provider } : {}),
+      ...(options.project ? { projectId: options.project } : {}),
+      ...(options.parent ? { parentThreadId: options.parent } : {}),
+      ...(groupBy ? { groupBy } : {}),
+    };
+  },
+  print: (result, input) => printThreadCount(result, input.groupBy),
+});
+
 export function registerCountCommand(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("count")
-    .description(
-      "Count threads without listing them; excludes archived and hidden threads",
-    )
-    .option(
-      "--status <status>",
-      `Count threads in this status: ${joinValues(threadStatusValues)}`,
-    )
-    .option("--host <id>", "Count threads whose environment is on this machine")
-    .option("--provider <id>", "Count threads running on this provider")
-    .option("--project <id>", "Count threads in this project")
-    .option(
-      "--parent <id|none>",
-      `Count children of this thread, or '${THREAD_COUNT_ROOT_PARENT}' for threads with no parent`,
-    )
-    .option("--by <dimension>", "Group the count by host, provider, or project")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: ThreadCountCommandOptions) => {
-        const groupBy = parseGroupBy(opts.by);
-        const result = await createCliBbSdk(getUrl()).threads.count({
-          ...(opts.status ? { status: parseStatus(opts.status) } : {}),
-          ...(opts.host ? { hostId: opts.host } : {}),
-          ...(opts.provider ? { providerId: opts.provider } : {}),
-          ...(opts.project ? { projectId: opts.project } : {}),
-          ...(opts.parent ? { parentThreadId: opts.parent } : {}),
-          ...(groupBy ? { groupBy } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        printThreadCount(result, groupBy);
-      }),
-    );
+  mountCommand(parent, threadCountCommand, { getUrl });
 }
 
 /**
@@ -77,22 +73,18 @@ export function registerCountCommand(
 function printThreadCount(
   result: ThreadCountResult,
   groupBy: ThreadCountGroupBy | undefined,
-): void {
+): string {
   if (result.groups === undefined || groupBy === undefined) {
-    console.log(String(result.total));
-    return;
+    return String(result.total);
   }
-  if (result.groups.length === 0) {
-    console.log("No threads found");
-    return;
-  }
-  printGroupTable(result, groupBy);
+  if (result.groups.length === 0) return "No threads found";
+  return printGroupTable(result, groupBy);
 }
 
 function printGroupTable(
   result: ThreadCountResult,
   groupBy: ThreadCountGroupBy,
-): void {
+): string {
   // Biggest group first: the reason to group is to find where the threads are.
   const groups = [...(result.groups ?? [])].sort(
     (left, right) =>
@@ -107,7 +99,7 @@ function printGroupTable(
     },
     rows,
   );
-  console.log(`Total: ${result.total}`);
+  return `Total: ${result.total}`;
 }
 
 /** Threads without a host/provider/project sort last under a "-" key. */

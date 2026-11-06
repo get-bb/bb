@@ -4,10 +4,11 @@ export * from "./api/thread-tabs.js";
 export * from "./common.js";
 export * from "./errors.js";
 export * from "./public-api.js";
+export * from "./public-operations.js";
+export * from "./route-calls.js";
+export * from "./generated/route-index.js";
 export * from "./thread-timeline.js";
 export * from "./thread-timeline-delta.js";
-
-export { typedRoutes } from "@bb/hono-typed-routes";
 
 export {
   changedMessageLenientSchema,

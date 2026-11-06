@@ -8,7 +8,7 @@ import type {
   HostPathListResponse,
   HostRemovePathResponse,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface FileReadArgs {
   hostId?: string;
@@ -98,92 +98,43 @@ export interface FilesArea {
 }
 
 export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
-  const { transport } = args;
+  const { call } = args.operations;
   return {
-    async read(input) {
-      return transport.readJson(
-        transport.api.v1.files.read.$post(
-          {
-            json: {
-              hostId: input.hostId,
-              path: input.path,
-              rootPath: input.rootPath,
-              ref: input.ref,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async write(input) {
-      return transport.readJson(
-        transport.api.v1.files.write.$post({ json: input }),
-      );
-    },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.files.list.$post(
-          {
-            json: {
-              excludeNames: input.excludeNames,
-              hostId: input.hostId,
-              includeHidden: input.includeHidden,
-              limit: input.limit,
-              path: input.path,
-              query: input.query,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async listPaths(input) {
-      return transport.readJson(
-        transport.api.v1.files.paths.$post(
-          {
-            json: {
-              excludeNames: input.excludeNames,
-              hostId: input.hostId,
-              includeDirectories: input.includeDirectories,
-              includeFiles: input.includeFiles,
-              includeHidden: input.includeHidden,
-              limit: input.limit,
-              path: input.path,
-              query: input.query,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async mkdir(input) {
-      return transport.readJson(
-        transport.api.v1.files.mkdir.$post({ json: input }),
-      );
-    },
-    async move(input) {
-      return transport.readJson(
-        transport.api.v1.files.move.$post({ json: input }),
-      );
-    },
-    async remove(input) {
-      return transport.readJson(
-        transport.api.v1.files.remove.$post({ json: input }),
-      );
-    },
-    async createPreview(input) {
-      return transport.readJson(
-        transport.api.v1.files.previews.$post(
-          {
-            json: {
-              hostId: input.hostId,
-              rootPath: input.rootPath,
-              ttlMs: input.ttlMs,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    read: ({ hostId, path, rootPath, ref, signal }) =>
+      call("files.read", { hostId, path, rootPath, ref }, { signal }),
+    write: (input) => call("files.write", input),
+    list: (input) =>
+      call(
+        "files.list",
+        {
+          excludeNames: input.excludeNames,
+          hostId: input.hostId,
+          includeHidden: input.includeHidden,
+          limit: input.limit,
+          path: input.path,
+          query: input.query,
+        },
+        { signal: input.signal },
+      ),
+    listPaths: (input) =>
+      call(
+        "files.listPaths",
+        {
+          excludeNames: input.excludeNames,
+          hostId: input.hostId,
+          includeDirectories: input.includeDirectories,
+          includeFiles: input.includeFiles,
+          includeHidden: input.includeHidden,
+          limit: input.limit,
+          path: input.path,
+          query: input.query,
+        },
+        { signal: input.signal },
+      ),
+    mkdir: (input) => call("files.mkdir", input),
+    move: (input) => call("files.move", input),
+    remove: (input) => call("files.remove", input),
+    createPreview: ({ hostId, rootPath, ttlMs, signal }) =>
+      call("files.createPreview", { hostId, rootPath, ttlMs }, { signal }),
   };
 }

@@ -405,7 +405,6 @@ describe("bb terminal command output", () => {
 
     expect(output).toHaveBeenCalledWith({
       param: { terminalId: "term-1" },
-      query: {},
     });
     expect(write).toHaveBeenCalledWith(Buffer.from("hello\n", "utf8"));
   });

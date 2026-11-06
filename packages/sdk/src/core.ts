@@ -2,6 +2,7 @@ import {
   createDesktopBrowsersArea,
   type ExperimentalDesktopBrowsersArea,
 } from "./areas/desktop-browsers.js";
+import { createOperationCaller } from "./operation-call.js";
 import type { BbSdkContext, BbSdkTransport } from "./transport.js";
 import {
   createEnvironmentsArea,
@@ -74,7 +75,10 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdkAreas;
 export function createBbSdk(
   args: CreateBbSdkArgs | CreateBbSdkWithGuideArgs,
 ): BbSdkAreas | BbSdk {
-  const sdkContext = { transport: args.transport };
+  const sdkContext = {
+    transport: args.transport,
+    operations: createOperationCaller(args.transport),
+  };
   const realtime = createBbRealtimeClient({
     transport: args.transport,
   });

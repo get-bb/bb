@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import {
   threadVisibilitySchema,
@@ -8,9 +8,26 @@ import {
   type ThreadParentNotifications,
   type ThreadVisibility,
 } from "@bb/domain";
-import { threadEnvironmentUnavailableApiErrorSchema } from "@bb/server-contract";
-import { action, CliExitError } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
+import {
+  DEFAULT_TURN_RETRY_REASON,
+  threadEnvironmentUnavailableApiErrorSchema,
+} from "@bb/server-contract";
+import { CliExitError } from "../../action.js";
+import { arg, flag } from "../../cli-door.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+  type CliClient,
+  type CliCommand,
+} from "../../operation-doors.js";
+import {
+  JSON_FLAG,
+  OPTIONAL_THREAD_ID,
+  SELF_FLAG,
+  SELF_TARGET,
+  threadArchiveCommands,
+} from "./operation-doors.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   BbHttpError,
@@ -18,14 +35,7 @@ import {
   type ThreadSendResult,
 } from "@bb/sdk";
 import type { QueuedMessageWaitingOn } from "@bb/domain";
-import {
-  collectOption,
-  confirmDestructiveAction,
-  outputJson,
-  parseReasoningLevel,
-  prependErrorContext,
-  requireThreadIdOrSelf,
-} from "../helpers.js";
+import { parseReasoningLevel } from "../helpers.js";
 import {
   resolveContextThreadId,
   resolveExplicitIdFlag,
@@ -43,110 +53,24 @@ import {
 } from "./helpers.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 
-interface ThreadUpdateCommandOptions {
-  self?: boolean;
-  json?: boolean;
-  title?: string;
-  parentThread?: string;
-  clearParentThread?: boolean;
-  section?: string;
-  clearSection?: boolean;
-  model?: string;
-  reasoningLevel?: string;
-  visibility?: string;
-  parentNotifications?: string;
-}
-
-interface ThreadArchiveCommandOptions {
-  self?: boolean;
-  json?: boolean;
-}
-
-interface ThreadUnarchiveCommandOptions {
-  self?: boolean;
-  json?: boolean;
-}
-
-interface ThreadRestoreEnvironmentCommandOptions {
-  self?: boolean;
-  json?: boolean;
-}
-
-interface ThreadPinCommandOptions {
-  self?: boolean;
-  json?: boolean;
-}
-
-interface ThreadRegenerateTitleCommandOptions {
-  self?: boolean;
-  json?: boolean;
-}
-
-interface ThreadDeleteCommandOptions {
-  confirmChildThreads?: boolean;
-  yes?: boolean;
-  json?: boolean;
-}
-
-interface ThreadTellCommandOptions {
-  json?: boolean;
-  messageFile?: string;
-  model?: string;
-  permissionMode?: string;
-  reasoningLevel?: string;
-  serviceTier?: string;
-  mode?: string;
-  plan?: boolean;
-  file?: string[];
-  image?: string[];
-  sendAt?: string;
-  compactFirst?: boolean;
-}
-
-interface ThreadActionOptions {
-  self?: boolean;
-  json?: boolean;
-}
-
-interface ThreadRetryCommandOptions {
-  self?: boolean;
-  json?: boolean;
-  turn?: string;
-  sendAt?: string;
-  reason?: string;
-}
-
-interface ThreadEditMessageCommandOptions {
-  expectedRequestSequence?: string;
-  json?: boolean;
-  message?: string;
-  messageFile?: string;
-  self?: boolean;
-}
-
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
-interface PostThreadMessageArgs {
-  getUrl: () => string;
-  threadId: string;
+interface ThreadTellInput {
+  id: string;
   message: string;
   mode: ThreadTellDeliveryMode;
-  model?: string;
-  permissionMode?: PermissionMode;
-  reasoningLevel?: ReasoningLevel;
-  serviceTier?: ServiceTier;
-  senderThreadId?: string;
-  plan?: boolean;
-  files?: readonly string[];
-  images?: readonly string[];
-  sendAt?: number;
+  model: string | undefined;
+  permissionMode: PermissionMode | undefined;
+  reasoningLevel: ReasoningLevel | undefined;
+  serviceTier: ServiceTier | undefined;
+  senderThreadId: string | undefined;
+  plan: boolean;
+  files: readonly string[];
+  images: readonly string[];
+  sendAt: number | undefined;
   compactFirst: boolean;
 }
 
-// The server's own answer plus the mode we asked for. `sendAt` used to be
-// echoed back here so the outcome line could name the time; the queued arm of
-// the response now carries it, along with the reason, so the CLI no longer
-// has to reconstruct what happened from the flags it sent.
 type PostThreadMessageResult = ThreadSendResult & {
   mode: ThreadTellDeliveryMode;
 };
@@ -161,544 +85,424 @@ interface ThreadUpdateBody {
   parentNotifications?: ThreadParentNotifications;
 }
 
+const UPLOAD_HELP =
+  "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)";
+
+function threadAction(
+  name: string,
+  operation:
+    | "threads.stop"
+    | "threads.compact"
+    | "threads.clearContext"
+    | "threads.cancelPlan"
+    | "threads.clearGoal",
+  description: string,
+  done: string,
+): CliCommand {
+  return publicCommand(operation, {
+    path: ["thread", name],
+    summary: description,
+    positionals: OPTIONAL_THREAD_ID,
+    options: SELF_TARGET,
+    json: (_output, input) => ({ ok: true, threadId: input.id }),
+    print: (_output, input) => `Thread ${input.id} ${done}`,
+  });
+}
+
+function pinCommand(
+  name: "pin" | "unpin",
+  description: string,
+  done: string,
+): CliCommand {
+  return publicCommand(name === "pin" ? "threads.pin" : "threads.unpin", {
+    path: ["thread", name],
+    summary: description,
+    positionals: OPTIONAL_THREAD_ID,
+    options: SELF_TARGET,
+    print: (thread) => `Thread ${thread.id} ${done}`,
+  });
+}
+
+const updateCommand = publicCommand("threads.update", {
+  path: ["thread", "update"],
+  summary: "Update a thread",
+  positionals: OPTIONAL_THREAD_ID,
+  options: {
+    self: SELF_FLAG,
+    json: JSON_FLAG,
+    title: flag("--title <title>", "Set the thread title"),
+    parentThread: flag("--parent-thread <id>", "Set the parent thread id"),
+    clearParentThread: flag(
+      "--clear-parent-thread",
+      "Clear the parent thread id",
+    ),
+    section: flag("--section <id>", "Move the thread into a section"),
+    clearSection: flag("--clear-section", "Remove the thread from its section"),
+    model: flag(
+      "--model <model>",
+      "Set the sticky model applied on the thread's next turn",
+    ),
+    reasoningLevel: flag(
+      "--reasoning-level <level>",
+      "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
+    ),
+    visibility: flag(
+      "--visibility <visibility>",
+      "Thread visibility: visible or hidden",
+    ),
+    parentNotifications: flag(
+      "--parent-notifications <value>",
+      PARENT_NOTIFICATIONS_HELP,
+    ),
+  },
+  prepare: ({ positionals, options }, client) => {
+    const {
+      title,
+      parentThread,
+      clearParentThread,
+      section,
+      clearSection,
+      model,
+    } = options;
+    if (parentThread && clearParentThread) {
+      throw new Error(
+        "Cannot combine --parent-thread with --clear-parent-thread.",
+      );
+    }
+    if (section && clearSection) {
+      throw new Error("Cannot combine --section with --clear-section.");
+    }
+    const reasoningLevel = parseReasoningLevel(options.reasoningLevel);
+    const visibility =
+      options.visibility === undefined
+        ? undefined
+        : threadVisibilitySchema.parse(options.visibility);
+    const parentNotifications = parseParentNotifications(
+      options.parentNotifications,
+    );
+    if (
+      !parentThread &&
+      !clearParentThread &&
+      !section &&
+      !clearSection &&
+      !title &&
+      !model &&
+      !reasoningLevel &&
+      !visibility &&
+      !parentNotifications
+    ) {
+      throw new Error(
+        "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --visibility, or --parent-notifications.",
+      );
+    }
+    const threadId = client.threadId(positionals.id, options.self);
+    const parentThreadId = resolveExplicitIdFlag({
+      flagName: "--parent-thread",
+      value: parentThread,
+    });
+    const body: ThreadUpdateBody = {};
+    if (title) body.title = title;
+    if (parentThreadId) {
+      body.parentThreadId = parentThreadId;
+    } else if (clearParentThread) {
+      body.parentThreadId = null;
+    }
+    if (section) {
+      body.sectionId = resolveExplicitIdFlag({
+        flagName: "--section",
+        value: section,
+      });
+    } else if (clearSection) {
+      body.sectionId = null;
+    }
+    if (model) body.model = model;
+    if (reasoningLevel) body.reasoningLevel = reasoningLevel;
+    if (visibility) body.visibility = visibility;
+    if (parentNotifications) body.parentNotifications = parentNotifications;
+    return { id: threadId, ...body };
+  },
+  print: (thread, input) => {
+    const lines = [`Thread ${thread.id} updated`];
+    if (input.title) lines.push(`Title: ${thread.title ?? "<untitled>"}`);
+    if ("parentThreadId" in input) {
+      lines.push(
+        thread.parentThreadId
+          ? `Parent: ${thread.parentThreadId}`
+          : "No parent thread",
+      );
+    }
+    if ("sectionId" in input) {
+      lines.push(
+        thread.sectionId ? `Section: ${thread.sectionId}` : "No section",
+      );
+    }
+    if (input.model) lines.push(`Model: ${input.model}`);
+    if (input.reasoningLevel) {
+      lines.push(`Reasoning level: ${input.reasoningLevel}`);
+    }
+    if (input.visibility) lines.push(`Visibility: ${input.visibility}`);
+    if (input.parentNotifications) {
+      lines.push(`Parent notifications: ${input.parentNotifications}`);
+    }
+    return lines;
+  },
+});
+
+const restoreEnvironmentCommand = publicCommand("threads.restoreEnvironment", {
+  path: ["thread", "restore-environment"],
+  summary:
+    "Restore the workspace of a thread whose environment was destroyed, when its environment provider supports restoring",
+  positionals: OPTIONAL_THREAD_ID,
+  options: SELF_TARGET,
+  failure: (input) => `Failed to restore the workspace for thread ${input.id}`,
+  print: (thread, input) =>
+    `Thread ${input.id} is restoring its workspace (status: ${thread.status})`,
+});
+
+const regenerateTitleCommand = publicCommand("threads.regenerateTitle", {
+  path: ["thread", "regenerate-title"],
+  summary:
+    "Replace a thread's title with one generated from its task and latest messages",
+  positionals: OPTIONAL_THREAD_ID,
+  options: SELF_TARGET,
+  failure: (input) => `Failed to regenerate the title of thread ${input.id}`,
+  print: (thread) => `Thread ${thread.id} titled "${thread.title}"`,
+});
+
+const deleteCommand = clientCommand({
+  path: ["thread", "delete"],
+  summary: "Delete a thread permanently",
+  positionals: { id: arg("<id>") },
+  options: {
+    yes: flag("--yes", "Skip the confirmation prompt"),
+    confirmChildThreads: flag(
+      "--confirm-child-threads",
+      "Confirm deleting a thread with child threads",
+    ),
+  },
+  declined: ({ positionals }) => ({
+    message: `Thread ${positionals.id} deletion cancelled`,
+  }),
+  async run({ positionals, options }, client) {
+    const thread = await client.call("threads.get", { id: positionals.id });
+    await client.confirm(
+      `Delete thread "${thread.title ?? thread.titleFallback ?? thread.id}" permanently? This cannot be undone.`,
+    );
+    await client.call("threads.delete", {
+      id: positionals.id,
+      childThreadsConfirmed: options.confirmChildThreads,
+    });
+    return null;
+  },
+  failure: ({ positionals }) => `Failed to delete thread ${positionals.id}`,
+  json: (_output, { positionals }) => ({ ok: true, threadId: positionals.id }),
+  print: (_output, { positionals }) => `Thread ${positionals.id} deleted`,
+});
+
+const editMessageCommand = publicCommand("threads.editMessage", {
+  path: ["thread", "edit-message"],
+  summary: "Replace an accepted user message and rerun from that point",
+  positionals: OPTIONAL_THREAD_ID,
+  options: {
+    message: flag("--message <text>", "Replacement message text"),
+    messageFile: flag(
+      "--message-file <path>",
+      `Read the replacement message from a file; ${TEXT_FILE_HELP_SUFFIX}`,
+    ),
+    self: SELF_FLAG,
+    expectedRequestSequence: flag(
+      "--expected-request-sequence <sequence>",
+      "Edit the message at this event sequence (default: the latest editable message)",
+    ),
+  },
+  async prepare({ positionals, options }, client) {
+    const threadId = client.threadId(positionals.id, options.self);
+    const message = await requireTextInput({
+      file: options.messageFile,
+      fileLabel: "--message-file",
+      inline: options.message,
+      inlineLabel: "--message <text>",
+    });
+    const sequence = options.expectedRequestSequence;
+    const expectedRequestSequence =
+      sequence === undefined ? undefined : Number(sequence);
+    if (
+      expectedRequestSequence !== undefined &&
+      (!Number.isInteger(expectedRequestSequence) ||
+        expectedRequestSequence < 0)
+    ) {
+      throw new Error(
+        "--expected-request-sequence must be a non-negative integer.",
+      );
+    }
+    const senderThreadId = resolveSenderThreadId(threadId);
+    return {
+      id: threadId,
+      operationId: randomUUID(),
+      ...(expectedRequestSequence !== undefined
+        ? { expectedRequestSequence }
+        : {}),
+      input: buildPromptInputs({ message }),
+      ...(senderThreadId !== undefined ? { senderThreadId } : {}),
+    };
+  },
+  json: (result, input) => ({ threadId: input.id, ...result }),
+  print: (_result, input) =>
+    `Thread ${input.id} message replaced; workspace changes were kept`,
+});
+
+const tellCommand = clientCommand({
+  path: ["thread", "tell"],
+  summary: "Send a follow-up message to a thread",
+  aliases: ["message", "send"],
+  positionals: { id: arg("<id>"), message: arg("[message]") },
+  options: {
+    messageFile: flag(
+      "--message-file <path>",
+      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    ),
+    json: JSON_FLAG,
+    model: flag("--model <model>", "Model ID for this message"),
+    serviceTier: flag("--service-tier <tier>", SERVICE_TIER_HELP),
+    reasoningLevel: flag(
+      "--reasoning-level <level>",
+      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
+    ),
+    permissionMode: flag("--permission-mode <mode>", PERMISSION_MODE_HELP),
+    mode: flag(
+      "--mode <mode>",
+      "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
+    ),
+    sendAt: flag("--send-at <when>", SEND_AT_HELP),
+    compactFirst: flag(
+      "--compact-first",
+      "Compact the idle thread's context first, then send this message when compaction finishes",
+    ),
+    plan: flag("--plan", PLAN_HELP),
+    file: flag("--file <path>", UPLOAD_HELP, { type: "strings", default: [] }),
+    image: flag("--image <path>", UPLOAD_HELP, {
+      type: "strings",
+      default: [],
+    }),
+  },
+  async run({ positionals, options }, client) {
+    const id = positionals.id;
+    const message = await requireTextInput({
+      file: options.messageFile,
+      fileLabel: "--message-file",
+      inline: positionals.message,
+      inlineLabel: "<message>",
+    });
+    return postThreadMessage(client, {
+      id,
+      message,
+      mode: resolveThreadMessageMode(options.mode),
+      model: options.model,
+      permissionMode: parsePermissionMode(options.permissionMode),
+      reasoningLevel: parseReasoningLevel(options.reasoningLevel),
+      serviceTier: parseServiceTier(options.serviceTier),
+      senderThreadId: resolveSenderThreadId(id),
+      plan: options.plan,
+      files: options.file,
+      images: options.image,
+      sendAt:
+        options.sendAt === undefined ? undefined : parseSendAt(options.sendAt),
+      compactFirst: options.compactFirst,
+    });
+  },
+  json: (response, { positionals }) => ({
+    threadId: positionals.id,
+    ...response,
+  }),
+  print: (response, { positionals, options }) =>
+    options.compactFirst
+      ? `Thread ${positionals.id} compacting; the message sends when compaction finishes`
+      : describeThreadTellOutcome(positionals.id, response),
+});
+
+const retryCommand = publicCommand("threads.retry", {
+  path: ["thread", "retry"],
+  summary: "Retry the failed turn on a thread",
+  positionals: OPTIONAL_THREAD_ID,
+  options: {
+    self: SELF_FLAG,
+    turn: flag(
+      "--turn <requestId>",
+      "Retry this turn request id specifically; fails when it is not the thread's failed turn",
+    ),
+    sendAt: flag("--send-at <when>", SEND_AT_HELP),
+    reason: flag(
+      "--reason <text>",
+      "Why it is being retried, shown on the queued row",
+    ),
+  },
+  prepare: ({ positionals, options }, client) => ({
+    id: client.threadId(positionals.id, options.self),
+    turnRequestId: options.turn ?? null,
+    sendAt: options.sendAt === undefined ? null : parseSendAt(options.sendAt),
+    reason: options.reason ?? DEFAULT_TURN_RETRY_REASON,
+  }),
+  json: (response, input) => ({ threadId: input.id, ...response }),
+  print: (response, input) => describeThreadRetryOutcome(input.id, response),
+});
+
+export const threadActionCommands: CliCommand[] = [
+  updateCommand,
+  restoreEnvironmentCommand,
+  pinCommand("pin", "Pin a thread", "pinned"),
+  pinCommand("unpin", "Unpin a thread", "unpinned"),
+  regenerateTitleCommand,
+  deleteCommand,
+  editMessageCommand,
+  tellCommand,
+  retryCommand,
+  threadAction(
+    "stop",
+    "threads.stop",
+    "Stop work and release the loaded agent runtime",
+    "stopped",
+  ),
+  threadAction(
+    "compact",
+    "threads.compact",
+    "Request compaction of an idle or errored thread's context",
+    "context compaction requested",
+  ),
+  threadAction(
+    "clear",
+    "threads.clearContext",
+    "Clear model context for an idle or failed thread",
+    "context cleared",
+  ),
+  threadAction(
+    "cancel-plan",
+    "threads.cancelPlan",
+    "Ask the provider to exit the active Plan mode",
+    "exited Plan mode",
+  ),
+  threadAction(
+    "clear-goal",
+    "threads.clearGoal",
+    "Ask the provider to clear the thread's Goal",
+    "cleared its Goal",
+  ),
+];
+
 export function registerActionsCommands(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("update [id]")
-    .description("Update a thread")
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .option("--title <title>", "Set the thread title")
-    .option("--parent-thread <id>", "Set the parent thread id")
-    .option("--clear-parent-thread", "Clear the parent thread id")
-    .option("--section <id>", "Move the thread into a section")
-    .option("--clear-section", "Remove the thread from its section")
-    .option(
-      "--model <model>",
-      "Set the sticky model applied on the thread's next turn",
-    )
-    .option(
-      "--reasoning-level <level>",
-      "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
-    )
-    .option("--visibility <visibility>", "Thread visibility: visible or hidden")
-    .option("--parent-notifications <value>", PARENT_NOTIFICATIONS_HELP)
-    .action(
-      action(
-        async (id: string | undefined, opts: ThreadUpdateCommandOptions) => {
-          if (opts.parentThread && opts.clearParentThread) {
-            throw new Error(
-              "Cannot combine --parent-thread with --clear-parent-thread.",
-            );
-          }
-          if (opts.section && opts.clearSection) {
-            throw new Error("Cannot combine --section with --clear-section.");
-          }
-          const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
-          const visibility =
-            opts.visibility === undefined
-              ? undefined
-              : threadVisibilitySchema.parse(opts.visibility);
-          const parentNotifications = parseParentNotifications(
-            opts.parentNotifications,
-          );
-          if (
-            !opts.parentThread &&
-            !opts.clearParentThread &&
-            !opts.section &&
-            !opts.clearSection &&
-            !opts.title &&
-            !opts.model &&
-            !reasoningLevel &&
-            !visibility &&
-            !parentNotifications
-          ) {
-            throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --visibility, or --parent-notifications.",
-            );
-          }
-
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const parentThreadId = resolveExplicitIdFlag({
-            flagName: "--parent-thread",
-            value: opts.parentThread,
-          });
-          const body: ThreadUpdateBody = {};
-          if (opts.title) {
-            body.title = opts.title;
-          }
-          if (parentThreadId) {
-            body.parentThreadId = parentThreadId;
-          } else if (opts.clearParentThread) {
-            body.parentThreadId = null;
-          }
-          if (opts.section) {
-            body.sectionId = resolveExplicitIdFlag({
-              flagName: "--section",
-              value: opts.section,
-            });
-          } else if (opts.clearSection) {
-            body.sectionId = null;
-          }
-          if (opts.model) {
-            body.model = opts.model;
-          }
-          if (reasoningLevel) {
-            body.reasoningLevel = reasoningLevel;
-          }
-          if (visibility) {
-            body.visibility = visibility;
-          }
-          if (parentNotifications) {
-            body.parentNotifications = parentNotifications;
-          }
-
-          const sdk = createCliBbSdk(getUrl());
-          const thread = await sdk.threads.update({ threadId, ...body });
-          if (outputJson(opts, thread)) return;
-          console.log(`Thread ${thread.id} updated`);
-          if (opts.title) {
-            console.log(`Title: ${thread.title ?? "<untitled>"}`);
-          }
-          if (opts.parentThread || opts.clearParentThread) {
-            console.log(
-              thread.parentThreadId
-                ? `Parent: ${thread.parentThreadId}`
-                : "No parent thread",
-            );
-          }
-          if (opts.section || opts.clearSection) {
-            console.log(
-              thread.sectionId ? `Section: ${thread.sectionId}` : "No section",
-            );
-          }
-          if (opts.model) {
-            console.log(`Model: ${opts.model}`);
-          }
-          if (reasoningLevel) {
-            console.log(`Reasoning level: ${reasoningLevel}`);
-          }
-          if (visibility) {
-            console.log(`Visibility: ${visibility}`);
-          }
-          if (parentNotifications) {
-            console.log(`Parent notifications: ${parentNotifications}`);
-          }
-        },
-      ),
-    );
-
-  parent
-    .command("archive [id]")
-    .description("Archive a thread")
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (id: string | undefined, opts: ThreadArchiveCommandOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          let archivedThreadIds: string[] = [threadId];
-          try {
-            const result = await sdk.threads.archive({ threadId });
-            archivedThreadIds = result.archivedThreadIds;
-          } catch (err: unknown) {
-            throw prependErrorContext(
-              `Failed to archive thread ${threadId}`,
-              err,
-            );
-          }
-          if (
-            outputJson(opts, {
-              ok: true,
-              threadId,
-              archivedThreadIds,
-            })
-          ) {
-            return;
-          }
-          const cascadedCount = archivedThreadIds.filter(
-            (archivedId) => archivedId !== threadId,
-          ).length;
-          if (cascadedCount === 0) {
-            console.log(`Thread ${threadId} archived`);
-            return;
-          }
-          console.log(
-            `Thread ${threadId} archived (${cascadedCount} related thread${cascadedCount === 1 ? "" : "s"} also archived)`,
-          );
-        },
-      ),
-    );
-
-  parent
-    .command("unarchive [id]")
-    .description("Unarchive a thread")
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (id: string | undefined, opts: ThreadUnarchiveCommandOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          await sdk.threads.unarchive({ threadId });
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} unarchived`);
-        },
-      ),
-    );
-
-  parent
-    .command("restore-environment [id]")
-    .description(
-      "Restore the workspace of a thread whose environment was destroyed, when its environment provider supports restoring",
-    )
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: ThreadRestoreEnvironmentCommandOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          let thread;
-          try {
-            thread = await sdk.threads.restoreEnvironment({ threadId });
-          } catch (err: unknown) {
-            throw prependErrorContext(
-              `Failed to restore the workspace for thread ${threadId}`,
-              err,
-            );
-          }
-          if (outputJson(opts, thread)) return;
-          console.log(
-            `Thread ${threadId} is restoring its workspace (status: ${thread.status})`,
-          );
-        },
-      ),
-    );
-
-  for (const { name, description, done } of [
-    { name: "pin", description: "Pin a thread", done: "pinned" },
-    { name: "unpin", description: "Unpin a thread", done: "unpinned" },
-  ] as const) {
-    parent
-      .command(`${name} [id]`)
-      .description(description)
-      .option("--self", "Target the current thread (from BB_THREAD_ID)")
-      .option("--json", "Print machine-readable JSON output")
-      .action(
-        action(
-          async (id: string | undefined, opts: ThreadPinCommandOptions) => {
-            const threadId = requireThreadIdOrSelf(id, opts);
-            const sdk = createCliBbSdk(getUrl());
-            const thread = await sdk.threads[name]({ threadId });
-            if (outputJson(opts, thread)) return;
-            console.log(`Thread ${thread.id} ${done}`);
-          },
-        ),
-      );
-  }
-
-  parent
-    .command("regenerate-title [id]")
-    .description(
-      "Replace a thread's title with one generated from its task and latest messages",
-    )
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: ThreadRegenerateTitleCommandOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          let thread;
-          try {
-            thread = await sdk.threads.experimental_regenerateTitle({
-              threadId,
-            });
-          } catch (err: unknown) {
-            throw prependErrorContext(
-              `Failed to regenerate the title of thread ${threadId}`,
-              err,
-            );
-          }
-          if (outputJson(opts, thread)) return;
-          console.log(`Thread ${thread.id} titled "${thread.title}"`);
-        },
-      ),
-    );
-
-  parent
-    .command("delete <id>")
-    .description("Delete a thread permanently")
-    .option("--yes", "Skip the confirmation prompt")
-    .option(
-      "--confirm-child-threads",
-      "Confirm deleting a thread with child threads",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ThreadDeleteCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        try {
-          const thread = await sdk.threads.get({ threadId: id });
-
-          if (!opts.yes) {
-            const confirmed = await confirmDestructiveAction(
-              `Delete thread "${thread.title ?? thread.titleFallback ?? thread.id}" permanently? This cannot be undone.`,
-            );
-            if (!confirmed) {
-              console.log(`Thread ${id} deletion cancelled`);
-              return;
-            }
-          }
-
-          await sdk.threads.delete({
-            threadId: id,
-            childThreadsConfirmed: opts.confirmChildThreads === true,
-          });
-        } catch (err: unknown) {
-          throw prependErrorContext(`Failed to delete thread ${id}`, err);
-        }
-        if (outputJson(opts, { ok: true, threadId: id })) return;
-        console.log(`Thread ${id} deleted`);
-      }),
-    );
-
-  parent
-    .command("edit-message [id]")
-    .description("Replace an accepted user message and rerun from that point")
-    .option("--message <text>", "Replacement message text")
-    .option(
-      "--message-file <path>",
-      `Read the replacement message from a file; ${TEXT_FILE_HELP_SUFFIX}`,
-    )
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option(
-      "--expected-request-sequence <sequence>",
-      "Edit the message at this event sequence (default: the latest editable message)",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: ThreadEditMessageCommandOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const message = await requireTextInput({
-            file: opts.messageFile,
-            fileLabel: "--message-file",
-            inline: opts.message,
-            inlineLabel: "--message <text>",
-          });
-          const sdk = createCliBbSdk(getUrl());
-          const expectedRequestSequence =
-            opts.expectedRequestSequence === undefined
-              ? undefined
-              : Number(opts.expectedRequestSequence);
-          if (
-            expectedRequestSequence !== undefined &&
-            (!Number.isInteger(expectedRequestSequence) ||
-              expectedRequestSequence < 0)
-          ) {
-            throw new Error(
-              "--expected-request-sequence must be a non-negative integer.",
-            );
-          }
-          const senderThreadId = resolveSenderThreadId(threadId);
-          const result = await sdk.threads.editMessage({
-            threadId,
-            operationId: randomUUID(),
-            ...(expectedRequestSequence !== undefined
-              ? { expectedRequestSequence }
-              : {}),
-            input: buildPromptInputs({ message }),
-            ...(senderThreadId !== undefined ? { senderThreadId } : {}),
-          });
-          if (outputJson(opts, { threadId, ...result })) {
-            return;
-          }
-          console.log(
-            `Thread ${threadId} message replaced; workspace changes were kept`,
-          );
-        },
-      ),
-    );
-
-  parent
-    .command("tell <id> [message]")
-    .aliases(["message", "send"])
-    .description("Send a follow-up message to a thread")
-    .option(
-      "--message-file <path>",
-      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .option("--model <model>", "Model ID for this message")
-    .option("--service-tier <tier>", SERVICE_TIER_HELP)
-    .option(
-      "--reasoning-level <level>",
-      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
-    )
-    .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option(
-      "--mode <mode>",
-      "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
-    )
-    .option("--send-at <when>", SEND_AT_HELP)
-    .option(
-      "--compact-first",
-      "Compact the idle thread's context first, then send this message when compaction finishes",
-    )
-    .option("--plan", PLAN_HELP)
-    .option(
-      "--file <path>",
-      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
-      collectOption,
-      [],
-    )
-    .option(
-      "--image <path>",
-      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
-      collectOption,
-      [],
-    )
-    .action(
-      action(
-        async (
-          id: string,
-          inlineMessage: string | undefined,
-          opts: ThreadTellCommandOptions,
-        ) => {
-          const message = await requireTextInput({
-            file: opts.messageFile,
-            fileLabel: "--message-file",
-            inline: inlineMessage,
-            inlineLabel: "<message>",
-          });
-          const response = await postThreadMessage({
-            getUrl,
-            threadId: id,
-            message,
-            mode: resolveThreadMessageMode(opts.mode),
-            model: opts.model,
-            permissionMode: parsePermissionMode(opts.permissionMode),
-            reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
-            serviceTier: parseServiceTier(opts.serviceTier),
-            senderThreadId: resolveSenderThreadId(id),
-            plan: opts.plan,
-            files: opts.file,
-            images: opts.image,
-            ...(opts.sendAt === undefined
-              ? {}
-              : { sendAt: parseSendAt(opts.sendAt) }),
-            compactFirst: opts.compactFirst === true,
-          });
-          if (outputJson(opts, { threadId: id, ...response })) return;
-          console.log(
-            opts.compactFirst === true
-              ? `Thread ${id} compacting; the message sends when compaction finishes`
-              : describeThreadTellOutcome(id, response),
-          );
-        },
-      ),
-    );
-
-  parent
-    .command("retry [id]")
-    .description("Retry the failed turn on a thread")
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option(
-      "--turn <requestId>",
-      "Retry this turn request id specifically; fails when it is not the thread's failed turn",
-    )
-    .option("--send-at <when>", SEND_AT_HELP)
-    .option(
-      "--reason <text>",
-      "Why it is being retried, shown on the queued row",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (id: string | undefined, opts: ThreadRetryCommandOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          const response = await sdk.threads.retry({
-            threadId,
-            ...(opts.turn === undefined ? {} : { turnRequestId: opts.turn }),
-            ...(opts.sendAt === undefined
-              ? {}
-              : { sendAt: parseSendAt(opts.sendAt) }),
-            ...(opts.reason === undefined ? {} : { reason: opts.reason }),
-          });
-          if (outputJson(opts, { threadId, ...response })) return;
-          console.log(describeThreadRetryOutcome(threadId, response));
-        },
-      ),
-    );
-
-  for (const { name, description, method, done } of [
-    {
-      name: "stop",
-      description: "Stop work and release the loaded agent runtime",
-      method: "stop",
-      done: "stopped",
-    },
-    {
-      name: "compact",
-      description: "Request compaction of an idle or errored thread's context",
-      method: "compact",
-      done: "context compaction requested",
-    },
-    {
-      name: "clear",
-      description: "Clear model context for an idle or failed thread",
-      method: "clearContext",
-      done: "context cleared",
-    },
-    {
-      name: "cancel-plan",
-      description: "Ask the provider to exit the active Plan mode",
-      method: "cancelPlan",
-      done: "exited Plan mode",
-    },
-    {
-      name: "clear-goal",
-      description: "Ask the provider to clear the thread's Goal",
-      method: "clearGoal",
-      done: "cleared its Goal",
-    },
-  ] as const) {
-    parent
-      .command(`${name} [id]`)
-      .description(description)
-      .option("--self", "Target the current thread (from BB_THREAD_ID)")
-      .option("--json", "Print machine-readable JSON output")
-      .action(
-        action(async (id: string | undefined, opts: ThreadActionOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          await sdk.threads[method]({ threadId });
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} ${done}`);
-        }),
-      );
-  }
+  const [update, ...rest] = threadActionCommands;
+  if (update !== undefined) mountCommands(parent, [update], { getUrl });
+  mountCommands(parent, threadArchiveCommands, { getUrl });
+  mountCommands(parent, rest, { getUrl });
 }
 
 async function postThreadMessage(
-  args: PostThreadMessageArgs,
+  client: CliClient,
+  args: ThreadTellInput,
 ): Promise<PostThreadMessageResult> {
-  const sdk = createCliBbSdk(args.getUrl());
+  const sdk = client.sdk();
   const input = await uploadClientAttachmentInputs({
     input: buildPromptInputs({
       message: args.message,
@@ -707,13 +511,13 @@ async function postThreadMessage(
       images: args.images,
     }),
     resolveProjectId: async () =>
-      (await sdk.threads.get({ threadId: args.threadId })).projectId,
+      (await client.call("threads.get", { id: args.id })).projectId,
     sdk,
   });
   let response: ThreadSendResult;
   try {
-    response = await sdk.threads.send({
-      threadId: args.threadId,
+    response = await client.call("threads.send", {
+      id: args.id,
       input,
       mode:
         args.mode === "steer"
@@ -730,13 +534,13 @@ async function postThreadMessage(
       ...(args.compactFirst ? { compactFirst: true } : {}),
     });
   } catch (error: unknown) {
-    throw await withRestoreEnvironmentHint(sdk, args.threadId, error);
+    throw await withRestoreEnvironmentHint(client, args.id, error);
   }
   return { ...response, mode: args.mode };
 }
 
 async function withRestoreEnvironmentHint(
-  sdk: ReturnType<typeof createCliBbSdk>,
+  client: CliClient,
   threadId: string,
   error: unknown,
 ): Promise<unknown> {
@@ -747,7 +551,9 @@ async function withRestoreEnvironmentHint(
   if (!parsed.success || parsed.data.details.reason !== "destroyed") {
     return error;
   }
-  const { canRestoreEnvironment } = await sdk.threads.get({ threadId });
+  const { canRestoreEnvironment } = await client.call("threads.get", {
+    id: threadId,
+  });
   return new CliExitError(error.message, 1, {
     code: parsed.data.code,
     hint: canRestoreEnvironment
@@ -761,9 +567,6 @@ function describeThreadTellOutcome(
   response: PostThreadMessageResult,
 ): string {
   if (response.delivery === "queued") {
-    // The server says WHY it is waiting, so the CLI does not have to guess
-    // from the flags it happened to send. `bb thread queue list` shows the
-    // same reason for the row afterwards.
     return `Thread ${threadId} message queued (${describeQueueWait(response.queuedMessage)}); it dispatches when that clears`;
   }
   return response.mode === "steer"
@@ -771,11 +574,6 @@ function describeThreadTellOutcome(
     : `Thread ${threadId} updated`;
 }
 
-/**
- * What the retry did. A retry is a dispatch like any other, so it either went
- * or is waiting — and when it is waiting the server says why, exactly as `tell`
- * reports a queued send.
- */
 function describeThreadRetryOutcome(
   threadId: string,
   response: ThreadRetryResult,
@@ -786,7 +584,6 @@ function describeThreadRetryOutcome(
     : `Thread ${threadId} retrying ${turn}`;
 }
 
-/** One short phrase for a queued row's wait, shared by `tell` and `queue`. */
 export function describeQueueWait(row: {
   sendAt: number | null;
   waitingOn: QueuedMessageWaitingOn | null;

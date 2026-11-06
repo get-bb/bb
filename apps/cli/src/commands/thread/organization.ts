@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { updateThreadTabsRequestSchema } from "@bb/server-contract";
 import {
   RESTART_RESUME_RETRY_REASON,
@@ -14,20 +14,24 @@ import {
 } from "../../table.js";
 import { describeQueueWait } from "./actions.js";
 import { formatQueueSendCountdown, parseSendAt } from "./send-time.js";
-import { action } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
+import { arg, flag } from "../../cli-door.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+  type CliClient,
+  type CliCommand,
+} from "../../operation-doors.js";
+import {
+  threadSectionCommands,
+  threadReadCommands,
+} from "./operation-doors.js";
 import {
   requireTextInput,
   resolveTextInput,
   TEXT_FILE_HELP_SUFFIX,
 } from "../../text-input.js";
-import {
-  collectOption,
-  confirmDestructiveAction,
-  outputJson,
-  parseReasoningLevel,
-  requireThreadIdOrSelf,
-} from "../helpers.js";
+import { parseReasoningLevel } from "../helpers.js";
 import {
   buildPromptInputs,
   parsePermissionMode,
@@ -36,68 +40,6 @@ import {
   SERVICE_TIER_HELP,
   uploadClientAttachmentInputs,
 } from "./helpers.js";
-
-interface JsonOptions {
-  json?: boolean;
-}
-
-interface SelfOptions extends JsonOptions {
-  self?: boolean;
-}
-
-interface SectionDeleteOptions extends JsonOptions {
-  yes?: boolean;
-}
-
-interface SearchOptions extends JsonOptions {
-  limit?: string;
-}
-
-interface HistoryOptions extends JsonOptions {
-  limit?: string;
-}
-
-interface QueueListOptions extends JsonOptions {
-  waitHolder?: string;
-}
-
-interface QueueCreateOptions extends JsonOptions {
-  file?: string[];
-  image?: string[];
-  messageFile?: string;
-  model?: string;
-}
-
-interface QueueUpdateOptions extends JsonOptions {
-  clearSendAt?: boolean;
-  file?: string[];
-  image?: string[];
-  messageFile?: string;
-  model?: string;
-  permissionMode?: string;
-  reasoningLevel?: string;
-  sendAt?: string;
-  serviceTier?: string;
-}
-
-interface QueueSendOptions extends JsonOptions {
-  mode?: "auto" | "steer";
-}
-
-interface QueueReorderOptions extends JsonOptions {
-  after?: string;
-  before?: string;
-  groupBoundary?: string;
-}
-
-interface QueueGroupOptions extends JsonOptions {
-  prefix: string;
-}
-
-interface ReorderPinnedOptions extends JsonOptions {
-  after?: string;
-  before?: string;
-}
 
 const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
 
@@ -116,13 +58,13 @@ function parsePositiveInteger(
   return value;
 }
 
-function printHumanJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
+function humanJson(value: unknown): string {
+  return JSON.stringify(value, null, 2);
 }
 
 const MAX_QUEUE_TEXT_WIDTH = 40;
 
-function printQueueTable(rows: ThreadQueuedMessagesResult): void {
+function printQueueTable(rows: ThreadQueuedMessagesResult): null {
   const now = Date.now();
   const table = rows.map((row) => [
     row.id,
@@ -168,6 +110,7 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
     console.log(`Failed ${row.id}: ${row.failureReason}`);
     console.log(`Retry: bb thread queue send ${row.threadId} ${row.id}`);
   }
+  return null;
 }
 
 function queuedMessagePreview(content: PromptInput[]): string {
@@ -186,534 +129,448 @@ function parseWaitHolder(value: string): QueuedMessageWaitHolder {
   );
 }
 
+const UPLOAD_HELP =
+  "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)";
+
+const MESSAGE_FILE_OPTION = {
+  messageFile: flag(
+    "--message-file <path>",
+    `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+  ),
+};
+
+const FILE_OPTIONS = {
+  file: flag("--file <path>", UPLOAD_HELP, { type: "strings", default: [] }),
+  image: flag("--image <path>", UPLOAD_HELP, { type: "strings", default: [] }),
+};
+
+async function uploadQueuedInput(
+  client: CliClient,
+  threadId: string,
+  message: string,
+  files: readonly string[],
+  images: readonly string[],
+): Promise<PromptInput[]> {
+  return uploadClientAttachmentInputs({
+    input: buildPromptInputs({ message, files, images }),
+    resolveProjectId: async () =>
+      (await client.call("threads.get", { id: threadId })).projectId,
+    sdk: client.sdk(),
+  });
+}
+
+const sectionDeleteCommand = publicCommand("threadSections.delete", {
+  path: ["thread", "section", "delete"],
+  summary: "Delete a thread section and remove its thread assignments",
+  positionals: { id: arg("<id>") },
+  confirm: (input) => `Delete thread section ${input.id}?`,
+  print: (result) =>
+    `Thread section ${result.id} deleted; ${result.updatedThreadCount} thread(s) unsectioned`,
+});
+
+const searchCommand = publicCommand("threads.search", {
+  path: ["thread", "search"],
+  summary: "Search threads and messages",
+  positionals: { query: arg("<query>") },
+  options: {
+    limit: flag(
+      "--limit <count>",
+      `Maximum results per group (1-${THREAD_SEARCH_LIMIT_PER_GROUP_MAX})`,
+    ),
+  },
+  prepare: ({ positionals, options }) => {
+    const limitPerGroup = parsePositiveInteger(
+      options.limit,
+      "--limit",
+      THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
+    );
+    return {
+      query: positionals.query,
+      ...(limitPerGroup === undefined ? {} : { limitPerGroup }),
+    };
+  },
+  print: (result) => humanJson(result),
+});
+
+const historyCommand = publicCommand("threads.promptHistory", {
+  path: ["thread", "history"],
+  summary: "List a thread's prompt history",
+  positionals: { id: arg("<id>") },
+  options: { limit: flag("--limit <count>", "Maximum history entries") },
+  prepare: ({ positionals, options }) => {
+    const limit = parsePositiveInteger(options.limit, "--limit");
+    return {
+      id: positionals.id,
+      ...(limit === undefined ? {} : { limit }),
+    };
+  },
+  print: (result) => humanJson(result),
+});
+
+const reorderPinnedCommand = publicCommand("threads.pinOrder", {
+  path: ["thread", "reorder-pinned"],
+  summary: "Move a pinned thread between adjacent pinned threads",
+  positionals: { id: arg("<id>") },
+  options: {
+    after: flag(
+      "--after <id>",
+      "Previous pinned thread, or omit for the start",
+    ),
+    before: flag("--before <id>", "Next pinned thread, or omit for the end"),
+  },
+  prepare: ({ positionals, options }) => ({
+    id: positionals.id,
+    previousThreadId: options.after ?? null,
+    nextThreadId: options.before ?? null,
+  }),
+  print: (_result, input) => `Pinned thread ${input.id} reordered`,
+});
+
+const queueListCommand = clientCommand({
+  path: ["thread", "queue", "list"],
+  summary: "List queued messages; omit the thread to list every one",
+  positionals: { threadId: arg("[threadId]") },
+  options: {
+    waitHolder: flag(
+      "--wait-holder <holder>",
+      "Filter to rows one plugin is holding: plugin:<plugin-id>",
+    ),
+  },
+  run: ({ positionals, options }, client) => {
+    const waitHolder = options.waitHolder
+      ? parseWaitHolder(options.waitHolder)
+      : undefined;
+    return positionals.threadId === undefined
+      ? client.call("queue.list", {
+          ...(waitHolder === undefined ? {} : { waitHolder }),
+        })
+      : client.call("threads.queuedMessages", { id: positionals.threadId });
+  },
+  print: (result) => {
+    if (result.length === 0) return "No queued messages found";
+    return printQueueTable(result);
+  },
+});
+
+const queueCreateCommand = clientCommand({
+  path: ["thread", "queue", "create"],
+  summary: "Create a queued message with text and attachments",
+  positionals: { threadId: arg("<threadId>"), message: arg("[message]") },
+  options: {
+    model: flag("--model <model>", "Model override for the queued message"),
+    ...MESSAGE_FILE_OPTION,
+    ...FILE_OPTIONS,
+  },
+  async run({ positionals, options }, client) {
+    const message = await requireTextInput({
+      file: options.messageFile,
+      fileLabel: "--message-file",
+      inline: positionals.message,
+      inlineLabel: "<message>",
+    });
+    const prompt = await uploadQueuedInput(
+      client,
+      positionals.threadId,
+      message,
+      options.file,
+      options.image,
+    );
+    return client.call("threads.createQueuedMessage", {
+      id: positionals.threadId,
+      input: prompt,
+      ...(options.model ? { model: options.model } : {}),
+    });
+  },
+  print: (result, { positionals }) =>
+    `Queued message ${result.id} created for thread ${positionals.threadId}`,
+});
+
+function queueSendAt(options: {
+  sendAt: string | undefined;
+  clearSendAt: boolean;
+}): number | null | undefined {
+  if (options.sendAt !== undefined && options.clearSendAt) {
+    throw new Error("Provide only one of --send-at or --clear-send-at.");
+  }
+  if (options.sendAt !== undefined) return parseSendAt(options.sendAt);
+  return options.clearSendAt ? null : undefined;
+}
+
+const queueUpdateCommand = clientCommand({
+  path: ["thread", "queue", "update"],
+  summary:
+    "Update a queued message's text, send time, or execution options in place",
+  positionals: {
+    threadId: arg("<threadId>"),
+    messageId: arg("<messageId>"),
+    message: arg("[message]"),
+  },
+  options: {
+    ...MESSAGE_FILE_OPTION,
+    ...FILE_OPTIONS,
+    sendAt: flag(
+      "--send-at <when>",
+      "Change when it sends: an ISO 8601 timestamp (2026-08-25T09:00) or a duration from now (30s, 10m, 2h, 7d); the message text is optional",
+    ),
+    clearSendAt: flag(
+      "--clear-send-at",
+      "Remove its send time so it goes once nothing else holds it; the message text is optional",
+    ),
+    model: flag(
+      "--model <model>",
+      "Model ID to send it with; the message text is optional",
+    ),
+    reasoningLevel: flag(
+      "--reasoning-level <level>",
+      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
+    ),
+    permissionMode: flag("--permission-mode <mode>", PERMISSION_MODE_HELP),
+    serviceTier: flag("--service-tier <tier>", SERVICE_TIER_HELP),
+  },
+  async run({ positionals, options }, client) {
+    const { threadId, messageId } = positionals;
+    const sendAt = queueSendAt(options);
+    const model = options.model;
+    const permissionMode = parsePermissionMode(options.permissionMode);
+    const reasoningLevel = parseReasoningLevel(options.reasoningLevel);
+    const serviceTier = parseServiceTier(options.serviceTier);
+    const changesExecution =
+      model !== undefined ||
+      permissionMode !== undefined ||
+      reasoningLevel !== undefined ||
+      serviceTier !== undefined;
+    const textInput = {
+      file: options.messageFile,
+      fileLabel: "--message-file",
+      inline: positionals.message,
+      inlineLabel: "<message>",
+    };
+    const attachesFiles = options.file.length > 0 || options.image.length > 0;
+    const message =
+      (sendAt === undefined && !changesExecution) || attachesFiles
+        ? await requireTextInput(textInput)
+        : await resolveTextInput(textInput);
+    const existing = (
+      await client.call("threads.queuedMessages", { id: threadId })
+    ).find((queuedMessage) => queuedMessage.id === messageId);
+    if (!existing) {
+      throw new Error(
+        `Queued message ${messageId} not found on thread ${threadId}.`,
+      );
+    }
+    const prompt =
+      message === undefined
+        ? undefined
+        : await uploadQueuedInput(
+            client,
+            threadId,
+            message,
+            options.file,
+            options.image,
+          );
+    return client.call("threads.updateQueuedMessage", {
+      id: threadId,
+      queuedMessageId: messageId,
+      expectedUpdatedAt: existing.updatedAt,
+      ...(prompt === undefined ? {} : { input: prompt }),
+      ...(sendAt === undefined ? {} : { sendAt }),
+      ...(model === undefined ? {} : { model }),
+      ...(permissionMode === undefined ? {} : { permissionMode }),
+      ...(reasoningLevel === undefined ? {} : { reasoningLevel }),
+      ...(serviceTier === undefined ? {} : { serviceTier }),
+    });
+  },
+  print: (result, { positionals, options }) =>
+    options.sendAt === undefined && !options.clearSendAt
+      ? `Queued message ${positionals.messageId} updated`
+      : result.sendAt === null
+        ? `Queued message ${positionals.messageId} updated; it has no send time`
+        : `Queued message ${positionals.messageId} updated; sends at ${new Date(result.sendAt).toLocaleString()}`,
+});
+
+function queueSendMode(mode: string): "auto" | "steer" {
+  if (mode === "auto" || mode === "steer") return mode;
+  throw new Error("--mode must be auto or steer.");
+}
+
+const queueSendCommand = publicCommand("threads.sendQueuedMessage", {
+  path: ["thread", "queue", "send"],
+  summary: "Send and remove a queued message",
+  positionals: { threadId: arg("<threadId>"), messageId: arg("<messageId>") },
+  options: {
+    mode: flag("--mode <mode>", "Delivery mode: auto or steer", {
+      default: "auto",
+    }),
+  },
+  prepare: ({ positionals, options }) => {
+    const mode = queueSendMode(options.mode);
+    return {
+      id: positionals.threadId,
+      queuedMessageId: positionals.messageId,
+      mode,
+    };
+  },
+  print: (result, input) =>
+    result.delivery === "queued"
+      ? `Queued message ${input.queuedMessageId} is still queued (${describeQueueWait(result.queuedMessage)})`
+      : `Queued message ${input.queuedMessageId} sent`,
+});
+
+const queueDeleteCommand = publicCommand("threads.deleteQueuedMessage", {
+  path: ["thread", "queue", "delete"],
+  summary: "Delete a queued message",
+  positionals: {
+    id: arg("<threadId>"),
+    queuedMessageId: arg("<messageId>"),
+  },
+  print: (_result, input) => `Queued message ${input.queuedMessageId} deleted`,
+});
+
+const queueReorderCommand = publicCommand("threads.reorderQueuedMessage", {
+  path: ["thread", "queue", "reorder"],
+  summary: "Move a queued message between adjacent messages",
+  positionals: { threadId: arg("<threadId>"), messageId: arg("<messageId>") },
+  options: {
+    after: flag(
+      "--after <id>",
+      "Previous queued message, or omit for the start",
+    ),
+    before: flag("--before <id>", "Next queued message, or omit for the end"),
+    groupBoundary: flag(
+      "--group-boundary <id>",
+      "Current group-boundary message id",
+    ),
+  },
+  prepare: ({ positionals, options }) => ({
+    id: positionals.threadId,
+    queuedMessageId: positionals.messageId,
+    previousQueuedMessageId: options.after ?? null,
+    nextQueuedMessageId: options.before ?? null,
+    ...(options.groupBoundary
+      ? { groupBoundaryQueuedMessageId: options.groupBoundary }
+      : {}),
+  }),
+  print: (_result, input) =>
+    `Queued message ${input.queuedMessageId} reordered`,
+});
+
+const queueGroupCommand = publicCommand(
+  "threads.setQueuedMessageGroupBoundary",
+  {
+    path: ["thread", "queue", "group"],
+    summary: "Set the grouped queued-message prefix",
+    positionals: {
+      threadId: arg("<threadId>"),
+      boundaryMessageId: arg("<boundaryMessageId>"),
+    },
+    options: {
+      prefix: flag(
+        "--prefix <ids>",
+        "Comma-separated expected grouped-prefix ids",
+        { required: true },
+      ),
+    },
+    prepare: ({ positionals, options }) => {
+      const prefix = options.prefix
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (prefix.length === 0) {
+        throw new Error("--prefix must contain at least one message id.");
+      }
+      return {
+        id: positionals.threadId,
+        groupBoundaryQueuedMessageId: positionals.boundaryMessageId,
+        expectedGroupedPrefixQueuedMessageIds: prefix,
+      };
+    },
+    print: (_result, input) =>
+      `Queued message group boundary set to ${input.groupBoundaryQueuedMessageId}`,
+  },
+);
+
+const tabsShowCommand = publicCommand("threads.tabs", {
+  path: ["thread", "tabs", "show"],
+  summary: "Show persisted panel tabs",
+  positionals: { id: arg("<threadId>") },
+  print: (result) => humanJson(result),
+});
+
+const tabsSetCommand = publicCommand("threads.updateTabs", {
+  path: ["thread", "tabs", "set"],
+  summary: "Replace persisted panel tabs with revision checking",
+  positionals: { threadId: arg("<threadId>") },
+  options: {
+    expectedRevision: flag(
+      "--expected-revision <number>",
+      "Current tab revision",
+      { required: true },
+    ),
+    tabsJson: flag("--tabs-json <json>", "JSON array of tab descriptors", {
+      required: true,
+    }),
+  },
+  prepare: ({ positionals, options }) => {
+    const request = updateThreadTabsRequestSchema.parse({
+      expectedRevision: Number(options.expectedRevision),
+      tabs: JSON.parse(options.tabsJson),
+    });
+    return { id: positionals.threadId, ...request };
+  },
+  print: (result, input) =>
+    `Thread ${input.id} tabs updated to revision ${result.revision}`,
+});
+
+export const threadOrganizationCommands: CliCommand[] = [
+  sectionDeleteCommand,
+  searchCommand,
+  historyCommand,
+  reorderPinnedCommand,
+  queueListCommand,
+  queueCreateCommand,
+  queueUpdateCommand,
+  queueSendCommand,
+  queueDeleteCommand,
+  queueReorderCommand,
+  queueGroupCommand,
+  tabsShowCommand,
+  tabsSetCommand,
+];
+
 export function registerOrganizationCommands(
   parent: Command,
   getUrl: () => string,
 ): void {
+  const deps = { getUrl };
   const section = parent
     .command("section")
     .description("Manage thread sections");
-
-  section
-    .command("list")
-    .description("List thread sections")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const sections = await createCliBbSdk(getUrl()).threadSections.list();
-        if (outputJson(opts, sections)) return;
-        if (sections.length === 0) {
-          console.log("No thread sections found");
-          return;
-        }
-        for (const item of sections) console.log(`${item.id}\t${item.name}`);
-      }),
-    );
-
-  section
-    .command("create <name>")
-    .description("Create a thread section")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (name: string, opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).threadSections.create({
-          name,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Thread section ${result.id} created: ${result.name}`);
-      }),
-    );
-
-  section
-    .command("rename <id> <name>")
-    .description("Rename a thread section")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, name: string, opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).threadSections.update({
-          id,
-          name,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Thread section ${result.id} renamed: ${result.name}`);
-      }),
-    );
-
-  section
-    .command("delete <id>")
-    .description("Delete a thread section and remove its thread assignments")
-    .option("--yes", "Skip the confirmation prompt")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: SectionDeleteOptions) => {
-        if (
-          !opts.yes &&
-          !(await confirmDestructiveAction(`Delete thread section ${id}?`))
-        )
-          return;
-        const result = await createCliBbSdk(getUrl()).threadSections.delete({
-          id,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(
-          `Thread section ${result.id} deleted; ${result.updatedThreadCount} thread(s) unsectioned`,
-        );
-      }),
-    );
-
-  parent
-    .command("search <query>")
-    .description("Search threads and messages")
-    .option(
-      "--limit <count>",
-      `Maximum results per group (1-${THREAD_SEARCH_LIMIT_PER_GROUP_MAX})`,
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (query: string, opts: SearchOptions) => {
-        const result = await createCliBbSdk(getUrl()).threads.search({
-          query,
-          limitPerGroup: parsePositiveInteger(
-            opts.limit,
-            "--limit",
-            THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
-          ),
-        });
-        if (outputJson(opts, result)) return;
-        printHumanJson(result);
-      }),
-    );
-
-  parent
-    .command("history <id>")
-    .description("List a thread's prompt history")
-    .option("--limit <count>", "Maximum history entries")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: HistoryOptions) => {
-        const result = await createCliBbSdk(getUrl()).threads.promptHistory({
-          threadId: id,
-          limit: parsePositiveInteger(opts.limit, "--limit"),
-        });
-        if (outputJson(opts, result)) return;
-        printHumanJson(result);
-      }),
-    );
-
-  for (const [name, markRead] of [
-    ["read", true],
-    ["unread", false],
-  ] as const) {
-    parent
-      .command(`${name} [id]`)
-      .description(`Mark a thread ${name}`)
-      .option("--self", "Target the current thread (from BB_THREAD_ID)")
-      .option("--json", "Print machine-readable JSON output")
-      .action(
-        action(async (id: string | undefined, opts: SelfOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          const result = markRead
-            ? await sdk.threads.markRead({ threadId })
-            : await sdk.threads.markUnread({ threadId });
-          if (outputJson(opts, result)) return;
-          console.log(`Thread ${threadId} marked ${name}`);
-        }),
-      );
-  }
-
-  parent
-    .command("reorder-pinned <id>")
-    .description("Move a pinned thread between adjacent pinned threads")
-    .option("--after <id>", "Previous pinned thread, or omit for the start")
-    .option("--before <id>", "Next pinned thread, or omit for the end")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: ReorderPinnedOptions) => {
-        const result = await createCliBbSdk(getUrl()).threads.reorderPinned({
-          threadId: id,
-          previousThreadId: opts.after ?? null,
-          nextThreadId: opts.before ?? null,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Pinned thread ${id} reordered`);
-      }),
-    );
-
+  mountCommands(
+    section,
+    [...threadSectionCommands, sectionDeleteCommand],
+    deps,
+  );
+  mountCommands(parent, [searchCommand, historyCommand], deps);
+  mountCommands(parent, threadReadCommands, deps);
+  mountCommands(parent, [reorderPinnedCommand], deps);
   const queue = parent
     .command("queue")
     .description("Manage queued thread messages");
-  queue
-    .command("list [threadId]")
-    .description("List queued messages; omit the thread to list every one")
-    .option(
-      "--wait-holder <holder>",
-      "Filter to rows one plugin is holding: plugin:<plugin-id>",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (threadId: string | undefined, opts: QueueListOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const result =
-          threadId === undefined
-            ? await sdk.threads.queue.list({
-                ...(opts.waitHolder
-                  ? { waitHolder: parseWaitHolder(opts.waitHolder) }
-                  : {}),
-              })
-            : await sdk.threads.queuedMessages.list({ threadId });
-        if (outputJson(opts, result)) return;
-        if (result.length === 0) {
-          console.log("No queued messages found");
-          return;
-        }
-        printQueueTable(result);
-      }),
-    );
-  queue
-    .command("create <threadId> [message]")
-    .description("Create a queued message with text and attachments")
-    .option("--model <model>", "Model override for the queued message")
-    .option(
-      "--message-file <path>",
-      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
-    )
-    .option(
-      "--file <path>",
-      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
-      collectOption,
-      [],
-    )
-    .option(
-      "--image <path>",
-      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
-      collectOption,
-      [],
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          threadId: string,
-          inlineMessage: string | undefined,
-          opts: QueueCreateOptions,
-        ) => {
-          const message = await requireTextInput({
-            file: opts.messageFile,
-            fileLabel: "--message-file",
-            inline: inlineMessage,
-            inlineLabel: "<message>",
-          });
-          const sdk = createCliBbSdk(getUrl());
-          const input = await uploadClientAttachmentInputs({
-            input: buildPromptInputs({
-              message,
-              files: opts.file,
-              images: opts.image,
-            }),
-            resolveProjectId: async () =>
-              (await sdk.threads.get({ threadId })).projectId,
-            sdk,
-          });
-          const result = await sdk.threads.queuedMessages.create({
-            threadId,
-            input,
-            ...(opts.model ? { model: opts.model } : {}),
-          });
-          if (outputJson(opts, result)) return;
-          console.log(
-            `Queued message ${result.id} created for thread ${threadId}`,
-          );
-        },
-      ),
-    );
-  queue
-    .command("update <threadId> <messageId> [message]")
-    .description(
-      "Update a queued message's text, send time, or execution options in place",
-    )
-    .option(
-      "--message-file <path>",
-      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
-    )
-    .option(
-      "--file <path>",
-      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
-      collectOption,
-      [],
-    )
-    .option(
-      "--image <path>",
-      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
-      collectOption,
-      [],
-    )
-    .option(
-      "--send-at <when>",
-      "Change when it sends: an ISO 8601 timestamp (2026-08-25T09:00) or a duration from now (30s, 10m, 2h, 7d); the message text is optional",
-    )
-    .option(
-      "--clear-send-at",
-      "Remove its send time so it goes once nothing else holds it; the message text is optional",
-    )
-    .option(
-      "--model <model>",
-      "Model ID to send it with; the message text is optional",
-    )
-    .option(
-      "--reasoning-level <level>",
-      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
-    )
-    .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option("--service-tier <tier>", SERVICE_TIER_HELP)
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          threadId: string,
-          messageId: string,
-          inlineMessage: string | undefined,
-          opts: QueueUpdateOptions,
-        ) => {
-          if (opts.sendAt !== undefined && opts.clearSendAt === true) {
-            throw new Error(
-              "Provide only one of --send-at or --clear-send-at.",
-            );
-          }
-          const sendAt =
-            opts.sendAt !== undefined
-              ? parseSendAt(opts.sendAt)
-              : opts.clearSendAt === true
-                ? null
-                : undefined;
-          const execution = {
-            model: opts.model,
-            permissionMode: parsePermissionMode(opts.permissionMode),
-            reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
-            serviceTier: parseServiceTier(opts.serviceTier),
-          };
-          const changesExecution = Object.values(execution).some(
-            (value) => value !== undefined,
-          );
-          const textInput = {
-            file: opts.messageFile,
-            fileLabel: "--message-file",
-            inline: inlineMessage,
-            inlineLabel: "<message>",
-          };
-          const attachesFiles =
-            (opts.file?.length ?? 0) > 0 || (opts.image?.length ?? 0) > 0;
-          const message =
-            (sendAt === undefined && !changesExecution) || attachesFiles
-              ? await requireTextInput(textInput)
-              : await resolveTextInput(textInput);
-          const sdk = createCliBbSdk(getUrl());
-          const queuedMessages = sdk.threads.queuedMessages;
-          const existing = (await queuedMessages.list({ threadId })).find(
-            (queuedMessage) => queuedMessage.id === messageId,
-          );
-          if (!existing) {
-            throw new Error(
-              `Queued message ${messageId} not found on thread ${threadId}.`,
-            );
-          }
-          const input =
-            message === undefined
-              ? undefined
-              : await uploadClientAttachmentInputs({
-                  input: buildPromptInputs({
-                    message,
-                    files: opts.file,
-                    images: opts.image,
-                  }),
-                  resolveProjectId: async () =>
-                    (await sdk.threads.get({ threadId })).projectId,
-                  sdk,
-                });
-          const result = await queuedMessages.update({
-            threadId,
-            queuedMessageId: messageId,
-            expectedUpdatedAt: existing.updatedAt,
-            ...(input === undefined ? {} : { input }),
-            ...(sendAt === undefined ? {} : { sendAt }),
-            ...(execution.model === undefined
-              ? {}
-              : { model: execution.model }),
-            ...(execution.permissionMode === undefined
-              ? {}
-              : { permissionMode: execution.permissionMode }),
-            ...(execution.reasoningLevel === undefined
-              ? {}
-              : { reasoningLevel: execution.reasoningLevel }),
-            ...(execution.serviceTier === undefined
-              ? {}
-              : { serviceTier: execution.serviceTier }),
-          });
-          if (outputJson(opts, result)) return;
-          console.log(
-            sendAt === undefined
-              ? `Queued message ${messageId} updated`
-              : result.sendAt === null
-                ? `Queued message ${messageId} updated; it has no send time`
-                : `Queued message ${messageId} updated; sends at ${new Date(result.sendAt).toLocaleString()}`,
-          );
-        },
-      ),
-    );
-  queue
-    .command("send <threadId> <messageId>")
-    .description("Send and remove a queued message")
-    .option("--mode <mode>", "Delivery mode: auto or steer", "auto")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (threadId: string, messageId: string, opts: QueueSendOptions) => {
-          if (opts.mode !== "auto" && opts.mode !== "steer")
-            throw new Error("--mode must be auto or steer.");
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).threads.queuedMessages.send({
-            threadId,
-            queuedMessageId: messageId,
-            mode: opts.mode,
-          });
-          if (outputJson(opts, result)) return;
-          if (result.delivery === "queued") {
-            console.log(
-              `Queued message ${messageId} is still queued (${describeQueueWait(result.queuedMessage)})`,
-            );
-            return;
-          }
-          console.log(`Queued message ${messageId} sent`);
-        },
-      ),
-    );
-  queue
-    .command("delete <threadId> <messageId>")
-    .description("Delete a queued message")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (threadId: string, messageId: string, opts: JsonOptions) => {
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).threads.queuedMessages.delete({
-          threadId,
-          queuedMessageId: messageId,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Queued message ${messageId} deleted`);
-      }),
-    );
-  queue
-    .command("reorder <threadId> <messageId>")
-    .description("Move a queued message between adjacent messages")
-    .option("--after <id>", "Previous queued message, or omit for the start")
-    .option("--before <id>", "Next queued message, or omit for the end")
-    .option("--group-boundary <id>", "Current group-boundary message id")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          threadId: string,
-          messageId: string,
-          opts: QueueReorderOptions,
-        ) => {
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).threads.queuedMessages.reorder({
-            threadId,
-            queuedMessageId: messageId,
-            previousQueuedMessageId: opts.after ?? null,
-            nextQueuedMessageId: opts.before ?? null,
-            ...(opts.groupBoundary
-              ? { groupBoundaryQueuedMessageId: opts.groupBoundary }
-              : {}),
-          });
-          if (outputJson(opts, result)) return;
-          console.log(`Queued message ${messageId} reordered`);
-        },
-      ),
-    );
-  queue
-    .command("group <threadId> <boundaryMessageId>")
-    .description("Set the grouped queued-message prefix")
-    .requiredOption(
-      "--prefix <ids>",
-      "Comma-separated expected grouped-prefix ids",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          threadId: string,
-          boundaryMessageId: string,
-          opts: QueueGroupOptions,
-        ) => {
-          const prefix = opts.prefix
-            .split(",")
-            .map((id) => id.trim())
-            .filter(Boolean);
-          if (prefix.length === 0)
-            throw new Error("--prefix must contain at least one message id.");
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).threads.queuedMessages.setGroupBoundary({
-            threadId,
-            groupBoundaryQueuedMessageId: boundaryMessageId,
-            expectedGroupedPrefixQueuedMessageIds: prefix,
-          });
-          if (outputJson(opts, result)) return;
-          console.log(
-            `Queued message group boundary set to ${boundaryMessageId}`,
-          );
-        },
-      ),
-    );
-
+  mountCommands(
+    queue,
+    [
+      queueListCommand,
+      queueCreateCommand,
+      queueUpdateCommand,
+      queueSendCommand,
+      queueDeleteCommand,
+      queueReorderCommand,
+      queueGroupCommand,
+    ],
+    deps,
+  );
   const tabs = parent
     .command("tabs")
     .description("Inspect and update persisted thread panel tabs");
-  tabs
-    .command("show <threadId>")
-    .description("Show persisted panel tabs")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (threadId: string, opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).threads.tabs.get({
-          threadId,
-        });
-        if (outputJson(opts, result)) return;
-        printHumanJson(result);
-      }),
-    );
-  tabs
-    .command("set <threadId>")
-    .description("Replace persisted panel tabs with revision checking")
-    .requiredOption("--expected-revision <number>", "Current tab revision")
-    .requiredOption("--tabs-json <json>", "JSON array of tab descriptors")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          threadId: string,
-          opts: JsonOptions & {
-            expectedRevision: string;
-            tabsJson: string;
-          },
-        ) => {
-          const request = updateThreadTabsRequestSchema.parse({
-            expectedRevision: Number(opts.expectedRevision),
-            tabs: JSON.parse(opts.tabsJson),
-          });
-          const result = await createCliBbSdk(getUrl()).threads.tabs.update({
-            threadId,
-            ...request,
-          });
-          if (outputJson(opts, result)) return;
-          console.log(
-            `Thread ${threadId} tabs updated to revision ${result.revision}`,
-          );
-        },
-      ),
-    );
+  mountCommands(tabs, [tabsShowCommand, tabsSetCommand], deps);
 }

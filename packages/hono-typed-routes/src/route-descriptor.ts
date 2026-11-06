@@ -29,9 +29,14 @@ export interface QueryRouteRequest<Input, ParsedInput> {
   readonly parsedInput?: ParsedInput;
 }
 
-export interface JsonRouteRequest<Input, ParsedInput> {
+export interface JsonRouteRequest<
+  Input,
+  ParsedInput,
+  Field extends string | null = string | null,
+> {
   source: "json";
   schema: ZodType;
+  field: Field;
   readonly input?: Input;
   readonly parsedInput?: ParsedInput;
 }
@@ -70,7 +75,28 @@ export interface RouteDefinition<
   method: Method;
   request: Request;
   response: Response;
+  headers?: Readonly<Record<string, string>>;
 }
+
+type ParamName<Segment extends string> =
+  Segment extends `${infer Name}{${string}` ? Name : Segment;
+
+export type RouteParamNames<Path extends string> =
+  Path extends `${string}:${infer Rest}`
+    ? Rest extends `${infer Segment}/${infer Tail}`
+      ? ParamName<Segment> | RouteParamNames<`/${Tail}`>
+      : ParamName<Rest>
+    : never;
+
+export type RouteParams<Path extends string> = {
+  [Name in RouteParamNames<Path>]: string;
+};
+
+export type RoutePathInput<Path extends string> = [
+  RouteParamNames<Path>,
+] extends [never]
+  ? EmptyInput
+  : { param: RouteParams<Path> };
 
 export type RouteRequestInput<Request> = Request extends {
   readonly input?: infer Input;
@@ -101,8 +127,16 @@ export type EndpointFromRouteResponse<Input, Response> =
       : never;
 
 export type EndpointFromRouteDescriptor<Descriptor> =
-  Descriptor extends RouteDefinition<any, any, infer Request, infer Response>
-    ? EndpointFromRouteResponse<RouteRequestInput<Request>, Response>
+  Descriptor extends RouteDefinition<
+    infer Path,
+    any,
+    infer Request,
+    infer Response
+  >
+    ? EndpointFromRouteResponse<
+        RoutePathInput<Path> & RouteRequestInput<Request>,
+        Response
+      >
     : never;
 
 export type MethodKeyFromRouteMethod<Method extends RouteMethod> =
@@ -124,14 +158,16 @@ type RoutePath<Descriptor> =
 
 export type ApiSchemaFromRouteUnion<Routes extends RouteDefinition> = {
   [Path in RoutePath<Routes>]: {
-    [Descriptor in Routes as Descriptor extends RouteDefinition<
-      Path,
-      infer Method,
-      any,
-      any
-    >
-      ? MethodKeyFromRouteMethod<Method>
-      : never]: EndpointFromRouteDescriptor<Descriptor>;
+    [
+      Descriptor in Routes as Descriptor extends RouteDefinition<
+        Path,
+        infer Method,
+        any,
+        any
+      >
+        ? MethodKeyFromRouteMethod<Method>
+        : never
+    ]: EndpointFromRouteDescriptor<Descriptor>;
   };
 };
 
@@ -183,43 +219,41 @@ export function textResponse<Output>(): RouteResponseDescriptor<
   return { status: 200, format: "text" };
 }
 
-export function noRequest<Input = EmptyInput>(): NoRouteRequest<Input> {
+export function noRequest(): NoRouteRequest<EmptyInput> {
   return { source: "none" };
 }
 
-export function queryRequest<
-  InputPrefix,
-  QueryInput,
-  Schema extends ZodType = ZodType<QueryInput>,
->(
+export function queryRequest<const Schema extends ZodType>(
   schema: Schema,
-): QueryRouteRequest<InputPrefix & { query: QueryInput }, z.output<Schema>> {
+): QueryRouteRequest<{ query: z.input<Schema> }, z.output<Schema>> {
   return { source: "query", schema };
 }
 
-export function optionalQueryRequest<
-  InputPrefix,
-  QueryInput,
-  Schema extends ZodType = ZodType<QueryInput>,
->(
+export function optionalQueryRequest<const Schema extends ZodType>(
   schema: Schema,
-): QueryRouteRequest<InputPrefix & { query?: QueryInput }, z.output<Schema>> {
+): QueryRouteRequest<{ query?: z.input<Schema> }, z.output<Schema>> {
   return { source: "query", schema };
 }
 
-export function jsonRequest<
-  InputPrefix,
-  BodyInput,
-  Schema extends ZodType = ZodType<BodyInput>,
->(
+export function jsonRequest<const Schema extends ZodType>(
   schema: Schema,
-): JsonRouteRequest<InputPrefix & { json: BodyInput }, z.output<Schema>> {
-  return { source: "json", schema };
+): JsonRouteRequest<{ json: z.input<Schema> }, z.output<Schema>, null> {
+  return { source: "json", schema, field: null };
 }
 
-export function formRequest<InputPrefix, FormInput>(): FormRouteRequest<
-  InputPrefix & { form: FormInput }
-> {
+export function jsonFieldRequest<
+  const Field extends string,
+  const Schema extends ZodType,
+>(
+  field: Field,
+  schema: Schema,
+): JsonRouteRequest<{ json: z.input<Schema> }, z.output<Schema>, Field> {
+  return { source: "json", schema, field };
+}
+
+export function formRequest<FormInput>(): FormRouteRequest<{
+  form: FormInput;
+}> {
   return { source: "form" };
 }
 

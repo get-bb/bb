@@ -1,9 +1,4 @@
-import {
-  hostDaemonInteractiveInterruptRequestSchema,
-  hostDaemonInteractiveRequestSchema,
-  typedRoutes,
-  type HostDaemonInternalSchema,
-} from "@bb/host-daemon-contract";
+import { hostDaemonInternalRoutes } from "@bb/host-daemon-contract";
 import { formatPendingInteractionSubjectDetailLines } from "@bb/core-ui";
 import type { PendingInteraction } from "@bb/domain";
 import {
@@ -25,6 +20,7 @@ import {
 } from "../services/lib/entity-lookup.js";
 import { queueChildThreadNeedsAttentionNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
+import { mountInternalRoute } from "../kernel/http-door.js";
 
 interface RequestChildThreadNeedsAttentionNotificationArgs {
   blockerSummary: string | null;
@@ -141,13 +137,9 @@ export function registerInternalInteractiveRequestRoutes(
   app: Hono,
   deps: AppDeps,
 ): void {
-  const { post } = typedRoutes<HostDaemonInternalSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
-
-  post(
-    "/session/interactive-request",
-    hostDaemonInteractiveRequestSchema,
+  mountInternalRoute(
+    app,
+    hostDaemonInternalRoutes.interactiveRequest,
     async (context, payload) => {
       const session = requireAuthenticatedDaemonSession({
         context,
@@ -194,10 +186,10 @@ export function registerInternalInteractiveRequestRoutes(
         interaction: payload.interaction,
       });
       if (registered.outcome === "rejected") {
-        return context.json({
-          outcome: "rejected",
+        return {
+          outcome: "rejected" as const,
           reason: registered.reason,
-        });
+        };
       }
       if (registered.outcome === "created") {
         requestChildThreadNeedsAttentionNotification(deps, {
@@ -208,17 +200,17 @@ export function registerInternalInteractiveRequestRoutes(
         });
       }
 
-      return context.json({
+      return {
         outcome: registered.outcome,
         interactionId: registered.interaction.id,
         status: registered.interaction.status,
-      });
+      };
     },
   );
 
-  post(
-    "/session/interactive-request/interrupt",
-    hostDaemonInteractiveInterruptRequestSchema,
+  mountInternalRoute(
+    app,
+    hostDaemonInternalRoutes.interactiveInterrupt,
     (context, payload) => {
       const session = requireAuthenticatedDaemonSession({
         context,
@@ -262,10 +254,10 @@ export function registerInternalInteractiveRequestRoutes(
           reason: payload.reason,
         });
 
-      return context.json({
+      return {
         ok: true,
         interactionIds: interrupted.map((interaction) => interaction.id),
-      });
+      };
     },
   );
 }

@@ -224,7 +224,7 @@ describe("@bb/sdk", () => {
     ]);
   });
 
-  it("reads provider installation events through the response instance", async () => {
+  it("parses provider installation events from the NDJSON response", async () => {
     const events = [
       {
         type: "started",
@@ -239,14 +239,13 @@ describe("@bb/sdk", () => {
         success: true,
       },
     ];
-    const response = new Response(null, {
-      status: 200,
-      headers: { "content-type": "application/x-ndjson" },
-    });
-    Object.defineProperty(response, "text", {
-      value: async () =>
-        events.map((event) => JSON.stringify(event)).join("\n"),
-    });
+    const response = new Response(
+      events.map((event) => JSON.stringify(event)).join("\n"),
+      {
+        status: 200,
+        headers: { "content-type": "application/x-ndjson" },
+      },
+    );
     const sdk = createBbSdk({
       transport: createHttpTransport({
         baseUrl: "http://bb.test",

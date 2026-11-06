@@ -1,13 +1,9 @@
 import { PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES } from "@bb/domain";
-import {
-  publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
-} from "@bb/server-contract";
-import type { Hono } from "hono";
+import { publicApiRoutes } from "@bb/server-contract";
 import { z } from "zod";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import type { OperationRoutes } from "../../kernel/http-door.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 
 const pendingInteractionIdSchema = z
@@ -28,79 +24,64 @@ function parsePendingInteractionId(rawInteractionId: string): string {
 }
 
 export function registerThreadInteractionRoutes(
-  app: Hono,
+  operations: OperationRoutes,
   deps: AppDeps,
 ): void {
-  const { get, post } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
   const routes = publicApiRoutes.threads;
 
-  get(routes.interactions, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      deps.pendingInteractions.listPendingThreadInteractions(thread.id),
-    );
+  operations.implement(routes.interactions, ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
+    return deps.pendingInteractions.listPendingThreadInteractions(thread.id);
   });
 
-  get(routes.interaction, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      deps.pendingInteractions.getThreadInteraction({
-        threadId: thread.id,
-        interactionId: parsePendingInteractionId(
-          context.req.param("interactionId"),
-        ),
-      }),
-    );
+  operations.implement(routes.interaction, ({ id, interactionId }) => {
+    const thread = requirePublicThread(deps.db, id);
+    return deps.pendingInteractions.getThreadInteraction({
+      threadId: thread.id,
+      interactionId: parsePendingInteractionId(interactionId),
+    });
   });
 
-  post(routes.resolveInteraction, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      deps.pendingInteractions.resolvePendingInteraction({
+  operations.implement(
+    routes.resolveInteraction,
+    ({ id, interactionId, ...payload }) => {
+      const thread = requirePublicThread(deps.db, id);
+      return deps.pendingInteractions.resolvePendingInteraction({
         threadId: thread.id,
-        interactionId: parsePendingInteractionId(
-          context.req.param("interactionId"),
-        ),
+        interactionId: parsePendingInteractionId(interactionId),
         resolution: payload,
-      }),
-    );
-  });
+      });
+    },
+  );
 
-  post(routes.respondToInteraction, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (
-      Buffer.byteLength(JSON.stringify(payload.value), "utf8") >
-      PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES
-    ) {
-      throw new ApiError(
-        413,
-        "invalid_request",
-        "Interaction response exceeds 64 KiB",
-      );
-    }
-    return context.json(
-      await deps.pendingInteractions.respondToInteraction({
+  operations.implement(
+    routes.respondToInteraction,
+    async ({ id, interactionId, ...payload }) => {
+      const thread = requirePublicThread(deps.db, id);
+      if (
+        Buffer.byteLength(JSON.stringify(payload.value), "utf8") >
+        PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES
+      ) {
+        throw new ApiError(
+          413,
+          "invalid_request",
+          "Interaction response exceeds 64 KiB",
+        );
+      }
+      return deps.pendingInteractions.respondToInteraction({
         threadId: thread.id,
-        interactionId: parsePendingInteractionId(
-          context.req.param("interactionId"),
-        ),
+        interactionId: parsePendingInteractionId(interactionId),
         value: payload.value,
-      }),
-    );
-  });
+      });
+    },
+  );
 
-  post(routes.cancelInteraction, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      deps.pendingInteractions.cancelPluginInteraction({
-        threadId: thread.id,
-        interactionId: parsePendingInteractionId(
-          context.req.param("interactionId"),
-        ),
-        reason: "user",
-      }),
-    );
+  operations.implement(routes.cancelInteraction, ({ id, interactionId }) => {
+    const thread = requirePublicThread(deps.db, id);
+    return deps.pendingInteractions.cancelPluginInteraction({
+      threadId: thread.id,
+      interactionId: parsePendingInteractionId(interactionId),
+      reason: "user",
+    });
   });
 }

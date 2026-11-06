@@ -1,22 +1,14 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { threadPaneActionSchema } from "@bb/server-contract";
-import { action } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
+import { arg } from "../../cli-door.js";
 import {
   resolveContextThreadId,
   resolveExplicitIdFlag,
 } from "../../context-env.js";
-import {
-  outputJson,
-  printThreadContextLabel,
-  type ResolvedId,
-} from "../helpers.js";
+import { clientCommand, mountCommand } from "../../operation-doors.js";
+import { printThreadContextLabel, type ResolvedId } from "../helpers.js";
 
-interface ThreadPaneCommandOptions {
-  json?: boolean;
-}
-
-function resolveThreadPaneTarget(id: string | undefined): ResolvedId {
+export function resolveThreadPaneTarget(id: string | undefined): ResolvedId {
   const explicit = resolveExplicitIdFlag({
     flagName: "<threadId> argument",
     value: id,
@@ -33,47 +25,44 @@ function resolveThreadPaneTarget(id: string | undefined): ResolvedId {
   );
 }
 
+export const threadPaneCommand = clientCommand({
+  path: ["thread", "pane"],
+  summary: "Control an open thread pane in connected BB apps",
+  usage: "<maximize|restore|toggle|spotlight|clear-spotlight> [id] [options]",
+  positionals: {
+    action: arg(
+      "<action>",
+      "Pane action: maximize, restore, toggle, spotlight, or clear-spotlight",
+    ),
+    id: arg("[id]", "Thread ID. Omit inside a BB thread."),
+  },
+  run: async ({ positionals }, client) => {
+    const action = threadPaneActionSchema.parse(positionals.action);
+    const target = resolveThreadPaneTarget(positionals.id);
+    const result = await client.call("threads.paneAction", {
+      id: target.id,
+      action,
+    });
+    return { action, target, delivered: result.delivered };
+  },
+  json: ({ action, target, delivered }) => ({
+    threadId: target.id,
+    action,
+    delivered,
+  }),
+  print: ({ action, target, delivered }) => {
+    printThreadContextLabel(target);
+    return [
+      `Thread: ${target.id}`,
+      `Pane action: ${action}`,
+      `Delivered: ${delivered}`,
+    ];
+  },
+});
+
 export function registerPaneCommand(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("pane")
-    .description("Control an open thread pane in connected BB apps")
-    .usage("<maximize|restore|toggle|spotlight|clear-spotlight> [id] [options]")
-    .argument(
-      "<action>",
-      "Pane action: maximize, restore, toggle, spotlight, or clear-spotlight",
-    )
-    .argument("[id]", "Thread ID. Omit inside a BB thread.")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          actionInput: string,
-          id: string | undefined,
-          opts: ThreadPaneCommandOptions,
-        ) => {
-          const paneAction = threadPaneActionSchema.parse(actionInput);
-          const target = resolveThreadPaneTarget(id);
-          const result = await createCliBbSdk(getUrl()).threads.paneAction({
-            action: paneAction,
-            threadId: target.id,
-          });
-          if (
-            outputJson(opts, {
-              threadId: target.id,
-              action: paneAction,
-              delivered: result.delivered,
-            })
-          ) {
-            return;
-          }
-          printThreadContextLabel(target);
-          console.log(`Thread: ${target.id}`);
-          console.log(`Pane action: ${paneAction}`);
-          console.log(`Delivered: ${result.delivered}`);
-        },
-      ),
-    );
+  mountCommand(parent, threadPaneCommand, { getUrl });
 }

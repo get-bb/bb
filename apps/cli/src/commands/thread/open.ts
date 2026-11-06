@@ -1,25 +1,20 @@
 import path from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { isRawThreadId } from "@bb/domain";
 import {
   threadOpenSplitSchema,
   type PanelFileSource,
   type ThreadOpenFile,
+  type ThreadOpenSplit,
 } from "@bb/server-contract";
-import { action } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
-import { requireThreadId, resolveContextThreadId } from "../../context-env.js";
+import { arg, flag } from "../../cli-door.js";
 import {
-  outputJson,
-  printThreadContextLabel,
-  type ResolvedId,
-} from "../helpers.js";
-
-interface ThreadOpenCommandOptions {
-  line?: string;
-  json?: boolean;
-  split?: string;
-}
+  clientCommand,
+  mountCommand,
+  type CliClient,
+} from "../../operation-doors.js";
+import { requireThreadId, resolveContextThreadId } from "../../context-env.js";
+import { printThreadContextLabel, type ResolvedId } from "../helpers.js";
 
 interface ThreadOpenTarget {
   threadId: string;
@@ -32,88 +27,88 @@ interface ThreadOpenFileRequest {
   path: string;
 }
 
-type CliBbSdk = ReturnType<typeof createCliBbSdk>;
+interface ThreadOpenOutput {
+  target: ThreadOpenTarget;
+  split: ThreadOpenSplit;
+  file: ThreadOpenFile | null;
+  delivered: number;
+}
+
+export const threadOpenCommand = clientCommand({
+  path: ["thread", "open"],
+  summary: "Open a BB thread, optionally with a file in its panel",
+  usage: "[id] [path] [options]",
+  positionals: {
+    id: arg(
+      "[id]",
+      "Thread ID. Inside a BB thread, omit it to target the current thread; a lone argument that is not a thread ID opens that file in the current thread",
+    ),
+    path: arg("[path]", "Thread-relative or absolute file path to open"),
+  },
+  options: {
+    line: flag("--line <number>", "Line number to focus"),
+    split: flag(
+      "--split <placement>",
+      "Open in right, down, left, top, or replace placement; edge placements add panes through pane 8, then replace the focused pane",
+    ),
+  },
+  run: async ({ positionals, options }, client): Promise<ThreadOpenOutput> => {
+    const target = resolveThreadOpenTarget(positionals.id, positionals.path);
+    const lineNumber = parseLineNumber(options.line);
+    const requestedSplit =
+      options.split === undefined
+        ? undefined
+        : threadOpenSplitSchema.parse(options.split);
+    if (target.inputPath === null && lineNumber !== null) {
+      throw new Error("--line requires a file path.");
+    }
+    const file: ThreadOpenFile | null =
+      target.inputPath === null
+        ? null
+        : {
+            ...(await resolveThreadOpenFileRequest({
+              inputPath: target.inputPath,
+              client,
+              threadId: target.threadId,
+            })),
+            lineNumber,
+          };
+    const result = await client.call("threads.open", {
+      id: target.threadId,
+      ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
+      file,
+    });
+    return {
+      target,
+      split: requestedSplit ?? "replace",
+      file,
+      delivered: result.delivered,
+    };
+  },
+  json: ({ target, split, file, delivered }) => ({
+    threadId: target.threadId,
+    split,
+    file,
+    delivered,
+    inputPath: target.inputPath,
+  }),
+  print: ({ target, split, file, delivered }) => {
+    printThreadContextLabel(target.resolved);
+    const lines = [`Thread: ${target.threadId}`, `Split: ${split}`];
+    if (file !== null) {
+      lines.push(`Source: ${file.source}`, `Path: ${file.path}`);
+      if (file.lineNumber !== null) lines.push(`Line: ${file.lineNumber}`);
+    }
+    lines.push(`Delivered: ${delivered}`);
+    return lines;
+  },
+});
 
 export function registerOpenCommand(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("open")
-    .description("Open a BB thread, optionally with a file in its panel")
-    .usage("[id] [path] [options]")
-    .argument(
-      "[id]",
-      "Thread ID. Inside a BB thread, omit it to target the current thread; a lone argument that is not a thread ID opens that file in the current thread",
-    )
-    .argument("[path]", "Thread-relative or absolute file path to open")
-    .option("--line <number>", "Line number to focus")
-    .option(
-      "--split <placement>",
-      "Open in right, down, left, top, or replace placement; edge placements add panes through pane 8, then replace the focused pane",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          first: string | undefined,
-          second: string | undefined,
-          opts: ThreadOpenCommandOptions,
-        ) => {
-          const target = resolveThreadOpenTarget(first, second);
-          const lineNumber = parseLineNumber(opts.line);
-          const requestedSplit =
-            opts.split === undefined
-              ? undefined
-              : threadOpenSplitSchema.parse(opts.split);
-          const split = requestedSplit ?? "replace";
-          if (target.inputPath === null && lineNumber !== null) {
-            throw new Error("--line requires a file path.");
-          }
-          const sdk = createCliBbSdk(getUrl());
-          const file: ThreadOpenFile | null =
-            target.inputPath === null
-              ? null
-              : {
-                  ...(await resolveThreadOpenFileRequest({
-                    inputPath: target.inputPath,
-                    sdk,
-                    threadId: target.threadId,
-                  })),
-                  lineNumber,
-                };
-          const result = await sdk.threads.open({
-            threadId: target.threadId,
-            ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
-            file,
-          });
-
-          if (
-            outputJson(opts, {
-              threadId: target.threadId,
-              split,
-              file,
-              delivered: result.delivered,
-              inputPath: target.inputPath,
-            })
-          ) {
-            return;
-          }
-
-          printThreadContextLabel(target.resolved);
-          console.log(`Thread: ${target.threadId}`);
-          console.log(`Split: ${split}`);
-          if (file !== null) {
-            console.log(`Source: ${file.source}`);
-            console.log(`Path: ${file.path}`);
-            if (file.lineNumber !== null) {
-              console.log(`Line: ${file.lineNumber}`);
-            }
-          }
-          console.log(`Delivered: ${result.delivered}`);
-        },
-      ),
-    );
+  mountCommand(parent, threadOpenCommand, { getUrl });
 }
 
 function resolveThreadOpenTarget(
@@ -159,7 +154,7 @@ function parseLineNumber(value: string | undefined): number | null {
 
 async function resolveThreadOpenFileRequest(args: {
   inputPath: string;
-  sdk: CliBbSdk;
+  client: CliClient;
   threadId: string;
 }): Promise<ThreadOpenFileRequest> {
   const inputPath = args.inputPath.trim();
@@ -186,7 +181,7 @@ async function resolveThreadOpenFileRequest(args: {
   }
 
   const workspaceRoot = await resolveThreadWorkspaceRoot(
-    args.sdk,
+    args.client,
     args.threadId,
   );
   if (pathContains(workspaceRoot, absoluteInputPath)) {
@@ -205,15 +200,15 @@ async function resolveThreadOpenFileRequest(args: {
 }
 
 async function resolveThreadWorkspaceRoot(
-  sdk: CliBbSdk,
+  client: CliClient,
   threadId: string,
 ): Promise<string> {
-  const thread = await sdk.threads.get({ threadId });
+  const thread = await client.call("threads.get", { id: threadId });
   if (thread.environmentId === null) {
     throw new Error(`Thread ${threadId} does not have an attached workspace.`);
   }
-  const environment = await sdk.environments.get({
-    environmentId: thread.environmentId,
+  const environment = await client.call("environments.get", {
+    id: thread.environmentId,
   });
   if (environment.path === null) {
     throw new Error(`Thread ${threadId} does not have a local workspace path.`);

@@ -13,7 +13,9 @@ export function createHttpTransport(
 ): BbSdkTransport {
   const baseUrl = args.baseUrl ?? SAME_ORIGIN_BASE_URL;
   const fetchImpl = args.fetch ?? fetch;
-  const client = createApiClient(baseUrl, { fetch: fetchImpl });
+  const client = createApiClient(baseUrl.replace(/\/+$/u, ""), {
+    fetch: fetchImpl,
+  });
 
   return {
     api: client.api,

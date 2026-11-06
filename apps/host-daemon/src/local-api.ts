@@ -16,10 +16,8 @@ import { assignIfDefined } from "@bb/config/objects";
 import {
   healthResponseSchema,
   HOST_DAEMON_PROTOCOL_VERSION,
-  openInTargetRequestSchema,
-  typedRoutes,
-  workspaceOpenTargetsQuerySchema,
-  type HostDaemonLocalSchema,
+  hostDaemonLocalRoutes,
+  mountRoute,
   type OpenInTargetRequest,
   type WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
@@ -274,11 +272,15 @@ export async function startLocalApiServer(
     await next();
   });
 
-  const { get, post } = typedRoutes<HostDaemonLocalSchema>(app);
   const platform = resolveHostPlatform();
+  const routeOptions = {
+    invalidRequest: (message: string) => new Error(message),
+  };
 
-  get("/status", (c) =>
-    c.json({
+  mountRoute(
+    app,
+    hostDaemonLocalRoutes.status,
+    () => ({
       hostId: options.hostId,
       connected: options.getConnected(),
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -286,41 +288,47 @@ export async function startLocalApiServer(
       supportsNativeFolderPicker: platform === "darwin",
       platform,
     }),
+    routeOptions,
   );
 
-  get(
-    "/workspace-open-targets",
-    workspaceOpenTargetsQuerySchema,
-    async (c, query) =>
-      c.json({
-        targets: await listWorkspaceOpenTargets(query),
-      }),
+  mountRoute(
+    app,
+    hostDaemonLocalRoutes.workspaceOpenTargets,
+    async (_c, query) => ({
+      targets: await listWorkspaceOpenTargets(query),
+    }),
+    routeOptions,
   );
 
-  post("/open-in-target", openInTargetRequestSchema, async (c, payload) => {
-    try {
-      await (
-        options.openInTarget ??
-        ((args) =>
-          openPathInTargetWithRuntime(
-            args,
-            workspaceOpenTargetRuntime(options),
-          ))
-      )(
-        await resolveOpenPathInTargetArgs({
-          configLoader: clientConfigLoader,
-          request: payload,
-        }),
-      );
-    } catch (error) {
-      if (error instanceof WorkspaceOpenTargetError) {
-        throw new HTTPException(400, { message: error.message });
+  mountRoute(
+    app,
+    hostDaemonLocalRoutes.openInTarget,
+    async (_c, payload) => {
+      try {
+        await (
+          options.openInTarget ??
+          ((args) =>
+            openPathInTargetWithRuntime(
+              args,
+              workspaceOpenTargetRuntime(options),
+            ))
+        )(
+          await resolveOpenPathInTargetArgs({
+            configLoader: clientConfigLoader,
+            request: payload,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof WorkspaceOpenTargetError) {
+          throw new HTTPException(400, { message: error.message });
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    return c.json({});
-  });
+      return {};
+    },
+    routeOptions,
+  );
 
   let boundServer: {
     server: ReturnType<typeof serve>;

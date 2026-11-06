@@ -42,6 +42,11 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
+import {
+  assertEveryOperationImplemented,
+  createOperationRoutes,
+} from "./kernel/http-door.js";
+import { createServerKernel } from "./kernel/server-kernel.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerUiPreferenceRoutes } from "./routes/ui-preferences.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
@@ -479,6 +484,7 @@ export function createApp(
   options?: CreateAppOptions,
 ): ServerApp {
   const app = new Hono();
+  const serverKernel = createServerKernel();
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
     app,
   });
@@ -925,41 +931,43 @@ export function createApp(
     notifyCatalogChanged: () => deps.hub.notifySystem(["plugins-changed"]),
     warn: (message) => deps.logger.warn(message),
   });
-  registerProjectRoutes(publicApi, deps);
-  registerPromptHistoryRoutes(publicApi, deps);
-  registerThreadSectionRoutes(publicApi, deps);
-  registerFileRoutes(publicApi, deps);
-  registerHostRoutes(publicApi, deps, pluginService);
-  registerDesktopBrowserRoutes(publicApi, deps);
-  registerTerminalRoutes(publicApi, deps);
-  registerEnvironmentRoutes(publicApi, deps, pluginService);
-  registerThreadRoutes(publicApi, deps);
-  registerQueueRoutes(publicApi, deps);
-  registerSystemRoutes(publicApi, deps, pluginService);
-  registerUiPreferenceRoutes(publicApi, deps);
+  const operationRoutes = createOperationRoutes(publicApi, serverKernel);
+  registerProjectRoutes(operationRoutes, deps);
+  registerPromptHistoryRoutes(operationRoutes, deps);
+  registerThreadSectionRoutes(operationRoutes, deps);
+  registerFileRoutes(operationRoutes, deps);
+  registerHostRoutes(operationRoutes, deps, pluginService);
+  registerDesktopBrowserRoutes(operationRoutes, deps);
+  registerTerminalRoutes(operationRoutes, deps);
+  registerEnvironmentRoutes(operationRoutes, deps, pluginService);
+  registerThreadRoutes(operationRoutes, deps);
+  registerQueueRoutes(operationRoutes, deps);
+  registerSystemRoutes(operationRoutes, deps, pluginService);
+  registerUiPreferenceRoutes(operationRoutes, deps);
   const pluginInstallJobs = createPluginInstallJobs({
     notifyChanged: () => deps.hub.notifySystem(["plugin-install-jobs-changed"]),
   });
   const pluginUpdateJobs = createPluginUpdateJobs({
     notifyChanged: () => deps.hub.notifySystem(["plugin-update-jobs-changed"]),
   });
-  registerPluginUpdateJobRoutes(publicApi, pluginUpdateJobs);
-  registerPluginInstallJobRoutes(publicApi, pluginInstallJobs);
+  registerPluginUpdateJobRoutes(operationRoutes, pluginUpdateJobs);
+  registerPluginInstallJobRoutes(operationRoutes, pluginInstallJobs);
   registerPluginCatalogRoutes(
-    publicApi,
+    operationRoutes,
     pluginCatalogService,
     pluginInstallJobs,
   );
   registerPluginRoutes(
-    publicApi,
+    operationRoutes,
     deps,
     pluginService,
     pluginInstallJobs,
     pluginUpdateJobs,
     upgradeWebSocket,
   );
-  registerSkillsRegistryRoutes(publicApi, deps);
-  registerServerMoveRoutes(publicApi, deps, serverMove);
+  registerSkillsRegistryRoutes(operationRoutes, deps);
+  registerServerMoveRoutes(operationRoutes, deps, serverMove);
+  assertEveryOperationImplemented(operationRoutes);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");

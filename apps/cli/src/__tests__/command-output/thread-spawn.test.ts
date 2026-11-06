@@ -17,6 +17,11 @@ import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
 import { registerThreadCommands } from "../../commands/thread/index.js";
 
+interface AttachmentUploadRequest {
+  param: { id: string };
+  form: { file: Blob };
+}
+
 describe("bb thread spawn command output", () => {
   setupCommandOutputTestEnvironment();
 
@@ -174,19 +179,17 @@ describe("bb thread spawn command output", () => {
           providerId: "codex",
         });
         const post = vi.fn(async () => thread);
-        stubServerApi({ "v1.threads.$post": post });
-        vi.mocked(globalThis.fetch).mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              type,
-              path: uploadedPath,
-              name: filename,
-              mimeType,
-              sizeBytes: bytes.byteLength,
-            }),
-            { headers: { "content-type": "application/json" } },
-          ),
-        );
+        const upload = vi.fn(async (_request: AttachmentUploadRequest) => ({
+          type,
+          path: uploadedPath,
+          name: filename,
+          mimeType,
+          sizeBytes: bytes.byteLength,
+        }));
+        stubServerApi({
+          "v1.threads.$post": post,
+          "v1.projects.:id.attachments.$post": upload,
+        });
 
         await runCommand(
           [
@@ -204,18 +207,9 @@ describe("bb thread spawn command output", () => {
           register,
         );
 
-        expect(globalThis.fetch).toHaveBeenCalledWith(
-          "http://server/api/v1/projects/proj-1/attachments",
-          expect.objectContaining({
-            body: expect.any(FormData),
-            method: "POST",
-          }),
-        );
-        const uploadBody = vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body;
-        expect(uploadBody).toBeInstanceOf(FormData);
-        if (!(uploadBody instanceof FormData))
-          throw new Error("Missing upload body");
-        const uploadedFile = uploadBody.get("file");
+        expect(upload).toHaveBeenCalledOnce();
+        expect(upload.mock.calls[0]?.[0].param).toEqual({ id: "proj-1" });
+        const uploadedFile = upload.mock.calls[0]?.[0].form.file;
         expect(uploadedFile).toBeInstanceOf(File);
         if (!(uploadedFile instanceof File))
           throw new Error("Missing uploaded file");
@@ -246,13 +240,17 @@ describe("bb thread spawn command output", () => {
           failure === "directory" ? clientDir : join(clientDir, "report.pdf");
         if (failure === "upload") await writeFile(filePath, "report");
         const post = vi.fn(async () => ({ ok: true }));
-        stubServerApi({ "v1.threads.$post": post });
-        vi.mocked(globalThis.fetch).mockResolvedValue(
-          new Response(JSON.stringify({ error: "Upload rejected" }), {
-            status: 400,
-            headers: { "content-type": "application/json" },
-          }),
+        const upload = vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: "Upload rejected" }), {
+              status: 400,
+              headers: { "content-type": "application/json" },
+            }),
         );
+        stubServerApi({
+          "v1.threads.$post": post,
+          "v1.projects.:id.attachments.$post": upload,
+        });
 
         await expect(
           runCommand(
@@ -271,8 +269,7 @@ describe("bb thread spawn command output", () => {
         ).rejects.toThrow("process.exit:1");
 
         expect(post).not.toHaveBeenCalled();
-        if (failure !== "upload")
-          expect(globalThis.fetch).not.toHaveBeenCalled();
+        if (failure !== "upload") expect(upload).not.toHaveBeenCalled();
         expect(console.error).toHaveBeenCalled();
       } finally {
         await rm(clientDir, { force: true, recursive: true });

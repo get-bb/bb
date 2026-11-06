@@ -1,3 +1,4 @@
+import { streamBody } from "@bb/operations";
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -9,17 +10,10 @@ import {
   readLastServerMoveFile,
   writeLastServerMoveFile,
 } from "@bb/server-archive";
-import {
-  publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
-} from "@bb/server-contract";
-import type { Hono } from "hono";
+import type { OperationCaller } from "@bb/operations";
+import { publicApiRoutes } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
-import {
-  getGateAuthKind,
-  type GateAuthHeaderReader,
-} from "../request-context.js";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import { callHostOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   assertUsableHostId,
@@ -35,8 +29,8 @@ import type { AppDeps } from "../types.js";
 const SERVER_EXPORT_WORK_DIR_NAME = "server-export";
 const DELETE_OLD_SERVER_COPY_TIMEOUT_MS = 5 * 60_000;
 
-function assertServerManagementAllowed(context: GateAuthHeaderReader): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertServerManagementAllowed(caller: OperationCaller): void {
+  if (caller.user === "machine") {
     throw new ApiError(
       403,
       "machine_host_management_forbidden",
@@ -74,43 +68,39 @@ function serverExportFileName(now: Date): string {
 }
 
 export function registerServerMoveRoutes(
-  app: Hono,
+  operations: OperationRoutes,
   deps: AppDeps,
   serverMove: ServerMoveCoordinator,
 ): void {
-  const { del, get, post } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (message) =>
-      new ApiError(400, "invalid_request", message),
-  });
   const routes = publicApiRoutes.server;
 
-  post(routes.checkMove, async (context, payload) => {
-    assertServerManagementAllowed(context);
+  operations.implement(routes.checkMove, async (payload, { caller }) => {
+    assertServerManagementAllowed(caller);
     assertServerMoveExperimentEnabled(deps);
-    return context.json(await serverMove.check(payload));
+    return serverMove.check(payload);
   });
 
-  post(routes.startMove, async (context, payload) => {
-    assertServerManagementAllowed(context);
+  operations.implement(routes.startMove, async (payload, { caller }) => {
+    assertServerManagementAllowed(caller);
     assertServerMoveExperimentEnabled(deps);
-    return context.json(await serverMove.start(payload));
+    return serverMove.start(payload);
   });
 
-  get(routes.moveStatus, async (context) => {
-    assertServerManagementAllowed(context);
-    return context.json({
+  operations.implement(routes.moveStatus, async (_input, { caller }) => {
+    assertServerManagementAllowed(caller);
+    return {
       move: serverMove.getStatus(),
       lastMove: await readLastServerMove(deps.config.dataDir),
-    });
+    };
   });
 
-  post(routes.cancelMove, (context) => {
-    assertServerManagementAllowed(context);
-    return context.json(serverMove.cancel());
+  operations.implement(routes.cancelMove, (_input, { caller }) => {
+    assertServerManagementAllowed(caller);
+    return serverMove.cancel();
   });
 
-  post(routes.export, async (context) => {
-    assertServerManagementAllowed(context);
+  operations.implement(routes.export, async (_input, { caller }) => {
+    assertServerManagementAllowed(caller);
     assertServerMoveExperimentEnabled(deps);
     if (isServerMoveInFlight(serverMove.getStatus())) {
       throw new ApiError(
@@ -155,43 +145,45 @@ export function registerServerMoveRoutes(
     stream.once("close", () => {
       void removeWorkDir();
     });
-    return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
-      status: 200,
+    return streamBody(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
+      contentType: "application/gzip",
       headers: {
         "cache-control": "no-store",
         "content-disposition": `attachment; filename="${fileName}"`,
         "content-length": String(archive.sizeBytes),
-        "content-type": "application/gzip",
         "x-bb-archive-sha256": archive.sha256,
       },
     });
   });
 
-  del(publicApiRoutes.hosts.deleteOldServerCopy, async (context) => {
-    assertServerManagementAllowed(context);
-    assertServerMoveExperimentEnabled(deps);
-    const hostId = context.req.param("id");
-    assertUsableHostId(deps, { hostId });
-    const lastMove = await readLastServerMoveFile(deps.config.dataDir);
-    if (lastMove === null || lastMove.fromHostId !== hostId) {
-      throw new ApiError(
-        404,
-        "old_server_copy_not_found",
-        "This machine doesn't have an old server copy",
-      );
-    }
-    const result = await callHostOnlineRpc(deps, {
-      hostId,
-      timeoutMs: DELETE_OLD_SERVER_COPY_TIMEOUT_MS,
-      command: { type: "server_move.delete_old_copy" },
-    });
-    if (lastMove.oldCopyDeletedAt === null) {
-      await writeLastServerMoveFile(deps.config.dataDir, {
-        ...lastMove,
-        oldCopyDeletedAt: Date.now(),
+  operations.implement(
+    publicApiRoutes.hosts.deleteOldServerCopy,
+    async ({ id }, { caller }) => {
+      assertServerManagementAllowed(caller);
+      assertServerMoveExperimentEnabled(deps);
+      const hostId = id;
+      assertUsableHostId(deps, { hostId });
+      const lastMove = await readLastServerMoveFile(deps.config.dataDir);
+      if (lastMove === null || lastMove.fromHostId !== hostId) {
+        throw new ApiError(
+          404,
+          "old_server_copy_not_found",
+          "This machine doesn't have an old server copy",
+        );
+      }
+      const result = await callHostOnlineRpc(deps, {
+        hostId,
+        timeoutMs: DELETE_OLD_SERVER_COPY_TIMEOUT_MS,
+        command: { type: "server_move.delete_old_copy" },
       });
-    }
-    deps.hub.notifySystem(["server-move-changed"]);
-    return context.json({ deleted: result.deleted });
-  });
+      if (lastMove.oldCopyDeletedAt === null) {
+        await writeLastServerMoveFile(deps.config.dataDir, {
+          ...lastMove,
+          oldCopyDeletedAt: Date.now(),
+        });
+      }
+      deps.hub.notifySystem(["server-move-changed"]);
+      return { deleted: result.deleted };
+    },
+  );
 }

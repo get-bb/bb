@@ -1,19 +1,1 @@
 export const THREAD_EVENT_LIST_PAGE_SIZE = 100;
-
-export type PathId = { param: { id: string } };
-export type PathProjectId = { param: { id: string } };
-export type PathThreadAndQueuedMessage = {
-  param: { id: string; queuedMessageId: string };
-};
-export type PathIdAndFilePath = {
-  param: { id: string; filePath: string };
-};
-export type PathIdRefAndFilePath = {
-  param: { id: string; ref: string; filePath: string };
-};
-export type PathIdHostAndFilePath = {
-  param: { id: string; hostId: string; filePath: string };
-};
-export type PathTerminal = {
-  param: { terminalId: string };
-};

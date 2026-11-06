@@ -1,46 +1,22 @@
 import { registerMachineEnvironmentCommands } from "./machine-environment.js";
-import {
-  enrollMachine,
-  type MachineEnrollmentOptions,
-} from "./machine-enrollment.js";
-import { Command } from "commander";
+import { enrollMachine } from "./machine-enrollment.js";
+import type { Command } from "commander";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
-import { action, CliExitError } from "../action.js";
+import { CliExitError } from "../action.js";
+import { JSON_FLAG_DESCRIPTION, arg, flag } from "../cli-door.js";
 import { createCliBbSdk } from "../client.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+  type CliClient,
+  type CliCommand,
+} from "../operation-doors.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
-import { confirmDestructiveAction } from "./helpers.js";
 
 function enrollmentExpiryNotice(expiresAt: number | null): string {
   if (expiresAt === null) return "This command expires once it is used.";
   return `This command expires at ${new Date(expiresAt).toLocaleTimeString()}.`;
-}
-
-interface MachineListCommandOptions {
-  json?: boolean;
-}
-
-interface MachineEnumerationOptions extends MachineListCommandOptions {
-  all?: boolean;
-}
-
-interface MachineCreateCommandOptions extends MachineListCommandOptions {
-  provider: string;
-  wait: boolean;
-  key?: string;
-  inputs?: string;
-}
-
-interface MachineMutationCommandOptions extends MachineListCommandOptions {
-  yes?: boolean;
-}
-
-interface MachineRemoveCommandOptions extends MachineMutationCommandOptions {
-  force?: boolean;
-}
-
-interface MachineProviderInstallOptions extends MachineListCommandOptions {
-  action?: "install" | "update";
 }
 
 const MACHINE_LIFECYCLE_TIMEOUT_MS = 15 * 60_000;
@@ -195,6 +171,343 @@ export async function resolveMachineHostId(args: {
   return hostId;
 }
 
+const TARGET = { target: arg("<id-or-name>") };
+
+function resolveTarget(target: string, client: CliClient): Promise<string> {
+  return resolveMachineHostId({ serverUrl: client.url, target });
+}
+
+const resolveTargetInput = async (
+  { positionals }: { positionals: { target: string } },
+  client: CliClient,
+) => ({ id: await resolveTarget(positionals.target, client) });
+
+const JSON_OPTION = { json: flag("--json", JSON_FLAG_DESCRIPTION) };
+
+function lifecycleCommand(args: {
+  verb: "reconcile" | "suspend" | "resume";
+  summary: string;
+  request(client: CliClient, id: string): Promise<Host>;
+  targetPhase(requested: Host): "active" | "suspended" | null;
+  done(id: string, host: Host): string;
+}): CliCommand {
+  return clientCommand({
+    path: ["machine", args.verb],
+    summary: args.summary,
+    positionals: TARGET,
+    async run({ positionals }, client) {
+      const id = await resolveTarget(positionals.target, client);
+      const requested = await args.request(client, id);
+      const targetPhase = args.targetPhase(requested);
+      const host =
+        targetPhase === null
+          ? requested
+          : await waitForMachineLifecycle({
+              host: requested,
+              targetPhase,
+              getHost: () => client.call("hosts.get", { id }),
+            });
+      return { id, host };
+    },
+    json: ({ host }) => host,
+    print: ({ id, host }) => args.done(id, host),
+  });
+}
+
+export const machineCommands = [
+  clientCommand({
+    path: ["machine", "enroll"],
+    summary: "Enroll this machine using a private bootstrap bundle",
+    options: {
+      bootstrapFile: flag(
+        "--bootstrap-file <path>",
+        "Read the bootstrap bundle from a file",
+      ),
+      bootstrapEnv: flag(
+        "--bootstrap-env <name>",
+        "Consume the bootstrap bundle from an environment variable",
+      ),
+    },
+    run: ({ options: { bootstrapFile, bootstrapEnv } }) =>
+      enrollMachine({
+        ...(bootstrapFile === undefined ? {} : { bootstrapFile }),
+        ...(bootstrapEnv === undefined ? {} : { bootstrapEnv }),
+      }),
+    print: (result) => `Machine ${result.hostId} enrolled`,
+  }),
+  clientCommand({
+    path: ["machine", "join-code"],
+    summary: "Compatibility notice for removed machine join codes",
+    hidden: true,
+    run(): never {
+      throw new CliExitError("bb machine join-code has been removed.", 1, {
+        code: "removed_command",
+        hint: "Use `bb machine create --provider manual` and run the printed enrollment command.",
+      });
+    },
+  }),
+  clientCommand({
+    path: ["machine", "create"],
+    summary: "Create a machine using an installed provider",
+    interrupt:
+      "Stopped following; creation continues. Use bb machine remove <host-id> to cancel.",
+    options: {
+      wait: flag("--no-wait", "Return the creating host ID immediately"),
+      provider: flag("--provider <id>", "Machine provider ID", {
+        required: true,
+      }),
+      key: flag(
+        "--key <idempotency-key>",
+        "Reuse a stable key when retrying creation",
+      ),
+      inputs: flag("--inputs <JSON>", "Provider inputs as JSON"),
+    },
+    async run({ options }, client) {
+      const machineProviderId = parseProviderCliKey(options.provider);
+      const key = options.key?.trim();
+      if (key === "") throw new Error("Creation key must not be empty.");
+      let inputs: JsonValue = null;
+      if (options.inputs !== undefined) {
+        try {
+          inputs = jsonValueSchema.parse(JSON.parse(options.inputs));
+        } catch {
+          throw new Error("--inputs must be valid JSON.");
+        }
+      }
+      const signal = client.signal;
+      const sdk = client.sdk();
+      signal.throwIfAborted();
+      let host = await sdk.hosts.experimental_create({
+        machineProviderId,
+        inputs,
+        ...(key === undefined ? {} : { key }),
+        wait: false,
+        signal,
+      });
+      if (!options.wait) return { host, waited: false };
+      let enrollmentCommandShown = false;
+      const reportEnrollmentCommand = async (current: Host) => {
+        if (enrollmentCommandShown || current.lifecycle.phase !== "creating")
+          return;
+        const enrollmentCommand =
+          await sdk.hosts.experimental_getEnrollmentCommand({
+            hostId: current.id,
+            signal,
+          });
+        if (enrollmentCommand !== null) {
+          console.error("On macOS or Linux, run:");
+          console.error(enrollmentCommand.command);
+          console.error("On Windows, run in PowerShell:");
+          console.error(enrollmentCommand.windowsCommand);
+          console.error(enrollmentExpiryNotice(enrollmentCommand.expiresAt));
+          enrollmentCommandShown = true;
+        }
+      };
+      await reportEnrollmentCommand(host);
+      console.error(`Following machine ${host.id}`);
+      host = await waitForMachineLifecycle({
+        host,
+        targetPhase: "active",
+        getHost: async () => {
+          const current = await sdk.hosts.get({
+            hostId: host.id,
+            signal,
+          });
+          await reportEnrollmentCommand(current);
+          return current;
+        },
+      });
+      return { host, waited: true };
+    },
+    json: ({ host }) => host,
+    print: ({ host, waited }) =>
+      waited ? `Machine ${host.name} created` : host.id,
+  }),
+  publicCommand("system.machineProviders", {
+    path: ["machine", "providers"],
+    summary: "List installed machine providers",
+    json: ({ providers }) => providers,
+    print: ({ providers }) =>
+      providers.length === 0
+        ? "No machine providers found"
+        : providers
+            .map((provider) => `${provider.id}  ${provider.displayName}`)
+            .join("\n"),
+  }),
+  clientCommand({
+    path: ["machine", "list"],
+    summary: "List execution machines",
+    options: {
+      all: flag(
+        "--all",
+        "Include disposable provider sandboxes alongside persistent machines",
+      ),
+      ...JSON_OPTION,
+    },
+    async run({ options }, client) {
+      const hosts = await client.call("hosts.list", {
+        includeCreating: "true",
+        ...(options.all ? {} : { type: "persistent" }),
+      });
+      if (options.json || hosts.length === 0) {
+        return { hosts, primaryHostId: null };
+      }
+      const { primaryHostId } = await client.call("system.config", {});
+      return { hosts, primaryHostId };
+    },
+    json: ({ hosts }) => hosts,
+    print({ hosts, primaryHostId }) {
+      if (hosts.length === 0) return "No machines found";
+      printMachineTable(hosts, primaryHostId);
+      return null;
+    },
+  }),
+  publicCommand("hosts.get", {
+    path: ["machine", "show"],
+    summary: "Show execution machine details",
+    positionals: TARGET,
+    prepare: resolveTargetInput,
+    print: (host) => JSON.stringify(host, null, 2),
+  }),
+  clientCommand({
+    path: ["machine", "reconnect"],
+    summary: "Reconnect a machine, keeping its host ID",
+    positionals: TARGET,
+    options: JSON_OPTION,
+    async run({ positionals, options }, client) {
+      const hostId = await resolveTarget(positionals.target, client);
+      const reconnect = await client.call("hosts.reconnect", { id: hostId });
+      if (options.json) return reconnect;
+      console.log(
+        `Machine ${hostId} keeps its host ID. Run this command on the machine within 15 minutes:`,
+      );
+      console.log("");
+      console.log(reconnect.command);
+      console.error(`Waiting for machine ${hostId} to reconnect…`);
+      const deadline = Date.now() + MACHINE_LIFECYCLE_TIMEOUT_MS;
+      for (;;) {
+        const host = await client.call("hosts.get", { id: hostId });
+        if (host.status === "connected") break;
+        if (Date.now() >= deadline)
+          throw new Error(
+            `Timed out waiting for machine ${hostId} to reconnect`,
+          );
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, MACHINE_LIFECYCLE_POLL_MS),
+        );
+      }
+      console.log(`Machine ${hostId} reconnected successfully.`);
+      return reconnect;
+    },
+    print: () => null,
+  }),
+  publicCommand("hosts.update", {
+    path: ["machine", "rename"],
+    summary: "Rename an execution machine",
+    positionals: { ...TARGET, name: arg("<name>") },
+    prepare: async ({ positionals }, client) => ({
+      id: await resolveTarget(positionals.target, client),
+      name: positionals.name,
+    }),
+    print: (host) => `Machine ${host.id} renamed to ${host.name}`,
+  }),
+  publicCommand("hosts.delete", {
+    path: ["machine", "remove"],
+    summary: "Revoke and remove an execution machine",
+    positionals: TARGET,
+    options: {
+      force: flag(
+        "--force",
+        "Finish removing a disconnected machine whose environment cleanup failed, leaving its files on disk",
+      ),
+    },
+    prepare: async ({ positionals, options }, client) => ({
+      id: await resolveTarget(positionals.target, client),
+      ...(options.force ? { force: "true" as const } : {}),
+    }),
+    confirm: (input) =>
+      input.force === "true"
+        ? `Remove machine ${input.id} without cleaning up its environments? Files left on its disk are not deleted.`
+        : `Remove machine ${input.id}?`,
+    print: (_result, input) => `Machine ${input.id} removed`,
+  }),
+  publicCommand("hosts.retryUpdate", {
+    path: ["machine", "retry-update"],
+    summary: "Retry a pending daemon protocol update now",
+    positionals: TARGET,
+    prepare: resolveTargetInput,
+    print: (_result, input) => `Machine ${input.id} update retry requested`,
+  }),
+  lifecycleCommand({
+    verb: "reconcile",
+    summary: "Reconcile provider compute with the machine's recorded state",
+    request: (client, id) => client.call("hosts.reconcile", { id }),
+    targetPhase: (requested) =>
+      requested.lifecycle.phase === "suspending" ? "suspended" : null,
+    done: (id, host) => `Machine ${id}: ${host.lifecycle.phase}`,
+  }),
+  lifecycleCommand({
+    verb: "suspend",
+    summary: "Suspend a provider-managed execution machine",
+    request: (client, id) => client.call("hosts.suspend", { id }),
+    targetPhase: () => "suspended",
+    done: (id) => `Machine ${id} suspended`,
+  }),
+  lifecycleCommand({
+    verb: "resume",
+    summary: "Resume a suspended provider-managed execution machine",
+    request: (client, id) => client.call("hosts.resume", { id }),
+    targetPhase: () => "active",
+    done: (id) => `Machine ${id} resumed`,
+  }),
+  publicCommand("hosts.retryCleanup", {
+    path: ["machine", "retry-cleanup"],
+    summary: "Retry a failed provider teardown immediately",
+    positionals: TARGET,
+    prepare: resolveTargetInput,
+    print: (_result, input) => `Machine ${input.id} cleanup retried`,
+  }),
+];
+
+export const machineProviderCliCommands = [
+  publicCommand("hosts.providerCliStatus", {
+    path: ["machine", "provider-cli", "status"],
+    summary: "Show registered provider CLI installation/update status",
+    positionals: TARGET,
+    prepare: async ({ positionals }, client) => ({
+      id: await resolveTarget(positionals.target, client),
+      refresh: "true" as const,
+    }),
+    print: (result) => JSON.stringify(result, null, 2),
+  }),
+  clientCommand({
+    path: ["machine", "provider-cli", "install"],
+    summary: "Install or update a registered provider CLI by provider ID",
+    positionals: { ...TARGET, provider: arg("<provider>") },
+    options: {
+      action: flag("--action <action>", "Action: install or update", {
+        default: "install",
+      }),
+    },
+    run: async ({ positionals, options }, client) => {
+      const actionKind = options.action;
+      if (actionKind !== "install" && actionKind !== "update") {
+        throw new Error("--action must be install or update.");
+      }
+      const hostId = await resolveTarget(positionals.target, client);
+      return client.sdk().hosts.installProviderCli({
+        hostId,
+        provider: parseProviderCliKey(positionals.provider),
+        actionKind,
+      });
+    },
+    print: (events) =>
+      events.length === 0
+        ? null
+        : events.map((event) => JSON.stringify(event)).join("\n"),
+  }),
+];
+
 export function registerMachineCommands(
   program: Command,
   getUrl: () => string,
@@ -204,444 +517,11 @@ export function registerMachineCommands(
     .description("Inspect execution machines");
 
   registerMachineEnvironmentCommands(machine, getUrl);
-
+  mountCommands(machine, machineCommands, { getUrl });
   machine
-    .command("enroll")
-    .description("Enroll this machine using a private bootstrap bundle")
-    .option("--bootstrap-file <path>", "Read the bootstrap bundle from a file")
-    .option(
-      "--bootstrap-env <name>",
-      "Consume the bootstrap bundle from an environment variable",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (options: MachineEnrollmentOptions & { json?: boolean }) => {
-        const result = await enrollMachine(options);
-        if (!outputJson(options, result))
-          console.log(`Machine ${result.hostId} enrolled`);
-      }),
-    );
-
-  machine
-    .command("join-code", { hidden: true })
-    .description("Compatibility notice for removed machine join codes")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async () => {
-        throw new CliExitError("bb machine join-code has been removed.", 1, {
-          code: "removed_command",
-          hint: "Use `bb machine create --provider manual` and run the printed enrollment command.",
-        });
-      }),
-    );
-
-  machine
-    .command("create")
-    .description("Create a machine using an installed provider")
-    .option("--no-wait", "Return the creating host ID immediately")
-    .requiredOption("--provider <id>", "Machine provider ID")
-    .option(
-      "--key <idempotency-key>",
-      "Reuse a stable key when retrying creation",
-    )
-    .option("--inputs <JSON>", "Provider inputs as JSON")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: MachineCreateCommandOptions) => {
-        const machineProviderId = parseProviderCliKey(opts.provider);
-        const key = opts.key?.trim();
-        if (key === "") throw new Error("Creation key must not be empty.");
-        let inputs: JsonValue = null;
-        if (opts.inputs !== undefined) {
-          try {
-            inputs = jsonValueSchema.parse(JSON.parse(opts.inputs));
-          } catch {
-            throw new Error("--inputs must be valid JSON.");
-          }
-        }
-        const controller = new AbortController();
-        const cancel = () => controller.abort();
-        process.once("SIGINT", cancel);
-        try {
-          const sdk = createCliBbSdk(getUrl());
-          controller.signal.throwIfAborted();
-          let host = await sdk.hosts.experimental_create({
-            machineProviderId,
-            inputs,
-            ...(key === undefined ? {} : { key }),
-            wait: false,
-            signal: controller.signal,
-          });
-          if (!opts.wait) {
-            if (!outputJson(opts, host)) console.log(host.id);
-            return;
-          }
-          let enrollmentCommandShown = false;
-          const reportEnrollmentCommand = async (current: Host) => {
-            if (
-              enrollmentCommandShown ||
-              current.lifecycle.phase !== "creating"
-            )
-              return;
-            const enrollmentCommand =
-              await sdk.hosts.experimental_getEnrollmentCommand({
-                hostId: current.id,
-                signal: controller.signal,
-              });
-            if (enrollmentCommand !== null) {
-              console.error("On macOS or Linux, run:");
-              console.error(enrollmentCommand.command);
-              console.error("On Windows, run in PowerShell:");
-              console.error(enrollmentCommand.windowsCommand);
-              console.error(
-                enrollmentExpiryNotice(enrollmentCommand.expiresAt),
-              );
-              enrollmentCommandShown = true;
-            }
-          };
-          await reportEnrollmentCommand(host);
-          console.error(`Following machine ${host.id}`);
-          host = await waitForMachineLifecycle({
-            host,
-            targetPhase: "active",
-            getHost: async () => {
-              const current = await sdk.hosts.get({
-                hostId: host.id,
-                signal: controller.signal,
-              });
-              await reportEnrollmentCommand(current);
-              return current;
-            },
-          });
-          if (!outputJson(opts, host))
-            console.log(`Machine ${host.name} created`);
-        } catch (error) {
-          if (controller.signal.aborted) {
-            throw new CliExitError(
-              "Stopped following; creation continues. Use bb machine remove <host-id> to cancel.",
-              130,
-            );
-          }
-          throw error;
-        } finally {
-          process.off("SIGINT", cancel);
-        }
-      }),
-    );
-
-  machine
-    .command("providers")
-    .description("List installed machine providers")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: MachineListCommandOptions) => {
-        const providers =
-          await createCliBbSdk(getUrl()).hosts.experimental_listProviders();
-        if (outputJson(opts, providers)) return;
-        if (providers.length === 0) {
-          console.log("No machine providers found");
-          return;
-        }
-        console.log(
-          providers
-            .map((provider) => `${provider.id}  ${provider.displayName}`)
-            .join("\n"),
-        );
-      }),
-    );
-
-  machine
-    .command("list")
-    .description("List execution machines")
-    .option(
-      "--all",
-      "Include disposable provider sandboxes alongside persistent machines",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: MachineEnumerationOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hosts = await sdk.hosts.list({
-          includeCreating: true,
-          ...(opts.all ? {} : { type: "persistent" }),
-        });
-        if (outputJson(opts, hosts)) return;
-        if (hosts.length === 0) {
-          console.log("No machines found");
-          return;
-        }
-        const { primaryHostId } = await sdk.system.config();
-        printMachineTable(hosts, primaryHostId);
-      }),
-    );
-
-  machine
-    .command("show <id-or-name>")
-    .description("Show execution machine details")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const host = await sdk.hosts.get({ hostId });
-        if (outputJson(opts, host)) return;
-        console.log(JSON.stringify(host, null, 2));
-      }),
-    );
-
-  machine
-    .command("reconnect <id-or-name>")
-    .description("Reconnect a machine, keeping its host ID")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const sdk = createCliBbSdk(getUrl());
-        const reconnect = await sdk.hosts.experimental_reconnect({ hostId });
-        if (opts.json) {
-          outputJson(opts, reconnect);
-          return;
-        }
-        console.log(
-          `Machine ${hostId} keeps its host ID. Run this command on the machine within 15 minutes:`,
-        );
-        console.log("");
-        console.log(reconnect.command);
-        console.error(`Waiting for machine ${hostId} to reconnect…`);
-        const deadline = Date.now() + MACHINE_LIFECYCLE_TIMEOUT_MS;
-        for (;;) {
-          const host = await sdk.hosts.get({ hostId });
-          if (host.status === "connected") break;
-          if (Date.now() >= deadline)
-            throw new Error(
-              `Timed out waiting for machine ${hostId} to reconnect`,
-            );
-          await new Promise<void>((resolve) =>
-            setTimeout(resolve, MACHINE_LIFECYCLE_POLL_MS),
-          );
-        }
-        console.log(`Machine ${hostId} reconnected successfully.`);
-      }),
-    );
-
-  machine
-    .command("rename <id-or-name> <name>")
-    .description("Rename an execution machine")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          target: string,
-          name: string,
-          opts: MachineListCommandOptions,
-        ) => {
-          const sdk = createCliBbSdk(getUrl());
-          const hostId = await resolveMachineHostId({
-            serverUrl: getUrl(),
-            target,
-          });
-          const host = await sdk.hosts.update({ hostId, name });
-          if (outputJson(opts, host)) return;
-          console.log(`Machine ${host.id} renamed to ${host.name}`);
-        },
-      ),
-    );
-
-  machine
-    .command("remove <id-or-name>")
-    .description("Revoke and remove an execution machine")
-    .option(
-      "--force",
-      "Finish removing a disconnected machine whose environment cleanup failed, leaving its files on disk",
-    )
-    .option("--yes", "Skip the confirmation prompt")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineRemoveCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        if (
-          !opts.yes &&
-          !(await confirmDestructiveAction(
-            opts.force
-              ? `Remove machine ${hostId} without cleaning up its environments? Files left on its disk are not deleted.`
-              : `Remove machine ${hostId}?`,
-          ))
-        )
-          return;
-        const result = await sdk.hosts.delete({
-          hostId,
-          force: opts.force,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} removed`);
-      }),
-    );
-
-  machine
-    .command("retry-update <id-or-name>")
-    .description("Retry a pending daemon protocol update now")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const result = await sdk.hosts.retryUpdate({ hostId });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} update retry requested`);
-      }),
-    );
-
-  machine
-    .command("reconcile <id-or-name>")
-    .description("Reconcile provider compute with the machine's recorded state")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const requested = await sdk.hosts.experimental_reconcile({ hostId });
-        const result =
-          requested.lifecycle.phase === "suspending"
-            ? await waitForMachineLifecycle({
-                host: requested,
-                targetPhase: "suspended",
-                getHost: () => sdk.hosts.get({ hostId }),
-              })
-            : requested;
-        if (!outputJson(opts, result))
-          console.log(`Machine ${hostId}: ${result.lifecycle.phase}`);
-      }),
-    );
-
-  machine
-    .command("suspend <id-or-name>")
-    .description("Suspend a provider-managed execution machine")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const requested = await sdk.hosts.experimental_suspend({ hostId });
-        const result = await waitForMachineLifecycle({
-          host: requested,
-          targetPhase: "suspended",
-          getHost: () => sdk.hosts.get({ hostId }),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} suspended`);
-      }),
-    );
-
-  machine
-    .command("resume <id-or-name>")
-    .description("Resume a suspended provider-managed execution machine")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const requested = await sdk.hosts.experimental_resume({ hostId });
-        const result = await waitForMachineLifecycle({
-          host: requested,
-          targetPhase: "active",
-          getHost: () => sdk.hosts.get({ hostId }),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} resumed`);
-      }),
-    );
-
-  machine
-    .command("retry-cleanup <id-or-name>")
-    .description("Retry a failed provider teardown immediately")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const result = await sdk.hosts.experimental_retryCleanup({ hostId });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} cleanup retried`);
-      }),
-    );
-
-  const providerCli = machine
     .command("provider-cli")
     .description("Inspect and install provider CLIs on a machine");
-  providerCli
-    .command("status <id-or-name>")
-    .description("Show registered provider CLI installation/update status")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hostId = await resolveMachineHostId({
-          serverUrl: getUrl(),
-          target,
-        });
-        const result = await sdk.hosts.providerCliStatus({
-          hostId,
-          refresh: true,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-  providerCli
-    .command("install <id-or-name> <provider>")
-    .description("Install or update a registered provider CLI by provider ID")
-    .option("--action <action>", "Action: install or update", "install")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          target: string,
-          provider: string,
-          opts: MachineProviderInstallOptions,
-        ) => {
-          if (opts.action !== "install" && opts.action !== "update") {
-            throw new Error("--action must be install or update.");
-          }
-          const sdk = createCliBbSdk(getUrl());
-          const hostId = await resolveMachineHostId({
-            serverUrl: getUrl(),
-            target,
-          });
-          const events = await sdk.hosts.installProviderCli({
-            hostId,
-            provider: parseProviderCliKey(provider),
-            actionKind: opts.action,
-          });
-          if (outputJson(opts, events)) return;
-          for (const event of events) console.log(JSON.stringify(event));
-        },
-      ),
-    );
+  mountCommands(machine, machineProviderCliCommands, { getUrl });
 }
 
 function printMachineTable(hosts: Host[], serverHostId: string | null): void {

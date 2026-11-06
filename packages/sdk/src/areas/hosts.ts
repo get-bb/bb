@@ -1,3 +1,4 @@
+import { readOperationBody } from "@bb/operations";
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
 import type { Host, HostType } from "@bb/domain";
 import type {
@@ -23,7 +24,7 @@ import type {
   UpdateHostRequest,
   SystemMachineProvider,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface HostGetArgs {
   hostId: string;
@@ -161,20 +162,18 @@ export interface HostsArea {
 }
 
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
-  const { transport } = args;
+  const { operations } = args;
+  const { call, send } = operations;
   return {
     async experimental_create(input) {
-      let host = await transport.readJson(
-        transport.api.v1.hosts.$post(
-          {
-            json: {
-              machineProviderId: input.machineProviderId,
-              inputs: input.inputs,
-              ...(input.key === undefined ? {} : { key: input.key }),
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
+      let host = await call(
+        "hosts.create",
+        {
+          machineProviderId: input.machineProviderId,
+          inputs: input.inputs,
+          ...(input.key === undefined ? {} : { key: input.key }),
+        },
+        { signal: input.signal },
       );
       if (input.wait === false) return host;
       for (;;) {
@@ -191,98 +190,34 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         host = await this.get({ hostId: host.id, signal: input.signal });
       }
     },
-    async experimental_getEnrollmentCommand(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["enrollment-command"].$get(
-          {
-            param: { id: input.hostId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_reconnect(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["reconnect-commands"].$post(
-          { param: { id: input.hostId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async createJoinCode() {
-      return transport.readJson(
-        transport.api.v1.hosts["join-codes"].$post({
-          json: {},
-        }),
-      );
-    },
-    async delete(input) {
-      await transport.readVoid(
-        transport.api.v1.hosts[":id"].$delete({
-          param: { id: input.hostId },
-          query: input.force ? { force: "true" } : {},
-        }),
-      );
+    experimental_getEnrollmentCommand: ({ hostId, signal }) =>
+      call("hosts.enrollmentCommand", { id: hostId }, { signal }),
+    experimental_reconnect: ({ hostId, signal }) =>
+      call("hosts.reconnect", { id: hostId }, { signal }),
+    createJoinCode: () => call("hosts.createJoinCode", {}),
+    async delete({ hostId, force }) {
+      await send("hosts.delete", {
+        id: hostId,
+        ...(force ? { force: "true" } : {}),
+      });
       return { ok: true };
     },
-    async experimental_deleteOldServerCopy(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["old-server-copy"].$delete({
-          param: { id: input.hostId },
-        }),
-      );
-    },
-    async directory(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"].directory.$get(
-          {
-            param: { id: input.hostId },
-            query: { path: input.path },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_discoverRepos(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["discovered-repos"].$get(
-          { param: { id: input.hostId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async get(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"].$get(
-          {
-            param: { id: input.hostId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async cloneDefaultPath(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["clone-default-path"].$get(
-          {
-            param: { id: input.hostId },
-            query: { projectId: input.projectId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    experimental_deleteOldServerCopy: ({ hostId }) =>
+      call("hosts.deleteOldServerCopy", { id: hostId }),
+    directory: ({ hostId, path, signal }) =>
+      call("hosts.directory", { id: hostId, path }, { signal }),
+    experimental_discoverRepos: ({ hostId, signal }) =>
+      call("hosts.discoveredRepos", { id: hostId }, { signal }),
+    get: ({ hostId, signal }) => call("hosts.get", { id: hostId }, { signal }),
+    cloneDefaultPath: ({ hostId, projectId, signal }) =>
+      call("hosts.cloneDefaultPath", { id: hostId, projectId }, { signal }),
     async installProviderCli(input) {
-      const response = await transport.resolve(
-        transport.api.v1.hosts[":id"]["provider-clis"].install.$post({
-          param: { id: input.hostId },
-          json: {
-            provider: input.provider,
-            actionKind: input.actionKind,
-          },
-        }),
-      );
-      const text: string = await response.text();
+      const body = await call("hosts.providerCliInstall", {
+        id: input.hostId,
+        provider: input.provider,
+        actionKind: input.actionKind,
+      });
+      const text = new TextDecoder().decode(await readOperationBody(body));
       return text
         .split(/\r?\n/u)
         .filter((line) => line.trim().length > 0)
@@ -290,107 +225,42 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           hostProviderCliInstallEventSchema.parse(JSON.parse(line)),
         );
     },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.hosts.$get(
-          {
-            query: {
-              ...(input?.includeCreating === undefined
-                ? {}
-                : {
-                    includeCreating: input.includeCreating ? "true" : "false",
-                  }),
-              ...(input?.type === undefined ? {} : { type: input.type }),
-            },
-          },
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
+    list: (input) =>
+      call(
+        "hosts.list",
+        {
+          ...(input?.includeCreating === undefined
+            ? {}
+            : { includeCreating: input.includeCreating ? "true" : "false" }),
+          ...(input?.type === undefined ? {} : { type: input.type }),
+        },
+        { signal: input?.signal },
+      ),
     async experimental_listProviders(input) {
-      const response = await transport.readJson(
-        transport.api.v1.system["machine-providers"].$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
+      const response = await call(
+        "system.machineProviders",
+        {},
+        { signal: input?.signal },
       );
       return response.providers;
     },
-    async pathsExist(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"].paths.exist.$post(
-          {
-            param: { id: input.hostId },
-            json: { paths: input.paths },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async pickFolder(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["pick-folder"].$post(
-          {
-            param: { id: input.hostId },
-            json: { clientHostId: input.clientHostId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async providerCliStatus(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["provider-clis"].status.$get(
-          {
-            param: { id: input.hostId },
-            query: input.refresh ? { refresh: "true" } : {},
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_resume(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"].resume.$post({
-          param: { id: input.hostId },
-        }),
-      );
-    },
-    async experimental_retryCleanup(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["retry-cleanup"].$post({
-          param: { id: input.hostId },
-        }),
-      );
-    },
-    async retryUpdate(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["retry-update"].$post({
-          param: { id: input.hostId },
-        }),
-      );
-    },
-    async experimental_reconcile(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"].reconcile.$post({
-          param: { id: input.hostId },
-        }),
-      );
-    },
-    async experimental_suspend(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"].suspend.$post({
-          param: { id: input.hostId },
-        }),
-      );
-    },
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"].$patch({
-          param: { id: input.hostId },
-          json: { name: input.name },
-        }),
-      );
-    },
+    pathsExist: ({ hostId, paths, signal }) =>
+      call("hosts.pathsExist", { id: hostId, paths }, { signal }),
+    pickFolder: ({ hostId, clientHostId, signal }) =>
+      call("hosts.pickFolder", { id: hostId, clientHostId }, { signal }),
+    providerCliStatus: ({ hostId, refresh, signal }) =>
+      call(
+        "hosts.providerCliStatus",
+        { id: hostId, ...(refresh ? { refresh: "true" } : {}) },
+        { signal },
+      ),
+    experimental_resume: ({ hostId }) => call("hosts.resume", { id: hostId }),
+    experimental_retryCleanup: ({ hostId }) =>
+      call("hosts.retryCleanup", { id: hostId }),
+    retryUpdate: ({ hostId }) => call("hosts.retryUpdate", { id: hostId }),
+    experimental_reconcile: ({ hostId }) =>
+      call("hosts.reconcile", { id: hostId }),
+    experimental_suspend: ({ hostId }) => call("hosts.suspend", { id: hostId }),
+    update: ({ hostId, name }) => call("hosts.update", { id: hostId, name }),
   };
 }

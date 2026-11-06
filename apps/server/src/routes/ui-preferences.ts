@@ -4,13 +4,9 @@ import {
   UI_PREFERENCE_KEYS,
   type UiPreferenceKey,
 } from "@bb/domain";
-import {
-  publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
-} from "@bb/server-contract";
-import type { Hono } from "hono";
+import { publicApiRoutes } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import {
   readUiPreferences,
   resetUiPreference,
@@ -27,48 +23,50 @@ function requireUiPreferenceKey(key: string): UiPreferenceKey {
   );
 }
 
-export function registerUiPreferenceRoutes(app: Hono, deps: AppDeps): void {
-  const { del, get, put } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (message) =>
-      new ApiError(400, "invalid_request", message),
-  });
+export function registerUiPreferenceRoutes(
+  operations: OperationRoutes,
+  deps: AppDeps,
+): void {
   const routes = publicApiRoutes.system;
 
-  get(routes.uiPreferences, (context) =>
-    context.json({ preferences: readUiPreferences(deps) }),
+  operations.implement(routes.uiPreferences, () => ({
+    preferences: readUiPreferences(deps),
+  }));
+
+  operations.implement(
+    routes.updateUiPreference,
+    ({ key: rawKey, ...payload }) => {
+      const key = requireUiPreferenceKey(rawKey);
+      const parsed = parseUiPreferenceValue(key, payload.value);
+      if (!parsed.success) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          `Invalid value for UI preference '${key}': ${parsed.message}`,
+        );
+      }
+      const result = writeUiPreference(deps, {
+        expectedRevision: payload.expectedRevision,
+        key,
+        value: parsed.value,
+      });
+      if (result.outcome === "conflict") {
+        throw new ApiError(
+          409,
+          "ui_preference_conflict",
+          "UI preference changed on another client",
+          { details: { currentRevision: result.revision } },
+        );
+      }
+      deps.hub.notifySystem(["ui-preferences-changed"]);
+      return { key, ...result.entry };
+    },
   );
 
-  put(routes.updateUiPreference, (context, payload) => {
-    const key = requireUiPreferenceKey(context.req.param("key"));
-    const parsed = parseUiPreferenceValue(key, payload.value);
-    if (!parsed.success) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        `Invalid value for UI preference '${key}': ${parsed.message}`,
-      );
-    }
-    const result = writeUiPreference(deps, {
-      expectedRevision: payload.expectedRevision,
-      key,
-      value: parsed.value,
-    });
-    if (result.outcome === "conflict") {
-      throw new ApiError(
-        409,
-        "ui_preference_conflict",
-        "UI preference changed on another client",
-        { details: { currentRevision: result.revision } },
-      );
-    }
-    deps.hub.notifySystem(["ui-preferences-changed"]);
-    return context.json({ key, ...result.entry });
-  });
-
-  del(routes.resetUiPreference, (context) => {
-    const key = requireUiPreferenceKey(context.req.param("key"));
+  operations.implement(routes.resetUiPreference, ({ key: rawKey }) => {
+    const key = requireUiPreferenceKey(rawKey);
     const entry = resetUiPreference(deps, key);
     deps.hub.notifySystem(["ui-preferences-changed"]);
-    return context.json({ key, ...entry });
+    return { key, ...entry };
   });
 }
