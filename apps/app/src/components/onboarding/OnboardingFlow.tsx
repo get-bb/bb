@@ -1093,6 +1093,7 @@ function DevicesStepContainer({
   entry,
   hostId,
   hostName,
+  closing,
   onBack,
   onFinish,
   onLeave,
@@ -1102,6 +1103,7 @@ function DevicesStepContainer({
   entry: OnboardingEntry;
   hostId: string | null;
   hostName: string | null;
+  closing: boolean;
   onBack: () => void;
   onFinish: () => void;
   onLeave: () => void;
@@ -1112,8 +1114,14 @@ function DevicesStepContainer({
   const [addMachineOpen, setAddMachineOpen] = useState(false);
   const onPhone = useMediaQuery(ONBOARDING_PHONE_QUERY);
   const location = useLocation();
-  const [initialPathname] = useState(location.pathname);
-  const navigatedAway = location.pathname !== initialPathname;
+  const [openPathname, setOpenPathname] = useState(location.pathname);
+  const [wasClosing, setWasClosing] = useState(closing);
+  if (wasClosing !== closing) {
+    setWasClosing(closing);
+    if (!closing) setOpenPathname(location.pathname);
+  }
+  const navigatedAway =
+    !closing && !wasClosing && location.pathname !== openPathname;
   useEffect(() => {
     if (navigatedAway) onLeave();
   }, [navigatedAway, onLeave]);
@@ -1466,6 +1474,7 @@ export function OnboardingFlow({
           entry={entry}
           hostId={hostId}
           hostName={primaryHost?.name ?? null}
+          closing={closing}
           onBack={goTo(-1)}
           onFinish={() => close("completed")}
           onLeave={() => close("skipped")}
