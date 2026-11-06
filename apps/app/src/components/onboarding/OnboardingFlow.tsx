@@ -421,6 +421,7 @@ function AgentStepContainer({
     void refetchCliStatus({ cancelRefetch: false });
   }, [refetchCliStatus]);
   useRefetchOnUpdateNeeded({
+    enabled: redesign,
     states,
     statesUpdatedAt: statesQuery.dataUpdatedAt,
     cliStatus: cliStatusQuery.data,
