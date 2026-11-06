@@ -220,18 +220,21 @@ describe("getProviderStates", () => {
       for (const hostId of [host.id, paused.id]) {
         const result = await getProviderStates(harness.deps, { hostId });
         expect(
-          Object.fromEntries(
-            result.providers.map((provider) => [
-              provider.providerId,
-              provider.internal_DO_NOT_USE_guidedSignIn,
-            ]),
+          result.providers.every(
+            (provider) =>
+              typeof provider.internal_DO_NOT_USE_guidedSignIn === "boolean",
           ),
-        ).toStrictEqual({
-          codex: true,
-          "claude-code": true,
-          pi: false,
-          "acp-cursor": true,
-        });
+        ).toBe(true);
+        expect(
+          result.providers
+            .filter((provider) => provider.internal_DO_NOT_USE_guidedSignIn)
+            .map((provider) => provider.providerId)
+            .sort(),
+        ).toStrictEqual(["acp-cursor", "claude-code", "codex"]);
+        expect(
+          result.providers.find((provider) => provider.providerId === "pi")
+            ?.internal_DO_NOT_USE_guidedSignIn,
+        ).toBe(false);
       }
     });
   });
