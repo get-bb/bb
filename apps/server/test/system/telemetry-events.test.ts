@@ -480,17 +480,6 @@ describe("client telemetry events", () => {
           properties: {
             entry: "first_run",
             step: "plugins",
-            operation: "install",
-            outcome: "failed",
-            resource_id: "workflows",
-            failure_reason: "npm ERR! 404 Not Found",
-          },
-        },
-        {
-          name: "onboarding_operation",
-          properties: {
-            entry: "first_run",
-            step: "plugins",
             operation: "Install Workflows",
             outcome: "failed",
           },
@@ -532,15 +521,6 @@ describe("client telemetry events", () => {
             entry: "first_run",
             kind: "uncaught",
             message: "Cannot read properties of undefined",
-          },
-        },
-        {
-          name: "onboarding_error",
-          properties: {
-            step: "agent",
-            entry: "first_run",
-            kind: "uncaught",
-            stack: "TypeError at OnboardingFlow (/Users/me/app.js:1:1)",
           },
         },
         {

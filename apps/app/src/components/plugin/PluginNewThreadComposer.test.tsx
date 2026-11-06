@@ -451,7 +451,6 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
     isCreating: false,
     openCreateDialog: vi.fn(),
     openCreateDialogThen: mocks.openCreateDialogThen,
-    openObservedCreateDialog: vi.fn(),
     platform: null,
     projectPathDialog: {
       isOpen: false,

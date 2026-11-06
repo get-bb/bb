@@ -1323,8 +1323,7 @@ calls `onSetupStarted()` when the user starts setting it up and
 `onSetupFailed(stage)` (`InternalDoNotUseSetupFailureStage`: `sign_in`,
 `pairing`, or `turn_on`) when an attempt fails, so the guide can record the
 step. Core's `PluginSetupGuideSections` renders a plugin's rows through
-the ordinary plugin slot boundary, and renders the caller's `fallback` when the
-plugin registers none (disabled or not installed) or its row crashes.
+the ordinary plugin slot boundary.
 
 Callers: the bundled `connect` plugin only. Core caller: the onboarding
 Devices step, which renders `PluginSetupGuideSections` for `connect`.

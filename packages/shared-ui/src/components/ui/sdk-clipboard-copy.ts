@@ -27,15 +27,11 @@ export function useSdkClipboardCopy({
 
 export async function copyTextWithSdkToast(
   text: string,
-  {
-    successMessage = "Copied",
-    errorMessage = "Failed to copy",
-  }: { successMessage?: string; errorMessage?: string } = {},
-): Promise<boolean> {
+  { successMessage = "Copied" }: { successMessage?: string } = {},
+): Promise<void> {
   if (await experimental_copyToClipboard({ text })) {
     toast.success(successMessage);
-    return true;
+  } else {
+    toast.error("Failed to copy");
   }
-  toast.error(errorMessage);
-  return false;
 }

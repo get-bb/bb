@@ -8,9 +8,7 @@ export function recordTelemetryEvent(
   event: RecordTelemetryEventRequest,
   options?: SystemRecordTelemetryEventOptions,
 ): void {
-  const request =
-    options === undefined
-      ? sdk.system.experimental_recordTelemetryEvent(event)
-      : sdk.system.experimental_recordTelemetryEvent(event, options);
-  void request.catch(() => undefined);
+  void sdk.system
+    .experimental_recordTelemetryEvent(event, options)
+    .catch(() => undefined);
 }

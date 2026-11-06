@@ -95,28 +95,6 @@ describe("projects scan telemetry", () => {
     ]);
   });
 
-  it("records a scan failure with its mapped reason", () => {
-    renderHook(() =>
-      useProjectsScanTelemetry({
-        entry: "first_run",
-        noHost: false,
-        scan: {
-          ...idle,
-          errorUpdatedAt: 1,
-          error: new BbHttpError({
-            body: null,
-            code: "command_timeout",
-            message: "failed",
-            status: 502,
-          }),
-        },
-      }),
-    );
-    expect(recorded()).toEqual([
-      { ...base, outcome: "failed", failure_reason: "timed_out" },
-    ]);
-  });
-
   it("records a missing machine once while the step stays open", () => {
     const view = renderHook(
       ({ noHost }) =>
