@@ -51,7 +51,7 @@ vi.mock("@/hooks/queries/setup-guide-requests", () => ({
     Promise.resolve({ variant: guide.variant }),
   ),
   fetchSetupGuideFeaturedPlugins: vi.fn(() =>
-    Promise.resolve({ entryIds: null, alreadyOnEntryIds: [] }),
+    Promise.resolve({ entryIds: null }),
   ),
 }));
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));

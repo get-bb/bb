@@ -463,7 +463,6 @@ export type SystemSetupGuideResponse = z.infer<
 
 export const systemSetupGuideFeaturedPluginsResponseSchema = z.object({
   entryIds: z.array(z.string().min(1)).nullable(),
-  alreadyOnEntryIds: z.array(z.string().min(1)),
 });
 export type SystemSetupGuideFeaturedPluginsResponse = z.infer<
   typeof systemSetupGuideFeaturedPluginsResponseSchema

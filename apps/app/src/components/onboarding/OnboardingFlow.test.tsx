@@ -180,7 +180,6 @@ function renderFeaturedPluginsStep(variant: "control" | "new") {
     queryClient.setQueryData(pluginCatalogSearchQueryKey(""), catalog);
     queryClient.setQueryData(systemSetupGuideFeaturedPluginsQueryKey(), {
       entryIds: ["memory", "push-notifications"],
-      alreadyOnEntryIds: ["push-notifications"],
     });
   });
 }
@@ -197,12 +196,24 @@ function recordedEventNames(): string[] {
     .mock.calls.map(([event]) => event.name);
 }
 
-function shownRecommendations(): unknown[] {
+function recommendations(action: string): unknown[] {
   return vi
     .mocked(recordTelemetryEvent)
     .mock.calls.flatMap(([event]) =>
-      event.name === "recommendation" && event.properties.action === "shown"
+      event.name === "recommendation" && event.properties.action === action
         ? [event.properties.resource_id]
+        : [],
+    );
+}
+
+function startedPluginOperations(): unknown[] {
+  return vi
+    .mocked(recordTelemetryEvent)
+    .mock.calls.flatMap(([event]) =>
+      event.name === "onboarding_operation" &&
+      event.properties.step === "plugins" &&
+      event.properties.outcome === "started"
+        ? [`${event.properties.operation} ${event.properties.resource_id}`]
         : [],
     );
 }
@@ -354,19 +365,18 @@ describe("OnboardingFlow", () => {
     expect(agentLoadFailures()).toEqual(["timed_out", "timed_out"]);
   });
 
-  it("locks already-on plugins and doesn't count them as turned on in the new guide", async () => {
+  it("shows the flag's list with plugins already on and counts a Continue without changes as skipped in the new guide", async () => {
     renderFeaturedPluginsStep("new");
     await screen.findByRole("switch", { name: "Enable memory" });
 
     expect(
       screen.queryByRole("switch", { name: "Enable workflows" }),
     ).toBeNull();
-    expect(pluginSwitch("memory").disabled).toBe(false);
-    expect(pluginSwitch("push-notifications").disabled).toBe(true);
+    expect(pluginSwitch("push-notifications").disabled).toBe(false);
     expect(
       pluginSwitch("push-notifications").getAttribute("aria-checked"),
     ).toBe("true");
-    expect(shownRecommendations()).toEqual(["memory"]);
+    expect(recommendations("shown")).toEqual(["memory", "push-notifications"]);
     expect(
       recordedEventNames().filter(
         (name) => name === "onboarding_featured_plugins_exposed",
@@ -378,12 +388,47 @@ describe("OnboardingFlow", () => {
     expect(recordedEventNames()).not.toContain("onboarding_step_completed");
   });
 
+  it("tracks switching a plugin that was on off and counts it as completed in the new guide", async () => {
+    renderFeaturedPluginsStep("new");
+    await screen.findByRole("switch", { name: "Enable push-notifications" });
+
+    fireEvent.click(pluginSwitch("push-notifications"));
+
+    expect(
+      pluginSwitch("push-notifications").getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(recommendations("deselected")).toEqual(["push-notifications"]);
+    expect(startedPluginOperations()).toEqual(["disable push-notifications"]);
+
+    fireEvent.click(button(/Continue/u));
+    expect(recordedEventNames()).toContain("onboarding_step_completed");
+    expect(recordedEventNames()).not.toContain("onboarding_step_skipped");
+  });
+
+  it("counts switching a plugin that was on off and back on as skipped in the new guide", async () => {
+    renderFeaturedPluginsStep("new");
+    await screen.findByRole("switch", { name: "Enable push-notifications" });
+
+    fireEvent.click(pluginSwitch("push-notifications"));
+    fireEvent.click(pluginSwitch("push-notifications"));
+
+    expect(
+      pluginSwitch("push-notifications").getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(recommendations("deselected")).toEqual(["push-notifications"]);
+    expect(recommendations("selected")).toEqual(["push-notifications"]);
+
+    fireEvent.click(button(/Continue/u));
+    expect(recordedEventNames()).toContain("onboarding_step_skipped");
+    expect(recordedEventNames()).not.toContain("onboarding_step_completed");
+  });
+
   it("keeps today's featured plugins and sends no featured-plugins exposure in today's guide", async () => {
     renderFeaturedPluginsStep("control");
     await screen.findByRole("switch", { name: "Enable workflows" });
 
     expect(screen.queryByRole("switch", { name: "Enable memory" })).toBeNull();
-    expect(shownRecommendations()).toEqual(["workflows"]);
+    expect(recommendations("shown")).toEqual(["workflows"]);
     expect(recordedEventNames()).not.toContain(
       "onboarding_featured_plugins_exposed",
     );

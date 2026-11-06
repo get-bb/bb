@@ -348,17 +348,16 @@ saved in `<dataDir>/setup-guide-assignment.json` is reused.
 `BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
 The new guide's Plugins step gets its featured plugins from the app's
 `GET /api/v1/system/setup-guide/featured-plugins` request
-(`{ entryIds, alreadyOnEntryIds }`), resolved once per run from the separate
+(`{ entryIds }`), resolved once per run from the separate
 `onboarding-featured-plugins` PostHog flag in the same way (3-second timeout,
 `control` without telemetry, on any failure, or when the `new` variant has no
 valid payload) and saved in
 `<dataDir>/featured-plugins-assignment.json`. Its `new` variant's payload
-`{"plugins": ["browser-automation", ...], "alreadyOn": ["push-notifications", ...]}`
-lists bb-official entry ids to feature; `alreadyOn` (optional, a subset of
-`plugins`) names plugins shown switched on with the switch disabled while they
-are enabled. `entryIds` is `null` for `control` or when the payload is absent
-or invalid, and the app shows its default list. Today's guide always shows the
-default list.
+`{"plugins": ["browser-automation", ...]}` lists bb-official entry ids to
+feature, in display order. Each card shows and switches the plugin's real
+enabled state, as in Settings. `entryIds` is `null` for `control` or when the
+payload is absent or invalid, and the app shows its default list. Today's guide
+always shows the default list.
 `BB_SETUP_GUIDE_VARIANT` doesn't affect it.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
@@ -382,8 +381,10 @@ getbb.app sign-in starts, a pairing code is submitted, or Turn on is pressed,
 not when the bb connect panel is merely opened), and `add_machine` (`started`
 when the machine setup command is shown). In both guides, Continue on the projects
 step counts as completed only when a project was selected or added during the
-guide (by either route), and Continue on the plugins step only when a featured
-plugin is on; otherwise each counts as skipped.
+guide (by either route). Continue on the plugins step counts as completed in
+today's guide when a featured plugin is on, and in the new guide when the user
+switched a featured plugin away from the state it had before they first
+touched it (on or off); otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves the flag assignment, adds `setup_guide_variant`
 and `setup_guide_source` (`override`, `flag`, or `default`), sets
@@ -399,9 +400,6 @@ assignment, adds `featured_plugins_variant` and `featured_plugins_source`
 and sends `$feature_flag_called` when the flag decided the variant. The server
 also adds `featured_plugins_variant` to every setup-guide event, and once the
 assignment is known every event carries `$feature/onboarding-featured-plugins`.
-The new guide sends no `recommendation` events for `alreadyOn` plugins and
-doesn't count them when deciding whether its Plugins step was completed or
-skipped.
 `onboarding_operation` records a setup-guide action's `started`,
 `succeeded`, or `failed` outcome with counts only, the same way in both
 guides. A Projects step `scan` adds `timed_out` (true when the repo scan ran

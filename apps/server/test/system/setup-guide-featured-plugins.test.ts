@@ -41,7 +41,6 @@ async function useFlags(harness: TestAppHarness) {
                 version: 1,
                 payload: JSON.stringify({
                   plugins: ["memory", "push-notifications"],
-                  alreadyOn: ["push-notifications"],
                 }),
               },
             },
@@ -69,7 +68,7 @@ async function useFlags(harness: TestAppHarness) {
 }
 
 describe("setup guide featured plugins route", () => {
-  it("serves the flag's list and already-on plugins", async () => {
+  it("serves the flag's list", async () => {
     await withTestHarness(async (harness) => {
       await useFlags(harness);
 
@@ -79,7 +78,6 @@ describe("setup guide featured plugins route", () => {
 
       await expect(readJson(response)).resolves.toEqual({
         entryIds: ["memory", "push-notifications"],
-        alreadyOnEntryIds: ["push-notifications"],
       });
     });
   });

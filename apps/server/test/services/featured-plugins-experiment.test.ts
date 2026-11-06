@@ -63,7 +63,6 @@ function flagsResponse(flag?: FlagStub): Response {
 
 const TEST_LIST = JSON.stringify({
   plugins: ["browser-automation", "memory", "push-notifications", "inline-vis"],
-  alreadyOn: ["push-notifications", "inline-vis"],
 });
 
 const DEFAULT: FeaturedPluginsAssignment = {
@@ -115,7 +114,7 @@ describe("featured plugins experiment", () => {
     }
   });
 
-  it("reads the list and already-on plugins from the new variant's payload once", async () => {
+  it("reads the list from the new variant's payload once", async () => {
     const fetch = respondWith({ variant: "new", payload: TEST_LIST });
     const { telemetry, setSharedProperty } = createTelemetry();
     const experiment = await create({ fetch, telemetry });
@@ -128,15 +127,12 @@ describe("featured plugins experiment", () => {
     expect(first).toEqual({
       variant: "new",
       source: "flag",
-      plugins: {
-        entryIds: [
-          "browser-automation",
-          "memory",
-          "push-notifications",
-          "inline-vis",
-        ],
-        alreadyOnEntryIds: ["push-notifications", "inline-vis"],
-      },
+      plugins: [
+        "browser-automation",
+        "memory",
+        "push-notifications",
+        "inline-vis",
+      ],
     });
     expect(second).toBe(first);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -162,10 +158,6 @@ describe("featured plugins experiment", () => {
       { variant: "new", payload: JSON.stringify({ plugins: "memory" }) },
       { variant: "new", payload: JSON.stringify({ plugins: [] }) },
       { variant: "new", payload: JSON.stringify({ plugins: ["Bad Id"] }) },
-      {
-        variant: "new",
-        payload: JSON.stringify({ plugins: ["memory"], alreadyOn: ["tasks"] }),
-      },
       { variant: "new" },
     ];
     for (const flag of invalid) {
@@ -180,7 +172,7 @@ describe("featured plugins experiment", () => {
     }
   });
 
-  it("accepts a payload object and a list with no already-on plugins", async () => {
+  it("accepts a payload object", async () => {
     const experiment = await create({
       fetch: respondWith({ variant: "new", payload: { plugins: ["memory"] } }),
       telemetry: createTelemetry().telemetry,
@@ -189,7 +181,7 @@ describe("featured plugins experiment", () => {
     await expect(experiment.resolve()).resolves.toEqual({
       variant: "new",
       source: "flag",
-      plugins: { entryIds: ["memory"], alreadyOnEntryIds: [] },
+      plugins: ["memory"],
     });
   });
 

@@ -1129,7 +1129,6 @@ interface OnboardingPluginCardProps {
   icon: { icon: string | null; iconUrl: string | null; iconTinted: boolean };
   enabled: boolean;
   pending: boolean;
-  locked?: boolean;
   unavailableReason: string | null;
   onToggle: (enabled: boolean) => void;
 }
@@ -1141,11 +1140,10 @@ export function OnboardingPluginCard({
   icon,
   enabled,
   pending,
-  locked = false,
   unavailableReason,
   onToggle,
 }: OnboardingPluginCardProps) {
-  const disabled = pending || locked || unavailableReason !== null;
+  const disabled = pending || unavailableReason !== null;
   return (
     <PluginCard
       leading={

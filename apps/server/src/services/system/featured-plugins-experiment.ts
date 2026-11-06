@@ -23,12 +23,7 @@ type FeaturedPluginsVariant = z.infer<typeof variantSchema>;
 
 const entryIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
 
-const featuredPluginListSchema = z
-  .object({
-    entryIds: z.array(entryIdSchema).min(1),
-    alreadyOnEntryIds: z.array(entryIdSchema),
-  })
-  .strict();
+const featuredPluginListSchema = z.array(entryIdSchema).min(1);
 
 type FeaturedPluginList = z.infer<typeof featuredPluginListSchema>;
 
@@ -42,14 +37,7 @@ const assignmentSchema = z
 
 export type FeaturedPluginsAssignment = z.infer<typeof assignmentSchema>;
 
-const flagPayloadSchema = z
-  .object({
-    plugins: z.array(entryIdSchema).min(1),
-    alreadyOn: z.array(entryIdSchema).optional(),
-  })
-  .refine(({ plugins, alreadyOn }) =>
-    (alreadyOn ?? []).every((entryId) => plugins.includes(entryId)),
-  );
+const flagPayloadSchema = z.object({ plugins: featuredPluginListSchema });
 
 const DEFAULT_ASSIGNMENT: FeaturedPluginsAssignment = {
   variant: "control",
@@ -77,21 +65,13 @@ function pluginListFromPayload(payload: unknown): FeaturedPluginList | null {
   const parsed = flagPayloadSchema.safeParse(
     typeof payload === "string" ? parseJsonText(payload) : payload,
   );
-  return parsed.success
-    ? {
-        entryIds: parsed.data.plugins,
-        alreadyOnEntryIds: parsed.data.alreadyOn ?? [],
-      }
-    : null;
+  return parsed.success ? parsed.data.plugins : null;
 }
 
 export function featuredPluginsResponse(
   assignment: FeaturedPluginsAssignment,
 ): SystemSetupGuideFeaturedPluginsResponse {
-  return {
-    entryIds: assignment.plugins?.entryIds ?? null,
-    alreadyOnEntryIds: assignment.plugins?.alreadyOnEntryIds ?? [],
-  };
+  return { entryIds: assignment.plugins };
 }
 
 export async function createFeaturedPluginsExperiment(

@@ -97,7 +97,7 @@ import {
   defaultSelectedRepoPaths,
   agentContinueDisabled,
   ONBOARDING_PLUGIN_ENTRY_IDS,
-  featuredPlugins,
+  featuredPluginEntryIds,
   hasReadyAgent,
   operationFailureReason,
   projectsPrimaryAction,
@@ -944,7 +944,6 @@ function PluginCardContainer({
   entry,
   compact,
   enabled,
-  locked,
   switches,
   onChanged,
   onSelected,
@@ -955,7 +954,6 @@ function PluginCardContainer({
   entry: PluginCatalogSearchEntry;
   compact: boolean;
   enabled: boolean;
-  locked: boolean;
   switches: OnboardingPluginSwitches | null;
   onChanged: () => Promise<void>;
   onSelected: () => void;
@@ -1032,7 +1030,6 @@ function PluginCardContainer({
           : switches.shown(entry.pluginId, enabled)
       }
       pending={switches === null && (busy || settling)}
-      locked={locked}
       unavailableReason={
         entry.installed || entry.compatible
           ? null
@@ -1042,8 +1039,6 @@ function PluginCardContainer({
     />
   );
 }
-
-const NO_ENTRY_IDS: ReadonlySet<string> = new Set();
 
 function PluginsStepContainer({
   chrome,
@@ -1089,14 +1084,16 @@ function PluginsStepContainer({
     void refetchCatalog();
   }, [installedCount, refetchCatalog]);
 
-  const featured = useMemo(() => {
-    if (!redesign) return featuredPlugins(undefined);
-    return featuredQuery.isPending ? null : featuredPlugins(featuredQuery.data);
+  const featuredEntryIds = useMemo(() => {
+    if (!redesign) return ONBOARDING_PLUGIN_ENTRY_IDS;
+    return featuredQuery.isPending
+      ? null
+      : featuredPluginEntryIds(featuredQuery.data);
   }, [redesign, featuredQuery.isPending, featuredQuery.data]);
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
-    if (all === undefined || featured === null) return null;
-    return featured.entryIds.flatMap((entryId) => {
+    if (all === undefined || featuredEntryIds === null) return null;
+    return featuredEntryIds.flatMap((entryId) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
@@ -1104,7 +1101,7 @@ function PluginsStepContainer({
       );
       return entry === undefined ? [] : [entry];
     });
-  }, [catalogQuery.data?.entries, featured]);
+  }, [catalogQuery.data?.entries, featuredEntryIds]);
   const featuredShown =
     redesign && featuredQuery.data !== undefined && entries !== null;
   useEffect(() => {
@@ -1115,10 +1112,9 @@ function PluginsStepContainer({
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
       ?.enabled ??
       false);
-  const alreadyOnEntryIds = featured?.alreadyOnEntryIds ?? NO_ENTRY_IDS;
-  const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
+  const isChosen = (entry: PluginCatalogSearchEntry) =>
     redesign
-      ? switches.shown(entry.pluginId, isEnabled(entry))
+      ? switches.changed(entry.pluginId, isEnabled(entry))
       : isEnabled(entry);
 
   const [recommendationIds] = useState(() => new Map<string, string>());
@@ -1143,18 +1139,13 @@ function PluginsStepContainer({
     },
     [onboardingEntry, recommendationIds],
   );
-  const recommendedEntries = useMemo(
-    () =>
-      entries?.filter((entry) => !alreadyOnEntryIds.has(entry.entryId)) ?? [],
-    [entries, alreadyOnEntryIds],
-  );
   useEffect(() => {
-    for (const entry of recommendedEntries) {
+    for (const entry of entries ?? []) {
       if (!recommendationIds.has(entry.pluginId)) {
         recordRecommendation(entry.pluginId, "shown");
       }
     }
-  }, [recommendedEntries, recommendationIds, recordRecommendation]);
+  }, [entries, recommendationIds, recordRecommendation]);
 
   return (
     <OnboardingLayout
@@ -1164,7 +1155,7 @@ function PluginsStepContainer({
       {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (!recommendedEntries.some(isShownEnabled)) onSkip();
+        if (!(entries ?? []).some(isChosen)) onSkip();
         else onContinue();
       }}
       onSecondary={onSkip}
@@ -1174,7 +1165,7 @@ function PluginsStepContainer({
         {entries === null ? (
           <OnboardingPluginGridSkeleton
             count={
-              featured?.entryIds.length ?? ONBOARDING_PLUGIN_ENTRY_IDS.length
+              featuredEntryIds?.length ?? ONBOARDING_PLUGIN_ENTRY_IDS.length
             }
           />
         ) : (
@@ -1186,7 +1177,6 @@ function PluginsStepContainer({
               entry={entry}
               compact={redesign}
               enabled={isEnabled(entry)}
-              locked={alreadyOnEntryIds.has(entry.entryId) && isEnabled(entry)}
               switches={redesign ? switches : null}
               onChanged={refresh}
               onSelected={() =>

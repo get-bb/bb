@@ -35,24 +35,10 @@ export const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
   "ask-user-question",
 ];
 
-export interface FeaturedPlugins {
-  entryIds: readonly string[];
-  alreadyOnEntryIds: ReadonlySet<string>;
-}
-
-export function featuredPlugins(
+export function featuredPluginEntryIds(
   response: SystemSetupGuideFeaturedPluginsResponse | undefined,
-): FeaturedPlugins {
-  if (response === undefined || response.entryIds === null) {
-    return {
-      entryIds: ONBOARDING_PLUGIN_ENTRY_IDS,
-      alreadyOnEntryIds: new Set(),
-    };
-  }
-  return {
-    entryIds: response.entryIds,
-    alreadyOnEntryIds: new Set(response.alreadyOnEntryIds),
-  };
+): readonly string[] {
+  return response?.entryIds ?? ONBOARDING_PLUGIN_ENTRY_IDS;
 }
 
 export const CONNECT_PLUGIN_ID = "connect";
