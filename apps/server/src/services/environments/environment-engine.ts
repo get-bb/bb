@@ -1,5 +1,6 @@
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
+import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { getLatestThreadSequence, updateThread } from "@bb/db";
 import {
@@ -725,6 +726,9 @@ async function runRemove(
           },
           signal,
         });
+      }
+      if (row.providerOwnsPath && row.path !== null) {
+        await preservePathPluginsInside(deps.db, row.path);
       }
       const invocation = await invokeEnvironmentProvider(
         record,

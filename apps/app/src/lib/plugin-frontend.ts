@@ -211,6 +211,7 @@ interface BbPluginRuntime {
   vaul: unknown;
   pierreDiffs?: unknown;
   pierreDiffsReact?: unknown;
+  zod?: unknown;
   clsx: unknown;
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
@@ -261,6 +262,13 @@ const lazyRuntimeGroups = [
     load: createRetryingModuleLoader(async () => {
       const { pierreRuntimeSlots } = await import("./plugin-pierre-runtime");
       return pierreRuntimeSlots;
+    }),
+  },
+  {
+    slots: ["zod"],
+    load: createRetryingModuleLoader(async () => {
+      const { zodRuntimeSlots } = await import("./plugin-zod-runtime");
+      return zodRuntimeSlots;
     }),
   },
 ] satisfies {

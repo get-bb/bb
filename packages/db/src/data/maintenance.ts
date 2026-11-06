@@ -7,15 +7,15 @@ import {
   threads,
 } from "../schema.js";
 
-export const DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES = 128 * 1024 * 1024;
-export const DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO = 0.15;
-
 export const DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES = 1_024;
 export const DATABASE_INCREMENTAL_VACUUM_MAX_PAGES = 20_000;
 export const DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS = 100;
 
-const ACTIVE_THREAD_STATUSES = ["active", "starting"] as const;
-const ACTIVE_PENDING_INTERACTION_STATUSES = ["pending", "resolving"] as const;
+export const ACTIVE_THREAD_STATUSES = ["active", "starting"] as const;
+export const ACTIVE_PENDING_INTERACTION_STATUSES = [
+  "pending",
+  "resolving",
+] as const;
 
 interface CountRow {
   value: number;
@@ -37,10 +37,6 @@ interface BusyTimeoutRow {
   timeout: number;
 }
 
-interface DbstatUnusedRow {
-  unusedBytes: number;
-}
-
 interface ForeignKeysRow {
   foreign_keys: number;
 }
@@ -57,22 +53,6 @@ export interface DatabaseMaintenanceActivity {
   activeThreadProvisioningCount: number;
 }
 
-export interface DatabaseCompactionStats {
-  databaseBytes: number;
-  freelistBytes: number;
-  freelistCount: number;
-  pageCount: number;
-  pageSize: number;
-  reclaimableBytes: number;
-  unusedBytes: number;
-}
-
-export interface DatabaseCompactionDecisionArgs {
-  minReclaimableBytes: number;
-  minReclaimableRatio: number;
-  stats: DatabaseCompactionStats;
-}
-
 export interface DatabaseFreelistStats {
   databaseBytes: number;
   freelistBytes: number;
@@ -84,11 +64,6 @@ export interface DatabaseFreelistStats {
 export interface DatabaseIncrementalVacuumDecisionArgs {
   minFreelistPages: number;
   stats: DatabaseFreelistStats;
-}
-
-export interface CompactDatabaseResult {
-  after: DatabaseCompactionStats;
-  before: DatabaseCompactionStats;
 }
 
 export interface IncrementalVacuumResult {
@@ -170,20 +145,6 @@ function readForeignKeysEnabled(db: DbConnection): boolean {
     db.$client.prepare<[], ForeignKeysRow>("PRAGMA foreign_keys").get()
       ?.foreign_keys === 1
   );
-}
-
-function readDbstatUnusedBytes(db: DbConnection): number {
-  try {
-    return (
-      db.$client
-        .prepare<[], DbstatUnusedRow>(
-          "SELECT COALESCE(SUM(unused), 0) AS unusedBytes FROM dbstat WHERE name NOT LIKE 'sqlite_%'",
-        )
-        .get()?.unusedBytes ?? 0
-    );
-  } catch {
-    return 0;
-  }
 }
 
 function runWithMaintenanceBusyTimeout<TValue>(
@@ -333,33 +294,6 @@ export function getDatabaseFreelistStats(
   };
 }
 
-export function getDatabaseCompactionStats(
-  db: DbConnection,
-): DatabaseCompactionStats {
-  const freelistStats = getDatabaseFreelistStats(db);
-  const unusedBytes = readDbstatUnusedBytes(db);
-
-  return {
-    ...freelistStats,
-    reclaimableBytes: freelistStats.freelistBytes + unusedBytes,
-    unusedBytes,
-  };
-}
-
-export function shouldCompactDatabase(
-  args: DatabaseCompactionDecisionArgs,
-): boolean {
-  if (args.stats.databaseBytes <= 0) {
-    return false;
-  }
-
-  return (
-    args.stats.reclaimableBytes >= args.minReclaimableBytes &&
-    args.stats.reclaimableBytes / args.stats.databaseBytes >=
-      args.minReclaimableRatio
-  );
-}
-
 export function shouldRunIncrementalVacuum(
   args: DatabaseIncrementalVacuumDecisionArgs,
 ): boolean {
@@ -387,25 +321,6 @@ export function getDatabaseAutoVacuumMode(
     default:
       return "none";
   }
-}
-
-export function compactDatabase(db: DbConnection): CompactDatabaseResult {
-  return runWithMaintenanceBusyTimeout({
-    db,
-    work: () => {
-      const before = getDatabaseCompactionStats(db);
-
-      db.$client.exec("PRAGMA auto_vacuum = INCREMENTAL");
-      db.$client.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-      db.$client.exec("VACUUM");
-      db.$client.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-
-      return {
-        after: getDatabaseCompactionStats(db),
-        before,
-      };
-    },
-  });
 }
 
 export function runIncrementalVacuum(

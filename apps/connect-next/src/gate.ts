@@ -1,7 +1,6 @@
 import * as http from "node:http";
 import * as net from "node:net";
 import type { Duplex, Readable } from "node:stream";
-import { parseVisitorHost } from "@bb/connect-db";
 import {
   FRP_WEBSOCKET_PATH,
   signGateAssertion,
@@ -60,16 +59,15 @@ import {
 
 export const HEALTH_PATH = "/__gate/health";
 export const RESP_HEAD_TIMEOUT_MS = 30_000;
-export const VOICE_TRANSCRIPTION_RESP_HEAD_TIMEOUT_MS = 90_000;
+export const RESP_HEAD_MAX_WAIT_MS = 10 * 60_000;
 const MAX_VISITOR_RESOLVE_MS = 8_000;
 const FRP_GOODBYE_MS = 1_000;
 const MAX_REFUSAL_BYTES = 4096;
-const VOICE_TRANSCRIPTION_PATH = "/api/v1/system/voice-transcription";
 export const MAX_REPLAY_BODY_BYTES = 1024 * 1024;
 
 export interface GateDeadlines {
   headMs: number;
-  transcriptionHeadMs: number;
+  maxWaitMs: number;
 }
 
 export interface GateOptions {
@@ -89,11 +87,12 @@ export interface GateOptions {
   now?: () => number;
 }
 
-type Stage = "routing" | "tunnel" | "response-head";
+type Stage = "routing" | "tunnel" | "request-body" | "response-head";
 
 const STALL_MESSAGES: Record<Stage, string> = {
   routing: "checking access",
   tunnel: "waiting for this server's tunnel",
+  "request-body": "forwarding the request body",
   "response-head": "waiting for the tunnel client",
 };
 
@@ -115,6 +114,8 @@ interface Exchange {
   stage: Stage;
   signal: AbortSignal;
   auth: string | null;
+  subdomain: string | null;
+  progressAt: number;
 }
 
 interface Upstream {
@@ -167,19 +168,6 @@ function pathnameOf(url: string): string {
   return query === -1 ? url : url.slice(0, query);
 }
 
-function headDeadlineMs(
-  deadlines: GateDeadlines,
-  method: string,
-  pathname: string,
-  target: string | null,
-): number {
-  return method === "POST" &&
-    pathname === VOICE_TRANSCRIPTION_PATH &&
-    target === null
-    ? deadlines.transcriptionHeadMs
-    : deadlines.headMs;
-}
-
 function preparedReply(reply: Reply): Prepared {
   return {
     status: reply.status,
@@ -214,7 +202,7 @@ export function createGate(options: GateOptions) {
   const now = options.now ?? Date.now;
   const deadlines = options.deadlines ?? {
     headMs: RESP_HEAD_TIMEOUT_MS,
-    transcriptionHeadMs: VOICE_TRANSCRIPTION_RESP_HEAD_TIMEOUT_MS,
+    maxWaitMs: RESP_HEAD_MAX_WAIT_MS,
   };
   const visitorResolveMs = Math.min(
     MAX_VISITOR_RESOLVE_MS,
@@ -383,7 +371,9 @@ export function createGate(options: GateOptions) {
     });
     if (ifNoneMatch !== null) headers["if-none-match"] = ifNoneMatch;
     if (upstream.auth !== null) headers[PEER_FORWARD_HEADER] = upstream.auth;
-    exchange.stage = "response-head";
+    exchange.subdomain = subdomain;
+    exchange.stage = body === null ? "response-head" : "request-body";
+    exchange.progressAt = now();
     return new Promise((resolve, reject) => {
       const outgoing = http.request({
         host: upstream.host,
@@ -396,8 +386,19 @@ export function createGate(options: GateOptions) {
       });
       outgoing.on("response", resolve);
       outgoing.on("error", reject);
+      outgoing.once("finish", () => {
+        exchange.stage = "response-head";
+        exchange.progressAt = now();
+      });
       if (body === null) outgoing.end();
-      else body.pipe(outgoing);
+      else {
+        const progress = () => {
+          exchange.progressAt = now();
+        };
+        body.on("data", progress);
+        outgoing.once("close", () => body.off("data", progress));
+        body.pipe(outgoing);
+      }
     });
   }
 
@@ -680,9 +681,43 @@ export function createGate(options: GateOptions) {
     run: () => Promise<T>,
     discard: (late: T) => void,
   ): Promise<T | typeof STALLED> {
+    const startedAt = now();
     let timer: NodeJS.Timeout | undefined;
+    let reportedSlow = false;
     const stalled = new Promise<typeof STALLED>((resolve) => {
-      timer = setTimeout(() => resolve(STALLED), deadlineMs);
+      const check = () => {
+        const elapsedMs = now() - startedAt;
+        const remainingMs = deadlines.maxWaitMs - elapsedMs;
+        if (remainingMs <= 0) {
+          resolve(STALLED);
+          return;
+        }
+        const idleRemainingMs = exchange.progressAt + deadlineMs - now();
+        if (idleRemainingMs > 0) {
+          timer = setTimeout(check, Math.min(idleRemainingMs, remainingMs));
+          return;
+        }
+        if (
+          exchange.stage === "response-head" &&
+          exchange.subdomain !== null &&
+          directory.locate(exchange.subdomain).kind !== "offline"
+        ) {
+          if (!reportedSlow) {
+            reportedSlow = true;
+            log("info", "slow", {
+              stage: exchange.stage,
+              method: exchange.method,
+              host: exchange.host,
+              path: exchange.pathname,
+              elapsedMs,
+            });
+          }
+          timer = setTimeout(check, Math.min(deadlineMs, remainingMs));
+          return;
+        }
+        resolve(STALLED);
+      };
+      timer = setTimeout(check, Math.min(deadlineMs, deadlines.maxWaitMs));
     });
     const work = run();
     try {
@@ -723,19 +758,9 @@ export function createGate(options: GateOptions) {
       stage: "routing",
       signal,
       auth: null,
+      subdomain: null,
+      progressAt: now(),
     };
-  }
-
-  function deadlineFor(exchange: Exchange): number {
-    const target =
-      parseVisitorHost(withoutPort(exchange.host), policy.baseDomain)?.target ??
-      null;
-    return headDeadlineMs(
-      deadlines,
-      exchange.method,
-      exchange.pathname,
-      target,
-    );
   }
 
   async function assignMachineLabel(
@@ -801,7 +826,7 @@ export function createGate(options: GateOptions) {
     const outcome = await withDeadline(
       exchange,
       controller,
-      deadlineFor(exchange),
+      deadlines.headMs,
       async () => {
         const decision = await decideVisit(
           {
@@ -923,7 +948,7 @@ export function createGate(options: GateOptions) {
     const outcome = await withDeadline<Opened>(
       scoped,
       controller,
-      deadlineFor(scoped),
+      deadlines.headMs,
       async () => {
         const decision = await decideVisit(
           {

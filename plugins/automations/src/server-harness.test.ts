@@ -17,6 +17,7 @@ import {
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
+  type AutomationRunResponse,
 } from "./rpc-types.js";
 
 function storedScriptPathPattern(automationId: string): RegExp {
@@ -1768,6 +1769,27 @@ describe("automations server plugin harness", () => {
     let primaryHostId: string | null = null;
     harness.sdk.stub("system.config", () => ({ primaryHostId }));
     const initialCalls = harness.sdk.callsTo("system.config").length;
+    const publish = host.bb.realtime.publish.bind(host.bb.realtime);
+    const publishSpy = vi.spyOn(host.bb.realtime, "publish");
+    const completedRun = new Promise<AutomationRunResponse>(
+      (resolve, reject) => {
+        publishSpy.mockImplementation((...args) => {
+          publish(...args);
+          void harness
+            .callRpc("automations_runs", {
+              projectId: PROJECT_ID,
+              automationId: automation.id,
+            })
+            .then((result) => {
+              const { runs } = automationRunListResponseSchema.parse(result);
+              if (runs[0] !== undefined && runs[0].status !== "running") {
+                resolve(runs[0]);
+              }
+            })
+            .catch(reject);
+        });
+      },
+    );
     const service = harness.runService("automation-sweep");
     try {
       await vi.waitFor(() =>
@@ -1777,19 +1799,11 @@ describe("automations server plugin harness", () => {
       );
       primaryHostId = "host_fake";
       await vi.advanceTimersByTimeAsync(60_000);
-      await vi.waitFor(async () => {
-        const { runs } = automationRunListResponseSchema.parse(
-          await harness.callRpc("automations_runs", {
-            projectId: PROJECT_ID,
-            automationId: automation.id,
-          }),
-        );
-        expect(runs[0]).toMatchObject({
-          status: "succeeded",
-          output: expect.stringMatching(/(?:^|\n)late enrollment OK$/),
-          exitCode: 0,
-          error: null,
-        });
+      expect(await completedRun).toMatchObject({
+        status: "succeeded",
+        output: expect.stringMatching(/(?:^|\n)late enrollment OK$/),
+        exitCode: 0,
+        error: null,
       });
       const calls = harness.sdk.callsTo("system.config").length;
       await vi.advanceTimersByTimeAsync(20_000);
@@ -1797,6 +1811,7 @@ describe("automations server plugin harness", () => {
     } finally {
       service.controller.abort();
       await service.done;
+      publishSpy.mockRestore();
       await harness.dispose();
     }
   });

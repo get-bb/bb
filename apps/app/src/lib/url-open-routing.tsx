@@ -1,5 +1,5 @@
 import { parseApplicationUrl } from "@bb/domain/application-url";
-import { openApplicationUrl, applicationLinksEnabled } from "./application-url";
+import { openApplicationUrl } from "./application-url";
 import {
   createContext,
   useCallback,
@@ -79,8 +79,6 @@ function useOpenUrlByPreference(): (url: string) => boolean {
 
   return useCallback(
     (url: string) => {
-      if (parseApplicationUrl(url) !== null && !applicationLinksEnabled())
-        return false;
       return openUrlByPreference({
         desktopBrowserAvailable,
         openExternalBrowser: openUrlInExternalBrowser,

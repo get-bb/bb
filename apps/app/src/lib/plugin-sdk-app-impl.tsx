@@ -51,6 +51,7 @@ import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
+import { ExperimentalFilePreview } from "@/components/plugin/ExperimentalFilePreview";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";
 import { definePluginApp } from "./plugin-app-definition";
@@ -211,6 +212,7 @@ export const pluginSdkAppImplementation = {
   experimental_useBranches: usePluginBranches,
   experimental_useCheckoutState: usePluginCheckoutState,
   experimental_SourceCode: LazyPluginSourceCode,
+  experimental_FilePreview: ExperimentalFilePreview,
   experimental_Diff: LazyPluginDiff,
   experimental_InfoSection: InfoSection,
   experimental_ThreadRowMetadata: ThreadRowMetadata,

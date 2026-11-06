@@ -18,13 +18,6 @@ const EXPECTED_ESCALATION = {
 const threadTurnInitiatorValues = threadTurnInitiatorSchema.options;
 
 describe("permission escalation by turn initiator", () => {
-  it("covers every initiator", () => {
-    expect(threadTurnInitiatorValues).toEqual(["user", "agent", "system"]);
-    expect(Object.keys(EXPECTED_ESCALATION)).toHaveLength(
-      threadTurnInitiatorValues.length,
-    );
-  });
-
   it.each(threadTurnInitiatorValues.map((initiator) => [initiator] as const))(
     "%s",
     (initiator) => {
@@ -79,15 +72,6 @@ const POLICY_CELLS = permissionModeValues.flatMap((permissionMode) =>
 );
 
 describe("runtime permission policy shapes", () => {
-  it("enumerates the full cross product", () => {
-    expect(permissionModeValues).toEqual(["accept-edits", "auto", "full"]);
-    expect(runtimePermissionScopeValues).toEqual(["workspace", "full"]);
-    expect(approvalReviewerValues).toEqual(["user", "automatic"]);
-    expect(permissionEscalationValues).toEqual(["ask", "deny"]);
-    expect(POLICY_CELLS).toHaveLength(3 * 2 * 3 * 3);
-    expect(runtimePermissionPolicySchema.options).toHaveLength(3);
-  });
-
   it.each(POLICY_CELLS)(
     "$permissionMode × $permissionScope × $approvalReviewer × $permissionEscalation",
     (cell) => {

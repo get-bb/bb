@@ -84,7 +84,9 @@ export function projectAssistantAndReasoningEvent(
     });
   }
 
+  const assistantDeltaText = parseAssistantDeltaText(args.decoded);
   if (
+    assistantDeltaText &&
     projectBufferedTextEvent({
       createMessage: (messageKey) =>
         createAssistantTextMessage({
@@ -103,13 +105,15 @@ export function projectAssistantAndReasoningEvent(
         visibleKeys: args.state.visibleAssistantMessageKeys,
       },
       state: args.state,
-      text: parseAssistantDeltaText(args.decoded),
+      text: assistantDeltaText,
     })
   ) {
     return true;
   }
 
+  const assistantFinalText = parseAssistantFinalText(args.decoded);
   if (
+    assistantFinalText &&
     projectBufferedTextEvent({
       createMessage: (messageKey) =>
         createAssistantTextMessage({
@@ -128,13 +132,15 @@ export function projectAssistantAndReasoningEvent(
         visibleKeys: args.state.visibleAssistantMessageKeys,
       },
       state: args.state,
-      text: parseAssistantFinalText(args.decoded),
+      text: assistantFinalText,
     })
   ) {
     return true;
   }
 
+  const reasoningDeltaText = parseReasoningDeltaText(args.decoded);
   if (
+    reasoningDeltaText &&
     projectReasoningTextEvent({
       identity: reasoningIdentity,
       mode:
@@ -142,7 +148,7 @@ export function projectAssistantAndReasoningEvent(
           ? "summary-delta"
           : "content-delta",
       state: args.state,
-      text: parseReasoningDeltaText(args.decoded),
+      text: reasoningDeltaText,
     })
   ) {
     return true;
@@ -159,18 +165,21 @@ export function projectAssistantAndReasoningEvent(
       createBufferedTextInstanceKey(reasoningIdentity),
     );
     if (
-      deltas?.summary === args.decoded.item.summary.join("") &&
+      deltas !== undefined &&
+      deltas.summary === args.decoded.item.summary.join("") &&
       deltas.content === args.decoded.item.content.join("")
     ) {
       reasoningCompletionText = null;
     }
   }
-  const projectedReasoningFinal = projectReasoningTextEvent({
-    identity: reasoningIdentity,
-    mode: "final",
-    state: args.state,
-    text: reasoningCompletionText,
-  });
+  const projectedReasoningFinal =
+    reasoningCompletionText !== null &&
+    projectReasoningTextEvent({
+      identity: reasoningIdentity,
+      mode: "final",
+      state: args.state,
+      text: reasoningCompletionText,
+    });
 
   if (
     args.decoded.type === "item/completed" &&

@@ -531,11 +531,11 @@ function buildThreadQueuedWorkByThreadId(
   for (const counts of listQueuedThreadMessageCountsByThreadIds(deps.db, {
     threadIds: threads.map((thread) => thread.id),
   })) {
-    if (counts.queuedMessageCount === 0) continue;
-    result.set(
-      counts.threadId,
-      counts.failedQueuedMessageCount > 0 ? "failed" : "waiting",
-    );
+    if (counts.failedQueuedMessageCount > 0) {
+      result.set(counts.threadId, "failed");
+    } else if (counts.userQueuedMessageCount > 0) {
+      result.set(counts.threadId, "waiting");
+    }
   }
   return result;
 }

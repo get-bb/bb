@@ -65,13 +65,13 @@ Inspecting:
     --clear <option>                       Drop a choice that has not been applied yet (repeatable)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
-    --work-status                          Include git working-tree status
-    --git-diff                             Include git diff
-    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit
-    --diff-sha <sha>                       Commit SHA (for --diff-target commit)
-    --diff-merge-base <branch>             Override merge-base branch for diff
 
   Shows pull request status for the attached environment branch when available.
+  Read the thread's git status and diff with `bb git status|diff
+  <environment-id>`; `--json` prints the environment ID as `environment.id`.
+  The deprecated `--work-status`, `--git-diff`, `--diff-target`, `--diff-sha`
+  and `--diff-merge-base` flags still run and print the `bb git` command that
+  replaces them.
 
   `thread context` reads the latest stored context measurement without starting
   a provider request; `--json` prints `{ usage: ... }` (`null` when unavailable).

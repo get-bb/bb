@@ -235,14 +235,18 @@ export async function collectCiHealth(api, since, until, checkpoint) {
     });
   }
   await checkpoint(evidence);
-  for (let offset = 0; offset < runs.length; offset += 6) {
-    await Promise.all(
-      runs.slice(offset, offset + 6).map(async (run) => {
-        if (run.conclusion === null) return;
+  let next = 0;
+  let completed = 0;
+  let checkpointWork = Promise.resolve();
+  await Promise.all(
+    Array.from({ length: Math.min(6, runs.length) }, async () => {
+      while (next < runs.length) {
+        const run = runs[next++];
+        if (run.conclusion === null) continue;
         try {
           for (let page = 1; ; page++) {
             const data = await api(
-              `actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${page}`,
+              `actions/runs/${run.id}/jobs?filter=all&per_page=30&page=${page}`,
             );
             if (!Array.isArray(data?.jobs))
               throw new Error("Invalid CI job inventory");
@@ -288,8 +292,8 @@ export async function collectCiHealth(api, since, until, checkpoint) {
                 ),
               });
             }
-            if (data.jobs.length < 100) break;
-            if (page === 100)
+            if (data.jobs.length < 30) break;
+            if (page === 200)
               throw new Error("CI job inventory exceeded the report limit");
           }
           run.jobsComplete = true;
@@ -299,10 +303,14 @@ export async function collectCiHealth(api, since, until, checkpoint) {
             message: error instanceof Error ? error.message : String(error),
           });
         }
-      }),
-    );
-    await checkpoint(evidence);
-  }
+        if (++completed % 6 === 0) {
+          checkpointWork = checkpointWork.then(() => checkpoint(evidence));
+          await checkpointWork;
+        }
+      }
+    }),
+  );
+  await checkpoint(evidence);
   return evidence;
 }
 

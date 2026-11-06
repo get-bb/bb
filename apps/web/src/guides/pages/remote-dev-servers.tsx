@@ -443,7 +443,7 @@ export const guide: Guide = {
     COST_FAQ,
   ],
   closer: {
-    title: "Preview every branch",
+    title: "Preview every branch.",
     body: "Free and open source. Bring the machines and AI plans you already have.",
   },
 };

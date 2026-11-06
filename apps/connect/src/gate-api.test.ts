@@ -1,5 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import {
+  type ServedTestConnectDb,
+  serveTestConnectDb,
+  workerNodeBuiltinsPlugin,
+} from "@bb/connect-db-pg/testing";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -7,7 +12,6 @@ import {
   sha256Hex,
   signMcpAccessToken,
 } from "@bb/connect-db";
-import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
 import {
   GATE_PRESENCE_BATCH_MAX,
   GATE_PRESENCE_BATCH_PATH,
@@ -41,8 +45,9 @@ type ClientWebSocket = NonNullable<
 
 let script = "";
 let mf: Miniflare;
-let db: D1Database;
+let db: ServedTestConnectDb;
 const instances: Miniflare[] = [];
+const databases: ServedTestConnectDb[] = [];
 
 async function bundleWorker(): Promise<string> {
   const result = await build({
@@ -53,19 +58,24 @@ async function bundleWorker(): Promise<string> {
     format: "esm",
     target: "esnext",
     conditions: ["workerd", "worker", "browser"],
+    plugins: [workerNodeBuiltinsPlugin],
     write: false,
   });
   return result.outputFiles[0].text;
 }
 
-function gate(bindings: Record<string, string>): Miniflare {
+async function gate(
+  bindings: Record<string, string>,
+): Promise<{ instance: Miniflare; database: ServedTestConnectDb }> {
+  const database = await serveTestConnectDb();
+  databases.push(database);
   const instance = new Miniflare({
     modules: true,
     script,
     compatibilityDate: "2026-06-11",
     compatibilityFlags: ["nodejs_compat"],
     durableObjects: { TUNNEL_DO: "TunnelDO" },
-    d1Databases: { DB: `gate-api-${instances.length}` },
+    hyperdrives: { HYPERDRIVE: database.connectionString },
     bindings: {
       BASE_DOMAIN: BASE,
       BETTER_AUTH_SECRET: SECRET,
@@ -74,14 +84,22 @@ function gate(bindings: Record<string, string>): Miniflare {
     },
   });
   instances.push(instance);
-  return instance;
+  return { instance, database };
+}
+
+async function query<Row>(
+  target: ServedTestConnectDb,
+  sql: string,
+  values: unknown[],
+): Promise<Row[]> {
+  const { rows } = await target.pglite.query<Row>(sql, values, {
+    parsers: { 20: (value: string) => Number(value) },
+  });
+  return rows;
 }
 
 async function run(sql: string, ...values: unknown[]): Promise<void> {
-  await db
-    .prepare(sql)
-    .bind(...values)
-    .run();
+  await query(db, sql, values);
 }
 
 async function signedSessionCookie(token: string): Promise<string> {
@@ -102,52 +120,48 @@ async function signedSessionCookie(token: string): Promise<string> {
   );
 }
 
-async function seed(target: D1Database): Promise<void> {
+async function seed(target: ServedTestConnectDb): Promise<void> {
   const exec = async (sql: string, ...values: unknown[]): Promise<void> => {
-    await target
-      .prepare(sql)
-      .bind(...values)
-      .run();
+    await query(target, sql, values);
   };
-  await applyConnectDbMigrationsToD1(target);
   for (const id of [OWNER, OTHER]) {
     await exec(
-      "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES (?1, ?1, ?1 || '@example.com', 1, ?2, ?2)",
+      "INSERT INTO \"user\" (id, name, email, email_verified, created_at, updated_at) VALUES ($1, $1, $1 || '@example.com', true, $2, $2)",
       id,
       NOW,
     );
   }
   await exec(
-    "INSERT INTO profile (user_id, handle, created_at) VALUES (?1, 'owner', ?2)",
+    "INSERT INTO profile (user_id, handle, created_at) VALUES ($1, 'owner', $2)",
     OWNER,
     NOW,
   );
   await exec(
-    "INSERT INTO server (id, user_id, name, subdomain, credential_hash, last_seen_at, created_at) VALUES ('srv-orchid', ?1, 'orchid', 'orchid', ?2, ?3, ?3)",
+    "INSERT INTO server (id, user_id, name, subdomain, credential_hash, last_seen_at, created_at) VALUES ('srv-orchid', $1, 'orchid', 'orchid', $2, $3, $3)",
     OWNER,
     await sha256Hex(SERVER_CREDENTIAL),
     NOW - HOUR_MS,
   );
   await exec(
-    "INSERT INTO server (id, user_id, name, subdomain, credential_hash, revoked_at, created_at) VALUES ('srv-gone', ?1, 'gone', 'gone', ?2, ?3, ?3)",
+    "INSERT INTO server (id, user_id, name, subdomain, credential_hash, revoked_at, created_at) VALUES ('srv-gone', $1, 'gone', 'gone', $2, $3, $3)",
     OWNER,
     await sha256Hex(REVOKED_CREDENTIAL),
     NOW,
   );
   await exec(
-    "INSERT INTO server (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('srv-bravo', ?1, 'bravo', 'bravo', ?2, ?3)",
+    "INSERT INTO server (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('srv-bravo', $1, 'bravo', 'bravo', $2, $3)",
     OWNER,
     await sha256Hex("bbcred_server_bravo"),
     NOW,
   );
   await exec(
-    "INSERT INTO machine (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('mch-box', ?1, 'box', 'box', ?2, ?3)",
+    "INSERT INTO machine (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('mch-box', $1, 'box', 'box', $2, $3)",
     OWNER,
     await sha256Hex(MACHINE_CREDENTIAL),
     NOW,
   );
   await exec(
-    "INSERT INTO machine (id, user_id, name, credential_hash, created_at) VALUES ('mch-other', ?1, 'other', ?2, ?3)",
+    "INSERT INTO machine (id, user_id, name, credential_hash, created_at) VALUES ('mch-other', $1, 'other', $2, $3)",
     OTHER,
     await sha256Hex(OTHER_MACHINE_CREDENTIAL),
     NOW,
@@ -160,7 +174,7 @@ async function seed(target: D1Database): Promise<void> {
   ] as const;
   for (const [id, userId, token, expiresAt] of sessions) {
     await exec(
-      "INSERT INTO session (id, user_id, token, expires_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+      "INSERT INTO session (id, user_id, token, expires_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $5)",
       id,
       userId,
       token,
@@ -173,7 +187,7 @@ async function seed(target: D1Database): Promise<void> {
     ["grant-cf", `https://orchid.${BASE}/mcp`],
   ] as const) {
     await exec(
-      "INSERT INTO oauth_grant (id, user_id, server_id, client_id, client_name, resource, scope, created_at) VALUES (?1, ?2, 'srv-orchid', 'client-1', 'Claude', ?3, 'bb', ?4)",
+      "INSERT INTO oauth_grant (id, user_id, server_id, client_id, client_name, resource, scope, created_at) VALUES ($1, $2, 'srv-orchid', 'client-1', 'Claude', $3, 'bb', $4)",
       id,
       OWNER,
       resource,
@@ -184,13 +198,16 @@ async function seed(target: D1Database): Promise<void> {
 
 beforeAll(async () => {
   script = await bundleWorker();
-  mf = gate({ GATE_SECRET, NEXT_BASE_DOMAIN: NEXT });
-  db = (await mf.getD1Database("DB")) as unknown as D1Database;
+  ({ instance: mf, database: db } = await gate({
+    GATE_SECRET,
+    NEXT_BASE_DOMAIN: NEXT,
+  }));
   await seed(db);
 }, 60_000);
 
 afterAll(async () => {
   await Promise.all(instances.map((instance) => instance.dispose()));
+  await Promise.all(databases.map((database) => database.close()));
 });
 
 function post(
@@ -273,7 +290,7 @@ describe("gate account API authentication", () => {
   });
 
   it("answers 404 even with a bearer when the worker has no GATE_SECRET", async () => {
-    const unset = gate({ NEXT_BASE_DOMAIN: NEXT });
+    const { instance: unset } = await gate({ NEXT_BASE_DOMAIN: NEXT });
     for (const authorization of ["Bearer ", "Bearer undefined", "Bearer x"]) {
       const response = await post(
         unset,
@@ -468,7 +485,7 @@ describe("POST /api/gate/resolve", () => {
   it("sees a credential rotated a moment ago because credential checks read fresh", async () => {
     await resolve({ credential: SERVER_CREDENTIAL });
     await run(
-      "UPDATE server SET credential_hash = ?1 WHERE id = 'srv-bravo'",
+      "UPDATE server SET credential_hash = $1 WHERE id = 'srv-bravo'",
       await sha256Hex("bbcred_bravo_rotated"),
     );
     expect(
@@ -568,14 +585,14 @@ describe("POST /api/gate/resolve", () => {
       ).oauth,
     ).toBeNull();
 
-    const local = gate({
+    const { instance: local, database: localDb } = await gate({
       GATE_SECRET,
       BASE_DOMAIN: "bb.localhost",
       ACCOUNT_APP_URL: "http://bb.localhost:35067",
       CLOUD_DEV: "true",
       NEXT_BASE_DOMAIN: "next.bb.localhost",
     });
-    await seed((await local.getD1Database("DB")) as unknown as D1Database);
+    await seed(localDb);
     const localResource = "http://orchid.next.bb.localhost:41000/mcp";
     const token = await accessToken({
       grantId: "grant-next",
@@ -609,8 +626,8 @@ describe("POST /api/gate/resolve", () => {
   }, 30_000);
 
   it("refuses OAuth when the worker has no NEXT_BASE_DOMAIN", async () => {
-    const bare = gate({ GATE_SECRET });
-    await seed((await bare.getD1Database("DB")) as unknown as D1Database);
+    const { instance: bare, database: bareDb } = await gate({ GATE_SECRET });
+    await seed(bareDb);
     const nextResource = `https://orchid.${NEXT}/mcp`;
     const response = await post(
       bare,
@@ -649,17 +666,17 @@ async function report(over: Partial<GatePresenceRequest>) {
 }
 
 async function nextColumns(table: "server" | "machine", id: string) {
-  return db
-    .prepare(
-      `SELECT next_tunnel_gate AS gate, next_tunnel_region AS region, next_tunnel_at AS at, last_seen_at AS lastSeenAt FROM ${table} WHERE id = ?1`,
-    )
-    .bind(id)
-    .first<{
-      gate: string | null;
-      region: string | null;
-      at: number | null;
-      lastSeenAt: number | null;
-    }>();
+  const [row] = await query<{
+    gate: string | null;
+    region: string | null;
+    at: number | null;
+    lastSeenAt: number | null;
+  }>(
+    db,
+    `SELECT next_tunnel_gate AS gate, next_tunnel_region AS region, next_tunnel_at AS at, last_seen_at AS "lastSeenAt" FROM ${table} WHERE id = $1`,
+    [id],
+  );
+  return row ?? null;
 }
 
 async function dashboardLive(handle: string): Promise<boolean | undefined> {
@@ -740,7 +757,7 @@ describe("POST /api/gate/presence", () => {
       recorded: false,
     });
     await run(
-      "UPDATE server SET next_tunnel_at = ?1 WHERE id = 'srv-orchid'",
+      "UPDATE server SET next_tunnel_at = $1 WHERE id = 'srv-orchid'",
       connectedAt - NEXT_TUNNEL_WRITE_INTERVAL_MS,
     );
     const refreshedAt = tick();
@@ -902,7 +919,7 @@ describe("POST /api/gate/presence/batch", () => {
 
   it("applies the single route's write rules to every entry in one call", async () => {
     await run(
-      "INSERT INTO server (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('srv-lily', ?1, 'lily', 'lily', 'x', ?2), ('srv-iris', ?1, 'iris', 'iris', 'y', ?2)",
+      "INSERT INTO server (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('srv-lily', $1, 'lily', 'lily', 'x', $2), ('srv-iris', $1, 'iris', 'iris', 'y', $2)",
       OWNER,
       NOW,
     );
@@ -947,7 +964,7 @@ describe("POST /api/gate/presence/batch", () => {
     });
 
     await run(
-      "UPDATE server SET next_tunnel_at = ?1 WHERE id = 'srv-lily'",
+      "UPDATE server SET next_tunnel_at = $1 WHERE id = 'srv-lily'",
       at - NEXT_TUNNEL_WRITE_INTERVAL_MS,
     );
     const refreshed = tick();
@@ -986,7 +1003,7 @@ describe("POST /api/gate/presence/batch", () => {
 
   it("does not record a revoked machine", async () => {
     await run(
-      "INSERT INTO machine (id, user_id, name, subdomain, credential_hash, revoked_at, created_at) VALUES ('mch-old', ?1, 'old', 'old', 'z', ?2, ?2)",
+      "INSERT INTO machine (id, user_id, name, subdomain, credential_hash, revoked_at, created_at) VALUES ('mch-old', $1, 'old', 'old', 'z', $2, $2)",
       OWNER,
       NOW,
     );
@@ -1001,7 +1018,7 @@ describe("POST /api/gate/presence/batch", () => {
     await run(
       `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${GATE_PRESENCE_BATCH_MAX})
        INSERT INTO server (id, user_id, name, subdomain, credential_hash, created_at)
-       SELECT 'srv-bulk-' || i, ?1, 'bulk-' || i, 'bulk-' || i, 'h', ?2 FROM n`,
+       SELECT 'srv-bulk-' || i, $1, 'bulk-' || i, 'bulk-' || i, 'h', $2 FROM n`,
       OWNER,
       NOW,
     );
@@ -1013,12 +1030,11 @@ describe("POST /api/gate/presence/batch", () => {
     const first = await batch(reports);
     expect(first.status).toBe(200);
     expect(first.body.results).toEqual(reports.map(() => "recorded"));
-    const counted = await db
-      .prepare(
-        "SELECT count(*) AS n FROM server WHERE subdomain LIKE 'bulk-%' AND next_tunnel_gate = 'fly-a' AND next_tunnel_at = ?1",
-      )
-      .bind(at)
-      .first<{ n: number }>();
+    const [counted] = await query<{ n: number }>(
+      db,
+      "SELECT count(*) AS n FROM server WHERE subdomain LIKE 'bulk-%' AND next_tunnel_gate = 'fly-a' AND next_tunnel_at = $1",
+      [at],
+    );
     expect(counted?.n).toBe(GATE_PRESENCE_BATCH_MAX);
     const again = await batch(
       reports.map((report) => ({ ...report, at: tick() })),

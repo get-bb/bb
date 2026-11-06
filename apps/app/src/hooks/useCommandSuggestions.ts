@@ -27,7 +27,6 @@ export type CommandSuggestionSource = Omit<
 >;
 
 interface UseCommandSuggestionsResult {
-  triggers: readonly PromptMentionCommandTrigger[];
   suggestions: ProviderCommandSuggestion[];
   isLoading: boolean;
   isRefreshing: boolean;
@@ -234,7 +233,6 @@ export function useCommandSuggestions(
   const isError = isActive && commandsQuery.isError;
 
   return {
-    triggers: args.skillsTriggers,
     suggestions,
     isLoading,
     isRefreshing,

@@ -34,7 +34,6 @@ import {
 import {
   accountPoolDefaultEnabled,
   BUILTIN_PLUGINS,
-  OFFICIAL_PLUGINS,
   resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyPluginRuntime } from "@bb/plugin-build";
@@ -263,23 +262,6 @@ describe("builtin plugin reconciliation", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
   });
 
-  it("keeps official plugins bundled but out of the auto-install builtins", () => {
-    const optionalNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
-    expect(optionalNames).toEqual([
-      "environment-modal-sandbox",
-      "browser-automation",
-      "github",
-      "docs",
-      "memory",
-      "tasks",
-      "theme-preview",
-    ]);
-    for (const name of optionalNames) {
-      expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(name);
-    }
-    expect(OFFICIAL_PLUGINS.every((plugin) => !plugin.autoInstall)).toBe(true);
-  });
-
   it("enables the account pooler only when a parent bb server pool is present", () => {
     expect(accountPoolDefaultEnabled({})).toBe(false);
     expect(accountPoolDefaultEnabled({ BB_ACCOUNT_POOL_PARENT_URL: "" })).toBe(
@@ -312,6 +294,7 @@ describe("builtin plugin reconciliation", () => {
         provenance: "builtin",
         isOrphanedBuiltin: false,
         sourceDisplay: "builtin · builtin-fixture",
+        sourceNotice: null,
         updateState: {},
         icon: "EditFile",
         enabled: true,

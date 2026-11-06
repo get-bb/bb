@@ -16,4 +16,4 @@ Project writes use the project of the current thread. Global writes must pass `-
 
 ## Requirements
 
-Disable provider-native memory in Settings under Providers to avoid duplicate or conflicting stores. The CLI connects to the local bb server. Some provider sandboxes ask for approval before they allow that connection.
+Disable provider-native memory (Settings → Plugins → Claude Code provider or Codex provider) to avoid duplicate or conflicting stores. The CLI connects to the local bb server. Some provider sandboxes ask for approval before they allow that connection.

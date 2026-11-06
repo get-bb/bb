@@ -311,6 +311,7 @@ describe("storage", () => {
       "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)",
     ]);
     db.prepare("INSERT INTO notes (body) VALUES (?)").run("hello");
+    expect(db.pragma("auto_vacuum", { simple: true })).toBe(2);
 
     const again = bb.storage.database();
     expect(again).toBe(db);
@@ -1652,7 +1653,10 @@ describe("agent tools", () => {
         tools: [alpha ? "alpha_tool" : "beta_tool"],
         skills: [alpha ? "alpha-skill" : "beta-skill"],
         instructions:
-          `${context.provider.id}:${context.provider.model}:`.padEnd(5000, "x"),
+          `${context.provider.id}:${context.provider.model}:`.padEnd(
+            alpha ? 15_700 : 40_000,
+            "x",
+          ),
       };
     });
 
@@ -1669,9 +1673,10 @@ describe("agent tools", () => {
 
     expect(alpha.tools.map((tool) => tool.name)).toEqual(["alpha_tool"]);
     expect(alpha.skills).toEqual(["alpha-skill"]);
-    expect(alpha.instructions).toHaveLength(4096);
+    expect(alpha.instructions).toHaveLength(15_700);
     expect(beta.tools.map((tool) => tool.name)).toEqual(["beta_tool"]);
     expect(beta.skills).toEqual(["beta-skill"]);
+    expect(beta.instructions).toHaveLength(32_768);
     expect(contexts).toEqual([configurationContext, betaContext]);
     expect(harness.registrations.agentTools.map((tool) => tool.name)).toEqual([
       "alpha_tool",

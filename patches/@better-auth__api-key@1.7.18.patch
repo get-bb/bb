@@ -1,0 +1,25 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 24e26d1a10804456581f7bbc943eeb3784db5175..000e723109aff86b0ea0442269edb67b22e3c2bd 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1719,14 +1719,18 @@ async function validateApiKey({ key, ctx, lookupOpts, configurations, schema, pe
+ async function claimUsageInDatabase({ ctx, apiKey, opts, hashedKey }) {
+ 	let row = apiKey;
+ 	if (apiKey.remaining !== null) row = await consumeRemaining(ctx, apiKey);
+-	row = await consumeRateLimit(ctx, row, opts);
++	const rateLimitDisabled = opts.rateLimit.enabled === false || row.rateLimitEnabled === false;
++	if (!rateLimitDisabled) row = await consumeRateLimit(ctx, row, opts);
+ 	const finalRow = await ctx.context.adapter.update({
+ 		model: API_KEY_TABLE_NAME,
+ 		where: [{
+ 			field: "id",
+ 			value: row.id
+ 		}],
+-		update: { updatedAt: /* @__PURE__ */ new Date() }
++		update: {
++			...(rateLimitDisabled ? { lastRequest: new Date() } : {}),
++			updatedAt: new Date()
++		}
+ 	});
+ 	if (!finalRow) throw APIError$1.from("UNAUTHORIZED", API_KEY_ERROR_CODES.INVALID_API_KEY);
+ 	if (opts.storage === "secondary-storage" && opts.fallbackToDatabase) await setApiKey(ctx, finalRow, opts);

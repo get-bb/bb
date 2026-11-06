@@ -109,6 +109,7 @@ const mocks = vi.hoisted(() => ({
   modelsLoading: false,
   permissionCeiling: undefined as "accept-edits" | "auto" | "full" | undefined,
   modelSessionOptions: undefined as ThreadSessionOption[] | undefined,
+  openCreateDialogThen: vi.fn(),
 }));
 
 vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
@@ -449,6 +450,7 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
     isAvailable: false,
     isCreating: false,
     openCreateDialog: vi.fn(),
+    openCreateDialogThen: mocks.openCreateDialogThen,
     openObservedCreateDialog: vi.fn(),
     platform: null,
     projectPathDialog: {
@@ -719,6 +721,7 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.machineProviders = [];
     mocks.modelsLoading = false;
     mocks.permissionCeiling = undefined;
+    mocks.openCreateDialogThen.mockReset();
     mocks.environmentProviders = [
       CHECKOUT_PROVIDER,
       MANAGED_WORKTREE_SUGAR_PROVIDER,
@@ -1329,6 +1332,55 @@ describe("PluginNewThreadComposer seeding", () => {
         inputs: null,
       },
     });
+  });
+
+  it("offers New project in the picker and selects the created project in this composer", async () => {
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "create-project",
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    const createProject = latestPromptBoxProps().project.createProject;
+    expect(createProject).toMatchObject({ disabled: true, isCreating: false });
+
+    act(() => {
+      createProject.onCreate();
+    });
+    expect(mocks.openCreateDialogThen).toHaveBeenCalledOnce();
+
+    mocks.extraProjects = [
+      {
+        ...PROJECT,
+        id: "proj_created",
+        name: "Created",
+        sources: [
+          {
+            ...PROJECT.sources[0],
+            id: "src_created",
+            projectId: "proj_created",
+          },
+        ],
+      },
+    ];
+    const selectCreatedProject = mocks.openCreateDialogThen.mock.calls[0]?.[0];
+    act(() => {
+      selectCreatedProject("proj_created");
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_created");
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.projectId).toBe("proj_created");
   });
 
   it("re-seeds every selection when the seed props change, even after a user pick", async () => {

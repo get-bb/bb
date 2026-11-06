@@ -3,12 +3,14 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
+  preferOutOfMemoryKill,
   sanitizeInheritedChildProcessEnv,
   spawnManagedProcess,
   type ManagedProcess,
 } from "@bb/process-utils";
 import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
+import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 import { createProviderForId } from "./provider-registry.js";
 import {
   ignoredJsonRpcResultSchema,
@@ -27,6 +29,7 @@ import type {
 
 export interface RuntimeProviderProcess extends ManagedProcess {
   adapter: BridgeProtocolAdapter;
+  bridgeLaunchKey: string;
   expectedShutdownExpectations: number;
   exitFinalized: Promise<void>;
   identity: RuntimeProviderIdentityState;
@@ -107,6 +110,7 @@ interface TerminateProviderProcessArgs {
 
 interface SpawnProviderArgs {
   adapter: BridgeProtocolAdapter;
+  bridgeLaunchKey: string;
   processKey: string;
   providerId: string;
 }
@@ -180,6 +184,7 @@ export class RuntimeProviderProcessManager {
       const adapter = this.getAdapter(args.providerId, args.bridgeLaunch);
       const providerProcess = this.spawnProvider({
         adapter,
+        bridgeLaunchKey: bridgeLaunchProcessKey(args.bridgeLaunch),
         processKey: args.processKey,
         providerId: args.providerId,
       });
@@ -257,11 +262,13 @@ export class RuntimeProviderProcessManager {
     args: EnsureRuntimeProviderArgs,
   ): Promise<void> {
     this.currentProcessKeyByProviderId.set(args.providerId, args.processKey);
+    const bridgeLaunchKey = bridgeLaunchProcessKey(args.bridgeLaunch);
     const staleKeys = [...this.processes.entries()]
       .filter(
         ([processKey, providerProcess]) =>
           processKey !== args.processKey &&
           providerProcess.providerId === args.providerId &&
+          providerProcess.bridgeLaunchKey !== bridgeLaunchKey &&
           providerProcess.identity.threadIds.size === 0,
       )
       .map(([processKey]) => processKey);
@@ -388,6 +395,7 @@ export class RuntimeProviderProcessManager {
       env,
     });
     const { child } = managed;
+    preferOutOfMemoryKill(child.pid);
     let finalizeExit: () => void = () => undefined;
     const exitFinalized = new Promise<void>((resolve) => {
       finalizeExit = resolve;
@@ -396,6 +404,7 @@ export class RuntimeProviderProcessManager {
     const providerProcess: RuntimeProviderProcess = {
       ...managed,
       adapter: args.adapter,
+      bridgeLaunchKey: args.bridgeLaunchKey,
       expectedShutdownExpectations: 0,
       exitFinalized,
       interactiveRequestScope: randomUUID(),

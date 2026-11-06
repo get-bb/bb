@@ -207,9 +207,13 @@ export function toThreadQueuedMessage(
     waitingOn: parseStoredQueuedThreadMessageWaitingOn(row),
     failureReason: row.failureReason,
     payload: toQueuedMessagePayload(row),
+    systemNotice: parseStoredQueuedThreadMessageSystemNotice(row),
     // An `inline` draft stops being editable the moment the drain claims it:
     // the row is on its way to a provider and a rewrite would be lost.
-    editable: row.payloadKind === "inline" && row.state !== "claimed",
+    editable:
+      row.payloadKind === "inline" &&
+      row.state !== "claimed" &&
+      row.systemNotice === null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

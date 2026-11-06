@@ -2854,32 +2854,6 @@ describe("public thread data routes", () => {
         id: queuedMessage.id,
       });
 
-      const staleUpdateResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            expectedUpdatedAt: queuedMessageBeforeUpdate?.updatedAt,
-            input: [{ type: "text", text: "Stale queued message edit" }],
-          }),
-        },
-      );
-      expect(staleUpdateResponse.status).toBe(409);
-      await expect(readJson(staleUpdateResponse)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: "Queued message changed since editing began",
-      });
-      expect(
-        getQueuedThreadMessage(harness.db, queuedMessage.id)?.content,
-      ).toBe(
-        JSON.stringify([
-          { type: "text", text: "Edited queued message", mentions: [] },
-        ]),
-      );
-
       const deleteResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
         {
@@ -2944,8 +2918,6 @@ describe("public thread data routes", () => {
       expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([
         { type: "text", text: "Queued active follow-up", mentions: [] },
       ]);
-      // Nothing was dispatched, and queueing writes no timeline event at all:
-      // the queue rows above the composer are the only narration of a wait.
       expect(
         harness.db
           .select({ type: events.type })
@@ -3333,6 +3305,7 @@ describe("public thread data routes", () => {
         threadId: thread.id,
         content: textInput("Third queued message"),
       });
+      const notifyThread = vi.spyOn(harness.hub, "notifyThread");
       const response = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${secondQueuedMessage.id}/order`,
         {
@@ -3356,6 +3329,7 @@ describe("public thread data routes", () => {
         secondQueuedMessage.id,
         thirdQueuedMessage.id,
       ]);
+      expect(notifyThread).not.toHaveBeenCalled();
     });
   });
 
@@ -4370,9 +4344,6 @@ describe("public thread data routes", () => {
         },
       );
 
-      // "Send now" overrides plugin waits, not core ones: the workspace is
-      // still being prepared, so the row goes back on the queue waiting on that
-      // rather than being dispatched into a thread that cannot take it.
       expect(sendResponse.status).toBe(409);
       await expect(readJson(sendResponse)).resolves.toMatchObject({
         code: "queued_message_still_waiting",

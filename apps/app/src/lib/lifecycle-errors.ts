@@ -427,7 +427,7 @@ function describeDispatchHookFailed({
   });
 }
 
-export function parseLifecycleError(error: unknown): LifecycleApiError | null {
+function parseLifecycleError(error: unknown): LifecycleApiError | null {
   if (!(error instanceof HttpError) && !(error instanceof BbHttpError)) {
     return null;
   }

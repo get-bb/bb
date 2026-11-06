@@ -25,7 +25,7 @@ function account(id: string, providerId = "codex"): UsageProvider {
     usage: {
       status: "ok",
       accountEmail: `${id}@example.com`,
-      planLabel: "Max (20x)",
+      planLabel: "Ultra",
       windows: [
         {
           label: "Weekly limit",

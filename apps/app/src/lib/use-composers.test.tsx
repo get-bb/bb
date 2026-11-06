@@ -139,8 +139,12 @@ describe("useComposers", () => {
     const { result } = renderHook(() => useComposers(), { wrapper });
 
     result.current[0]!.setInputLock(true);
+    result.current[0]!.setTextEffect({ className: "listed-effect" });
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("useComposers() composer.setInputLock"),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("useComposers() composer.setTextEffect"),
     );
   });
 });

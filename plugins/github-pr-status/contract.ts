@@ -280,6 +280,11 @@ const hostPullRequestActionResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(false), message: z.string().min(1) }).strict(),
 ]);
 
+const hostRefsSchema = z
+  .object({ oid: z.string().nullable(), branchName: z.string().nullable() })
+  .strict();
+export type HostRefs = z.infer<typeof hostRefsSchema>;
+
 export const githubPrStatusHostContract = defineRpcContract({
   views: {
     experimental_retryable: true,
@@ -290,7 +295,13 @@ export const githubPrStatusHostContract = defineRpcContract({
             z
               .object({
                 path: z.string().min(1),
-                url: z.string().url().nullable(),
+                known: z
+                  .object({
+                    url: z.string().url(),
+                    branchName: z.string().nullable(),
+                  })
+                  .strict()
+                  .nullable(),
                 refresh: z.boolean(),
               })
               .strict(),
@@ -299,17 +310,26 @@ export const githubPrStatusHostContract = defineRpcContract({
           .max(HOST_VIEWS_MAX_READS),
       })
       .strict(),
-    output: z.array(hostPullRequestLookupSchema),
+    output: z.array(
+      z
+        .object({
+          lookup: hostPullRequestLookupSchema,
+          refs: hostRefsSchema.nullable(),
+        })
+        .strict(),
+    ),
   },
   upstream: {
     input: z.object({ path: z.string().min(1) }).strict(),
-    output: z
-      .object({ oid: z.string().nullable(), branchName: z.string().nullable() })
-      .strict(),
+    output: hostRefsSchema,
   },
   act: {
     input: z
-      .object({ path: z.string().min(1), action: hostPullRequestActionSchema })
+      .object({
+        path: z.string().min(1),
+        url: z.string().url(),
+        action: hostPullRequestActionSchema,
+      })
       .strict(),
     output: hostPullRequestActionResultSchema,
   },

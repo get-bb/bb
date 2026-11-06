@@ -162,6 +162,7 @@ function setup(): TestDb {
     source: { type: "local_path", hostId: host.id, path: "/tmp/query-plan" },
   });
   const thread = createThread(db, noopNotifier, {
+    status: "idle",
     projectId: project.id,
     providerId: "codex",
   });

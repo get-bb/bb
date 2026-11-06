@@ -77,7 +77,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   }
 
   const firstRun = settings.onboardingCompletedAt === null && !firstRunClosed;
-  if (!firstRun && !firstRunClosed) return children;
+  const keepClosedGuideMounted =
+    firstRunClosed && setupGuideQuery.data?.variant === "new";
+  if (!firstRun && !keepClosedGuideMounted) return children;
   if (setupGuideQuery.isPending) return null;
   const setupGuide = setupGuideQuery.data ?? CONTROL_SETUP_GUIDE;
   const entry = seenBefore ? "replay" : "first_run";

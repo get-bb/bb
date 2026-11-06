@@ -31,7 +31,6 @@ import type {
 } from "@get-bb/plugin-sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import {
-  composerDraftFromPromptDraft,
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   promptDraftFromComposerDraft,
   type PromptDraftAttachment,
@@ -94,6 +93,7 @@ import {
   usePluginFrontendLoadFailed,
   usePluginFrontendsSettled,
 } from "@/lib/plugin-frontend-boot-state";
+import { composerDraftFromPromptDraft } from "@/lib/plugin-composer-handle";
 import { schedulePluginFrontendReconcile } from "@/lib/plugin-frontend-lazy";
 import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
 import { sdk } from "@/lib/sdk";
@@ -196,6 +196,7 @@ export type ComposerBoxProps = Omit<
   | "resolveMentionLink"
   | "attachments"
   | "history"
+  | "maxHeight"
 > & {
   typeahead: TypeaheadConfig;
   attachments?: AttachmentsConfig;
@@ -268,6 +269,11 @@ function composerSubmission(
           },
     showModifierInMenu: showModifierSubmitAction,
   };
+}
+
+interface RetiredComposerRendererMembers {
+  view: ComposerView;
+  key: string;
 }
 
 const ComposerRendererContext =
@@ -392,7 +398,7 @@ function useComposerRendererHostApi({
   history,
   ...input
 }: ComposerBoxProps): {
-  api: ExperimentalComposerRendererApi;
+  api: ExperimentalComposerRendererApi & RetiredComposerRendererMembers;
   boxHost: PluginComposerHost;
   rootHost: ComposerRootHost;
   contributions: ExperimentalComposerContributions;
@@ -497,8 +503,7 @@ function useComposerRendererHostApi({
   const queryClient = useContext(QueryClientContext);
   const reportTypeaheadLayout = useContext(QueuedEditorTypeaheadLayoutContext);
   const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
-  const availableMaxHeight = useContext(ComposerMaxHeightContext);
-  const maxHeight = input.maxHeight ?? availableMaxHeight;
+  const maxHeight = useContext(ComposerMaxHeightContext);
 
   const decorationSources = composerDecorationSources(
     resolvedEditor.effects,
@@ -540,7 +545,7 @@ function useComposerRendererHostApi({
 
   const mentionTriggers =
     typeahead.mention.triggers ?? DEFAULT_MENTION_TRIGGERS;
-  const api: ExperimentalComposerRendererApi = {
+  const api: ExperimentalComposerRendererApi & RetiredComposerRendererMembers = {
     input: {
       ...input,
       ...(maxHeight === undefined ? {} : { maxHeight }),

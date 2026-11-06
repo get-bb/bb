@@ -11,7 +11,7 @@ import {
   getThreadProvisionContext,
   type ThreadProvisionEnvironmentIntent,
 } from "../../src/services/threads/thread-startup-store.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import { registerTestHostRpcCapture } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import { installMachineProvider } from "../helpers/machine-provider.js";
 import {
@@ -69,16 +69,23 @@ async function createAndCaptureIntent(
 }
 
 describe("project-default thread environment", () => {
-  it("resolves project-default to the worktree provider on the source's default branch", async () => {
+  it("hands a branch checkout to the worktree provider without inspecting its branches", async () => {
     await withTestHarness(async (harness) => {
       installFakeGitWorktreeProvider();
-      const { host } = seedHostSession(harness.deps, {
+      const { host, session } = seedHostSession(harness.deps, {
         id: "host-project-default",
       });
       seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/project-default-source",
+      });
+      const inspected: string[] = [];
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        onInspectGitCheckout: (command) => inspected.push(command.type),
+        onInspectGitSource: (command) => inspected.push(command.type),
       });
       const { intent, threadId } = await createAndCaptureIntent(harness, {
         projectId: project.id,
@@ -88,10 +95,52 @@ describe("project-default thread environment", () => {
         type: "provider",
         environmentProviderId: "git-worktree",
         machine: { type: "existing", hostId: host.id },
-        inputs: { branch: { kind: "named", name: "origin/main" } },
+        inputs: { branch: { kind: "default" } },
         selectionResolved: true,
       });
+      expect(inspected).not.toContain("host.inspect_git_source");
       expect(getThread(harness.db, threadId)?.originPluginId).toBeNull();
+    });
+  });
+
+  it("checks a detached checkout's branches before choosing a worktree", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-project-default-detached",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-default-detached-source",
+      });
+      const onInspectGitSource = vi.fn();
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        gitCheckoutInspectionResult: {
+          checkout: { kind: "detached", headSha: "abc123" },
+        },
+        gitSourceInspectionResult: {
+          checkout: { kind: "detached", headSha: "abc123" },
+          defaultBranch: null,
+          defaultBranchRelation: null,
+          isWorktree: false,
+          hasUncommittedChanges: false,
+          operation: { kind: "none" },
+          originDefaultBranch: "origin/main",
+        },
+        onInspectGitSource,
+      });
+      const { intent } = await createAndCaptureIntent(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
+      expect(onInspectGitSource).toHaveBeenCalled();
+      expect(intent).toMatchObject({
+        environmentProviderId: "git-worktree",
+        inputs: { branch: { kind: "default" } },
+      });
     });
   });
 
@@ -166,18 +215,16 @@ describe("project-default thread environment", () => {
           hostId: host.id,
           path: sourcePath,
         });
-        const responder = registerHostRpcResponder(harness, {
+        const inspected: Array<{ path: string; type: string }> = [];
+        registerTestHostRpcCapture(harness, {
           hostId: host.id,
           sessionId: session.id,
-          restoreCommandCaptureAfterResponse: true,
-          handle(request) {
-            expect(request.command).toEqual({
-              type: "host.inspect_git_source",
-              path: sourcePath,
-              remoteRefresh: "background",
-            });
-            return { ok: true, result: checkout };
-          },
+          gitCheckoutInspectionResult: { checkout: checkout.checkout },
+          gitSourceInspectionResult: checkout,
+          onInspectGitCheckout: ({ path, type }) =>
+            inspected.push({ path, type }),
+          onInspectGitSource: ({ path, type }) =>
+            inspected.push({ path, type }),
         });
 
         const response = await postCreateThread(harness, project.id, {
@@ -188,7 +235,10 @@ describe("project-default thread environment", () => {
 
         expect(response.status).toBe(201);
         const thread = threadSchema.parse(await readJson(response));
-        expect(responder.requests).toHaveLength(1);
+        expect(inspected.slice(0, 2)).toEqual([
+          { path: sourcePath, type: "host.inspect_git_checkout" },
+          { path: sourcePath, type: "host.inspect_git_source" },
+        ]);
         expect(getThread(harness.db, thread.id)?.originPluginId).toBe("tasks");
         await vi.waitFor(() => {
           const environmentId = getThread(harness.db, thread.id)?.environmentId;
@@ -241,7 +291,7 @@ describe("project-default machine", () => {
       type: "provider",
       environmentProviderId: "git-worktree",
       machine: { type: "existing", hostId },
-      inputs: { branch: { kind: "named", name: "origin/main" } },
+      inputs: { branch: { kind: "default" } },
       selectionResolved: true,
     };
   }

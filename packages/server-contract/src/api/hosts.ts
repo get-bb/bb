@@ -151,6 +151,13 @@ export type HostPickFolderRequest = z.infer<typeof hostPickFolderRequestSchema>;
 
 export type HostPickFolderResponse = PickFolderResponse;
 
+export const hostProviderCliStatusQuerySchema = z.object({
+  refresh: z.enum(["true", "false"]).optional(),
+});
+export type HostProviderCliStatusQuery = z.input<
+  typeof hostProviderCliStatusQuerySchema
+>;
+
 export type HostProviderCliStatusResponse = ProviderCliStatusResponse;
 
 export const hostProviderCliInstallRequestSchema =

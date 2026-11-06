@@ -129,8 +129,10 @@ plugin requires it.
   are capped at **256KB each** — kv is for cursors, links, and small state;
   caches and datasets go in the plugin database.
 - `bb.storage.database()` — the plugin's own better-sqlite3 database at
-  `<dataDir>/plugins/<id>/data.db` (WAL, busy_timeout 5000). Handles are
-  host-tracked and closed on reload; a closed handle throws.
+  `<dataDir>/plugins/<id>/data.db` (WAL, busy_timeout 5000). New files use
+  incremental auto_vacuum; run `PRAGMA incremental_vacuum` to return freed
+  pages, since bb never runs a full VACUUM on it. Handles are host-tracked
+  and closed on reload; a closed handle throws.
 - `bb.storage.migrate(db, statements)` — statement index = migration id;
   unapplied statements run in one transaction. **Append-only**: never
   reorder or edit shipped statements, only push new ones.

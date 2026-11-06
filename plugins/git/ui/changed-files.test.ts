@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   WorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "./workspace-change-summary.js";
 import { resolveChangedFileOpen } from "./changed-files.js";
 import type {
   WorkspaceFileStatus,

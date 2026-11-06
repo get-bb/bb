@@ -21,8 +21,9 @@ describe("toPluginSidebarThread", () => {
   it("resolves the display title through the same rules bb's row uses", () => {
     expect(toPluginSidebarThread(makeThread()).displayTitle).toBe("A thread");
     expect(
-      toPluginSidebarThread(makeThread({ title: null, titleFallback: "Fallback" }))
-        .displayTitle,
+      toPluginSidebarThread(
+        makeThread({ title: null, titleFallback: "Fallback" }),
+      ).displayTitle,
     ).toBe("Fallback");
     expect(
       toPluginSidebarThread(
@@ -63,43 +64,6 @@ describe("toPluginSidebarThread", () => {
       planMode: 5,
       goals: 6,
     });
-  });
-
-  it("resolves the indicator with the host's precedence", () => {
-    expect(
-      toPluginSidebarThread(
-        makeThread({
-          hasPendingInteraction: true,
-          runtime: {
-            displayStatus: "active",
-          },
-        }),
-      ).indicator,
-    ).toBe("waiting-for-input");
-
-    expect(
-      toPluginSidebarThread(
-        makeThread({
-          runtime: {
-            displayStatus: "active",
-          },
-        }),
-      ).indicator,
-    ).toBe("runtime");
-
-    expect(
-      toPluginSidebarThread(
-        makeThread({
-          activity: {
-            activeWorkflowCount: 1,
-            activeBackgroundAgentCount: 0,
-            activeBackgroundCommandCount: 0,
-            activePlanModeCount: 0,
-            activeGoalCount: 0,
-          },
-        }),
-      ).indicator,
-    ).toBe("workflow");
   });
 
   it("carries the host's accessible label, and null for none", () => {

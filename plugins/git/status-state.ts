@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { gitStatusErrorMessage } from "@bb/shared-ui/git-status-display";
+import { gitStatusErrorMessage } from "./ui/git-status-display.js";
 import type { GitStatusRow, WorkspaceStatus } from "./contract.js";
 import type { WorkspaceResolutionFailure } from "bb-environment-provider-host/git-types";
 

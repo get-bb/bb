@@ -15,10 +15,12 @@ const STATUS_ACCESS_VIOLATION = 0xc0000005;
 
 function gitExit({
   code,
+  signal = null,
   stdout = "",
   stderr = "",
 }: {
-  code: number;
+  code: number | null;
+  signal?: NodeJS.Signals | null;
   stdout?: string;
   stderr?: string;
 }): () => EventEmitter {
@@ -32,7 +34,7 @@ function gitExit({
     setImmediate(() => {
       child.stdout.end(stdout);
       child.stderr.end(stderr);
-      setImmediate(() => child.emit("close", code, null));
+      setImmediate(() => child.emit("close", code, signal));
     });
     return child;
   };
@@ -71,6 +73,21 @@ describe("runGit Windows startup crash retries", () => {
     await expect(runGit(["diff", "bad"], { cwd: "/repo" })).rejects.toThrow(
       WorkspaceError,
     );
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the terminating signal without retrying", async () => {
+    spawnMock.mockImplementation(gitExit({ code: null, signal: "SIGTERM" }));
+
+    await expect(runGit(["status"], { cwd: "/repo" })).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "git_command_failed",
+      cause: {
+        exitCode: null,
+        signal: "SIGTERM",
+        message: "Git terminated by signal SIGTERM",
+      },
+    });
     expect(spawnMock).toHaveBeenCalledTimes(1);
   });
 

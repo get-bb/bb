@@ -425,6 +425,9 @@ type HostProviderCliStatusQueryKey = readonly [
   typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
   string | null,
 ];
+type AllHostProviderCliStatusQueryKeyPrefix = readonly [
+  typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
+];
 type SystemProviderStatesQueryKey = readonly [
   typeof SYSTEM_PROVIDER_STATES_QUERY_KEY,
   string | null,
@@ -1021,6 +1024,10 @@ export function hostProviderCliStatusQueryKey(
   hostId: string | null,
 ): HostProviderCliStatusQueryKey {
   return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY, hostId];
+}
+
+export function allHostProviderCliStatusQueryKeyPrefix(): AllHostProviderCliStatusQueryKeyPrefix {
+  return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY];
 }
 
 export function systemProviderStatesQueryKey(

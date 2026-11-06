@@ -488,9 +488,9 @@ describe("ThreadRow", () => {
     ["meta", { metaKey: true }],
     ["ctrl", { ctrlKey: true }],
   ])(
-    "selects the row on %s-shift-click and still splits without shift with multi-select on",
+    "selects the row on %s-shift-click and still splits without shift",
     (_label, modifier) => {
-      const slot = renderThreadRow({ experiments: ["sidebarMultiSelect"] });
+      const slot = renderThreadRow();
       const link = screen.getByRole("link", { name: "Open Thread" });
       const row = link.closest("[data-sidebar-rename-row]");
       expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
@@ -516,7 +516,6 @@ describe("ThreadRow", () => {
       thread: first,
       siblings: [second, third],
       projects: [makePluginProject()],
-      experiments: ["sidebarMultiSelect"],
       threadBulkActions: (threads) => {
         bulkTargets.push(threads.map((target) => target.id));
         return [];
@@ -553,9 +552,7 @@ describe("ThreadRow", () => {
   it.each(["sidebar", "outside"])(
     "clears selection on empty %s space but keeps it for rows and menus",
     (target) => {
-      const { container } = renderThreadRow({
-        experiments: ["sidebarMultiSelect"],
-      });
+      const { container } = renderThreadRow();
       container.setAttribute("data-sidebar", "sidebar");
       const link = screen.getByRole("link", { name: "Open Thread" });
       const row = link.closest("[data-sidebar-rename-row]")!;
@@ -1338,7 +1335,7 @@ describe("ThreadRow", () => {
   it("routes a click on other plugins' metadata like the rest of the row", () => {
     getDefaultStore().set(sidebarShowRowMetadataAtom, true);
     const slot = renderThreadRow({
-      experiments: ["sidebarMultiSelect", "threadRowMetadata"],
+      experiments: ["threadRowMetadata"],
     });
     const link = screen.getByRole("link", { name: "Open Thread" });
     const row = link.closest("[data-sidebar-rename-row]");
@@ -1857,7 +1854,6 @@ describe("ThreadRow", () => {
       .mockReturnValue(false);
     const slot = renderThreadRow({
       options: { ...DEFAULT_OPTIONS, consumeClickSuppression },
-      experiments: ["sidebarMultiSelect"],
     });
     const link = screen.getByRole("link", { name: "Open Thread" });
 

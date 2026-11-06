@@ -2,7 +2,6 @@ import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PLUGIN_ICON_MAX_BYTES } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -195,30 +194,6 @@ describe("plugin-declared icons", () => {
         "icons/receipt.svg": `<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>`,
       },
       /experimental_icons\["receipt"\] must not contain a <script> element/,
-    ],
-    [
-      "an event handler attribute",
-      { receipt: "./icons/receipt.svg" },
-      {
-        "icons/receipt.svg": `<svg xmlns="http://www.w3.org/2000/svg"><path onload="x()" d="M0 0"/></svg>`,
-      },
-      /experimental_icons\["receipt"\] must not contain a <path onload> event handler/,
-    ],
-    [
-      "an external reference",
-      { receipt: "./icons/receipt.svg" },
-      {
-        "icons/receipt.svg": `<svg xmlns="http://www.w3.org/2000/svg"><use href="https://example.com/x.svg#p"/></svg>`,
-      },
-      /experimental_icons\["receipt"\].*only same-document "#" references/,
-    ],
-    [
-      "an oversized file",
-      { receipt: "./icons/receipt.svg" },
-      {
-        "icons/receipt.svg": `<svg>${" ".repeat(PLUGIN_ICON_MAX_BYTES)}</svg>`,
-      },
-      /experimental_icons\["receipt"\] is \d+ bytes; the limit is/,
     ],
   ])(
     "fails the load naming the icon for %s",

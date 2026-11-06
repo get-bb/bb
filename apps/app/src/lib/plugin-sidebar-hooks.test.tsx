@@ -18,7 +18,6 @@ import {
   useSidebarThreadRowStatuses,
   useSidebarThreadShortcut,
   useSidebarThreads,
-  useSidebarThreadEntry,
 } from "./plugin-sidebar-hooks";
 import {
   clearPluginThreadRowStatuses,
@@ -274,17 +273,6 @@ describe("sidebar lifecycle selection", () => {
     expect(result.current.status).toBe("ready");
     expect(result.current.threads).toHaveLength(1);
     expect(result.current.experimental_archived?.status).toBe("error");
-  });
-
-  it("resolves archived entries for host-owned row actions and status", () => {
-    const archived = makeThreadListEntry({
-      id: "thr_archived",
-      archivedAt: 42,
-    });
-    state.data = payload([]);
-    archiveQuery.data = { pages: [[archived]] };
-    const { result } = renderHook(() => useSidebarThreadEntry(archived.id));
-    expect(result.current).toBe(archived);
   });
 });
 

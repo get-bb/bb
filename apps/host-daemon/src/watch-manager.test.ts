@@ -13,9 +13,7 @@ import { WatchManager, type WatchManagerOptions } from "./watch-manager.js";
 type GetLocalStateFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getLocalStateSnapshot"]>
 >["fingerprint"];
-type GetSharedGitRefsFingerprintResult = Awaited<
-  ReturnType<HostWorkspace["getSharedGitRefsSnapshot"]>
->["fingerprint"];
+type GetSharedGitRefsFingerprintResult = string;
 type StopWatching = () => void | Promise<void>;
 type WatchWorkspaceImplementation = (args: WatchWorkspaceArgs) => StopWatching;
 type WatchThreadStorageImplementation = (
@@ -28,10 +26,12 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
   let localStateFingerprintError: Error | null = null;
   let sharedGitRefsFingerprint: GetSharedGitRefsFingerprintResult = `refs:${path}:initial`;
   let sharedGitRefsFingerprintError: Error | null = null;
+  let branchNamesFingerprint = "names:initial";
   const workspace = {
     path,
     isGitRepo,
     isWorktree: false,
+    gitCommonDir: isGitRepo ? `${path}/.git` : null,
     getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn<HostWorkspace["getCurrentBranch"]>(
       async () => currentBranchName,
@@ -46,12 +46,18 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
         branchName: currentBranchName,
       };
     }),
-    getSharedGitRefsSnapshot: vi.fn(async () => {
-      if (sharedGitRefsFingerprintError) {
-        throw sharedGitRefsFingerprintError;
-      }
-      return { fingerprint: sharedGitRefsFingerprint, defaultBranch: "main" };
-    }),
+    getSharedGitRefsSnapshot: vi.fn<HostWorkspace["getSharedGitRefsSnapshot"]>(
+      async () => {
+        if (sharedGitRefsFingerprintError) {
+          throw sharedGitRefsFingerprintError;
+        }
+        return {
+          defaultBranch: "main",
+          branchNamesFingerprint,
+          fingerprintFor: () => sharedGitRefsFingerprint,
+        };
+      },
+    ),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
@@ -72,6 +78,9 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     setSharedGitRefsFingerprintError(error: Error | null) {
       sharedGitRefsFingerprintError = error;
     },
+    setBranchNamesFingerprint(value: string) {
+      branchNamesFingerprint = value;
+    },
   } satisfies HostWorkspace & {
     setCurrentBranch: (value: string | null) => void;
     setLocalStateFingerprint: (value: GetLocalStateFingerprintResult) => void;
@@ -80,6 +89,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       value: GetSharedGitRefsFingerprintResult,
     ) => void;
     setSharedGitRefsFingerprintError: (error: Error | null) => void;
+    setBranchNamesFingerprint: (value: string) => void;
   };
 
   return workspace;
@@ -133,6 +143,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -176,6 +187,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -214,6 +226,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -226,6 +239,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -280,6 +294,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -342,6 +357,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -414,6 +430,7 @@ describe("WatchManager", () => {
         {
           environmentId: "env-branch",
           workspaceContext: { workspacePath: workspace.path },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -465,6 +482,384 @@ describe("WatchManager", () => {
     await manager.shutdown();
   });
 
+  it("reads shared refs once per common git dir and reports only worktrees whose refs moved", async () => {
+    const workspaces = [
+      createFakeWorkspace("/tmp/worktree-a"),
+      createFakeWorkspace("/tmp/worktree-b"),
+    ];
+    const watches: WatchWorkspaceArgs[] = [];
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watches.push(args);
+        return () => undefined;
+      },
+    });
+    let featureAOid = "a-1";
+    const readSharedRefs = vi.fn(async () => ({
+      defaultBranch: "main",
+      branchNamesFingerprint: "names",
+      fingerprintFor: ({ branchName }: { branchName: string | null }) =>
+        branchName === "feature/a" ? featureAOid : "unchanged",
+    }));
+    workspaces[0]!.setCurrentBranch("feature/a");
+    workspaces[1]!.setCurrentBranch("feature/b");
+    for (const workspace of workspaces) {
+      workspace.gitCommonDir = "/tmp/repo/.git";
+      workspace.getSharedGitRefsSnapshot.mockImplementation(readSharedRefs);
+    }
+    const onWorkspaceStatusChanged = vi.fn();
+    const onWorkspaceMetadataChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: async ({ path }) =>
+        workspaces.find((workspace) => workspace.path === path)!,
+      onWorkspaceStatusChanged,
+      onWorkspaceMetadataChanged,
+    });
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: workspaces.map((workspace, i) => ({
+        environmentId: `env-${i}`,
+        workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
+      })),
+      threadStorageTargets: [],
+    });
+    for (const watch of watches) watch.onReady();
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2),
+    );
+    expect(readSharedRefs).toHaveBeenCalledTimes(1);
+    onWorkspaceStatusChanged.mockClear();
+
+    featureAOid = "a-2";
+    for (const watch of watches) {
+      watch.onChange({
+        kind: "workspace-status-changed",
+        environmentId: watch.environmentId,
+        changeKinds: ["shared-git-refs-changed"],
+        changedPaths: ["/tmp/repo/.git/refs/heads/feature/a"],
+      });
+    }
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-0",
+      }),
+    );
+    expect(readSharedRefs).toHaveBeenCalledTimes(2);
+    expect(onWorkspaceStatusChanged).not.toHaveBeenCalledWith(
+      expect.objectContaining({ environmentId: "env-1" }),
+    );
+    await manager.shutdown();
+  });
+
+  it("reports a worktree's merge-base moves and follows merge-base changes without restarting its watch", async () => {
+    const workspaces = [
+      createFakeWorkspace("/tmp/worktree-a"),
+      createFakeWorkspace("/tmp/worktree-b"),
+    ];
+    const watches: WatchWorkspaceArgs[] = [];
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watches.push(args);
+        return () => undefined;
+      },
+    });
+    let baseOid = "base-1";
+    const readSharedRefs = vi.fn(async () => ({
+      defaultBranch: "main",
+      branchNamesFingerprint: "names",
+      fingerprintFor: ({
+        mergeBaseBranch,
+      }: {
+        mergeBaseBranch: string | null;
+      }) => (mergeBaseBranch === "origin/feature/base" ? baseOid : "unchanged"),
+    }));
+    workspaces[0]!.setCurrentBranch("feature/a");
+    workspaces[1]!.setCurrentBranch("feature/b");
+    for (const workspace of workspaces) {
+      workspace.gitCommonDir = "/tmp/repo/.git";
+      workspace.getSharedGitRefsSnapshot.mockImplementation(readSharedRefs);
+    }
+    const provisionWorkspace = vi.fn(
+      async ({ path }: { path: string }) =>
+        workspaces.find((workspace) => workspace.path === path)!,
+    );
+    const onWorkspaceStatusChanged = vi.fn();
+    const onWorkspaceMetadataChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace,
+      onWorkspaceStatusChanged,
+      onWorkspaceMetadataChanged,
+    });
+    const watchSet = (
+      generation: number,
+      mergeBaseBranches: (string | null)[],
+    ) => ({
+      generation,
+      workspaceTargets: workspaces.map((workspace, i) => ({
+        environmentId: `env-${i}`,
+        workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: mergeBaseBranches[i] ?? null,
+      })),
+      threadStorageTargets: [],
+    });
+    const moveBase = (oid: string) => {
+      baseOid = oid;
+      for (const watch of watches) {
+        watch.onChange({
+          kind: "workspace-status-changed",
+          environmentId: watch.environmentId,
+          changeKinds: ["shared-git-refs-changed"],
+          changedPaths: ["/tmp/repo/.git/refs/remotes/origin/feature/base"],
+        });
+      }
+    };
+    const refsChangedEnvironments = () =>
+      onWorkspaceStatusChanged.mock.calls
+        .filter(([args]) => args.changeKinds.includes("git-refs-changed"))
+        .map(([args]) => args.environmentId)
+        .sort();
+
+    await manager.replaceWatchSet(watchSet(1, ["origin/feature/base", null]));
+    for (const watch of watches) watch.onReady();
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    moveBase("base-2");
+    await vi.waitFor(() =>
+      expect(refsChangedEnvironments()).toEqual(["env-0"]),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    await manager.replaceWatchSet(
+      watchSet(2, ["origin/feature/base", "origin/feature/base"]),
+    );
+    await vi.waitFor(() =>
+      expect(refsChangedEnvironments()).toEqual(["env-1"]),
+    );
+    expect(provisionWorkspace).toHaveBeenCalledTimes(2);
+    expect(watches).toHaveLength(2);
+    onWorkspaceStatusChanged.mockClear();
+
+    moveBase("base-3");
+    await vi.waitFor(() =>
+      expect(refsChangedEnvironments()).toEqual(["env-0", "env-1"]),
+    );
+    await manager.shutdown();
+  });
+
+  it("reports branch-name changes separately from the worktree's own ref moves", async () => {
+    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
+    const workspace = createFakeWorkspace("/tmp/env-watch");
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watchWorkspaceArgs = args;
+        return () => undefined;
+      },
+    });
+    const onWorkspaceStatusChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: vi.fn(async () => workspace),
+      onWorkspaceStatusChanged,
+    });
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: { workspacePath: "/tmp/env-watch" },
+          mergeBaseBranch: null,
+        },
+      ],
+      threadStorageTargets: [],
+    });
+    watchWorkspaceArgs?.onReady();
+    await vi.waitFor(() =>
+      expect(workspace.getSharedGitRefsSnapshot).toHaveBeenCalledTimes(1),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    onWorkspaceStatusChanged.mockClear();
+    const refChange = () =>
+      watchWorkspaceArgs?.onChange({
+        changedPaths: ["/tmp/env-watch/.git/refs/heads/other"],
+        changeKinds: ["shared-git-refs-changed"],
+        kind: "workspace-status-changed",
+        environmentId: "env-watch",
+      });
+
+    workspace.setBranchNamesFingerprint("names:other-created");
+    refChange();
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-branches-changed"],
+        environmentId: "env-watch",
+      }),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    workspace.setSharedGitRefsFingerprint("refs:/tmp/env-watch:moved");
+    refChange();
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-watch",
+      }),
+    );
+    expect(onWorkspaceStatusChanged).toHaveBeenCalledTimes(1);
+    await manager.shutdown();
+  });
+
+  it("falls back to each worktree's own ref read when the shared read fails", async () => {
+    const workspaces = [
+      createFakeWorkspace("/tmp/worktree-a"),
+      createFakeWorkspace("/tmp/worktree-b"),
+    ];
+    const watches: WatchWorkspaceArgs[] = [];
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watches.push(args);
+        return () => undefined;
+      },
+    });
+    for (const workspace of workspaces) {
+      workspace.gitCommonDir = "/tmp/repo/.git";
+    }
+    const onWorkspaceStatusChanged = vi.fn();
+    const onWorkspaceMetadataChanged = vi.fn();
+    const onWorkspaceStatusWatchError = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: async ({ path }) =>
+        workspaces.find((workspace) => workspace.path === path)!,
+      onWorkspaceStatusChanged,
+      onWorkspaceMetadataChanged,
+      onWorkspaceStatusWatchError,
+    });
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: workspaces.map((workspace, i) => ({
+        environmentId: `env-${i}`,
+        workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
+      })),
+      threadStorageTargets: [],
+    });
+    for (const watch of watches) watch.onReady();
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    workspaces[0]!.setSharedGitRefsFingerprintError(
+      new Error("worktree removed"),
+    );
+    workspaces[1]!.setSharedGitRefsFingerprint("refs:/tmp/worktree-b:changed");
+    for (const watch of watches) {
+      watch.onChange({
+        kind: "workspace-status-changed",
+        environmentId: watch.environmentId,
+        changeKinds: ["shared-git-refs-changed"],
+        changedPaths: ["/tmp/repo/.git/refs/heads/main"],
+      });
+    }
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-1",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusWatchError).toHaveBeenCalledTimes(1),
+    );
+    expect(onWorkspaceStatusWatchError.mock.calls[0]?.[0].error).toMatchObject({
+      environmentId: "env-0",
+      message: "worktree removed",
+    });
+    await manager.shutdown();
+  });
+
+  it("starts a fresh shared ref read for changes that arrive after a read began", async () => {
+    const workspaces = [
+      createFakeWorkspace("/tmp/worktree-a"),
+      createFakeWorkspace("/tmp/worktree-b"),
+    ];
+    const watches: WatchWorkspaceArgs[] = [];
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watches.push(args);
+        return () => undefined;
+      },
+    });
+    const blockedRead = createDeferredPromise<void>();
+    let blockReads = false;
+    let fingerprint = "refs-1";
+    const readSharedRefs = vi.fn(async () => {
+      const value = fingerprint;
+      if (blockReads) await blockedRead.promise;
+      return {
+        defaultBranch: "main",
+        branchNamesFingerprint: "names",
+        fingerprintFor: () => value,
+      };
+    });
+    for (const workspace of workspaces) {
+      workspace.gitCommonDir = "/tmp/repo/.git";
+      workspace.getSharedGitRefsSnapshot.mockImplementation(readSharedRefs);
+    }
+    const onWorkspaceStatusChanged = vi.fn();
+    const onWorkspaceMetadataChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: async ({ path }) =>
+        workspaces.find((workspace) => workspace.path === path)!,
+      onWorkspaceStatusChanged,
+      onWorkspaceMetadataChanged,
+    });
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: workspaces.map((workspace, i) => ({
+        environmentId: `env-${i}`,
+        workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
+      })),
+      threadStorageTargets: [],
+    });
+    for (const watch of watches) watch.onReady();
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2),
+    );
+    onWorkspaceStatusChanged.mockClear();
+    const refChange = (watch: WatchWorkspaceArgs) =>
+      watch.onChange({
+        kind: "workspace-status-changed",
+        environmentId: watch.environmentId,
+        changeKinds: ["shared-git-refs-changed"],
+        changedPaths: ["/tmp/repo/.git/refs/heads/main"],
+      });
+
+    blockReads = true;
+    refChange(watches[0]!);
+    await vi.waitFor(() => expect(readSharedRefs).toHaveBeenCalledTimes(2));
+    blockReads = false;
+    fingerprint = "refs-2";
+    refChange(watches[1]!);
+    await vi.waitFor(() => expect(readSharedRefs).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-1",
+      }),
+    );
+    blockedRead.resolve();
+    await manager.shutdown();
+  });
+
   it("reuses shared ref snapshots without rereading each worktree branch", async () => {
     const workspaces = [
       createFakeWorkspace("/tmp/worktree-a"),
@@ -491,6 +886,7 @@ describe("WatchManager", () => {
       workspaceTargets: workspaces.map((workspace, i) => ({
         environmentId: `env-${i}`,
         workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
       })),
       threadStorageTargets: [],
     });
@@ -500,8 +896,9 @@ describe("WatchManager", () => {
     );
     for (const workspace of workspaces) {
       workspace.getSharedGitRefsSnapshot.mockResolvedValue({
-        fingerprint: "shared:trunk",
         defaultBranch: "trunk",
+        branchNamesFingerprint: "names:initial",
+        fingerprintFor: () => "shared:trunk",
       });
     }
     for (const watch of watches) {
@@ -557,6 +954,7 @@ describe("WatchManager", () => {
         {
           environmentId: "env-branch",
           workspaceContext: { workspacePath: workspace.path },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -596,6 +994,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -634,6 +1033,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -662,6 +1062,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -680,6 +1081,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -713,6 +1115,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -760,11 +1163,15 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
     });
     watchWorkspaceArgs?.onReady();
+    await vi.waitFor(() =>
+      expect(workspace.getSharedGitRefsSnapshot).toHaveBeenCalledTimes(1),
+    );
     await new Promise<void>((resolve) => setImmediate(resolve));
     onWorkspaceStatusChanged.mockClear();
     workspace.setSharedGitRefsFingerprint("refs:/tmp/env-watch:changed");
@@ -775,13 +1182,12 @@ describe("WatchManager", () => {
       kind: "workspace-status-changed",
       environmentId: "env-watch",
     });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["git-refs-changed"],
-      environmentId: "env-watch",
-    });
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-watch",
+      }),
+    );
   });
 
   it("reports local fingerprint recomputation failures and recovers on the next change", async () => {
@@ -810,6 +1216,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -829,8 +1236,9 @@ describe("WatchManager", () => {
       kind: "workspace-status-changed",
       environmentId: "env-watch",
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusWatchError).toHaveBeenCalled(),
+    );
 
     expect(onWorkspaceStatusChanged).not.toHaveBeenCalled();
     expect(onWorkspaceStatusWatchError).toHaveBeenCalledWith({
@@ -885,12 +1293,16 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
     });
 
     watchWorkspaceArgs?.onReady();
+    await vi.waitFor(() =>
+      expect(workspace.getSharedGitRefsSnapshot).toHaveBeenCalledTimes(1),
+    );
     await new Promise<void>((resolve) => setImmediate(resolve));
     onWorkspaceStatusChanged.mockClear();
     workspace.setSharedGitRefsFingerprintError(new Error("refs unavailable"));
@@ -900,8 +1312,9 @@ describe("WatchManager", () => {
       kind: "workspace-status-changed",
       environmentId: "env-watch",
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusWatchError).toHaveBeenCalled(),
+    );
 
     expect(onWorkspaceStatusChanged).not.toHaveBeenCalled();
     expect(onWorkspaceStatusWatchError).toHaveBeenCalledWith({
@@ -921,13 +1334,12 @@ describe("WatchManager", () => {
       kind: "workspace-status-changed",
       environmentId: "env-watch",
     });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["git-refs-changed"],
-      environmentId: "env-watch",
-    });
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-watch",
+      }),
+    );
   });
 
   it("forwards workspace watch errors", async () => {
@@ -954,6 +1366,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -976,7 +1389,7 @@ describe("WatchManager", () => {
     });
   });
 
-  it("watches each thread's storage directory and reports its current environment", async () => {
+  it("keeps one storage watcher per thread across watch sets and reports the thread", async () => {
     const stopWatching = vi.fn(() => undefined);
     let watchThreadStorageArgs: WatchThreadStorageArgs | undefined;
     const { hostWatcher, watchThreadStorage } = createFakeHostWatcher({
@@ -995,22 +1408,12 @@ describe("WatchManager", () => {
     await manager.replaceWatchSet({
       generation: 1,
       workspaceTargets: [],
-      threadStorageTargets: [
-        {
-          environmentId: "env-storage",
-          threadId: "thread-1",
-        },
-      ],
+      threadStorageTargets: [{ threadId: "thread-1" }],
     });
     await manager.replaceWatchSet({
       generation: 2,
       workspaceTargets: [],
-      threadStorageTargets: [
-        {
-          environmentId: "env-moved",
-          threadId: "thread-1",
-        },
-      ],
+      threadStorageTargets: [{ threadId: "thread-1" }],
     });
     watchThreadStorageArgs?.onChange();
 
@@ -1019,7 +1422,6 @@ describe("WatchManager", () => {
       path.resolve("/tmp/bb-data/thread-storage", "thread-1"),
     );
     expect(onThreadStorageChanged).toHaveBeenCalledWith({
-      environmentId: "env-moved",
       threadId: "thread-1",
     });
 
@@ -1052,25 +1454,14 @@ describe("WatchManager", () => {
       generation: 1,
       workspaceTargets: [],
       threadStorageTargets: [
-        {
-          environmentId: "env-a",
-          threadId: "thread-a",
-        },
-        {
-          environmentId: "env-b",
-          threadId: "thread-b",
-        },
+        { threadId: "thread-a" },
+        { threadId: "thread-b" },
       ],
     });
     await manager.replaceWatchSet({
       generation: 2,
       workspaceTargets: [],
-      threadStorageTargets: [
-        {
-          environmentId: "env-b",
-          threadId: "thread-b",
-        },
-      ],
+      threadStorageTargets: [{ threadId: "thread-b" }],
     });
 
     expect(
@@ -1097,9 +1488,9 @@ describe("WatchManager", () => {
       generation: 1,
       workspaceTargets: [],
       threadStorageTargets: [
-        { environmentId: "env-a", threadId: "." },
-        { environmentId: "env-a", threadId: "../escape" },
-        { environmentId: "env-a", threadId: "nested/thread" },
+        { threadId: "." },
+        { threadId: "../escape" },
+        { threadId: "nested/thread" },
       ],
     });
 

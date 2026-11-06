@@ -244,7 +244,11 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   "Open with …" choice; matching files opened in the right panel then
   render your component in a plugin tab instead of the built-in preview —
   this includes links clicked in rendered markdown, the file picker, and
-  `bb thread open`. `source` is
+  `bb thread open`. Pass the opener's id as
+  `useBbNavigate().experimental_openFilePreview({ target, location, opener })`
+  to open one file with it once. `extensions: []` registers an opener no
+  extension selects and "Open with" never lists; it shows only files the
+  plugin opens with `opener`. `source` is
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
 projectId, experimental_hostId? }` (nullable fields). The optional host ID
   selects a project-backed workspace host and persists in opener-tab parameters.

@@ -22,7 +22,6 @@ import {
 import {
   STEP_COPY,
   agentSignInView,
-  parsesSignInOutput,
   resolveAgentSetupState,
   type AgentSetupState,
   type OnboardingStepId,
@@ -62,7 +61,7 @@ const SIGNED_OUT: AgentSetupState = {
 };
 const CLAUDE_READY: AgentSetupState = {
   status: "ready",
-  detail: "sawyer@acme.dev · Max (20x)",
+  detail: "sawyer@acme.dev · Ultra",
 };
 const CODEX_READY: AgentSetupState = {
   status: "ready",
@@ -1091,7 +1090,7 @@ const GROK_LOGIN_OUTPUT = [
 
 function grokSigningInAgent(): OnboardingAgent {
   const view = agentSignInView({
-    parsed: parsesSignInOutput("acp-grok"),
+    parsed: false,
     connect: false,
     outputText: GROK_LOGIN_OUTPUT,
     fallbackDue: false,

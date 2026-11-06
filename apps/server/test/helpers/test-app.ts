@@ -11,6 +11,11 @@ import {
   ensurePersonalProject,
   getAppSettings,
   getDisabledProviderIds,
+  getExperiments,
+  getAutoAppUpdate,
+  getSkippedAppUpdate,
+  setAutoAppUpdate,
+  setSkippedAppUpdate,
   listRunningThreads,
   setAppSettings,
   type DbConnection,
@@ -34,14 +39,13 @@ import {
   createAppUpdateService,
   type AppUpdateService,
 } from "../../src/services/system/app-update.js";
+import { createScheduledAppUpdateService } from "../../src/services/system/app-update-schedule.js";
+import { createAppUpdateSendHold } from "../../src/services/system/app-update-send-hold.js";
 import {
   createCliCommandService,
   type CliCommandService,
 } from "../../src/services/system/cli-command.js";
-import {
-  createAppVersionService,
-  type AppVersionService,
-} from "../../src/services/system/app-version.js";
+import { createAppVersionService } from "../../src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { createSetupGuideExperiment } from "../../src/services/system/setup-guide-experiment.js";
@@ -96,7 +100,6 @@ export async function installTestBuiltinPlugin(
 
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appUpdateService?: AppUpdateService;
-  appVersionService?: AppVersionService;
   cliCommandService?: CliCommandService;
   terminalAttachTimeoutMs?: number;
   terminalCloseTimeoutMs?: number;
@@ -163,7 +166,6 @@ export async function createTestAppHarness(
 ): Promise<TestAppHarness> {
   const {
     appUpdateService,
-    appVersionService,
     cliCommandService,
     terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
@@ -288,27 +290,61 @@ export async function createTestAppHarness(
   });
   pendingInteractions.start();
   setPluginToolCallRegistry(new PluginToolCallRegistry({ logger }));
-  const appVersion =
-    appVersionService ??
-    createAppVersionService({
-      sourceCommit: null,
-      installKind: null,
-      config,
-      logger,
-    });
-  const appUpdate =
-    appUpdateService ??
-    createAppUpdateService({
-      currentCommit: null,
-      appSurface: "web",
-      appVersion,
-      config,
-      countRunningThreads: () => listRunningThreads(db).length,
-      launcher: null,
-      logger,
-      mode: null,
-      notifyChanged: () => hub.notifySystem(["app-update-changed"]),
-    });
+  const appVersion = createAppVersionService({
+    sourceCommit: null,
+    installKind: null,
+    config,
+    logger,
+  });
+  const countRunningThreads = (): number => listRunningThreads(db).length;
+  const notifyAppUpdateChanged = (): void =>
+    hub.notifySystem(["app-update-changed"]);
+  const appUpdate = createScheduledAppUpdateService({
+    autoCheckMs: null,
+    countRunningThreads,
+    inner:
+      appUpdateService ??
+      createAppUpdateService({
+        currentCommit: null,
+        appSurface: "web",
+        appVersion,
+        config,
+        countRunningThreads,
+        launcher: null,
+        logger,
+        mode: null,
+        notifyChanged: notifyAppUpdateChanged,
+        threadsResumeAfterRestart: () =>
+          getExperiments(db).resumeThreadsAfterRestart,
+        sendHold: createAppUpdateSendHold({
+          aiServices,
+          config,
+          db,
+          hub,
+          lifecycleDedupers,
+          logger,
+          machineAuth: testMachineAuth,
+          pendingInteractions,
+          pluginHostArtifacts,
+          providerRegistry,
+          skillTreeRegistry,
+          telemetry,
+          terminalSessions,
+        }),
+      }),
+    isEnabled: () => getExperiments(db).updateWhenIdle,
+    logger,
+    notifyChanged: notifyAppUpdateChanged,
+    onChangedMessage: (listener) => hub.onChangedMessage(listener),
+    autoUpdate: {
+      get: () => getAutoAppUpdate(db),
+      set: (enabled) => setAutoAppUpdate(db, enabled),
+    },
+    skippedUpdate: {
+      get: () => getSkippedAppUpdate(db),
+      set: (key) => setSkippedAppUpdate(db, key),
+    },
+  });
   const deps: ServerAppDeps = {
     appUpdate,
     appVersion,
@@ -464,6 +500,7 @@ export async function startTestServer(
       await tunnelIngress.closeAll();
       await closeWebSockets();
       await closeServer;
+      await pluginService.stop();
       await harness.cleanup();
     },
   };

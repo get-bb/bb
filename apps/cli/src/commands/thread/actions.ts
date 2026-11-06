@@ -809,6 +809,8 @@ export function describeQueueWait(row: {
       return `waiting for ${waitingOn.hostName} to reconnect`;
     case "interaction":
       return "waiting for a pending interaction";
+    case "app-update":
+      return "sending after bb restarts to update";
     case "plugin":
       return `${waitingOn.pluginId}: ${waitingOn.reason}`;
     case "superseded":

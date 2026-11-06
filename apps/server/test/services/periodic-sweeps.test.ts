@@ -12,7 +12,6 @@ import {
   RETAINED_EVENT_OUTPUT_TARGETS,
   retainedEventOutputs,
   threads,
-  threadPruningCursors,
 } from "@bb/db";
 import { threadScope } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
@@ -557,7 +556,7 @@ describe("runPeriodicSweeps", () => {
     });
   });
 
-  it("retries pruning on the next tick after a busy skip and continues without an hourly delay", async () => {
+  it("retries a busy thread's pruning on the next tick and continues without an hourly delay", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness);
       const deps = {
@@ -592,9 +591,13 @@ describe("runPeriodicSweeps", () => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(now);
       try {
         await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
-        expect(harness.db.select().from(threadPruningCursors).all()).toEqual(
-          [],
-        );
+        expect(
+          harness.db
+            .select({ sequence: events.sequence })
+            .from(events)
+            .where(eq(events.threadId, thread.id))
+            .all(),
+        ).toEqual([{ sequence: 1 }, { sequence: 2 }]);
         harness.db
           .update(threads)
           .set({ status: "idle" })

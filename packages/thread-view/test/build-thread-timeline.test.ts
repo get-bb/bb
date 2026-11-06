@@ -1925,6 +1925,43 @@ describe("buildThreadTimelineFromEvents", () => {
     ).toHaveLength(0);
   });
 
+  it("renders a steer the provider accepted after bb marked it unconfirmed as accepted only", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Late confirmed steer",
+    });
+
+    const rows = buildTimelineRows(
+      fromRows([
+        event.turnStarted({ turnId: "turn-1" }),
+        steerRequest,
+        event.turnCompleted({ turnId: "turn-1" }),
+        event.clientTurnRejected({
+          requestId: steerRequest.data.requestId,
+          reason: "steer_unconfirmed",
+          message: "The turn ended before the agent confirmed this steer",
+        }),
+        event.turnStarted({ turnId: "turn-2" }),
+        event.inputAccepted({
+          clientRequestId: steerRequest.data.requestId,
+          turnId: "turn-2",
+        }),
+        event.turnCompleted({ turnId: "turn-2" }),
+      ]),
+      "idle",
+    );
+
+    const userRows = rows.filter(
+      (row) => row.kind === "conversation" && row.role === "user",
+    );
+    expect(userRows).toHaveLength(1);
+    expect(userRows[0]).toMatchObject({ text: "Late confirmed steer" });
+    expect(userRows[0]).not.toMatchObject({
+      turnRequest: { status: "rejected" },
+    });
+  });
+
   it("uses rejected context to render a failed steer across a page boundary", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const steerRequest = event.clientTurnRequested({

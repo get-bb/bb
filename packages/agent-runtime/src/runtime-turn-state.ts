@@ -30,6 +30,13 @@ export class RuntimeTurnState {
     this.resolveWaiters(threadId, null);
   }
 
+  resolveWaitersWithoutTurn(threadId: string): void {
+    if (this.activeTurnIdByThreadId.has(threadId)) {
+      return;
+    }
+    this.resolveWaiters(threadId, null);
+  }
+
   getActiveTurnId(threadId: string): string | null {
     return this.activeTurnIdByThreadId.get(threadId) ?? null;
   }

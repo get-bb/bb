@@ -26,20 +26,11 @@ import {
   agentsSection,
   ANYWHERE_COPY,
   anywhereSection,
-  PRICING_COPY,
-  pricingSection,
   LIMITS_COPY,
   limitsSection,
 } from "../compare-sections";
 import { FleetVisual } from "../compare-visuals";
-import { CONDUCTOR_LOGO, meta } from "./conductor.meta";
-
-const COST_SECTION = pricingSection(PRICING_COPY, {
-  plan: "Conductor Teams",
-  logo: CONDUCTOR_LOGO,
-  yearlyPerSeatMonthly: 60,
-  priceNote: "Conductor Teams at $60 per person a month.",
-});
+import { meta } from "./conductor.meta";
 
 export const comparison: Comparison = {
   ...meta,
@@ -50,20 +41,15 @@ export const comparison: Comparison = {
   sub: "Run Claude Code, Codex, or any agent on Mac, Windows, or Linux, with the mobile app and remote machines free.",
   heroVisual: <FleetVisual />,
   tailored: anywhereSection(ANYWHERE_COPY),
-  sections: [
-    COST_SECTION,
-    limitsSection(LIMITS_COPY),
-    agentsSection(AGENTS_COPY),
-  ],
-  tableNote:
-    "marks features that need a paid Conductor plan: Pro at $50 a month, or Teams at $60 per person.",
+  sections: [limitsSection(LIMITS_COPY), agentsSection(AGENTS_COPY)],
+  tableNote: null,
   table: [
     {
       title: "Price and license",
       rows: [
         {
           ...BB_ROWS.pricing,
-          competitor: price("$0", "Teams at $60 per person a month"),
+          competitor: price("—", "Closed to new users"),
         },
         { ...BB_ROWS.license, competitor: cell("no", "Closed source") },
       ],
@@ -73,10 +59,16 @@ export const comparison: Comparison = {
       rows: [
         { ...BB_ROWS.windows, competitor: cell("no", "Mac only") },
         { ...BB_ROWS.linux, competitor: cell("no") },
-        { ...BB_ROWS.macos, competitor: cell("yes", "Mac app") },
+        {
+          ...BB_ROWS.macos,
+          competitor: cell("partial", "Winding down in early 2027"),
+        },
         {
           ...BB_ROWS.mobile,
-          competitor: cell("partial", "iOS, for cloud workspaces", true),
+          competitor: cell(
+            "no",
+            "Only for cloud workspaces, which are shutting down",
+          ),
         },
       ],
     },
@@ -85,12 +77,12 @@ export const comparison: Comparison = {
       rows: [
         {
           ...BB_ROWS.otherMachines,
-          competitor: cell("partial", "Your Mac or Conductor’s cloud", true),
+          competitor: cell("no", "Your Mac only"),
         },
-        { ...BB_ROWS.cloud, competitor: cell("yes", "Hosted", true) },
+        { ...BB_ROWS.cloud, competitor: cell("no", "Shutting down") },
         {
           ...BB_ROWS.automations,
-          competitor: cell("partial", "Cloud routines", true),
+          competitor: cell("no", "Cloud routines, shutting down"),
         },
       ],
     },
@@ -103,7 +95,7 @@ export const comparison: Comparison = {
         },
         {
           ...BB_ROWS.handoff,
-          competitor: cell("partial", "Via MCP, cloud workspaces", true),
+          competitor: cell("partial", "Via MCP"),
         },
       ],
     },
@@ -145,11 +137,11 @@ export const comparison: Comparison = {
         {
           feature: "Multiplayer workspaces",
           bb: cell("partial", "Share one bb with your team"),
-          competitor: cell("yes", "Shared cloud workspaces", true),
+          competitor: cell("no", "Shared cloud workspaces, shutting down"),
         },
         {
           ...BB_ROWS.teamPlans,
-          competitor: cell("yes", "Teams plan, SSO on Enterprise", true),
+          competitor: cell("no", "Closed to new users"),
         },
       ],
     },
@@ -160,16 +152,39 @@ export const comparison: Comparison = {
       title: "Switching from Conductor",
       items: [
         {
+          question: "Is Conductor shutting down?",
+          answer: (
+            <p>
+              Conductor{" "}
+              <a
+                href="https://www.conductor.build/announcement"
+                rel="noreferrer"
+                target="_blank"
+              >
+                announced
+              </a>{" "}
+              on November 4, 2026 that it’s joining Meta. It no longer takes new
+              users, Conductor Cloud goes read-only on November 13 and starts
+              deleting data on November 20, and the Mac app winds down in early
+              2027. bb is open source under the MIT license, so your setup never
+              depends on one company’s plans, and one prompt moves your
+              Conductor workspaces over.{" "}
+              <a href="/guides/switch-from-conductor">Copy the prompt</a>.
+            </p>
+          ),
+        },
+        {
           question: "What’s the difference between bb and Conductor?",
           answer: (
             <p>
               Both run Claude Code, Codex, and other coding agents in parallel
               Git worktrees. bb is free for any team size, open source, and runs
               on Mac, Windows, and Linux. Conductor is a closed-source Mac app
-              that’s free locally, with cloud workspaces, scheduled routines,
-              multiplayer, and its mobile app on the Pro plan, at $50 a month.
-              In bb, your agents keep working on any computer you own, follow
-              you to your phone, and can start each other and hear back.
+              that’s joining Meta: it no longer takes new users, its cloud
+              workspaces, routines, and multiplayer are shutting down, and the
+              app winds down in early 2027. In bb, your agents keep working on
+              any computer you own, follow you to your phone, and can start each
+              other and hear back.
             </p>
           ),
         },
@@ -179,8 +194,7 @@ export const comparison: Comparison = {
             <p>
               Yes: bb. It’s free for any team size and MIT-licensed, so you can
               use and change it for anything, including at work. Conductor is
-              closed source and free only for local workspaces on a Mac, with
-              Pro at $50 a month and Teams at $60 per person a month.{" "}
+              closed source, Mac only, and no longer takes new users.{" "}
               <a href="/download/macos">Download bb</a>.
             </p>
           ),
@@ -189,12 +203,13 @@ export const comparison: Comparison = {
           question: "How do I move a repo and my unfinished work to bb?",
           answer: (
             <p>
-              Ask bb to do it. Conductor’s local workspaces are plain Git
-              worktrees on your Mac, and its cloud workspaces push to branches,
-              so a bb agent can add the repo and open each unfinished workspace
-              or branch as a thread. Your CLAUDE.md, skills, MCP servers, slash
-              commands, and agent sign-ins come along, and Conductor keeps
-              working while you try bb.{" "}
+              Paste one prompt and your agent does it. Conductor’s workspaces
+              are plain Git worktrees on your Mac, so it opens each one in its
+              own bb thread right where it is, with its branch and changes, and
+              moves your setup and archive scripts. Move cloud workspaces to
+              your Mac first with <strong>Transfer to local</strong> in
+              Conductor. Your CLAUDE.md, skills, MCP servers, slash commands,
+              and agent sign-ins come along.{" "}
               <a href="/guides/switch-from-conductor">Copy the prompt</a>.
             </p>
           ),
@@ -208,7 +223,8 @@ export const comparison: Comparison = {
                 worktree or share one, like chats in a workspace.
               </li>
               <li>
-                Your setup script moves to <code>.bb-env-setup.sh</code>. A{" "}
+                Your setup script moves to <code>.bb-env-setup.sh</code> and
+                your archive script to <code>.bb-env-teardown.sh</code>. A{" "}
                 <code>.worktreeinclude</code> file works as is, and Files to
                 copy patterns from Conductor’s settings move into it.
               </li>
@@ -291,9 +307,11 @@ export const comparison: Comparison = {
           ),
         },
         faqPhone(
-          "Conductor’s iPhone app works with its cloud workspaces, on the $50-a-month Pro plan.",
+          "Conductor’s iPhone app works only with its cloud workspaces, which are shutting down.",
         ),
-        faqSchedule("Conductor’s routines run only in its cloud, on Pro."),
+        faqSchedule(
+          "Conductor’s routines run only in its cloud, which is shutting down.",
+        ),
         FAQ_LAPTOP,
       ],
     },
@@ -302,9 +320,7 @@ export const comparison: Comparison = {
       items: [
         FAQ_AGENTS,
         FAQ_CODEX_TOGETHER,
-        faqTalk(
-          ", while Conductor connects agents through MCP or its Pro cloud workspaces",
-        ),
+        faqTalk(", while Conductor connects agents only through MCP"),
         FAQ_PERMISSIONS,
         FAQ_CUSTOMIZE,
         FAQ_PLUGIN_TRUST,
@@ -314,9 +330,7 @@ export const comparison: Comparison = {
     {
       title: "Price, platforms, and privacy",
       items: [
-        faqFree(
-          ", while Conductor puts its mobile app, cloud workspaces, and routines on its Pro plan, at $50 a month",
-        ),
+        faqFree(", while Conductor no longer takes new users"),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(null),
         faqPlatforms("Conductor’s desktop app runs only on macOS."),

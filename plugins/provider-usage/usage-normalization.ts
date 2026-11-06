@@ -11,6 +11,7 @@ export function normalizeUsageMeasurement(
     plus: "Plus",
     pro: "Pro",
     max: "Max",
+    ultra: "Ultra",
     team: "Team",
     business: "Business",
     enterprise: "Enterprise",

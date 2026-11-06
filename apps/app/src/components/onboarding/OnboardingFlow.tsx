@@ -103,7 +103,6 @@ import {
   shortRemoteName,
   skippedStepIds,
   terminalConnectFlow,
-  parsesSignInOutput,
   agentSignInView,
   type AgentSignInView,
   type OnboardingStepId,
@@ -570,7 +569,8 @@ function AgentStepContainer({
           const connectFlow = redesign
             ? terminalConnectFlow(health.providerId)
             : null;
-          const parsed = !redesign || parsesSignInOutput(health.providerId);
+          const parsed =
+            !redesign || info?.internal_DO_NOT_USE_guidedSignIn === true;
           const view = signIns.views.get(health.providerId) ?? null;
           const instructionReady = view !== null && view.started;
           return {

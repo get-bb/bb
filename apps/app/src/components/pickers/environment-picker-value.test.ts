@@ -5,18 +5,14 @@ import {
 } from "./environment-picker-value";
 
 describe("provider environment values", () => {
-  it("round-trips a provider id containing dashes", () => {
+  it("round-trips provider ids with dashes, underscores, and digits", () => {
     const value = encodeProviderValue("docker-sandbox");
     expect(value).toBe("provider:docker-sandbox");
     expect(parseEnvironmentValue(value)).toEqual({
       type: "provider",
       environmentProviderId: "docker-sandbox",
     });
-  });
-
-  it("round-trips provider ids with underscores and digits", () => {
-    const value = encodeProviderValue("wt_2");
-    expect(parseEnvironmentValue(value)).toEqual({
+    expect(parseEnvironmentValue(encodeProviderValue("wt_2"))).toEqual({
       type: "provider",
       environmentProviderId: "wt_2",
     });
