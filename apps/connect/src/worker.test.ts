@@ -543,7 +543,7 @@ describe("gate tunnel authentication", () => {
     expect(dialEnv.captured).toHaveLength(1);
   });
 
-  it("fresh-resolves from the outset after a cached negative and refuses revoked machines", async () => {
+  it("fresh-resolves a dial, refuses one for an address that no longer exists, and refuses revoked machines", async () => {
     const credential = "bbcm_stale";
     const hash = await sha256Hex(credential);
     mockResolveLabel.mockResolvedValueOnce(null);
@@ -555,7 +555,7 @@ describe("gate tunnel authentication", () => {
       firstEnv.env as never,
       firstEnv.ctx,
     );
-    expect(stale.status).toBe(404);
+    expect(stale.status).toBe(403);
     expect(mockResolveLabel).toHaveBeenCalledWith(
       "sawyer-air",
       expect.anything(),
