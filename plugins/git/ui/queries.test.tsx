@@ -2,7 +2,7 @@
 
 import { act, cleanup, waitFor } from "@testing-library/react";
 import { useSyncExternalStore } from "react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   renderSlot,
   type PluginRpcTestHandlers,
@@ -10,7 +10,11 @@ import {
 import { gitRpcContract } from "../rpc-contract.js";
 import { useGitBranches } from "./queries.js";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  typed = "";
+});
 
 let typed = "";
 const listeners = new Set<() => void>();
@@ -59,13 +63,20 @@ it("only requests the branch search a typist settles on", async () => {
   const branchCalls = () =>
     rendered.rpcCalls.filter((call) => call.method === "branches");
   await waitFor(() => expect(branchCalls()).toHaveLength(1));
+  vi.useFakeTimers();
   for (const query of ["m", "ma", "mai", "main"]) {
     await act(async () => {
       type(query);
-      await new Promise((resolve) => setTimeout(resolve, 30));
     });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30);
+    });
+    expect(branchCalls()).toHaveLength(1);
   }
-  await waitFor(() => expect(branchCalls()).toHaveLength(2));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(120);
+  });
+  expect(branchCalls()).toHaveLength(2);
   expect(branchCalls()[1]?.input).toMatchObject({ query: "main" });
 });
 
