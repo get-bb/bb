@@ -24,11 +24,10 @@ function missingInstallationStatus() {
 
 describe("Claude Code provider maintenance", () => {
   it("normalizes aggregate and unique model-scoped usage windows", () => {
-    const credentials = {
-      accessToken: "token",
-      expiresAt: null,
-      subscriptionType: "pro",
-      rateLimitTier: "max_5x",
+    const account = {
+      email: "claude@example.com",
+      subscriptionType: "Claude Max",
+      apiProvider: "firstParty" as const,
     };
     expect(
       __testing.normalizeUsage(
@@ -50,8 +49,7 @@ describe("Claude Code provider maintenance", () => {
             },
           ],
         },
-        credentials,
-        "claude@example.com",
+        account,
       ),
     ).toMatchObject({
       status: "ok",

@@ -338,18 +338,17 @@ when it was finished or skipped; `bb settings replay-onboarding`, or Settings â†
 General â†’ Setup guide, clears it so the guide shows again. The projects step
 lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
-The guide shown is `control` (current) or `new` (redesign), from
-`GET /api/v1/system/setup-guide` (`sdk.system.experimental_setupGuide()`,
-`{ variant }`). The server resolves it once per run on the first request from
-the `setup-guide-redesign` PostHog flag, evaluated for the anonymous install id
-(3-second timeout). It is `control` when telemetry is off or unavailable, or
-when the evaluation fails, the flag is missing or disabled, or its variant is
-unknown. The assignment saved in `<dataDir>/setup-guide-assignment.json` is
-reused. `BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
-The Plugins step's featured plugins come from
-`GET /api/v1/system/setup-guide/featured-plugins`
-(`sdk.system.experimental_setupGuideFeaturedPlugins()`,
-`{ entryIds, alreadyOnEntryIds }`), resolved once per run from the separate
+The guide shown is `control` (current) or `new` (redesign), from the app's
+`GET /api/v1/system/setup-guide` request (`{ variant }`). The server resolves
+it once per run on the first request from the `setup-guide-redesign` PostHog
+flag, evaluated for the anonymous install id (3-second timeout). It is
+`control` when telemetry is off or unavailable, or when the evaluation fails,
+the flag is missing or disabled, or its variant is unknown. The assignment
+saved in `<dataDir>/setup-guide-assignment.json` is reused.
+`BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
+The Plugins step's featured plugins come from the app's
+`GET /api/v1/system/setup-guide/featured-plugins` request
+(`{ entryIds, alreadyOnEntryIds }`), resolved once per run from the separate
 `onboarding-featured-plugins` PostHog flag in the same way (3-second timeout,
 `control` without telemetry or on any failure) and saved in
 `<dataDir>/featured-plugins-assignment.json`. Its `new` variant's payload

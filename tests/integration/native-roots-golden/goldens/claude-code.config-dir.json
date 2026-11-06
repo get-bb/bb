@@ -53,13 +53,6 @@
         "argumentHint": "<name>"
       },
       {
-        "name": "home-claude-skill",
-        "source": "skill",
-        "origin": "user",
-        "description": "home-claude-skill skill",
-        "argumentHint": null
-      },
-      {
         "name": "home-lint",
         "source": "command",
         "origin": "user",
@@ -78,13 +71,6 @@
         "source": "skill",
         "origin": "user",
         "description": "home-skills-dir-plugin root skill",
-        "argumentHint": null
-      },
-      {
-        "name": "linked-home-skill",
-        "source": "skill",
-        "origin": "user",
-        "description": "linked-home-skill skill",
         "argumentHint": null
       },
       {
@@ -209,13 +195,6 @@
         "linked": false
       },
       {
-        "name": "home-claude-skill",
-        "description": "home-claude-skill skill",
-        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
-        "rootKind": "provider-user",
-        "linked": false
-      },
-      {
         "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
         "description": "home-skills-dir-plugin-child skill",
         "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/skills/home-skills-dir-plugin-child/SKILL.md",
@@ -228,13 +207,6 @@
         "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/SKILL.md",
         "rootKind": "plugin",
         "linked": false
-      },
-      {
-        "name": "linked-home-skill",
-        "description": "linked-home-skill skill",
-        "filePath": "<home>/.claude/skills/linked-home-skill/SKILL.md",
-        "rootKind": "provider-user",
-        "linked": true
       },
       {
         "name": "local-plugin:local-plugin-skill",
@@ -318,13 +290,6 @@
         "argumentHint": null
       },
       {
-        "name": "home-claude-skill",
-        "source": "skill",
-        "origin": "user",
-        "description": "home-claude-skill skill",
-        "argumentHint": null
-      },
-      {
         "name": "home-lint",
         "source": "command",
         "origin": "user",
@@ -343,13 +308,6 @@
         "source": "skill",
         "origin": "user",
         "description": "home-skills-dir-plugin root skill",
-        "argumentHint": null
-      },
-      {
-        "name": "linked-home-skill",
-        "source": "skill",
-        "origin": "user",
-        "description": "linked-home-skill skill",
         "argumentHint": null
       },
       {
@@ -418,13 +376,6 @@
         "linked": false
       },
       {
-        "name": "home-claude-skill",
-        "description": "home-claude-skill skill",
-        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
-        "rootKind": "provider-user",
-        "linked": false
-      },
-      {
         "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
         "description": "home-skills-dir-plugin-child skill",
         "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/skills/home-skills-dir-plugin-child/SKILL.md",
@@ -437,13 +388,6 @@
         "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/SKILL.md",
         "rootKind": "plugin",
         "linked": false
-      },
-      {
-        "name": "linked-home-skill",
-        "description": "linked-home-skill skill",
-        "filePath": "<home>/.claude/skills/linked-home-skill/SKILL.md",
-        "rootKind": "provider-user",
-        "linked": true
       },
       {
         "name": "managed-plugin:managed-plugin-skill",

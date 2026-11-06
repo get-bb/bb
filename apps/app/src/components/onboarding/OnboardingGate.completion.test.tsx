@@ -43,11 +43,16 @@ vi.mock("@/lib/sdk", () => ({
     system: {
       config: vi.fn(),
       updateGeneralSettings: vi.fn(),
-      experimental_setupGuide: vi.fn(() =>
-        Promise.resolve({ variant: guide.variant }),
-      ),
     },
   },
+}));
+vi.mock("@/hooks/queries/setup-guide-requests", () => ({
+  fetchSetupGuideAssignment: vi.fn(() =>
+    Promise.resolve({ variant: guide.variant }),
+  ),
+  fetchSetupGuideFeaturedPlugins: vi.fn(() =>
+    Promise.resolve({ entryIds: null, alreadyOnEntryIds: [] }),
+  ),
 }));
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 vi.mock("@/hooks/useRealtimeSubscription", () => ({

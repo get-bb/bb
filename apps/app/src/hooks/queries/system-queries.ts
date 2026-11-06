@@ -52,6 +52,10 @@ import {
 } from "./query-keys";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
+  fetchSetupGuideAssignment,
+  fetchSetupGuideFeaturedPlugins,
+} from "./setup-guide-requests";
+import {
   SERVER_SESSION_QUERY_POLICY,
   SESSION_STATIC_QUERY_POLICY,
 } from "./query-policies";
@@ -591,7 +595,7 @@ export function useCliSkillsStatus(options?: QueryOptions) {
 export function useSetupGuideAssignment(options?: QueryOptions) {
   return useQuery({
     queryKey: systemSetupGuideQueryKey(),
-    queryFn: ({ signal }) => sdk.system.experimental_setupGuide({ signal }),
+    queryFn: ({ signal }) => fetchSetupGuideAssignment(signal),
     enabled: options?.enabled ?? true,
     staleTime: Infinity,
     retry: false,
@@ -601,8 +605,7 @@ export function useSetupGuideAssignment(options?: QueryOptions) {
 export function setupGuideFeaturedPluginsQueryOptions() {
   return queryOptions({
     queryKey: systemSetupGuideFeaturedPluginsQueryKey(),
-    queryFn: ({ signal }) =>
-      sdk.system.experimental_setupGuideFeaturedPlugins({ signal }),
+    queryFn: ({ signal }) => fetchSetupGuideFeaturedPlugins(signal),
     staleTime: Infinity,
     retry: false,
   });

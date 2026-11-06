@@ -372,8 +372,6 @@ type ExpectedSystemKey =
   | "experimental_recordTelemetryEvent"
   | "experimental_removeCliCommand"
   | "experimental_scheduleAppUpdate"
-  | "experimental_setupGuide"
-  | "experimental_setupGuideFeaturedPlugins"
   | "reloadConfig"
   | "setAiServiceSelection"
   | "testAiService"
