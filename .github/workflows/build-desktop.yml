@@ -2,32 +2,36 @@ name: Build Desktop
 
 on:
   workflow_dispatch:
+  workflow_call:
     inputs:
+      release_channel:
+        description: "stable publishes desktop-v<version> and moves desktop-latest; nightly moves desktop-nightly."
+        required: true
+        type: string
+      version:
+        description: "Version to build. Empty builds the version committed in apps/desktop/package.json."
+        required: false
+        type: string
+        default: ""
       publish:
-        description: "Publish stable desktop-version.json release assets"
+        description: "Publish the release channel's GitHub release."
         required: true
         type: boolean
-        default: false
-      release_channel:
-        description: "Release channel. Only stable can update desktop-latest."
-        required: true
-        type: choice
-        default: qa
-        options:
-          - qa
-          - stable
 
 env:
+  BB_DESKTOP_RELEASE_CHANNEL: ${{ inputs.release_channel == 'nightly' && 'nightly' || 'latest' }}
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
   NODE_VERSION: "22.x"
   PNPM_VERSION: "9.15.0"
+  RELEASE_CHANNEL: ${{ inputs.release_channel || 'qa' }}
+  REQUESTED_VERSION: ${{ inputs.version }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-desktop-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow == 'Build Desktop' && format('build-desktop-{0}', github.ref) || format('build-desktop-{0}-{1}', github.run_id, inputs.release_channel) }}
+  cancel-in-progress: ${{ github.workflow == 'Build Desktop' }}
 
 jobs:
   macos:
@@ -36,6 +40,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       has_signing_secrets: ${{ steps.signing.outputs.has_signing_secrets }}
+      version: ${{ steps.release_version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -60,6 +65,24 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Apply the release version
+        id: release_version
+        run: |
+          set -euo pipefail
+
+          if [[ "$RELEASE_CHANNEL" == "nightly" && -z "$REQUESTED_VERSION" ]]; then
+            echo "::error::A nightly desktop build needs the version the npm publish job reported."
+            exit 1
+          fi
+
+          if [[ -n "$REQUESTED_VERSION" ]]; then
+            node scripts/bump-version.mjs "$REQUESTED_VERSION"
+          fi
+
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Building ${RELEASE_CHANNEL} desktop ${version}."
 
       - name: Typecheck desktop and launcher
         run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
@@ -103,7 +126,10 @@ jobs:
           done
 
           HAS_SIGNING_SECRETS="false"
-          if [[ "${#PRESENT_SECRET_NAMES[@]}" -eq 0 ]]; then
+          if [[ "${#PRESENT_SECRET_NAMES[@]}" -eq 0 && "$RELEASE_CHANNEL" == "nightly" ]]; then
+            echo "::error::Nightly desktop auto-updates require signed and notarized artifacts. Missing: ${MISSING_SECRET_NAMES[*]}."
+            exit 1
+          elif [[ "${#PRESENT_SECRET_NAMES[@]}" -eq 0 ]]; then
             echo "::warning::macOS signing/notarization secrets are not configured; building unsigned macOS workflow artifacts that a publish run will withhold. Both version feeds and the Linux AppImage still publish."
           elif [[ "${#MISSING_SECRET_NAMES[@]}" -eq 0 ]]; then
             echo "macOS signing/notarization secrets are complete; signed and notarized artifacts will be produced."
@@ -134,12 +160,13 @@ jobs:
       - name: Upload desktop workflow artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bb-desktop-macos-arm64
+          name: bb-desktop-${{ env.RELEASE_CHANNEL }}-macos-arm64
+          retention-days: ${{ inputs.release_channel == 'nightly' && 14 || 0 }}
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
             apps/desktop/release/*.blockmap
-            apps/desktop/release/latest-mac.yml
+            apps/desktop/release/${{ inputs.release_channel == 'nightly' && 'nightly' || 'latest' }}-mac.yml
             apps/desktop/release/desktop-version.json
           if-no-files-found: error
 
@@ -150,6 +177,8 @@ jobs:
     # minimum distro version users need.
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.release_version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -175,6 +204,24 @@ jobs:
       - name: Install AppImage FUSE runtime
         uses: ./.github/actions/install-appimage-fuse
         timeout-minutes: 5
+
+      - name: Apply the release version
+        id: release_version
+        run: |
+          set -euo pipefail
+
+          if [[ "$RELEASE_CHANNEL" == "nightly" && -z "$REQUESTED_VERSION" ]]; then
+            echo "::error::A nightly desktop build needs the version the npm publish job reported."
+            exit 1
+          fi
+
+          if [[ -n "$REQUESTED_VERSION" ]]; then
+            node scripts/bump-version.mjs "$REQUESTED_VERSION"
+          fi
+
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Building ${RELEASE_CHANNEL} desktop ${version}."
 
       - name: Typecheck desktop and launcher
         run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
@@ -209,11 +256,12 @@ jobs:
       - name: Upload desktop workflow artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bb-desktop-linux-x64
+          name: bb-desktop-${{ env.RELEASE_CHANNEL }}-linux-x64
+          retention-days: ${{ inputs.release_channel == 'nightly' && 14 || 0 }}
           path: |
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.blockmap
-            apps/desktop/release/latest-linux.yml
+            apps/desktop/release/${{ inputs.release_channel == 'nightly' && 'nightly' || 'latest' }}-linux.yml
             apps/desktop/release/desktop-version-linux.json
           if-no-files-found: error
 
@@ -223,6 +271,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       has_signing_secrets: ${{ steps.signing_secrets.outputs.has_signing_secrets }}
+      version: ${{ steps.release_version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -243,6 +292,25 @@ jobs:
         # Native modules ship prebuilt binaries; skipping install scripts keeps
         # the job independent of a C++ toolchain on the runner.
         run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Apply the release version
+        id: release_version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$RELEASE_CHANNEL" == "nightly" && -z "$REQUESTED_VERSION" ]]; then
+            echo "::error::A nightly desktop build needs the version the npm publish job reported."
+            exit 1
+          fi
+
+          if [[ -n "$REQUESTED_VERSION" ]]; then
+            node scripts/bump-version.mjs "$REQUESTED_VERSION"
+          fi
+
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Building ${RELEASE_CHANNEL} desktop ${version}."
 
       - name: Validate Windows signing secrets
         id: signing_secrets
@@ -288,16 +356,17 @@ jobs:
       - name: Upload desktop workflow artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bb-desktop-windows-x64
+          name: bb-desktop-${{ env.RELEASE_CHANNEL }}-windows-x64
+          retention-days: ${{ inputs.release_channel == 'nightly' && 14 || 0 }}
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.blockmap
-            apps/desktop/release/latest.yml
+            apps/desktop/release/${{ inputs.release_channel == 'nightly' && 'nightly' || 'latest' }}.yml
             apps/desktop/release/desktop-version-windows.json
           if-no-files-found: error
 
   publish:
-    name: Publish stable desktop release
+    name: Publish desktop release
     needs:
       - macos
       - linux
@@ -306,6 +375,12 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+    # A release run and the nightly cron can both reach the nightly publish at
+    # once. Both delete every asset on the moving release and upload their own,
+    # so a race can leave one platform's binaries missing. Serialize the reset.
+    concurrency:
+      group: ${{ inputs.release_channel == 'nightly' && 'publish-nightly-desktop' || format('publish-desktop-{0}-{1}', github.run_id, inputs.release_channel || 'qa') }}
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
@@ -318,19 +393,30 @@ jobs:
         env:
           HAS_SIGNING_SECRETS: ${{ needs.macos.outputs.has_signing_secrets }}
           INPUT_PUBLISH: ${{ inputs.publish }}
-          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          LINUX_VERSION: ${{ needs.linux.outputs.version }}
+          MACOS_VERSION: ${{ needs.macos.outputs.version }}
+          WINDOWS_VERSION: ${{ needs.windows.outputs.version }}
         run: |
           set -euo pipefail
 
-          VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          if [[ -z "$MACOS_VERSION" || "$MACOS_VERSION" != "$LINUX_VERSION" || "$MACOS_VERSION" != "$WINDOWS_VERSION" ]]; then
+            echo "::error::Platform versions disagree. macOS: '${MACOS_VERSION}'. Linux: '${LINUX_VERSION}'. Windows: '${WINDOWS_VERSION}'."
+            exit 1
+          fi
+
+          VERSION="$MACOS_VERSION"
           IS_PRERELEASE="false"
           if [[ "$VERSION" == *-* ]]; then
             IS_PRERELEASE="true"
           fi
 
           SHOULD_PUBLISH="false"
-          if [[ "$INPUT_PUBLISH" == "true" && "$RELEASE_CHANNEL" == "stable" && "$IS_PRERELEASE" == "false" ]]; then
+          if [[ "$INPUT_PUBLISH" == "true" && "$RELEASE_CHANNEL" == "nightly" ]]; then
             SHOULD_PUBLISH="true"
+          elif [[ "$INPUT_PUBLISH" == "true" && "$RELEASE_CHANNEL" == "stable" && "$IS_PRERELEASE" == "false" ]]; then
+            SHOULD_PUBLISH="true"
+          elif [[ "$INPUT_PUBLISH" == "true" && "$RELEASE_CHANNEL" == "stable" ]]; then
+            echo "::warning::${VERSION} is a prerelease; desktop-latest only takes stable versions, so nothing is published."
           fi
 
           # Linux AppImages have no notarization equivalent and an unsigned
@@ -354,24 +440,24 @@ jobs:
         if: steps.release_plan.outputs.should_publish == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: bb-desktop-macos-arm64
+          name: bb-desktop-${{ env.RELEASE_CHANNEL }}-macos-arm64
           path: release/macos
 
       - name: Download Linux desktop artifacts
         if: steps.release_plan.outputs.should_publish == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: bb-desktop-linux-x64
+          name: bb-desktop-${{ env.RELEASE_CHANNEL }}-linux-x64
           path: release/linux
 
       - name: Download Windows desktop artifacts
         if: steps.release_plan.outputs.should_publish == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: bb-desktop-windows-x64
+          name: bb-desktop-${{ env.RELEASE_CHANNEL }}-windows-x64
           path: release/windows
 
-      - name: Publish stable desktop release feed
+      - name: Publish desktop release
         if: steps.release_plan.outputs.should_publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -380,11 +466,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION_TAG="desktop-v${VERSION}"
-          LATEST_TAG="desktop-latest"
           MACOS_DIR="release/macos"
           LINUX_DIR="release/linux"
           WINDOWS_DIR="release/windows"
+          METADATA_PREFIX="latest"
+          if [[ "$RELEASE_CHANNEL" == "nightly" ]]; then
+            METADATA_PREFIX="nightly"
+          fi
 
           RELEASE_ASSETS=()
 
@@ -411,19 +499,19 @@ jobs:
           # would let whichever finished last delete the others' binaries.
           add_required_glob "$MACOS_DIR/desktop-version.json"
           add_required_glob "$LINUX_DIR/desktop-version-linux.json"
-          add_required_glob "$LINUX_DIR/latest-linux.yml"
+          add_required_glob "$LINUX_DIR/${METADATA_PREFIX}-linux.yml"
           add_required_glob "$LINUX_DIR"/*.AppImage
           # AppImage embeds its block map, so a sidecar file is not guaranteed.
           add_optional_glob "$LINUX_DIR"/*.blockmap
           # The Windows installer runs unsigned behind a SmartScreen warning,
           # so it publishes whether or not signing secrets are configured.
           add_required_glob "$WINDOWS_DIR/desktop-version-windows.json"
-          add_required_glob "$WINDOWS_DIR/latest.yml"
+          add_required_glob "$WINDOWS_DIR/${METADATA_PREFIX}.yml"
           add_required_glob "$WINDOWS_DIR"/*.exe
           add_required_glob "$WINDOWS_DIR"/*.blockmap
 
           if [[ "$PUBLISH_MACOS_BINARIES" == "true" ]]; then
-            add_required_glob "$MACOS_DIR/latest-mac.yml"
+            add_required_glob "$MACOS_DIR/${METADATA_PREFIX}-mac.yml"
             add_required_glob "$MACOS_DIR"/*.dmg
             add_required_glob "$MACOS_DIR"/*.zip
             add_required_glob "$MACOS_DIR"/*.blockmap
@@ -431,45 +519,57 @@ jobs:
             echo "Signing/notarization gate is closed; publishing the macOS version feed without macOS binaries."
           fi
 
-          if gh release view "$VERSION_TAG" >/dev/null 2>&1; then
-            echo "Release $VERSION_TAG already exists; refusing to mutate immutable desktop release."
-            exit 1
+          if [[ "$RELEASE_CHANNEL" == "nightly" ]]; then
+            MOVING_TAG="desktop-nightly"
+            MOVING_TITLE="bb Nightly"
+            MOVING_NOTES="Latest automated bb Nightly build from main. Nightly builds may be unstable."
+            MOVING_FLAGS=(--prerelease --latest=false)
+          else
+            VERSION_TAG="desktop-v${VERSION}"
+            MOVING_TAG="desktop-latest"
+            MOVING_TITLE="bb desktop latest"
+            MOVING_NOTES="Latest stable bb desktop release metadata."
+            MOVING_FLAGS=(--latest=false)
+
+            if gh release view "$VERSION_TAG" >/dev/null 2>&1; then
+              echo "Release $VERSION_TAG already exists; refusing to mutate immutable desktop release."
+              exit 1
+            fi
+
+            gh release create "$VERSION_TAG" "${RELEASE_ASSETS[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "bb desktop ${VERSION}" \
+              --notes "bb desktop ${VERSION}" \
+              --latest
           fi
 
-          gh release create "$VERSION_TAG" "${RELEASE_ASSETS[@]}" \
-            --target "$GITHUB_SHA" \
-            --title "bb desktop ${VERSION}" \
-            --notes "bb desktop ${VERSION}" \
-            --latest
+          git tag -f "$MOVING_TAG" "$GITHUB_SHA"
+          git push --force origin "refs/tags/${MOVING_TAG}"
 
-          git tag -f "$LATEST_TAG" "$GITHUB_SHA"
-          git push --force origin "refs/tags/${LATEST_TAG}"
-
-          if gh release view "$LATEST_TAG" >/dev/null 2>&1; then
-            gh release edit "$LATEST_TAG" \
+          if gh release view "$MOVING_TAG" >/dev/null 2>&1; then
+            gh release edit "$MOVING_TAG" \
               --target "$GITHUB_SHA" \
-              --title "bb desktop latest" \
-              --notes "Latest stable bb desktop release metadata." \
-              --latest=false
+              --title "$MOVING_TITLE" \
+              --notes "$MOVING_NOTES" \
+              "${MOVING_FLAGS[@]}"
 
-            # desktop-latest is a moving release, but --clobber only replaces
-            # assets with matching names. Preserve the release page and reset
-            # assets in-place so versioned binaries cannot accumulate and
-            # JSON-only publishes cannot leave stale binaries from an older
-            # signed release.
-            gh release view "$LATEST_TAG" --json assets --jq '.assets[].name' | while IFS= read -r asset_name; do
+            # The moving release keeps its page, but --clobber only replaces
+            # assets with matching names. Reset assets in place so versioned
+            # binaries cannot accumulate and JSON-only publishes cannot leave
+            # stale binaries from an older signed release.
+            gh release view "$MOVING_TAG" --json assets --jq '.assets[].name' | while IFS= read -r asset_name; do
               if [[ -n "$asset_name" ]]; then
-                gh release delete-asset "$LATEST_TAG" "$asset_name" --yes
+                gh release delete-asset "$MOVING_TAG" "$asset_name" --yes
               fi
             done
 
-            gh release upload "$LATEST_TAG" "${RELEASE_ASSETS[@]}"
+            gh release upload "$MOVING_TAG" "${RELEASE_ASSETS[@]}"
           else
-            gh release create "$LATEST_TAG" "${RELEASE_ASSETS[@]}" \
+            gh release create "$MOVING_TAG" "${RELEASE_ASSETS[@]}" \
               --target "$GITHUB_SHA" \
-              --title "bb desktop latest" \
-              --notes "Latest stable bb desktop release metadata." \
-              --latest=false
+              --title "$MOVING_TITLE" \
+              --notes "$MOVING_NOTES" \
+              "${MOVING_FLAGS[@]}"
           fi
 
       - name: Summarize
@@ -480,18 +580,20 @@ jobs:
           SHOULD_PUBLISH: ${{ steps.release_plan.outputs.should_publish }}
           VERSION: ${{ steps.release_plan.outputs.version }}
         run: |
+          release_tag="desktop-latest"
+          if [[ "$RELEASE_CHANNEL" == "nightly" ]]; then
+            release_tag="desktop-nightly"
+          fi
+
           {
-            echo "## bb desktop artifacts"
+            echo "## bb desktop (${RELEASE_CHANNEL})"
             echo
-            echo "- arm64 macOS .dmg, .zip, latest-mac.yml, and desktop-version.json uploaded as workflow artifacts"
-            echo "- x64 Linux .AppImage, latest-linux.yml, and desktop-version-linux.json uploaded as workflow artifacts"
-            echo "- x64 Windows .exe installer, latest.yml, and desktop-version-windows.json uploaded as workflow artifacts"
             echo "- version: ${VERSION}"
             echo "- prerelease version: ${IS_PRERELEASE}"
-            echo "- stable release publication requested and allowed: ${SHOULD_PUBLISH}"
+            echo "- release publication requested and allowed: ${SHOULD_PUBLISH}"
             echo "- macOS release binary upload enabled: ${PUBLISH_MACOS_BINARIES}"
-            echo "- macOS feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json"
             echo "- Windows installer signed: ${HAS_WINDOWS_SIGNING_SECRETS}"
-            echo "- Linux feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json"
-            echo "- Windows feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-windows.json"
+            echo "- macOS feed URL: https://github.com/get-bb/bb/releases/download/${release_tag}/desktop-version.json"
+            echo "- Linux feed URL: https://github.com/get-bb/bb/releases/download/${release_tag}/desktop-version-linux.json"
+            echo "- Windows feed URL: https://github.com/get-bb/bb/releases/download/${release_tag}/desktop-version-windows.json"
           } >> "$GITHUB_STEP_SUMMARY"

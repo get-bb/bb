@@ -290,7 +290,9 @@ The desktop release tag uses the locked version: `desktop-v<version>` for
 immutable releases and `desktop-latest` for the moving pointer.
 
 `build-desktop.yml` builds macOS, Linux, and Windows in parallel jobs, then
-publishes all three from one job. The moving release resets all of its assets
+publishes all three from one job. `publish-bb-app.yml` calls it for both the
+stable release and the nightly channel; dispatching it directly builds
+artifacts without publishing. The moving release resets all of its assets
 on each publish, so a single publisher is what keeps one platform from deleting
 another's binaries. Each platform has its own update feed file inside the same release
 tag:
