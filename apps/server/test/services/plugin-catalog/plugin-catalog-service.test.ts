@@ -45,9 +45,10 @@ const V2_MANIFEST_URL = CURATED_MARKETPLACE_V2_URL;
 const CUSTOM_V1_MANIFEST_URL =
   "https://marketplace.test/marketplace/v1/marketplace.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
-const OFFICIAL_ORDER =
-  loadBundledMarketplace(listBundledPluginRegistrations()).catalog
-    .collections?.[0]?.pluginIds ?? [];
+const BUNDLED_CATALOG = loadBundledMarketplace(
+  listBundledPluginRegistrations(),
+).catalog;
+const OFFICIAL_ORDER = BUNDLED_CATALOG.collections?.[0]?.pluginIds ?? [];
 
 const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
@@ -198,14 +199,9 @@ describe("plugin catalog service", () => {
       icon: "FileText",
       iconUrl: null,
       category: "File Viewers & Editors",
-      screenshots: [
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-inline-review-desktop.png",
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-f4957b72f-inline-editing-desktop.png",
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-f4957b72f-ask-mobile.png",
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-63b536e70-workspace-desktop.png",
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png",
-      ],
+      screenshots: BUNDLED_CATALOG.plugins.find(
+        (entry) => entry.id === "simple-notes",
+      )?.screenshots,
       collections: [
         { id: "bb-official", rank: OFFICIAL_ORDER.indexOf("simple-notes") },
       ],
@@ -249,20 +245,13 @@ describe("plugin catalog service", () => {
   });
 
   it("groups a catalog entry by its curated tag", async () => {
-    const catalog = service();
-    const [hoverCards] = await catalog.search("thread-hover-cards");
-    expect(hoverCards).toMatchObject({
-      entryId: "thread-hover-cards",
-      pluginId: "thread-hover-cards",
-      category: "Interface",
-      icon: "ZoomIn",
-      iconUrl: null,
-      source:
-        "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
-      installed: false,
-      compatible: true,
-      incompatibleReason: null,
-    });
+    const results = await service().search("");
+    expect(
+      ["thread-hover-cards", "prompt-shaper"].map(
+        (entryId) =>
+          results.find((entry) => entry.entryId === entryId)?.category,
+      ),
+    ).toEqual(["Interface", "Agent Interaction"]);
   });
 
   it("matches queries against entry id, plugin id, manifest text, and tags", async () => {

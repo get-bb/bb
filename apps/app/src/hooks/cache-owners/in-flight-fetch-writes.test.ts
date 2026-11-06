@@ -94,7 +94,10 @@ function appUpdateStatus(
     blocked: null,
     current: { commit: null, version: "1.0.0" },
     lastResult: null,
+    autoUpdate: false,
+    availableSkipped: false,
     runningThreadCount: 0,
+    scheduled: null,
     support: { kind: "supported", mode: "npm" },
   };
 }

@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./runtime-shims": {
+      "types": "./src/runtime-shims.d.mts",
+      "default": "./src/runtime-shims.mjs"
+    },
     "./host-tailwind-version": "./src/generated/host-tailwind-version.ts",
     "./host-tailwind.css": "./src/generated/host-tailwind.css"
   },
@@ -23,20 +27,20 @@
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "es-module-lexer": "^2.0.0",
-    "npm": "11.16.0",
+    "es-module-lexer": "^2.3.2",
+    "npm": "11.21.2",
     "saxes": "^6.0.0"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@tailwindcss/node": "^4.3.0",
-    "@tailwindcss/oxide": "^4.3.0",
-    "@types/node": "^22.0.0",
-    "esbuild": "^0.28.0",
-    "tailwindcss": "^4.3.0",
+    "@tailwindcss/node": "4.3.0",
+    "@tailwindcss/oxide": "4.3.0",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "tailwindcss": "4.3.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   },
   "bin": {
     "bb-plugin-build": "./bin/bb-plugin-build.mjs"

@@ -1,17 +1,21 @@
+import type { BigIntStats } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
 import type {
   GitBranchOptions,
   GitBranchRefClassification,
 } from "./git-types.js";
 import {
-  detectGitRepoKind,
   ensureGitRepo,
   getGitCommonDir,
+  readGitRepo,
   readLocalBranches,
   readOriginHeadBranchName,
   resolvePreferredLocalDefaultBranch,
   runGit,
   WorkspaceError,
   type GitProcessOptions,
+  type GitRepo,
   type GitTimeoutOptions,
 } from "./workspace-git.js";
 import { withGitRefMutationLock } from "./process-local-lock.js";
@@ -33,10 +37,11 @@ interface BranchRefsWithDefaults {
 
 async function fetchRemoteBranchesNonInteractively(
   cwd: string,
+  remote: string,
   options: GitTimeoutOptions,
 ): Promise<FetchRemoteBranchesResult> {
   try {
-    await runGit(["fetch", "--all", "--prune", "--quiet"], {
+    await runGit(["fetch", "--prune", "--quiet", remote], {
       cwd,
       ...options,
       priority: "background",
@@ -65,22 +70,28 @@ export async function fetchRemoteBranches(
     ...options,
     allowFailure: true,
   });
-  if (
-    remotes.exitCode !== 0 ||
-    remotes.stdout
-      .split("\n")
-      .map((remote) => remote.trim())
-      .filter(Boolean).length === 0
-  ) {
+  const remoteNames =
+    remotes.exitCode === 0
+      ? remotes.stdout
+          .split("\n")
+          .map((remote) => remote.trim())
+          .filter(Boolean)
+      : [];
+  const remote = remoteNames.includes("origin")
+    ? "origin"
+    : remoteNames.length === 1
+      ? remoteNames[0]
+      : undefined;
+  if (remote === undefined) {
     return { status: "skipped" };
   }
 
   if (!interactive) {
-    return fetchRemoteBranchesNonInteractively(cwd, options);
+    return fetchRemoteBranchesNonInteractively(cwd, remote, options);
   }
 
   try {
-    const result = await runGit(["fetch", "--all", "--prune", "--quiet"], {
+    const result = await runGit(["fetch", "--prune", "--quiet", remote], {
       cwd,
       ...options,
       allowFailure: true,
@@ -115,12 +126,95 @@ async function readRemoteBranches(
     .map((ref) => ref.branch);
 }
 
+const BRANCH_REFS_CACHE_LIMIT = 8;
+const REF_STORE_RACY_WINDOW_MS = 2_000;
+
+const branchRefsByCommonDir = new Map<
+  string,
+  { fingerprint: string; refs: BranchRefsWithDefaults }
+>();
+
+function isMissingPathError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "ENOENT" || error.code === "ENOTDIR")
+  );
+}
+
+async function statIfPresent(filePath: string): Promise<BigIntStats | null> {
+  try {
+    return await fs.stat(filePath, { bigint: true });
+  } catch (error) {
+    if (isMissingPathError(error)) return null;
+    throw error;
+  }
+}
+
+async function readRefStoreFingerprint(
+  commonDir: string,
+): Promise<string | null> {
+  if ((await statIfPresent(path.join(commonDir, "reftable"))) !== null) {
+    return null;
+  }
+  const entries: string[] = [];
+  let newestMtimeMs = 0;
+  const record = (name: string, stats: BigIntStats | null) => {
+    if (stats === null) {
+      entries.push(`${name}\0absent`);
+      return;
+    }
+    entries.push(`${name}\0${stats.ino}\0${stats.size}\0${stats.mtimeNs}`);
+    newestMtimeMs = Math.max(newestMtimeMs, Number(stats.mtimeMs));
+  };
+  const startedAt = Date.now();
+  record("packed-refs", await statIfPresent(path.join(commonDir, "packed-refs")));
+  const pending = ["refs/heads", "refs/remotes"];
+  for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+    const absoluteDir = path.join(commonDir, dir);
+    const stats = await statIfPresent(absoluteDir);
+    record(dir, stats);
+    if (stats === null) continue;
+    for (const child of await fs.readdir(absoluteDir, { withFileTypes: true })) {
+      if (child.isDirectory()) pending.push(`${dir}/${child.name}`);
+    }
+  }
+  if (startedAt - newestMtimeMs < REF_STORE_RACY_WINDOW_MS) return null;
+  return entries.sort().join("\n");
+}
+
 async function listBranchRefsWithDefaults(
   cwd: string,
   options: GitProcessOptions = {},
   repositoryKnown = false,
 ): Promise<BranchRefsWithDefaults> {
   if (!repositoryKnown) await ensureGitRepo(cwd, options);
+  const commonDir = await getGitCommonDir(cwd, options);
+  const fingerprint = await readRefStoreFingerprint(commonDir).catch(
+    () => null,
+  );
+  const cached = branchRefsByCommonDir.get(commonDir);
+  if (fingerprint !== null && cached?.fingerprint === fingerprint) {
+    branchRefsByCommonDir.delete(commonDir);
+    branchRefsByCommonDir.set(commonDir, cached);
+    return cached.refs;
+  }
+  const refs = await readBranchRefsWithDefaults(cwd, options);
+  branchRefsByCommonDir.delete(commonDir);
+  if (fingerprint !== null) {
+    branchRefsByCommonDir.set(commonDir, { fingerprint, refs });
+    for (const staleCommonDir of branchRefsByCommonDir.keys()) {
+      if (branchRefsByCommonDir.size <= BRANCH_REFS_CACHE_LIMIT) break;
+      branchRefsByCommonDir.delete(staleCommonDir);
+    }
+  }
+  return refs;
+}
+
+async function readBranchRefsWithDefaults(
+  cwd: string,
+  options: GitProcessOptions,
+): Promise<BranchRefsWithDefaults> {
   const [branches, remoteBranches, originHeadBranch] = await Promise.all([
     readLocalBranches(cwd, options),
     readRemoteBranches(cwd, options),
@@ -235,11 +329,11 @@ function classifySelectedBranch({
 }
 
 export async function refreshRemoteBranches(
-  cwd: string,
+  repo: GitRepo,
   options: GitProcessOptions,
   mode: RemoteRefreshMode,
 ): Promise<void> {
-  const commonDir = await getGitCommonDir(cwd, options);
+  const { commonDir, path: cwd } = repo;
   const interactive = mode === "blocking";
   const existingState = remoteBranchFetchStateByCommonDir.get(commonDir);
   if (existingState?.inFlight) {
@@ -335,7 +429,8 @@ export async function listBranchOptions(
     ...(readArgs.shellPath === undefined ? {} : { shellPath: readArgs.shellPath }),
     ...(readArgs.priority === undefined ? {} : { priority: readArgs.priority }),
   };
-  if ((await detectGitRepoKind(readArgs.path, processOptions)) === "none") {
+  const repo = await readGitRepo(readArgs.path, processOptions);
+  if (repo === null) {
     return {
       branches: [],
       branchesTruncated: false,
@@ -349,11 +444,9 @@ export async function listBranchOptions(
     };
   }
   if (remoteRefresh === "background") {
-    void refreshRemoteBranches(
-      readArgs.path,
-      processOptions,
-      "background",
-    ).catch(() => undefined);
+    void refreshRemoteBranches(repo, processOptions, "background").catch(
+      () => undefined,
+    );
   }
   return readBranchOptions(readArgs);
 }

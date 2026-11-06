@@ -18,6 +18,13 @@ bb git patch <environment-id> --target <target> --path <path>... [--json]
 bb git viewed list|mark|unmark|clear <environment-id> --target <target> ...
 ```
 
+- `bb git branches` lists the refs already in the repository and starts a
+  background fetch of `origin`, or of the only remote when there is no
+  `origin` (at most once every 30 seconds per repository), so newly fetched
+  remote branches show up on a later call. Branches on other remotes refresh
+  only when you fetch them yourself. The
+  branch pickers start the same fetch when they open, through the
+  `fetchRemoteBranches` RPC; the `branches` RPC itself never fetches.
 - `<target>` is `uncommitted`, `branch_committed`, `all` or `commit`.
   Branch targets take `--merge-base-branch`; `commit` takes `--sha`. `file`
   takes `--merge-base-ref <sha>` for branch targets instead.
@@ -37,7 +44,8 @@ bb git viewed list|mark|unmark|clear <environment-id> --target <target> ...
   `--revision`; `viewed list --path` takes up to 500 paths. Mutations print
   `{ "ok": true }` with `--json`.
 - The old `bb environment status|diff|diff-files|diff-file|diff-patch|branches|diff-viewed`
-  commands still run and print the `bb git` command that replaced them.
+  commands still run and print the `bb git` command that replaced them. So do
+  the deprecated `bb thread show --work-status|--git-diff` flags.
 
 `showGitChanges` (default true) shows the composer's changed-files segment;
 turn it off with `bb plugin config bb--git set showGitChanges false`.

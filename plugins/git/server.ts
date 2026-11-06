@@ -9,6 +9,7 @@ import {
   gitFilesTag,
   gitRefsTag,
   gitStatusTag,
+  gitViewedTag,
   parseGitPatchKey,
   type GitPatchKey,
   type GitPatchResult,
@@ -52,10 +53,13 @@ export default function gitPlugin(bb: BbPluginApi): void {
     watchedEnvironments.has(environmentId),
   );
   const reads = createGitReads(bb, generations.freshness);
-  const viewed = createGitViewed(bb);
   const invalidator = createCoalescedInvalidator((tags) =>
     bb.rpc.experimental_invalidate(tags),
   );
+  const viewed = createGitViewed(bb, (environmentId) => {
+    if (watchedEnvironments.has(environmentId))
+      invalidator.invalidate(environmentId, [gitViewedTag(environmentId)]);
+  });
 
   let stopEnvironmentEvents: (() => void) | null = null;
   const threadEnvironments = new Map<string, string | null>();
@@ -306,6 +310,8 @@ export default function gitPlugin(bb: BbPluginApi): void {
           ...(query === undefined ? {} : { query }),
           ...(selectedBranch === undefined ? {} : { selectedBranch }),
         }),
+      fetchRemoteBranches: ({ environmentId }) =>
+        reads.fetchRemoteBranches(environmentId),
       viewed: ({ environmentId, target, paths }) =>
         viewed.list(environmentId, target, paths),
       markViewed: ({ environmentId, target, path, revision }) =>

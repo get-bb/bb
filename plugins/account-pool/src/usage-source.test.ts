@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { usagePlanLabel, usageWindowLabel } from "./usage-source.js";
+import { usagePlan, usageWindowLabel } from "./usage-source.js";
 
 describe("usage presentation labels", () => {
   it("names known windows consistently and retains other durations", () => {
@@ -9,21 +9,27 @@ describe("usage presentation labels", () => {
     expect(usageWindowLabel(2_880, "primary")).toBe("2 day limit");
     expect(usageWindowLabel(null, "Custom limit")).toBe("Custom limit");
   });
-  it("retains known Max multipliers without inventing a missing tier", () => {
+  it("names Claude plans after the Max and Ultra rename", () => {
     expect(
-      usagePlanLabel({
+      usagePlan({
         subscriptionType: "max",
         rateLimitTier: "default_claude_max_20x",
       }),
-    ).toBe("Max (20x)");
+    ).toEqual({ id: "ultra", label: "Ultra" });
     expect(
-      usagePlanLabel({ subscriptionType: "max", rateLimitTier: null }),
-    ).toBe("Max");
+      usagePlan({
+        subscriptionType: "max",
+        rateLimitTier: "default_claude_max_5x",
+      }),
+    ).toEqual({ id: "max", label: "Max" });
+    expect(usagePlan({ subscriptionType: "max", rateLimitTier: null })).toEqual(
+      { id: "max", label: "Max" },
+    );
+    expect(usagePlan({ subscriptionType: "pro", rateLimitTier: null })).toEqual(
+      { id: "pro", label: "Pro" },
+    );
     expect(
-      usagePlanLabel({ subscriptionType: "pro", rateLimitTier: null }),
-    ).toBe("Pro");
-    expect(
-      usagePlanLabel({ subscriptionType: null, rateLimitTier: null }),
+      usagePlan({ subscriptionType: null, rateLimitTier: null }),
     ).toBeNull();
   });
 });

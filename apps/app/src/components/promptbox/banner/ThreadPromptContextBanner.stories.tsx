@@ -14,7 +14,7 @@ import {
 import {
   selectWorkspaceChangedFilesSection,
   type WorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../../../../../../plugins/git/ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import {
   GitSegmentFixtureProvider,

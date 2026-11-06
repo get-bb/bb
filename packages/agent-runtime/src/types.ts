@@ -177,7 +177,7 @@ export interface ResumeThreadArgs {
   environmentId: string;
   threadId: string;
   projectId?: string;
-  providerThreadId?: string;
+  providerThreadId: string;
   providerId: string;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   options: AgentRuntimeExecutionOptions;
@@ -199,6 +199,8 @@ export interface RunTurnArgs {
   instructions?: string;
 }
 
+export type RunTurnResult = { status: "started" } | { status: "unconfirmed" };
+
 export interface SteerTurnArgs {
   threadId: string;
   expectedTurnId: string;
@@ -218,7 +220,14 @@ interface SteerTurnStaleResult {
   activeTurnId: string | null;
 }
 
-export type SteerTurnResult = SteerTurnAppliedResult | SteerTurnStaleResult;
+interface SteerTurnUnconfirmedResult {
+  status: "unconfirmed";
+}
+
+export type SteerTurnResult =
+  | SteerTurnAppliedResult
+  | SteerTurnStaleResult
+  | SteerTurnUnconfirmedResult;
 
 export interface StopThreadArgs {
   threadId: string;
@@ -318,7 +327,7 @@ export interface AgentRuntime {
 
   resumeThread(args: ResumeThreadArgs): Promise<ResumeThreadResult>;
 
-  runTurn(args: RunTurnArgs): Promise<void>;
+  runTurn(args: RunTurnArgs): Promise<RunTurnResult>;
 
   steerTurn(args: SteerTurnArgs): Promise<SteerTurnResult>;
 

@@ -26,7 +26,6 @@ import {
 } from "@/lib/document-visibility";
 import {
   applyRealtimeThreadPatches,
-  collectCachedThreadIdsForEnvironment,
   createFlushOncePredicate,
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
@@ -40,19 +39,6 @@ import {
   partitionThreadChangesByFlushPriority,
 } from "./cache-owners/realtime-cache-registry";
 
-interface ThreadInvalidationDebounce {
-  debounceMs: number;
-  maxWaitMs: number;
-}
-
-export function resolveThreadInvalidationDebounce(
-  isCoarsePointer: boolean,
-): ThreadInvalidationDebounce {
-  return isCoarsePointer
-    ? { debounceMs: 150, maxWaitMs: 400 }
-    : { debounceMs: 50, maxWaitMs: 200 };
-}
-
 function detectCoarsePointer(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -61,17 +47,12 @@ function detectCoarsePointer(): boolean {
   );
 }
 
-const {
-  debounceMs: INVALIDATION_DEBOUNCE_MS,
-  maxWaitMs: INVALIDATION_MAX_WAIT_MS,
-} = resolveThreadInvalidationDebounce(detectCoarsePointer());
 const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;
 const HIDDEN_SIDEBAR_REFRESH_DEBOUNCE_MS = 1_000;
 const HIDDEN_SIDEBAR_REFRESH_MAX_WAIT_MS = 5_000;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
 const WATCHED_ENVIRONMENT_CHANGE_KINDS: EnvironmentChangeKind[] = [
   "work-status-changed",
-  "thread-storage-changed",
 ];
 
 type RealtimeConnectedEvent =
@@ -339,8 +320,6 @@ function invalidateRealtimeEnvironmentChange({
     executeRealtimeDirtyHandlers({
       context: {
         environmentId,
-        getCachedThreadIdsForEnvironment: () =>
-          collectCachedThreadIdsForEnvironment({ environmentId, queryClient }),
         queryClient,
       },
       handlers: REALTIME_ENVIRONMENT_CHANGE_REGISTRY[changeKind].dirty,
@@ -401,8 +380,9 @@ export function createRealtimeCacheEffects({
   let hasDeferredThreadChanges = false;
   const deferredNonThreadChanges = createDeferredNonThreadChanges();
   const invalidationScheduler = createDebouncedCallbackScheduler({
-    debounceMs: INVALIDATION_DEBOUNCE_MS,
-    maxWaitMs: INVALIDATION_MAX_WAIT_MS,
+    ...(detectCoarsePointer()
+      ? { debounceMs: 150, maxWaitMs: 400 }
+      : { debounceMs: 50, maxWaitMs: 200 }),
     onFlush: () => {
       if (!visibility.isDocumentVisible()) {
         hasDeferredThreadChanges = true;
@@ -515,6 +495,12 @@ export function createRealtimeCacheEffects({
         );
         return;
       case "thread-detail": {
+        mergeThreadChanges({
+          changes: ["storage-changed"],
+          state: threadChangeState,
+          threadId: target.threadId,
+        });
+        invalidationScheduler.schedule();
         const environmentId = getCachedThreadEnvironmentId({
           queryClient,
           threadId: target.threadId,

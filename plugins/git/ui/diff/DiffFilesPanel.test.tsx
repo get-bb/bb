@@ -17,6 +17,7 @@ import {
   type DiffFileEntry,
   type DiffPatchEntry,
   type GitPatchResult,
+  type GitViewedFile,
   type WorkspaceDiffTarget,
 } from "../../contract.js";
 import { gitRpcContract } from "../../rpc-contract.js";
@@ -28,7 +29,6 @@ import type { DiffPatchState } from "./diff-data.js";
 import { DiffFilesPanel } from "./DiffFilesPanel.js";
 import { makeDiffFileEntry } from "./diff-file-fixtures.js";
 import { useDiffFilesCollapseControls } from "./diffFilesStore.js";
-import type { DiffViewedFile } from "@bb/server-contract";
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
@@ -199,7 +199,7 @@ function availablePatches(keys: readonly string[]) {
 }
 
 it("shows Viewed only for files whose stored revision matches and marks the current revision", async () => {
-  let viewed: DiffViewedFile[] = [
+  let viewed: GitViewedFile[] = [
     { path: "a.ts", revision: "rev-a" },
     { path: "b.ts", revision: "rev-b-old" },
   ];

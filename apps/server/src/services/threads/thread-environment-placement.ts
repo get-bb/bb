@@ -888,23 +888,16 @@ export async function refreshAttachedEnvironmentBranch(
   args: { environmentId: string; hostId: string; path: string },
 ): Promise<void> {
   try {
-    const inspection = await callHostRetryableOnlineRpc(deps, {
+    const { checkout } = await callHostRetryableOnlineRpc(deps, {
       hostId: args.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.inspect_git_source",
-        path: args.path,
-        remoteRefresh: "background",
-      },
+      command: { type: "host.inspect_git_checkout", path: args.path },
     });
-    const checkout = inspection.checkout;
-    const branchName =
-      checkout.kind === "branch" || checkout.kind === "unborn"
-        ? checkout.branchName
-        : null;
     recordEnvironmentCurrentBranch(deps.db, deps.hub, args.environmentId, {
-      branchName,
-      defaultBranch: inspection.defaultBranch ?? branchName,
+      branchName:
+        checkout.kind === "branch" || checkout.kind === "unborn"
+          ? checkout.branchName
+          : null,
     });
   } catch (error) {
     deps.logger.warn(

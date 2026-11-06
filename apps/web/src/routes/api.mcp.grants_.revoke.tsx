@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { serverCredentialFromHeaders } from "@bb/connect-db";
 import { accountApiResponse, readJsonObject } from "@/server/account";
-import { depsFromEnv } from "@/server/api";
+import { depsFromEnv } from "@/server/deps";
 import { getEnv } from "@/server/env";
 import { revokeOAuthGrantForCredential } from "@/server/oauth";
 

@@ -1,4 +1,3 @@
-import { drizzle } from "drizzle-orm/d1";
 import { escapeHtmlText } from "@bb/text-utils";
 import {
   GATE_OAUTH_AUTH_KIND,
@@ -10,9 +9,9 @@ import {
   RESERVED_HANDLES,
   handleAppLinkAssociationRequest,
   parseVisitorHost,
-  schema,
   sha256Hex,
 } from "@bb/connect-db";
+import { openGateDb } from "./connect-db.js";
 import {
   getSetCookies,
   refreshAccountSessionCookies,
@@ -532,7 +531,7 @@ const gate = {
       );
     }
 
-    const db = drizzle(env.DB, { schema });
+    const { db } = openGateDb(env);
     const isTunnelDial = url.pathname === "/__tunnel";
     const resolved = await resolveLabel(
       label,

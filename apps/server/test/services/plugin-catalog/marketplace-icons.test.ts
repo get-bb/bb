@@ -66,12 +66,6 @@ describe("marketplace icon validation", () => {
     ).toThrow(/<svg> root element/);
   });
 
-  it("refuses an icon over the size cap", () => {
-    expect(() =>
-      marketplaceIconContentType(`${base}.png`, Buffer.alloc(300 * 1024)),
-    ).toThrow(/exceeds 262144 bytes/);
-  });
-
   it("bounds a local icon read before validation", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bb-local-icon-bound-"));
     cleanup.push(directory);

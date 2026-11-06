@@ -26,7 +26,12 @@ import { sdk } from "@/lib/sdk";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { OnboardingGate } from "./OnboardingGate";
 
-const guide = vi.hoisted(() => ({ mounts: 0 }));
+const guide = vi.hoisted(
+  (): { mounts: number; variant: "control" | "new" } => ({
+    mounts: 0,
+    variant: "control",
+  }),
+);
 const app = { mounts: 0 };
 
 vi.mock("@/lib/sdk", () => ({
@@ -38,7 +43,10 @@ vi.mock("@/lib/sdk", () => ({
       config: vi.fn(),
       updateGeneralSettings: vi.fn(),
       experimental_setupGuide: vi.fn(() =>
-        Promise.resolve({ variant: "control", featuredPluginEntryIds: null }),
+        Promise.resolve({
+          variant: guide.variant,
+          featuredPluginEntryIds: null,
+        }),
       ),
     },
   },
@@ -147,6 +155,7 @@ beforeEach(() => {
   notifyManager.setScheduler((callback) => callback());
   window.localStorage.clear();
   guide.mounts = 0;
+  guide.variant = "control";
   app.mounts = 0;
   server.completedAt = null;
   server.failSaves = false;
@@ -178,80 +187,87 @@ afterEach(() => {
   notifyManager.setScheduler(defaultScheduler);
 });
 
-describe("OnboardingGate completion against the settings cache", () => {
-  it("keeps the guide closed when a config read from before the save lands while the save is in flight", async () => {
-    const queryClient = createTestQueryClient();
-    renderGate(queryClient);
-    await screen.findByText("Start using bb");
-    markSystemConfigStale(queryClient);
+describe.each(["control", "new"] as const)(
+  "OnboardingGate completion against the settings cache (%s guide)",
+  (variant) => {
+    beforeEach(() => {
+      guide.variant = variant;
+    });
 
-    await closeGuide();
-    expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(1);
-    expect(server.configReplies).toHaveLength(1);
+    it("keeps the guide closed when a config read from before the save lands while the save is in flight", async () => {
+      const queryClient = createTestQueryClient();
+      renderGate(queryClient);
+      await screen.findByText("Start using bb");
+      markSystemConfigStale(queryClient);
 
-    await settle(server.configReplies);
-    expect(currentCompletedAt(queryClient)).toBeNull();
-    expect(guideButton()).toBeNull();
-    expect(screen.getByText("Replay setup guide")).toBeTruthy();
+      await closeGuide();
+      expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(1);
+      expect(server.configReplies).toHaveLength(1);
 
-    await settle(server.saveReplies);
-    expect(server.configReplies).toHaveLength(1);
-    await settle(server.configReplies);
+      await settle(server.configReplies);
+      expect(currentCompletedAt(queryClient)).toBeNull();
+      expect(guideButton()).toBeNull();
+      expect(screen.getByText("Replay setup guide")).toBeTruthy();
 
-    expect(server.completedAt).not.toBeNull();
-    expect(currentCompletedAt(queryClient)).toBe(server.completedAt);
-    expect(guideButton()).toBeNull();
-    expect(screen.getByText("Replay setup guide")).toBeTruthy();
-    expect(guide.mounts).toBe(1);
-    expect(app.mounts).toBe(1);
-  });
+      await settle(server.saveReplies);
+      expect(server.configReplies).toHaveLength(1);
+      await settle(server.configReplies);
 
-  it("shows the guide again when Settings clears the completion after a close in the same session", async () => {
-    const queryClient = createTestQueryClient();
-    renderGate(queryClient);
-    await screen.findByText("Start using bb");
-    await closeGuide();
-    await settle(server.saveReplies);
-    await settle(server.configReplies);
-    expect(server.completedAt).not.toBeNull();
-    expect(screen.getByText("Replay setup guide")).toBeTruthy();
+      expect(server.completedAt).not.toBeNull();
+      expect(currentCompletedAt(queryClient)).toBe(server.completedAt);
+      expect(guideButton()).toBeNull();
+      expect(screen.getByText("Replay setup guide")).toBeTruthy();
+      expect(guide.mounts).toBe(1);
+      expect(app.mounts).toBe(1);
+    });
 
-    fireEvent.click(screen.getByText("Replay setup guide"));
-    await settle();
-    await settle(server.saveReplies);
-    await settle(server.configReplies);
+    it("shows the guide again when Settings clears the completion after a close in the same session", async () => {
+      const queryClient = createTestQueryClient();
+      renderGate(queryClient);
+      await screen.findByText("Start using bb");
+      await closeGuide();
+      await settle(server.saveReplies);
+      await settle(server.configReplies);
+      expect(server.completedAt).not.toBeNull();
+      expect(screen.getByText("Replay setup guide")).toBeTruthy();
 
-    expect(server.completedAt).toBeNull();
-    expect(currentCompletedAt(queryClient)).toBeNull();
-    expect(guideButton()).not.toBeNull();
-    expect(screen.queryByText("Replay setup guide")).toBeNull();
-    expect(guide.mounts).toBe(2);
-  });
+      fireEvent.click(screen.getByText("Replay setup guide"));
+      await settle();
+      await settle(server.saveReplies);
+      await settle(server.configReplies);
 
-  it("returns to the same guide when its completion save fails, and Start using bb saves again", async () => {
-    const queryClient = createTestQueryClient();
-    renderGate(queryClient);
-    await screen.findByText("Start using bb");
-    server.failSaves = true;
+      expect(server.completedAt).toBeNull();
+      expect(currentCompletedAt(queryClient)).toBeNull();
+      expect(guideButton()).not.toBeNull();
+      expect(screen.queryByText("Replay setup guide")).toBeNull();
+      expect(guide.mounts).toBe(2);
+    });
 
-    await closeGuide();
-    expect(guideButton()).toBeNull();
-    await settle(server.saveReplies);
-    await settle(server.configReplies);
+    it("shows the guide again when its completion save fails, and Start using bb saves again", async () => {
+      const queryClient = createTestQueryClient();
+      renderGate(queryClient);
+      await screen.findByText("Start using bb");
+      server.failSaves = true;
 
-    expect(server.completedAt).toBeNull();
-    expect(currentCompletedAt(queryClient)).toBeNull();
-    expect(guideButton()).not.toBeNull();
-    expect(guide.mounts).toBe(1);
+      await closeGuide();
+      expect(guideButton()).toBeNull();
+      await settle(server.saveReplies);
+      await settle(server.configReplies);
 
-    server.failSaves = false;
-    await closeGuide();
-    await settle(server.saveReplies);
-    await settle(server.configReplies);
+      expect(server.completedAt).toBeNull();
+      expect(currentCompletedAt(queryClient)).toBeNull();
+      expect(guideButton()).not.toBeNull();
+      expect(guide.mounts).toBe(variant === "new" ? 1 : 2);
 
-    expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(2);
-    expect(server.completedAt).not.toBeNull();
-    expect(guideButton()).toBeNull();
-    expect(screen.getByText("Replay setup guide")).toBeTruthy();
-  });
-});
+      server.failSaves = false;
+      await closeGuide();
+      await settle(server.saveReplies);
+      await settle(server.configReplies);
+
+      expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(2);
+      expect(server.completedAt).not.toBeNull();
+      expect(guideButton()).toBeNull();
+      expect(screen.getByText("Replay setup guide")).toBeTruthy();
+    });
+  },
+);

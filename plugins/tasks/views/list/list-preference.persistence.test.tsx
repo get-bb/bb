@@ -197,6 +197,85 @@ async function selectSort(
 }
 
 describe("list filter/sort preference persistence", () => {
+  it("shows cached lists across project, all, and active navigation", async () => {
+    const registration = app.navPanels[0]!;
+    const Component = registration.component;
+    const rpc = baseRpc();
+    let suspendReads = false;
+    const slot = renderSlot(
+      registration,
+      { subPath: "all" },
+      {
+        rpc: {
+          ...rpc,
+          listAllTasks: (raw: unknown) =>
+            suspendReads ? new Promise<never>(() => {}) : rpc.listAllTasks(raw),
+        },
+      },
+    );
+    await slot.findByText("BET-1");
+    slot.lifecycle.rerender(<Component subPath="active" />);
+    await slot.findByText("ALP-9");
+    slot.lifecycle.rerender(<Component subPath={PROJECT_B} />);
+    await slot.findByText("BET-1");
+    slot.lifecycle.rerender(<Component subPath={PROJECT_A} />);
+    await slot.findByText("ALP-1");
+
+    suspendReads = true;
+    for (const [subPath, visible, absent] of [
+      ["all", "BET-1", "ALP-9"],
+      ["active", "ALP-9", "ALP-1"],
+      ["all", "BET-1", "ALP-9"],
+      [PROJECT_B, "BET-1", "ALP-1"],
+      [PROJECT_A, "ALP-1", "BET-1"],
+    ] as const) {
+      slot.lifecycle.rerender(<Component subPath={subPath} />);
+      await slot.findByText(visible);
+      expect(slot.queryByText(absent)).toBeNull();
+    }
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "hides the old scope while a destination request is pending and can %s",
+    async (outcome) => {
+      const registration = app.navPanels[0]!;
+      const Component = registration.component;
+      let resolveTasks!: (value: { tasks: Task[] }) => void;
+      let rejectTasks!: (error: Error) => void;
+      const pending = new Promise<{ tasks: Task[] }>((resolve, reject) => {
+        resolveTasks = resolve;
+        rejectTasks = reject;
+      });
+      const rpc = baseRpc();
+      const slot = renderSlot(
+        registration,
+        { subPath: PROJECT_A },
+        {
+          rpc: {
+            ...rpc,
+            listAllTasks: (raw: unknown) =>
+              rpcInput(raw).activeOnly ? pending : rpc.listAllTasks(raw),
+          },
+        },
+      );
+      await slot.findByText("ALP-1");
+      slot.lifecycle.rerender(<Component subPath="active" />);
+      expect(slot.queryByText("ALP-1")).toBeNull();
+      expect(slot.queryByText("ALP-9")).toBeNull();
+      expect(slot.queryByText("Couldn't load tasks")).toBeNull();
+
+      if (outcome === "resolve") {
+        resolveTasks({ tasks: [task(PROJECT_A, 9, "in_progress")] });
+        await slot.findByText("ALP-9");
+      } else {
+        rejectTasks(new Error("Destination request failed"));
+        await slot.findByText("Couldn't load tasks");
+        expect(slot.getByText("Destination request failed")).toBeDefined();
+      }
+      expect(slot.queryByText("ALP-1")).toBeNull();
+    },
+  );
+
   it("restores sort and filters after unmount (navigation / remount)", async () => {
     const registration = app.navPanels[0]!;
     const slot = renderSlot(

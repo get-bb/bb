@@ -5,6 +5,7 @@ import {
 
 export default defineWorkspaceTestConfig({
   test: {
+    globalSetup: ["test/setup/connect-db-template.ts"],
     silent: "passed-only",
     projects: sharedWorkerProjects({
       pkgDir: __dirname,

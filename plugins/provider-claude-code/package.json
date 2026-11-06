@@ -36,19 +36,19 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.93.0",
     "@bb/plugin-build": "workspace:*",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "better-sqlite3": "12.10.0",
-    "cron-parser": "^5.5.0",
-    "hono": "4.11.9",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.5",
+    "better-sqlite3": "12.11.1",
+    "cron-parser": "^5.10.3",
+    "hono": "4.13.16",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.245",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.318",
     "@get-bb/plugin-sdk": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^4.3.6"
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
   }
 }

@@ -143,9 +143,10 @@ that the collector never selected. The explicit file set enters both ASAR's
 file index and its unpacked resources before signing.
 
 Packaging runs an offline npm smoke check in `afterPack`, before signing or
-publishing. This requires a native target host (macOS arm64 or Linux x64).
-`smoke:packaged` repeats it against the resulting artifact. To run only npm
-verification without opening a desktop window:
+publishing. This requires a native target host (macOS arm64, Linux x64, or
+Windows x64). `smoke:packaged` then verifies the resulting app opens and its
+desktop preload bridge works. To rerun npm verification independently without
+opening a desktop window:
 
 ```bash
 pnpm exec turbo run smoke:packaged-npm --filter=@bb/desktop

@@ -1,7 +1,14 @@
-import { defineConfig } from "vitest/config";
+import {
+  defineWorkspaceTestConfig,
+  sharedWorkerProjects,
+} from "../../vitest.shared.js";
 
-export default defineConfig({
+export default defineWorkspaceTestConfig({
   test: {
-    include: ["test/**/*.test.ts"],
+    projects: sharedWorkerProjects({
+      pkgDir: __dirname,
+      name: "@bb/connect-db",
+      include: ["test/**/*.test.ts"],
+    }),
   },
 });

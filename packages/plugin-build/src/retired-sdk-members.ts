@@ -14,9 +14,15 @@ const GIT_READS_REPLACEMENT: Readonly<Record<string, string>> = {
     'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "fileSide", input: { environmentId, query } })',
   diffBranches:
     'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "branches", input: { environmentId, query, limit } })',
+  experimental_diffViewed:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "viewed", input: { environmentId, target, paths } })',
+  experimental_markDiffViewed:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "markViewed", input: { environmentId, target, path, revision } })',
+  experimental_clearDiffViewed:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "clearViewed", input: { environmentId, target, path } })',
 };
 
-const RETIRED_NAMES = "status|diff|diffFiles|diffPatch|diffFile|diffBranches";
+const RETIRED_NAMES = Object.keys(GIT_READS_REPLACEMENT).join("|");
 
 const RETIRED_MEMBER_ACCESS = new RegExp(
   `\\benvironments\\s*\\??\\.\\s*(${RETIRED_NAMES})\\b`,
@@ -91,7 +97,7 @@ export function retiredSdkMemberWarnings(source: string): string[] {
   return [
     ...[...found].map(
       (name) =>
-        `environments.${name} is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: ${GIT_READS_REPLACEMENT[name]}. See bb-plugin-authoring, git-reads.md.`,
+        `environments.${name} is retired from the bb SDK typings and keeps working only for existing plugins. Use the Git plugin instead: ${GIT_READS_REPLACEMENT[name]}. See bb-plugin-authoring, git-reads.md.`,
     ),
     ...retiredPanelMemberWarnings(source),
   ];

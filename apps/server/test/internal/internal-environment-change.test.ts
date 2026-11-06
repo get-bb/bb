@@ -130,10 +130,56 @@ describe("internal environment change websocket hints", () => {
     });
   });
 
+  it("notifies only the changed thread when its storage changes, and only from its own host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-storage-owner",
+      });
+      const other = seedHostSession(harness.deps, {
+        id: "host-storage-other",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/env-storage-change",
+        status: "ready",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const notifyThreadSpy = vi.spyOn(harness.hub, "notifyThread");
+      const notifyEnvironmentSpy = vi.spyOn(harness.hub, "notifyEnvironment");
+      const send = (hostId: string, sessionId: string) =>
+        onDaemonSocketMessage(harness.deps, {
+          hostId,
+          sessionId,
+          socket: createTestDaemonSocket(),
+          raw: JSON.stringify({
+            type: "thread-storage-change",
+            threadId: thread.id,
+          }),
+        });
+
+      send(other.host.id, other.session.id);
+      expect(notifyThreadSpy).not.toHaveBeenCalled();
+
+      send(host.id, session.id);
+      expect(notifyThreadSpy).toHaveBeenCalledTimes(1);
+      expect(notifyThreadSpy).toHaveBeenCalledWith(thread.id, [
+        "storage-changed",
+      ]);
+      expect(notifyEnvironmentSpy).not.toHaveBeenCalled();
+    });
+  });
+
   it.each([
     "work-status-changed",
-    "thread-storage-changed",
     "git-refs-changed",
+    "git-branches-changed",
   ] as const)(
     "notifies clients for %s hints without mutating rows",
     async (change) => {

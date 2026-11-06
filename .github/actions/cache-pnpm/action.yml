@@ -1,5 +1,5 @@
 name: Cache pnpm
-description: Restore and save the macOS pnpm store independently of Turbo outputs.
+description: Restore and save the pnpm store independently of Turbo outputs.
 runs:
   using: composite
   steps:

@@ -2,7 +2,7 @@ import type {
   HostDaemonEnvironmentChangePayload,
   HostDaemonEnvironmentMetadataChangePayload,
 } from "@bb/host-daemon-contract";
-import { getEnvironment, type DbNotifier } from "@bb/db";
+import { getEnvironment, getThread, type DbNotifier } from "@bb/db";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import type { AppDeps } from "../types.js";
 
@@ -12,6 +12,11 @@ interface EnvironmentChangeNotificationDeps {
 
 interface NotifyDaemonEnvironmentChangeArgs extends HostDaemonEnvironmentChangePayload {
   hostId: string;
+}
+
+interface NotifyDaemonThreadStorageChangeArgs {
+  hostId: string;
+  threadId: string;
 }
 
 interface RecordDaemonEnvironmentMetadataChangeArgs extends HostDaemonEnvironmentMetadataChangePayload {
@@ -47,6 +52,25 @@ export function notifyDaemonEnvironmentChange(
   }
 
   deps.hub.notifyEnvironment(environment.id, [args.change]);
+}
+
+export function notifyDaemonThreadStorageChange(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: NotifyDaemonThreadStorageChangeArgs,
+): void {
+  const thread = getThread(deps.db, args.threadId);
+  const environment = thread?.environmentId
+    ? getEnvironment(deps.db, thread.environmentId)
+    : null;
+  if (
+    !environment ||
+    environment.hostId !== args.hostId ||
+    environment.status === "destroyed"
+  ) {
+    return;
+  }
+
+  deps.hub.notifyThread(args.threadId, ["storage-changed"]);
 }
 
 export function recordDaemonEnvironmentMetadataChange(

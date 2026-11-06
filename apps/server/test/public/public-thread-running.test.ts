@@ -48,13 +48,11 @@ describe("GET /threads/running", () => {
         projectId: project.id,
         status: "active",
       });
-      // Admitted but not yet provisioned: on no host, still occupying.
       const unplaced = seedThread(harness.deps, {
         environmentId: null,
         projectId: project.id,
         status: "starting",
       });
-      // Neither of these occupies anything.
       seedThread(harness.deps, {
         environmentId: environment.id,
         projectId: project.id,
@@ -68,8 +66,6 @@ describe("GET /threads/running", () => {
       archiveThread(harness.db, harness.deps.hub, archived.id);
 
       const rows = await running(harness);
-      // A child and a plugin-spawned thread occupy slots like any other, so
-      // the route reports them.
       expect(new Set(rows.map((row) => row.id))).toEqual(
         new Set([root.id, child.id, spawned.id, unplaced.id]),
       );

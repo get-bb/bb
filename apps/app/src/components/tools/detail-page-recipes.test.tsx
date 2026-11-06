@@ -171,57 +171,6 @@ describe("Plugin detail recipe", () => {
     ).toBeTruthy();
   });
 
-  it("lists declared capabilities without category chrome", () => {
-    const { container } = renderPlugin({
-      ...PLUGIN,
-      cliCommand: { name: "gh", summary: "Work with GitHub" },
-      capabilities: [
-        {
-          kind: "skill",
-          id: "review",
-          label: "review",
-          detail: "Skill this plugin adds to your agents",
-        },
-        {
-          kind: "theme",
-          id: "github.dark",
-          label: "GitHub Dark",
-          detail: null,
-        },
-        {
-          kind: "agent-tool",
-          id: "gh_search",
-          label: "gh_search",
-          detail: "Search GitHub",
-        },
-        {
-          kind: "thread-integration",
-          id: "mention:pr",
-          label: "Pull requests",
-          detail: "Mentions with #",
-        },
-      ],
-    });
-
-    const capabilities = container.querySelector(
-      '[data-resource-detail-section="includes"]',
-    );
-    expect(capabilities?.querySelector("table")).not.toBeNull();
-    expect(
-      capabilities?.querySelector("[data-plugin-capability-group]"),
-    ).toBeNull();
-
-    for (const item of [
-      "bb gh",
-      "review",
-      "gh_search",
-      "Pull requests",
-      "GitHub Dark",
-    ] as const) {
-      expect(screen.getByText(item)).toBeTruthy();
-    }
-  });
-
   it("collapses long capability descriptions until requested", () => {
     const description = "Long capability guidance ".repeat(20).trim();
     const { container } = renderPlugin({

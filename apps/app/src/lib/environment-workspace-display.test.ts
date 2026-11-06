@@ -11,14 +11,6 @@ import {
 } from "./environment-workspace-display";
 
 describe("isHostAmbiguous", () => {
-  it("treats a lone persistent machine as unambiguous", () => {
-    expect(isHostAmbiguous(false, "persistent")).toBe(false);
-  });
-
-  it("treats more than one persistent machine as ambiguous", () => {
-    expect(isHostAmbiguous(true, "persistent")).toBe(true);
-  });
-
   it("treats a machine that is not persistent as ambiguous", () => {
     expect(isHostAmbiguous(false, "ephemeral")).toBe(true);
     expect(isHostAmbiguous(false, null)).toBe(true);

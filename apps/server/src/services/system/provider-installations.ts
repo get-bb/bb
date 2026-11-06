@@ -4,6 +4,7 @@ import type {
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import type { ProviderInfo } from "@bb/domain";
+import { isDeepStrictEqual } from "node:util";
 import { ZodError } from "zod";
 import type { WorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -74,33 +75,26 @@ const statusCaches = new WeakMap<
   AsyncTtlMemo<string, ProviderInstallationStatus>
 >();
 
+export const PROVIDER_INSTALLATION_STATUS_FRESH_MS = 30_000;
+
 function providerStatusCache(deps: WorkSessionDeps) {
   let cache = statusCaches.get(deps.db);
   if (!cache) {
     cache = createAsyncTtlMemo<string, ProviderInstallationStatus>({
       maxEntries: 1_024,
-      ttlMs: 30_000,
+      ttlMs: PROVIDER_INSTALLATION_STATUS_FRESH_MS,
+      staleWhileRevalidate: true,
     });
     statusCaches.set(deps.db, cache);
-    const hostCache = cache;
-    deps.hub.onChangedMessage((message) => {
-      if (
-        message.entity === "host" &&
-        message.changes.some(
-          (change) =>
-            change === "host-connected" || change === "host-disconnected",
-        )
-      ) {
-        hostCache.invalidateWhere((key) => key.startsWith(`${message.id} `));
-      }
-    });
   }
   return cache;
 }
 
+export type ProviderInstallationsReadMode = "prewarm" | "read" | "refresh";
+
 export async function getProviderInstallations(
   deps: WorkSessionDeps,
-  args: { hostId: string },
+  args: { hostId: string; mode: ProviderInstallationsReadMode },
 ): Promise<ProviderCliStatusResponse> {
   const deadline = Date.now() + PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS;
   const providers = await listSystemProviderInfos(deps, {
@@ -147,6 +141,28 @@ export async function getProviderInstallations(
                   bridgeLaunch,
                 },
               }),
+            {
+              refresh: args.mode === "refresh",
+              revalidateStale: args.mode !== "prewarm",
+              onReplaced: (previous, next) => {
+                if (!isDeepStrictEqual(previous, next)) {
+                  deps.hub.notifyHost(args.hostId, [
+                    "provider-cli-status-changed",
+                  ]);
+                }
+              },
+              onRevalidateError: (error) => {
+                deps.logger.warn(
+                  {
+                    err: error,
+                    failure: "status_refresh_failed",
+                    hostId: args.hostId,
+                    providerId: provider.id,
+                  },
+                  "Failed to refresh provider installation status; keeping the previous status",
+                );
+              },
+            },
           );
         } catch (error) {
           if (!canOmitProviderInstallationStatusError(error)) {

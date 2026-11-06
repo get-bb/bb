@@ -1,54 +1,51 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const perfHooksMock = vi.hoisted(() => ({
-  histogram: {
-    disable: vi.fn(),
-    enable: vi.fn(),
-    max: 600_000_000_000,
-    mean: 1_000_000,
-    percentile: vi.fn(() => 1_000_000),
-    reset: vi.fn(),
-  },
-}));
-
-vi.mock("node:perf_hooks", () => ({
-  monitorEventLoopDelay: vi.fn(() => perfHooksMock.histogram),
-}));
-
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
 
 describe("host event-loop stall monitor", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.clearAllMocks();
+  let blockedMs = 0;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: 0 });
+    blockedMs = 0;
+    vi.spyOn(process.hrtime, "bigint").mockImplementation(() =>
+      BigInt(Math.round((Date.now() + blockedMs) * 1_000_000)),
+    );
   });
 
-  it("suppresses histogram delays accumulated while the system was suspended", () => {
-    vi.useFakeTimers();
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function blockBeforeNextTick(gapMs: number): void {
+    vi.advanceTimersByTime(25);
+    blockedMs += gapMs - 50;
+  }
+
+  it("suppresses delays accumulated while the system was suspended", () => {
     let now = 0;
     const logger = { warn: vi.fn() };
     const monitor = startEventLoopStallMonitor({ logger, now: () => now });
 
+    blockBeforeNextTick(600);
     now = 300_000;
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(4_975);
 
     expect(logger.warn).not.toHaveBeenCalled();
-    expect(perfHooksMock.histogram.reset).toHaveBeenCalledOnce();
     monitor.stop();
   });
 
   it("still reports a sub-minute event-loop stall", () => {
-    vi.useFakeTimers();
-    perfHooksMock.histogram.max = 600_000_000;
     let now = 0;
     const logger = { warn: vi.fn() };
     const monitor = startEventLoopStallMonitor({ logger, now: () => now });
 
+    blockBeforeNextTick(600);
     now = 5_000;
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(4_975);
 
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ maxDelayMs: 600 }),
+      expect.objectContaining({ maxDelayMs: 600, resolutionMs: 50 }),
       "Host daemon event loop stalled",
     );
     monitor.stop();

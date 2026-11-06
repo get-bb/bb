@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { updateThreadTabsRequestSchema } from "@bb/server-contract";
 import {
+  RESTART_RESUME_RETRY_REASON,
   queuedMessageWaitHolderSchema,
   type PromptInput,
   type QueuedMessageWaitHolder,
@@ -131,7 +132,13 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
       : row.initiator === "system"
         ? "System"
         : (row.senderThreadId ?? "Agent"),
-    truncateCell(queuedMessagePreview(row.content), MAX_QUEUE_TEXT_WIDTH),
+    truncateCell(
+      row.payload.kind === "retry" &&
+        row.payload.reason === RESTART_RESUME_RETRY_REASON
+        ? `Resume after ${RESTART_RESUME_RETRY_REASON}`
+        : queuedMessagePreview(row.content),
+      MAX_QUEUE_TEXT_WIDTH,
+    ),
     row.state,
     truncateCell(
       row.failureReason === null

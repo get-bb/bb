@@ -1,23 +1,25 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth/minimal";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  account,
   CONNECT_SESSION_EXPIRES_IN_SECONDS,
   CONNECT_SESSION_UPDATE_AGE_SECONDS,
   labelClaim,
   machine,
   profile,
-  schema,
   server,
   session,
   sha256Hex,
   user,
+  verification,
+  first,
+  type ConnectDb,
 } from "@bb/connect-db";
 
 import {
@@ -35,43 +37,32 @@ import {
 import { refreshAccountSessionCookies } from "./account-session.js";
 import { assignMachineLabel } from "./machine-label.js";
 
-const MIGRATIONS_DIR = fileURLToPath(
-  new URL("../../../packages/connect-db/migrations", import.meta.url),
-);
+let database: TestConnectDb;
+let db: ConnectDb;
 
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
-
-beforeEach(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
-    if (!file.endsWith(".sql")) continue;
-    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-  }
-  db = drizzle(sqlite, { schema });
+beforeEach(async () => {
+  database = await createTestConnectDb();
+  db = database.db;
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
 });
 
 const now = new Date();
 
-function seedUser(id: string): void {
-  db.insert(user)
-    .values({
-      id,
-      name: id,
-      email: `${id}@example.com`,
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+async function seedUser(id: string): Promise<void> {
+  await db.insert(user).values({
+    id,
+    name: id,
+    email: `${id}@example.com`,
+    emailVerified: true,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
-function seedServer(over: {
+async function seedServer(over: {
   id: string;
   userId: string;
   name: string;
@@ -79,45 +70,41 @@ function seedServer(over: {
   credentialHash?: string | null;
   revokedAt?: Date | null;
   lastSeenAt?: Date | null;
-}): void {
-  db.insert(server)
-    .values({
-      id: over.id,
-      userId: over.userId,
-      name: over.name,
-      subdomain: over.subdomain,
-      credentialHash: "credentialHash" in over ? over.credentialHash : "hash",
-      revokedAt: over.revokedAt ?? null,
-      lastSeenAt: over.lastSeenAt ?? null,
-      createdAt: now,
-    })
-    .run();
+}): Promise<void> {
+  await db.insert(server).values({
+    id: over.id,
+    userId: over.userId,
+    name: over.name,
+    subdomain: over.subdomain,
+    credentialHash: "credentialHash" in over ? over.credentialHash : "hash",
+    revokedAt: over.revokedAt ?? null,
+    lastSeenAt: over.lastSeenAt ?? null,
+    createdAt: now,
+  });
 }
 
-function seedMachine(over: {
+async function seedMachine(over: {
   id: string;
   userId: string;
   subdomain: string | null;
   credentialHash?: string;
   revokedAt?: Date | null;
   lastSeenAt?: Date | null;
-}): void {
-  db.insert(machine)
-    .values({
-      id: over.id,
-      userId: over.userId,
-      subdomain: over.subdomain,
-      credentialHash: over.credentialHash ?? "machine-hash",
-      revokedAt: over.revokedAt ?? null,
-      lastSeenAt: over.lastSeenAt ?? null,
-      createdAt: now,
-    })
-    .run();
+}): Promise<void> {
+  await db.insert(machine).values({
+    id: over.id,
+    userId: over.userId,
+    subdomain: over.subdomain,
+    credentialHash: over.credentialHash ?? "machine-hash",
+    revokedAt: over.revokedAt ?? null,
+    lastSeenAt: over.lastSeenAt ?? null,
+    createdAt: now,
+  });
   if (over.subdomain !== null) {
-    db.update(labelClaim)
+    await db
+      .update(labelClaim)
       .set({ generation: `${over.id}-generation` })
-      .where(eq(labelClaim.label, over.subdomain))
-      .run();
+      .where(eq(labelClaim.label, over.subdomain));
   }
 }
 
@@ -143,12 +130,12 @@ async function signedSessionCookie(
 
 describe("resolveLabel — label → server row (multi-server)", () => {
   it("resolves the primary bb by its backfilled handle-label subdomain", async () => {
-    seedUser("acct-a");
-    db.insert(profile)
-      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
-      .run();
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now });
     const seen = new Date(now.getTime() - 60_000);
-    seedServer({
+    await seedServer({
       id: "srv-primary",
       userId: "acct-a",
       name: "default",
@@ -170,17 +157,17 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("resolves a second bb on the same account by its own claimed subdomain", async () => {
-    seedUser("acct-a");
-    db.insert(profile)
-      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
-      .run();
-    seedServer({
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now });
+    await seedServer({
       id: "srv-primary",
       userId: "acct-a",
       name: "default",
       subdomain: "sawyer",
     });
-    seedServer({
+    await seedServer({
       id: "srv-desktop",
       userId: "acct-a",
       name: "desktop",
@@ -199,15 +186,15 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("keeps cross-tenant isolation: a label resolves to its owning account only", async () => {
-    seedUser("acct-a");
-    seedUser("acct-b");
-    seedServer({
+    await seedUser("acct-a");
+    await seedUser("acct-b");
+    await seedServer({
       id: "srv-a",
       userId: "acct-a",
       name: "default",
       subdomain: "sawyer",
     });
-    seedServer({
+    await seedServer({
       id: "srv-b",
       userId: "acct-b",
       name: "default",
@@ -226,8 +213,8 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("returns null for an unclaimed label", async () => {
-    seedUser("acct-a");
-    seedServer({
+    await seedUser("acct-a");
+    await seedServer({
       id: "srv-a",
       userId: "acct-a",
       name: "default",
@@ -237,20 +224,18 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("routes a server row atomically claimed by the migration trigger", async () => {
-    seedUser("acct-a");
-    db.insert(profile)
-      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
-      .run();
-    db.insert(server)
-      .values({
-        id: "legacy-server",
-        userId: "acct-a",
-        name: "desktop",
-        subdomain: "legacy-desktop",
-        credentialHash: "hash",
-        createdAt: now,
-      })
-      .run();
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now });
+    await db.insert(server).values({
+      id: "legacy-server",
+      userId: "acct-a",
+      name: "desktop",
+      subdomain: "legacy-desktop",
+      credentialHash: "hash",
+      createdAt: now,
+    });
 
     await expect(
       resolveLabel("legacy-desktop", db, { fresh: true }),
@@ -259,11 +244,13 @@ describe("resolveLabel — label → server row (multi-server)", () => {
       server: { id: "legacy-server" },
     });
     expect(
-      db
-        .select()
-        .from(labelClaim)
-        .where(eq(labelClaim.label, "legacy-desktop"))
-        .get(),
+      await first(
+        db
+          .select()
+          .from(labelClaim)
+          .where(eq(labelClaim.label, "legacy-desktop"))
+          .limit(1),
+      ),
     ).toMatchObject({
       kind: "server",
       ownerId: "legacy-server",
@@ -272,11 +259,11 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("fresh resolution sees an immediately assigned label after a cached negative", async () => {
-    seedUser("acct-a");
-    db.insert(profile)
-      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
-      .run();
-    seedMachine({
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now });
+    await seedMachine({
       id: "machine-new",
       userId: "acct-a",
       subdomain: null,
@@ -296,8 +283,8 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("surfaces revoked / unpaired credential state for the tunnel gate", async () => {
-    seedUser("acct-a");
-    seedServer({
+    await seedUser("acct-a");
+    await seedServer({
       id: "srv-a",
       userId: "acct-a",
       name: "default",
@@ -312,12 +299,12 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("falls through to a machine label with owner and presence data", async () => {
-    seedUser("acct-a");
-    db.insert(profile)
-      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
-      .run();
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now });
     const seen = new Date(now.getTime() - 30_000);
-    seedMachine({
+    await seedMachine({
       id: "machine-air",
       userId: "acct-a",
       subdomain: "sawyer-air",
@@ -341,28 +328,29 @@ describe("resolveLabel — label → server row (multi-server)", () => {
   });
 
   it("keeps the server claim when a machine source attempts a collision", async () => {
-    seedUser("acct-a");
-    db.insert(profile)
-      .values({ userId: "acct-a", handle: "sawyer", createdAt: now })
-      .run();
-    seedServer({
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now });
+    await seedServer({
       id: "srv-collision",
       userId: "acct-a",
       name: "default",
       subdomain: "collision",
     });
-    seedMachine({
+    await seedMachine({
       id: "machine-collision",
       userId: "acct-a",
       subdomain: null,
     });
-    expect(() =>
+    await expect(
       db
         .update(machine)
         .set({ subdomain: "collision" })
-        .where(eq(machine.id, "machine-collision"))
-        .run(),
-    ).toThrow(/unique constraint/iu);
+        .where(eq(machine.id, "machine-collision")),
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
 
     const resolved = await resolveLabel("collision", db, { fresh: true });
     expect(resolved?.kind).toBe("server");
@@ -376,22 +364,20 @@ describe("account session refresh", () => {
   const expiresInMs = CONNECT_SESSION_EXPIRES_IN_SECONDS * 1000;
   const updateAgeMs = CONNECT_SESSION_UPDATE_AGE_SECONDS * 1000;
 
-  function seedSession(
+  async function seedSession(
     token: string,
     refreshAt: number,
     expiresAt: number,
-  ): void {
-    seedUser(`user-${token}`);
-    db.insert(session)
-      .values({
-        id: `id-${token}`,
-        token,
-        expiresAt: new Date(expiresAt),
-        userId: `user-${token}`,
-        createdAt: new Date(refreshAt - updateAgeMs),
-        updatedAt: new Date(refreshAt - updateAgeMs),
-      })
-      .run();
+  ): Promise<void> {
+    await seedUser(`user-${token}`);
+    await db.insert(session).values({
+      id: `id-${token}`,
+      token,
+      expiresAt: new Date(expiresAt),
+      userId: `user-${token}`,
+      createdAt: new Date(refreshAt - updateAgeMs),
+      updatedAt: new Date(refreshAt - updateAgeMs),
+    });
   }
 
   function createAuthFetch(baseURL: string, baseDomain: string) {
@@ -399,8 +385,8 @@ describe("account session refresh", () => {
       secret,
       baseURL,
       database: drizzleAdapter(db, {
-        provider: "sqlite",
-        schema: { session, user },
+        provider: "pg",
+        schema: { account, session, user, verification },
       }),
       session: {
         expiresIn: CONNECT_SESSION_EXPIRES_IN_SECONDS,
@@ -420,8 +406,8 @@ describe("account session refresh", () => {
     const checkedAt = Date.now();
     const freshToken = `fresh-${crypto.randomUUID()}`;
     const dueToken = `due-${crypto.randomUUID()}`;
-    seedSession(freshToken, checkedAt, checkedAt + expiresInMs);
-    seedSession(
+    await seedSession(freshToken, checkedAt, checkedAt + expiresInMs);
+    await seedSession(
       dueToken,
       checkedAt,
       checkedAt + expiresInMs - updateAgeMs - 1000,
@@ -455,7 +441,7 @@ describe("account session refresh", () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
     const oldExpiresAt = refreshAt + expiresInMs - updateAgeMs;
-    seedSession(token, refreshAt, oldExpiresAt);
+    await seedSession(token, refreshAt, oldExpiresAt);
     const cookie = await signedSessionCookie(token, secret);
     const beforeRefresh = Date.now();
 
@@ -465,11 +451,9 @@ describe("account session refresh", () => {
       createAuthFetch("https://getbb.app", "getbb.app"),
     );
     const afterRefresh = Date.now();
-    const refreshed = db
-      .select()
-      .from(session)
-      .where(eq(session.token, token))
-      .get();
+    const refreshed = await first(
+      db.select().from(session).where(eq(session.token, token)).limit(1),
+    );
     expect(refreshed?.expiresAt.getTime()).toBeGreaterThanOrEqual(
       beforeRefresh + expiresInMs,
     );
@@ -486,7 +470,7 @@ describe("account session refresh", () => {
   it("stops reporting needsRefresh as soon as the session was renewed", async () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
-    seedSession(token, refreshAt, refreshAt + expiresInMs - updateAgeMs);
+    await seedSession(token, refreshAt, refreshAt + expiresInMs - updateAgeMs);
     const cookie = await signedSessionCookie(token, secret);
 
     await expect(
@@ -506,7 +490,7 @@ describe("account session refresh", () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
     const expiresAt = refreshAt + expiresInMs;
-    seedSession(token, refreshAt, expiresAt);
+    await seedSession(token, refreshAt, expiresAt);
     const cookie = await signedSessionCookie(token, secret);
 
     await expect(
@@ -517,19 +501,22 @@ describe("account session refresh", () => {
       ),
     ).resolves.toBeNull();
     expect(
-      db
-        .select({ expiresAt: session.expiresAt })
-        .from(session)
-        .where(eq(session.token, token))
-        .get()
-        ?.expiresAt.getTime(),
+      (
+        await first(
+          db
+            .select({ expiresAt: session.expiresAt })
+            .from(session)
+            .where(eq(session.token, token))
+            .limit(1),
+        )
+      )?.expiresAt.getTime(),
     ).toBe(expiresAt);
   });
 
   it("passes through Better Auth's non-secure local Cloud cookie", async () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
-    seedSession(token, refreshAt, refreshAt + expiresInMs - updateAgeMs);
+    await seedSession(token, refreshAt, refreshAt + expiresInMs - updateAgeMs);
     const cookie = await signedSessionCookie(token, secret);
 
     const setCookies = await refreshAccountSessionCookies(
@@ -590,7 +577,7 @@ function failingDb(
       if (prop === "select") {
         counts.select += 1;
         if (counts.select <= failures) {
-          throw new Error("D1_ERROR: D1 DB is overloaded.");
+          throw new Error("Connection terminated unexpectedly");
         }
       }
       const value = Reflect.get(t, prop);
@@ -602,12 +589,7 @@ function failingDb(
 
 function stalledDb(target: typeof db): typeof db {
   const query: object = new Proxy(() => {}, {
-    get: (_query, prop) =>
-      prop === "then"
-        ? undefined
-        : prop === "get"
-          ? () => new Promise(() => {})
-          : () => query,
+    get: (_query, prop) => (prop === "then" ? () => {} : () => query),
   });
   return new Proxy(target, {
     get(t, prop) {
@@ -624,11 +606,8 @@ function gatedDb(target: typeof db, gate: Promise<void>): typeof db {
       get(b, prop) {
         const value = Reflect.get(b, prop);
         if (typeof value !== "function") return value;
-        if (prop === "get") {
-          return async (...args: unknown[]) => {
-            await gate;
-            return value.apply(b, args);
-          };
+        if (prop === "then") {
+          return (...args: unknown[]) => gate.then(() => value.apply(b, args));
         }
         return (...args: unknown[]) => {
           const result = value.apply(b, args);
@@ -654,7 +633,7 @@ async function seedSignedSession(
   secret: string,
   expiresAt = Date.now() + 60_000,
 ): Promise<string> {
-  seedUser(userId);
+  await seedUser(userId);
   const token = `sess_${crypto.randomUUID()}`;
   const key = await crypto.subtle.importKey(
     "raw",
@@ -669,16 +648,14 @@ async function seedSignedSession(
     new TextEncoder().encode(token),
   );
   const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-  db.insert(session)
-    .values({
-      id: `sess-${token}`,
-      token,
-      expiresAt: new Date(expiresAt),
-      userId,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  await db.insert(session).values({
+    id: `sess-${token}`,
+    token,
+    expiresAt: new Date(expiresAt),
+    userId,
+    createdAt: now,
+    updatedAt: now,
+  });
   return `${token}.${sig}`;
 }
 
@@ -687,9 +664,9 @@ describe("gate lookup caches", () => {
     vi.useRealTimers();
   });
 
-  function seedLabel(label: string): void {
-    seedUser(`acct-${label}`);
-    seedServer({
+  async function seedLabel(label: string): Promise<void> {
+    await seedUser(`acct-${label}`);
+    await seedServer({
       id: `srv-${label}`,
       userId: `acct-${label}`,
       name: "default",
@@ -697,8 +674,8 @@ describe("gate lookup caches", () => {
     });
   }
 
-  it("runs one D1 lookup for a burst of concurrent requests", async () => {
-    seedLabel("burst-label");
+  it("runs one database lookup for a burst of concurrent requests", async () => {
+    await seedLabel("burst-label");
     const counted = countingDb(db);
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
@@ -718,7 +695,7 @@ describe("gate lookup caches", () => {
   });
 
   it("retries a failed lookup once for a whole burst and shares the final failure", async () => {
-    seedLabel("burst-failure");
+    await seedLabel("burst-failure");
     vi.useFakeTimers();
     const failing = failingDb(db, Infinity);
 
@@ -731,13 +708,13 @@ describe("gate lookup caches", () => {
     await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
 
     expect(await Promise.all(burst)).toEqual(
-      Array.from({ length: 5 }, () => "D1_ERROR: D1 DB is overloaded."),
+      Array.from({ length: 5 }, () => "Connection terminated unexpectedly"),
     );
     expect(failing.counts.select).toBe(2);
   });
 
-  it("absorbs a D1 failure by retrying once before answering", async () => {
-    seedLabel("blip-label");
+  it("absorbs a database failure by retrying once before answering", async () => {
+    await seedLabel("blip-label");
     vi.useFakeTimers();
     const flaky = failingDb(db, 1);
 
@@ -750,8 +727,8 @@ describe("gate lookup caches", () => {
     expect(flaky.counts.select).toBe(2);
   });
 
-  it("answers an expired label from its last value when D1 fails, without retrying", async () => {
-    seedLabel("fallback-label");
+  it("answers an expired label from its last value when the database fails, without retrying", async () => {
+    await seedLabel("fallback-label");
     vi.useFakeTimers();
     await resolveLabel("fallback-label", db);
     vi.setSystemTime(Date.now() + 61_000);
@@ -763,8 +740,8 @@ describe("gate lookup caches", () => {
     expect(failing.counts.select).toBe(1);
   });
 
-  it("answers an expired label from its last value when D1 stalls", async () => {
-    seedLabel("stalled-fallback");
+  it("answers an expired label from its last value when the database stalls", async () => {
+    await seedLabel("stalled-fallback");
     vi.useFakeTimers();
     await resolveLabel("stalled-fallback", db);
     vi.setSystemTime(Date.now() + 61_000);
@@ -778,7 +755,7 @@ describe("gate lookup caches", () => {
   });
 
   it("stops answering from the last value once the fallback window passes", async () => {
-    seedLabel("lapsed-fallback");
+    await seedLabel("lapsed-fallback");
     vi.useFakeTimers();
     await resolveLabel("lapsed-fallback", db);
     vi.setSystemTime(Date.now() + 60_000 + LOOKUP_FALLBACK_WINDOW_MS);
@@ -789,11 +766,11 @@ describe("gate lookup caches", () => {
     ).catch((error: Error) => error.message);
     await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
 
-    expect(await resolved).toBe("D1_ERROR: D1 DB is overloaded.");
+    expect(await resolved).toBe("Connection terminated unexpectedly");
   });
 
   it("never answers a fresh read from the last value", async () => {
-    seedLabel("fresh-fallback");
+    await seedLabel("fresh-fallback");
     vi.useFakeTimers();
     await resolveLabel("fresh-fallback", db);
 
@@ -804,11 +781,11 @@ describe("gate lookup caches", () => {
     ).catch((error: Error) => error.message);
     await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
 
-    expect(await resolved).toBe("D1_ERROR: D1 DB is overloaded.");
+    expect(await resolved).toBe("Connection terminated unexpectedly");
   });
 
   it("replaces a lookup that never settles with a single new one", async () => {
-    seedLabel("abandoned-label");
+    await seedLabel("abandoned-label");
     vi.useFakeTimers();
     void resolveLabel("abandoned-label", stalledDb(db));
     const counted = countingDb(db);
@@ -828,8 +805,8 @@ describe("gate lookup caches", () => {
   });
 
   it("answers a label whose earlier lookup never settled", async () => {
-    seedUser("acct-stalled-label");
-    seedServer({
+    await seedUser("acct-stalled-label");
+    await seedServer({
       id: "srv-stalled-label",
       userId: "acct-stalled-label",
       name: "default",
@@ -913,7 +890,7 @@ describe("gate lookup caches", () => {
     expect(counted.counts.select).toBe(1);
   });
 
-  it("fails closed for an expired session when D1 fails", async () => {
+  it("fails closed for an expired session when the database fails", async () => {
     const secret = "fail-closed-secret";
     const cookieValue = await seedSignedSession(
       "acct-fail-closed",
@@ -930,11 +907,11 @@ describe("gate lookup caches", () => {
         secret,
         failingDb(db, Infinity).db,
       ),
-    ).rejects.toThrow("overloaded");
+    ).rejects.toThrow("Connection terminated");
   });
 
   it("does not cache a lookup that failed its retry", async () => {
-    seedLabel("flight-retry");
+    await seedLabel("flight-retry");
     vi.useFakeTimers();
     const flaky = failingDb(db, 2);
 
@@ -943,7 +920,7 @@ describe("gate lookup caches", () => {
     );
     await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
 
-    expect(await first).toBe("D1_ERROR: D1 DB is overloaded.");
+    expect(await first).toBe("Connection terminated unexpectedly");
     await expect(resolveLabel("flight-retry", flaky.db)).resolves.toMatchObject(
       { kind: "server", userId: "acct-flight-retry" },
     );
@@ -953,17 +930,15 @@ describe("gate lookup caches", () => {
 describe("machine credential presence", () => {
   it("verifies the owning machine and throttles lastSeenAt writes", async () => {
     const presence = { machineId: "machine-presence", lastSeenAt: null };
-    seedUser("acct-machine");
+    await seedUser("acct-machine");
     const credential = `bbcm_${crypto.randomUUID()}`;
     const credentialHash = await sha256Hex(credential);
-    db.insert(machine)
-      .values({
-        id: "machine-presence",
-        userId: "acct-machine",
-        credentialHash,
-        createdAt: new Date(0),
-      })
-      .run();
+    await db.insert(machine).values({
+      id: "machine-presence",
+      userId: "acct-machine",
+      credentialHash,
+      createdAt: new Date(0),
+    });
 
     await expect(
       verifyMachineCredentialDetails(credential, db),
@@ -974,12 +949,15 @@ describe("machine credential presence", () => {
     });
     expect(await markMachineSeen(presence, db, 10_000)).toBe(true);
     expect(
-      db
-        .select()
-        .from(machine)
-        .where(eq(machine.id, "machine-presence"))
-        .get()
-        ?.lastSeenAt?.getTime(),
+      (
+        await first(
+          db
+            .select()
+            .from(machine)
+            .where(eq(machine.id, "machine-presence"))
+            .limit(1),
+        )
+      )?.lastSeenAt?.getTime(),
     ).toBe(10_000);
 
     expect(
@@ -990,12 +968,15 @@ describe("machine credential presence", () => {
       ),
     ).toBe(false);
     expect(
-      db
-        .select()
-        .from(machine)
-        .where(eq(machine.id, "machine-presence"))
-        .get()
-        ?.lastSeenAt?.getTime(),
+      (
+        await first(
+          db
+            .select()
+            .from(machine)
+            .where(eq(machine.id, "machine-presence"))
+            .limit(1),
+        )
+      )?.lastSeenAt?.getTime(),
     ).toBe(10_000);
 
     expect(
@@ -1010,16 +991,14 @@ describe("machine credential presence", () => {
 
 describe("machine last-seen writes", () => {
   it("skips the write while the stored lastSeenAt is recent", async () => {
-    seedUser("acct-recent");
-    db.insert(machine)
-      .values({
-        id: "machine-recent",
-        userId: "acct-recent",
-        credentialHash: "recent-hash",
-        lastSeenAt: new Date(50_000),
-        createdAt: new Date(0),
-      })
-      .run();
+    await seedUser("acct-recent");
+    await db.insert(machine).values({
+      id: "machine-recent",
+      userId: "acct-recent",
+      credentialHash: "recent-hash",
+      lastSeenAt: new Date(50_000),
+      createdAt: new Date(0),
+    });
     const verified = {
       machineId: "machine-recent",
       lastSeenAt: new Date(50_000),
@@ -1044,16 +1023,14 @@ describe("machine last-seen writes", () => {
 
 describe("machine credential cache", () => {
   async function seedMachine(id: string): Promise<string> {
-    seedUser(`acct-${id}`);
+    await seedUser(`acct-${id}`);
     const credential = `bbcm_${crypto.randomUUID()}`;
-    db.insert(machine)
-      .values({
-        id,
-        userId: `acct-${id}`,
-        credentialHash: await sha256Hex(credential),
-        createdAt: new Date(0),
-      })
-      .run();
+    await db.insert(machine).values({
+      id,
+      userId: `acct-${id}`,
+      credentialHash: await sha256Hex(credential),
+      createdAt: new Date(0),
+    });
     return credential;
   }
 
@@ -1093,7 +1070,7 @@ describe("machine credential cache", () => {
     });
   });
 
-  it("caches an unknown credential so retries do not reach D1", async () => {
+  it("caches an unknown credential so retries do not reach the database", async () => {
     const counted = countingDb(db);
     const unknown = `bbcm_${crypto.randomUUID()}`;
 
@@ -1116,10 +1093,10 @@ describe("machine credential cache", () => {
       lastSeenAt: null,
     });
 
-    db.update(machine)
+    await db
+      .update(machine)
       .set({ revokedAt: new Date() })
-      .where(eq(machine.id, "machine-revoked"))
-      .run();
+      .where(eq(machine.id, "machine-revoked"));
     vi.setSystemTime(1_000_000 + 59_999);
     expect(await verifyMachineCredentialDetails(credential, db)).not.toBe(null);
 
@@ -1127,7 +1104,7 @@ describe("machine credential cache", () => {
     expect(await verifyMachineCredentialDetails(credential, db)).toBe(null);
   });
 
-  it("fails closed for an expired credential when D1 fails", async () => {
+  it("fails closed for an expired credential when the database fails", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(1_000_000);
     const credential = await seedMachine("machine-fail-closed");
@@ -1136,10 +1113,10 @@ describe("machine credential cache", () => {
 
     await expect(
       verifyMachineCredentialDetails(credential, failingDb(db, Infinity).db),
-    ).rejects.toThrow("overloaded");
+    ).rejects.toThrow("Connection terminated");
   });
 
-  it("retries a failed D1 lookup once before answering", async () => {
+  it("retries a failed database lookup once before answering", async () => {
     const credential = await seedMachine("machine-flaky");
     const flaky = failingDb(db, 1);
 

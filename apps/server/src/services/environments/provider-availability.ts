@@ -127,9 +127,8 @@ async function inspectGitCheckoutAvailability(
       hostId: args.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
-        type: "host.inspect_git_source",
+        type: "host.inspect_git_checkout",
         path: args.path,
-        remoteRefresh: "background",
       },
     });
     if (

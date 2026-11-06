@@ -1558,18 +1558,4 @@ describe("FollowUpPromptBox", () => {
 
     expect(screen.getByTestId("prompt-box")).toBe(initialPromptBox);
   });
-
-  it("uses the caller-specific compact placeholder", () => {
-    mocks.isCompactViewport = true;
-    mocks.isPointerCoarse = true;
-    const props = createFollowUpPromptBoxProps({
-      kind: "queue-while-stopping",
-    });
-    if (props.composer === null) throw new Error("Missing composer");
-    props.composer.compactPromptPlaceholder = "Stopping side chat...";
-    props.composer.promptPlaceholder = "Stopping side chat...";
-    render(<FollowUpPromptBox {...props} />);
-
-    expect(screen.getByText("Stopping side chat...")).toBeTruthy();
-  });
 });

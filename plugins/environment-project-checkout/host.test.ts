@@ -210,6 +210,101 @@ describe("checkout host entry", () => {
     await harness.experimental_dispose();
   });
 
+  async function divergeOnReadme(repo: string): Promise<void> {
+    await git(repo, "branch", "release");
+    await git(repo, "switch", "--create", "side");
+    await writeFile(join(repo, "README.md"), "side\n");
+    await git(repo, "commit", "--all", "-m", "side");
+    await git(repo, "switch", "main");
+  }
+
+  async function attachRelease(repo: string, dataDir: string) {
+    const harness = createHarness(dataDir);
+    const inspection = await harness.experimental_call("inspectCheckout", {
+      path: repo,
+    });
+    const result = await harness.experimental_call("attach", {
+      operationId: "refused",
+      path: repo,
+      branch: { kind: "existing", name: "release" },
+    });
+    await harness.experimental_dispose();
+    return { inspection, result };
+  }
+
+  it("refuses to switch branches on a detached HEAD", async () => {
+    const { repo, dataDir } = await createRepository();
+    await git(repo, "branch", "release");
+    await git(repo, "checkout", "--detach", "HEAD");
+    const { inspection, result } = await attachRelease(repo, dataDir);
+    expect(inspection).toMatchObject({ checkout: { kind: "detached" } });
+    expect(result).toEqual({
+      status: "failed",
+      message:
+        "Cannot checkout branch while the workspace is on a detached HEAD",
+    });
+    await expect(
+      git(repo, "symbolic-ref", "--quiet", "HEAD"),
+    ).rejects.toThrow();
+  });
+
+  it("refuses to switch branches while a merge is in progress", async () => {
+    const { repo, dataDir } = await createRepository();
+    await divergeOnReadme(repo);
+    await git(repo, "merge", "--no-ff", "--no-commit", "side");
+    const { inspection, result } = await attachRelease(repo, dataDir);
+    expect(inspection).toMatchObject({
+      checkout: { kind: "branch", branchName: "main" },
+      operation: { kind: "merge", hasConflicts: false },
+    });
+    expect(result).toEqual({
+      status: "failed",
+      message: "Cannot checkout branch while merge is in progress",
+    });
+    expect((await git(repo, "rev-parse", "--abbrev-ref", "HEAD")).trim()).toBe(
+      "main",
+    );
+  });
+
+  it("refuses to switch branches over unresolved merge conflicts", async () => {
+    const { repo, dataDir } = await createRepository();
+    await divergeOnReadme(repo);
+    await writeFile(join(repo, "README.md"), "main\n");
+    await git(repo, "commit", "--all", "-m", "main");
+    await expect(git(repo, "merge", "side")).rejects.toThrow();
+    const { inspection, result } = await attachRelease(repo, dataDir);
+    expect(inspection).toMatchObject({
+      checkout: { kind: "branch", branchName: "main" },
+      operation: { kind: "merge", hasConflicts: true },
+    });
+    expect(result).toEqual({
+      status: "failed",
+      message: "Cannot checkout branch while merge has unresolved conflicts",
+    });
+    expect((await git(repo, "rev-parse", "--abbrev-ref", "HEAD")).trim()).toBe(
+      "main",
+    );
+  });
+
+  it("refuses to switch branches mid-rebase, where git detaches HEAD", async () => {
+    const { repo, dataDir } = await createRepository();
+    await divergeOnReadme(repo);
+    await writeFile(join(repo, "README.md"), "main\n");
+    await git(repo, "commit", "--all", "-m", "main");
+    await expect(git(repo, "rebase", "side")).rejects.toThrow();
+    const { inspection, result } = await attachRelease(repo, dataDir);
+    expect(inspection).toMatchObject({
+      checkout: { kind: "detached" },
+      operation: { kind: "rebase", hasConflicts: true },
+    });
+    expect(result).toEqual({
+      status: "failed",
+      message:
+        "Cannot checkout branch while the workspace is on a detached HEAD",
+    });
+    await expect(git(repo, "status")).resolves.toContain("rebase in progress");
+  });
+
   it("inspects dirty and detached checkouts", async () => {
     const { repo, dataDir } = await createRepository();
     await writeFile(join(repo, "README.md"), "edited\n");

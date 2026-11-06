@@ -1,4 +1,5 @@
 import {
+  ensureGitRepo,
   hasRef,
   readBranchRelation,
   readDefaultBranchRefs,
@@ -76,7 +77,7 @@ export async function resolveWorktreeBaseBranch(
       remoteBranch,
     );
   }
-  const refs = await readDefaultBranchRefs(sourcePath);
+  const refs = await readDefaultBranchRefs(await ensureGitRepo(sourcePath));
   const originDefaultBranch = refs.originDefaultBranch ?? null;
   return resolvedBaseBranch(
     resolveDefaultWorktreeBaseBranch({

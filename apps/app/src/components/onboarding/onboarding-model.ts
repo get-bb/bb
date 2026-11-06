@@ -58,16 +58,6 @@ export function agentRowSetup({
   return connect && !awaitingSession ? "connect" : "signIn";
 }
 
-const PARSED_SIGN_IN_PROVIDER_IDS: ReadonlySet<string> = new Set([
-  "claude-code",
-  "codex",
-  "acp-cursor",
-]);
-
-export function parsesSignInOutput(providerId: string): boolean {
-  return PARSED_SIGN_IN_PROVIDER_IDS.has(providerId);
-}
-
 export type SetupGuide = SystemSetupGuideResponse;
 
 interface StepCopy {

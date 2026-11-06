@@ -1058,6 +1058,13 @@
       "when": 1793664307128,
       "tag": "0150_thread_status_changed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "6",
+      "when": 1793738260717,
+      "tag": "0151_hand_diff_viewed_files_to_git_plugin",
+      "breakpoints": true
     }
   ]
 }

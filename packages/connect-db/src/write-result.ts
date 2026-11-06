@@ -1,16 +1,14 @@
+export function affectedRowCount(result: unknown): number | null {
+  if (typeof result !== "object" || result === null) return null;
+  if ("rowCount" in result && typeof result.rowCount === "number") {
+    return result.rowCount;
+  }
+  if ("affectedRows" in result && typeof result.affectedRows === "number") {
+    return result.affectedRows;
+  }
+  return null;
+}
+
 export function rowsChanged(result: unknown): number {
-  if (typeof result !== "object" || result === null) return 0;
-  if (
-    "meta" in result &&
-    typeof result.meta === "object" &&
-    result.meta !== null &&
-    "changes" in result.meta &&
-    typeof result.meta.changes === "number"
-  ) {
-    return result.meta.changes;
-  }
-  if ("changes" in result && typeof result.changes === "number") {
-    return result.changes;
-  }
-  return 0;
+  return affectedRowCount(result) ?? 0;
 }

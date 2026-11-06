@@ -10,8 +10,13 @@ bb thread spawn --project "$BB_PROJECT_ID" --prompt "<test prompt>" --json
 bb thread wait <thread-id>
 bb thread output <thread-id>
 bb thread log <thread-id>
-bb thread show <thread-id> --git-diff
+bb thread show <thread-id> --json
+bb git diff <environment-id> --target all --merge-base-branch <branch>
 ```
+
+Take `<environment-id>` from `environment.id` in the `bb thread show` JSON and
+`<branch>` from the first non-null of `environment.mergeBaseBranch`,
+`baseBranch` and `defaultBranch`.
 
 Read the transcript, not only the final answer. Check whether the skill
 triggered, whether the agent read only relevant resources, and whether the

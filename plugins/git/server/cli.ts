@@ -325,6 +325,9 @@ export function createGitCli(gitReads: GitReads, gitViewed: GitViewed) {
           json: JSON_OPTION,
         },
         run: withCoreErrors(async ({ positionals, options }) => {
+          await gitReads
+            .fetchRemoteBranches(positionals["environment-id"])
+            .catch(() => undefined);
           const result = await reads.branches({
             environmentId: positionals["environment-id"],
             limit: options.limit ?? DEFAULT_BRANCH_LIMIT,

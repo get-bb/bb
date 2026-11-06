@@ -24,6 +24,7 @@ export interface AcpAgentDefinition {
   reasoningProbePriorityModelIds?: readonly string[];
   visibility?: "always" | "installed";
   signInCommand?: string;
+  guidedSignIn?: boolean;
   installUrl?: string;
   iconTint?: { light: string; dark: string };
   supportsManualCompaction?: boolean;
