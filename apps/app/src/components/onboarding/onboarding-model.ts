@@ -114,9 +114,9 @@ export const STEP_COPY: Readonly<
       primaryLabel: "Continue",
     },
     devices: {
-      title: "Use bb from anywhere",
+      title: "Use bb away from this computer",
       description:
-        "All optional. Everything here also lives in Settings → Machines.",
+        "Start a task at your desk, then check on it from anywhere. Change these later in Settings.",
       primaryLabel: "Start using bb",
     },
   },
@@ -322,6 +322,12 @@ export function connectAccessUrl(
     return { status: "on", url: provider.availability.serverUrl };
   }
   return { status: "off" };
+}
+
+export function devicesShowMachines(
+  connect: ReturnType<typeof connectAccessUrl>,
+): boolean {
+  return connect.status === "on";
 }
 
 export function signInSiteName(url: string): string | null {

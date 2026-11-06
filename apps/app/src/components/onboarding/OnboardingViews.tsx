@@ -16,7 +16,11 @@ import {
   SignInPanel,
   type SignInPanelVariant,
 } from "@bb/shared-ui/sign-in-panel";
-import { SETUP_GUIDE_CONTAINER_CLASS } from "@bb/shared-ui/setup-option-row";
+import {
+  SETUP_GUIDE_CONTAINER_CLASS,
+  SetupOptionGroup,
+  SetupOptionRow,
+} from "@bb/shared-ui/setup-option-row";
 import { Switch } from "@bb/shared-ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -1472,6 +1476,68 @@ export function AgentSignInPanel({
           view.terminalVisible ? <div className="h-48">{terminal}</div> : null
         }
       />
+    </div>
+  );
+}
+
+export function RedesignedDevicesStep({
+  hostName,
+  connectSection,
+  showMachines,
+  addMachinePanel,
+  onAddMachine,
+  onCloseAddMachine,
+}: {
+  hostName: string | null;
+  connectSection: ReactNode;
+  showMachines: boolean;
+  addMachinePanel: ReactNode;
+  onAddMachine: () => void;
+  onCloseAddMachine: () => void;
+}) {
+  const open = addMachinePanel !== null;
+  return (
+    <div className="flex flex-col gap-3">
+      {connectSection === null ? null : (
+        <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
+          {connectSection}
+        </SetupOptionGroup>
+      )}
+      {showMachines ? (
+        <SetupOptionGroup label="Where agents run">
+          <SetupOptionRow
+            icon="Laptop"
+            title="Add another machine"
+            description={`${hostName === null ? "This computer" : `This computer, ${hostName},`} is your bb server. Add laptops or cloud machines that connect to it and run agents. Manage machines anytime in Settings > Machines.`}
+            actionStaysInline={open}
+            action={
+              open ? (
+                <RowDismissButton
+                  label="Close adding a machine"
+                  tooltip="Close"
+                  onClick={onCloseAddMachine}
+                />
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onAddMachine}
+                >
+                  Add a machine
+                </Button>
+              )
+            }
+            footer={
+              open ? (
+                <div className="border-t border-border-hairline bg-surface-recessed p-3">
+                  {addMachinePanel}
+                </div>
+              ) : null
+            }
+          />
+        </SetupOptionGroup>
+      ) : null}
     </div>
   );
 }
