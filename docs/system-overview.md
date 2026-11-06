@@ -62,16 +62,16 @@ everything else:
 
 - A failure is written to `sweep_item_failures` (sweep, item key, attempts,
   retry time, last error), and the remaining items still run.
-- The item is left out of later passes until its retry time: 1 minute,
-  doubling to at most 1 hour. `list` receives these keys as `excludedKeys` so
+- The item is left out of later passes until its retry time, counted from
+  when it failed: 1 minute, doubling to at most 1 hour. `list` receives these keys as `excludedKeys` so
   queries with a `LIMIT` can leave them out in SQL.
 - Each failure logs a warning; from the fifth attempt on, an error.
 - A success clears the record. A record whose item has not been listed for an
   hour past its retry time is dropped, and startup drops records of sweeps that
   no longer exist.
 - The runner stops waiting for an item after 60 seconds, skips it while it is
-  still running, and records its outcome when it settles, so one hung item
-  never holds up its job.
+  still running, even in an overlapping pass of the same sweep, and records its
+  outcome when it settles, so one hung item never holds up its job.
 - It yields to the event loop every 8 ms of work.
 - A job marked `background` doesn't hold up the rest of the pass; it is
   skipped on later passes until it finishes.

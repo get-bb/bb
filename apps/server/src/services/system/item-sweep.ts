@@ -162,6 +162,7 @@ async function runItemSweep<T>(
           await new Promise<void>((resolve) => setImmediate(resolve));
           lastYieldAt = performance.now();
         }
+        if (inFlight.has(entry.itemKey)) continue;
         const outcome = await runItem(deps, definition, {
           hadFailure: failures.has(entry.itemKey),
           inFlight,
@@ -207,6 +208,7 @@ async function runItem<T>(
   const sweep = definition.name;
   const { itemKey } = args;
   args.inFlight.add(itemKey);
+  const startedAt = Date.now();
   const settled = Promise.resolve()
     .then(() => definition.process(args.item))
     .then(
@@ -215,7 +217,12 @@ async function runItem<T>(
         return "succeeded" as const;
       },
       (error: unknown) => {
-        recordSweepFailure(deps, { error, itemKey, now: args.now, sweep });
+        recordSweepFailure(deps, {
+          error,
+          itemKey,
+          now: args.now + Math.max(0, Date.now() - startedAt),
+          sweep,
+        });
         return "failed" as const;
       },
     )

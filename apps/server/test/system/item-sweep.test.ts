@@ -108,8 +108,42 @@ describe("item sweeps", () => {
     expect(failuresOf(deps, "test-forget")).toEqual([]);
   });
 
+  it("does not start an item that an overlapping pass of the same sweep is already running", async () => {
+    const deps = setup();
+    const started: string[] = [];
+    const finish = new Map<string, Array<() => void>>();
+    const sweep = defineItemSweep({
+      name: "test-overlap",
+      concurrency: 1,
+      list: () => ["a", "b"],
+      key: (item) => item,
+      process: (item) => {
+        started.push(item);
+        return new Promise<void>((resolve) => {
+          finish.set(item, [...(finish.get(item) ?? []), resolve]);
+        });
+      },
+    });
+
+    let firstDone = false;
+    const first = sweep.run(deps, NOW).then(() => {
+      firstDone = true;
+    });
+    await vi.waitFor(() => expect(started).toEqual(["a"]));
+    const second = sweep.run(deps, NOW);
+    await vi.waitFor(() => expect(started).toEqual(["a", "b"]));
+    for (const resolve of finish.get("a") ?? []) resolve();
+    await vi.waitFor(() => expect(firstDone || started.length > 2).toBe(true));
+    const startedWhileOverlapping = [...started];
+    for (const resolves of finish.values())
+      for (const resolve of resolves) resolve();
+    await Promise.all([first, second]);
+
+    expect(startedWhileOverlapping).toEqual(["a", "b"]);
+  });
+
   it("stops waiting for items that run longer than a minute, skips them while they run, and records their later failure", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
       const deps = setup();
       const rejectHung = new Map<string, (error: Error) => void>();
@@ -148,12 +182,18 @@ describe("item sweeps", () => {
       expect(listed.at(-1)).toEqual(new Set(["hung-1", "hung-2"]));
       expect(processed).toEqual(["quick", "quick"]);
 
+      await vi.advanceTimersByTimeAsync(600_000);
       rejectHung.get("hung-1")?.(new Error("hung item gave up"));
-      await vi.waitFor(() =>
-        expect(failuresOf(deps, "test-detach")).toMatchObject([
-          { attempts: 1, itemKey: "hung-1", lastError: "hung item gave up" },
-        ]),
-      );
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(failuresOf(deps, "test-detach")).toMatchObject([
+        {
+          attempts: 1,
+          firstFailedAt: NOW + 660_000,
+          itemKey: "hung-1",
+          lastError: "hung item gave up",
+          retryAt: NOW + 720_000,
+        },
+      ]);
     } finally {
       vi.useRealTimers();
     }
