@@ -183,7 +183,6 @@ export function makeThreadListEntry(
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
       activePlanModeCount: 0,
-      activeGoalCount: 0,
     },
     hasPendingInteraction: false,
     environmentHostId: null,

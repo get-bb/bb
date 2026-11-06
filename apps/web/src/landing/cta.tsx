@@ -64,7 +64,11 @@ const WindowsSolidIcon: IconSvgElement = [
   ],
 ];
 
-function DesktopDownloadIcon({ platform }: { platform: DesktopPlatform }) {
+export function DesktopDownloadIcon({
+  platform,
+}: {
+  platform: DesktopPlatform;
+}) {
   if (platform === "linux") {
     return <LinuxIcon className="btn-ic" />;
   }
@@ -137,6 +141,27 @@ export function GitHubLink(props: CtaLinkProps & { "aria-label"?: string }) {
       href={GITHUB_URL}
       event="landing_github_clicked"
     />
+  );
+}
+
+export function MarketplaceLink({
+  placement,
+  className,
+  children,
+}: CtaLinkProps) {
+  return (
+    <a
+      className={className}
+      href="/marketplace"
+      onClick={() =>
+        trackLandingEvent({
+          name: "landing_marketplace_clicked",
+          properties: { placement },
+        })
+      }
+    >
+      {children}
+    </a>
   );
 }
 

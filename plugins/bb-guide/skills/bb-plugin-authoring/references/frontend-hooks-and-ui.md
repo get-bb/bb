@@ -30,6 +30,7 @@ Hooks:
   connection) because plugin signals are ephemeral and are not replayed.
 - `experimental_useExperiment(key)` → whether a known bb experiment is enabled, following live changes; false while configuration loads or for unknown keys.
 - `experimental_useThreadContextKind()` → `"banner"` or `"card"`: how the calling component's thread pane shows its thread context; `banner` outside a thread pane. See frontend-thread-context-card.md.
+- `experimental_useThreadExtensionState(threadId, kind)` → the latest state your provider bridge emitted for one of your declared `extensionKinds` (the local name, without your plugin id) on that thread, or null when there is none. It follows live updates while bb shows the thread; parse the value with your kind's schema before use. Only your own plugin's kinds are readable.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
@@ -195,8 +196,9 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
 - `actions` and `banners` are plugin React components. `useComposer()` inside
   them is bound to the composer that mounted the component. Actions render
   before native voice/submit and are unavailable in compact layout; banners
-  render above the composer. A banner's `chrome` is `"card"` by default or
-  `"bare"`.
+  render above the composer, and not at all on a thread whose composer is
+  hidden because it is archived or its environment is gone. A banner's
+  `chrome` is `"card"` by default or `"bare"`.
 - `plusMenu` rows (the `+` menu) and `sendMenu` rows (the menu beside the send
   button, shown only while the composer can submit) are host-rendered so
   keyboard navigation, focus restoration, and mobile layout remain correct.

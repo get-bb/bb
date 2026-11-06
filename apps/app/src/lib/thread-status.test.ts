@@ -28,7 +28,6 @@ interface ThreadSpec {
   backgroundAgents?: number;
   backgroundCommands?: number;
   planMode?: number;
-  goals?: number;
 }
 
 interface StatusCase {
@@ -81,7 +80,6 @@ const CASES: StatusCase[] = [
       ["backgroundAgents", "background-agent"],
       ["backgroundCommands", "background-command"],
       ["planMode", "plan-mode"],
-      ["goals", "goal"],
     ] as const
   ).map(([activity, indicator]): StatusCase => ({
     name: `idle ${activity} activity`,
@@ -138,11 +136,6 @@ const CASES: StatusCase[] = [
     indicator: "plan-mode",
   },
   {
-    name: "a goal over runtime",
-    thread: { ...RUNNING, goals: 1 },
-    indicator: "goal",
-  },
-  {
     name: "runtime over unread success",
     thread: { ...UNREAD_SUCCESS, runtime: "active" },
     indicator: "runtime",
@@ -160,7 +153,6 @@ const CASES: StatusCase[] = [
       "backgroundAgents",
       "backgroundCommands",
       "planMode",
-      "goals",
     ] as const
   ).map((activity): StatusCase => ({
     name: `a working draft with ${activity}`,
@@ -227,24 +219,13 @@ const CASES: StatusCase[] = [
     indicator: "workflow",
   },
   {
-    name: "plan mode over a goal",
-    thread: { planMode: 1, goals: 1 },
-    indicator: "plan-mode",
-  },
-  {
-    name: "plan mode over a goal and background work",
+    name: "plan mode over background work",
     thread: {
       planMode: 1,
-      goals: 1,
       backgroundAgents: 1,
       backgroundCommands: 1,
     },
     indicator: "plan-mode",
-  },
-  {
-    name: "a goal over background work",
-    thread: { goals: 1, backgroundAgents: 1, backgroundCommands: 1 },
-    indicator: "goal",
   },
   {
     name: "an unread error over pending input and a workflow",
@@ -354,7 +335,6 @@ const CASES: StatusCase[] = [
       ["backgroundAgents", "background-agent"],
       ["backgroundCommands", "background-command"],
       ["planMode", "plan-mode"],
-      ["goals", "goal"],
     ] as const
   ).map(([activity, indicator]): StatusCase => ({
     name: `a collapsed parent with descendant ${activity}`,
@@ -387,7 +367,7 @@ const CASES: StatusCase[] = [
   {
     name: "a collapsed parent with a draft and descendant work",
     thread: {},
-    hidden: [{ parented: true, planMode: 1, goals: 1 }],
+    hidden: [{ parented: true, planMode: 1 }],
     draft: true,
     indicator: "working-draft",
   },
@@ -468,7 +448,6 @@ function toEntry(spec: ThreadSpec): ThreadListEntry {
       activeBackgroundAgentCount: spec.backgroundAgents ?? 0,
       activeBackgroundCommandCount: spec.backgroundCommands ?? 0,
       activePlanModeCount: spec.planMode ?? 0,
-      activeGoalCount: spec.goals ?? 0,
     },
   });
 }

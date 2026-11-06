@@ -74,7 +74,7 @@ import { stopThreadForCurrentState } from "../../services/threads/thread-lifecyc
 import {
   buildThreadStatusChangeMetadata,
   getThreadPromptBannerActivity,
-  getThreadTimelineGoal,
+  threadHasGoal,
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
@@ -497,7 +497,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.clearGoal, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (getThreadTimelineGoal(deps, thread) === null) {
+    if (!threadHasGoal(deps, thread)) {
       throw new ApiError(409, "invalid_request", "No Goal to clear");
     }
     const environment = await requireThreadCommandEnvironment(deps, {
@@ -530,7 +530,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     });
     const updatedThread = requirePublicThread(deps.db, thread.id);
-    if (getThreadTimelineGoal(deps, updatedThread) !== null) {
+    if (threadHasGoal(deps, updatedThread)) {
       throw new ApiError(
         409,
         "invalid_request",

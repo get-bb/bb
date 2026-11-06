@@ -74,6 +74,9 @@ the same change.
   bb's included, and select or close them.
 - Read references/frontend-thread-context-card.md to add a row or section to
   the thread context card beside each thread's transcript.
+- Read references/frontend-collapsible-stack-card.md to show a collapsible
+  card above a thread's composer (`experimental_CollapsibleStackCard`) from
+  your provider's extension state.
 - Read references/frontend-pull-requests.md to show bb's pull request badge
   (`experimental_ThreadRowMetadata`) or a thread's GitHub pull request on a row,
   or to migrate off `experimental_useSidebarThreadPullRequest`.

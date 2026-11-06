@@ -16,8 +16,8 @@ const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   ComposerEditorLayout,
   string
 > = {
-  thread: "calc(50dvh - 3rem)",
-  "root-compose": "calc(70dvh - 3rem)",
+  thread: "calc(var(--bb-shell-height) * 0.5 - 3rem)",
+  "root-compose": "calc(var(--bb-shell-height) * 0.7 - 3rem)",
 };
 
 export function blurPromptEditor(editor: Editor | null | undefined): void {

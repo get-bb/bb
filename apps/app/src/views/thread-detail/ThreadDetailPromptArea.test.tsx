@@ -8,7 +8,6 @@ import type {
   PromptTextMention,
   ThreadQueuedMessage,
   ThreadTimelineActivePromptMode,
-  ThreadTimelineGoal,
   ThreadTimelineModelFallback,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -96,16 +95,6 @@ const activePlan = {
   prompt: "Plan the work",
 } satisfies ThreadTimelineActivePromptMode;
 
-const activeGoal = {
-  sourceSeq: 1,
-  updatedAt: 100,
-  objective: "Finish the work",
-  status: "active",
-  tokenBudget: null,
-  tokensUsed: 100,
-  timeUsedSeconds: 10,
-} satisfies ThreadTimelineGoal;
-
 function makePendingInteraction(): PendingInteraction {
   return {
     id: "interaction-1",
@@ -146,7 +135,6 @@ interface RenderPromptAreaOptions {
   childThreadsSection?: ComponentProps<
     typeof ThreadDetailPromptArea
   >["childThreadsSection"];
-  goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
   permissionPolicy?: ComponentProps<
@@ -167,7 +155,6 @@ function buildPromptAreaElement({
   activePromptMode = null,
   activeWorkflows = [],
   childThreadsSection = null,
-  goal = null,
   modelFallback = null,
   pendingInteractions = [],
   permissionPolicy = "editable",
@@ -190,7 +177,6 @@ function buildPromptAreaElement({
         permissionPolicy={permissionPolicy}
         canRestoreEnvironment={false}
         environmentGoneStatus={environmentGoneStatus}
-        goal={goal}
         providerCommands={null}
         sessionOptions={sessionOptions}
         modelFallback={modelFallback}
@@ -1673,19 +1659,6 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByTestId("child-threads-banner")).toBe(banner);
   });
 
-  it("keeps Goal above a pending interaction", () => {
-    renderPromptArea({
-      goal: activeGoal,
-      pendingInteractions: [makePendingInteraction()],
-    });
-
-    expect(
-      screen
-        .getAllByTestId("composer-stack-item")
-        .map((item) => item.textContent),
-    ).toEqual(["Goal banner", "Pending interaction"]);
-  });
-
   it("keeps plugin banners mounted while pending interaction suspends editor regions", () => {
     setPluginSlotRegistrations(
       "pending-plugin",
@@ -1742,26 +1715,12 @@ describe("ThreadDetailPromptArea", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Exit plan mode" }));
 
-    expect(mocks.cancelThreadPlanMutate).toHaveBeenCalledWith("thr_plan");
-    expect(mocks.clearThreadGoalMutate).not.toHaveBeenCalled();
+    expect(mocks.cancelThreadPlanMutateAsync).toHaveBeenCalledWith("thr_plan");
   });
 
-  it("wires the Goal clear action to the current thread", () => {
-    renderPromptArea({
-      goal: activeGoal,
-      thread: makeThread({ id: "thr_goal" }),
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Clear active Goal" }));
-
-    expect(mocks.clearThreadGoalMutate).toHaveBeenCalledWith("thr_goal");
-    expect(mocks.cancelThreadPlanMutate).not.toHaveBeenCalled();
-  });
-
-  it("keeps independent Plan and Goal banners above a pending interaction", () => {
+  it("keeps the Plan banner above a pending interaction", () => {
     renderPromptArea({
       activePromptMode: activePlan,
-      goal: activeGoal,
       pendingInteractions: [makePendingInteraction()],
     });
 
@@ -1769,7 +1728,7 @@ describe("ThreadDetailPromptArea", () => {
       screen
         .getAllByTestId("composer-stack-item")
         .map((item) => item.textContent),
-    ).toEqual(["Plan banner", "Goal banner", "Pending interaction"]);
+    ).toEqual(["Plan banner", "Pending interaction"]);
   });
 
   it("selects the provider fallback model for the next turn", () => {

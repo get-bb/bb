@@ -43,7 +43,7 @@ function timeline(
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
-    goal: null,
+    extensionStates: {},
     providerCommands: null,
     sessionOptions: null,
     modelFallback: null,
@@ -135,7 +135,7 @@ describe("thread timeline delta", () => {
       const current = timeline(rows, {
         maxSeq: step + 2,
         tag: `tag-${step + 2}`,
-        goal: random() < 0.2 ? null : previous.goal,
+        extensionStates: random() < 0.2 ? {} : previous.extensionStates,
       });
       expect(roundTrip(previous, current).applied).toEqual(current);
       previous = current;

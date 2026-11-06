@@ -73,7 +73,7 @@
 /* Left rail: version + date stay pinned while the entry scrolls. */
 .rail-sticky {
   position: sticky;
-  top: 28px;
+  top: calc(var(--site-header-offset) + 28px);
   display: flex;
   flex-direction: column;
   align-items: flex-start;

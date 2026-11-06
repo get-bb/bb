@@ -48,8 +48,10 @@ function PluginGuideRoute() {
 
   return (
     <>
-      <div className="wrap">
+      <div className="wrap nav-shell">
         <SiteNav current="plugin-guide" />
+      </div>
+      <div className="wrap">
         <header className="page-head guide-head">
           <h1>Plugin Guide</h1>
           <p className="sub">Every place a plugin can extend bb.</p>

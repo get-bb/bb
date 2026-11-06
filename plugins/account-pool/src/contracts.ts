@@ -189,12 +189,6 @@ const quotaFieldsShape = {
     .strict()
     .nullable(),
   extraUsage: extraUsageSchema.nullable(),
-  fiveHourUtilization: z.number().nullable(),
-  fiveHourResetAt: z.number().int().nullable(),
-  fiveHourStatus: z.string().nullable(),
-  sevenDayUtilization: z.number().nullable(),
-  sevenDayResetAt: z.number().int().nullable(),
-  sevenDayStatus: z.string().nullable(),
   representativeClaim: z.string().nullable(),
   familyWeekly: familyWeeklySchema,
   limitWindows: z.array(limitWindowSchema),

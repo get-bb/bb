@@ -88,7 +88,6 @@ function activity(
     backgroundAgents: 0,
     backgroundCommands: 0,
     planMode: 0,
-    goals: 0,
     ...overrides,
   };
 }
@@ -868,10 +867,10 @@ describe("ThreadRow", () => {
       }),
     },
     {
-      label: "goal + pending input",
+      label: "plan mode + pending input",
       thread: createThread({
         hasPendingInteraction: true,
-        activity: activity({ goals: 1 }),
+        activity: activity({ planMode: 1 }),
       }),
     },
     {
@@ -1505,7 +1504,6 @@ describe("ThreadRow", () => {
       indicator: "background-command",
     },
     { activityKey: "planMode" as const, indicator: "plan-mode" },
-    { activityKey: "goals" as const, indicator: "goal" },
   ])(
     "shows the $indicator indicator for $activityKey activity",
     ({ activityKey, indicator }) => {
@@ -1571,7 +1569,6 @@ describe("ThreadRow", () => {
     { flag: "backgroundAgents" as const, indicator: "background-agent" },
     { flag: "backgroundCommands" as const, indicator: "background-command" },
     { flag: "planMode" as const, indicator: "plan-mode" },
-    { flag: "goals" as const, indicator: "goal" },
   ])(
     "shows the $indicator indicator for collapsed parent rows with hidden child activity",
     ({ flag, indicator }) => {
@@ -1612,7 +1609,7 @@ describe("ThreadRow", () => {
           createThread({
             id: "thr_hidden_child",
             parentThreadId: "thr_test",
-            activity: activity({ planMode: 1, goals: 1 }),
+            activity: activity({ planMode: 1 }),
           }),
         ],
         onToggleCollapsed: vi.fn(),

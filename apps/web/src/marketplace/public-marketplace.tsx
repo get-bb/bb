@@ -16,7 +16,7 @@ import {
   useState,
 } from "react";
 
-import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
+import { trackLandingEvent, useInitAnalytics } from "../landing/analytics.js";
 import { classifyArrivalSource } from "../landing/arrival-source.js";
 import { CommandButton } from "../landing/command-button.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
@@ -848,8 +848,8 @@ function useMarketplacePageAnalytics(
   state: MarketplaceIndexState,
   author?: string,
 ): void {
+  useInitAnalytics();
   useEffect(() => {
-    initAnalytics();
     trackLandingEvent({
       name: "marketplace_page_viewed",
       properties: {
@@ -979,8 +979,8 @@ export function PublicMarketplaceDetailPage({
   entry: MarketplaceV2Entry;
   stats: MarketplaceStats | null;
 }) {
+  useInitAnalytics();
   useEffect(() => {
-    initAnalytics();
     trackLandingEvent({
       name: "marketplace_plugin_detail_viewed",
       properties: {

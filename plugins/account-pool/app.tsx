@@ -62,6 +62,7 @@ import type {
   AccountPoolConfigSetInput,
   FamilyQuota,
   LimitWindow,
+  LimitWindowSlot,
   LoginTarget,
   ModelFamily,
   PoolAvailability,
@@ -73,6 +74,7 @@ import type { OAuthLoginStart } from "./src/oauth-login.js";
 import type { CodexDeviceLoginStart } from "./src/codex-device-login.js";
 import {
   DEFAULT_ACCOUNT_POOL_CONFIG,
+  limitWindowSlotSchema,
   modelFamilySchema,
   statusSchema,
 } from "./src/contracts.js";
@@ -311,32 +313,53 @@ type QuotaSlot = {
   status: string | null;
 };
 
-function quotaSlots(account: AccountSummary): QuotaSlot[] {
-  if (account.provider === "codex") {
-    if (account.limitWindows.length === 0)
-      return [
-        { key: "primary", label: "LIMIT", utilization: null, status: null },
-      ];
+const CLAUDE_WINDOW_LABELS = {
+  primary: { short: "5H", long: "5 hour" },
+  secondary: { short: "7D", long: "7 day" },
+} as const satisfies Record<LimitWindowSlot, { short: string; long: string }>;
+
+type DisplayWindow = {
+  key: string;
+  short: string;
+  long: string;
+  quota: FamilyQuota | null;
+};
+
+function displayWindows(account: AccountSummary): DisplayWindow[] {
+  if (account.provider === "codex")
     return account.limitWindows.map((window) => ({
       key: window.slot,
-      label: windowShortLabel(window),
-      utilization: window.utilization,
-      status: window.status,
+      short: windowShortLabel(window),
+      long: windowLongLabel(window),
+      quota: window,
     }));
-  }
+  const observed =
+    account.limitWindows.length === 0
+      ? limitWindowSlotSchema.options.map((slot) => ({ slot, quota: null }))
+      : account.limitWindows.map((window) => ({
+          slot: window.slot,
+          quota: window,
+        }));
+  return observed.map(({ slot, quota }) => ({
+    key: slot,
+    ...CLAUDE_WINDOW_LABELS[slot],
+    quota,
+  }));
+}
+
+function quotaSlots(account: AccountSummary): QuotaSlot[] {
+  const windows = displayWindows(account).map((window) => ({
+    key: window.key,
+    label: window.short,
+    utilization: window.quota?.utilization ?? null,
+    status: window.quota?.status ?? null,
+  }));
+  if (account.provider === "codex")
+    return windows.length === 0
+      ? [{ key: "primary", label: "LIMIT", utilization: null, status: null }]
+      : windows;
   return [
-    {
-      key: "five-hour",
-      label: "5H",
-      utilization: account.fiveHourUtilization,
-      status: account.fiveHourStatus,
-    },
-    {
-      key: "seven-day",
-      label: "7D",
-      utilization: account.sevenDayUtilization,
-      status: account.sevenDayStatus,
-    },
+    ...windows,
     {
       key: "fable",
       label: "FABLE",
@@ -1668,17 +1691,7 @@ function AccountDialog({
   threshold: number;
   act: (action: "toggle" | "refresh" | "relogin" | "remove") => void;
 }) {
-  const shared = (
-    utilization: number | null,
-    resetAt: number | null,
-    status: string | null,
-  ): FamilyQuota => ({
-    utilization,
-    resetAt,
-    status,
-    observedAt: account.observedAt ?? 0,
-    source: "header",
-  });
+  const windows = displayWindows(account);
   const providerId =
     account.provider === "claude"
       ? account.accountUuid
@@ -1717,54 +1730,31 @@ function AccountDialog({
         <SettingsBadge>{statusPresentation(account).label}</SettingsBadge>
       </div>
       <div className="space-y-4">
-        {account.provider === "codex" ? (
-          account.limitWindows.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No usage limits observed yet.
-            </div>
-          ) : (
-            account.limitWindows.map((window) => (
-              <QuotaDetail
-                key={window.slot}
-                label={windowLongLabel(window)}
-                quota={window}
-                threshold={threshold}
-              />
-            ))
-          )
+        {windows.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            No usage limits observed yet.
+          </div>
         ) : (
-          <>
+          windows.map((window) => (
             <QuotaDetail
-              label="5 hour"
-              quota={shared(
-                account.fiveHourUtilization,
-                account.fiveHourResetAt,
-                account.fiveHourStatus,
-              )}
+              key={window.key}
+              label={window.long}
+              quota={window.quota}
               threshold={threshold}
             />
-            <QuotaDetail
-              label="7 day"
-              quota={shared(
-                account.sevenDayUtilization,
-                account.sevenDayResetAt,
-                account.sevenDayStatus,
-              )}
-              threshold={threshold}
-            />
-            {modelFamilySchema.options.flatMap((family) =>
-              account.familyWeekly[family] === null
-                ? []
-                : [
-                    <QuotaDetail
-                      key={family}
-                      label={FAMILY_LABELS[family]}
-                      quota={account.familyWeekly[family]}
-                      threshold={threshold}
-                    />,
-                  ],
-            )}
-          </>
+          ))
+        )}
+        {modelFamilySchema.options.flatMap((family) =>
+          account.familyWeekly[family] === null
+            ? []
+            : [
+                <QuotaDetail
+                  key={family}
+                  label={FAMILY_LABELS[family]}
+                  quota={account.familyWeekly[family]}
+                  threshold={threshold}
+                />,
+              ],
         )}
       </div>
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 border-t border-border pt-4 text-sm">

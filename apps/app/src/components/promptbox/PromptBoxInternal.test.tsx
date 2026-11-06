@@ -2609,14 +2609,14 @@ describe("ComposerBox size controls", () => {
   it.each([
     [
       "thread",
-      "min(calc(50dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+      "min(calc(var(--bb-shell-height) * 0.5 - 3rem), var(--composer-editor-available-height, 100dvh))",
     ],
     [
       "new-thread",
-      "min(calc(70dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+      "min(calc(var(--bb-shell-height) * 0.7 - 3rem), var(--composer-editor-available-height, 100dvh))",
     ],
   ] as const)(
-    "caps the %s editor at its intended viewport height or the host's available space",
+    "caps the %s editor at its share of the visible shell height or the host's available space",
     (surface, maxHeight) => {
       render(<ComposerBox {...createPromptBoxProps({ surface })} />);
 

@@ -362,8 +362,11 @@ mobile such a tint falls back to the neutral row colour (never to black).
 
 Genericity rule: model fallback, context cleared, compaction skipped, and
 background work stay core. Provider-specific concepts (Codex goals, the Codex
-`macos` permission profile) are that plugin's extension kinds. Core keeps no
-table of tool names.
+`macos` permission profile) are that plugin's extension kinds. The plugin's
+app reads a kind's latest state with `experimental_useThreadExtensionState`
+and draws it itself; the Codex Goal card is a thread-scoped composer banner
+that renders `experimental_CollapsibleStackCard`.
+Core keeps no table of tool names.
 
 ## 4. Interactions
 

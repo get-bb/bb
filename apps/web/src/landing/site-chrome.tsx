@@ -11,6 +11,10 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   compareLinks,
@@ -26,6 +30,9 @@ import {
   XLink,
 } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
+import { DOWNLOAD_PAGE_PATH, GITHUB_STARS, formatStarCount } from "./site";
+
+const NAV_DOWNLOAD_CLASS = "btn btn-primary btn-sm nav-download";
 
 type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide" | "guides";
 
@@ -189,6 +196,29 @@ function GuidesMenu({
   );
 }
 
+export function GitHubStarsLink({ stars }: { stars: number | null }) {
+  return (
+    <GitHubLink
+      placement="nav"
+      className={
+        stars === null ? "nav-icon-button" : "nav-icon-button nav-github-stars"
+      }
+      aria-label={
+        stars === null
+          ? "GitHub"
+          : `GitHub, ${stars.toLocaleString("en")} stars`
+      }
+    >
+      <HugeiconsIcon icon={GithubIcon} />
+      {stars !== null && (
+        <span className="nav-star-count" aria-hidden="true">
+          {formatStarCount(stars)}
+        </span>
+      )}
+    </GitHubLink>
+  );
+}
+
 export function SiteNav({
   current,
   path,
@@ -197,9 +227,10 @@ export function SiteNav({
   path?: string;
 }) {
   const platform = useDesktopPlatform();
+  const newHeader = useExperiment("homepage-download-path") === "test";
+  useExperimentExposure("homepage-download-path", "desktop");
   return (
-    <nav className="nav">
-      {}
+    <nav className={newHeader ? "nav nav-sticky nav-centered" : "nav"}>
       <a className="logo" href="/" aria-label="bb">
         <span className="bb-mark logo-mark" />
       </a>
@@ -221,19 +252,25 @@ export function SiteNav({
           Changelog
         </a>
         <a href={DASHBOARD_PATH}>Sign in</a>
-        <GitHubLink
-          placement="nav"
-          className="nav-icon-button"
-          aria-label="GitHub"
-        >
-          <HugeiconsIcon icon={GithubIcon} />
-        </GitHubLink>
-        <DesktopDownloadButton
-          placement="nav"
-          platform={platform}
-          className="btn btn-primary btn-sm nav-download"
-        />
+        {newHeader ? null : (
+          <>
+            <GitHubStarsLink stars={null} />
+            <DesktopDownloadButton
+              placement="nav"
+              platform={platform}
+              className={NAV_DOWNLOAD_CLASS}
+            />
+          </>
+        )}
       </div>
+      {newHeader ? (
+        <div className="nav-actions">
+          <GitHubStarsLink stars={GITHUB_STARS} />
+          <a className={NAV_DOWNLOAD_CLASS} href={DOWNLOAD_PAGE_PATH}>
+            Download
+          </a>
+        </div>
+      ) : null}
     </nav>
   );
 }

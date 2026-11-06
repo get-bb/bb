@@ -37,7 +37,6 @@ function thread(
       backgroundAgents: 0,
       backgroundCommands: 0,
       planMode: 0,
-      goals: 0,
     },
     indicator: "none",
     indicatorLabel: null,
@@ -218,13 +217,33 @@ describe("pull request row metadata", () => {
   it.each<[Partial<PullRequest>, string]>([
     [{ checks: passingChecks }, "open, checks passing"],
     [
-      { checks: { ...passingChecks, state: "failing" } },
+      {
+        attention: "checks_failed",
+        checks: { ...passingChecks, state: "failing" },
+      },
       "open, checks failing",
     ],
-    [{ attention: "conflicts" }, "open, conflicts, checks running"],
-    [{ checks: { ...passingChecks, state: "no_checks" } }, "open"],
+    [{ attention: "conflicts" }, "open, conflicts with main, checks running"],
     [
-      { state: "draft", checks: { ...passingChecks, state: "failing" } },
+      {
+        attention: "changes_requested",
+        review: { state: "changes_requested", reviewRequestCount: 0 },
+      },
+      "open, changes requested, checks running",
+    ],
+    [
+      {
+        attention: "none",
+        checks: { ...passingChecks, state: "no_checks" },
+      },
+      "open",
+    ],
+    [
+      {
+        state: "draft",
+        attention: "draft",
+        checks: { ...passingChecks, state: "failing" },
+      },
       "draft, checks failing",
     ],
     [{ state: "merged", attention: "merged" }, "merged"],
@@ -243,8 +262,8 @@ describe("pull request row metadata", () => {
     ).toBeTruthy();
   });
 
-  it("draws a glyph only while checks run, after they fail, or on conflicts", async () => {
-    const glyphs = async (overrides: Partial<PullRequest>) => {
+  it("draws a cross when the PR needs action, else a dot while checks run", async () => {
+    const glyph = async (overrides: Partial<PullRequest>) => {
       const view = renderRow(
         { thread: thread("env_row") },
         {
@@ -257,20 +276,75 @@ describe("pull request row metadata", () => {
       const badge = await view.findByRole("img", {
         name: /Pull request #6143/,
       });
-      const count = badge.childNodes.length;
+      const drawn =
+        badge.childNodes.length === 1
+          ? "none"
+          : badge.querySelector(".bg-attention") !== null
+            ? "dot"
+            : "cross";
       view.unmount();
-      return count;
+      return drawn;
     };
-    expect(await glyphs({ checks: passingChecks })).toBe(1);
+    const behind: PullRequest["mergeability"] = {
+      state: "blocked",
+      mergeStateStatus: "BEHIND",
+      mergeable: "MERGEABLE",
+    };
+    const changesRequested: PullRequest["review"] = {
+      state: "changes_requested",
+      reviewRequestCount: 0,
+    };
     expect(
-      await glyphs({ checks: { ...passingChecks, state: "failing" } }),
-    ).toBe(2);
+      await glyph({ attention: "ready_to_merge", checks: passingChecks }),
+    ).toBe("none");
+    expect(await glyph({ attention: "checks_pending" })).toBe("dot");
     expect(
-      await glyphs({ checks: { ...passingChecks, state: "pending" } }),
-    ).toBe(2);
+      await glyph({
+        attention: "review_requested",
+        review: { state: "review_required", reviewRequestCount: 1 },
+      }),
+    ).toBe("dot");
     expect(
-      await glyphs({ attention: "conflicts", checks: passingChecks }),
-    ).toBe(2);
+      await glyph({
+        attention: "checks_failed",
+        checks: { ...passingChecks, state: "failing" },
+      }),
+    ).toBe("cross");
+    expect(await glyph({ attention: "conflicts", checks: passingChecks })).toBe(
+      "cross",
+    );
+    expect(
+      await glyph({
+        attention: "changes_requested",
+        review: changesRequested,
+        checks: passingChecks,
+      }),
+    ).toBe("cross");
+    expect(
+      await glyph({ attention: "changes_requested", review: changesRequested }),
+    ).toBe("cross");
+    expect(
+      await glyph({
+        attention: "blocked",
+        mergeability: behind,
+        checks: passingChecks,
+      }),
+    ).toBe("cross");
+    expect(
+      await glyph({
+        attention: "blocked",
+        mergeability: { ...behind, mergeStateStatus: "BLOCKED" },
+        checks: passingChecks,
+      }),
+    ).toBe("cross");
+    expect(
+      await glyph({
+        state: "merged",
+        attention: "merged",
+        review: changesRequested,
+        checks: { ...passingChecks, state: "failing" },
+      }),
+    ).toBe("none");
   });
 
   it("shows the number, title and check counts in a tooltip on hover", async () => {

@@ -13,7 +13,7 @@ function served(tag: string): ThreadTimelineResponse {
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
-    goal: null,
+    extensionStates: {},
     providerCommands: null,
     sessionOptions: null,
     modelFallback: null,

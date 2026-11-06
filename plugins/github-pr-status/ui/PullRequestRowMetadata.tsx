@@ -17,6 +17,7 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
+  getPullRequestNextStep,
   type GithubCheckStatus,
 } from "./display";
 import { useRefetchOnShowAndFocus } from "./refetch-on-show";
@@ -62,20 +63,18 @@ export function PullRequestBadge({
   const state = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const checks = getPullRequestGithubCheckStatus(pullRequest);
   const counts = checks === null ? null : checkCounts(pullRequest);
-  const conflicts =
-    (pullRequest.state === "open" || pullRequest.state === "draft") &&
-    pullRequest.attention === "conflicts";
+  const nextStep = getPullRequestNextStep(pullRequest);
+  const action =
+    nextStep?.tone === "action" ? nextStep.label.toLowerCase() : null;
   const glyph =
-    conflicts || checks === "failure"
-      ? "blocked"
-      : checks === "pending"
-        ? "running"
-        : null;
+    action !== null ? "blocked" : checks === "pending" ? "running" : null;
   const label = [
-    `Pull request #${pullRequest.number}`,
-    state.label.toLowerCase(),
-    conflicts ? "conflicts" : null,
-    checks === null ? null : CHECKS_LABEL[checks],
+    ...new Set([
+      `Pull request #${pullRequest.number}`,
+      state.label.toLowerCase(),
+      action,
+      checks === null ? null : CHECKS_LABEL[checks],
+    ]),
   ]
     .filter((part) => part !== null)
     .join(", ");

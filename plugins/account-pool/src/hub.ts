@@ -26,7 +26,6 @@ import {
 import {
   accountStatus,
   blockingResetAt,
-  governingWeeklyResetAt,
   hasExtraUsage,
   isPastThreshold,
   isQuotaExhausted,

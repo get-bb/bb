@@ -134,14 +134,7 @@ function orderedWindows(
 function withoutClaudeSlots(previous: AccountQuota): AccountQuota {
   return {
     ...previous,
-    fiveHourUtilization: null,
-    fiveHourResetAt: null,
-    fiveHourStatus: null,
-    sevenDayUtilization: null,
-    sevenDayResetAt: null,
-    sevenDayStatus: null,
     representativeClaim: null,
-
     familyWeekly: EMPTY_FAMILY_WEEKLY,
   };
 }

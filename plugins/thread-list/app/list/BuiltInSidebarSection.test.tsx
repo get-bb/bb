@@ -126,9 +126,9 @@ describe("built-in sidebar section renderer", () => {
             ...SECTIONS.threads,
             collapsedThreads: [
               makeSidebarThread({
-                id: "thread-goal",
+                id: "thread-plan",
                 isUnread: false,
-                activity: { goals: 1 },
+                activity: { planMode: 1 },
               }),
             ],
           },
@@ -143,6 +143,6 @@ describe("built-in sidebar section renderer", () => {
         document.querySelectorAll("[data-thread-status-glyph]"),
         (glyph) => glyph.getAttribute("data-thread-status-glyph"),
       ),
-    ).toEqual(["goal"]);
+    ).toEqual(["plan-mode"]);
   });
 });
