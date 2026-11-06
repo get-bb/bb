@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { z } from "zod";
 import {
   ConnectMachineRedeemError,
@@ -56,6 +57,14 @@ function redeemFailureCode(
   return "invalid_response";
 }
 
+function desktopDeviceName(): string | undefined {
+  const name = hostname()
+    .replace(/\.local$/u, "")
+    .trim()
+    .slice(0, 128);
+  return name.length > 0 ? name : undefined;
+}
+
 export async function enrollDesktopMachine(
   args: EnrollDesktopMachineArgs,
 ): Promise<EnrollDesktopMachineResult> {
@@ -107,6 +116,8 @@ export async function enrollDesktopMachine(
       {
         apexUrl: deriveConnectBaseUrl(minted.data.result.serverUrl),
         code: minted.data.result.code,
+        deviceName: desktopDeviceName(),
+        kind: "desktop",
       },
       fetchImpl,
     );

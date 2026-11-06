@@ -155,6 +155,7 @@ vi.mock("./servers.js", () => ({
 
 vi.mock("./desktop-session.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./desktop-session.js")>()),
+  recordDesktopSessionUse: vi.fn(async () => {}),
   verifyDesktopSessionCookie: vi.fn(),
 }));
 
@@ -208,7 +209,10 @@ import {
   handleDisconnectServer,
   handleListAccountServers,
 } from "./servers.js";
-import { verifyDesktopSessionCookie } from "./desktop-session.js";
+import {
+  recordDesktopSessionUse,
+  verifyDesktopSessionCookie,
+} from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
@@ -236,6 +240,7 @@ const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
 const mockHandleDisconnectServer = vi.mocked(handleDisconnectServer);
 const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
+const mockRecordDesktopSessionUse = vi.mocked(recordDesktopSessionUse);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
 function sessionDetails(userId = OWNER, needsRefresh = false) {
@@ -2028,13 +2033,15 @@ describe("gate worker share hosts", () => {
     expect(mockRefreshAccountSession).not.toHaveBeenCalled();
   });
 
-  it("accepts the desktop cookie for the owning account", async () => {
+  it("accepts the desktop cookie for the owning account and records the device's use", async () => {
     mockParseCookie.mockImplementation((_header, name) =>
       name === DESKTOP_SESSION_COOKIE ? "desktop-token" : null,
     );
+    const grant = { kind: "machine" as const, credentialHash: "hash-a" };
     mockVerifyDesktopSession.mockResolvedValue({
       userId: OWNER,
       refreshGrant: null,
+      unrecordedUse: grant,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
@@ -2050,6 +2057,10 @@ describe("gate worker share hosts", () => {
     );
     expect(captured).toHaveLength(1);
     expect(response.headers.get("set-cookie")).toBeNull();
+    expect(mockRecordDesktopSessionUse).toHaveBeenCalledWith(
+      grant,
+      expect.anything(),
+    );
   });
 
   it("rolls a day-old desktop cookie forward seven days for the same grant", async () => {
@@ -2060,6 +2071,7 @@ describe("gate worker share hosts", () => {
     mockVerifyDesktopSession.mockResolvedValue({
       userId: OWNER,
       refreshGrant: grant,
+      unrecordedUse: null,
     });
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const before = Date.now();
@@ -2085,6 +2097,7 @@ describe("gate worker share hosts", () => {
       ).toString(),
     );
     expect(payload).toMatchObject({ userId: OWNER, grant });
+    expect(mockRecordDesktopSessionUse).not.toHaveBeenCalled();
   });
 
   it("does not roll a desktop cookie that belongs to another account", async () => {
@@ -2095,6 +2108,7 @@ describe("gate worker share hosts", () => {
     mockVerifyDesktopSession.mockResolvedValue({
       userId: OTHER,
       refreshGrant: { kind: "machine", credentialHash: "hash-other" },
+      unrecordedUse: null,
     });
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
@@ -2114,6 +2128,7 @@ describe("gate worker share hosts", () => {
     mockVerifyDesktopSession.mockResolvedValue({
       userId: OWNER,
       refreshGrant: null,
+      unrecordedUse: null,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(

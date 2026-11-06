@@ -139,14 +139,14 @@ describe("redeemMachineCredential", () => {
 
     await expect(
       redeemMachineCredential(
-        { apexUrl: "https://getbb.app", code: "ABCD-1234" },
+        { apexUrl: "https://getbb.app", code: "ABCD-1234", kind: "desktop" },
         fetchImpl,
       ),
     ).resolves.toEqual(CREDENTIAL);
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://getbb.app/api/connect/redeem-machine",
       expect.objectContaining({
-        body: JSON.stringify({ code: "ABCD-1234" }),
+        body: JSON.stringify({ code: "ABCD-1234", kind: "desktop" }),
         method: "POST",
       }),
     );
@@ -163,7 +163,7 @@ describe("redeemMachineCredential", () => {
     for (const [status, wireError, expected] of cases) {
       await expect(
         redeemMachineCredential(
-          { apexUrl: "https://getbb.app", code: "ABCD-1234" },
+          { apexUrl: "https://getbb.app", code: "ABCD-1234", kind: "desktop" },
           async () =>
             new Response(JSON.stringify({ error: wireError }), { status }),
         ),
@@ -174,7 +174,7 @@ describe("redeemMachineCredential", () => {
   it("rejects a response with no server to point at", async () => {
     await expect(
       redeemMachineCredential(
-        { apexUrl: "https://getbb.app", code: "ABCD-1234" },
+        { apexUrl: "https://getbb.app", code: "ABCD-1234", kind: "desktop" },
         async () =>
           new Response(
             JSON.stringify({
@@ -197,7 +197,7 @@ describe("redeemMachineCredential", () => {
     for (const serverUrl of outsiders) {
       await expect(
         redeemMachineCredential(
-          { apexUrl: "https://getbb.app", code: "ABCD-1234" },
+          { apexUrl: "https://getbb.app", code: "ABCD-1234", kind: "desktop" },
           async () =>
             new Response(
               JSON.stringify({
@@ -214,7 +214,7 @@ describe("redeemMachineCredential", () => {
   it("accepts a self-hosted apex", async () => {
     await expect(
       redeemMachineCredential(
-        { apexUrl: "https://bb.example", code: "ABCD-1234" },
+        { apexUrl: "https://bb.example", code: "ABCD-1234", kind: "desktop" },
         async () =>
           new Response(
             JSON.stringify({

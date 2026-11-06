@@ -39,6 +39,7 @@ import {
 import {
   desktopSessionSetCookie,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   verifyDesktopSessionCookie,
 } from "./desktop-session.js";
 import { serveWithCache } from "./cache.js";
@@ -714,6 +715,9 @@ const gate = {
         )
       : null;
     const desktopUserId = verifiedDesktop?.userId ?? null;
+    if (verifiedDesktop?.unrecordedUse) {
+      ctx.waitUntil(recordDesktopSessionUse(verifiedDesktop.unrecordedUse, db));
+    }
     if (!sessionUserId && !desktopUserId) {
       return signInPage(label, appUrl, url.toString());
     }

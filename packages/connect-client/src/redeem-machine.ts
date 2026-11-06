@@ -57,8 +57,15 @@ function handleForApex(serverUrl: string, apexUrl: string): string | null {
   return rest.join(".") === apex.hostname ? label : null;
 }
 
+type ConnectMachineKind = "desktop" | "mobile" | "host";
+
 export async function redeemMachineCredential(
-  args: { apexUrl: string; code: string; deviceName?: string },
+  args: {
+    apexUrl: string;
+    code: string;
+    deviceName?: string;
+    kind: ConnectMachineKind;
+  },
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<ConnectCredential> {
   const url = `${args.apexUrl.replace(/\/$/u, "")}/api/connect/redeem-machine`;
@@ -67,7 +74,11 @@ export async function redeemMachineCredential(
     response = await fetchImpl(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: args.code, deviceName: args.deviceName }),
+      body: JSON.stringify({
+        code: args.code,
+        deviceName: args.deviceName,
+        kind: args.kind,
+      }),
     });
   } catch (error) {
     throw new ConnectMachineRedeemError(

@@ -52,6 +52,14 @@ stop remote access but stay signed in, use `bb connect off`.
 Settings → Plugins → bb account shows the same account, a Sign in button that
 opens getbb.app, a pairing-code field, and Sign out.
 
+## Delete the account
+
+Deleting the bb account is only possible on the getbb.app dashboard
+(Delete account, then type the handle to confirm); there is no CLI command.
+It disconnects every bb on the account, removes all paired devices and
+connected apps, and releases the handle and addresses. Each bb keeps running
+locally, but its remote access and hosted services stop.
+
 ## Imported servers
 
 A server imported with `bb server import` starts with bb account and bb

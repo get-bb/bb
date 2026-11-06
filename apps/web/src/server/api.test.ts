@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import {
   type TestConnectDb,
   createTestConnectDb,
 } from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  auditLog,
   connectCode,
   labelClaim,
   machine,
@@ -17,6 +18,7 @@ import {
   first,
 } from "@bb/connect-db";
 import {
+  ACCOUNT_DELETE_AUDIT_ACTION,
   type Deps,
   checkAvailability,
   claimHandle,
@@ -24,6 +26,7 @@ import {
   createMachineCodeForServerCredential,
   lookupMachineCodeForServerCredential,
   createServer,
+  deleteAccount,
   disconnectServer,
   removeServer,
   getAccountState,
@@ -32,6 +35,7 @@ import {
   resolveServerUrlTemplate,
   revokeMachineForServerCredential,
   revokeMachine,
+  revokeUnusedDevices,
 } from "./api.js";
 
 let database: TestConnectDb;
@@ -706,7 +710,10 @@ describe("pairing code purposes", () => {
     );
     expect(row?.credentialHash).toBe(await sha256Hex(paired.credential));
 
-    const redeemed = await redeemMachineCode(deps, machineCode.code, null);
+    const redeemed = await redeemMachineCode(deps, machineCode.code, {
+      name: null,
+      kind: null,
+    });
     expect("error" in redeemed).toBe(false);
   });
 });
@@ -742,7 +749,10 @@ describe("server-authenticated machine-code round trip", () => {
           minted.code,
         ),
       ).toEqual({ consumed: false, machineId: null });
-      const redeemed = await redeemMachineCode(deps, minted.code, deviceName);
+      const redeemed = await redeemMachineCode(deps, minted.code, {
+        name: deviceName,
+        kind: "mobile",
+      });
       if ("error" in redeemed) throw new Error(redeemed.error);
       expect(
         await lookupMachineCodeForServerCredential(
@@ -771,7 +781,12 @@ describe("server-authenticated machine-code round trip", () => {
       expect(redeemed.serverUrl).toBe("https://sawyer-desktop.getbb.app");
       expect(await db.select().from(machine)).toHaveLength(1);
       expect((await getAccountState(deps, "u1")).machines).toEqual([
-        expect.objectContaining({ id: redeemed.machineId, name: deviceName }),
+        expect.objectContaining({
+          id: redeemed.machineId,
+          name: deviceName,
+          kind: "mobile",
+          unused: false,
+        }),
       ]);
       await expect(
         revokeMachineForServerCredential(
@@ -836,7 +851,7 @@ describe("server-authenticated machine-code round trip", () => {
         ),
       ).resolves.toEqual({ error: "unauthorized", status: 401 });
       await expect(
-        redeemMachineCode(deps, minted.code, null),
+        redeemMachineCode(deps, minted.code, { name: null, kind: null }),
       ).resolves.toMatchObject({
         error: "already-used",
         status: 409,
@@ -884,9 +899,11 @@ describe("dashboard machine recovery", () => {
       {
         id: "machine-owner",
         name: "lost laptop",
+        kind: null,
         subdomain: "lost-laptop",
         online: true,
         lastSeenAt: now.getTime(),
+        unused: false,
         createdAt: now.getTime(),
       },
     ]);
@@ -1107,5 +1124,200 @@ describe("dashboard machine recovery", () => {
       ownerId: "machine-b",
       generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
     });
+  });
+});
+
+describe("device cleanup", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function seedMachines(now: number) {
+    await seedUser("u1");
+    await db.insert(machine).values([
+      {
+        id: "abandoned-phone",
+        userId: "u1",
+        kind: "mobile",
+        credentialHash: "h1",
+        createdAt: new Date(now - 20 * DAY),
+      },
+      {
+        id: "legacy-never-seen",
+        userId: "u1",
+        credentialHash: "h2",
+        createdAt: new Date(now - 20 * DAY),
+      },
+      {
+        id: "idle-desktop",
+        userId: "u1",
+        kind: "desktop",
+        credentialHash: "h3",
+        lastSeenAt: new Date(now - 20 * DAY),
+        createdAt: new Date(now - 40 * DAY),
+      },
+      {
+        id: "recent-phone",
+        userId: "u1",
+        kind: "mobile",
+        credentialHash: "h4",
+        lastSeenAt: new Date(now - DAY),
+        createdAt: new Date(now - 40 * DAY),
+      },
+      {
+        id: "fresh-pairing",
+        userId: "u1",
+        kind: "mobile",
+        credentialHash: "h5",
+        createdAt: new Date(now - DAY),
+      },
+    ]);
+  }
+
+  async function activeIds(): Promise<string[]> {
+    return (
+      await db
+        .select({ id: machine.id })
+        .from(machine)
+        .where(isNull(machine.revokedAt))
+    )
+      .map((row) => row.id)
+      .sort();
+  }
+
+  it("auto-revokes only current-client pairings never used in 14 days", async () => {
+    await seedMachines(Date.now());
+
+    const machines = (await getAccountState(deps, "u1")).machines;
+
+    expect(Object.fromEntries(machines.map((m) => [m.id, m.unused]))).toEqual({
+      "idle-desktop": true,
+      "legacy-never-seen": true,
+      "recent-phone": false,
+      "fresh-pairing": false,
+    });
+    expect(await activeIds()).toEqual([
+      "fresh-pairing",
+      "idle-desktop",
+      "legacy-never-seen",
+      "recent-phone",
+    ]);
+  });
+
+  it("removes every unused device on request and keeps the rest", async () => {
+    await seedMachines(Date.now());
+
+    await expect(revokeUnusedDevices(deps, "u1")).resolves.toEqual({
+      ok: true,
+      revoked: 3,
+    });
+    expect(await activeIds()).toEqual(["fresh-pairing", "recent-phone"]);
+  });
+
+  it("never marks a device with a live tunnel unused", async () => {
+    await seedUser("u1");
+    await db.insert(machine).values({
+      id: "tunnelled-host",
+      userId: "u1",
+      kind: "host",
+      subdomain: "build-box",
+      credentialHash: "h1",
+      lastSeenAt: new Date(Date.now() - 30 * DAY),
+      createdAt: new Date(Date.now() - 60 * DAY),
+    });
+    const live = { ...deps, tunnelConnected: async () => true };
+
+    expect((await getAccountState(live, "u1")).machines).toEqual([
+      expect.objectContaining({
+        id: "tunnelled-host",
+        online: true,
+        unused: false,
+      }),
+    ]);
+    await expect(revokeUnusedDevices(live, "u1")).resolves.toEqual({
+      ok: true,
+      revoked: 0,
+    });
+  });
+});
+
+describe("deleteAccount", () => {
+  async function seedAccount() {
+    await seedUser("u1", "sawyer-gh");
+    await seedUser("u2");
+    await claimHandle(deps, "u1", "sawyer");
+    await claimHandle(deps, "u2", "other");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+    await db
+      .update(server)
+      .set({ credentialHash: "server-hash", revokedAt: null })
+      .where(eq(server.id, desktop.server.id));
+    await db.insert(machine).values({
+      id: "host",
+      userId: "u1",
+      kind: "host",
+      subdomain: "sawyer-box",
+      credentialHash: "machine-hash",
+      createdAt: new Date(),
+    });
+    await db
+      .update(labelClaim)
+      .set({ generation: "box-generation" })
+      .where(eq(labelClaim.label, "sawyer-box"));
+  }
+
+  it("refuses when the typed handle does not match", async () => {
+    await seedAccount();
+
+    await expect(deleteAccount(deps, "u1", "sawyre")).resolves.toEqual({
+      error: "handle-mismatch",
+    });
+    expect(
+      await first(db.select().from(user).where(eq(user.id, "u1")).limit(1)),
+    ).toBeDefined();
+    expect(closeTunnel).not.toHaveBeenCalled();
+  });
+
+  it("refuses an account that has no handle to confirm with", async () => {
+    await seedUser("u1", "sawyer-gh");
+
+    await expect(deleteAccount(deps, "u1", "")).resolves.toEqual({
+      error: "no-handle",
+    });
+    expect(
+      await first(db.select().from(user).where(eq(user.id, "u1")).limit(1)),
+    ).toBeDefined();
+  });
+
+  it("deletes the account, frees its addresses, and closes its tunnels", async () => {
+    await seedAccount();
+
+    await expect(deleteAccount(deps, "u1", " Sawyer ")).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(
+      await first(db.select().from(user).where(eq(user.id, "u1")).limit(1)),
+    ).toBeUndefined();
+    expect(
+      await db.select().from(server).where(eq(server.userId, "u1")),
+    ).toEqual([]);
+    expect(
+      await db.select().from(machine).where(eq(machine.userId, "u1")),
+    ).toEqual([]);
+    for (const label of ["sawyer", "sawyer-desktop", "sawyer-box"]) {
+      expect((await checkAvailability(deps, label)).available).toBe(true);
+    }
+    expect((await checkAvailability(deps, "other")).available).toBe(false);
+    expect(closeTunnel.mock.calls.map(([key]) => key).sort()).toEqual([
+      "sawyer",
+      "sawyer-box:box-generation",
+      "sawyer-desktop",
+    ]);
+    expect(
+      await db
+        .select({ userId: auditLog.userId, action: auditLog.action })
+        .from(auditLog)
+        .where(eq(auditLog.action, ACCOUNT_DELETE_AUDIT_ACTION)),
+    ).toEqual([{ userId: null, action: ACCOUNT_DELETE_AUDIT_ACTION }]);
   });
 });

@@ -1,8 +1,10 @@
 import { and, eq, isNotNull, isNull, ne } from "drizzle-orm";
 import {
   CONNECT_CODE_TTL_MS,
+  MACHINE_UNUSED_AFTER_MS,
   MAX_PER_ACCOUNT,
   SERVER_OFFLINE_AFTER_MS,
+  auditLog,
   checkLabelAvailability,
   connectCode,
   isLive,
@@ -21,6 +23,7 @@ import {
 import type {
   ConnectDb,
   LabelAvailability,
+  MachineKind,
   TunnelConnectedLookup,
 } from "@bb/connect-db";
 import { generateConnectCode, generateToken } from "./tokens.js";
@@ -173,9 +176,11 @@ export interface AccountState {
 export interface MachineSummary {
   id: string;
   name: string | null;
+  kind: MachineKind | null;
   subdomain: string | null;
   online: boolean;
   lastSeenAt: number | null;
+  unused: boolean;
   createdAt: number;
 }
 
@@ -294,43 +299,15 @@ export async function getAccountState(
     maxServers: MAX_PER_ACCOUNT,
   };
 
-  const machineRows = await db
-    .select({
-      id: machine.id,
-      name: machine.name,
-      subdomain: machine.subdomain,
-      lastSeenAt: machine.lastSeenAt,
-      nextTunnelGate: machine.nextTunnelGate,
-      nextTunnelAt: machine.nextTunnelAt,
-      createdAt: machine.createdAt,
-    })
-    .from(machine)
-    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)));
-  const machineTunnels = await machineTunnelsConnected(deps, userId);
-  const machines = machineRows
-    .map((row) => {
-      const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
-      return {
-        id: row.id,
-        name: row.name,
-        subdomain: row.subdomain,
-        online:
-          machineTunnels.get(row.id) === true ||
-          nextTunnelConnected(row, now) ||
-          isLive({
-            lastSeenMs,
-            now,
-            offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
-            tunnelConnected: null,
-          }),
-        lastSeenAt: lastSeenMs,
-        createdAt: row.createdAt.getTime(),
-      };
-    })
-    .sort((left, right) => left.createdAt - right.createdAt);
+  const machines = await listMachineSummaries(deps, userId, now);
+  const abandoned = machines.filter(isAbandonedPairing);
+  for (const row of abandoned) {
+    await revokeMachine(deps, userId, row.id);
+  }
+  const activeMachines = machines.filter((row) => !isAbandonedPairing(row));
 
   if (!prof) {
-    return { handle: null, machines, servers: [], ...base };
+    return { handle: null, machines: activeMachines, servers: [], ...base };
   }
 
   const serverRows = await db
@@ -340,8 +317,116 @@ export async function getAccountState(
 
   const servers = await listServerSummaries(deps, serverRows, prof.handle, now);
 
-  return { handle: prof.handle, machines, servers, ...base };
+  return { handle: prof.handle, machines: activeMachines, servers, ...base };
 }
+
+function isAbandonedPairing(row: MachineSummary): boolean {
+  return row.kind !== null && row.lastSeenAt === null && row.unused;
+}
+
+async function listMachineSummaries(
+  deps: Pick<Deps, "db" | "tunnelConnected">,
+  userId: string,
+  now: number,
+): Promise<MachineSummary[]> {
+  const machineRows = await deps.db
+    .select({
+      id: machine.id,
+      name: machine.name,
+      kind: machine.kind,
+      subdomain: machine.subdomain,
+      lastSeenAt: machine.lastSeenAt,
+      nextTunnelGate: machine.nextTunnelGate,
+      nextTunnelAt: machine.nextTunnelAt,
+      createdAt: machine.createdAt,
+    })
+    .from(machine)
+    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)));
+  const machineTunnels = await machineTunnelsConnected(deps, userId);
+  return machineRows
+    .map((row) => {
+      const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
+      const createdMs = row.createdAt.getTime();
+      const online =
+        machineTunnels.get(row.id) === true ||
+        nextTunnelConnected(row, now) ||
+        isLive({
+          lastSeenMs,
+          now,
+          offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+          tunnelConnected: null,
+        });
+      return {
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        subdomain: row.subdomain,
+        online,
+        lastSeenAt: lastSeenMs,
+        unused:
+          !online && now - (lastSeenMs ?? createdMs) > MACHINE_UNUSED_AFTER_MS,
+        createdAt: createdMs,
+      };
+    })
+    .sort((left, right) => left.createdAt - right.createdAt);
+}
+
+export async function revokeUnusedDevices(
+  deps: Pick<Deps, "db" | "closeTunnel" | "tunnelConnected">,
+  userId: string,
+): Promise<{ ok: true; revoked: number }> {
+  const unused = (await listMachineSummaries(deps, userId, Date.now())).filter(
+    (row) => row.unused,
+  );
+  for (const row of unused) {
+    await revokeMachine(deps, userId, row.id);
+  }
+  return { ok: true, revoked: unused.length };
+}
+
+export async function deleteAccount(
+  deps: Pick<Deps, "db" | "closeTunnel">,
+  userId: string,
+  confirmHandle: string,
+): Promise<{ ok: true } | { error: "no-handle" | "handle-mismatch" }> {
+  const { db } = deps;
+  const prof = await findProfile(db, userId);
+  if (!prof) return { error: "no-handle" };
+  if (prof.handle !== confirmHandle.trim().toLowerCase()) {
+    return { error: "handle-mismatch" };
+  }
+
+  const servers = await db
+    .select({ subdomain: server.subdomain })
+    .from(server)
+    .where(eq(server.userId, userId));
+  const machineClaims = await db
+    .select({ label: labelClaim.label, generation: labelClaim.generation })
+    .from(labelClaim)
+    .where(and(eq(labelClaim.userId, userId), eq(labelClaim.kind, "machine")));
+
+  await db.insert(auditLog).values({
+    id: crypto.randomUUID(),
+    userId,
+    action: ACCOUNT_DELETE_AUDIT_ACTION,
+    detail: JSON.stringify({
+      handle: prof.handle,
+      servers: servers.length,
+    }),
+    createdAt: new Date(),
+  });
+  await db.delete(user).where(eq(user.id, userId));
+
+  await Promise.allSettled([
+    ...servers.map((row) => deps.closeTunnel(row.subdomain)),
+    ...machineClaims.map((claim) =>
+      deps.closeTunnel(machineRoutingKey(claim.label, claim.generation)),
+    ),
+  ]);
+  return { ok: true };
+}
+
+export const ACCOUNT_DELETE_AUDIT_ACTION = "account.delete";
 
 async function machineTunnelsConnected(
   deps: Pick<Deps, "db" | "tunnelConnected">,
@@ -853,7 +938,7 @@ export async function lookupMachineCodeForServerCredential(
 export async function redeemMachineCode(
   deps: Pick<Deps, "db" | "serverUrlTemplate">,
   code: string,
-  deviceName: string | null,
+  device: { name: string | null; kind: MachineKind | null },
 ): Promise<
   | {
       credential: string;
@@ -892,7 +977,8 @@ export async function redeemMachineCode(
   const machineId = await machineIdForCode(ownerId, normalized);
   await db.insert(machine).values({
     id: machineId,
-    name: deviceName,
+    name: device.name,
+    kind: device.kind,
     userId: ownerId,
     credentialHash: await sha256Hex(credential),
     createdAt: new Date(),

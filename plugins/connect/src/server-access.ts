@@ -22,6 +22,32 @@ export function createServerAccessCloud(
   };
 }
 
+export const HOST_NAME_LOOKUP_TIMEOUT_MS = 2_000;
+
+async function lookupHostName(
+  bb: BbPluginApi,
+  hostId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const giveUp = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), HOST_NAME_LOOKUP_TIMEOUT_MS);
+    onAbort = () => resolve(null);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    const host = await Promise.race([
+      bb.sdk.hosts.get({ hostId }).catch(() => null),
+      giveUp,
+    ]);
+    return host?.name.trim() || null;
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 const SIGN_IN_REQUIRED = "Sign in to your bb account to use bb connect";
 
 const grantSchema = z.object({
@@ -153,8 +179,10 @@ export async function registerServerAccess(
         await bb.storage.kv.set(grantKey(hostId), { intent });
         signal.throwIfAborted();
         const pending = intent;
+        const deviceName = await lookupHostName(bb, hostId, signal);
+        signal.throwIfAborted();
         const redeemed = await cloud
-          .redeemMachineCode({ ...pending, signal })
+          .redeemMachineCode({ ...pending, deviceName, signal })
           .catch(() => {
             signal.throwIfAborted();
             return null;

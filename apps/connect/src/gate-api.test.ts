@@ -6,7 +6,7 @@ import {
   workerNodeBuiltinsPlugin,
 } from "@bb/connect-db-pg/testing";
 import { Miniflare } from "miniflare";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   NEXT_TUNNEL_WRITE_INTERVAL_MS,
   sha256Hex,
@@ -455,6 +455,35 @@ describe("POST /api/gate/resolve", () => {
       (await resolve({ desktopSession: `${fresh.slice(0, -2)}xx` }))
         .desktopSession,
     ).toBeNull();
+  });
+
+  it("records a phone's use on a request that doesn't renew its cookie", async () => {
+    const credentialHash = await sha256Hex("bbcm_phone_use");
+    await query(
+      db,
+      "INSERT INTO machine (id, user_id, name, kind, credential_hash, created_at) VALUES ('mch-phone', $1, 'phone', 'mobile', $2, $3)",
+      [OWNER, credentialHash, NOW],
+    );
+    const lastSeen = async () =>
+      (
+        await query<{ lastSeenAt: number | null }>(
+          db,
+          `SELECT last_seen_at AS "lastSeenAt" FROM machine WHERE id = 'mch-phone'`,
+          [],
+        )
+      )[0]?.lastSeenAt ?? null;
+
+    const fresh = await createDesktopSessionCookie(
+      { userId: OWNER, grant: { kind: "machine", credentialHash } },
+      SECRET,
+      NOW + 6.5 * DAY_MS,
+    );
+    expect(
+      (await resolve({ desktopSession: fresh })).desktopSession,
+    ).toMatchObject({ userId: OWNER, setCookie: null });
+    await vi.waitFor(async () =>
+      expect(Number(await lastSeen())).toBeGreaterThanOrEqual(NOW),
+    );
   });
 
   it("checks the link credential against the label's own hash and refuses revoked servers", async () => {

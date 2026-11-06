@@ -29,6 +29,7 @@ import {
 import {
   desktopSessionSetCookie,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   verifyDesktopSessionCookie,
 } from "./desktop-session.js";
 import { authorizeMcpToken } from "./mcp-gate.js";
@@ -265,6 +266,7 @@ async function resolveDesktopSession(
   resolved: ResolvedLabel | null,
   env: Env,
   db: ConnectDb,
+  ctx: ExecutionContext,
 ): Promise<GateResolveResponse["desktopSession"]> {
   const verified = await verifyDesktopSessionCookie(
     cookie,
@@ -272,6 +274,9 @@ async function resolveDesktopSession(
     db,
   );
   if (verified === null) return null;
+  if (verified.unrecordedUse) {
+    ctx.waitUntil(recordDesktopSessionUse(verified.unrecordedUse, db));
+  }
   if (
     verified.refreshGrant === null ||
     resolved === null ||
@@ -393,7 +398,13 @@ async function resolveOne(
     desktopSession:
       parsed.desktopSession === null
         ? null
-        : await resolveDesktopSession(parsed.desktopSession, resolved, env, db),
+        : await resolveDesktopSession(
+            parsed.desktopSession,
+            resolved,
+            env,
+            db,
+            ctx,
+          ),
     credential:
       parsed.credential === null
         ? null
