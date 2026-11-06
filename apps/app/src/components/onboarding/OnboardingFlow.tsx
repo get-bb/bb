@@ -122,6 +122,7 @@ import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
 import {
   useAgentSignIns,
   type AgentSignInTerminals,
+  type RefetchProviderStates,
   type SignInMethod,
 } from "./useAgentSignIns";
 
@@ -409,9 +410,12 @@ function AgentStepContainer({
     redesign && statesLoading,
     AGENT_STATES_LOAD_TIMEOUT_MS,
   );
-  const refetchProviderStates = useCallback(() => {
-    void refetchStates();
-  }, [refetchStates]);
+  const refetchProviderStates = useCallback<RefetchProviderStates>(
+    (options) => {
+      void refetchStates(options);
+    },
+    [refetchStates],
+  );
   const { refetch: refetchCliStatus } = cliStatusQuery;
   const refetchCliStatusOnce = useCallback(() => {
     void refetchCliStatus({ cancelRefetch: false });
