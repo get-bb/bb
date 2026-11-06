@@ -18,6 +18,7 @@ import {
   parseSignInOutput,
   projectsPrimaryAction,
   resolveAgentSetupState,
+  setupGuidePlanHealth,
   resolveSignInCommand,
   signInBrowserIsOnMachine,
   shortRemoteName,
@@ -42,6 +43,7 @@ function health(
     loginCommand: "claude auth login",
     localLoginCommand: null,
     internal_DO_NOT_USE_guidedSignIn: false,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
     ...overrides,
   };
 }
@@ -81,6 +83,27 @@ const idle = {
 };
 
 describe("resolveAgentSetupState", () => {
+  it("shows Codex's plan only in the new guide; today's guide shows main's line", () => {
+    const codex = health({
+      providerId: "codex",
+      accountEmail: "a@b.dev",
+      internal_DO_NOT_USE_setupGuidePlanLabel: "Plus",
+    });
+    expect(
+      resolveAgentSetupState({ ...idle, health: codex, cliStatus: undefined }),
+    ).toEqual({ status: "ready", detail: "a@b.dev" });
+    expect(
+      resolveAgentSetupState({
+        ...idle,
+        health: setupGuidePlanHealth(codex),
+        cliStatus: undefined,
+      }),
+    ).toEqual({ status: "ready", detail: "a@b.dev · Plus" });
+    expect(
+      setupGuidePlanHealth(health({ planLabel: "Max (20x)" })).planLabel,
+    ).toBe("Max (20x)");
+  });
+
   it("shows the account and plan for a ready agent, even while a stale install job lingers", () => {
     expect(
       resolveAgentSetupState({

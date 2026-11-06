@@ -103,6 +103,7 @@ import {
   hasReadyAgent,
   projectsPrimaryAction,
   resolveAgentSetupState,
+  setupGuidePlanHealth,
   signInBrowserIsOnMachine,
   shortRemoteName,
   skippedStepIds,
@@ -590,7 +591,7 @@ function AgentStepContainer({
                 />
               ) : undefined,
             state: resolveAgentSetupState({
-              health,
+              health: redesign ? setupGuidePlanHealth(health) : health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
               installing:
                 awaitingInstallInfoIds.has(health.providerId) ||

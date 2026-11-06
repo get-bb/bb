@@ -176,7 +176,7 @@ function namedSlotItems<
     );
 }
 
-function pluginAppSurfaceItems(
+export function pluginAppSurfaceItems(
   plugin: PluginListItem,
   slots: PluginSlotSnapshot,
   configurationPath: string | undefined,
@@ -221,12 +221,6 @@ function pluginAppSurfaceItems(
       slots.appOverlays,
       "app-overlay",
       "Renders app-wide floating interface content.",
-    ),
-    ...namedSlotItems(
-      pluginId,
-      slots.setupGuideSections,
-      "setup-guide",
-      "Adds a row to the setup guide.",
     ),
     ...namedSlotItems(
       pluginId,
