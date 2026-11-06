@@ -62,7 +62,7 @@ beforeEach(() => {
   mocks.usePrimaryHost.mockReturnValue({ id: "host-1" });
   mocks.useSetupGuideAssignment.mockReturnValue({
     isPending: false,
-    data: { variant: "control", featuredPluginEntryIds: null },
+    data: { variant: "control" },
   });
 });
 
@@ -146,7 +146,7 @@ describe("OnboardingGate", () => {
 
     mocks.useSetupGuideAssignment.mockReturnValue({
       isPending: false,
-      data: { variant: "new", featuredPluginEntryIds: ["memory"] },
+      data: { variant: "new" },
     });
     view.rerender(
       <OnboardingGate>
@@ -196,7 +196,7 @@ describe("OnboardingGate", () => {
 
     mocks.useSetupGuideAssignment.mockReturnValue({
       isPending: false,
-      data: { variant: "control", featuredPluginEntryIds: null },
+      data: { variant: "control" },
     });
     view.rerender(
       <OnboardingGate>
@@ -210,7 +210,7 @@ describe("OnboardingGate", () => {
 
     mocks.useSetupGuideAssignment.mockReturnValue({
       isPending: false,
-      data: { variant: "new", featuredPluginEntryIds: null },
+      data: { variant: "new" },
     });
     view.rerender(
       <OnboardingGate>

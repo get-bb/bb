@@ -348,11 +348,8 @@ export function registerSystemRoutes(
   });
 
   get(routes.setupGuide, async (context) => {
-    const { guide, plugins } = await deps.setupGuideExperiment.resolve();
-    return context.json({
-      variant: guide.variant,
-      featuredPluginEntryIds: plugins.featuredPluginEntryIds,
-    });
+    const { guide } = await deps.setupGuideExperiment.resolve();
+    return context.json({ variant: guide.variant });
   });
 
   post(routes.recordTelemetryEvent, async (context, payload) => {

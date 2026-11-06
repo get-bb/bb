@@ -449,7 +449,6 @@ export type SetupGuideVariant = z.infer<typeof setupGuideVariantSchema>;
 
 export const systemSetupGuideResponseSchema = z.object({
   variant: setupGuideVariantSchema,
-  featuredPluginEntryIds: z.array(z.string().min(1)).nullable(),
 });
 export type SystemSetupGuideResponse = z.infer<
   typeof systemSetupGuideResponseSchema

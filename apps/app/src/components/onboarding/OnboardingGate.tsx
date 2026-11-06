@@ -19,10 +19,7 @@ const OnboardingFlow = lazy(() =>
 
 const ONBOARDING_SEEN_STORAGE_KEY = "bb.onboarding.seen";
 
-const CONTROL_SETUP_GUIDE: SetupGuide = {
-  variant: "control",
-  featuredPluginEntryIds: null,
-};
+const CONTROL_SETUP_GUIDE: SetupGuide = { variant: "control" };
 
 function readOnboardingSeen(): boolean {
   try {

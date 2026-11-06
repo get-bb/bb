@@ -44,10 +44,7 @@ vi.mock("@/lib/sdk", () => ({
       config: vi.fn(),
       updateGeneralSettings: vi.fn(),
       experimental_setupGuide: vi.fn(() =>
-        Promise.resolve({
-          variant: guide.variant,
-          featuredPluginEntryIds: null,
-        }),
+        Promise.resolve({ variant: guide.variant }),
       ),
     },
   },
