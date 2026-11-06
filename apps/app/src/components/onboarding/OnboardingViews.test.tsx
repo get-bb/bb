@@ -14,7 +14,9 @@ import {
   AgentSignInPanel,
   AgentStep,
   OnboardingLayout,
+  ProjectsStep,
   type OnboardingAgent,
+  type OnboardingRepo,
 } from "./OnboardingViews";
 import type { AgentSetupState } from "./onboarding-model";
 
@@ -147,6 +149,120 @@ describe("OnboardingLayout stepper", () => {
     expect(onSelectStep).toHaveBeenCalledExactlyOnceWith("projects");
     expect(screen.getByRole("button", { name: "Agent" })).toBeTruthy();
     expect(screen.queryByText("Skip setup")).toBeNull();
+  });
+});
+
+describe("ProjectsStep selection", () => {
+  function repo(id: string, added = false): OnboardingRepo {
+    return {
+      id,
+      name: id,
+      path: `/projects/${id}`,
+      lastActive: "1h ago",
+      remote: null,
+      added,
+    };
+  }
+
+  function renderProjects(args: {
+    selection?: "line" | "header";
+    repos: OnboardingRepo[];
+    selectedIds: string[];
+  }) {
+    const handlers = {
+      onToggle: vi.fn(),
+      onSelectAll: vi.fn(),
+      onSelectNone: vi.fn(),
+      onAddFolder: vi.fn(),
+      onRetry: vi.fn(),
+    };
+    render(
+      <ProjectsStep
+        {...(args.selection === undefined ? {} : { selection: args.selection })}
+        status={{ kind: "results", truncated: false }}
+        repos={args.repos}
+        selectedIds={new Set(args.selectedIds)}
+        {...handlers}
+      />,
+    );
+    return handlers;
+  }
+
+  it("keeps today's count line by default", () => {
+    renderProjects({ repos: [repo("a"), repo("b")], selectedIds: ["a"] });
+
+    expect(screen.getByText("1 of 2 selected")).toBeTruthy();
+    expect(
+      screen.queryByRole("checkbox", { name: "Select all projects" }),
+    ).toBeNull();
+  });
+
+  it("selects every project from a partly selected header", () => {
+    const handlers = renderProjects({
+      selection: "header",
+      repos: [repo("a"), repo("b"), repo("c", true)],
+      selectedIds: ["a"],
+    });
+
+    expect(screen.queryByText(/selected/u)).toBeNull();
+    const header = screen.getByRole("checkbox", {
+      name: "Select all projects",
+    });
+    expect(header.getAttribute("data-state")).toBe("indeterminate");
+    expect(header.className).toContain(
+      "data-[state=indeterminate]:bg-foreground",
+    );
+    expect(header.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe(
+      "Minus",
+    );
+    fireEvent.click(header);
+
+    expect(handlers.onSelectAll).toHaveBeenCalledOnce();
+    expect(handlers.onSelectNone).not.toHaveBeenCalled();
+  });
+
+  it("clears the selection when every selectable project is checked", () => {
+    const handlers = renderProjects({
+      selection: "header",
+      repos: [repo("a"), repo("b"), repo("c", true)],
+      selectedIds: ["a", "b"],
+    });
+
+    const header = screen.getByRole("checkbox", {
+      name: "Clear project selection",
+    });
+    expect(header.getAttribute("data-state")).toBe("checked");
+    fireEvent.click(header);
+
+    expect(handlers.onSelectNone).toHaveBeenCalledOnce();
+  });
+
+  it("disables the header when every project is already added", () => {
+    renderProjects({
+      selection: "header",
+      repos: [repo("a", true)],
+      selectedIds: [],
+    });
+
+    const header = screen.getByRole("checkbox", {
+      name: "Select all projects",
+    });
+    expect(header.getAttribute("data-state")).toBe("unchecked");
+    expect(header.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("labels the time column in the header, outside the select-all control", () => {
+    renderProjects({
+      selection: "header",
+      repos: [repo("a"), repo("b")],
+      selectedIds: ["a"],
+    });
+
+    const label = screen.getByText("Last active");
+    expect(label.closest("label")).toBeNull();
+    expect(
+      label.closest("li")?.querySelector('[aria-label="Select all projects"]'),
+    ).not.toBeNull();
   });
 });
 

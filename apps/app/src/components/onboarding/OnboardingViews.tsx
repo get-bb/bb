@@ -1,9 +1,11 @@
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
+import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { useState, type ReactNode } from "react";
 import type { ExperimentalProviderIconProps } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { ResourceBrowseGrid } from "@bb/shared-ui/resource-list";
 import {
   CodeDisplay,
@@ -858,6 +860,7 @@ type ProjectsStepStatus =
   | { kind: "results"; truncated: boolean };
 
 interface ProjectsStepProps {
+  selection?: "line" | "header";
   status: ProjectsStepStatus;
   repos: readonly OnboardingRepo[];
   selectedIds: ReadonlySet<string>;
@@ -868,7 +871,28 @@ interface ProjectsStepProps {
   onRetry: () => void;
 }
 
+function SelectAllCheckbox({
+  checked,
+  ...props
+}: Omit<CheckboxPrimitive.CheckboxProps, "className" | "children">) {
+  return (
+    <CheckboxPrimitive.Root
+      checked={checked}
+      className={`peer size-4 shrink-0 rounded-sm border border-input shadow-xs ${CONTROL_HOVER_TRANSITION} focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-background data-[state=indeterminate]:border-foreground data-[state=indeterminate]:bg-foreground data-[state=indeterminate]:text-background`}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
+        <Icon
+          name={checked === "indeterminate" ? "Minus" : "Check"}
+          className="size-3.5"
+        />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  );
+}
+
 export function ProjectsStep({
+  selection = "line",
   status,
   repos,
   selectedIds,
@@ -927,28 +951,67 @@ export function ProjectsStep({
   }
 
   const selectableCount = repos.filter((repo) => !repo.added).length;
+  const selectedCount = repos.filter(
+    (repo) => !repo.added && selectedIds.has(repo.id),
+  ).length;
+  const allSelected = selectableCount > 0 && selectedCount === selectableCount;
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1">
-          {selectedIds.size} of {selectableCount} selected
-        </span>
-        <button
-          type="button"
-          className="hover:text-foreground"
-          onClick={onSelectAll}
-        >
-          Select all
-        </button>
-        <button
-          type="button"
-          className="hover:text-foreground"
-          onClick={onSelectNone}
-        >
-          Select none
-        </button>
-      </div>
+      {selection === "header" ? null : (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1">
+            {selectedIds.size} of {selectableCount} selected
+          </span>
+          <button
+            type="button"
+            className="hover:text-foreground"
+            onClick={onSelectAll}
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            className="hover:text-foreground"
+            onClick={onSelectNone}
+          >
+            Select none
+          </button>
+        </div>
+      )}
       <ul className={ONBOARDING_LIST_CLASS}>
+        {selection === "header" ? (
+          <li className="flex items-center rounded-t-lg bg-surface-recessed text-xs text-muted-foreground">
+            <label
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-3 px-3 py-2",
+                selectableCount > 0 && "cursor-pointer hover:text-foreground",
+              )}
+            >
+              <SelectAllCheckbox
+                aria-label={
+                  allSelected
+                    ? "Clear project selection"
+                    : "Select all projects"
+                }
+                checked={
+                  allSelected
+                    ? true
+                    : selectedCount > 0
+                      ? "indeterminate"
+                      : false
+                }
+                disabled={selectableCount === 0}
+                onCheckedChange={() =>
+                  allSelected ? onSelectNone() : onSelectAll()
+                }
+              />
+              Select all
+            </label>
+            <span className="shrink-0 px-3 text-right tabular-nums">
+              Last active
+            </span>
+          </li>
+        ) : null}
         {repos.map((repo) => (
           <li key={repo.id}>
             <label
