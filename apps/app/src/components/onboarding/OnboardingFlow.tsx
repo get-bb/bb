@@ -1051,6 +1051,7 @@ function PluginsStepContainer({
   entry: onboardingEntry,
   trackInstall,
   switches,
+  enabledAtOpen,
   onFeaturedPluginsShown,
   onBack,
   onContinue,
@@ -1061,6 +1062,7 @@ function PluginsStepContainer({
   entry: OnboardingEntry;
   trackInstall: TrackPluginInstall;
   switches: OnboardingPluginSwitches;
+  enabledAtOpen: { current: ReadonlySet<string> | null };
   onFeaturedPluginsShown: () => void;
   onBack: () => void;
   onContinue: () => void;
@@ -1105,14 +1107,36 @@ function PluginsStepContainer({
       return entry === undefined ? [] : [entry];
     });
   }, [catalogQuery.data?.entries, featured]);
+  const featuredShown = redesign && featuredQuery.isSuccess && entries !== null;
   useEffect(() => {
-    if (redesign && entries !== null) onFeaturedPluginsShown();
-  }, [redesign, entries, onFeaturedPluginsShown]);
+    if (featuredShown) onFeaturedPluginsShown();
+  }, [featuredShown, onFeaturedPluginsShown]);
   const isEnabled = (entry: PluginCatalogSearchEntry) =>
     entry.installed &&
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
       ?.enabled ??
       false);
+  useEffect(() => {
+    if (
+      !redesign ||
+      enabledAtOpen.current !== null ||
+      entries === null ||
+      installedPlugins === undefined
+    ) {
+      return;
+    }
+    enabledAtOpen.current = new Set(
+      entries
+        .filter(
+          (entry) =>
+            entry.installed &&
+            installedPlugins.some(
+              (plugin) => plugin.id === entry.pluginId && plugin.enabled,
+            ),
+        )
+        .map((entry) => entry.entryId),
+    );
+  }, [redesign, enabledAtOpen, entries, installedPlugins]);
   const alreadyOnEntryIds = featured?.alreadyOnEntryIds ?? NO_ENTRY_IDS;
   const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
     redesign
@@ -1162,8 +1186,13 @@ function PluginsStepContainer({
       {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (!recommendedEntries.some(isShownEnabled)) onSkip();
-        else onContinue();
+        const turnedOn = recommendedEntries.some(
+          (entry) =>
+            isShownEnabled(entry) &&
+            !(enabledAtOpen.current?.has(entry.entryId) ?? false),
+        );
+        if (turnedOn) onContinue();
+        else onSkip();
       }}
       onSecondary={onSkip}
       onBack={onBack}
@@ -1373,6 +1402,7 @@ export function OnboardingFlow({
     recordTelemetryEvent({ name: "onboarding_exposed", properties: { entry } });
   }, [entry]);
   const featuredPluginsExposedRef = useRef(false);
+  const pluginsEnabledAtOpenRef = useRef<ReadonlySet<string> | null>(null);
   const recordFeaturedPluginsExposure = useCallback(() => {
     if (featuredPluginsExposedRef.current) return;
     featuredPluginsExposedRef.current = true;
@@ -1529,6 +1559,7 @@ export function OnboardingFlow({
           entry={entry}
           trackInstall={trackPluginInstall}
           switches={pluginSwitches}
+          enabledAtOpen={pluginsEnabledAtOpenRef}
           onFeaturedPluginsShown={recordFeaturedPluginsExposure}
           onBack={goTo(-1)}
           onContinue={advance("completed")}

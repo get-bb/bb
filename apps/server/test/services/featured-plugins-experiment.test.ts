@@ -146,8 +146,18 @@ describe("featured plugins experiment", () => {
     );
   });
 
-  it("keeps the variant but drops an invalid or control payload", async () => {
-    const cases: FlagStub[] = [
+  it("ignores a control payload and treats a new variant without a valid payload as the default", async () => {
+    const control = await create({
+      fetch: respondWith({ variant: "control", payload: TEST_LIST }),
+      telemetry: createTelemetry().telemetry,
+    });
+    await expect(control.resolve()).resolves.toEqual({
+      variant: "control",
+      source: "flag",
+      plugins: null,
+    });
+
+    const invalid: FlagStub[] = [
       { variant: "new", payload: "not json" },
       { variant: "new", payload: JSON.stringify({ plugins: "memory" }) },
       { variant: "new", payload: JSON.stringify({ plugins: [] }) },
@@ -157,18 +167,16 @@ describe("featured plugins experiment", () => {
         payload: JSON.stringify({ plugins: ["memory"], alreadyOn: ["tasks"] }),
       },
       { variant: "new" },
-      { variant: "control", payload: TEST_LIST },
     ];
-    for (const flag of cases) {
-      const experiment = await create({
-        fetch: respondWith(flag),
-        telemetry: createTelemetry().telemetry,
-      });
-      await expect(experiment.resolve()).resolves.toEqual({
-        variant: flag.variant,
-        source: "flag",
-        plugins: null,
-      });
+    for (const flag of invalid) {
+      const { telemetry, capture } = createTelemetry();
+      const experiment = await create({ fetch: respondWith(flag), telemetry });
+      await expect(experiment.resolve()).resolves.toEqual(DEFAULT);
+      await experiment.recordExposure("first_run");
+      expect(capture.mock.calls.map(([event]) => event.name)).toEqual([
+        "onboarding_featured_plugins_exposed",
+      ]);
+      await rm(join(dataDir, FEATURED_PLUGINS_ASSIGNMENT_FILE_NAME));
     }
   });
 

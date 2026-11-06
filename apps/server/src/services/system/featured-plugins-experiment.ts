@@ -131,12 +131,18 @@ export async function createFeaturedPluginsExperiment(
     });
     const variant = variantSchema.safeParse(flag?.variant);
     if (flag === null || !variant.success) return DEFAULT_ASSIGNMENT;
-    return {
-      variant: variant.data,
-      source: "flag",
-      plugins:
-        variant.data === "new" ? pluginListFromPayload(flag.payload) : null,
-    };
+    if (variant.data === "control") {
+      return { variant: "control", source: "flag", plugins: null };
+    }
+    const plugins = pluginListFromPayload(flag.payload);
+    if (plugins === null) {
+      args.logger.warn(
+        { flag: FEATURED_PLUGINS_FLAG_KEY },
+        "Ignoring the featured plugins flag's new variant without a valid payload",
+      );
+      return DEFAULT_ASSIGNMENT;
+    }
+    return { variant: "new", source: "flag", plugins };
   }
 
   async function resolveAssignment(): Promise<FeaturedPluginsAssignment> {

@@ -166,7 +166,7 @@ function renderFeaturedPluginsStep(variant: "control" | "new") {
   const { queryClient } = renderFlow({ initialStep: "plugins", variant });
   const catalog: PluginCatalogSearchData = {
     entries: [
-      catalogEntry("memory"),
+      catalogEntry("memory", { installed: true }),
       catalogEntry("push-notifications", { installed: true }),
       catalogEntry("workflows"),
     ],
@@ -175,6 +175,7 @@ function renderFeaturedPluginsStep(variant: "control" | "new") {
   };
   act(() => {
     queryClient.setQueryData(pluginListQueryKey(true), [
+      makeInstalledPlugin({ id: "memory", enabled: true }),
       makeInstalledPlugin({ id: "push-notifications", enabled: true }),
     ]);
     queryClient.setQueryData(pluginCatalogSearchQueryKey(""), catalog);
@@ -354,7 +355,7 @@ describe("OnboardingFlow", () => {
     expect(agentLoadFailures()).toEqual(["timed_out", "timed_out"]);
   });
 
-  it("shows the featured-plugins list with already-on plugins locked on in the new guide", async () => {
+  it("locks already-on plugins and counts a Continue with nothing turned on as skipped in the new guide", async () => {
     renderFeaturedPluginsStep("new");
     await screen.findByRole("switch", { name: "Enable memory" });
 
@@ -372,6 +373,10 @@ describe("OnboardingFlow", () => {
         (name) => name === "onboarding_featured_plugins_exposed",
       ),
     ).toHaveLength(1);
+
+    fireEvent.click(button(/Continue/u));
+    expect(recordedEventNames()).toContain("onboarding_step_skipped");
+    expect(recordedEventNames()).not.toContain("onboarding_step_completed");
   });
 
   it("keeps today's featured plugins and sends no featured-plugins exposure in today's guide", async () => {

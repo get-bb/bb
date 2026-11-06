@@ -350,7 +350,8 @@ The new guide's Plugins step gets its featured plugins from the app's
 `GET /api/v1/system/setup-guide/featured-plugins` request
 (`{ entryIds, alreadyOnEntryIds }`), resolved once per run from the separate
 `onboarding-featured-plugins` PostHog flag in the same way (3-second timeout,
-`control` without telemetry or on any failure) and saved in
+`control` without telemetry, on any failure, or when the `new` variant has no
+valid payload) and saved in
 `<dataDir>/featured-plugins-assignment.json`. Its `new` variant's payload
 `{"plugins": ["browser-automation", ...], "alreadyOn": ["push-notifications", ...]}`
 lists bb-official entry ids to feature; `alreadyOn` (optional, a subset of
@@ -382,7 +383,8 @@ not when the bb connect panel is merely opened), and `add_machine` (`started`
 when the machine setup command is shown). In both guides, Continue on the projects
 step counts as completed only when a project was selected or added during the
 guide (by either route), and Continue on the plugins step only when a featured
-plugin is on; otherwise each counts as skipped.
+plugin is on (in the new guide, one that was off when the step first opened);
+otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves the flag assignment, adds `setup_guide_variant`
 and `setup_guide_source` (`override`, `flag`, or `default`), sets
@@ -392,7 +394,7 @@ and `setup_guide_source` (`override`, `flag`, or `default`), sets
 `recommendation`), and once the flag assignment is known every event, including
 `turn_finished`, carries `$feature/setup-guide-redesign`.
 `onboarding_featured_plugins_exposed` (`entry`) is sent once per guide when the
-new guide's Plugins step first shows its featured plugins: the server saves that flag's
+new guide's Plugins step first shows the list it received: the server saves that flag's
 assignment, adds `featured_plugins_variant` and `featured_plugins_source`
 (`flag` or `default`), sets `featured_plugins_variant` as a person property,
 and sends `$feature_flag_called` when the flag decided the variant. The server
