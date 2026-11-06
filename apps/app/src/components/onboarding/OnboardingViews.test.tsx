@@ -210,6 +210,12 @@ describe("ProjectsStep selection", () => {
       name: "Select all projects",
     });
     expect(header.getAttribute("data-state")).toBe("indeterminate");
+    expect(header.className).toContain(
+      "data-[state=indeterminate]:bg-foreground",
+    );
+    expect(header.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe(
+      "Minus",
+    );
     fireEvent.click(header);
 
     expect(handlers.onSelectAll).toHaveBeenCalledOnce();
