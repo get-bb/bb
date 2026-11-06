@@ -530,21 +530,16 @@ export {
   pruneClosedSessions,
 } from "./sweeps.js";
 export {
-  compactDatabase,
   dropDeferredLegacyTables,
   runIncrementalVacuum,
   getDatabaseAutoVacuumMode,
-  DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,
-  DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS,
-  getDatabaseCompactionStats,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
-  shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
 export * from "./machines.js";
