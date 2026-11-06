@@ -373,6 +373,23 @@ describe("provider declaration fields renamed in SDK 0.4.16", () => {
     );
   });
 
+  it("fills guided sign-in as false and refuses a non-boolean", () => {
+    expect(
+      validatePluginProviderDeclaration(declaration())
+        .internal_DO_NOT_USE_guidedSignIn,
+    ).toBe(false);
+    expect(
+      validatePluginProviderDeclaration(
+        declaration({ internal_DO_NOT_USE_guidedSignIn: true }),
+      ).internal_DO_NOT_USE_guidedSignIn,
+    ).toBe(true);
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({ internal_DO_NOT_USE_guidedSignIn: "yes" as never }),
+      ),
+    ).toThrow(/internal_DO_NOT_USE_guidedSignIn must be a boolean/u);
+  });
+
   it("rejects an experimental_ key it has never read as unknown", () => {
     const stale = { ...declaration(), experimental_foo: true };
     expect(() => validatePluginProviderDeclaration(stale)).toThrow(

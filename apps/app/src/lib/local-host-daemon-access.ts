@@ -57,6 +57,16 @@ async function queryLoopbackPermissionState(
   return "unsupported";
 }
 
+export function viewerIsOnThisComputer({
+  hostname,
+  isDesktop,
+}: {
+  hostname: string | null;
+  isDesktop: boolean;
+}): boolean {
+  return isDesktop || (hostname !== null && isLoopbackHostname(hostname));
+}
+
 export async function resolveLocalHostDaemonAccess({
   configuredPorts,
   hostname,
@@ -68,11 +78,7 @@ export async function resolveLocalHostDaemonAccess({
     return "unavailable";
   }
 
-  if (
-    sessionAccessGranted ||
-    isDesktop ||
-    (hostname !== null && isLoopbackHostname(hostname))
-  ) {
+  if (sessionAccessGranted || viewerIsOnThisComputer({ hostname, isDesktop })) {
     return "available";
   }
 

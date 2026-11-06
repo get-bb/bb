@@ -81,6 +81,7 @@ export default function plugin(bb: BbPluginApi) {
       },
     ],
     composerActions: ["plan", "goal"],
+    internal_DO_NOT_USE_guidedSignIn: true,
     deriveProviderOptions(context) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,

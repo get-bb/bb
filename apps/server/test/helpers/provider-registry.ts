@@ -145,6 +145,7 @@ export function minimalProviderRegistration(args: {
   return {
     info: args.info,
     serverCapabilities: args.serverCapabilities,
+    guidedSignIn: false,
     pluginId: args.pluginId,
     bridgeOptions: {},
     extensionKinds: {},
