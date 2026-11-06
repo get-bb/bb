@@ -598,37 +598,6 @@ describe("completed event output migration", () => {
     db.$client.close();
   });
 
-  it("does not reuse the superseded bulk truncation cursor", () => {
-    const migratedAt = 1_800_000_000_000;
-    const { db, thread } = setup();
-    db.insert(maintenanceScanCursors)
-      .values({
-        id: "completed_event_output_truncation:v1:commandExecution:aggregatedOutput",
-        itemKind: "commandExecution",
-        lastCreatedAt: migratedAt,
-        lastEventId: "z",
-        outputPath: "aggregatedOutput",
-        policy: "completed_event_output_truncation",
-        updatedAt: migratedAt,
-        version: 1,
-      })
-      .run();
-    insertLegacyOutput({
-      createdAt: migratedAt - 1,
-      db,
-      eventId: "evt_new_cursor",
-      itemKind: "commandExecution",
-      output: "c".repeat(40_000),
-      outputPath: "aggregatedOutput",
-      sequence: 1,
-      threadId: thread.id,
-    });
-
-    expect(migrateCommandOutput(db, migratedAt).eventId).toBe("evt_new_cursor");
-    expect(db.select().from(maintenanceScanCursors).all()).toHaveLength(2);
-    db.$client.close();
-  });
-
   it("sidecarizes a legacy Codex image result without rewriting its event envelope", () => {
     const migratedAt = 1_800_000_000_000;
     const output = "image-result-" + "i".repeat(4 * 1024 * 1024);

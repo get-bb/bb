@@ -38,4 +38,6 @@ keeps advancing every other thread; each deletion transaction rechecks this, so
 a thread that becomes busy mid-visit is left for a later cycle. A new policy, or
 a policy whose version changes, queues every thread for that policy. Committed
 deletions invalidate cached timelines and publish a history-compacted
-notification to viewers of the thread.
+notification to viewers of the thread. Archiving a thread runs one live step and
+then drops the thread's live progress; the background sweep finishes archived
+threads.
