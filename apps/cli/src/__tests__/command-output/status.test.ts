@@ -92,6 +92,9 @@ describe("bb status command output", () => {
 });
 
 function stubServer(plugins: Array<{ id: string; status: string }>): void {
+  stubServerApi({
+    "v1.system.config.$get": vi.fn(async () => ({ dataDir: "/data/bb" })),
+  });
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input instanceof Request ? input.url : input);
     const body = url.endsWith("/api/v1/system/config")

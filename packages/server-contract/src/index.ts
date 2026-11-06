@@ -4,6 +4,8 @@ export * from "./api/thread-tabs.js";
 export * from "./common.js";
 export * from "./errors.js";
 export * from "./public-api.js";
+export * from "./public-operations.js";
+export * from "./operation-names.js";
 export * from "./thread-timeline.js";
 export * from "./thread-timeline-delta.js";
 
@@ -23,3 +25,4 @@ export type {
 } from "@bb/domain";
 
 export * from "./api/machine-environment.js";
+export * from "./operation-kinds.js";

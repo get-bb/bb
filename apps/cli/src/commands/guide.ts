@@ -1,12 +1,9 @@
 import { Command } from "commander";
+import type { CliValues } from "@bb/operations";
 import { createGuideArea } from "@bb/sdk/node";
-import { action, CliUsageError } from "../action.js";
+import { CliUsageError } from "../action.js";
 import { CORE_COMMAND_GROUPS } from "../command-groups.js";
-import { outputJson } from "./helpers.js";
-
-interface GuideCommandOptions {
-  json?: boolean;
-}
+import { clientCommand, mountCommands } from "../operation-doors.js";
 
 export interface GuideCommandIndexEntry {
   aliases: string[];
@@ -90,44 +87,76 @@ function formatCommandIndexLine(
   return `${head}${options}\n    ${entry.description}`;
 }
 
-export function registerGuideCommand(program: Command): void {
-  program
-    .command("guide [chapter] [group]")
-    .description(
-      "Show the BB system overview and CLI guide; `bb guide commands [group]` lists every core command on one page",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          chapter: string | undefined,
-          group: string | undefined,
-          opts: GuideCommandOptions,
-        ) => {
-          if (chapter === "commands") {
-            const commands = await buildCommandIndex(group);
-            if (outputJson(opts, { chapter, commands })) return;
-            const lines = commands.map((entry) =>
-              formatCommandIndexLine(entry, group !== undefined),
-            );
-            console.log(lines.join("\n"));
-            if (group === undefined) {
-              console.log(
-                "\nRun `bb guide commands <group>` (for example `bb guide commands thread`) to include every option. Commands contributed by plugins are listed by `bb plugin list`.",
-              );
-            }
-            return;
-          }
-          const rendered = createGuideArea().render({ chapter });
-          if (chapter) {
-            if (outputJson(opts, rendered)) return;
-            console.log(rendered.content);
-            return;
-          }
+type GuideRender = ReturnType<ReturnType<typeof createGuideArea>["render"]>;
 
-          if (outputJson(opts, { overview: rendered.content })) return;
-          console.log(rendered.content);
-        },
-      ),
-    );
+type GuideOutput =
+  | {
+      kind: "commands";
+      chapter: string;
+      group: string | undefined;
+      commands: GuideCommandIndexEntry[];
+    }
+  | { kind: "chapter"; rendered: GuideRender }
+  | { kind: "overview"; content: string };
+
+interface GuideInput {
+  chapter: string | undefined;
+  group: string | undefined;
+}
+
+function positional(values: CliValues, name: string): string | undefined {
+  const value = values.positionals[name];
+  return typeof value === "string" ? value : undefined;
+}
+
+export const guideCommand = clientCommand<GuideInput, GuideOutput>({
+  name: "cli.guide",
+  kind: "read",
+  description: "Render the bb guide and command index locally",
+  door: {
+    path: ["guide"],
+    summary:
+      "Show the BB system overview and CLI guide; `bb guide commands [group]` lists every core command on one page",
+    positionals: [
+      { name: "chapter", required: false },
+      { name: "group", required: false },
+    ],
+    prepare: (values) => ({
+      chapter: positional(values, "chapter"),
+      group: positional(values, "group"),
+    }),
+    async run({ chapter, group }) {
+      if (chapter === "commands") {
+        return {
+          kind: "commands",
+          chapter,
+          group,
+          commands: await buildCommandIndex(group),
+        };
+      }
+      const rendered = createGuideArea().render({ chapter });
+      if (chapter) return { kind: "chapter", rendered };
+      return { kind: "overview", content: rendered.content };
+    },
+    json(output) {
+      if (output.kind === "commands") {
+        return { chapter: output.chapter, commands: output.commands };
+      }
+      if (output.kind === "chapter") return output.rendered;
+      return { overview: output.content };
+    },
+    print(output) {
+      if (output.kind === "chapter") return output.rendered.content;
+      if (output.kind === "overview") return output.content;
+      const lines = output.commands.map((entry) =>
+        formatCommandIndexLine(entry, output.group !== undefined),
+      );
+      if (output.group !== undefined) return lines.join("\n");
+      return `${lines.join("\n")}\n\nRun \`bb guide commands <group>\` (for example \`bb guide commands thread\`) to include every option. Commands contributed by plugins are listed by \`bb plugin list\`.`;
+    },
+  },
+});
+
+export function registerGuideCommand(program: Command): void {
+  mountCommands(program, [guideCommand], { getUrl: () => "" });
 }

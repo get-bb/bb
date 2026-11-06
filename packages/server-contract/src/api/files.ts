@@ -14,10 +14,13 @@ export const hostFileReadRequestSchema = z
     ref: z.string().min(1).optional(),
   })
   .strict()
-  .refine((request) => request.ref === undefined || request.rootPath !== undefined, {
-    message: "rootPath is required when ref is set",
-    path: ["rootPath"],
-  });
+  .refine(
+    (request) => request.ref === undefined || request.rootPath !== undefined,
+    {
+      message: "rootPath is required when ref is set",
+      path: ["rootPath"],
+    },
+  );
 export type HostFileReadRequest = z.infer<typeof hostFileReadRequestSchema>;
 
 export const hostFileWriteRequestSchema = z
@@ -105,10 +108,23 @@ export const createFilePreviewRequestSchema = z
 export type CreateFilePreviewRequest = z.infer<
   typeof createFilePreviewRequestSchema
 >;
-export interface CreateFilePreviewResponse {
-  baseUrl: string;
-  expiresAtMs: number;
-}
+export const createFilePreviewResponseSchema = z.object({
+  baseUrl: z.string(),
+  expiresAtMs: z.number(),
+});
+export type CreateFilePreviewResponse = z.infer<
+  typeof createFilePreviewResponseSchema
+>;
+
+export const hostFileReadResponseSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+  contentEncoding: z.enum(["base64", "utf8"]),
+  mimeType: z.string().optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  modifiedAtMs: z.number().nonnegative().optional(),
+  sha256: z.string(),
+});
 
 export type HostFileReadResponse = Exclude<
   HostDaemonOnlineRpcResultByType["host.read_file"],

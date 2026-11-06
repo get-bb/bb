@@ -28,7 +28,8 @@ import {
   getAuthenticatedDaemon,
 } from "./auth.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
-import { createAttachmentContentResponse } from "../services/projects/attachments.js";
+import { operationBodyResponse } from "@bb/operations";
+import { createAttachmentContentBody } from "../services/projects/attachments.js";
 import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
@@ -272,12 +273,14 @@ export function registerInternalSessionRoutes(
         );
       }
 
-      return createAttachmentContentResponse({
-        dataDir: deps.config.dataDir,
-        projectId: query.projectId,
-        path: query.path,
-        request: context.req.raw,
-      });
+      return operationBodyResponse(
+        await createAttachmentContentBody({
+          dataDir: deps.config.dataDir,
+          projectId: query.projectId,
+          path: query.path,
+          request: context.req.raw,
+        }),
+      );
     },
   );
 }

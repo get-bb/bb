@@ -1,6 +1,8 @@
 import { isAbsolute, sep } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createApiClient } from "@bb/server-contract";
 import {
+  createClientMock,
   collectLogPayloads,
   runCommand,
   setupCommandOutputTestEnvironment,
@@ -49,6 +51,9 @@ function json(value: object, status = 200): Response {
 
 describe("bb marketplace", () => {
   setupCommandOutputTestEnvironment();
+  beforeEach(() => {
+    createClientMock.mockReturnValue(createApiClient("http://server"));
+  });
   const register: CommandRegistrar = (program) =>
     registerMarketplaceCommands(program, () => "http://server");
 
@@ -185,14 +190,36 @@ describe("bb marketplace", () => {
       }),
     );
 
-    await expect(
-      runCommand(["marketplace", "refresh"], register),
-    ).rejects.toThrow("process.exit:1");
+    await runCommand(["marketplace", "refresh"], register);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("bb-community: 5 entries");
     expect(output).toContain("acme-plugins: refresh failed");
     expect(output).toContain("keeping the last catalog");
+  });
+
+  it("keeps exit code 0 for a failed refresh printed as JSON", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        results: [
+          {
+            name: "acme-plugins",
+            ok: false,
+            error: "request failed with HTTP 503",
+            marketplace: acme,
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["marketplace", "refresh", "--json"], register);
+
+    expect(process.exitCode).toBeUndefined();
+    expect(
+      JSON.parse(collectLogPayloads(vi.mocked(console.log)).join("\n")),
+    ).toEqual([expect.objectContaining({ name: "acme-plugins", ok: false })]);
   });
 
   it("names the plugins a removal kept as direct installs", async () => {

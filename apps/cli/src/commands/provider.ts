@@ -1,31 +1,22 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { collectDeclaredSessionOptions, type AvailableModel } from "@bb/domain";
 import type {
   SystemExecutionOptionsModelLoadError,
+  SystemProviderCatalogEntry,
   SystemProviderInfo,
 } from "@bb/server-contract";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import {
+  JSON_FLAG_DESCRIPTION,
+  type CliDoorOption,
+  flag,
+} from "@bb/operations";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+} from "../operation-doors.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { resolveMachineEnvironmentRouting } from "./machine.js";
-
-interface ProviderListCommandOptions {
-  environment?: string;
-  host?: string;
-  json?: boolean;
-  all?: boolean;
-  machine?: string;
-}
-
-interface ProviderModelsCommandOptions {
-  environment?: string;
-  host?: string;
-  json?: boolean;
-  machine?: string;
-  project?: string;
-  selectedModel?: string;
-}
 
 interface IncludeSelectedOnlyModelArgs {
   models: AvailableModel[];
@@ -33,43 +24,98 @@ interface IncludeSelectedOnlyModelArgs {
   selectedModel?: string;
 }
 
-function addProviderRoutingOptions(command: Command): Command {
-  return command
-    .option("--machine <id-or-name>", "Machine whose providers should be used")
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option(
-      "--environment <id>",
-      "Environment whose machine providers should be used",
-    );
+interface RoutingValues {
+  machine?: string;
+  host?: string;
+  environment?: string;
 }
 
-export function registerProviderCommands(
-  program: Command,
-  getUrl: () => string,
-): void {
-  const provider = program
-    .command("provider")
-    .description("Manage providers and inspect their models");
+type ProviderListOutput =
+  | { all: true; catalog: SystemProviderCatalogEntry[] }
+  | { all: false; providers: SystemProviderInfo[] };
 
-  addProviderRoutingOptions(provider.command("list"))
-    .description("List available providers")
-    .option(
-      "--all",
-      "Include disabled providers and providers whose plugins are disabled",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: ProviderListCommandOptions) => {
-        const serverUrl = getUrl();
-        const sdk = createCliBbSdk(serverUrl);
-        if (opts.all) {
-          if (opts.machine || opts.host || opts.environment)
-            throw new Error(
-              "--all shows the global provider catalog; omit --machine, --host and --environment.",
-            );
-          const catalog = await sdk.providers.catalog();
-          if (outputJson(opts, catalog)) return;
-          const rows = catalog.map((entry) => [
+const ROUTING_OPTIONS: readonly CliDoorOption[] = [
+  flag("--machine <id-or-name>", "Machine whose providers should be used"),
+  flag("--host <id-or-name>", "Alias for --machine"),
+  flag(
+    "--environment <id>",
+    "Environment whose machine providers should be used",
+  ),
+];
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function routingValues(
+  options: Readonly<Record<string, unknown>>,
+): RoutingValues {
+  const machine = text(options.machine);
+  const host = text(options.host);
+  const environment = text(options.environment);
+  return {
+    ...(machine === undefined ? {} : { machine }),
+    ...(host === undefined ? {} : { host }),
+    ...(environment === undefined ? {} : { environment }),
+  };
+}
+
+function providerEnabledCommand(enabled: boolean) {
+  return publicCommand("system.providerEnabled", {
+    path: ["provider", enabled ? "enable" : "disable"],
+    summary: enabled
+      ? "Enable a provider and its supplying plugin if needed"
+      : "Disable a provider without uninstalling its CLI or disabling its plugin",
+    positionals: [{ name: "providerId", field: "id" }],
+    fixed: { enabled },
+    print: (_catalog, input) =>
+      `${input.id} ${enabled ? "enabled" : "disabled"}`,
+  });
+}
+
+export const providerCommands = [
+  clientCommand({
+    name: "cli.provider.list",
+    kind: "read",
+    description: "List the providers a machine offers, or the global catalog",
+    door: {
+      path: ["provider", "list"],
+      summary: "List available providers",
+      options: [
+        ...ROUTING_OPTIONS,
+        flag(
+          "--all",
+          "Include disabled providers and providers whose plugins are disabled",
+        ),
+      ],
+      prepare({ options }) {
+        const routing = routingValues(options);
+        const all = options.all === true;
+        if (all && (routing.machine || routing.host || routing.environment))
+          throw new Error(
+            "--all shows the global provider catalog; omit --machine, --host and --environment.",
+          );
+        return { all, routing };
+      },
+      async run({ all, routing }, client): Promise<ProviderListOutput> {
+        if (all) {
+          return {
+            all: true,
+            catalog: await client.call("system.providerCatalog", {}),
+          };
+        }
+        return {
+          all: false,
+          providers: await client.call(
+            "system.providers",
+            await resolveMachineEnvironmentRouting(routing, client.url),
+          ),
+        };
+      },
+      json: (output) => (output.all ? output.catalog : output.providers),
+      print(output) {
+        if (output.all) {
+          const rows = output.catalog.map((entry) => [
             entry.id,
             entry.displayName,
             !entry.pluginEnabled
@@ -87,94 +133,92 @@ export function registerProviderCommands(
             },
             rows,
           );
-          return;
+          return null;
         }
-        const providers = await sdk.providers.list(
-          await resolveMachineEnvironmentRouting(opts, serverUrl),
-        );
-        if (outputJson(opts, providers)) return;
-        if (providers.length === 0) {
-          console.log("No providers available");
-          return;
-        }
-        printProviderTable(providers);
-      }),
-    );
-
-  for (const enabled of [true, false]) {
-    provider
-      .command(`${enabled ? "enable" : "disable"} <providerId>`)
-      .description(
-        enabled
-          ? "Enable a provider and its supplying plugin if needed"
-          : "Disable a provider without uninstalling its CLI or disabling its plugin",
-      )
-      .option("--json", "Print machine-readable JSON output")
-      .action(
-        action(async (providerId: string, opts: { json?: boolean }) => {
-          const catalog = await createCliBbSdk(getUrl()).providers.setEnabled({
-            providerId,
-            enabled,
-          });
-          if (outputJson(opts, catalog)) return;
-          console.log(`${providerId} ${enabled ? "enabled" : "disabled"}`);
-        }),
-      );
-  }
-
-  addProviderRoutingOptions(provider.command("models [providerId]"))
-    .description("List available models for a provider")
-    .option(
-      "--project <id>",
-      "Project whose checkout on the machine the provider reads its models and options from",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .option(
-      "--selected-model <model>",
-      "Discover reasoning for this model and include it if selected-only",
-    )
-    .action(
-      action(
-        async (
-          providerId: string | undefined,
-          opts: ProviderModelsCommandOptions,
-        ) => {
-          if (opts.project !== undefined && opts.environment !== undefined) {
-            throw new Error(
-              "Cannot combine --project with --environment; the environment already selects its workspace.",
-            );
-          }
-          const serverUrl = getUrl();
-          const sdk = createCliBbSdk(serverUrl);
-          const routing = await resolveMachineEnvironmentRouting(
-            opts,
-            serverUrl,
+        if (output.providers.length === 0) return "No providers available";
+        printProviderTable(output.providers);
+        return null;
+      },
+    },
+  }),
+  providerEnabledCommand(true),
+  providerEnabledCommand(false),
+  clientCommand({
+    name: "cli.provider.models",
+    kind: "read",
+    description:
+      "List a provider's models on a machine, environment or project checkout",
+    door: {
+      path: ["provider", "models"],
+      summary: "List available models for a provider",
+      positionals: [{ name: "providerId", required: false }],
+      options: [
+        ...ROUTING_OPTIONS,
+        flag(
+          "--project <id>",
+          "Project whose checkout on the machine the provider reads its models and options from",
+        ),
+        flag("--json", JSON_FLAG_DESCRIPTION),
+        flag(
+          "--selected-model <model>",
+          "Discover reasoning for this model and include it if selected-only",
+        ),
+      ],
+      prepare({ positionals, options }) {
+        const project = text(options.project);
+        const routing = routingValues(options);
+        if (project !== undefined && routing.environment !== undefined) {
+          throw new Error(
+            "Cannot combine --project with --environment; the environment already selects its workspace.",
           );
-          const executionOptions = await sdk.providers.models({
-            ...(routing.environmentId !== undefined ||
-            opts.project === undefined
-              ? routing
-              : { ...routing, projectId: opts.project }),
-            ...(providerId ? { providerId } : {}),
-            ...(opts.selectedModel
-              ? { selectedModel: opts.selectedModel }
-              : {}),
-          });
-          const models = includeSelectedOnlyModel({
+        }
+        return {
+          routing,
+          project,
+          providerId: text(positionals.providerId),
+          selectedModel: text(options["selected-model"]),
+        };
+      },
+      async run({ routing, project, providerId, selectedModel }, client) {
+        const resolved = await resolveMachineEnvironmentRouting(
+          routing,
+          client.url,
+        );
+        const executionOptions = await client.call("system.executionOptions", {
+          ...(resolved.environmentId !== undefined || project === undefined
+            ? resolved
+            : { ...resolved, projectId: project }),
+          ...(providerId ? { providerId } : {}),
+          ...(selectedModel ? { selectedModel } : {}),
+        });
+        printModelLoadError(executionOptions.modelLoadError);
+        return {
+          providerId,
+          models: includeSelectedOnlyModel({
             models: executionOptions.models,
             selectedOnlyModels: executionOptions.selectedOnlyModels,
-            selectedModel: opts.selectedModel,
-          });
-          printModelLoadError(executionOptions.modelLoadError);
-          if (outputJson(opts, models)) return;
-          if (models.length === 0) {
-            console.log("No models available");
-            return;
-          }
-          printModelTable(models, providerId);
-        },
-      ),
-    );
+            selectedModel,
+          }),
+        };
+      },
+      json: (output) => output.models,
+      print({ models, providerId }) {
+        if (models.length === 0) return "No models available";
+        printModelTable(models, providerId);
+        return null;
+      },
+    },
+  }),
+];
+
+export function registerProviderCommands(
+  program: Command,
+  getUrl: () => string,
+): void {
+  program
+    .command("provider")
+    .description("Manage providers and inspect their models");
+  mountCommands(program, providerCommands, { getUrl });
 }
 
 function includeSelectedOnlyModel(

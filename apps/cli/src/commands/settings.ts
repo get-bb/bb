@@ -1,4 +1,6 @@
-import { Command } from "commander";
+import { flag } from "@bb/operations";
+import type { Command } from "commander";
+import type { CliDoorOption } from "@bb/operations";
 import {
   AI_TASKS,
   AI_TEXT_TASKS,
@@ -29,18 +31,21 @@ import type {
   SystemCliCommandStatus,
   SystemProviderInfo,
 } from "@bb/server-contract";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+  type CliClient,
+} from "../operation-doors.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
-interface JsonOptions {
-  json?: boolean;
+function text(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
-interface AiServiceSetOptions extends JsonOptions {
-  plugin?: string;
+async function currentConfig(client: CliClient) {
+  return client.call("system.config", {});
 }
 
 function describeCliCommandStatus(status: SystemCliCommandStatus): string {
@@ -183,12 +188,6 @@ interface ProviderCompletedTurnDisplayEntry {
   completedTurnDisplay: CompletedTurnDisplay;
   providerDefault: CompletedTurnDisplay;
   source: "setting" | "provider-default";
-}
-
-interface UsageOptions extends JsonOptions {
-  refresh?: boolean;
-  host?: string;
-  machine?: string;
 }
 
 function parseBoolean(value: string): boolean {
@@ -380,530 +379,492 @@ function isUiPreferenceConflict(error: unknown): boolean {
   return error instanceof BbHttpError && error.status === 409;
 }
 
-export function registerSettingsCommands(
-  program: Command,
-  getUrl: () => string,
-): void {
-  const settings = program
-    .command("settings")
-    .description("Inspect and update BB settings");
+const PLATFORM_OPTION: CliDoorOption = flag(
+  "--platform <platform>",
+  "Scope to mac, windows, or linux",
+);
 
-  settings
-    .command("show")
-    .description("Show server-backed settings and feature state")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).system.config();
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
+function platformValue(
+  value: unknown,
+): "mac" | "windows" | "linux" | undefined {
+  const platform = text(value);
+  return platform === undefined
+    ? undefined
+    : keyboardPlatformSchema.parse(platform);
+}
 
-  const aiServices = settings
-    .command("ai-services")
-    .description(
-      "Choose which plugin AI service writes thread titles, commit messages, and voice transcripts",
-    );
-  aiServices
-    .command("show", { isDefault: true })
-    .description("Show each task's selection and every registered AI service")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).system.aiServices();
-        if (outputJson(opts, result)) return;
-        printAiServices(result);
-      }),
-    );
-  aiServices
-    .command("set <task> <choice>")
-    .description(
-      `Set the service for a task (${AI_TASKS.join(", ")}): automatic, off, or a service id`,
-    )
-    .option(
-      "--plugin <plugin-id>",
-      "Plugin that registers the service, when several plugins use the same service id",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          taskInput: string,
-          choice: string,
-          opts: AiServiceSetOptions,
-        ) => {
-          const task = requireAiTask(taskInput);
-          const sdk = createCliBbSdk(getUrl());
-          const current = await sdk.system.aiServices();
-          const result = await sdk.system.setAiServiceSelection({
-            task,
-            selection: resolveAiServiceChoice(current, {
-              task,
-              choice,
-              pluginId: opts.plugin,
-            }),
-          });
-          if (outputJson(opts, result)) return;
-          console.log(
-            `${task}: ${describeAiSelection(result, result.selections[task])}`,
-          );
-        },
+const settingsCommands = [
+  publicCommand("system.config", {
+    path: ["settings", "show"],
+    summary: "Show server-backed settings and feature state",
+    print: (result) => JSON.stringify(result, null, 2),
+  }),
+  publicCommand("system.aiServices", {
+    path: ["settings", "ai-services", "show"],
+    summary: "Show each task's selection and every registered AI service",
+    isDefault: true,
+    print(result) {
+      printAiServices(result);
+      return null;
+    },
+  }),
+  publicCommand("system.setAiServiceSelection", {
+    path: ["settings", "ai-services", "set"],
+    summary: `Set the service for a task (${AI_TASKS.join(", ")}): automatic, off, or a service id`,
+    positionals: [{ name: "task" }, { name: "choice" }],
+    options: [
+      flag(
+        "--plugin <plugin-id>",
+        "Plugin that registers the service, when several plugins use the same service id",
       ),
-    );
-  aiServices
-    .command("test <task>")
-    .description(
-      `Run a sample through the current choice for ${AI_TEXT_TASKS.join(" or ")}`,
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (taskInput: string, opts: JsonOptions) => {
-        const task = aiTextTaskSchema.safeParse(taskInput);
-        if (!task.success) {
-          throw new Error(
-            `Unknown task '${taskInput}'. Testable tasks: ${AI_TEXT_TASKS.join(", ")}`,
-          );
-        }
-        const result = await createCliBbSdk(getUrl()).system.testAiService({
-          task: task.data,
-        });
-        if (outputJson(opts, result)) return;
-        if (result.ok) {
-          console.log(
-            `${result.displayName} (${result.durationMs}ms): ${result.text}`,
-          );
-          return;
-        }
-        console.log(`Failed after ${result.durationMs}ms: ${result.message}`);
-        process.exitCode = 1;
+    ],
+    async prepare({ positionals, options }, client) {
+      const task = requireAiTask(text(positionals.task) ?? "");
+      const current = await client.call("system.aiServices", {});
+      return {
+        task,
+        selection: resolveAiServiceChoice(current, {
+          task,
+          choice: text(positionals.choice) ?? "",
+          pluginId: text(options.plugin),
+        }),
+      };
+    },
+    print: (result, input) =>
+      `${input.task}: ${describeAiSelection(result, result.selections[input.task])}`,
+  }),
+  publicCommand("system.testAiService", {
+    path: ["settings", "ai-services", "test"],
+    summary: `Run a sample through the current choice for ${AI_TEXT_TASKS.join(" or ")}`,
+    positionals: [{ name: "task" }],
+    prepare({ positionals }) {
+      const taskInput = text(positionals.task) ?? "";
+      const task = aiTextTaskSchema.safeParse(taskInput);
+      if (!task.success) {
+        throw new Error(
+          `Unknown task '${taskInput}'. Testable tasks: ${AI_TEXT_TASKS.join(", ")}`,
+        );
+      }
+      return { task: task.data };
+    },
+    print: (result) =>
+      result.ok
+        ? `${result.displayName} (${result.durationMs}ms): ${result.text}`
+        : `Failed after ${result.durationMs}ms: ${result.message}`,
+    exitCode: (result, _input, json) => (json || result.ok ? 0 : 1),
+  }),
+  clientCommand({
+    name: "cli.settings.general",
+    kind: "write",
+    description: "Set one Settings → General preference",
+    door: {
+      path: ["settings", "general"],
+      summary: "Set a Settings → General preference",
+      positionals: [{ name: "key" }, { name: "value" }],
+      prepare: ({ positionals }) => ({
+        key: text(positionals.key) ?? "",
+        value: text(positionals.value) ?? "",
       }),
-    );
-
-  settings
-    .command("general <key> <value>")
-    .description("Set a Settings → General preference")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (key: string, value: string, opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
-        const result = await sdk.system.updateGeneralSettings(
+      async run({ key, value }, client) {
+        const config = await currentConfig(client);
+        return client.call(
+          "system.generalSettings",
           updateGeneralSetting(config.generalSettings, key, value),
         );
-        if (outputJson(opts, result)) return;
-        console.log(`${key} updated`);
+      },
+      print: (_result, { key }) => `${key} updated`,
+    },
+  }),
+  publicCommand("system.generalSettings", {
+    path: ["settings", "replay-onboarding"],
+    summary: "Show the first-run setup guide again",
+    async prepare(_values, client) {
+      const config = await currentConfig(client);
+      return { ...config.generalSettings, onboardingCompletedAt: null };
+    },
+    print: () => "The setup guide is showing again",
+  }),
+  clientCommand({
+    name: "cli.settings.completed-turns",
+    kind: "write",
+    description:
+      "Show or set how each provider's finished turns display; reads providers and settings, and writes settings when a display is given",
+    door: {
+      path: ["settings", "completed-turns"],
+      summary:
+        "Show or set whether each provider's finished turns collapse or stay flat (collapse, flat, or default)",
+      positionals: [
+        { name: "providerId", required: false },
+        { name: "display", required: false },
+      ],
+      prepare: ({ positionals }) => ({
+        providerId: text(positionals.providerId),
+        display: text(positionals.display),
       }),
-    );
-
-  settings
-    .command("replay-onboarding")
-    .description("Show the first-run setup guide again")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
-        const result = await sdk.system.updateGeneralSettings({
-          ...config.generalSettings,
-          onboardingCompletedAt: null,
-        });
-        if (outputJson(opts, result)) return;
-        console.log("The setup guide is showing again");
-      }),
-    );
-
-  settings
-    .command("completed-turns [providerId] [display]")
-    .description(
-      "Show or set whether each provider's finished turns collapse or stay flat (collapse, flat, or default)",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          providerId: string | undefined,
-          display: string | undefined,
-          opts: JsonOptions,
-        ) => {
-          const sdk = createCliBbSdk(getUrl());
-          const [config, providers] = await Promise.all([
-            sdk.system.config(),
-            sdk.providers.list(),
-          ]);
-          if (providerId === undefined) {
-            const entries = providers.map((provider) =>
+      async run(
+        { providerId, display },
+        client,
+      ): Promise<
+        | { kind: "list"; entries: ProviderCompletedTurnDisplayEntry[] }
+        | { kind: "show"; entry: ProviderCompletedTurnDisplayEntry }
+        | { kind: "set"; entry: ProviderCompletedTurnDisplayEntry }
+      > {
+        const [config, providers] = await Promise.all([
+          currentConfig(client),
+          client.call("system.providers", {}),
+        ]);
+        if (providerId === undefined) {
+          return {
+            kind: "list",
+            entries: providers.map((provider) =>
               describeProviderCompletedTurnDisplay(
                 config.generalSettings,
                 provider,
               ),
-            );
-            if (outputJson(opts, entries)) return;
-            if (entries.length === 0) {
-              console.log("No providers available");
-              return;
-            }
-            printCompletedTurnDisplayTable(entries);
-            return;
-          }
-          const provider = requireKnownProvider(providers, providerId);
-          if (display === undefined) {
-            const entry = describeProviderCompletedTurnDisplay(
+            ),
+          };
+        }
+        const provider = requireKnownProvider(providers, providerId);
+        if (display === undefined) {
+          return {
+            kind: "show",
+            entry: describeProviderCompletedTurnDisplay(
               config.generalSettings,
               provider,
-            );
-            if (outputJson(opts, entry)) return;
-            printCompletedTurnDisplayTable([entry]);
-            return;
-          }
-          const updated = await sdk.system.updateGeneralSettings(
-            updateProviderCompletedTurnDisplay(
-              config.generalSettings,
-              provider.id,
-              parseCompletedTurnDisplayInput(display),
             ),
-          );
-          const entry = describeProviderCompletedTurnDisplay(updated, provider);
-          if (outputJson(opts, entry)) return;
-          console.log(
-            `${provider.id} finished turns: ${entry.completedTurnDisplay} (${
-              entry.source === "setting" ? "setting" : "provider default"
-            })`,
-          );
-        },
+          };
+        }
+        const updated = await client.call(
+          "system.generalSettings",
+          updateProviderCompletedTurnDisplay(
+            config.generalSettings,
+            provider.id,
+            parseCompletedTurnDisplayInput(display),
+          ),
+        );
+        return {
+          kind: "set",
+          entry: describeProviderCompletedTurnDisplay(updated, provider),
+        };
+      },
+      json: (output) =>
+        output.kind === "list" ? output.entries : output.entry,
+      print(output) {
+        if (output.kind === "list") {
+          if (output.entries.length === 0) return "No providers available";
+          printCompletedTurnDisplayTable(output.entries);
+          return null;
+        }
+        if (output.kind === "show") {
+          printCompletedTurnDisplayTable([output.entry]);
+          return null;
+        }
+        const { entry } = output;
+        return `${entry.providerId} finished turns: ${entry.completedTurnDisplay} (${
+          entry.source === "setting" ? "setting" : "provider default"
+        })`;
+      },
+    },
+  }),
+  publicCommand("system.uiPreferences", {
+    path: ["settings", "ui", "list"],
+    summary: "List every UI preference with its value and revision",
+    print(result) {
+      for (const key of UI_PREFERENCE_KEYS) {
+        const entry = result.preferences[key];
+        console.log(
+          `${key}  ${JSON.stringify(entry.value)}  (revision ${entry.revision})`,
+        );
+        console.log(`  ${describeUiPreference(key)}`);
+      }
+      return null;
+    },
+  }),
+  clientCommand({
+    name: "cli.settings.ui.get",
+    kind: "read",
+    description: "Read one UI preference from the preference list",
+    door: {
+      path: ["settings", "ui", "get"],
+      summary: "Show one UI preference",
+      positionals: [{ name: "key" }],
+      prepare: ({ positionals }) => ({
+        key: requireUiPreferenceKey(text(positionals.key) ?? ""),
+      }),
+      async run({ key }, client) {
+        const { preferences } = await client.call("system.uiPreferences", {});
+        return { key, entry: preferences[key] };
+      },
+      json: ({ key, entry }) => ({ key, ...entry }),
+      print: ({ entry }) => JSON.stringify(entry.value),
+    },
+  }),
+  clientCommand({
+    name: "cli.settings.ui.set",
+    kind: "write",
+    description:
+      "Set a UI preference at its current revision, retrying once after a concurrent change",
+    door: {
+      path: ["settings", "ui", "set"],
+      summary: "Set a UI preference; lists and null take JSON",
+      positionals: [{ name: "key" }, { name: "value" }],
+      prepare({ positionals }) {
+        const key = requireUiPreferenceKey(text(positionals.key) ?? "");
+        return {
+          key,
+          value: parseUiPreferenceInput(key, text(positionals.value) ?? ""),
+        };
+      },
+      async run({ key, value }, client) {
+        const write = async () => {
+          const { preferences } = await client.call("system.uiPreferences", {});
+          return client.call("system.updateUiPreference", {
+            key,
+            expectedRevision: preferences[key].revision,
+            value,
+          });
+        };
+        try {
+          return await write();
+        } catch (error) {
+          if (!isUiPreferenceConflict(error)) throw error;
+          return write();
+        }
+      },
+      print: (_result, { key }) => `${key} updated`,
+    },
+  }),
+  publicCommand("system.resetUiPreference", {
+    path: ["settings", "ui", "reset"],
+    summary: "Reset a UI preference to its default",
+    positionals: [{ name: "key" }],
+    prepare: ({ positionals }) => ({
+      key: requireUiPreferenceKey(text(positionals.key) ?? ""),
+    }),
+    print: (_result, { key }) => `${key} reset`,
+  }),
+  clientCommand({
+    name: "cli.settings.mobile-app",
+    kind: "read",
+    description:
+      "Show the mobile app download links, and the public release details on request",
+    door: {
+      path: ["settings", "mobile-app"],
+      summary: "Show iOS TestFlight and Android APK download links",
+      options: [flag("--details", "Include available public release metadata")],
+      prepare: ({ options }) => ({ details: options.details === true }),
+      async run({ details }, client) {
+        const links = client.sdk().system.mobileAppDownloads();
+        if (!details) return { links, releases: null };
+        return {
+          links,
+          releases: await client.call("system.mobileAppReleases", {}),
+        };
+      },
+      json: ({ links, releases }) =>
+        releases === null ? links : { downloads: links, releases },
+      print({ links, releases }) {
+        console.log(
+          `iOS TestFlight: ${links.ios}\nAndroid APK: ${links.android}`,
+        );
+        if (releases === null) return null;
+        console.log(
+          releases.android
+            ? `Android ${releases.android.version} (build ${releases.android.versionCode}) · Updated ${releases.android.updatedAt} · ${Math.ceil(releases.android.size / 1024 / 1024)} MB`
+            : "Android release details are unavailable.",
+        );
+        console.log("iOS version and release date are shown in TestFlight.");
+        return null;
+      },
+    },
+  }),
+  publicCommand("system.experiments", {
+    path: ["settings", "experiment"],
+    summary: "Set an experiment value",
+    positionals: [{ name: "key" }, { name: "value" }],
+    prepare: ({ positionals }) =>
+      experimentUpdate(
+        text(positionals.key) ?? "",
+        text(positionals.value) ?? "",
       ),
-    );
+    print: (_result, input) => `${Object.keys(input)[0]} updated`,
+  }),
+  publicCommand("system.generalSettings", {
+    path: ["settings", "keyboard", "hints"],
+    summary: "Show or hide held-modifier shortcut hints",
+    positionals: [{ name: "value" }],
+    async prepare({ positionals }, client) {
+      const config = await currentConfig(client);
+      return updateGeneralSetting(
+        config.generalSettings,
+        "showKeyboardHints",
+        text(positionals.value) ?? "",
+      );
+    },
+    print: () => "Keyboard hint visibility updated",
+  }),
+  publicCommand("system.config", {
+    path: ["settings", "keyboard", "list"],
+    summary: "List effective keybindings and overrides",
+    json: (config) => ({
+      bindings: config.keybindings,
+      overrides: config.keybindingOverrides,
+    }),
+    print: (config) =>
+      JSON.stringify(
+        { bindings: config.keybindings, overrides: config.keybindingOverrides },
+        null,
+        2,
+      ),
+  }),
+  publicCommand("system.keyboardSettings", {
+    path: ["settings", "keyboard", "set"],
+    summary: "Set a command shortcut; use 'disabled' to clear it",
+    positionals: [{ name: "command" }, { name: "shortcut" }],
+    options: [PLATFORM_OPTION],
+    async prepare({ positionals, options }, client) {
+      const platform = platformValue(options.platform);
+      const command = keyboardCommandIdSchema.parse(text(positionals.command));
+      const shortcut = text(positionals.shortcut) ?? "";
+      const config = await currentConfig(client);
+      const next = config.keybindingOverrides.filter(
+        (item) => item.command !== command || item.platform !== platform,
+      );
+      next.push({
+        command,
+        ...(platform === undefined ? {} : { platform }),
+        shortcut: shortcut === "disabled" ? null : parseShortcut(shortcut),
+      });
+      return { overrides: next };
+    },
+    print: (_result, { overrides }) =>
+      `Shortcut for ${overrides.at(-1)?.command} updated`,
+  }),
+  clientCommand({
+    name: "cli.settings.keyboard.reset",
+    kind: "write",
+    description:
+      "Remove one command's shortcut override, or every override, from the keyboard settings",
+    door: {
+      path: ["settings", "keyboard", "reset"],
+      summary: "Reset one command override or all keyboard overrides",
+      positionals: [{ name: "command", required: false }],
+      options: [PLATFORM_OPTION],
+      prepare: ({ positionals, options }) => ({
+        platform: platformValue(options.platform),
+        commandInput: text(positionals.command),
+      }),
+      async run({ platform, commandInput }, client) {
+        const config = await currentConfig(client);
+        const command =
+          commandInput === undefined
+            ? undefined
+            : keyboardCommandIdSchema.parse(commandInput);
+        const next = config.keybindingOverrides.filter(
+          (item) =>
+            (command !== undefined && item.command !== command) ||
+            (platform !== undefined && item.platform !== platform),
+        );
+        return client.call("system.keyboardSettings", { overrides: next });
+      },
+      print: (_result, { commandInput }) =>
+        commandInput
+          ? `Shortcut for ${commandInput} reset`
+          : "Keyboard overrides reset",
+    },
+  }),
+  publicCommand("system.usageLimits", {
+    path: ["settings", "usage"],
+    summary: "Show provider usage limits",
+    options: [
+      flag("--refresh", "Fetch fresh usage instead of a cached result"),
+      flag(
+        "--machine <id-or-name>",
+        "Machine whose provider usage should be shown",
+      ),
+      flag("--host <id-or-name>", "Alias for --machine"),
+    ],
+    async prepare({ options }, client) {
+      const machine = text(options.machine);
+      const host = text(options.host);
+      const target = resolveMachineTargetOption({
+        ...(machine === undefined ? {} : { machine }),
+        ...(host === undefined ? {} : { host }),
+      });
+      const hostId =
+        target === undefined
+          ? undefined
+          : await resolveMachineHostId({ serverUrl: client.url, target });
+      return {
+        ...(hostId === undefined ? {} : { hostId }),
+        ...(options.refresh === true ? { refresh: "true" as const } : {}),
+      };
+    },
+    print: (result) => JSON.stringify(result, null, 2),
+  }),
+  publicCommand("system.version", {
+    path: ["settings", "version"],
+    summary: "Check the running and latest BB versions",
+    options: [flag("--force", "Bypass the latest-version cache")],
+    prepare: ({ options }) =>
+      options.force === true ? { force: "true" as const } : {},
+    print: (result) => JSON.stringify(result, null, 2),
+  }),
+  publicCommand("system.cliCommand", {
+    path: ["settings", "cli-command", "show"],
+    summary: "Show whether the bb CLI is installed for use outside bb",
+    isDefault: true,
+    print: (status) => describeCliCommandStatus(status),
+  }),
+  publicCommand("system.installCliCommand", {
+    path: ["settings", "cli-command", "install"],
+    summary: "Link the bb CLI into a folder on PATH",
+    print: (status) => describeCliCommandStatus(status),
+  }),
+  publicCommand("system.removeCliCommand", {
+    path: ["settings", "cli-command", "remove"],
+    summary: "Take the bb CLI that bb installed off PATH",
+    print: (status) =>
+      status.installedPath === null
+        ? "Removed the bb CLI from your PATH."
+        : describeCliCommandStatus(status),
+  }),
+  publicCommand("system.reloadConfig", {
+    path: ["settings", "reload"],
+    summary: "Reload BB's managed configuration",
+    print: () => "Configuration reloaded",
+  }),
+];
 
-  const ui = settings
+export function registerSettingsCommands(
+  program: Command,
+  getUrl: () => string,
+): void {
+  const deps = { getUrl };
+  const settings = program
+    .command("settings")
+    .description("Inspect and update BB settings");
+  mountCommands(program, settingsCommands.slice(0, 1), deps);
+  settings
+    .command("ai-services")
+    .description(
+      "Choose which plugin AI service writes thread titles, commit messages, and voice transcripts",
+    );
+  mountCommands(program, settingsCommands.slice(1, 7), deps);
+  settings
     .command("ui")
     .description(
       "Manage server-synced UI preferences such as sidebar layout and navigation",
     );
-  ui.command("list")
-    .description("List every UI preference with its value and revision")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const result =
-          await createCliBbSdk(getUrl()).system.uiPreferences.list();
-        if (outputJson(opts, result)) return;
-        for (const key of UI_PREFERENCE_KEYS) {
-          const entry = result.preferences[key];
-          console.log(
-            `${key}  ${JSON.stringify(entry.value)}  (revision ${entry.revision})`,
-          );
-          console.log(`  ${describeUiPreference(key)}`);
-        }
-      }),
-    );
-  ui.command("get <key>")
-    .description("Show one UI preference")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (keyInput: string, opts: JsonOptions) => {
-        const key = requireUiPreferenceKey(keyInput);
-        const { preferences } =
-          await createCliBbSdk(getUrl()).system.uiPreferences.list();
-        const entry = preferences[key];
-        if (outputJson(opts, { key, ...entry })) return;
-        console.log(JSON.stringify(entry.value));
-      }),
-    );
-  ui.command("set <key> <value>")
-    .description("Set a UI preference; lists and null take JSON")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (keyInput: string, value: string, opts: JsonOptions) => {
-        const key = requireUiPreferenceKey(keyInput);
-        const parsedValue = parseUiPreferenceInput(key, value);
-        const sdk = createCliBbSdk(getUrl());
-        const write = async () => {
-          const { preferences } = await sdk.system.uiPreferences.list();
-          return sdk.system.uiPreferences.set({
-            expectedRevision: preferences[key].revision,
-            key,
-            value: parsedValue,
-          });
-        };
-        let result;
-        try {
-          result = await write();
-        } catch (error) {
-          if (!isUiPreferenceConflict(error)) throw error;
-          result = await write();
-        }
-        if (outputJson(opts, result)) return;
-        console.log(`${key} updated`);
-      }),
-    );
-  ui.command("reset <key>")
-    .description("Reset a UI preference to its default")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (keyInput: string, opts: JsonOptions) => {
-        const key = requireUiPreferenceKey(keyInput);
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).system.uiPreferences.reset({ key });
-        if (outputJson(opts, result)) return;
-        console.log(`${key} reset`);
-      }),
-    );
-
+  mountCommands(program, settingsCommands.slice(7, 13), deps);
   settings
-    .command("mobile-app")
-    .description("Show iOS TestFlight and Android APK download links")
-    .option("--details", "Include available public release metadata")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions & { details?: boolean }) => {
-        const system = createCliBbSdk(getUrl()).system;
-        const links = system.mobileAppDownloads();
-        if (opts.details) {
-          const releases = await system.mobileAppReleases();
-          if (outputJson(opts, { downloads: links, releases })) return;
-          console.log(
-            `iOS TestFlight: ${links.ios}\nAndroid APK: ${links.android}`,
-          );
-          console.log(
-            releases.android
-              ? `Android ${releases.android.version} (build ${releases.android.versionCode}) · Updated ${releases.android.updatedAt} · ${Math.ceil(releases.android.size / 1024 / 1024)} MB`
-              : "Android release details are unavailable.",
-          );
-          console.log("iOS version and release date are shown in TestFlight.");
-          return;
-        }
-        if (outputJson(opts, links)) return;
-        console.log(
-          `iOS TestFlight: ${links.ios}\nAndroid APK: ${links.android}`,
-        );
-      }),
-    );
-
-  settings
-    .command("experiment <key> <value>")
-    .description("Set an experiment value")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (key: string, value: string, opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const result = await sdk.system.updateExperiments(
-          experimentUpdate(key, value),
-        );
-        if (outputJson(opts, result)) return;
-        console.log(`${key} updated`);
-      }),
-    );
-
-  const keyboard = settings
     .command("keyboard")
     .description("Manage keyboard settings and shortcut overrides");
-  keyboard
-    .command("hints <value>")
-    .description("Show or hide held-modifier shortcut hints")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (value: string, opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
-        const result = await sdk.system.updateGeneralSettings(
-          updateGeneralSetting(
-            config.generalSettings,
-            "showKeyboardHints",
-            value,
-          ),
-        );
-        if (outputJson(opts, result)) return;
-        console.log("Keyboard hint visibility updated");
-      }),
-    );
-  keyboard
-    .command("list")
-    .description("List effective keybindings and overrides")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const config = await createCliBbSdk(getUrl()).system.config();
-        const result = {
-          bindings: config.keybindings,
-          overrides: config.keybindingOverrides,
-        };
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-  keyboard
-    .command("set <command> <shortcut>")
-    .description("Set a command shortcut; use 'disabled' to clear it")
-    .option(
-      "--platform <platform>",
-      "Scope to mac, windows, or linux",
-      (value: string) => keyboardPlatformSchema.parse(value),
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          commandInput: string,
-          shortcut: string,
-          opts: JsonOptions & { platform?: "mac" | "windows" | "linux" },
-        ) => {
-          const command = keyboardCommandIdSchema.parse(commandInput);
-          const sdk = createCliBbSdk(getUrl());
-          const config = await sdk.system.config();
-          const next = config.keybindingOverrides.filter(
-            (item) =>
-              item.command !== command || item.platform !== opts.platform,
-          );
-          next.push({
-            command,
-            ...(opts.platform === undefined ? {} : { platform: opts.platform }),
-            shortcut: shortcut === "disabled" ? null : parseShortcut(shortcut),
-          });
-          const result = await sdk.system.updateKeyboardSettings(next);
-          if (outputJson(opts, result)) return;
-          console.log(`Shortcut for ${command} updated`);
-        },
-      ),
-    );
-  keyboard
-    .command("reset [command]")
-    .description("Reset one command override or all keyboard overrides")
-    .option(
-      "--platform <platform>",
-      "Scope to mac, windows, or linux",
-      (value: string) => keyboardPlatformSchema.parse(value),
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          commandInput: string | undefined,
-          opts: JsonOptions & { platform?: "mac" | "windows" | "linux" },
-        ) => {
-          const sdk = createCliBbSdk(getUrl());
-          const config = await sdk.system.config();
-          const command =
-            commandInput === undefined
-              ? undefined
-              : keyboardCommandIdSchema.parse(commandInput);
-          const next = config.keybindingOverrides.filter(
-            (item) =>
-              (command !== undefined && item.command !== command) ||
-              (opts.platform !== undefined && item.platform !== opts.platform),
-          );
-          const result = await sdk.system.updateKeyboardSettings(next);
-          if (outputJson(opts, result)) return;
-          console.log(
-            commandInput
-              ? `Shortcut for ${commandInput} reset`
-              : "Keyboard overrides reset",
-          );
-        },
-      ),
-    );
-
+  mountCommands(program, settingsCommands.slice(13, 19), deps);
   settings
-    .command("usage")
-    .description("Show provider usage limits")
-    .option("--refresh", "Fetch fresh usage instead of a cached result")
-    .option(
-      "--machine <id-or-name>",
-      "Machine whose provider usage should be shown",
-    )
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: UsageOptions) => {
-        const target = resolveMachineTargetOption(opts);
-        const hostId =
-          target === undefined
-            ? undefined
-            : await resolveMachineHostId({
-                serverUrl: getUrl(),
-                target,
-              });
-        const result = await createCliBbSdk(getUrl()).system.usageLimits({
-          hostId,
-          refresh: opts.refresh,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-
-  settings
-    .command("version")
-    .description("Check the running and latest BB versions")
-    .option("--force", "Bypass the latest-version cache")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions & { force?: boolean }) => {
-        const result = await createCliBbSdk(getUrl()).system.version({
-          force: opts.force,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
-      }),
-    );
-
-  const cliCommand = settings
     .command("cli-command")
     .description(
       "Install the bb CLI for use outside bb, on the computer that runs the bb server",
     );
-  cliCommand
-    .command("show", { isDefault: true })
-    .description("Show whether the bb CLI is installed for use outside bb")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const status =
-          await createCliBbSdk(getUrl()).system.experimental_cliCommand();
-        if (outputJson(opts, status)) return;
-        console.log(describeCliCommandStatus(status));
-      }),
-    );
-  cliCommand
-    .command("install")
-    .description("Link the bb CLI into a folder on PATH")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const status =
-          await createCliBbSdk(
-            getUrl(),
-          ).system.experimental_installCliCommand();
-        if (outputJson(opts, status)) return;
-        console.log(describeCliCommandStatus(status));
-      }),
-    );
-  cliCommand
-    .command("remove")
-    .description("Take the bb CLI that bb installed off PATH")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const status =
-          await createCliBbSdk(getUrl()).system.experimental_removeCliCommand();
-        if (outputJson(opts, status)) return;
-        console.log(
-          status.installedPath === null
-            ? "Removed the bb CLI from your PATH."
-            : describeCliCommandStatus(status),
-        );
-      }),
-    );
-
-  settings
-    .command("reload")
-    .description("Reload BB's managed configuration")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).system.reloadConfig();
-        if (outputJson(opts, result)) return;
-        console.log("Configuration reloaded");
-      }),
-    );
+  mountCommands(program, settingsCommands.slice(19), deps);
 }

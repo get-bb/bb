@@ -77,6 +77,7 @@ import {
   binaryResponse,
   defineRoute,
   formRequest,
+  jsonFieldRequest,
   jsonRequest,
   jsonResponse,
   noRequest,
@@ -419,6 +420,7 @@ import {
   type UpdateUiPreferenceRequest,
 } from "./api/ui-preferences.js";
 import type { ApiError } from "./errors.js";
+import { pluginManagementRoutes } from "./api/plugin-routes.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathThreadMessage = { param: { id: string; seq: string } };
@@ -427,6 +429,7 @@ type PathThreadInteractionId = {
 };
 
 export const publicApiRoutes = {
+  ...pluginManagementRoutes,
   promptHistory: {
     list: defineRoute({
       path: "/prompt-history",
@@ -1931,9 +1934,11 @@ export const publicApiRoutes = {
     keyboardSettings: defineRoute({
       path: "/settings/keyboard",
       method: "put",
-      request: jsonRequest<EmptyInput, AppKeybindingOverrides>(
-        appKeybindingOverridesSchema,
-      ),
+      request: jsonFieldRequest<
+        EmptyInput,
+        AppKeybindingOverrides,
+        "overrides"
+      >("overrides", appKeybindingOverridesSchema),
       response: jsonResponse<AppKeybindingOverrides>(),
     }),
     experiments: defineRoute({

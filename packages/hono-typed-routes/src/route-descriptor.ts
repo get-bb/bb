@@ -29,9 +29,14 @@ export interface QueryRouteRequest<Input, ParsedInput> {
   readonly parsedInput?: ParsedInput;
 }
 
-export interface JsonRouteRequest<Input, ParsedInput> {
+export interface JsonRouteRequest<
+  Input,
+  ParsedInput,
+  Field extends string | null = string | null,
+> {
   source: "json";
   schema: ZodType;
+  field: Field;
   readonly input?: Input;
   readonly parsedInput?: ParsedInput;
 }
@@ -213,8 +218,24 @@ export function jsonRequest<
   Schema extends ZodType = ZodType<BodyInput>,
 >(
   schema: Schema,
-): JsonRouteRequest<InputPrefix & { json: BodyInput }, z.output<Schema>> {
-  return { source: "json", schema };
+): JsonRouteRequest<InputPrefix & { json: BodyInput }, z.output<Schema>, null> {
+  return { source: "json", schema, field: null };
+}
+
+export function jsonFieldRequest<
+  InputPrefix,
+  BodyInput,
+  const Field extends string,
+  Schema extends ZodType = ZodType<BodyInput>,
+>(
+  field: Field,
+  schema: Schema,
+): JsonRouteRequest<
+  InputPrefix & { json: BodyInput },
+  z.output<Schema>,
+  Field
+> {
+  return { source: "json", schema, field };
 }
 
 export function formRequest<InputPrefix, FormInput>(): FormRouteRequest<

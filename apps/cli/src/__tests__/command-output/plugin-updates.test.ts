@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createApiClient } from "@bb/server-contract";
 import {
+  createClientMock,
   collectLogPayloads,
   getHelpOutput,
   runCommand,
@@ -48,6 +50,9 @@ const pluginList = (id: string, source: string) => ({
 
 describe("bb plugin update commands", () => {
   setupCommandOutputTestEnvironment();
+  beforeEach(() => {
+    createClientMock.mockReturnValue(createApiClient("http://server"));
+  });
 
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
@@ -397,9 +402,9 @@ describe("bb plugin update commands", () => {
       .mockResolvedValueOnce(
         Response.json(pluginList("notes", "npm:notes@^1")),
       );
-    await expect(
-      runCommand(["plugin", "update", "notes"], register),
-    ).rejects.toThrow("process.exit:1");
+    await runCommand(["plugin", "update", "notes"], register);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
       "Refusing to update without confirmation — re-run with --yes.",
     );

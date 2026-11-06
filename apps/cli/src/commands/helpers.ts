@@ -36,15 +36,7 @@ export function printThreadContextLabel(resolved: ResolvedId): void {
   }
 }
 
-export async function confirmDestructiveAction(
-  message: string,
-): Promise<boolean> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error(
-      "Refusing destructive action without an interactive terminal. Re-run with --yes to confirm.",
-    );
-  }
-
+export async function askYesNo(message: string): Promise<boolean> {
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -57,6 +49,17 @@ export async function confirmDestructiveAction(
   } finally {
     readline.close();
   }
+}
+
+export async function confirmDestructiveAction(
+  message: string,
+): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(
+      "Refusing destructive action without an interactive terminal. Re-run with --yes to confirm.",
+    );
+  }
+  return askYesNo(message);
 }
 
 export function getErrorMessage(err: unknown): string {

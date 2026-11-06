@@ -1,131 +1,164 @@
-import { Command } from "commander";
+import { flag } from "@bb/operations";
+import type { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
-import { action } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
+import type { PublicOperationInput } from "@bb/server-contract";
+import { clientCommand, mountCommand } from "../../operation-doors.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
 import {
   columnWidths,
   printBorderlessTable,
   truncateCell,
 } from "../../table.js";
-import { collectOption, outputJson } from "../helpers.js";
 import {
   resolveMachineHostId,
   resolveMachineTargetOption,
 } from "../machine.js";
 
-interface ThreadListCommandOptions {
-  environment?: string;
-  machine?: string;
-  host?: string;
-  project?: string;
-  parentThread?: string;
-  thread: string[];
-  archived?: boolean;
-  includeArchived?: boolean;
-  section?: string;
-  unsectioned?: boolean;
-  json?: boolean;
-  includeHidden?: boolean;
+type ThreadListQuery = PublicOperationInput<"threads.list">;
+
+interface ThreadListInput {
+  query: ThreadListQuery;
+  json: boolean;
 }
+
+interface ThreadListOutput {
+  threads: Thread[];
+  projectNames: ReadonlyMap<string, string>;
+}
+
+function stringOption(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+export const threadListCommand = clientCommand<
+  ThreadListInput,
+  ThreadListOutput
+>({
+  name: "cli.thread.list",
+  kind: "read",
+  description:
+    "List threads with threads.list, then name their projects with projects.list for the table",
+  door: {
+    path: ["thread", "list"],
+    summary: "List threads",
+    options: [
+      flag("--project <id>", "Filter by project ID (defaults to all projects)"),
+      flag("--environment <id>", "Filter by environment ID"),
+      flag(
+        "--machine <id-or-name>",
+        "Filter by machine ID or active machine name",
+      ),
+      flag("--host <id-or-name>", "Alias for --machine"),
+      flag("--parent-thread <id>", "Filter by parent thread ID"),
+      flag(
+        "--thread <id>",
+        "Show only this thread ID, leaving out unknown or deleted IDs (repeatable, up to 200)",
+        { type: "strings", default: [] },
+      ),
+      flag("--section <id>", "Filter by thread section ID"),
+      flag("--unsectioned", "Show only threads outside sections"),
+      flag("--archived", "Show only archived threads"),
+      flag("--include-archived", "Include archived threads"),
+      flag("--include-hidden", "Include hidden threads"),
+    ],
+    prepare: async ({ options }, client) => {
+      const projectId = resolveExplicitIdFlag({
+        flagName: "--project flag",
+        value: stringOption(options.project),
+      });
+      const parentThreadId = resolveExplicitIdFlag({
+        flagName: "--parent-thread",
+        value: stringOption(options["parent-thread"]),
+      });
+      const threadValues = Array.isArray(options.thread) ? options.thread : [];
+      const threadIds = threadValues.flatMap(
+        (value) => resolveExplicitIdFlag({ flagName: "--thread", value }) ?? [],
+      );
+      const environmentId = resolveExplicitIdFlag({
+        flagName: "--environment",
+        value: stringOption(options.environment),
+      });
+      const machineTarget = resolveMachineTargetOption({
+        machine: stringOption(options.machine),
+        host: stringOption(options.host),
+      });
+      const hostId =
+        machineTarget === undefined
+          ? undefined
+          : machineTarget.trim().startsWith("host_")
+            ? resolveExplicitIdFlag({
+                flagName: "--machine",
+                value: machineTarget,
+              })
+            : await resolveMachineHostId({
+                serverUrl: client.url,
+                target: machineTarget,
+              });
+      const archivedOnly = options.archived === true;
+      if (archivedOnly && options["include-archived"] === true) {
+        throw new Error("Cannot combine --archived with --include-archived.");
+      }
+      const section = stringOption(options.section);
+      if (section && options.unsectioned === true) {
+        throw new Error("Cannot combine --section with --unsectioned.");
+      }
+      const sectionId = resolveExplicitIdFlag({
+        flagName: "--section",
+        value: section,
+      });
+      const archived = archivedOnly
+        ? true
+        : options["include-archived"] === true || threadIds.length > 0
+          ? undefined
+          : false;
+      return {
+        json: options.json === true,
+        query: {
+          ...(projectId ? { projectId } : {}),
+          ...(environmentId ? { environmentId } : {}),
+          ...(hostId ? { hostId } : {}),
+          ...(parentThreadId ? { parentThreadId } : {}),
+          ...(threadIds.length > 0 ? { threadIds: threadIds.join(",") } : {}),
+          ...(archived === undefined
+            ? {}
+            : { archived: archived ? "true" : "false" }),
+          ...(sectionId ? { sectionId } : {}),
+          ...(options.unsectioned === true ? { unsectioned: "true" } : {}),
+          ...(options["include-hidden"] === true
+            ? { includeHidden: "true" }
+            : {}),
+        },
+      };
+    },
+    run: async ({ query, json }, client) => {
+      const threads = await client.call("threads.list", query);
+      if (json || threads.length === 0) {
+        return { threads, projectNames: new Map() };
+      }
+      const projects = await client.call("projects.list", {
+        includePersonal: "false",
+      });
+      return {
+        threads,
+        projectNames: new Map(
+          projects.map((project) => [project.id, project.name]),
+        ),
+      };
+    },
+    json: ({ threads }) => threads,
+    print: ({ threads, projectNames }) => {
+      if (threads.length === 0) return "No threads found";
+      printThreadTable(threads, projectNames);
+      return null;
+    },
+  },
+});
 
 export function registerListCommand(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("list")
-    .description("List threads")
-    .option("--project <id>", "Filter by project ID (defaults to all projects)")
-    .option("--environment <id>", "Filter by environment ID")
-    .option(
-      "--machine <id-or-name>",
-      "Filter by machine ID or active machine name",
-    )
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--parent-thread <id>", "Filter by parent thread ID")
-    .option(
-      "--thread <id>",
-      "Show only this thread ID, leaving out unknown or deleted IDs (repeatable, up to 200)",
-      collectOption,
-      [],
-    )
-    .option("--section <id>", "Filter by thread section ID")
-    .option("--unsectioned", "Show only threads outside sections")
-    .option("--archived", "Show only archived threads")
-    .option("--include-archived", "Include archived threads")
-    .option("--include-hidden", "Include hidden threads")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: ThreadListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const projectId = resolveExplicitIdFlag({
-          flagName: "--project flag",
-          value: opts.project,
-        });
-        const parentThreadId = resolveExplicitIdFlag({
-          flagName: "--parent-thread",
-          value: opts.parentThread,
-        });
-        const threadIds = opts.thread.flatMap(
-          (value) =>
-            resolveExplicitIdFlag({ flagName: "--thread", value }) ?? [],
-        );
-        const environmentId = resolveExplicitIdFlag({
-          flagName: "--environment",
-          value: opts.environment,
-        });
-        const machineTarget = resolveMachineTargetOption(opts);
-        const hostId =
-          machineTarget === undefined
-            ? undefined
-            : machineTarget.trim().startsWith("host_")
-              ? resolveExplicitIdFlag({
-                  flagName: "--machine",
-                  value: machineTarget,
-                })
-              : await resolveMachineHostId({
-                  serverUrl: getUrl(),
-                  target: machineTarget,
-                });
-        if (opts.archived && opts.includeArchived) {
-          throw new Error("Cannot combine --archived with --include-archived.");
-        }
-        if (opts.section && opts.unsectioned) {
-          throw new Error("Cannot combine --section with --unsectioned.");
-        }
-        const sectionId = resolveExplicitIdFlag({
-          flagName: "--section",
-          value: opts.section,
-        });
-        const archived = opts.archived
-          ? true
-          : opts.includeArchived || threadIds.length > 0
-            ? undefined
-            : false;
-        const threads = await sdk.threads.list({
-          ...(projectId ? { projectId } : {}),
-          ...(environmentId ? { environmentId } : {}),
-          ...(hostId ? { hostId } : {}),
-          ...(parentThreadId ? { parentThreadId } : {}),
-          ...(threadIds.length > 0 ? { threadIds } : {}),
-          ...(archived === undefined ? {} : { archived }),
-          ...(sectionId ? { sectionId } : {}),
-          ...(opts.unsectioned ? { unsectioned: true } : {}),
-          ...(opts.includeHidden ? { includeHidden: true } : {}),
-        });
-        if (outputJson(opts, threads)) return;
-        if (threads.length === 0) {
-          console.log("No threads found");
-          return;
-        }
-        const projects = await sdk.projects.list({ includePersonal: false });
-        const projectNames = new Map(
-          projects.map((project) => [project.id, project.name]),
-        );
-        printThreadTable(threads, projectNames);
-      }),
-    );
+  mountCommand(parent, threadListCommand, { getUrl });
 }
 
 const MAX_TITLE_WIDTH = 60;

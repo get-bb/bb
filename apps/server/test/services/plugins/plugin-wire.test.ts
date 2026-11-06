@@ -399,7 +399,11 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
     const issued = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/token`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      },
     );
     expect(issued.status).toBe(200);
     const { token } = (await issued.json()) as { token: string };
@@ -452,7 +456,11 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
     const unknownPlugin = await harness.app.request(
       `${BASE}/api/v1/plugins/ghost/token`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      },
     );
     expect(unknownPlugin.status).toBe(404);
   });

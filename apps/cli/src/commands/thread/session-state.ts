@@ -1,25 +1,16 @@
+import { flag } from "@bb/operations";
 import type {
   ProviderCommand,
+  PublicOperationOutput,
+  ThreadTimelineResponse,
   ThreadTimelineSessionOption,
 } from "@bb/server-contract";
-import { Command } from "commander";
-import { action } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
-import { outputJson, requireThreadIdOrSelf } from "../helpers.js";
-
-interface SessionStateCommandOptions {
-  self?: boolean;
-  json?: boolean;
-}
-
-interface SessionOptionsCommandOptions extends SessionStateCommandOptions {
-  set?: string[];
-  clear?: string[];
-}
-
-function collectRepeated(value: string, previous: string[] = []): string[] {
-  return [...previous, value];
-}
+import type { Command } from "commander";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+} from "../../operation-doors.js";
 
 export function parseSessionOptionAssignments(args: {
   options: readonly ThreadTimelineSessionOption[] | null;
@@ -118,76 +109,116 @@ export function formatThreadSessionOptions(
   });
 }
 
+function fullTimeline(
+  timeline: PublicOperationOutput<"threads.timeline">,
+): ThreadTimelineResponse {
+  if ("delta" in timeline) {
+    throw new Error("The server answered a full timeline read with a delta.");
+  }
+  return timeline;
+}
+
+const SELF_THREAD = {
+  field: "id",
+  from: "threadId",
+  flag: "self",
+  description: "Use the current thread",
+} as const;
+
+export const threadCommandsCommand = publicCommand("threads.timeline", {
+  path: ["thread", "commands"],
+  summary: "List the slash commands the thread's agent has advertised",
+  positionals: [{ name: "id", field: "id", required: false }],
+  self: SELF_THREAD,
+  fixed: { summaryOnly: "true" },
+  json: (timeline) => ({
+    commands: fullTimeline(timeline).providerCommands,
+  }),
+  print: (timeline) =>
+    formatThreadProviderCommands(fullTimeline(timeline).providerCommands),
+});
+
+interface ThreadOptionsInput {
+  threadId: string;
+  set: string[];
+  clear: string[];
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+export const threadOptionsCommand = clientCommand<
+  ThreadOptionsInput,
+  readonly ThreadTimelineSessionOption[] | null
+>({
+  name: "cli.thread.options",
+  kind: "write",
+  description:
+    "Read session options with threads.timeline, apply --set/--clear with threads.update, then read them again",
+  door: {
+    path: ["thread", "options"],
+    summary:
+      "List the session options the thread's agent reports, or choose values applied on the thread's next turn",
+    positionals: [{ name: "id", required: false }],
+    options: [
+      flag("--self", "Use the current thread"),
+      flag(
+        "--set <option=value>",
+        "Choose a value for an option, applied on the next turn (repeatable)",
+        { type: "strings" },
+      ),
+      flag(
+        "--clear <option>",
+        "Drop a choice that has not been applied yet (repeatable)",
+        { type: "strings" },
+      ),
+    ],
+    prepare: ({ positionals, options }, client) => {
+      const id = positionals.id;
+      return {
+        threadId: client.threadId(
+          typeof id === "string" ? id : undefined,
+          options.self === true,
+        ),
+        set: strings(options.set),
+        clear: strings(options.clear),
+      };
+    },
+    run: async ({ threadId, set, clear }, client) => {
+      const readOptions = async () =>
+        fullTimeline(
+          await client.call("threads.timeline", {
+            id: threadId,
+            summaryOnly: "true",
+          }),
+        ).sessionOptions;
+      let options = await readOptions();
+      if (set.length > 0 || clear.length > 0) {
+        await client.call("threads.update", {
+          id: threadId,
+          sessionOptions: parseSessionOptionAssignments({
+            options,
+            set,
+            clear,
+          }),
+        });
+        options = await readOptions();
+      }
+      return options;
+    },
+    json: (options) => ({ options }),
+    print: (options) => formatThreadSessionOptions(options),
+  },
+});
+
 export function registerSessionStateCommands(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("commands [id]")
-    .description("List the slash commands the thread's agent has advertised")
-    .option("--self", "Use the current thread")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (id: string | undefined, opts: SessionStateCommandOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const timeline = await createCliBbSdk(getUrl()).threads.timeline({
-            threadId,
-            summaryOnly: "true",
-          });
-          const commands = timeline.providerCommands;
-          if (outputJson(opts, { commands })) return;
-          for (const line of formatThreadProviderCommands(commands)) {
-            console.log(line);
-          }
-        },
-      ),
-    );
-
-  parent
-    .command("options [id]")
-    .description(
-      "List the session options the thread's agent reports, or choose values applied on the thread's next turn",
-    )
-    .option("--self", "Use the current thread")
-    .option(
-      "--set <option=value>",
-      "Choose a value for an option, applied on the next turn (repeatable)",
-      collectRepeated,
-    )
-    .option(
-      "--clear <option>",
-      "Drop a choice that has not been applied yet (repeatable)",
-      collectRepeated,
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (id: string | undefined, opts: SessionOptionsCommandOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          const readOptions = async () =>
-            (await sdk.threads.timeline({ threadId, summaryOnly: "true" }))
-              .sessionOptions;
-          let options = await readOptions();
-          const set = opts.set ?? [];
-          const clear = opts.clear ?? [];
-          if (set.length > 0 || clear.length > 0) {
-            await sdk.threads.update({
-              threadId,
-              sessionOptions: parseSessionOptionAssignments({
-                options,
-                set,
-                clear,
-              }),
-            });
-            options = await readOptions();
-          }
-          if (outputJson(opts, { options })) return;
-          for (const line of formatThreadSessionOptions(options)) {
-            console.log(line);
-          }
-        },
-      ),
-    );
+  mountCommands(parent, [threadCommandsCommand, threadOptionsCommand], {
+    getUrl,
+  });
 }

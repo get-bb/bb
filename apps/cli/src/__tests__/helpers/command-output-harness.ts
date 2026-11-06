@@ -25,20 +25,27 @@ vi.mock("../../client.js", async () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-  const createCliBbSdk = vi.fn((baseUrl: string) => {
+  const createCliTransport = vi.fn((baseUrl: string) => {
     const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
-    return createBbSdk({
-      transport: {
-        ...realTransport,
-        api: serverClientState.createClient(baseUrl)?.api ?? {},
-        readJson: (responsePromise: MockTransportPromise) =>
-          realTransport.readJson(responsePromise.then(toResponse)),
-        readVoid: (responsePromise: MockTransportPromise) =>
-          realTransport.readVoid(responsePromise.then(toResponse)),
-      },
-    });
+    return {
+      ...realTransport,
+      api: serverClientState.createClient(baseUrl)?.api ?? {},
+      readJson: (responsePromise: MockTransportPromise) =>
+        realTransport.readJson(responsePromise.then(toResponse)),
+      readVoid: (responsePromise: MockTransportPromise) =>
+        realTransport.readVoid(responsePromise.then(toResponse)),
+      resolve: <TResponse extends MockTransportResolved>(
+        responsePromise: Promise<TResponse>,
+      ) =>
+        realTransport.resolve(
+          responsePromise.then(toResponse),
+        ) as Promise<TResponse>,
+    };
   });
-  return { cliFetch, createCliBbSdk };
+  const createCliBbSdk = vi.fn((baseUrl: string) =>
+    createBbSdk({ transport: createCliTransport(baseUrl) }),
+  );
+  return { cliFetch, createCliBbSdk, createCliTransport };
 });
 
 vi.mock("node:readline/promises", () => ({
@@ -115,6 +122,7 @@ export function setupCommandOutputTestEnvironment(): void {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    process.exitCode = undefined;
     if (stdinTty === undefined) Reflect.deleteProperty(process.stdin, "isTTY");
     else Object.defineProperty(process.stdin, "isTTY", stdinTty);
     if (stdoutTty === undefined)

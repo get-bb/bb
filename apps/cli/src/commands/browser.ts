@@ -1,45 +1,29 @@
 import { writeFile } from "node:fs/promises";
-import { Command } from "commander";
+import type { Command } from "commander";
+import {
+  JSON_FLAG_DESCRIPTION,
+  type CliDoorOption,
+  type CliDoorPositional,
+  type CliValues,
+  flag,
+} from "@bb/operations";
 import type {
   ExperimentalDesktopBrowserImportOutcome,
   ExperimentalDesktopBrowserImportSources,
   ExperimentalDesktopBrowserScope,
+  ExperimentalDesktopBrowserTabs,
 } from "@bb/sdk";
 import {
   DESKTOP_BROWSER_IMPORT_FAILURE_COPY,
   desktopBrowserImportSourceIdSchema,
 } from "@bb/host-daemon-contract";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import {
+  clientCommand,
+  mountCommands,
+  type CliClient,
+  type CliCommand,
+} from "../operation-doors.js";
 
-interface ScopeOptions {
-  json?: boolean;
-  host: string;
-  instance: string;
-  generation: string;
-  thread: string;
-}
-function scope(options: ScopeOptions): ExperimentalDesktopBrowserScope {
-  return {
-    hostId: options.host,
-    instanceId: options.instance,
-    generation: options.generation,
-    threadId: options.thread,
-  };
-}
-interface InstanceOptions {
-  json?: boolean;
-  host: string;
-  instance: string;
-  generation: string;
-}
-function instanceScoped(command: Command) {
-  return command
-    .requiredOption("--host <id>", "Browser host ID")
-    .requiredOption("--instance <id>", "Desktop window instance ID")
-    .requiredOption("--generation <id>", "Desktop connection generation")
-    .option("--json", "Print machine-readable JSON output");
-}
 export function formatImportSources(
   result: ExperimentalDesktopBrowserImportSources,
 ): string {
@@ -72,285 +56,380 @@ export function formatImportOutcome(
       : "";
   return `Imported ${outcome.imported} cookies${skipped}`;
 }
-function scoped(command: Command) {
-  return command
-    .requiredOption("--host <id>", "Browser host ID")
-    .requiredOption("--instance <id>", "Desktop window instance ID")
-    .requiredOption("--generation <id>", "Desktop connection generation")
-    .requiredOption("--thread <id>", "Owning thread ID")
-    .option("--json", "Print machine-readable JSON output");
-}
-function print(value: object, options: { json?: boolean }, summary: string) {
-  console.log(options.json ? JSON.stringify(value) : summary);
+const JSON_OPTION: CliDoorOption = flag("--json", JSON_FLAG_DESCRIPTION);
+
+function requiredOption(
+  flag: string,
+  placeholder: string,
+  description: string,
+): CliDoorOption {
+  return { flag, type: "string", placeholder, required: true, description };
 }
 
-export function registerBrowserCommands(
-  program: Command,
-  getUrl: () => string,
-) {
-  const browser = program
-    .command("browser")
-    .description("Experimental built-in desktop browser control");
-  const api = () => createCliBbSdk(getUrl()).experimental_desktopBrowsers;
-  browser
-    .command("instances")
-    .description("List connected desktop windows on a host")
-    .requiredOption("--host <id>", "Browser host ID")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (options: { host: string; json?: boolean }) => {
-        const result = await api().listInstances({ hostId: options.host });
-        print(
-          result,
-          options,
-          result.instances
-            .map(
-              (instance) =>
-                `${instance.instanceId}  ${instance.generation}  ${instance.label}`,
-            )
-            .join("\n") || "No connected desktop windows",
-        );
-      }),
-    );
-  scoped(
-    browser.command("tabs").description("List a thread's native browser tabs"),
-  ).action(
-    action(async (options: ScopeOptions) => {
-      const result = await api().listTabs(scope(options));
+const INSTANCE_OPTIONS: readonly CliDoorOption[] = [
+  requiredOption("host", "id", "Browser host ID"),
+  requiredOption("instance", "id", "Desktop window instance ID"),
+  requiredOption("generation", "id", "Desktop connection generation"),
+];
+
+const SCOPE_OPTIONS: readonly CliDoorOption[] = [
+  ...INSTANCE_OPTIONS,
+  requiredOption("thread", "id", "Owning thread ID"),
+];
+
+function text(values: CliValues, flag: string): string {
+  const value = values.options[flag];
+  return typeof value === "string" ? value : "";
+}
+
+function maybeText(values: CliValues, flag: string): string | undefined {
+  const value = values.options[flag];
+  return typeof value === "string" ? value : undefined;
+}
+
+function positional(values: CliValues, name: string): string {
+  const value = values.positionals[name];
+  return typeof value === "string" ? value : "";
+}
+
+function instance(values: CliValues) {
+  return {
+    hostId: text(values, "host"),
+    instanceId: text(values, "instance"),
+    generation: text(values, "generation"),
+  };
+}
+
+function scope(values: CliValues): ExperimentalDesktopBrowserScope {
+  return { ...instance(values), threadId: text(values, "thread") };
+}
+
+function print(value: object, values: CliValues, summary: string) {
+  console.log(values.options.json === true ? JSON.stringify(value) : summary);
+}
+
+function describeTabs(result: ExperimentalDesktopBrowserTabs): string {
+  return (
+    result.tabs
+      .map(
+        (tab) =>
+          `${tab.tabId}  ${tab.title || tab.url}  ${tab.control?.controllerLabel ?? "Available"}`,
+      )
+      .join("\n") || "No browser tabs in this thread"
+  );
+}
+
+function browserCommand(spec: {
+  name: string;
+  kind: "read" | "write";
+  description: string;
+  path: readonly string[];
+  summary: string;
+  positionals?: readonly CliDoorPositional[];
+  options: readonly CliDoorOption[];
+  run(values: CliValues, client: CliClient): Promise<void>;
+}): CliCommand {
+  return clientCommand<CliValues, null>({
+    name: spec.name,
+    kind: spec.kind,
+    description: spec.description,
+    door: {
+      path: spec.path,
+      summary: spec.summary,
+      ...(spec.positionals === undefined
+        ? {}
+        : { positionals: spec.positionals }),
+      options: spec.options,
+      noJson: true,
+      prepare: (values) => values,
+      async run(values, client) {
+        await spec.run(values, client);
+        return null;
+      },
+      print: () => null,
+    },
+  });
+}
+
+function tabCommand(name: "reveal" | "close"): CliCommand {
+  return browserCommand({
+    name: `cli.browser.${name}`,
+    kind: "write",
+    description:
+      name === "close"
+        ? "Close a native browser tab"
+        : "Reveal a native browser tab",
+    path: ["browser", name],
+    summary:
+      name === "close"
+        ? "Close a native tab"
+        : "Reveal a native tab in its desktop window",
+    positionals: [{ name: "tabId" }],
+    options: [...SCOPE_OPTIONS, JSON_OPTION],
+    async run(values, client) {
+      const tabId = positional(values, "tabId");
+      const input = { ...scope(values), tabId };
+      print(
+        name === "close"
+          ? await client.call("desktopBrowsers.closeTab", input)
+          : await client.call("desktopBrowsers.revealTab", input),
+        values,
+        `${name === "close" ? "Closed" : "Revealed"} tab ${tabId}`,
+      );
+    },
+  });
+}
+
+export const browserCommands = [
+  browserCommand({
+    name: "cli.browser.instances",
+    kind: "read",
+    description: "List connected desktop windows",
+    path: ["browser", "instances"],
+    summary: "List connected desktop windows on a host",
+    options: [requiredOption("host", "id", "Browser host ID"), JSON_OPTION],
+    async run(values, client) {
+      const result = await client.call("desktopBrowsers.listInstances", {
+        hostId: text(values, "host"),
+      });
       print(
         result,
-        options,
-        result.tabs
+        values,
+        result.instances
           .map(
-            (tab) =>
-              `${tab.tabId}  ${tab.title || tab.url}  ${tab.control?.controllerLabel ?? "Available"}`,
+            (entry) =>
+              `${entry.instanceId}  ${entry.generation}  ${entry.label}`,
           )
-          .join("\n") || "No browser tabs in this thread",
+          .join("\n") || "No connected desktop windows",
       );
-    }),
-  );
-  scoped(
-    browser
-      .command("create")
-      .description("Create a tab in the BB browser profile"),
-  )
-    .option("--url <url>", "Initial HTTP(S) URL; defaults to about:blank")
-    .option("--reveal", "Show the new native tab")
-    .action(
-      action(
-        async (options: ScopeOptions & { url?: string; reveal?: boolean }) => {
-          const result = await api().createTab({
-            ...scope(options),
-            ...(options.url === undefined ? {} : { url: options.url }),
-            ...(options.reveal ? { presentation: "reveal" } : {}),
-          });
-          print(result, options, `Created tab ${result.tab.tabId}`);
-        },
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.tabs",
+    kind: "read",
+    description: "List a thread's native browser tabs",
+    path: ["browser", "tabs"],
+    summary: "List a thread's native browser tabs",
+    options: [...SCOPE_OPTIONS, JSON_OPTION],
+    async run(values, client) {
+      const result = await client.call(
+        "desktopBrowsers.listTabs",
+        scope(values),
+      );
+      print(result, values, describeTabs(result));
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.create",
+    kind: "write",
+    description: "Create a tab in the BB browser profile",
+    path: ["browser", "create"],
+    summary: "Create a tab in the BB browser profile",
+    options: [
+      ...SCOPE_OPTIONS,
+      JSON_OPTION,
+      flag("--url <url>", "Initial HTTP(S) URL; defaults to about:blank"),
+      flag("--reveal", "Show the new native tab"),
+    ],
+    async run(values, client) {
+      const url = maybeText(values, "url");
+      const result = await client.call("desktopBrowsers.createTab", {
+        ...scope(values),
+        ...(url === undefined ? {} : { url }),
+        ...(values.options.reveal === true
+          ? { presentation: "reveal" as const }
+          : {}),
+      });
+      print(result, values, `Created tab ${result.tab.tabId}`);
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.acquire",
+    kind: "write",
+    description: "Acquire an expiring control lease on browser tabs",
+    path: ["browser", "acquire"],
+    summary: "Acquire exclusive, expiring control of selected tabs",
+    positionals: [{ name: "tabIds", variadic: true }],
+    options: [
+      ...SCOPE_OPTIONS,
+      JSON_OPTION,
+      requiredOption("controller", "label", "Visible controller name"),
+      flag(
+        "--ttl-ms <ms>",
+        "Lease duration; defaults to five minutes, maximum thirty",
       ),
-    );
-  scoped(
-    browser
-      .command("acquire <tabIds...>")
-      .description("Acquire exclusive, expiring control of selected tabs"),
-  )
-    .requiredOption("--controller <label>", "Visible controller name")
-    .option(
-      "--ttl-ms <ms>",
-      "Lease duration; defaults to five minutes, maximum thirty",
-    )
-    .action(
-      action(
-        async (
-          tabIds: string[],
-          options: ScopeOptions & {
-            controller: string;
-            ttlMs?: string;
-          },
-        ) => {
-          const result = await api().acquireControl({
-            ...scope(options),
-            tabIds,
-            controllerLabel: options.controller,
-            ...(options.ttlMs === undefined
-              ? {}
-              : { ttlMs: Number(options.ttlMs) }),
-          });
-          print(
-            result,
-            options,
-            `Control lease ${result.leaseId} expires ${new Date(result.expiresAt).toISOString()}`,
-          );
-        },
-      ),
-    );
-  scoped(
-    browser
-      .command("connection <leaseId>")
-      .description("Write private CDP connection JSON to a new local file"),
-  )
-    .requiredOption(
-      "--output <file>",
-      "New credential file (mode 0600); endpoint works only on browser host",
-    )
-    .action(
-      action(
-        async (leaseId: string, options: ScopeOptions & { output: string }) => {
-          const connection = await api().openConnection({
-            ...scope(options),
-            leaseId,
-          });
-          await writeFile(options.output, JSON.stringify(connection), {
-            mode: 0o600,
-            flag: "wx",
-          });
-          print(
-            {
-              path: options.output,
-              hostId: connection.hostId,
-              expiresAt: connection.expiresAt,
-            },
-            options,
-            `Wrote private connection to ${options.output}`,
-          );
-        },
-      ),
-    );
-  scoped(
-    browser
-      .command("release <leaseId>")
-      .description("Stop automation and keep tabs open"),
-  ).action(
-    action(async (leaseId: string, options: ScopeOptions) => {
+    ],
+    async run(values, client) {
+      const tabIds = values.positionals.tabIds;
+      const ttlMs = maybeText(values, "ttl-ms");
+      const result = await client.call("desktopBrowsers.acquireControl", {
+        ...scope(values),
+        tabIds: Array.isArray(tabIds) ? tabIds : [],
+        controllerLabel: text(values, "controller"),
+        ...(ttlMs === undefined ? {} : { ttlMs: Number(ttlMs) }),
+      });
       print(
-        await api().releaseControl({ ...scope(options), leaseId }),
-        options,
+        result,
+        values,
+        `Control lease ${result.leaseId} expires ${new Date(result.expiresAt).toISOString()}`,
+      );
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.connection",
+    kind: "write",
+    description:
+      "Open a private CDP connection and write it to a new local file",
+    path: ["browser", "connection"],
+    summary: "Write private CDP connection JSON to a new local file",
+    positionals: [{ name: "leaseId" }],
+    options: [
+      ...SCOPE_OPTIONS,
+      JSON_OPTION,
+      requiredOption(
+        "output",
+        "file",
+        "New credential file (mode 0600); endpoint works only on browser host",
+      ),
+    ],
+    async run(values, client) {
+      const output = text(values, "output");
+      const connection = await client.call("desktopBrowsers.openConnection", {
+        ...scope(values),
+        leaseId: positional(values, "leaseId"),
+      });
+      await writeFile(output, JSON.stringify(connection), {
+        mode: 0o600,
+        flag: "wx",
+      });
+      print(
+        {
+          path: output,
+          hostId: connection.hostId,
+          expiresAt: connection.expiresAt,
+        },
+        values,
+        `Wrote private connection to ${output}`,
+      );
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.release",
+    kind: "write",
+    description: "Release a browser control lease",
+    path: ["browser", "release"],
+    summary: "Stop automation and keep tabs open",
+    positionals: [{ name: "leaseId" }],
+    options: [...SCOPE_OPTIONS, JSON_OPTION],
+    async run(values, client) {
+      print(
+        await client.call("desktopBrowsers.releaseControl", {
+          ...scope(values),
+          leaseId: positional(values, "leaseId"),
+        }),
+        values,
         "Released browser control",
       );
-    }),
-  );
-  for (const name of ["reveal", "close"] as const) {
-    scoped(
-      browser
-        .command(`${name} <tabId>`)
-        .description(
-          name === "close"
-            ? "Close a native tab"
-            : "Reveal a native tab in its desktop window",
-        ),
-    ).action(
-      action(async (tabId: string, options: ScopeOptions) => {
-        const input = { ...scope(options), tabId };
-        print(
-          await (name === "close"
-            ? api().closeTab(input)
-            : api().revealTab(input)),
-          options,
-          `${name === "close" ? "Closed" : "Revealed"} tab ${tabId}`,
-        );
-      }),
-    );
-  }
-  scoped(
-    browser
-      .command("capture <tabId>")
-      .description("Save a native tab screenshot without focusing it"),
-  )
-    .requiredOption("--output <file>", "New local JPEG file")
-    .action(
-      action(
-        async (tabId: string, options: ScopeOptions & { output: string }) => {
-          const capture = await api().captureTab({ ...scope(options), tabId });
-          await writeFile(
-            options.output,
-            Buffer.from(capture.base64, "base64"),
-            { flag: "wx", mode: 0o600 },
-          );
-          print(
-            { path: options.output, mimeType: capture.mimeType },
-            options,
-            `Saved screenshot to ${options.output}`,
-          );
-        },
-      ),
-    );
-  instanceScoped(
-    browser
-      .command("import-sources")
-      .description(
-        "List browsers on the desktop host whose cookies can be imported",
-      ),
-  ).action(
-    action(async (options: InstanceOptions) => {
-      const result = await api().listImportSources({
-        hostId: options.host,
-        instanceId: options.instance,
-        generation: options.generation,
+    },
+  }),
+  tabCommand("reveal"),
+  tabCommand("close"),
+  browserCommand({
+    name: "cli.browser.capture",
+    kind: "read",
+    description: "Capture a native tab screenshot to a new local file",
+    path: ["browser", "capture"],
+    summary: "Save a native tab screenshot without focusing it",
+    positionals: [{ name: "tabId" }],
+    options: [
+      ...SCOPE_OPTIONS,
+      JSON_OPTION,
+      requiredOption("output", "file", "New local JPEG file"),
+    ],
+    async run(values, client) {
+      const output = text(values, "output");
+      const capture = await client.call("desktopBrowsers.captureTab", {
+        ...scope(values),
+        tabId: positional(values, "tabId"),
       });
-      print(result, options, formatImportSources(result));
-    }),
-  );
-  instanceScoped(
-    browser
-      .command("import-cookies")
-      .description(
-        "Copy signed-in cookies from an installed browser into the BB browser",
+      await writeFile(output, Buffer.from(capture.base64, "base64"), {
+        flag: "wx",
+        mode: 0o600,
+      });
+      print(
+        { path: output, mimeType: capture.mimeType },
+        values,
+        `Saved screenshot to ${output}`,
+      );
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.import-sources",
+    kind: "read",
+    description: "List browsers whose cookies can be imported",
+    path: ["browser", "import-sources"],
+    summary: "List browsers on the desktop host whose cookies can be imported",
+    options: [...INSTANCE_OPTIONS, JSON_OPTION],
+    async run(values, client) {
+      const result = await client.call(
+        "desktopBrowsers.listImportSources",
+        instance(values),
+      );
+      print(result, values, formatImportSources(result));
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.import-cookies",
+    kind: "write",
+    description: "Import signed-in cookies from an installed browser",
+    path: ["browser", "import-cookies"],
+    summary:
+      "Copy signed-in cookies from an installed browser into the BB browser",
+    options: [
+      ...INSTANCE_OPTIONS,
+      JSON_OPTION,
+      requiredOption(
+        "from",
+        "source",
+        "Source browser ID from `bb browser import-sources`",
       ),
-  )
-    .requiredOption(
-      "--from <source>",
-      "Source browser ID from `bb browser import-sources`",
-    )
-    .requiredOption(
-      "--profile <directory>",
-      "Source profile directory as printed by `bb browser import-sources`",
-    )
-    .action(
-      action(
-        async (
-          options: InstanceOptions & {
-            from: string;
-            profile: string;
-          },
-        ) => {
-          const outcome = await api().importCookies({
-            hostId: options.host,
-            instanceId: options.instance,
-            generation: options.generation,
-            sourceId: desktopBrowserImportSourceIdSchema.parse(options.from),
-            sourceProfileDirectory: options.profile,
-          });
-          print(outcome, options, formatImportOutcome(outcome));
-          if (!outcome.ok) process.exitCode = 1;
-        },
+      requiredOption(
+        "profile",
+        "directory",
+        "Source profile directory as printed by `bb browser import-sources`",
       ),
-    );
-  scoped(
-    browser
-      .command("watch")
-      .description(
-        "Print changed tab snapshots every two seconds until interrupted",
-      ),
-  ).action(
-    action(async (options: ScopeOptions) => {
+    ],
+    async run(values, client) {
+      const outcome = await client.call("desktopBrowsers.importCookies", {
+        ...instance(values),
+        sourceId: desktopBrowserImportSourceIdSchema.parse(
+          text(values, "from"),
+        ),
+        sourceProfileDirectory: text(values, "profile"),
+      });
+      print(outcome, values, formatImportOutcome(outcome));
+      if (!outcome.ok) process.exitCode = 1;
+    },
+  }),
+  browserCommand({
+    name: "cli.browser.watch",
+    kind: "read",
+    description: "Poll a thread's browser tabs and print each change",
+    path: ["browser", "watch"],
+    summary: "Print changed tab snapshots every two seconds until interrupted",
+    options: [...SCOPE_OPTIONS, JSON_OPTION],
+    async run(values, client) {
       await new Promise<void>((resolve, reject) => {
-        const subscription = api().subscribe({
-          ...scope(options),
-          onChange: (result) =>
-            print(
-              result,
-              options,
-              result.tabs
-                .map(
-                  (tab) =>
-                    `${tab.tabId}  ${tab.title || tab.url}  ${tab.control?.controllerLabel ?? "Available"}`,
-                )
-                .join("\n") || "No browser tabs in this thread",
-            ),
-          onError(error) {
-            cleanup();
-            reject(error);
-          },
-        });
+        const subscription = client
+          .sdk()
+          .experimental_desktopBrowsers.subscribe({
+            ...scope(values),
+            onChange: (result) => print(result, values, describeTabs(result)),
+            onError(error) {
+              cleanup();
+              reject(error);
+            },
+          });
         const stop = () => {
           cleanup();
           resolve();
@@ -363,6 +442,16 @@ export function registerBrowserCommands(
         process.once("SIGINT", stop);
         process.once("SIGTERM", stop);
       });
-    }),
-  );
+    },
+  }),
+];
+
+export function registerBrowserCommands(
+  program: Command,
+  getUrl: () => string,
+) {
+  program
+    .command("browser")
+    .description("Experimental built-in desktop browser control");
+  mountCommands(program, browserCommands, { getUrl });
 }

@@ -13,6 +13,10 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { createServerErrorHandler } from "../../../src/errors.js";
+import { createOperationRoutes } from "../../../src/kernel/http-door.js";
+import { createServerKernel } from "../../../src/kernel/server-kernel.js";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getPluginSettingsValues,
@@ -292,8 +296,9 @@ describe("plugin settings + storage", () => {
       ).rejects.toThrow("lowercase letters only");
 
       const app = new Hono();
+      app.onError(createServerErrorHandler(testLogger));
       registerPluginRoutes(
-        app,
+        createOperationRoutes(app, createServerKernel(testLogger)),
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),
@@ -352,8 +357,9 @@ describe("plugin settings + storage", () => {
       expect(getPluginSettingsValues(db, "configurable")).toEqual({});
 
       const app = new Hono();
+      app.onError(createServerErrorHandler(testLogger));
       registerPluginRoutes(
-        app,
+        createOperationRoutes(app, createServerKernel(testLogger)),
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),
@@ -392,8 +398,9 @@ describe("plugin settings + storage", () => {
     it("serves schema+values over the routes; PUT validates with 400s", async () => {
       await installConfigurable();
       const app = new Hono();
+      app.onError(createServerErrorHandler(testLogger));
       registerPluginRoutes(
-        app,
+        createOperationRoutes(app, createServerKernel(testLogger)),
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),

@@ -1,9 +1,5 @@
-import type { Hono } from "hono";
-import {
-  registrySkillEntriesRequestSchema,
-  registrySkillInstallRequestSchema,
-  type RegistrySkill,
-} from "@bb/server-contract";
+import { publicApiRoutes, type RegistrySkill } from "@bb/server-contract";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import { ApiError } from "../errors.js";
 import {
   githubRepoForSource,
@@ -24,7 +20,11 @@ import {
 import { installServerRegistrySkill } from "../services/skills/registry-skill-install.js";
 import type { AppDeps } from "../types.js";
 
-export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
+export function registerSkillsRegistryRoutes(
+  routes: OperationRoutes,
+  deps: AppDeps,
+): void {
+  const contract = publicApiRoutes.skillsRegistry;
   async function proxyUpstream<T>(run: () => Promise<T>): Promise<T> {
     try {
       return await run();
@@ -44,17 +44,17 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
     }
   }
 
-  app.get("/skills-registry", async (context) => {
-    const query = context.req.query("q") ?? "";
-    const page = parsePageParameter(context.req.query("page"));
-    const perPage = parsePerPageParameter(context.req.query("perPage"));
-    return context.json(
-      await proxyUpstream(() => listRegistrySkills(query, page, perPage)),
-    );
-  });
+  routes.implement(contract.list, async ({ q, page, perPage }) =>
+    proxyUpstream(() =>
+      listRegistrySkills(
+        q ?? "",
+        parsePageParameter(page),
+        parsePerPageParameter(perPage),
+      ),
+    ),
+  );
 
-  app.get("/skills-registry/entry", async (context) => {
-    const id = context.req.query("id");
+  routes.implement(contract.entry, async ({ id }) => {
     if (id === undefined) {
       throw new ApiError(
         400,
@@ -62,19 +62,11 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Expected a registry skill ID",
       );
     }
-    return context.json(
-      await proxyUpstream(() => resolveRegistrySkillById(id)),
-    );
+    return proxyUpstream(() => resolveRegistrySkillById(id));
   });
 
-  app.post("/skills-registry/entries", async (context) => {
-    const body = registrySkillEntriesRequestSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
-    if (!body.success) {
-      throw new ApiError(400, "invalid_request", "Expected registry skill ids");
-    }
-    const ids = [...new Set(body.data.ids)];
+  routes.implement(contract.entries, async ({ ids: requested }) => {
+    const ids = [...new Set(requested)];
     const entries = (
       await Promise.all(
         ids.map(async (id): Promise<RegistrySkill | null> => {
@@ -86,11 +78,10 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         }),
       )
     ).filter((entry): entry is RegistrySkill => entry !== null);
-    return context.json({ entries });
+    return { entries };
   });
 
-  app.get("/skills-registry/repository-stars", async (context) => {
-    const source = context.req.query("source");
+  routes.implement(contract.repositoryStars, async ({ source }) => {
     if (
       source === undefined ||
       source.length === 0 ||
@@ -112,12 +103,10 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "GitHub repository stars are unavailable",
       );
     }
-    return context.json({ stars });
+    return { stars };
   });
 
-  app.get("/skills-registry/detail", async (context) => {
-    const source = context.req.query("source");
-    const skillId = context.req.query("skillId");
+  routes.implement(contract.detail, async ({ source, skillId }) => {
     if (
       source === undefined ||
       source.length === 0 ||
@@ -143,25 +132,17 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Registry skill source is unavailable",
       );
     }
-    return context.json(detail);
+    return detail;
   });
 
-  app.post("/skills-registry/install", async (context) => {
-    const body = registrySkillInstallRequestSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
-    if (!body.success) {
-      throw new ApiError(400, "invalid_request", "Expected registrySkillId");
-    }
-    const registrySkill = await resolveRegistrySkillById(
-      body.data.registrySkillId,
-    );
+  routes.implement(contract.install, async ({ registrySkillId }) => {
+    const registrySkill = await resolveRegistrySkillById(registrySkillId);
     const result = await installServerRegistrySkill({
       dataDir: deps.config.dataDir,
       packageRef: packageRefForSource(registrySkill.source),
       registrySkillId: registrySkill.id,
       skillId: registrySkill.skillId,
     });
-    return context.json({ ok: true, ...result });
+    return { ok: true as const, ...result };
   });
 }

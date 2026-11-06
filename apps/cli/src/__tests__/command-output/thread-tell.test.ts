@@ -360,9 +360,9 @@ describe("bb thread tell command output", () => {
           register,
         );
 
-        expect(get).toHaveBeenCalledWith({
-          param: { id: "thread-attachments" },
-        });
+        expect(get).toHaveBeenCalledWith(
+          expect.objectContaining({ param: { id: "thread-attachments" } }),
+        );
         expect(globalThis.fetch).toHaveBeenCalledWith(
           "http://server/api/v1/projects/proj-target/attachments",
           expect.objectContaining({

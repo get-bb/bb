@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { type DbConnection } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import { Hono } from "hono";
+import { createServerErrorHandler } from "../../../src/errors.js";
+import { createOperationRoutes } from "../../../src/kernel/http-door.js";
+import { createServerKernel } from "../../../src/kernel/server-kernel.js";
+import { testLogger } from "../../helpers/test-app.js";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
 import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
@@ -60,8 +65,9 @@ describe("plugin catalog routes", () => {
       ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     });
     const app = new Hono();
+    app.onError(createServerErrorHandler(testLogger));
     registerPluginCatalogRoutes(
-      app,
+      createOperationRoutes(app, createServerKernel(testLogger)),
       catalog,
       createPluginInstallJobs({ notifyChanged: () => {} }),
     );
@@ -109,7 +115,7 @@ describe("plugin catalog routes", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ entryId: "memory", version: "0.2.0" }),
     });
-    expect(versionOverride.status).toBe(422);
+    expect(versionOverride.status).toBe(400);
   });
 
   it("identifies background installs with the same entry ID as catalog search", async () => {
@@ -279,13 +285,13 @@ describe("plugin catalog routes", () => {
       const { app } = acmeApp();
 
       const badBody = await postJson(app, "/marketplaces", { url: ACME_URL });
-      expect(badBody.status).toBe(422);
+      expect(badBody.status).toBe(400);
 
       const emptySubdirectory = await postJson(app, "/marketplaces", {
         source: ACME_URL,
         subdirectory: "",
       });
-      expect(emptySubdirectory.status).toBe(422);
+      expect(emptySubdirectory.status).toBe(400);
 
       const misplacedSubdirectory = await postJson(app, "/marketplaces", {
         source: ACME_URL,
@@ -306,7 +312,7 @@ describe("plugin catalog routes", () => {
       const badRefresh = await postJson(app, "/marketplaces/refresh", {
         name: "Not A Name",
       });
-      expect(badRefresh.status).toBe(422);
+      expect(badRefresh.status).toBe(400);
 
       const longName = "a".repeat(65);
       const longRemoval = await app.request(`/marketplaces/${longName}`, {

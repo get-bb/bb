@@ -18,6 +18,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Hono } from "hono";
+import { createServerErrorHandler } from "../../../src/errors.js";
+import { createOperationRoutes } from "../../../src/kernel/http-door.js";
+import { createServerKernel } from "../../../src/kernel/server-kernel.js";
+
 import {
   afterAll,
   afterEach,
@@ -177,10 +181,12 @@ async function createPluginUpdateFixture(
     },
   });
   const app = new Hono();
+  app.onError(createServerErrorHandler(testLogger));
+  const routes = createOperationRoutes(app, createServerKernel(testLogger));
   const updateJobs = createPluginUpdateJobs({ notifyChanged: () => {} });
-  registerPluginUpdateJobRoutes(app, updateJobs);
+  registerPluginUpdateJobRoutes(routes, updateJobs);
   registerPluginRoutes(
-    app,
+    routes,
     { config: { serverPort: 3334 }, db },
     service,
     createPluginInstallJobs({ notifyChanged: () => {} }),

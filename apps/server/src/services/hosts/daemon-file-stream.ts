@@ -8,10 +8,11 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "./online-rpc.js";
 import { remapDaemonFileRouteError } from "./daemon-file-response.js";
+import type { OperationBody } from "@bb/operations";
 import {
-  createFileStreamResponse,
+  createFileStreamBody,
   type FileResponseSource,
-} from "../files/file-stream-response.js";
+} from "../files/file-stream-body.js";
 
 type FileChunk = HostDaemonOnlineRpcResultByType["host.read_file_chunk"];
 type ReadChunk = (
@@ -26,7 +27,7 @@ export async function serveDaemonFileStream(
   target: { hostId: string; path: string; rootPath: string },
   request: Request,
   prepareHeaders: (metadata: FileChunk) => Headers,
-): Promise<Response> {
+): Promise<OperationBody> {
   const read: ReadChunk = (offset, length, revision, signal) =>
     callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
@@ -43,7 +44,7 @@ export async function serveDaemonFileStream(
     });
   try {
     const metadata = await read(0, 0, null, request.signal);
-    return await createDaemonFileStreamResponse(
+    return await createDaemonFileStreamBody(
       metadata,
       read,
       request,
@@ -62,12 +63,12 @@ export async function serveDaemonFileStream(
   }
 }
 
-export async function createDaemonFileStreamResponse(
+export async function createDaemonFileStreamBody(
   metadata: FileChunk,
   read: ReadChunk,
   request: Request,
   headers = new Headers(),
-): Promise<Response> {
+): Promise<OperationBody> {
   if (!headers.has("content-type"))
     headers.set(
       "content-type",
@@ -75,7 +76,7 @@ export async function createDaemonFileStreamResponse(
     );
   if (!headers.has("cache-control"))
     headers.set("cache-control", "private, no-cache");
-  return createFileStreamResponse({
+  return createFileStreamBody({
     request,
     headers,
     source: createDaemonFileSource(metadata, read),

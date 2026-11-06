@@ -244,7 +244,7 @@ describe("bb project command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(projects);
-    expect(get).toHaveBeenCalledWith({ query: {} });
+    expect(get).toHaveBeenCalledWith({});
   });
 
   it("bb project list can include the personal project", async () => {
@@ -759,6 +759,33 @@ describe("bb project command output", () => {
       }),
     );
   });
+
+  it.each([
+    {
+      args: ["project", "delete", "proj-1"],
+      route: "v1.projects.:id.$delete",
+      question: "Delete project proj-1 and all its threads? [y/N] ",
+    },
+    {
+      args: ["project", "source", "delete", "proj-1", "source-1"],
+      route: "v1.projects.:id.sources.:sourceId.$delete",
+      question: "Delete project source source-1 from project proj-1? [y/N] ",
+    },
+  ])(
+    "bb $args.0 $args.1 prints Aborted. when the confirmation is declined",
+    async ({ args, route, question }) => {
+      const del = vi.fn(async () => ({ ok: true }));
+      stubServerApi({ [route]: del });
+      readlineMocks.question.mockResolvedValue("n");
+
+      await runCommand([...args, "--json"], register);
+
+      expect(readlineMocks.question).toHaveBeenCalledWith(question);
+      expect(collectLogPayloads(vi.mocked(console.log))).toEqual(["Aborted."]);
+      expect(del).not.toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    },
+  );
 
   it("bb project source delete deletes without prompting when --yes is passed", async () => {
     const del = vi.fn(async () => ({ ok: true }));

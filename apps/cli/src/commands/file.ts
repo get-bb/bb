@@ -1,43 +1,17 @@
-import { Command } from "commander";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
+import type { Command } from "commander";
+import { YES_FLAG_DESCRIPTION, type CliValues, flag } from "@bb/operations";
+import { mountCommands, publicCommand } from "../operation-doors.js";
 
-interface FileTargetOptions {
-  host?: string;
-  json?: boolean;
-  root?: string;
+type Options = CliValues["options"];
+
+function text(options: Options, flag: string): string | undefined {
+  const value = options[flag];
+  return typeof value === "string" ? value : undefined;
 }
 
-interface FileListOptions extends FileTargetOptions {
-  directories?: boolean;
-  exclude?: string[];
-  files?: boolean;
-  hidden?: boolean;
-  limit?: string;
-  query?: string;
-}
-
-function listFilterArgs(opts: FileListOptions): {
-  includeHidden?: boolean;
-  excludeNames?: string[];
-} {
-  return {
-    ...(opts.hidden === false ? { includeHidden: false } : {}),
-    ...(opts.exclude !== undefined ? { excludeNames: opts.exclude } : {}),
-  };
-}
-
-interface FileWriteOptions extends FileTargetOptions {
-  content?: string;
-  createParents?: boolean;
-  expectedSha256?: string;
-  stdin?: boolean;
-}
-
-interface FileRemoveOptions extends FileTargetOptions {
-  recursive?: boolean;
-  yes?: boolean;
+function positional(values: CliValues, name: string): string {
+  const value = values.positionals[name];
+  return typeof value === "string" ? value : "";
 }
 
 async function readStdin(): Promise<string> {
@@ -57,204 +31,205 @@ function parseLimit(value: string | undefined): number | undefined {
   return parsed;
 }
 
-function commonTarget(opts: FileTargetOptions) {
+function commonTarget(options: Options) {
+  const host = text(options, "host");
+  const root = text(options, "root");
   return {
-    ...(opts.host ? { hostId: opts.host } : {}),
-    ...(opts.root ? { rootPath: opts.root } : {}),
+    ...(host ? { hostId: host } : {}),
+    ...(root ? { rootPath: root } : {}),
   };
 }
+
+function listFilterArgs(options: Options): {
+  includeHidden?: boolean;
+  excludeNames?: string[];
+} {
+  const exclude = options.exclude;
+  return {
+    ...(options.hidden === false ? { includeHidden: false } : {}),
+    ...(Array.isArray(exclude) ? { excludeNames: exclude } : {}),
+  };
+}
+
+const HOST_OPTION = flag("--host <id>", "Machine ID");
+const ROOT_OPTION = flag("--root <path>", "Confining root path");
+const QUERY_OPTION = flag("--query <query>", "Fuzzy path query");
+const LIMIT_OPTION = flag("--limit <count>", "Maximum entries");
+const NO_HIDDEN_OPTION = flag(
+  "--no-hidden",
+  "Skip dot-prefixed files and directories",
+);
+const EXCLUDE_OPTION = flag(
+  "--exclude <names...>",
+  "Entry names or root-relative paths (using /) to skip instead of the default set",
+);
+const PATH_POSITIONAL = [{ name: "path" }] as const;
+
+export const fileCommands = [
+  publicCommand("files.read", {
+    path: ["file", "read"],
+    summary: "Read a file",
+    positionals: PATH_POSITIONAL,
+    options: [HOST_OPTION, ROOT_OPTION],
+    prepare: (values) => ({
+      path: positional(values, "path"),
+      ...commonTarget(values.options),
+    }),
+    print: (result) => {
+      if (result.contentEncoding === "utf8")
+        process.stdout.write(result.content);
+      else process.stdout.write(`${result.content}\n`);
+      return null;
+    },
+  }),
+  publicCommand("files.write", {
+    path: ["file", "write"],
+    summary: "Write a UTF-8 file",
+    positionals: PATH_POSITIONAL,
+    options: [
+      flag("--content <text>", "File content"),
+      flag("--stdin", "Read file content from stdin"),
+      HOST_OPTION,
+      ROOT_OPTION,
+      flag("--create-parents", "Create missing parent directories"),
+      flag(
+        "--expected-sha256 <hash>",
+        "Only write when the current hash matches",
+      ),
+    ],
+    prepare: async (values) => {
+      const { options } = values;
+      const content = text(options, "content");
+      const stdin = options.stdin === true;
+      if ((content === undefined) === !stdin) {
+        throw new Error("Provide exactly one of --content or --stdin.");
+      }
+      const expectedSha256 = text(options, "expected-sha256");
+      return {
+        path: positional(values, "path"),
+        content: stdin ? await readStdin() : (content ?? ""),
+        ...commonTarget(options),
+        ...(options["create-parents"] === true ? { createParents: true } : {}),
+        ...(expectedSha256 ? { expectedSha256 } : {}),
+      };
+    },
+    print: (result, input) =>
+      result.outcome === "written"
+        ? `Wrote ${input.path}`
+        : `Write conflict for ${input.path}`,
+  }),
+  publicCommand("files.list", {
+    path: ["file", "list"],
+    summary: "Recursively list files",
+    positionals: PATH_POSITIONAL,
+    options: [
+      QUERY_OPTION,
+      LIMIT_OPTION,
+      NO_HIDDEN_OPTION,
+      EXCLUDE_OPTION,
+      HOST_OPTION,
+    ],
+    prepare: (values) => {
+      const { options } = values;
+      const host = text(options, "host");
+      const query = text(options, "query");
+      const limit = parseLimit(text(options, "limit"));
+      return {
+        path: positional(values, "path"),
+        ...listFilterArgs(options),
+        ...(host ? { hostId: host } : {}),
+        ...(query ? { query } : {}),
+        ...(limit ? { limit } : {}),
+      };
+    },
+    print: (result) => result.files.map((entry) => entry.path),
+  }),
+  publicCommand("files.listPaths", {
+    path: ["file", "paths"],
+    summary: "List matching files and directories",
+    positionals: PATH_POSITIONAL,
+    options: [
+      QUERY_OPTION,
+      LIMIT_OPTION,
+      flag("--files", "Include files"),
+      flag("--directories", "Include directories"),
+      NO_HIDDEN_OPTION,
+      EXCLUDE_OPTION,
+      HOST_OPTION,
+    ],
+    prepare: (values) => {
+      const { options } = values;
+      const files = options.files === true;
+      const directories = options.directories === true;
+      const host = text(options, "host");
+      const query = text(options, "query");
+      const limit = parseLimit(text(options, "limit"));
+      return {
+        path: positional(values, "path"),
+        includeFiles: files || !directories,
+        includeDirectories: directories || !files,
+        ...listFilterArgs(options),
+        ...(host ? { hostId: host } : {}),
+        ...(query ? { query } : {}),
+        ...(limit ? { limit } : {}),
+      };
+    },
+    print: (result) =>
+      result.paths.map((entry) => `${entry.kind}\t${entry.path}`),
+  }),
+  publicCommand("files.mkdir", {
+    path: ["file", "mkdir"],
+    summary: "Create a directory",
+    positionals: PATH_POSITIONAL,
+    options: [
+      flag("--recursive", "Create missing parent directories"),
+      HOST_OPTION,
+      ROOT_OPTION,
+    ],
+    prepare: (values) => ({
+      path: positional(values, "path"),
+      ...commonTarget(values.options),
+      ...(values.options.recursive === true ? { recursive: true } : {}),
+    }),
+    print: (_result, input) => `Created directory ${input.path}`,
+  }),
+  publicCommand("files.move", {
+    path: ["file", "move"],
+    summary: "Move a file or directory",
+    positionals: [{ name: "source" }, { name: "destination" }],
+    options: [HOST_OPTION, ROOT_OPTION],
+    prepare: (values) => ({
+      sourcePath: positional(values, "source"),
+      destinationPath: positional(values, "destination"),
+      ...commonTarget(values.options),
+    }),
+    print: (_result, input) =>
+      `Moved ${input.sourcePath} to ${input.destinationPath}`,
+  }),
+  publicCommand("files.remove", {
+    path: ["file", "remove"],
+    summary: "Remove a file or directory",
+    positionals: PATH_POSITIONAL,
+    options: [
+      flag("--recursive", "Remove a directory recursively"),
+      flag("--yes", YES_FLAG_DESCRIPTION),
+      HOST_OPTION,
+      ROOT_OPTION,
+    ],
+    confirm: (input) => `Remove ${input.path}?`,
+    prepare: (values) => ({
+      path: positional(values, "path"),
+      ...commonTarget(values.options),
+      ...(values.options.recursive === true ? { recursive: true } : {}),
+    }),
+    print: (_result, input) => `Removed ${input.path}`,
+  }),
+];
 
 export function registerFileCommands(
   program: Command,
   getUrl: () => string,
 ): void {
-  const file = program
-    .command("file")
-    .description("Read and manage files on BB machines");
-
-  file
-    .command("read <path>")
-    .description("Read a file")
-    .option("--host <id>", "Machine ID")
-    .option("--root <path>", "Confining root path")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (path: string, opts: FileTargetOptions) => {
-        const result = await createCliBbSdk(getUrl()).files.read({
-          path,
-          ...commonTarget(opts),
-        });
-        if (outputJson(opts, result)) return;
-        if (result.contentEncoding === "utf8")
-          process.stdout.write(result.content);
-        else process.stdout.write(`${result.content}\n`);
-      }),
-    );
-
-  file
-    .command("write <path>")
-    .description("Write a UTF-8 file")
-    .option("--content <text>", "File content")
-    .option("--stdin", "Read file content from stdin")
-    .option("--host <id>", "Machine ID")
-    .option("--root <path>", "Confining root path")
-    .option("--create-parents", "Create missing parent directories")
-    .option(
-      "--expected-sha256 <hash>",
-      "Only write when the current hash matches",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (path: string, opts: FileWriteOptions) => {
-        if ((opts.content === undefined) === (opts.stdin !== true)) {
-          throw new Error("Provide exactly one of --content or --stdin.");
-        }
-        const content = opts.stdin ? await readStdin() : (opts.content ?? "");
-        const result = await createCliBbSdk(getUrl()).files.write({
-          path,
-          content,
-          ...commonTarget(opts),
-          ...(opts.createParents ? { createParents: true } : {}),
-          ...(opts.expectedSha256
-            ? { expectedSha256: opts.expectedSha256 }
-            : {}),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(
-          result.outcome === "written"
-            ? `Wrote ${path}`
-            : `Write conflict for ${path}`,
-        );
-      }),
-    );
-
-  file
-    .command("list <path>")
-    .description("Recursively list files")
-    .option("--query <query>", "Fuzzy path query")
-    .option("--limit <count>", "Maximum entries")
-    .option("--no-hidden", "Skip dot-prefixed files and directories")
-    .option(
-      "--exclude <names...>",
-      "Entry names or root-relative paths (using /) to skip instead of the default set",
-    )
-    .option("--host <id>", "Machine ID")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (path: string, opts: FileListOptions) => {
-        const result = await createCliBbSdk(getUrl()).files.list({
-          path,
-          ...listFilterArgs(opts),
-          ...(opts.host ? { hostId: opts.host } : {}),
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(parseLimit(opts.limit) ? { limit: parseLimit(opts.limit) } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        for (const entry of result.files) console.log(entry.path);
-      }),
-    );
-
-  file
-    .command("paths <path>")
-    .description("List matching files and directories")
-    .option("--query <query>", "Fuzzy path query")
-    .option("--limit <count>", "Maximum entries")
-    .option("--files", "Include files")
-    .option("--directories", "Include directories")
-    .option("--no-hidden", "Skip dot-prefixed files and directories")
-    .option(
-      "--exclude <names...>",
-      "Entry names or root-relative paths (using /) to skip instead of the default set",
-    )
-    .option("--host <id>", "Machine ID")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (path: string, opts: FileListOptions) => {
-        const includeFiles = opts.files || !opts.directories;
-        const includeDirectories = opts.directories || !opts.files;
-        const limit = parseLimit(opts.limit);
-        const result = await createCliBbSdk(getUrl()).files.listPaths({
-          path,
-          includeFiles,
-          includeDirectories,
-          ...listFilterArgs(opts),
-          ...(opts.host ? { hostId: opts.host } : {}),
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(limit ? { limit } : {}),
-        });
-        if (outputJson(opts, result)) return;
-        for (const entry of result.paths)
-          console.log(`${entry.kind}\t${entry.path}`);
-      }),
-    );
-
-  file
-    .command("mkdir <path>")
-    .description("Create a directory")
-    .option("--recursive", "Create missing parent directories")
-    .option("--host <id>", "Machine ID")
-    .option("--root <path>", "Confining root path")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          path: string,
-          opts: FileTargetOptions & { recursive?: boolean },
-        ) => {
-          const result = await createCliBbSdk(getUrl()).files.mkdir({
-            path,
-            ...commonTarget(opts),
-            recursive: opts.recursive,
-          });
-          if (outputJson(opts, result)) return;
-          console.log(`Created directory ${path}`);
-        },
-      ),
-    );
-
-  file
-    .command("move <source> <destination>")
-    .description("Move a file or directory")
-    .option("--host <id>", "Machine ID")
-    .option("--root <path>", "Confining root path")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          source: string,
-          destination: string,
-          opts: FileTargetOptions,
-        ) => {
-          const result = await createCliBbSdk(getUrl()).files.move({
-            sourcePath: source,
-            destinationPath: destination,
-            ...commonTarget(opts),
-          });
-          if (outputJson(opts, result)) return;
-          console.log(`Moved ${source} to ${destination}`);
-        },
-      ),
-    );
-
-  file
-    .command("remove <path>")
-    .description("Remove a file or directory")
-    .option("--recursive", "Remove a directory recursively")
-    .option("--yes", "Skip the confirmation prompt")
-    .option("--host <id>", "Machine ID")
-    .option("--root <path>", "Confining root path")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (path: string, opts: FileRemoveOptions) => {
-        if (!opts.yes && !(await confirmDestructiveAction(`Remove ${path}?`)))
-          return;
-        const result = await createCliBbSdk(getUrl()).files.remove({
-          path,
-          ...commonTarget(opts),
-          recursive: opts.recursive,
-        });
-        if (outputJson(opts, result)) return;
-        console.log(`Removed ${path}`);
-      }),
-    );
+  program.command("file").description("Read and manage files on BB machines");
+  mountCommands(program, fileCommands, { getUrl });
 }

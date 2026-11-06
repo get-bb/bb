@@ -1,3 +1,4 @@
+import { emptyBody } from "@bb/operations";
 import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import {
   getAppSettings,
@@ -10,7 +11,6 @@ import {
   getLatestStoredConversationOutlineSequence,
   listQueuedThreadMessages,
 } from "@bb/db";
-import type { Hono } from "hono";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
   threadEventTypeSchema,
@@ -20,11 +20,10 @@ import {
 import {
   publicApiRoutes,
   THREAD_EVENT_LIST_PAGE_SIZE,
-  typedRoutes,
-  type PublicApiSchema,
   type ThreadConversationOutlineResponse,
   type ThreadTimelineQuery,
 } from "@bb/server-contract";
+import type { OperationRoutes } from "../../kernel/http-door.js";
 import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
@@ -146,10 +145,10 @@ function parseThreadTimelinePage(
   };
 }
 
-export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
-  const { get, patch } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
+export function registerThreadDataRoutes(
+  operations: OperationRoutes,
+  deps: AppDeps,
+): void {
   const routes = publicApiRoutes.threads;
   const timelineWindows = createThreadTimelineWindows(deps);
   const conversationOutlineCache = new Map<
@@ -175,8 +174,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     };
   };
 
-  get(routes.pluginMetadata.get, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.pluginMetadata.get, ({ id, ...query }) => {
+    const thread = requirePublicThread(deps.db, id);
     const { metadata, corrupt } = getThreadPluginMetadata(
       deps.db,
       thread.id,
@@ -187,11 +186,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         `Ignoring corrupt plugin metadata for thread ${thread.id}, plugin ${query.pluginId}`,
       );
     }
-    return context.json(metadata);
+    return metadata;
   });
 
-  patch(routes.pluginMetadata.update, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.pluginMetadata.update, ({ id, ...payload }) => {
+    const thread = requirePublicThread(deps.db, id);
     const result = patchThreadPluginMetadata(deps.db, {
       threadId: thread.id,
       pluginId: payload.pluginId,
@@ -210,11 +209,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         `Replaced corrupt plugin metadata for thread ${thread.id}, plugin ${payload.pluginId}`,
       );
     }
-    return context.json(result.metadata);
+    return result.metadata;
   });
 
-  get(routes.context, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.context, ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
     const sequenceStart =
       getLatestCompletedThreadContextClearSequence(deps.db, {
         threadId: thread.id,
@@ -226,7 +225,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const usage = extractThreadContextWindowUsage(
       rows.map(toThreadEventWithMeta),
     );
-    return context.json({
+    return {
       usage:
         usage === null
           ? null
@@ -236,27 +235,25 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
               threadId: thread.id,
               usage,
             }),
-    });
+    };
   });
 
-  get(routes.timeline, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      timelineWindows.read(
-        thread,
-        {
-          deferContent: query.deferContent === "true",
-          includeNestedRows: query.includeNestedRows === "true",
-          page: parseThreadTimelinePage(query),
-          summaryOnly: query.summaryOnly === "true",
-        },
-        query.afterTag,
-      ),
+  operations.implement(routes.timeline, ({ id, ...query }) => {
+    const thread = requirePublicThread(deps.db, id);
+    return timelineWindows.read(
+      thread,
+      {
+        deferContent: query.deferContent === "true",
+        includeNestedRows: query.includeNestedRows === "true",
+        page: parseThreadTimelinePage(query),
+        summaryOnly: query.summaryOnly === "true",
+      },
+      query.afterTag,
     );
   });
 
-  get(routes.conversationOutline, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.conversationOutline, ({ id, ...query }) => {
+    const thread = requirePublicThread(deps.db, id);
     const selectItems = (items: ThreadConversationOutlineResponse["items"]) =>
       query.role === undefined
         ? items
@@ -281,7 +278,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     if (cached !== undefined && cached.key === cacheKey) {
       conversationOutlineCache.delete(thread.id);
       conversationOutlineCache.set(thread.id, cached);
-      return context.json({ items: selectItems(cached.items), maxSeq });
+      return { items: selectItems(cached.items), maxSeq };
     }
     const response = loadThreadConversationOutline(deps.db, thread, {
       ...outlineOptions,
@@ -301,12 +298,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       }
       conversationOutlineCache.delete(oldest);
     }
-    return context.json({ ...response, items: selectItems(response.items) });
+    return { ...response, items: selectItems(response.items) };
   });
 
-  get(routes.message, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const seq = context.req.param("seq");
+  operations.implement(routes.message, ({ id, seq, ...query }) => {
+    const thread = requirePublicThread(deps.db, id);
     if (!/^\d+$/.test(seq)) {
       throw new ApiError(
         400,
@@ -314,21 +310,20 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         "Message seq must be a non-negative integer",
       );
     }
-    return context.json(
-      getThreadMessage(deps.db, thread, {
-        ...resolveConversationRowsOptions(thread),
-        seq: parseInteger(seq, "seq"),
-        before: parseOptionalInteger(query.before, "before") ?? 0,
-        after: parseOptionalInteger(query.after, "after") ?? 0,
-      }),
-    );
+    return getThreadMessage(deps.db, thread, {
+      ...resolveConversationRowsOptions(thread),
+      seq: parseInteger(seq, "seq"),
+      before: parseOptionalInteger(query.before, "before") ?? 0,
+      after: parseOptionalInteger(query.after, "after") ?? 0,
+    });
   });
 
-  get(routes.timelineTurnSummaryDetails, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const settings = getAppSettings(deps.db);
-    return context.json(
-      buildTimelineTurnSummaryDetails(deps.db, thread, {
+  operations.implement(
+    routes.timelineTurnSummaryDetails,
+    ({ id, ...query }) => {
+      const thread = requirePublicThread(deps.db, id);
+      const settings = getAppSettings(deps.db);
+      return buildTimelineTurnSummaryDetails(deps.db, thread, {
         beforeCursor: query.beforeCursor,
         deferContent: query.deferContent === "true",
         itemId: query.itemId ?? null,
@@ -346,27 +341,27 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         turnId: query.turnId,
         sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
         sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
-      }),
-    );
+      });
+    },
+  );
+
+  operations.implement(routes.output, ({ id }) => {
+    requirePublicThread(deps.db, id);
+    return {
+      output: getLatestTurnFinalOutput(deps.db, id),
+    };
   });
 
-  get(routes.output, (context) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    return context.json({
-      output: getLatestTurnFinalOutput(deps.db, context.req.param("id")),
-    });
-  });
-
-  get(routes.queuedMessages, (context) => {
-    const threadId = context.req.param("id");
+  operations.implement(routes.queuedMessages, ({ id }) => {
+    const threadId = id;
     requirePublicThread(deps.db, threadId);
-    return context.json(
-      listQueuedThreadMessages(deps.db, threadId).map(toThreadQueuedMessage),
+    return listQueuedThreadMessages(deps.db, threadId).map(
+      toThreadQueuedMessage,
     );
   });
 
-  get(routes.promptHistory, (context, query) => {
-    const threadId = context.req.param("id");
+  operations.implement(routes.promptHistory, ({ id, ...query }) => {
+    const threadId = id;
     requirePublicThread(deps.db, threadId);
     const limit = parseBoundedPositiveOptionalInteger({
       defaultValue: PROMPT_HISTORY_ENTRY_LIMIT,
@@ -375,35 +370,31 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       value: query.limit,
     });
 
-    return context.json(
-      listThreadPromptHistory(deps, {
-        threadId,
-        limit,
-      }),
-    );
+    return listThreadPromptHistory(deps, {
+      threadId,
+      limit,
+    });
   });
 
-  get(routes.events, (context, query) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      listThreadEventRows(deps.db, {
-        threadId: context.req.param("id"),
-        afterSeq: parseOptionalInteger(query.afterSeq, "afterSeq"),
-        beforeSeq: parseOptionalInteger(query.beforeSeq, "beforeSeq"),
-        limit: parseBoundedPositiveOptionalInteger({
-          defaultValue: THREAD_EVENT_LIST_PAGE_SIZE,
-          max: THREAD_EVENT_LIST_PAGE_SIZE,
-          name: "limit",
-          value: query.limit,
-        }),
-        order: query.order,
-        types: parseThreadEventTypes(query.types),
+  operations.implement(routes.events, ({ id, ...query }) => {
+    requirePublicThread(deps.db, id);
+    return listThreadEventRows(deps.db, {
+      threadId: id,
+      afterSeq: parseOptionalInteger(query.afterSeq, "afterSeq"),
+      beforeSeq: parseOptionalInteger(query.beforeSeq, "beforeSeq"),
+      limit: parseBoundedPositiveOptionalInteger({
+        defaultValue: THREAD_EVENT_LIST_PAGE_SIZE,
+        max: THREAD_EVENT_LIST_PAGE_SIZE,
+        name: "limit",
+        value: query.limit,
       }),
-    );
+      order: query.order,
+      types: parseThreadEventTypes(query.types),
+    });
   });
 
-  get(routes.eventWait, async (context, query) => {
-    const threadId = context.req.param("id");
+  operations.implement(routes.eventWait, async ({ id, ...query }) => {
+    const threadId = id;
     requirePublicThread(deps.db, threadId);
 
     const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq");
@@ -436,119 +427,116 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     }
 
     if (!match) {
-      return new Response(null, { status: 204 });
+      return emptyBody(204);
     }
 
-    return context.json(match);
+    return match;
   });
 
-  get(routes.defaultExecutionOptions, async (context) => {
-    const threadId = context.req.param("id");
+  operations.implement(routes.defaultExecutionOptions, async ({ id }) => {
+    const threadId = id;
     requirePublicThread(deps.db, threadId);
-    return context.json(
+    return (
       (
         await tryResolveExistingThreadExecutionPlan(deps, {
           executionSource: "client/turn/requested",
           input: {},
           threadId,
         })
-      )?.resolvedExecution ?? null,
+      )?.resolvedExecution ?? null
     );
   });
 
-  get(routes.storageFiles, async (context, query) => {
-    const target = await requireThreadStorageTarget(
-      deps,
-      context.req.param("id"),
-    );
-    const limit = parseFileListLimit(query.limit);
+  operations.implement(
+    routes.storageFiles,
+    async ({ id, ...query }, { signal }) => {
+      const target = await requireThreadStorageTarget(deps, id);
+      const limit = parseFileListLimit(query.limit);
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
-        signal: context.req.raw.signal,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_files",
-          followRootSymlink: false,
-          path: target.storagePath,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
-          respectGitIgnore: false,
-          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
-        },
-      });
-      return context.json({
-        files: result.files,
-        truncated: result.truncated,
-        storageRootPath: target.storagePath,
-      });
-    } catch (error) {
-      if (error instanceof ApiError && error.body.code === "ENOENT") {
-        return context.json({
-          files: [],
-          truncated: false,
-          storageRootPath: target.storagePath,
+      try {
+        const result = await callHostRetryableOnlineRpc(deps, {
+          hostId: target.hostId,
+          signal,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "host.list_files",
+            followRootSymlink: false,
+            path: target.storagePath,
+            ...(query.query ? { query: query.query } : {}),
+            limit,
+            includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+            respectGitIgnore: false,
+            excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
+          },
         });
+        return {
+          files: result.files,
+          truncated: result.truncated,
+          storageRootPath: target.storagePath,
+        };
+      } catch (error) {
+        if (error instanceof ApiError && error.body.code === "ENOENT") {
+          return {
+            files: [],
+            truncated: false,
+            storageRootPath: target.storagePath,
+          };
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
+    },
+  );
 
-  get(routes.storageLocation, async (context) => {
-    const target = await requireThreadStorageTarget(
-      deps,
-      context.req.param("id"),
-    );
-    return context.json({
+  operations.implement(routes.storageLocation, async ({ id }) => {
+    const target = await requireThreadStorageTarget(deps, id);
+    return {
       hostId: target.hostId,
       storageRootPath: target.storagePath,
-    });
+    };
   });
 
-  get(routes.storagePaths, async (context, query) => {
-    const target = await requireThreadStorageTarget(
-      deps,
-      context.req.param("id"),
-    );
-    const limit = parseFileListLimit(query.limit);
-    const inclusion = parsePathKindInclusion({
-      includeFiles: query.includeFiles,
-      includeDirectories: query.includeDirectories,
-    });
+  operations.implement(
+    routes.storagePaths,
+    async ({ id, ...query }, { signal }) => {
+      const target = await requireThreadStorageTarget(deps, id);
+      const limit = parseFileListLimit(query.limit);
+      const inclusion = parsePathKindInclusion({
+        includeFiles: query.includeFiles,
+        includeDirectories: query.includeDirectories,
+      });
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
-        signal: context.req.raw.signal,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_paths",
-          path: target.storagePath,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-          includeFiles: inclusion.includeFiles,
-          includeDirectories: inclusion.includeDirectories,
-          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
-          respectGitIgnore: false,
-          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
-        },
-      });
-      return context.json({
-        paths: result.paths,
-        truncated: result.truncated,
-        storageRootPath: target.storagePath,
-      });
-    } catch (error) {
-      if (error instanceof ApiError && error.body.code === "ENOENT") {
-        return context.json({
-          paths: [],
-          truncated: false,
-          storageRootPath: target.storagePath,
+      try {
+        const result = await callHostRetryableOnlineRpc(deps, {
+          hostId: target.hostId,
+          signal,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "host.list_paths",
+            path: target.storagePath,
+            ...(query.query ? { query: query.query } : {}),
+            limit,
+            includeFiles: inclusion.includeFiles,
+            includeDirectories: inclusion.includeDirectories,
+            includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+            respectGitIgnore: false,
+            excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
+          },
         });
+        return {
+          paths: result.paths,
+          truncated: result.truncated,
+          storageRootPath: target.storagePath,
+        };
+      } catch (error) {
+        if (error instanceof ApiError && error.body.code === "ENOENT") {
+          return {
+            paths: [],
+            truncated: false,
+            storageRootPath: target.storagePath,
+          };
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
+    },
+  );
 }

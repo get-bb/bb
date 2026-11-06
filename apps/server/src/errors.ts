@@ -62,6 +62,30 @@ function normalizeApiErrorOptions(
   return options ?? {};
 }
 
+export class JsonBodyApiError extends ApiError {
+  readonly responseBody: Record<string, unknown>;
+
+  constructor(
+    status: ConstructorParameters<typeof HTTPException>[0],
+    responseBody: Record<string, unknown>,
+  ) {
+    const message =
+      typeof responseBody.error === "string"
+        ? responseBody.error
+        : "Request failed";
+    super(status, "request_failed", message);
+    this.name = "JsonBodyApiError";
+    this.responseBody = responseBody;
+  }
+
+  override toResponse(): Response {
+    return new Response(JSON.stringify(this.responseBody), {
+      status: this.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+}
+
 export class TurnStartGuardError extends ApiError {
   readonly details: TurnStartGuardFailureDetails;
 

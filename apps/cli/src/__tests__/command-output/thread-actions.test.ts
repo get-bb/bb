@@ -3,6 +3,7 @@ import * as domain from "@bb/domain";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
+  collectLogPayloads,
   readlineMocks,
   runCommand,
   stubServerApi,
@@ -287,9 +288,9 @@ describe("bb thread action command output", () => {
 
     await runCommand(["thread", "delete", "thread-delete-1"], register);
 
-    expect(get).toHaveBeenCalledWith({
-      param: { id: "thread-delete-1" },
-    });
+    expect(get).toHaveBeenCalledWith(
+      expect.objectContaining({ param: { id: "thread-delete-1" } }),
+    );
     expect(deleteFn).toHaveBeenCalledWith({
       param: { id: "thread-delete-1" },
       json: { childThreadsConfirmed: false },
@@ -323,6 +324,58 @@ describe("bb thread action command output", () => {
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Thread thread-delete-2 deletion cancelled",
     );
+  });
+
+  it("bb thread delete --json prints only the cancel line when declined", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-delete-4",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "idle",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const deleteFn = vi.fn(async () => ({ ok: true }));
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.$delete": deleteFn,
+    });
+    readlineMocks.question.mockResolvedValue("n");
+
+    await runCommand(
+      ["thread", "delete", "thread-delete-4", "--json"],
+      register,
+    );
+
+    expect(deleteFn).not.toHaveBeenCalled();
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Thread thread-delete-4 deletion cancelled",
+    ]);
+  });
+
+  it("bb thread delete prefixes a refusal without a terminal", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-delete-5",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "idle",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    stubServerApi({ "v1.threads.:id.$get": vi.fn(async () => thread) });
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+
+    await expect(
+      runCommand(["thread", "delete", "thread-delete-5"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: Failed to delete thread thread-delete-5: Refusing destructive action without an interactive terminal. Re-run with --yes to confirm.",
+    );
+    expect(readlineMocks.question).not.toHaveBeenCalled();
   });
 
   it("bb thread delete --yes skips confirmation (requires explicit id)", async () => {
