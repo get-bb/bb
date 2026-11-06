@@ -206,30 +206,6 @@ jobs:
           NPM_TAG: ${{ env.RELEASE_NPM_TAG }}
         run: npm publish --tag "$NPM_TAG"
 
-      - name: Verify npm release
-        if: ${{ env.RELEASE_DRY_RUN != 'true' }}
-        env:
-          NPM_TAG: ${{ env.RELEASE_NPM_TAG }}
-        run: |
-          for attempt in $(seq 1 120); do
-            package_version="$(npm view "bb-app@$PACKAGE_VERSION" version --json 2>/tmp/bb-app-version.err || true)"
-            tag_version="$(npm view "bb-app@$NPM_TAG" version --json 2>/tmp/bb-app-tag.err || true)"
-
-            if [ "$package_version" = "\"$PACKAGE_VERSION\"" ] && [ "$tag_version" = "\"$PACKAGE_VERSION\"" ]; then
-              echo "$package_version"
-              npm view bb-app version dist-tags --json
-              exit 0
-            fi
-
-            echo "Registry has not exposed bb-app@$PACKAGE_VERSION on tag $NPM_TAG yet; retrying ($attempt/120)."
-            cat /tmp/bb-app-version.err || true
-            cat /tmp/bb-app-tag.err || true
-            sleep 10
-          done
-
-          echo "::error::Timed out waiting for bb-app@$PACKAGE_VERSION to appear on npm tag $NPM_TAG."
-          exit 1
-
       - name: Summarize release
         run: |
           {
@@ -251,7 +227,9 @@ jobs:
   publish-nightly:
     name: Publish bb-app nightly after the release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag == 'latest' && inputs.dry_run == false }}
-    needs: publish
+    needs:
+      - publish
+      - verify-publish
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-release
@@ -329,7 +307,61 @@ jobs:
         working-directory: packages/bb-app
         run: npm publish --tag nightly
 
+      - name: Summarize the nightly release
+        env:
+          RELEASE_VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          {
+            echo "## bb-app nightly after the release"
+            echo
+            echo "- released version: \`$RELEASE_VERSION\`"
+            echo "- nightly version: \`$PACKAGE_VERSION\`"
+            echo "- npm tag: \`nightly\`"
+            echo "- commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify-publish:
+    name: Verify bb-app on npm
+    if: ${{ github.event_name == 'schedule' || inputs.dry_run == false }}
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
       - name: Verify npm release
+        env:
+          NPM_TAG: ${{ env.RELEASE_NPM_TAG }}
+          PACKAGE_VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          for attempt in $(seq 1 120); do
+            package_version="$(npm view "bb-app@$PACKAGE_VERSION" version --json 2>/tmp/bb-app-version.err || true)"
+            tag_version="$(npm view "bb-app@$NPM_TAG" version --json 2>/tmp/bb-app-tag.err || true)"
+
+            if [ "$package_version" = "\"$PACKAGE_VERSION\"" ] && [ "$tag_version" = "\"$PACKAGE_VERSION\"" ]; then
+              echo "$package_version"
+              npm view bb-app version dist-tags --json
+              exit 0
+            fi
+
+            echo "Registry has not exposed bb-app@$PACKAGE_VERSION on tag $NPM_TAG yet; retrying ($attempt/120)."
+            cat /tmp/bb-app-version.err || true
+            cat /tmp/bb-app-tag.err || true
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for bb-app@$PACKAGE_VERSION to appear on npm tag $NPM_TAG."
+          exit 1
+
+  verify-publish-nightly:
+    name: Verify bb-app nightly on npm
+    needs: publish-nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Verify npm release
+        env:
+          PACKAGE_VERSION: ${{ needs.publish-nightly.outputs.version }}
         run: |
           for attempt in $(seq 1 120); do
             package_version="$(npm view "bb-app@$PACKAGE_VERSION" version --json 2>/tmp/bb-app-version.err || true)"
@@ -349,19 +381,6 @@ jobs:
 
           echo "::error::Timed out waiting for bb-app@$PACKAGE_VERSION to appear on npm tag nightly."
           exit 1
-
-      - name: Summarize the nightly release
-        env:
-          RELEASE_VERSION: ${{ needs.publish.outputs.version }}
-        run: |
-          {
-            echo "## bb-app nightly after the release"
-            echo
-            echo "- released version: \`$RELEASE_VERSION\`"
-            echo "- nightly version: \`$PACKAGE_VERSION\`"
-            echo "- npm tag: \`nightly\`"
-            echo "- commit: \`${GITHUB_SHA}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
 
   # Rides the same release train as bb-app but stays independent of it: the SDK
   # version is settled in the repo (packages/domain/src/plugin-sdk-version.ts,
