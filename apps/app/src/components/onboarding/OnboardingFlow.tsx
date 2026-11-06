@@ -1051,7 +1051,6 @@ function PluginsStepContainer({
   entry: onboardingEntry,
   trackInstall,
   switches,
-  enabledAtOpen,
   onFeaturedPluginsShown,
   onBack,
   onContinue,
@@ -1062,7 +1061,6 @@ function PluginsStepContainer({
   entry: OnboardingEntry;
   trackInstall: TrackPluginInstall;
   switches: OnboardingPluginSwitches;
-  enabledAtOpen: { current: ReadonlySet<string> | null };
   onFeaturedPluginsShown: () => void;
   onBack: () => void;
   onContinue: () => void;
@@ -1117,27 +1115,6 @@ function PluginsStepContainer({
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
       ?.enabled ??
       false);
-  useEffect(() => {
-    if (
-      !redesign ||
-      enabledAtOpen.current !== null ||
-      entries === null ||
-      installedPlugins === undefined
-    ) {
-      return;
-    }
-    enabledAtOpen.current = new Set(
-      entries
-        .filter(
-          (entry) =>
-            entry.installed &&
-            installedPlugins.some(
-              (plugin) => plugin.id === entry.pluginId && plugin.enabled,
-            ),
-        )
-        .map((entry) => entry.entryId),
-    );
-  }, [redesign, enabledAtOpen, entries, installedPlugins]);
   const alreadyOnEntryIds = featured?.alreadyOnEntryIds ?? NO_ENTRY_IDS;
   const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
     redesign
@@ -1187,13 +1164,8 @@ function PluginsStepContainer({
       {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        const turnedOn = recommendedEntries.some(
-          (entry) =>
-            isShownEnabled(entry) &&
-            !(enabledAtOpen.current?.has(entry.entryId) ?? false),
-        );
-        if (turnedOn) onContinue();
-        else onSkip();
+        if (!recommendedEntries.some(isShownEnabled)) onSkip();
+        else onContinue();
       }}
       onSecondary={onSkip}
       onBack={onBack}
@@ -1403,7 +1375,6 @@ export function OnboardingFlow({
     recordTelemetryEvent({ name: "onboarding_exposed", properties: { entry } });
   }, [entry]);
   const featuredPluginsExposedRef = useRef(false);
-  const pluginsEnabledAtOpenRef = useRef<ReadonlySet<string> | null>(null);
   const recordFeaturedPluginsExposure = useCallback(() => {
     if (featuredPluginsExposedRef.current) return;
     featuredPluginsExposedRef.current = true;
@@ -1560,7 +1531,6 @@ export function OnboardingFlow({
           entry={entry}
           trackInstall={trackPluginInstall}
           switches={pluginSwitches}
-          enabledAtOpen={pluginsEnabledAtOpenRef}
           onFeaturedPluginsShown={recordFeaturedPluginsExposure}
           onBack={goTo(-1)}
           onContinue={advance("completed")}

@@ -383,8 +383,7 @@ not when the bb connect panel is merely opened), and `add_machine` (`started`
 when the machine setup command is shown). In both guides, Continue on the projects
 step counts as completed only when a project was selected or added during the
 guide (by either route), and Continue on the plugins step only when a featured
-plugin is on (in the new guide, one that was off when the step first opened);
-otherwise each counts as skipped.
+plugin is on; otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves the flag assignment, adds `setup_guide_variant`
 and `setup_guide_source` (`override`, `flag`, or `default`), sets

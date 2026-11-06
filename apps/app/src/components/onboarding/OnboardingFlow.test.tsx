@@ -166,7 +166,7 @@ function renderFeaturedPluginsStep(variant: "control" | "new") {
   const { queryClient } = renderFlow({ initialStep: "plugins", variant });
   const catalog: PluginCatalogSearchData = {
     entries: [
-      catalogEntry("memory", { installed: true }),
+      catalogEntry("memory"),
       catalogEntry("push-notifications", { installed: true }),
       catalogEntry("workflows"),
     ],
@@ -175,7 +175,6 @@ function renderFeaturedPluginsStep(variant: "control" | "new") {
   };
   act(() => {
     queryClient.setQueryData(pluginListQueryKey(true), [
-      makeInstalledPlugin({ id: "memory", enabled: true }),
       makeInstalledPlugin({ id: "push-notifications", enabled: true }),
     ]);
     queryClient.setQueryData(pluginCatalogSearchQueryKey(""), catalog);
@@ -355,7 +354,7 @@ describe("OnboardingFlow", () => {
     expect(agentLoadFailures()).toEqual(["timed_out", "timed_out"]);
   });
 
-  it("locks already-on plugins and counts a Continue with nothing turned on as skipped in the new guide", async () => {
+  it("locks already-on plugins and doesn't count them as turned on in the new guide", async () => {
     renderFeaturedPluginsStep("new");
     await screen.findByRole("switch", { name: "Enable memory" });
 
