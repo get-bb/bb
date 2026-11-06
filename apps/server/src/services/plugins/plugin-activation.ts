@@ -24,6 +24,7 @@ import {
 import {
   garbageCollectPluginArtifacts,
   pluginArtifactStorageRoot,
+  removePluginStateSnapshot,
 } from "./plugin-artifact-gc.js";
 import type { PluginRuntimeStatus } from "@bb/server-contract";
 import type { PluginServiceDeps } from "./plugin-service-internal.js";
@@ -95,6 +96,7 @@ export function createPluginActivation(context: PluginActivationContext) {
     notifyPluginsChanged,
   } = context;
   const logger = deps.logger;
+  const startedAt = now();
 
   function requireRollbackMetadata(snapshot: PluginStateSnapshotRow) {
     if (
@@ -332,6 +334,13 @@ export function createPluginActivation(context: PluginActivationContext) {
       } finally {
         stabilizingPluginIds.delete(args.row.id);
       }
+      try {
+        await removePluginStateSnapshot(deps.db, snapshot);
+      } catch (error) {
+        logger.warn(
+          `plugin snapshot cleanup failed for ${snapshot.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     });
     await syncCliSkill();
     notifyPluginsChanged();
@@ -343,6 +352,7 @@ export function createPluginActivation(context: PluginActivationContext) {
       dataDir: deps.dataDir,
       now: now(),
       retentionMs: artifactRetentionMs,
+      snapshotsCreatedBefore: startedAt,
       warn: (message) => logger.warn(message),
     });
   }

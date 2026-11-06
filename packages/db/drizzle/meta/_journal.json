@@ -1065,6 +1065,13 @@
       "when": 1793738260717,
       "tag": "0151_hand_diff_viewed_files_to_git_plugin",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "6",
+      "when": 1793861269499,
+      "tag": "0152_small_storage_cleanups",
+      "breakpoints": true
     }
   ]
 }
