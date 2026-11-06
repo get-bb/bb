@@ -151,6 +151,14 @@ export {
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
 export {
+  deleteSweepItemFailures,
+  deleteSweepItemFailuresOfUnknownSweeps,
+  getSweepItemFailure,
+  listSweepItemFailures,
+  upsertSweepItemFailure,
+} from "./sweep-item-failures.js";
+export type { SweepItemFailure } from "./sweep-item-failures.js";
+export {
   getStoredUiPreferenceDefault,
   listStoredUiPreferenceDefaults,
   listStoredUiPreferences,
@@ -229,6 +237,7 @@ export {
   claimPluginScheduledRun,
   deletePluginSchedules,
   listDuePluginSchedules,
+  pluginScheduleKey,
   listPluginSchedules,
   prunePluginSchedules,
   recordPluginScheduleResult,
@@ -549,6 +558,7 @@ export {
   advanceThreadPruning,
   deleteThreadScopedPruningCursors,
   getNextThreadPruningPolicy,
+  pickThreadPruningThread,
   THREAD_PRUNING_POLICIES,
 } from "./thread-pruning.js";
 export {

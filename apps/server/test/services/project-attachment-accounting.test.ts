@@ -19,6 +19,7 @@ import {
   queuedThreadMessages,
   threads,
   updateQueuedThreadMessage,
+  listSweepItemFailures,
 } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -35,7 +36,7 @@ import {
 import {
   pruneProjectAttachments,
   PROJECT_ATTACHMENT_BACKFILL_LIMITS,
-  runProjectAttachmentBackfill,
+  projectAttachmentBackfillSweep,
 } from "../../src/services/projects/attachment-maintenance.js";
 import {
   seedQueuedMessage,
@@ -51,15 +52,29 @@ const UNTIMED_BACKFILL_LIMITS = {
 
 const input = (path: string): PromptInput[] => [{ type: "localFile", path }];
 
+function runBackfill(h: TestAppHarness): Promise<void> {
+  const now = Date.now();
+  return projectAttachmentBackfillSweep(
+    h.deps,
+    UNTIMED_BACKFILL_LIMITS,
+    now,
+  ).run(h.deps, now);
+}
+
+function backfillFailures(h: TestAppHarness) {
+  return listSweepItemFailures(h.db, "project-attachment-backfill");
+}
+
 async function completeBackfill(h: TestAppHarness, projectId: string) {
   for (let count = 0; count < 200; count += 1) {
-    await runProjectAttachmentBackfill(h.deps, UNTIMED_BACKFILL_LIMITS);
+    await runBackfill(h);
     const state = h.db
       .select()
       .from(projectAttachmentBackfills)
       .where(eq(projectAttachmentBackfills.projectId, projectId))
       .get();
-    if (state?.error) throw new Error(state.error);
+    const failure = backfillFailures(h)[0];
+    if (failure !== undefined) throw new Error(failure.lastError);
     if (state?.phase === "done") return;
   }
   throw new Error("Backfill did not complete");
@@ -94,9 +109,7 @@ describe("project attachment accounting", () => {
         "ALTER TABLE project_attachment_backfills RENAME TO unavailable_attachment_backfills",
       );
       try {
-        await expect(
-          runProjectAttachmentBackfill(h.deps, UNTIMED_BACKFILL_LIMITS),
-        ).resolves.toBeUndefined();
+        await expect(runBackfill(h)).rejects.toThrow();
       } finally {
         h.db.$client.exec(
           "ALTER TABLE unavailable_attachment_backfills RENAME TO project_attachment_backfills",
@@ -400,9 +413,7 @@ describe("project attachment accounting", () => {
         })
         .run();
       await completeBackfill(h, project.id);
-      expect(
-        ensureProjectAttachmentBackfill(h.db, project.id).error,
-      ).toBeNull();
+      expect(backfillFailures(h)).toEqual([]);
       expect(
         getProjectAttachment(h.db, project.id, "vanished.txt"),
       ).toBeUndefined();
@@ -469,9 +480,7 @@ describe("project attachment accounting", () => {
         })
         .run();
       await completeBackfill(h, project.id);
-      expect(
-        ensureProjectAttachmentBackfill(h.db, project.id).error,
-      ).toBeNull();
+      expect(backfillFailures(h)).toEqual([]);
       expect(
         (await pruneProjectAttachments(h.deps, project.id)).reclaimedCount,
       ).toBe(0);
@@ -578,9 +587,7 @@ describe("project attachment accounting", () => {
         .where(eq(projectAttachmentBackfills.projectId, project.id))
         .run();
       await completeBackfill(h, project.id);
-      expect(
-        ensureProjectAttachmentBackfill(h.db, project.id).error,
-      ).toBeNull();
+      expect(backfillFailures(h)).toEqual([]);
     });
   });
 
@@ -644,7 +651,11 @@ describe("project attachment accounting", () => {
       try {
         for (let n = 0; n < 200; n += 1) {
           const started = performance.now();
-          await runProjectAttachmentBackfill(h.deps, batchLimits);
+          const now = Date.now();
+          await projectAttachmentBackfillSweep(h.deps, batchLimits, now).run(
+            h.deps,
+            now,
+          );
           batchMs.push(performance.now() - started);
           const queueStarted = performance.now();
           const response = await h.app.request(

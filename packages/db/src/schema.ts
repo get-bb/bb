@@ -953,6 +953,19 @@ export const maintenanceScanCursors = sqliteTable(
   ],
 );
 
+export const sweepItemFailures = sqliteTable(
+  "sweep_item_failures",
+  {
+    sweep: text("sweep").notNull(),
+    itemKey: text("item_key").notNull(),
+    attempts: integer("attempts").notNull(),
+    firstFailedAt: integer("first_failed_at").notNull(),
+    retryAt: integer("retry_at").notNull(),
+    lastError: text("last_error").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.sweep, table.itemKey] })],
+);
+
 export const promptHistoryEntries = sqliteTable(
   "prompt_history_entries",
   {

@@ -1,4 +1,4 @@
-import { and, asc, eq, lte, notInArray } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { pluginSchedules } from "../schema.js";
 
@@ -61,14 +61,35 @@ export function listPluginSchedules(
     .all();
 }
 
+export function pluginScheduleKey(row: { name: string; pluginId: string }): string {
+  return `${row.pluginId}/${row.name}`;
+}
+
 export function listDuePluginSchedules(
   db: DbConnection,
-  args: { now: number; limit: number },
+  args: {
+    excludedKeys: ReadonlySet<string>;
+    limit: number;
+    now: number;
+    pluginIds: readonly string[];
+  },
 ): PluginScheduleRow[] {
+  if (args.pluginIds.length === 0) return [];
   return db
     .select()
     .from(pluginSchedules)
-    .where(lte(pluginSchedules.nextRunAt, args.now))
+    .where(
+      and(
+        lte(pluginSchedules.nextRunAt, args.now),
+        inArray(pluginSchedules.pluginId, [...args.pluginIds]),
+        args.excludedKeys.size === 0
+          ? undefined
+          : notInArray(
+              sql<string>`${pluginSchedules.pluginId} || '/' || ${pluginSchedules.name}`,
+              [...args.excludedKeys],
+            ),
+      ),
+    )
     .orderBy(asc(pluginSchedules.nextRunAt), asc(pluginSchedules.pluginId))
     .limit(args.limit)
     .all();

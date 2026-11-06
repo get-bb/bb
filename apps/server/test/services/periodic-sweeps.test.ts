@@ -47,6 +47,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../helpers/test-app.js";
+import { defineSingleItemSweep } from "../../src/services/system/item-sweep.js";
 
 type ReleaseCallback = () => void;
 
@@ -448,7 +449,7 @@ describe("runPeriodicSweeps", () => {
 
       const logger = {
         ...testLogger,
-        error: vi.fn(),
+        warn: vi.fn(),
       };
       const deps = {
         ...harness.deps,
@@ -473,12 +474,12 @@ describe("runPeriodicSweeps", () => {
         .where(eq(hostDaemonSessions.id, session.id))
         .get();
       expect(sessionAfterSweep).toBeUndefined();
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
-          sweepJob: "machine-auth-prune",
-          sweepJobCategory: "retention",
+          attempts: 1,
+          sweep: "machine-auth-prune",
         }),
-        "Periodic sweep job failed",
+        "Sweep item failed; retrying later",
       );
     });
   });
@@ -653,15 +654,20 @@ describe("runPeriodicSweeps", () => {
           cadenceMs: 0,
           category: "maintenance",
           name: "test-overlap-sweep",
-          async run() {
-            runCount += 1;
-            if (resolveJobStarted) {
-              resolveJobStarted();
-            }
-            await new Promise<void>((resolveRunningJob) => {
-              releaseJob = resolveRunningJob;
-            });
-          },
+          background: false,
+          sweep: () =>
+            defineSingleItemSweep({
+              name: "test-overlap-sweep",
+              async process() {
+                runCount += 1;
+                if (resolveJobStarted) {
+                  resolveJobStarted();
+                }
+                await new Promise<void>((resolveRunningJob) => {
+                  releaseJob = resolveRunningJob;
+                });
+              },
+            }),
         },
       ];
 
@@ -689,9 +695,14 @@ describe("runPeriodicSweeps", () => {
           cadenceMs: 1_000,
           category: "maintenance",
           name: "test-cadence-sweep",
-          run() {
-            runCount += 1;
-          },
+          background: false,
+          sweep: () =>
+            defineSingleItemSweep({
+              name: "test-cadence-sweep",
+              process() {
+                runCount += 1;
+              },
+            }),
         },
       ];
 
