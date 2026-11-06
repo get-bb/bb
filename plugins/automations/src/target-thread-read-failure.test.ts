@@ -78,7 +78,6 @@ function createService(host: Awaited<ReturnType<typeof createHost>>) {
     bb: host.bb as never,
     db: host.bb.storage.database(),
     pluginDataDir: "/tmp/bb-automations-read-failure-test",
-    serverUrl: "http://127.0.0.1:38886",
     scriptRuns: createScriptRunScope(),
   });
 }

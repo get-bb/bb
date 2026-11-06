@@ -19,10 +19,6 @@ import { createScriptRunScope } from "./script-runner.js";
 import { createAutomationService } from "./service.js";
 import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
 
-function resolveServerUrl(): string {
-  return process.env.BB_SERVER_URL?.trim() || "http://127.0.0.1:38886";
-}
-
 export default async function plugin(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, migrations);
@@ -35,7 +31,6 @@ export default async function plugin(bb: BbPluginApi) {
     bb,
     db,
     pluginDataDir,
-    serverUrl: resolveServerUrl(),
     scriptRuns,
   });
 
@@ -99,7 +94,6 @@ export default async function plugin(bb: BbPluginApi) {
           serverHostId ??= (await bb.sdk.system.config()).primaryHostId;
           await sweepDueAutomations(bb, db, {
             pluginDataDir,
-            serverUrl: resolveServerUrl(),
             serverHostId,
             scriptRuns,
           });
