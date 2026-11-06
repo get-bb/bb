@@ -6706,6 +6706,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .bw-morph {
+    transition: none;
+  }
+}
+
 .mock-ui .rhb-turn-fold {
   display: grid;
   grid-template-rows: 1fr;
@@ -6761,8 +6767,114 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bw-morph {
-    transition: none;
+@media (max-width: 560px) {
+  .band-visual:has(> .bw-lead, > .bw-morph, > .bw-start) {
+    padding-right: 28px;
+  }
+
+  .bw.bw-lead,
+  .bw.bw-morph {
+    --mock-width: 360px;
+    --mock-visible-width: 360px;
+  }
+
+  .bw-lead .rail,
+  .bw-lead .side,
+  .bw-morph .mx-pane > .rail {
+    display: none;
+  }
+
+  .bw-lead .bw-toast {
+    width: calc(100% - 24px);
+  }
+
+  .bw-lead .bar-nav {
+    display: none;
+  }
+
+  .bw-lead .bar-left {
+    width: auto;
+  }
+
+  .bw-morph .mx-center {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  .bw-morph .mx-center > .main {
+    min-width: 0;
+  }
+
+  .bw-morph .mx-side-slot {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 3;
+    width: 0;
+    border-right-width: 0;
+  }
+
+  .bw-morph .mx-shelves .mx-side-slot {
+    width: 100%;
+  }
+
+  .bw-morph .mx-shelves .mx-side-slot > * {
+    width: 100%;
+  }
+
+  .bw-morph .mx-panel-slot {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    width: 100%;
+    transform: translateX(100%);
+  }
+
+  .bw-morph .mx-graph .mx-panel-slot {
+    transform: none;
+  }
+
+  .bw-morph .mx-ag-canvas {
+    zoom: 0.84;
+  }
+
+  .bw-morph .mx-tb-lanes {
+    flex-direction: column;
+  }
+
+  .bw-morph .mx-tb-lane {
+    width: auto;
+  }
+
+  .bw-morph .mx-tb-lane > .mx-tb-card ~ .mx-tb-card {
+    display: none;
+  }
+
+  .bw-morph .mx-panel {
+    width: 100%;
+  }
+
+  .bw.bw-start {
+    width: auto;
+    zoom: 1;
+  }
+
+  .bw-start .bw-window {
+    display: none;
+  }
+
+  .bw-start-stage {
+    padding-bottom: 0;
+  }
+
+  .bw-start .bw-phone {
+    position: relative;
+    top: auto;
+    left: auto;
+    margin: 0 auto;
+    transform: none;
   }
 }
