@@ -1,0 +1,81 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { InternalDoNotUseSetupGuideSectionProps } from "@get-bb/plugin-sdk";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
+import { PluginSetupGuideSections } from "./PluginSetupGuideSections";
+
+afterEach(() => {
+  cleanup();
+  resetPluginSlotStoreForTest();
+  resetAllCrashedPluginSlotsForTest();
+  vi.restoreAllMocks();
+});
+
+function Section({ onPhone }: InternalDoNotUseSetupGuideSectionProps) {
+  return (
+    <li>
+      <span>{onPhone ? "phone row" : "desktop row"}</span>
+    </li>
+  );
+}
+
+function renderSections() {
+  return render(
+    <MemoryRouter>
+      <ul>
+        <PluginSetupGuideSections pluginId="connect" onPhone />
+      </ul>
+    </MemoryRouter>,
+  );
+}
+
+describe("PluginSetupGuideSections", () => {
+  it("renders the plugin's section with the guide's props", () => {
+    setPluginSlotRegistrations(
+      "connect",
+      registrationSet({
+        setupGuideSections: [{ id: "remote-access", component: Section }],
+      }),
+    );
+    renderSections();
+
+    expect(screen.getByText("phone row")).toBeDefined();
+  });
+
+  it("renders nothing when the plugin registers no section", () => {
+    setPluginSlotRegistrations(
+      "other",
+      registrationSet({
+        setupGuideSections: [{ id: "remote-access", component: Section }],
+      }),
+    );
+    const { container } = renderSections();
+
+    expect(container.querySelector("ul")?.childElementCount).toBe(0);
+  });
+
+  it("shows the standard crashed-plugin chip when the section crashes", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    function Crashes(): never {
+      throw new Error("section crashed");
+    }
+    setPluginSlotRegistrations(
+      "connect",
+      registrationSet({
+        setupGuideSections: [{ id: "remote-access", component: Crashes }],
+      }),
+    );
+    renderSections();
+
+    expect(screen.getByText("plugin connect crashed")).toBeDefined();
+  });
+});
