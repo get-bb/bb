@@ -76,6 +76,7 @@ export type CtaPlacement =
   | "nav"
   | "hero"
   | "local"
+  | "customize"
   | "closer"
   | "footer"
   | "download_page";
