@@ -17,7 +17,6 @@ const INDICATOR_LABELS: Record<IndicatorLabelKind, string> = {
   "background-agent": "Background agent running",
   "background-command": "Background command running",
   "plan-mode": "Plan mode active",
-  goal: "Goal active",
   runtime: "Thread working",
   "queued-failed": "Queued message failed to send",
   "queued-waiting": "Thread has a message waiting to send",
@@ -60,7 +59,6 @@ interface IndicatorFlags {
   backgroundAgent: boolean;
   backgroundCommand: boolean;
   planMode: boolean;
-  goal: boolean;
 }
 
 export function threadIndicatorLabel(
@@ -97,7 +95,6 @@ function addThreadFlags(
   flags.backgroundAgent ||= thread.activity.backgroundAgents > 0;
   flags.backgroundCommand ||= thread.activity.backgroundCommands > 0;
   flags.planMode ||= thread.activity.planMode > 0;
-  flags.goal ||= thread.activity.goals > 0;
 }
 
 function resolveIndicator(
@@ -110,7 +107,6 @@ function resolveIndicator(
   if (flags.pending) return "waiting-for-input";
   if (hasUnsubmittedDraft && isWorking) return "working-draft";
   if (flags.planMode) return "plan-mode";
-  if (flags.goal) return "goal";
   if (flags.runtime) return "runtime";
   if (flags.workflow) return "workflow";
   if (queuedWork === "failed") return "queued-failed";
@@ -137,7 +133,6 @@ export function experimental_resolveThreadStatus({
     backgroundAgent: false,
     backgroundCommand: false,
     planMode: false,
-    goal: false,
   };
   if (thread !== null) addThreadFlags(flags, thread);
   for (const hiddenThread of hiddenThreads) addThreadFlags(flags, hiddenThread);
@@ -146,8 +141,7 @@ export function experimental_resolveThreadStatus({
     flags.workflow ||
     flags.backgroundAgent ||
     flags.backgroundCommand ||
-    flags.planMode ||
-    flags.goal;
+    flags.planMode;
   const indicator = resolveIndicator(
     flags,
     thread?.queuedWork ?? "none",

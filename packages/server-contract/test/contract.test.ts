@@ -1174,7 +1174,6 @@ describe("server-contract canonical schemas", () => {
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
             activePlanModeCount: 0,
-            activeGoalCount: 0,
           },
           hasPendingInteraction: true,
           environmentHostId: "host_123",

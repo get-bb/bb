@@ -154,6 +154,7 @@ export interface BuiltTimelinePage {
 export interface BuildRouteTimelinePageArgs {
   db: DbConnection;
   eventBudget?: number;
+  extensionStateKinds?: readonly string[];
   includeDiagnosticOperations?: boolean;
   maxSeq?: number;
   page: ThreadTimelinePageRequest;
@@ -173,6 +174,7 @@ export function buildRouteTimelinePage(
       completedTurnDisplay: "collapse",
       eventBudget:
         args.eventBudget ?? defaultFeatureFlags.timelineWindowEventBudget,
+      extensionStateKinds: args.extensionStateKinds ?? [],
       includeClearedContextHistory: false,
       includeDiagnosticOperations: args.includeDiagnosticOperations ?? true,
       compactionOfferEnabled: false,

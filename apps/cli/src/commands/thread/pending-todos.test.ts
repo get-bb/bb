@@ -112,7 +112,7 @@ describe("fetchThreadPendingTodos", () => {
       activeWorkflows: [],
       activeBackgroundCommands: [],
       pendingTodos,
-      goal: null,
+      extensionStates: {},
       providerCommands: null,
       sessionOptions: null,
       modelFallback: null,

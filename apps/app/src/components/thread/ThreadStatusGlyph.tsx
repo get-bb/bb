@@ -22,7 +22,6 @@ const WORKING_ACTIVITY_ICONS = {
   "background-agent": "UserRoundPlus",
   "background-command": "Terminal",
   "plan-mode": "ListTodo",
-  goal: "Target",
 } satisfies Partial<Record<PluginSidebarThreadIndicator, IconName>>;
 
 const WAITING_ICONS = {
@@ -154,7 +153,6 @@ export function ThreadStatusGlyph({
     case "background-agent":
     case "background-command":
     case "plan-mode":
-    case "goal":
       return (
         <Icon
           name={WORKING_ACTIVITY_ICONS[indicator]}

@@ -73,7 +73,7 @@ export function makeTimelineResponse(
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
-    goal: null,
+    extensionStates: {},
     providerCommands: null,
     sessionOptions: null,
     modelFallback: null,
