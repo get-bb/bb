@@ -30,14 +30,34 @@ describe("retiredSdkMemberWarnings", () => {
       "await sdk.environments.experimental_markDiffViewed(args); const { experimental_diffViewed } = bb.sdk.environments;",
       ["experimental_diffViewed", "experimental_markDiffViewed"],
     ],
+    [
+      "the pull request methods",
+      "await bb.sdk.environments.pullRequest({ environmentId }) as never; const { mergePullRequest, markPullRequestReady: ready } = sdk.environments; sdk.environments?.markPullRequestDraft(args);",
+      [
+        "markPullRequestDraft",
+        "markPullRequestReady",
+        "mergePullRequest",
+        "pullRequest",
+      ],
+    ],
   ])("flags %s", (_label, source, names) => {
     expect(retiredNames(source)).toEqual(names);
+  });
+
+  it("points the pull request methods at the GitHub PR Status plugin", () => {
+    expect(
+      retiredSdkMemberWarnings(
+        'sdk.environments.mergePullRequest({ environmentId, method: "squash" })',
+      ),
+    ).toEqual([
+      'environments.mergePullRequest is retired from the bb SDK typings and keeps working only for existing plugins. Use the GitHub PR Status plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--github-pr-status", method: "merge", input: { environmentId, method } }). See the github-pr-status skill.',
+    ]);
   });
 
   it("leaves the environment record's status and the remaining methods alone", () => {
     expect(
       retiredNames(
-        "environment.status === 'ready'; sdk.environments.get({ id }); sdk.environments.list();",
+        "environment.status === 'ready'; sdk.environments.get({ id }); sdk.environments.list(); sdk.plugins.callRpc({ method: \"pullRequests\" });",
       ),
     ).toEqual([]);
   });
