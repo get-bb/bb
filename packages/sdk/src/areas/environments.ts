@@ -1,6 +1,5 @@
-import { createPluginsArea, type PluginsArea } from "./plugins.js";
-import { createRetiredEnvironmentPullRequests } from "./retired-environment-pull-requests.js";
-import { createRetiredEnvironmentReads } from "./retired-environment-reads.js";
+import { createPluginsArea } from "./plugins.js";
+import { createRetiredEnvironmentMembers } from "./retired-environment-members.js";
 import { z } from "zod";
 import {
   environmentSchema,
@@ -255,13 +254,4 @@ export function createEnvironmentsArea(
     area,
     createRetiredEnvironmentMembers(createPluginsArea(args).callRpc),
   );
-}
-
-export function createRetiredEnvironmentMembers(
-  callRpc: PluginsArea["callRpc"],
-) {
-  return {
-    ...createRetiredEnvironmentReads(callRpc),
-    ...createRetiredEnvironmentPullRequests(callRpc),
-  };
 }
