@@ -61,7 +61,6 @@ type PersistedAssignments = z.infer<typeof persistedAssignmentsSchema>;
 
 const flagsResponseSchema = z.object({
   flags: z.record(z.string(), z.unknown()),
-  errorsWhileComputingFlags: z.boolean().optional(),
 });
 
 const flagDetailSchema = z.object({

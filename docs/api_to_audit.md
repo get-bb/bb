@@ -1319,9 +1319,7 @@ plugin uses `SetupOptionRow` from `@bb/shared-ui/setup-option-row`). The
 component receives `InternalDoNotUseSetupGuideSectionProps`:
 `{ onPhone }`. `onPhone` is true when the guide is open on a phone, so the row
 hides install links and phone pairing. Core's `PluginSetupGuideSections`
-renders a plugin's rows through the ordinary plugin slot boundary, and renders
-the caller's `fallback` when the plugin registers none (disabled or not
-installed) or its row crashes.
+renders a plugin's rows through the ordinary plugin slot boundary.
 
 Callers: the bundled `connect` plugin only. Core caller: the onboarding
 Devices step, which renders `PluginSetupGuideSections` for `connect`.
