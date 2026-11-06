@@ -1095,6 +1095,7 @@ function grokSigningInAgent(): OnboardingAgent {
     outputText: GROK_LOGIN_OUTPUT,
     fallbackDue: false,
     terminalChoice: null,
+    signInLink: "last",
   });
   return {
     id: "acp-grok",

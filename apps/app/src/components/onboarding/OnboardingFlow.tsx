@@ -249,8 +249,9 @@ function AgentSignInContainer({
         outputText,
         fallbackDue,
         terminalChoice,
+        signInLink: redesign ? "last" : "first",
       }),
-    [connectFlow, fallbackDue, outputText, parsed, terminalChoice],
+    [connectFlow, fallbackDue, outputText, parsed, redesign, terminalChoice],
   );
   const { guide, terminalVisible } = view;
   useEffect(() => {

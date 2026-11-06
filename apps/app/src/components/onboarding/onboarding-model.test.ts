@@ -484,7 +484,7 @@ describe("parseSignInOutput", () => {
       "On a remote or headless machine? Use `codex login --device-auth` instead.\r\n",
     ].join("");
 
-    expect(parseSignInOutput(output)).toEqual({
+    expect(parseSignInOutput(output, "last")).toEqual({
       url: "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&state=L0qZB807yNu-ZBqrvo6vcNcN_URyZ",
       userCode: null,
       acceptsPastedCode: false,
@@ -498,7 +498,7 @@ describe("parseSignInOutput", () => {
       "Paste code here if prompted > ",
     ].join("");
 
-    expect(parseSignInOutput(output)).toEqual({
+    expect(parseSignInOutput(output, "last")).toEqual({
       url: CLAUDE_URL,
       userCode: null,
       acceptsPastedCode: true,
@@ -517,7 +517,7 @@ describe("parseSignInOutput", () => {
       "Continue only if you started this login in Codex.\r\n",
     ].join("");
 
-    expect(parseSignInOutput(output)).toEqual({
+    expect(parseSignInOutput(output, "last")).toEqual({
       url: "https://auth.openai.com/codex/device",
       userCode: "JWMS-GLRCB",
       acceptsPastedCode: false,
@@ -528,13 +528,14 @@ describe("parseSignInOutput", () => {
     const wrapped = `${CLAUDE_URL.slice(0, 60)}\r\n${CLAUDE_URL.slice(60)}`;
     const output = `visit: ${ESC}]8;;${CLAUDE_URL}${BEL}${wrapped}${ESC}]8;;${BEL}\r\nPaste code here if prompted > `;
 
-    expect(parseSignInOutput(output).url).toBe(CLAUDE_URL);
+    expect(parseSignInOutput(output, "last").url).toBe(CLAUDE_URL);
   });
 
   it("does not mistake part of a link for a one-time code", () => {
     expect(
       parseSignInOutput(
         "Visit https://example.com/auth?state=ABCD-EFGH&x=WXYZ-12345 to sign in\n",
+        "last",
       ),
     ).toEqual({
       url: "https://example.com/auth?state=ABCD-EFGH&x=WXYZ-12345",
@@ -544,13 +545,13 @@ describe("parseSignInOutput", () => {
   });
 
   it("reports nothing to act on before the command has printed a link", () => {
-    expect(parseSignInOutput("")).toEqual({
+    expect(parseSignInOutput("", "last")).toEqual({
       url: null,
       userCode: null,
       acceptsPastedCode: false,
     });
     expect(
-      parseSignInOutput(`${ESC}[2J${ESC}[HChoose a text style\r\n`),
+      parseSignInOutput(`${ESC}[2J${ESC}[HChoose a text style\r\n`, "last"),
     ).toEqual({
       url: null,
       userCode: null,
@@ -575,11 +576,27 @@ const PI_LOGIN_FAILED_OUTPUT = `${PI_LOGIN_OUTPUT}\r\n${ESC}[7;1H${ESC}[2K${ESC}
 
 describe("Pi's sign-in", () => {
   it("takes the sign-in link Pi shows last, not an earlier link", () => {
-    expect(parseSignInOutput(PI_LOGIN_OUTPUT)).toEqual({
+    expect(parseSignInOutput(PI_LOGIN_OUTPUT, "last")).toEqual({
       url: PI_AUTH_URL,
       userCode: null,
       acceptsPastedCode: true,
     });
+  });
+
+  it("keeps today's guide on the first terminal link, as on main", () => {
+    expect(parseSignInOutput(PI_LOGIN_OUTPUT, "first").url).toBe(
+      PI_CHANGELOG_URL,
+    );
+    expect(
+      agentSignInView({
+        parsed: true,
+        connect: false,
+        outputText: PI_LOGIN_OUTPUT,
+        fallbackDue: false,
+        terminalChoice: null,
+        signInLink: "first",
+      }).guide?.url,
+    ).toBe(PI_CHANGELOG_URL);
   });
 
   it("shows Pi's row like every other agent's until its sign-in terminal exists", () => {
@@ -704,6 +721,7 @@ describe("agentSignInView", () => {
       connect: false,
       fallbackDue: false,
       terminalChoice: null,
+      signInLink: "last" as const,
     };
     expect(agentSignInView({ ...base, outputText: null })).toEqual({
       guide: null,
@@ -733,6 +751,7 @@ describe("agentSignInView", () => {
         outputText: null,
         fallbackDue: false,
         terminalChoice: null,
+        signInLink: "last",
       }),
     ).toEqual({ guide: null, terminalVisible: true, started: true });
   });
@@ -745,13 +764,14 @@ describe("agentSignInView", () => {
         outputText: DEVICE_OUTPUT,
         fallbackDue: false,
         terminalChoice: null,
+        signInLink: "last",
       }),
     ).toEqual({
-      guide: parseSignInOutput(DEVICE_OUTPUT),
+      guide: parseSignInOutput(DEVICE_OUTPUT, "last"),
       terminalVisible: false,
       started: true,
     });
-    expect(parseSignInOutput(DEVICE_OUTPUT).url).not.toBeNull();
+    expect(parseSignInOutput(DEVICE_OUTPUT, "last").url).not.toBeNull();
   });
 });
 

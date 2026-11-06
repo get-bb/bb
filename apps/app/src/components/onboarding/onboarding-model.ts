@@ -339,6 +339,8 @@ export interface SignInGuide {
   acceptsPastedCode: boolean;
 }
 
+export type SignInLinkChoice = "first" | "last";
+
 export interface AgentSignInView {
   guide: SignInGuide | null;
   terminalVisible: boolean;
@@ -351,15 +353,19 @@ export function agentSignInView({
   outputText,
   fallbackDue,
   terminalChoice,
+  signInLink,
 }: {
   parsed: boolean;
   connect: boolean;
   outputText: string | null;
   fallbackDue: boolean;
   terminalChoice: boolean | null;
+  signInLink: SignInLinkChoice;
 }): AgentSignInView {
   const guide =
-    parsed && outputText !== null ? parseSignInOutput(outputText) : null;
+    parsed && outputText !== null
+      ? parseSignInOutput(outputText, signInLink)
+      : null;
   const hasOutput = outputText !== null && outputText.length > 0;
   return {
     guide,
@@ -397,12 +403,14 @@ export function connectFlowFailed(
   return flow.failure.test(stripTerminalSequences(output));
 }
 
-export function parseSignInOutput(output: string): SignInGuide {
+export function parseSignInOutput(
+  output: string,
+  signInLink: SignInLinkChoice,
+): SignInGuide {
   const text = stripTerminalSequences(output);
-  const url =
-    [...output.matchAll(TERMINAL_HYPERLINK)].at(-1)?.[1] ??
-    SIGN_IN_URL.exec(text)?.[0] ??
-    null;
+  const hyperlinks = [...output.matchAll(TERMINAL_HYPERLINK)];
+  const hyperlink = signInLink === "last" ? hyperlinks.at(-1) : hyperlinks[0];
+  const url = hyperlink?.[1] ?? SIGN_IN_URL.exec(text)?.[0] ?? null;
   const withoutUrls = text.replace(new RegExp(SIGN_IN_URL.source, "gu"), " ");
   return {
     url,
