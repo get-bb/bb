@@ -961,7 +961,9 @@ describe("bridge", () => {
           },
         ],
       });
-      await bridge.waitForResponse(1);
+      const providerThreadId = getProviderThreadIdFromResult(
+        await bridge.waitForResponse(1),
+      );
       bridge.sendRequest(
         2,
         "turn/start",
@@ -972,13 +974,13 @@ describe("bridge", () => {
       );
       await readNextPrompt(getLatestQueryCall());
       await bridge.waitForResponse(2);
-      live.emit(createSuccessfulResultMessage(threadId));
+      live.emit(createSuccessfulResultMessage(providerThreadId));
       await bridge.flushWork();
       expect(reports).toHaveLength(1);
       expect(reports[0].getContextUsage).toHaveBeenCalledOnce();
       const reportOptions = contextQueryMock.mock.calls[0][0].options;
       expect(reportOptions).toMatchObject({
-        resume: threadId,
+        resume: providerThreadId,
         forkSession: true,
         persistSession: false,
         settings: { disableAllHooks: true },
@@ -1004,7 +1006,7 @@ describe("bridge", () => {
       expect(live.close).not.toHaveBeenCalled();
       expect(queryMock).toHaveBeenCalledOnce();
 
-      live.emit(createSuccessfulResultMessage(threadId));
+      live.emit(createSuccessfulResultMessage(providerThreadId));
       await bridge.flushWork();
       expect(reports[0].close).toHaveBeenCalledOnce();
       expect(reports).toHaveLength(2);
@@ -4295,7 +4297,9 @@ describe("bridge", () => {
             providerOptions: { workflowsEnabled: false, [setting]: true },
           },
         });
-        await bridge.waitForResponse(1);
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(1),
+        );
         if (setting === "chromeEnabled") {
           expect(getLatestQueryOptions().extraArgs).toEqual({
             chrome: null,
@@ -4314,7 +4318,7 @@ describe("bridge", () => {
           "turn/start",
           canonicalTurnParams({
             threadId,
-            providerThreadId: threadId,
+            providerThreadId,
             input: [{ type: "text", text: "same setting" }],
             providerOptions: { [setting]: true },
           }),
@@ -4322,7 +4326,7 @@ describe("bridge", () => {
         await readNextPrompt(getLatestQueryCall());
         await bridge.waitForResponse(2);
         expect(queries).toHaveLength(1);
-        queries[0]?.emit(createSuccessfulResultMessage(threadId));
+        queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
         await bridge.flushWork();
 
         bridge.sendRequest(
@@ -4330,7 +4334,7 @@ describe("bridge", () => {
           "turn/start",
           canonicalTurnParams({
             threadId,
-            providerThreadId: threadId,
+            providerThreadId,
             input: [{ type: "text", text: "setting turned off" }],
             providerOptions: { [setting]: false },
           }),
@@ -4338,7 +4342,9 @@ describe("bridge", () => {
         await bridge.flushWork();
         expect(queries).toHaveLength(2);
         expect(queries[0]?.close).toHaveBeenCalled();
-        expect(getLatestQueryOptions()).toMatchObject({ resume: threadId });
+        expect(getLatestQueryOptions()).toMatchObject({
+          resume: providerThreadId,
+        });
         expect(getLatestQueryOptions().extraArgs).toEqual({
           "replay-user-messages": null,
         });
@@ -4360,7 +4366,7 @@ describe("bridge", () => {
           expect.objectContaining({
             params: expect.objectContaining({
               contextLost: false,
-              providerThreadId: threadId,
+              providerThreadId,
               threadId,
             }),
           }),
@@ -4819,14 +4825,15 @@ describe("bridge", () => {
 
       try {
         const threadId = "thread-subagents-disabled";
-        const providerThreadId = "claude-subagent-conversation";
         bridge.sendRequest(1, "thread/start", {
           threadId,
           cwd: "/tmp/worktree",
           instructionMode: "append",
           options: options(initiallyEnabled),
         });
-        await bridge.waitForResponse(1);
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(1),
+        );
         expect(getLatestQueryCall().options.disallowedTools).toEqual(
           expectedTools(initiallyEnabled),
         );
@@ -5753,6 +5760,117 @@ describe("bridge", () => {
       queries[0]?.finish();
       await bridge.waitForResponse(3);
     } finally {
+      bridge.restore();
+    }
+  });
+
+  it("adopts a changed Claude session id only after the SDK announces the session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const identityProviderThreadIds = () =>
+      bridge.messages.flatMap((message) =>
+        message.method === "thread/identity" &&
+        isRecord(message.params) &&
+        typeof message.params.providerThreadId === "string"
+          ? [message.params.providerThreadId]
+          : [],
+      );
+
+    try {
+      const threadId = "thread-unannounced-session-id";
+      const resumedProviderThreadId = "resumed-provider-thread";
+      bridge.sendRequest(1, "thread/resume", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        providerThreadId: resumedProviderThreadId,
+        options: canonicalOptions(),
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: resumedProviderThreadId,
+          input: [{ type: "text", text: "Reply READY" }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+
+      queries[0]?.emit(
+        createStaleResumeErrorMessage({
+          missingSessionId: resumedProviderThreadId,
+          sessionId: "unsaved-startup-session",
+        }),
+      );
+      await bridge.flushWork();
+
+      expect(getFailedTurns(bridge.messages)).toHaveLength(1);
+      expect(identityProviderThreadIds()).not.toContain(
+        "unsaved-startup-session",
+      );
+      expect(
+        contextQueryMock.mock.calls.map(([call]) => call.options.resume),
+      ).not.toContain("unsaved-startup-session");
+
+      bridge.sendRequest(
+        3,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: resumedProviderThreadId,
+          input: [{ type: "text", text: "Retry" }],
+          providerOptions: { chromeEnabled: true },
+        }),
+      );
+      await bridge.flushWork();
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: resumedProviderThreadId,
+      });
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(3);
+
+      queries[1]?.emit({
+        type: "system",
+        subtype: "init",
+        apiKeySource: "none",
+        claude_code_version: "2.1.301",
+        cwd: "/tmp/worktree",
+        tools: [],
+        mcp_servers: [],
+        model: "claude-opus-5-5",
+        permissionMode: "default",
+        slash_commands: [],
+        output_style: "default",
+        skills: [],
+        plugins: [],
+        uuid: "00000000-0000-4000-8000-000000000002",
+        session_id: "announced-session",
+      } satisfies SDKMessage);
+      await bridge.flushWork();
+
+      expect(identityProviderThreadIds().at(-1)).toBe("announced-session");
+
+      bridge.sendRequest(4, "thread/stop", {
+        threadId,
+        providerThreadId: threadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(4);
+    } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });
