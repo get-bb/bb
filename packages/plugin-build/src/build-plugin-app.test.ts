@@ -13,11 +13,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
 import {
   buildPluginApp,
+  hostProvidesPackageVersion,
   sharedUiRuntimeModuleFor,
   runtimeShimPlugin,
   RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
-import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
+import {
+  RUNTIME_EXPORT_MANIFEST,
+  RUNTIME_PACKAGE_VERSIONS,
+} from "./generated/runtime-export-manifest.generated.js";
 import { buildPluginServer } from "./build-plugin-server.js";
 import {
   dropAnonymousPluginRootScope,
@@ -470,7 +474,7 @@ describe("plugin app runtime shim", () => {
       dir,
       "0.9.0-test",
       await testToolchain(),
-      { minify: true },
+      { minify: true, hostProvidedZod: false },
     );
     const warnings = result.migrationWarnings;
     expect(await readFile(result.jsPath, "utf8")).toContain(
@@ -532,7 +536,7 @@ describe("plugin app runtime shim", () => {
 
     expect(app.migrationWarnings).toEqual([
       expect.stringContaining(
-        'environments.diffFiles is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files"',
+        'environments.diffFiles is retired from the bb SDK typings and keeps working only for existing plugins. Use the Git plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files"',
       ),
     ]);
     expect(server.migrationWarnings).toEqual([
@@ -594,6 +598,70 @@ describe("plugin app runtime shim", () => {
         /\/tags\.ts: invalidates on RPC contract methods is retired .*bb\.rpc\.experimental_invalidate\(tags\)/u,
       ),
     ]);
+  });
+
+  it("uses a versioned slot only when the host has the plugin's major and is not older", () => {
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.5")).toBe(true);
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.1")).toBe(true);
+    expect(hostProvidesPackageVersion("4.6.5", "4.2.9")).toBe(true);
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.6")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "4.7.0")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "3.25.0")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "5.0.0")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.5-beta.1")).toBe(false);
+  });
+
+  it("shims zod only in host builds, and only for an installed zod the host provides", async () => {
+    const hostZod = RUNTIME_PACKAGE_VERSIONS.zod;
+    if (hostZod === undefined) throw new Error("no host zod version");
+    const [major] = hostZod.split(".");
+    const bundleWithZod = async (version: string, hostProvidedZod = true) => {
+      const dir = await mkdtemp(join(tmpdir(), "bb-plugin-zod-"));
+      tempDirs.push(dir);
+      const zodDir = join(dir, "node_modules", "zod");
+      await mkdir(zodDir, { recursive: true });
+      await writeFile(
+        join(zodDir, "package.json"),
+        JSON.stringify({
+          name: "zod",
+          version,
+          type: "module",
+          main: "index.js",
+        }),
+      );
+      await writeFile(
+        join(zodDir, "index.js"),
+        'export const z = "plugin-installed-zod";\n',
+      );
+      const result = await build({
+        stdin: {
+          contents: 'import { z } from "zod";\nexport { z };\n',
+          loader: "js",
+          resolveDir: dir,
+        },
+        bundle: true,
+        format: "esm",
+        platform: "browser",
+        write: false,
+        logLevel: "silent",
+        plugins: [runtimeShimPlugin(undefined, { hostProvidedZod })],
+      });
+      return result.outputFiles[0]?.text ?? "";
+    };
+
+    const shared = await bundleWithZod(hostZod);
+    expect(shared).toMatch(/runtime\d*\.zod\b/);
+    expect(shared).not.toContain("plugin-installed-zod");
+
+    const published = await bundleWithZod(hostZod, false);
+    expect(published).toContain("plugin-installed-zod");
+    expect(published).not.toMatch(/runtime\d*\.zod\b/);
+
+    for (const version of [`${Number(major) + 1}.0.0`, `${major}.999.0`]) {
+      const bundled = await bundleWithZod(version);
+      expect(bundled, version).toContain("plugin-installed-zod");
+      expect(bundled, version).not.toMatch(/runtime\d*\.zod\b/);
+    }
   });
 
   it("records in app.meta.json the runtime slots the bundle imports", async () => {
@@ -740,6 +808,7 @@ describe("plugin app runtime shim", () => {
 
     const readable = await buildPluginApp(dir, "0.9.0-test", toolchain, {
       minify: false,
+      hostProvidedZod: false,
     });
     const readableJs = await readFile(readable.jsPath, "utf8");
     const readableCss = await readFile(readable.cssPath, "utf8");

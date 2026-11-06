@@ -14,10 +14,18 @@ export interface GitCheckoutFixture {
 }
 
 export async function git(cwd: string, ...args: string[]): Promise<string> {
+  return gitWithEnv(cwd, process.env, args);
+}
+
+async function gitWithEnv(
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  args: string[],
+): Promise<string> {
   const { stdout } = await execFileAsync(
     "git",
     ["-c", "user.name=bb test", "-c", "user.email=test@example.com", ...args],
-    { cwd, encoding: "utf8" },
+    { cwd, encoding: "utf8", env },
   );
   return stdout.trim();
 }
@@ -35,6 +43,7 @@ export async function commitVersion(
   repo: string,
   version: string,
   subject: string,
+  committedAt?: string,
 ): Promise<string> {
   writeRepoFile(
     repo,
@@ -42,7 +51,13 @@ export async function commitVersion(
     `${JSON.stringify({ name: "bb-app", version })}\n`,
   );
   await git(repo, "add", "-A");
-  await git(repo, "commit", "-q", "-m", subject);
+  await gitWithEnv(
+    repo,
+    committedAt === undefined
+      ? process.env
+      : { ...process.env, GIT_COMMITTER_DATE: committedAt },
+    ["commit", "-q", "-m", subject],
+  );
   return git(repo, "rev-parse", "HEAD");
 }
 
@@ -83,8 +98,9 @@ export async function publish(
   upstream: string,
   version: string,
   subject: string,
+  committedAt?: string,
 ): Promise<string> {
-  const commit = await commitVersion(upstream, version, subject);
+  const commit = await commitVersion(upstream, version, subject, committedAt);
   await git(upstream, "push", "-q", "origin", "main");
   return commit;
 }

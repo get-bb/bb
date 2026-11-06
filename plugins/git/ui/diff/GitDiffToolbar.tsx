@@ -35,7 +35,7 @@ import { DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
 import {
   formatChangeSummary,
   renderChangeSummary,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../workspace-change-summary.js";
 import type { CodeOverflowMode } from "@get-bb/plugin-sdk";
 import type {
   CodeOverflowModeChangeHandler,

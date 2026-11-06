@@ -9,10 +9,16 @@ import {
   type ExperimentalComposerEditor,
   type ExperimentalDroppedThreadMention,
 } from "@get-bb/plugin-sdk/app";
+import { installPluginRuntime } from "@/lib/plugin-frontend";
 import { setPluginSlotRegistrations } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "./plugins";
 
 export const MINIMAL_COMPOSER_PLUGIN_ID = "minimal-composer";
+
+export const minimalComposerLastRender: {
+  renderer: object | null;
+  composer: { scope: unknown; key: string } | null;
+} = { renderer: null, composer: null };
 
 function shifted(mention: ComposerMention, delta: number): ComposerMention {
   return { ...mention, from: mention.from + delta, to: mention.to + delta };
@@ -21,6 +27,8 @@ function shifted(mention: ComposerMention, delta: number): ComposerMention {
 function MinimalComposer() {
   const composer = useComposer();
   const renderer = useComposerRenderer();
+  minimalComposerLastRender.renderer = renderer;
+  minimalComposerLastRender.composer = composer;
   const { popups, Popup, Actions } = useComposerContributions();
   const rootRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -160,6 +168,7 @@ function MinimalComposer() {
 }
 
 export function registerMinimalComposer(): void {
+  installPluginRuntime();
   setPluginSlotRegistrations(
     MINIMAL_COMPOSER_PLUGIN_ID,
     makePluginRegistrationSet({

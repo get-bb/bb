@@ -31,3 +31,15 @@ export async function readThreadsById(
   }
   return new Map(rows.map((thread) => [thread.id, thread]));
 }
+export async function readThreadsInEnvironments(
+  bb: BbPluginApi,
+  environmentIds: readonly string[],
+  signal?: AbortSignal,
+) {
+  const pages = await Promise.all(
+    environmentIds.map((environmentId) =>
+      bb.sdk.threads.list({ environmentId, includeHidden: true, signal }),
+    ),
+  );
+  return pages.flat();
+}

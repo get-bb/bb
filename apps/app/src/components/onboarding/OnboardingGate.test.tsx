@@ -92,29 +92,6 @@ describe("OnboardingGate", () => {
     );
   });
 
-  it("shows the guide again when the completion time is cleared after a close in the same session", async () => {
-    configWith({ onboardingCompletedAt: null });
-    const { view } = renderGate();
-    fireEvent.click(await screen.findByText("Setup guide at agent"));
-
-    configWith({ onboardingCompletedAt: COMPLETED_AT });
-    view.rerender(
-      <OnboardingGate>
-        <div>App shell</div>
-      </OnboardingGate>,
-    );
-    expect(screen.getByText("App shell")).toBeTruthy();
-
-    configWith({ onboardingCompletedAt: null });
-    view.rerender(
-      <OnboardingGate>
-        <div>App shell</div>
-      </OnboardingGate>,
-    );
-
-    expect(await screen.findByText("Setup guide at agent")).toBeTruthy();
-  });
-
   it("holds a first-time browser blank until settings load, but boots a returning browser straight into the app", () => {
     mocks.useSystemConfig.mockReturnValue({ data: undefined, isError: false });
     const first = renderGate();

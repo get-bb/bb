@@ -7,7 +7,7 @@ import {
 import { InfoListRow, InfoRowTime } from "@bb/shared-ui/info-list-row";
 import { InfoListRail, InfoSubheading } from "./info-parts.js";
 import { toast } from "sonner";
-import { selectWorkspaceAheadCommits } from "@bb/shared-ui/workspace-change-summary";
+import { selectWorkspaceAheadCommits } from "../workspace-change-summary.js";
 import {
   ChangedFilesList,
   ChangedFilesTally,

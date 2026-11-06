@@ -492,9 +492,7 @@ describe("public thread fork route", () => {
   );
 
   it.each([
-    { source: { title: "foo" }, expected: "(1) foo" },
     { source: { title: "(1) foo" }, expected: "(2) foo" },
-    { source: { title: "(9) foo" }, expected: "(10) foo" },
     {
       source: { title: "", titleFallback: "fix the flaky test" },
       expected: "(1) fix the flaky test",

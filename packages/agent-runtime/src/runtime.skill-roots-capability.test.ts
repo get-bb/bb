@@ -44,11 +44,9 @@ describe("skills/configure handshake capability", () => {
 
   it("starts a thread on a bridge that does not declare skills.configure, without sending the request", async () => {
     const events: ThreadEvent[] = [];
-    const record = createScriptedEchoRequestRecord();
     const runtime = withBridgeLaunch(
       createAgentRuntime({
         workspacePath,
-        env: record.env,
         skillRoots: [
           {
             id: "global-skills:builtin",

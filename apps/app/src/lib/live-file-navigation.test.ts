@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeExperimentalFileOpenOptions,
+  normalizeExperimentalFilePreviewOptions,
   normalizeExperimentalLiveFileTarget,
   toFilePreviewLineRange,
 } from "./live-file-navigation";
@@ -126,6 +127,40 @@ describe("normalizeExperimentalLiveFileTarget", () => {
       ).toBeNull();
     }
   });
+});
+
+describe("normalizeExperimentalFilePreviewOptions", () => {
+  const target = {
+    kind: "thread-storage",
+    threadId: "thr_1",
+    path: "reports/result.html",
+  };
+
+  it("separates a named opener from the open options", () => {
+    expect(
+      normalizeExperimentalFilePreviewOptions({
+        target,
+        location: null,
+        opener: "page",
+      }),
+    ).toEqual({ options: { target, location: null }, opener: "page" });
+    expect(
+      normalizeExperimentalFilePreviewOptions({ target, location: null }),
+    ).toEqual({ options: { target, location: null }, opener: null });
+  });
+
+  it.each(["", "a/b", "plugin:page", 3])(
+    "rejects a malformed opener: %s",
+    (opener) => {
+      expect(
+        normalizeExperimentalFilePreviewOptions({
+          target,
+          location: null,
+          opener,
+        }),
+      ).toBeNull();
+    },
+  );
 });
 
 describe("normalizeExperimentalFileOpenOptions", () => {

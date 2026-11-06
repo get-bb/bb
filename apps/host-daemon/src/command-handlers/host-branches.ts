@@ -12,15 +12,12 @@ import {
   refreshRemoteBranches,
 } from "bb-environment-provider-host/branch-options";
 import {
-  detectGitRepoKind,
-  readDefaultBranchRefs,
-} from "bb-environment-provider-host/workspace-git";
-import {
-  detectLinkedWorktree,
-  getCheckoutRef,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
-} from "@bb/host-workspace";
+  readCheckoutRef,
+  readDefaultBranchRefs,
+  readGitRepo,
+} from "bb-environment-provider-host/workspace-git";
 
 const NO_GIT_OPERATION: WorkspaceGitOperation = { kind: "none" };
 
@@ -38,6 +35,26 @@ export async function listHostBranchOptions(
   });
 }
 
+export async function inspectHostGitCheckout(
+  command: CommandOf<"host.inspect_git_checkout">,
+  options?: Pick<CommandDispatchOptions, "runtimeManager">,
+): Promise<HostDaemonOnlineRpcResult<"host.inspect_git_checkout">> {
+  if (!path.isAbsolute(command.path)) {
+    throw new CommandDispatchError("invalid_path", "Path must be absolute");
+  }
+
+  const gitProcessOptions = userExecutableProcessOptions(
+    options?.runtimeManager.getShellEnv() ?? {},
+  );
+  const repo = await readGitRepo(command.path, gitProcessOptions);
+  if (repo === null) {
+    return {
+      checkout: { kind: "unknown", reason: "Path is not a git repository" },
+    };
+  }
+  return { checkout: await readCheckoutRef(repo, gitProcessOptions) };
+}
+
 export async function inspectHostGitSource(
   command: CommandOf<"host.inspect_git_source">,
   options?: Pick<CommandDispatchOptions, "runtimeManager">,
@@ -49,8 +66,8 @@ export async function inspectHostGitSource(
   const gitProcessOptions = userExecutableProcessOptions(
     options?.runtimeManager.getShellEnv() ?? {},
   );
-  const repoKind = await detectGitRepoKind(command.path, gitProcessOptions);
-  if (repoKind === "none") {
+  const repo = await readGitRepo(command.path, gitProcessOptions);
+  if (repo === null) {
     return {
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
@@ -63,36 +80,29 @@ export async function inspectHostGitSource(
   }
 
   if (command.remoteRefresh === "blocking") {
-    await refreshRemoteBranches(command.path, gitProcessOptions, "blocking");
+    await refreshRemoteBranches(repo, gitProcessOptions, "blocking");
   } else {
-    void refreshRemoteBranches(
-      command.path,
-      gitProcessOptions,
-      "background",
-    ).catch(() => undefined);
+    void refreshRemoteBranches(repo, gitProcessOptions, "background").catch(
+      () => undefined,
+    );
   }
 
-  const [checkout, defaultRefs, dirty, operation, isWorktree] =
-    await Promise.all([
-      getCheckoutRef(command.path, gitProcessOptions),
-      readDefaultBranchRefs(command.path, gitProcessOptions),
-      repoKind === "work-tree"
-        ? hasUncommittedChanges(command.path, gitProcessOptions)
-        : false,
-      repoKind === "work-tree"
-        ? getWorkspaceGitOperation(command.path, gitProcessOptions)
-        : NO_GIT_OPERATION,
-      repoKind === "work-tree"
-        ? detectLinkedWorktree(command.path, gitProcessOptions)
-        : false,
-    ]);
+  const isWorkTree = repo.kind === "work-tree";
+  const [checkout, defaultRefs, dirty, operation] = await Promise.all([
+    readCheckoutRef(repo, gitProcessOptions),
+    readDefaultBranchRefs(repo, gitProcessOptions),
+    isWorkTree ? hasUncommittedChanges(repo.path, gitProcessOptions) : false,
+    isWorkTree
+      ? getWorkspaceGitOperation(repo, gitProcessOptions)
+      : NO_GIT_OPERATION,
+  ]);
   const defaultBranch = defaultRefs.defaultBranch;
   const originDefaultBranch = defaultRefs.originDefaultBranch;
   return {
     checkout,
     defaultBranch: defaultBranch ?? null,
     defaultBranchRelation: defaultRefs.defaultBranchRelation ?? null,
-    isWorktree,
+    isWorktree: isWorkTree && repo.isLinkedWorktree,
     hasUncommittedChanges: dirty,
     operation,
     originDefaultBranch: originDefaultBranch ?? null,

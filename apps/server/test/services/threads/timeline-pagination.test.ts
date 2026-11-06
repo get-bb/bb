@@ -79,7 +79,6 @@ describe("paginateTimelineRows", () => {
     });
     expect(page.rows).toEqual([user, assistant]);
     expect(page.olderCursor).toBeNull();
-    expect(page.olderCursor).toBeNull();
   });
 
   it("keeps grouped user rows from one request in the same segment", () => {
@@ -482,7 +481,6 @@ describe("paginateTimelineRows", () => {
       "thread-1:op:thread-provisioning:1",
     ]);
     expect(older.olderCursor).toBeNull();
-    expect(older.olderCursor).toBeNull();
   });
 
   it("owns rows by the selected window, whatever row shape they project to", () => {
@@ -603,7 +601,6 @@ describe("paginateTimelineRows", () => {
       page: { kind: "older", beforeCursor: page.olderCursor!, segmentLimit: 8 },
       rows: [],
     });
-    expect(last.olderCursor).toBeNull();
     expect(last.olderCursor).toBeNull();
   });
 });

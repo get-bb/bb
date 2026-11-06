@@ -533,6 +533,56 @@ it("excludes cherry-picked commits on both sides but keeps same-file changes", a
   ]);
 });
 
+it("reads changes only for base commits that touch the branch's paths", async () => {
+  const repo = await copyInitialRepository(
+    await makeTempDir("bb-status-path-limited-"),
+  );
+  const picked = "picked dir/[1] picked.txt";
+  const unrelated = Array.from({ length: 20 }, (_, i) =>
+    commitInput(
+      10 + i,
+      "main",
+      `Main ${i}`,
+      i === 0 ? initialCommit : `:${9 + i}`,
+      {
+        [`main-${i}.txt`]: `${i}\n`,
+      },
+    ),
+  ).join("");
+  await runGit(["fast-import", "--quiet"], {
+    cwd: repo,
+    input:
+      commitInput(1, "feature", "Picked", initialCommit, { [picked]: "x\n" }) +
+      commitInput(2, "feature", "Unique", ":1", { "unique.txt": "y\n" }) +
+      unrelated +
+      commitInput(3, "main", "Picked on main", ":29", { [picked]: "x\n" }),
+  });
+  await runGit(["checkout", "--force", "feature"], { cwd: repo });
+
+  const status = await readUntilSquashChecked(repo);
+
+  expect(status.mergeBase).toMatchObject({
+    aheadCount: 1,
+    behindCount: 20,
+    squashMergeCheckComplete: true,
+  });
+  expect(status.mergeBase?.commits.map((commit) => commit.subject)).toEqual([
+    "Unique",
+  ]);
+  const rawReads = vi
+    .mocked(runGit)
+    .mock.calls.filter(
+      ([args, options]) =>
+        options.cwd === repo &&
+        args.includes("--raw") &&
+        args.includes("--stdin"),
+    )
+    .flatMap(([, options]) =>
+      (options.input ?? "").split("\n").filter(Boolean),
+    );
+  expect(new Set(rawReads).size).toBe(3);
+});
+
 it("keeps renamed files compact when comparing squash patches", async () => {
   const repo = await copyInitialRepository(
     await makeTempDir("bb-status-squash-rename-"),

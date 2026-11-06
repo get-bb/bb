@@ -119,8 +119,12 @@ Plugin builds record shared runtime dependencies in `app.meta.json` as
 `runtimeSlots`. Before evaluating a bundle, the frontend matches those slots
 against `lazyRuntimeGroups` and loads the matching groups in parallel while
 preloading the bundle itself. Each group shares a cached, retryable loader.
-Pierre's core and React bindings form the first lazy group; other runtime slots
-remain eager. Older bundles without dependency metadata receive all slots for
+Pierre's core and React bindings form the first lazy group. zod forms the
+second: `vite-plugin-zod-runtime.ts` builds it from its own module ids, so its
+full namespace stays out of the boot chunk's tree-shaken zod. Only builds the
+server makes itself use the zod slot (`hostProvidedZod`), and only when the
+plugin's installed zod has the host's major and is not newer. `bb plugin build`
+artifacts keep their own zod so they still load on older hosts. Other runtime slots remain eager. Older bundles without dependency metadata receive all slots for
 compatibility. SDK component splits remain separate from this mechanism:
 runtime slots must be installed before a plugin module evaluates, while SDK
 components can load when rendered or warmed at idle.
@@ -189,6 +193,30 @@ prove that a feature is lazy. Moving code out of boot can increase the page
 journey; report both. Shared chunks move between closures, so byte savings
 from separate splits are not additive; build and check the combined result. Do
 not increase limits to hide a regression.
+
+## Chunk grouping
+
+Split boundaries decide what loads when. Chunk grouping decides how many files
+carry it. Without grouping, Rolldown emits one chunk for every distinct set of
+lazy entries that share a module, and a cold load fetched 149 app chunks, 85 of
+them under 2 KB Brotli. Over HTTP/1.1 they queue six at a time.
+
+`apps/app/vite-journey-chunks.ts` groups first-party modules by page journey,
+listed in `vite.config.ts` in priority order: the workspace route, the plugin
+runtime, the code ThreadPage and NewThreadPage share, then each page's own code.
+A module joins the first journey whose every entry statically reaches it, so a
+page chunk never imports the other page's chunk. Dependency modules and
+anything behind a dynamic import keep automatic chunking, so `defineSplit`
+boundaries still emit their own chunks.
+
+Chunking runs before tree-shaking, so the walk follows names rather than whole
+files: through a barrel it reaches only the modules that export a name some
+journey module imports. A module whose parsed imports cannot be matched to its
+resolved ones falls back to following every import, which can only pull a
+little code forward, never split a journey.
+
+Because the plugin runtime chunk imports the workspace-route chunk, the
+`PluginFrontend` journey measures both, like `ThreadPage` and `NewThreadPage`.
 
 ## Review loading states
 

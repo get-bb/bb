@@ -1,21 +1,20 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { and, eq } from "drizzle-orm";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SERVER_CREDENTIAL_CACHE_TTL_MS,
   ServerCredentialCache,
   aiRequestLog,
   aiUsageDay,
-  schema,
+  type ConnectDb,
   server,
   sha256Hex,
   user,
+  first,
 } from "@bb/connect-db";
-import {
-  connectDbMigrationFiles,
-  readConnectDbMigration,
-} from "@bb/connect-db/testing";
 import type { GatewayConfig } from "../src/config.js";
 import {
   COMPLETE_PATH,
@@ -46,13 +45,13 @@ const TRANSCRIBE_MODELS = [
 const AUDIO = Buffer.from("fake opus frames").toString("base64");
 const NOON = Date.UTC(2026, 8, 22, 12);
 
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let database: TestConnectDb;
+let db: ConnectDb;
 let clock: number;
 let background: Promise<unknown>[];
 
 async function settled(): Promise<void> {
-  for (let seen = -1; seen !== background.length; ) {
+  for (let seen = -1; seen !== background.length;) {
     seen = background.length;
     await Promise.all(background);
   }
@@ -173,12 +172,14 @@ function usage(deps: GatewayDeps, credential = "bbcred_u1") {
   );
 }
 
-function usageRow(userId: string, day: string) {
-  return db
-    .select()
-    .from(aiUsageDay)
-    .where(and(eq(aiUsageDay.userId, userId), eq(aiUsageDay.day, day)))
-    .get();
+async function usageRow(userId: string, day: string) {
+  return await first(
+    db
+      .select()
+      .from(aiUsageDay)
+      .where(and(eq(aiUsageDay.userId, userId), eq(aiUsageDay.day, day)))
+      .limit(1),
+  );
 }
 
 async function seedServer(
@@ -188,39 +189,31 @@ async function seedServer(
   credential: string,
   revokedAt: Date | null = null,
 ) {
-  db.insert(server)
-    .values({
-      id,
-      userId,
-      name: label,
-      subdomain: label,
-      credentialHash: await sha256Hex(credential),
-      revokedAt,
-      createdAt: new Date(NOON),
-    })
-    .run();
+  await db.insert(server).values({
+    id,
+    userId,
+    name: label,
+    subdomain: label,
+    credentialHash: await sha256Hex(credential),
+    revokedAt,
+    createdAt: new Date(NOON),
+  });
 }
 
 beforeEach(async () => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of connectDbMigrationFiles()) {
-    sqlite.exec(readConnectDbMigration(file));
-  }
-  db = drizzle(sqlite, { schema });
+  database = await createTestConnectDb();
+  db = database.db;
   clock = NOON;
   background = [];
   for (const id of ["u1", "u2"]) {
-    db.insert(user)
-      .values({
-        id,
-        name: id,
-        email: `${id}@example.com`,
-        emailVerified: true,
-        createdAt: new Date(NOON),
-        updatedAt: new Date(NOON),
-      })
-      .run();
+    await db.insert(user).values({
+      id,
+      name: id,
+      email: `${id}@example.com`,
+      emailVerified: true,
+      createdAt: new Date(NOON),
+      updatedAt: new Date(NOON),
+    });
   }
   await seedServer("s1", "u1", "sawyer", "bbcred_u1");
   await seedServer("s1b", "u1", "sawyer-desktop", "bbcred_u1_desktop");
@@ -228,8 +221,8 @@ beforeEach(async () => {
   await seedServer("s3", "u1", "sawyer-old", "bbcred_revoked", new Date(NOON));
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
 });
 
 describe("POST /api/ai/v1/complete", () => {
@@ -268,14 +261,14 @@ describe("POST /api/ai/v1/complete", () => {
 
     const day = utcDay(NOON);
     await settled();
-    expect(usageRow("u1", day)).toEqual({
+    expect(await usageRow("u1", day)).toEqual({
       userId: "u1",
       day,
       spentMicros: 850,
       reservedMicros: 0,
       requests: 1,
     });
-    const logs = db.select().from(aiRequestLog).all();
+    const logs = await db.select().from(aiRequestLog);
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({
       userId: "u1",
@@ -345,15 +338,15 @@ describe("POST /api/ai/v1/complete", () => {
 
   it("reports today's spend from the reservation without waiting for the settle", async () => {
     const { deps } = harness();
-    db.insert(aiUsageDay)
-      .values({ userId: "u1", day: utcDay(NOON), spentMicros: 1_000 })
-      .run();
+    await db
+      .insert(aiUsageDay)
+      .values({ userId: "u1", day: utcDay(NOON), spentMicros: 1_000 });
     const response = await complete(deps, { prompt: "a" });
     expect(await response.json()).toMatchObject({
       usage: { costMicros: 850, spentTodayMicros: 1_850 },
     });
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+    expect(await usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: 1_850,
       reservedMicros: 0,
     });
@@ -362,10 +355,10 @@ describe("POST /api/ai/v1/complete", () => {
   it("honors a revoked credential once its cached lookup expires", async () => {
     const { deps } = harness();
     expect((await complete(deps, { prompt: "a" })).status).toBe(200);
-    db.update(server)
+    await db
+      .update(server)
       .set({ revokedAt: new Date(NOON) })
-      .where(eq(server.id, "s1"))
-      .run();
+      .where(eq(server.id, "s1"));
     expect((await complete(deps, { prompt: "a" })).status).toBe(200);
     clock += SERVER_CREDENTIAL_CACHE_TTL_MS;
     expect((await complete(deps, { prompt: "a" })).status).toBe(401);
@@ -410,7 +403,7 @@ describe("POST /api/ai/v1/complete", () => {
     }
     expect(calls).toHaveLength(1);
     await settled();
-    expect(usageRow("u1", utcDay(NOON))?.reservedMicros).toBe(0);
+    expect((await usageRow("u1", utcDay(NOON)))?.reservedMicros).toBe(0);
   });
 
   it("never overshoots the budget with concurrent requests at the limit", async () => {
@@ -438,14 +431,16 @@ describe("POST /api/ai/v1/complete", () => {
     });
     const day = utcDay(NOON);
     expect(statuses.every((status) => status === 402)).toBe(true);
-    expect(usageRow("u1", day)?.reservedMicros).toBe(5 * RESERVE_MICROS);
+    expect((await usageRow("u1", day))?.reservedMicros).toBe(
+      5 * RESERVE_MICROS,
+    );
     release();
     await Promise.all(pending);
     expect(statuses.filter((status) => status === 200)).toHaveLength(5);
     expect(statuses.filter((status) => status === 402)).toHaveLength(7);
     expect(calls).toHaveLength(5);
     await settled();
-    expect(usageRow("u1", day)).toMatchObject({
+    expect(await usageRow("u1", day)).toMatchObject({
       spentMicros: 20_000,
       reservedMicros: 0,
       requests: 5,
@@ -455,13 +450,11 @@ describe("POST /api/ai/v1/complete", () => {
   it("answers 402 with the next UTC midnight once the daily budget is spent", async () => {
     clock = Date.UTC(2026, 8, 22, 23, 59, 59, 500);
     const { deps, calls } = harness();
-    db.insert(aiUsageDay)
-      .values({
-        userId: "u1",
-        day: "2026-09-22",
-        spentMicros: 2_000_000 - RESERVE_MICROS + 1,
-      })
-      .run();
+    await db.insert(aiUsageDay).values({
+      userId: "u1",
+      day: "2026-09-22",
+      spentMicros: 2_000_000 - RESERVE_MICROS + 1,
+    });
     const response = await complete(deps, { prompt: "a" });
     expect(response.status).toBe(402);
     expect(await response.json()).toEqual({
@@ -498,21 +491,21 @@ describe("POST /api/ai/v1/complete", () => {
         return okCompletion(0.001);
       },
     });
-    db.insert(aiUsageDay)
-      .values({ userId: "u1", day: "2026-09-22", spentMicros: 1_990_000 })
-      .run();
+    await db
+      .insert(aiUsageDay)
+      .values({ userId: "u1", day: "2026-09-22", spentMicros: 1_990_000 });
 
     expect((await complete(deps, { prompt: "a" })).status).toBe(200);
     await settled();
-    expect(usageRow("u1", "2026-09-22")).toMatchObject({
+    expect(await usageRow("u1", "2026-09-22")).toMatchObject({
       spentMicros: 1_991_000,
       reservedMicros: 0,
     });
-    expect(usageRow("u1", "2026-09-23")).toBeUndefined();
+    expect(await usageRow("u1", "2026-09-23")).toBeUndefined();
 
     expect((await complete(deps, { prompt: "a" })).status).toBe(200);
     await settled();
-    expect(usageRow("u1", "2026-09-23")).toMatchObject({
+    expect(await usageRow("u1", "2026-09-23")).toMatchObject({
       spentMicros: 1_000,
       reservedMicros: 0,
       requests: 1,
@@ -534,7 +527,7 @@ describe("POST /api/ai/v1/complete", () => {
       error: { code: "unavailable" },
     });
     expect(calls).toHaveLength(0);
-    expect(usageRow("u1", utcDay(NOON))).toBeUndefined();
+    expect(await usageRow("u1", utcDay(NOON))).toBeUndefined();
   });
 
   it("charges billed cost, the reserve when billing is unknown, and nothing for upstream errors", async () => {
@@ -572,19 +565,18 @@ describe("POST /api/ai/v1/complete", () => {
       });
     }
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+    expect(await usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: 100 + 2 * RESERVE_MICROS,
       reservedMicros: 0,
       requests: 4,
     });
     expect(
-      db
+      await db
         .select({
           outcome: aiRequestLog.outcome,
           costMicros: aiRequestLog.costMicros,
         })
-        .from(aiRequestLog)
-        .all(),
+        .from(aiRequestLog),
     ).toEqual([
       { outcome: "upstream_error", costMicros: 0 },
       { outcome: "upstream_error", costMicros: 100 },
@@ -609,11 +601,11 @@ describe("POST /api/ai/v1/complete", () => {
       error: { code: "timeout" },
     });
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+    expect(await usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: RESERVE_MICROS,
       reservedMicros: 0,
     });
-    expect(db.select().from(aiRequestLog).get()).toMatchObject({
+    expect(await first(db.select().from(aiRequestLog).limit(1))).toMatchObject({
       model: MODELS.at(-1),
       outcome: "timeout",
       costMicros: RESERVE_MICROS,
@@ -634,12 +626,12 @@ describe("POST /api/ai/v1/complete", () => {
     const abandoned = complete(deps, { prompt: "a" });
     await vi.waitFor(() => expect(calls).toHaveLength(1));
     const day = utcDay(NOON);
-    expect(usageRow("u1", day)?.reservedMicros).toBe(RESERVE_MICROS);
+    expect((await usageRow("u1", day))?.reservedMicros).toBe(RESERVE_MICROS);
     expect(background).toHaveLength(1);
 
     release();
     await settled();
-    expect(usageRow("u1", day)).toMatchObject({
+    expect(await usageRow("u1", day)).toMatchObject({
       spentMicros: 2_000,
       reservedMicros: 0,
     });
@@ -648,11 +640,11 @@ describe("POST /api/ai/v1/complete", () => {
 
   it("settles the reservation even when the request log write fails", async () => {
     const { deps } = harness();
-    sqlite.exec("DROP TABLE ai_request_log");
+    await database.pglite.exec("DROP TABLE ai_request_log");
     const response = await complete(deps, { prompt: "a" });
     expect(response.status).toBe(200);
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+    expect(await usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: 850,
       reservedMicros: 0,
     });
@@ -696,8 +688,8 @@ describe("POST /api/ai/v1/complete", () => {
     });
     expect(calls).toHaveLength(0);
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toBeUndefined();
-    expect(db.select().from(aiRequestLog).all()).toEqual([
+    expect(await usageRow("u1", utcDay(NOON))).toBeUndefined();
+    expect(await db.select().from(aiRequestLog)).toEqual([
       expect.objectContaining({
         userId: "u1",
         serverId: "s1",
@@ -738,14 +730,14 @@ describe("POST /api/ai/v1/transcribe", () => {
       },
     });
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toEqual({
+    expect(await usageRow("u1", utcDay(NOON))).toEqual({
       userId: "u1",
       day: utcDay(NOON),
       spentMicros: 250,
       reservedMicros: 0,
       requests: 1,
     });
-    const logs = db.select().from(aiRequestLog).all();
+    const logs = await db.select().from(aiRequestLog);
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({
       model: TRANSCRIBE_MODELS[0],
@@ -831,7 +823,7 @@ describe("POST /api/ai/v1/transcribe", () => {
     const response = await transcribe(deps, { audio: AUDIO, format: "ogg" });
     expect(response.status).toBe(503);
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+    expect(await usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: TRANSCRIBE_RESERVE_MICROS,
       reservedMicros: 0,
     });
@@ -851,7 +843,7 @@ describe("POST /api/ai/v1/transcribe", () => {
     expect(response.status).toBe(504);
     expect(calls).toHaveLength(TRANSCRIBE_MODELS.length);
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+    expect(await usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: TRANSCRIBE_RESERVE_MICROS,
       reservedMicros: 0,
     });
@@ -865,7 +857,7 @@ describe("POST /api/ai/v1/transcribe", () => {
     expect(response.status).toBe(503);
     expect(calls).toHaveLength(TRANSCRIBE_MODELS.length);
     await settled();
-    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+    expect(await usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: 0,
       reservedMicros: 0,
     });
@@ -907,7 +899,7 @@ describe("POST /api/ai/v1/transcribe", () => {
       });
     }
     expect(calls).toHaveLength(0);
-    expect(usageRow("u1", utcDay(NOON))).toBeUndefined();
+    expect(await usageRow("u1", utcDay(NOON))).toBeUndefined();
   });
 
   it("reserves 2 cents, so a nearly spent budget still allows a title but not a recording", async () => {
@@ -996,39 +988,31 @@ describe("pruneAiUsage", () => {
       ["old", old],
       ["recent", recent],
     ] as const) {
-      db.insert(aiRequestLog)
-        .values({
-          id,
-          userId: "u1",
-          serverId: "s1",
-          latencyMs: 1,
-          outcome: "ok",
-          createdAt,
-        })
-        .run();
+      await db.insert(aiRequestLog).values({
+        id,
+        userId: "u1",
+        serverId: "s1",
+        latencyMs: 1,
+        outcome: "ok",
+        createdAt,
+      });
     }
-    db.insert(aiUsageDay)
-      .values([
-        { userId: "u1", day: utcDay(old.getTime()) },
-        { userId: "u1", day: utcDay(recent.getTime()) },
-      ])
-      .run();
+    await db.insert(aiUsageDay).values([
+      { userId: "u1", day: utcDay(old.getTime()) },
+      { userId: "u1", day: utcDay(recent.getTime()) },
+    ]);
 
     await pruneAiUsage(db, now);
 
     expect(
-      db
-        .select({ id: aiRequestLog.id })
-        .from(aiRequestLog)
-        .all()
-        .map((row) => row.id),
+      (await db.select({ id: aiRequestLog.id }).from(aiRequestLog)).map(
+        (row) => row.id,
+      ),
     ).toEqual(["recent"]);
     expect(
-      db
-        .select({ day: aiUsageDay.day })
-        .from(aiUsageDay)
-        .all()
-        .map((row) => row.day),
+      (await db.select({ day: aiUsageDay.day }).from(aiUsageDay)).map(
+        (row) => row.day,
+      ),
     ).toEqual([utcDay(recent.getTime())]);
   });
 });

@@ -3,194 +3,86 @@ import type { HostPullRequestAction } from "../contract.js";
 import { installFakeGh, makeTempDir } from "../test/fake-gh.js";
 import {
   getPullRequestForCurrentBranch,
-  parseGitHubPullRequestView,
-  runPullRequestActionForCurrentBranch,
+  runPullRequestAction,
 } from "./git-host.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function ghJson(overrides: Record<string, unknown> = {}): string {
-  return JSON.stringify({
+const PR_URL = "https://github.com/acme/bb/pull/42";
+
+function graphqlPr(
+  overrides: Record<string, unknown> = {},
+  contexts: object[] = [],
+) {
+  return {
     number: 42,
     title: "Add pull request section",
     state: "OPEN",
-    url: "https://github.com/acme/bb/pull/42",
+    url: PR_URL,
     isDraft: false,
+    autoMergeRequest: null,
+    isInMergeQueue: false,
     baseRefName: "main",
     headRefName: "bb/add-pr-section",
     headRefOid: null,
     updatedAt: "2026-06-16T12:30:00Z",
-    statusCheckRollup: [],
     reviewDecision: null,
-    reviewRequests: [],
+    reviewRequests: { totalCount: 0 },
     mergeStateStatus: "CLEAN",
     mergeable: "MERGEABLE",
-    ...overrides,
-  });
-}
-
-describe("parseGitHubPullRequestView", () => {
-  it("parses a well-formed open PR", () => {
-    expect(parseGitHubPullRequestView(ghJson())).toEqual({
-      number: 42,
-      title: "Add pull request section",
-      state: "OPEN",
-      url: "https://github.com/acme/bb/pull/42",
-      isDraft: false,
-      baseRefName: "main",
-      headRefName: "bb/add-pr-section",
-      headRefOid: null,
-      updatedAt: "2026-06-16T12:30:00Z",
-      autoMerge: false,
-      inMergeQueue: null,
-      checks: [],
-      reviewDecision: null,
-      reviewRequestCount: 0,
-      mergeStateStatus: "CLEAN",
-      mergeable: "MERGEABLE",
-    });
-  });
-
-  it("preserves the draft flag and merged/closed states", () => {
-    expect(parseGitHubPullRequestView(ghJson({ isDraft: true }))?.isDraft).toBe(
-      true,
-    );
-    expect(parseGitHubPullRequestView(ghJson({ state: "MERGED" }))?.state).toBe(
-      "MERGED",
-    );
-    expect(parseGitHubPullRequestView(ghJson({ state: "CLOSED" }))?.state).toBe(
-      "CLOSED",
-    );
-  });
-
-  it("tolerates surrounding whitespace", () => {
-    expect(parseGitHubPullRequestView(`\n  ${ghJson()}\n`)?.number).toBe(42);
-  });
-
-  it("normalizes checks, review requests, and mergeability", () => {
-    expect(
-      parseGitHubPullRequestView(
-        ghJson({
-          statusCheckRollup: [
-            {
-              __typename: "CheckRun",
-              name: "typecheck",
-              status: "COMPLETED",
-              conclusion: "SUCCESS",
-              detailsUrl: "https://github.com/acme/bb/actions/runs/1",
-              startedAt: "2026-06-16T12:20:00Z",
-            },
-            {
-              __typename: "StatusContext",
-              context: "ci/build",
-              state: "FAILURE",
-              targetUrl: "https://ci.example.test/build/42",
-              createdAt: "2026-06-16T12:21:00Z",
-            },
-            {
-              __typename: "CheckRun",
-              workflowName: "lint",
-              status: "IN_PROGRESS",
-              conclusion: null,
-              startedAt: "2026-06-16T12:22:00Z",
-            },
-          ],
-          reviewDecision: "REVIEW_REQUIRED",
-          reviewRequests: [
-            { requestedReviewer: { login: "octocat" } },
-            { requestedReviewer: { login: "hubot" } },
-          ],
-          mergeStateStatus: "DIRTY",
-          mergeable: "CONFLICTING",
-        }),
-      ),
-    ).toMatchObject({
-      checks: [
+    commits: {
+      nodes: [
         {
-          name: "typecheck",
-          status: "completed",
-          conclusion: "success",
-          url: "https://github.com/acme/bb/actions/runs/1",
-          startedAt: "2026-06-16T12:20:00Z",
-        },
-        {
-          name: "ci/build",
-          status: "completed",
-          conclusion: "failure",
-          url: "https://ci.example.test/build/42",
-          startedAt: "2026-06-16T12:21:00Z",
-        },
-        {
-          name: "lint",
-          status: "in_progress",
-          conclusion: null,
-          url: null,
-          startedAt: "2026-06-16T12:22:00Z",
+          commit: {
+            statusCheckRollup: {
+              contexts: {
+                nodes: contexts,
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          },
         },
       ],
-      reviewDecision: "REVIEW_REQUIRED",
-      reviewRequestCount: 2,
-      mergeStateStatus: "DIRTY",
-      mergeable: "CONFLICTING",
-    });
-  });
+    },
+    ...overrides,
+  };
+}
 
-  it.each([
-    ["empty output", ""],
-    ["whitespace only", "   \n"],
-    ["non-JSON", "no pull requests found for branch"],
-    ["a JSON array", "[]"],
-  ])("returns null for %s", (_label, stdout) => {
-    expect(parseGitHubPullRequestView(stdout)).toBeNull();
-  });
+function graphqlResponse(pr: object) {
+  return { stdout: JSON.stringify({ data: { p0: pr } }) };
+}
 
-  it.each([
-    ["an unknown state", ghJson({ state: "QUEUED" })],
-    [
-      "a missing field",
-      JSON.stringify({ number: 1, title: "x", state: "OPEN" }),
-    ],
-    ["a non-positive number", ghJson({ number: 0 })],
-    ["an invalid updatedAt", ghJson({ updatedAt: "yesterday" })],
-    ["a non-url", ghJson({ url: "not-a-url" })],
-  ])("returns null for %s", (_label, stdout) => {
-    expect(parseGitHubPullRequestView(stdout)).toBeNull();
-  });
-});
+const prView = { stdout: JSON.stringify({ url: PR_URL }) };
 
-describe("runPullRequestActionForCurrentBranch", () => {
+describe("runPullRequestAction", () => {
   it.each([
-    ["ready", { operation: "ready" }, ["pr", "ready"]],
-    ["draft", { operation: "draft" }, ["pr", "ready", "--undo"]],
+    ["ready", { operation: "ready" }, ["pr", "ready", PR_URL]],
+    ["draft", { operation: "draft" }, ["pr", "ready", PR_URL, "--undo"]],
     [
       "merge",
       { operation: "merge", method: "merge" },
-      ["pr", "merge", "--merge"],
+      ["pr", "merge", PR_URL, "--merge"],
     ],
     [
       "squash",
       { operation: "merge", method: "squash" },
-      ["pr", "merge", "--squash"],
+      ["pr", "merge", PR_URL, "--squash"],
     ],
     [
       "rebase",
       { operation: "merge", method: "rebase" },
-      ["pr", "merge", "--rebase"],
+      ["pr", "merge", PR_URL, "--rebase"],
     ],
   ] satisfies readonly [string, HostPullRequestAction, readonly string[]][])(
-    "runs gh pr %s without a target so gh can honor a fork upstream",
+    "runs gh pr %s against the checked pull request URL",
     async (_label, action, expectedArgs) => {
       const gh = await installFakeGh({});
       const cwd = await makeTempDir("bb-pr-action-");
 
       await expect(
-        runPullRequestActionForCurrentBranch({
-          cwd,
-          localBranch: "bb/pr-action",
-          action,
-        }),
+        runPullRequestAction({ cwd, url: PR_URL, action }),
       ).resolves.toEqual({ ok: true });
 
       expect(await gh.readCalls()).toEqual([expectedArgs]);
@@ -203,14 +95,14 @@ describe("runPullRequestActionForCurrentBranch", () => {
     });
 
     await expect(
-      runPullRequestActionForCurrentBranch({
+      runPullRequestAction({
         cwd: await makeTempDir("bb-pr-action-"),
-        localBranch: "bb/pr-action",
+        url: PR_URL,
         action: { operation: "merge", method: "squash" },
       }),
     ).resolves.toEqual({
       ok: false,
-      message: "gh pr merge --squash failed: Pull request is not mergeable",
+      message: `gh pr merge ${PR_URL} --squash failed: Pull request is not mergeable`,
     });
   });
 });
@@ -224,96 +116,150 @@ describe("getPullRequestForCurrentBranch", () => {
     });
   }
 
-  it.each([
-    [
-      "queued",
-      {
-        stdout: JSON.stringify({
-          data: {
-            p0: {
-              ...JSON.parse(
-                ghJson({ autoMergeRequest: { mergeMethod: "SQUASH" } }),
-              ),
-              isInMergeQueue: true,
-            },
-          },
-        }),
+  it("reads a draft found by gh pr view through GraphQL and ignores superseded workflow runs", async () => {
+    const workflowRun = (runNumber: number) => ({
+      workflowRun: {
+        runNumber,
+        event: "pull_request",
+        workflow: { databaseId: 7 },
       },
-      true,
-    ],
-    [
-      "not queued",
-      {
-        stdout: JSON.stringify({
-          data: {
-            p0: {
-              ...JSON.parse(
-                ghJson({ autoMergeRequest: { mergeMethod: "SQUASH" } }),
-              ),
-              isInMergeQueue: false,
-            },
-          },
-        }),
-      },
-      false,
-    ],
-    ["invalid response", { stdout: "not json" }, null],
-    [
-      "missing resource",
-      { stdout: JSON.stringify({ data: { resource: null } }) },
-      null,
-    ],
-    [
-      "wrong field type",
-      {
-        stdout: JSON.stringify({
-          data: { resource: { isInMergeQueue: "true" } },
-        }),
-      },
-      null,
-    ],
-    ["unavailable", { stderr: "GraphQL unavailable", exit: 1 }, null],
-  ])(
-    "preserves auto-merge and handles a %s queue lookup",
-    async (_name, queueResponse, inMergeQueue) => {
-      await installFakeGh({
-        "pr view": {
-          stdout: ghJson({ autoMergeRequest: { mergeMethod: "SQUASH" } }),
-        },
-        "api graphql": queueResponse,
-      });
-      await expect(lookup()).resolves.toMatchObject({
-        outcome: "found",
-        pullRequest: { number: 42, autoMerge: true, inMergeQueue },
-      });
-    },
-  );
-
-  it("skips the queue lookup for drafts", async () => {
-    const gh = await installFakeGh({
-      "pr view": { stdout: ghJson({ isDraft: true }) },
     });
-    await expect(lookup()).resolves.toMatchObject({
+    const gh = await installFakeGh({
+      "pr view": prView,
+      "api graphql": graphqlResponse(
+        graphqlPr({ isDraft: true }, [
+          {
+            name: "Tests (${{ matrix.shard }})",
+            status: "COMPLETED",
+            conclusion: "CANCELLED",
+            detailsUrl: null,
+            startedAt: "2026-06-16T12:20:00Z",
+            checkSuite: workflowRun(1),
+          },
+          {
+            name: "Tests (unit)",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            detailsUrl: null,
+            startedAt: "2026-06-16T12:21:00Z",
+            checkSuite: workflowRun(2),
+          },
+        ]),
+      ),
+    });
+    const result = await lookup();
+    expect(result).toMatchObject({
       outcome: "found",
       pullRequest: { isDraft: true, inMergeQueue: false },
     });
-    expect((await gh.readCalls()).map((call) => call.slice(0, 2))).toEqual([
-      ["pr", "view"],
+    expect(result.outcome === "found" && result.pullRequest.checks).toEqual([
+      expect.objectContaining({ name: "Tests (unit)", conclusion: "success" }),
+    ]);
+    expect((await gh.readCalls()).map((call) => call.slice(0, 4))).toEqual([
+      ["pr", "view", "--json", "url"],
+      ["api", "graphql", "--hostname", "github.com"],
     ]);
   });
 
-  it("uses bare gh lookup when the branch has no differently named upstream", async () => {
-    const gh = await installFakeGh({ "pr view": { stdout: ghJson() } });
-    await expect(lookup()).resolves.toMatchObject({
-      outcome: "found",
-      pullRequest: { number: 42, state: "OPEN" },
+  it("normalizes checks, review requests, and mergeability", async () => {
+    await installFakeGh({
+      "pr view": prView,
+      "api graphql": graphqlResponse(
+        graphqlPr(
+          {
+            autoMergeRequest: { enabledAt: "2026-06-16T12:00:00Z" },
+            isInMergeQueue: true,
+            reviewDecision: "REVIEW_REQUIRED",
+            reviewRequests: { totalCount: 2 },
+            mergeStateStatus: "DIRTY",
+            mergeable: "CONFLICTING",
+          },
+          [
+            {
+              name: "typecheck",
+              status: "COMPLETED",
+              conclusion: "SUCCESS",
+              detailsUrl: "https://github.com/acme/bb/actions/runs/1",
+              startedAt: "2026-06-16T12:20:00Z",
+            },
+            {
+              context: "ci/build",
+              state: "FAILURE",
+              targetUrl: "https://ci.example.test/build/42",
+              createdAt: "2026-06-16T12:21:00Z",
+            },
+            {
+              name: "lint",
+              status: "IN_PROGRESS",
+              conclusion: null,
+              detailsUrl: null,
+              startedAt: "2026-06-16T12:22:00Z",
+            },
+          ],
+        ),
+      ),
     });
-    expect((await gh.readCalls())[0]?.slice(0, 3)).toEqual([
-      "pr",
-      "view",
-      "--json",
-    ]);
+    await expect(lookup()).resolves.toEqual({
+      outcome: "found",
+      pullRequest: {
+        number: 42,
+        title: "Add pull request section",
+        state: "OPEN",
+        url: PR_URL,
+        isDraft: false,
+        autoMerge: true,
+        inMergeQueue: true,
+        baseRefName: "main",
+        headRefName: "bb/add-pr-section",
+        headRefOid: null,
+        updatedAt: "2026-06-16T12:30:00Z",
+        checks: [
+          {
+            name: "typecheck",
+            status: "completed",
+            conclusion: "success",
+            url: "https://github.com/acme/bb/actions/runs/1",
+            startedAt: "2026-06-16T12:20:00Z",
+          },
+          {
+            name: "ci/build",
+            status: "completed",
+            conclusion: "failure",
+            url: "https://ci.example.test/build/42",
+            startedAt: "2026-06-16T12:21:00Z",
+          },
+          {
+            name: "lint",
+            status: "in_progress",
+            conclusion: null,
+            url: null,
+            startedAt: "2026-06-16T12:22:00Z",
+          },
+        ],
+        reviewDecision: "REVIEW_REQUIRED",
+        reviewRequestCount: 2,
+        mergeStateStatus: "DIRTY",
+        mergeable: "CONFLICTING",
+      },
+    });
   });
+
+  it.each([
+    ["an unknown state", graphqlResponse(graphqlPr({ state: "QUEUED" }))],
+    ["a non-positive number", graphqlResponse(graphqlPr({ number: 0 }))],
+    ["an invalid updatedAt", graphqlResponse(graphqlPr({ updatedAt: "x" }))],
+    ["a missing resource", { stdout: JSON.stringify({ data: {} }) }],
+    ["non-JSON output", { stdout: "not json" }],
+    ["a GraphQL failure", { stderr: "GraphQL unavailable", exit: 1 }],
+  ])(
+    "reports unavailable instead of a partial PR for %s",
+    async (_name, graphql) => {
+      await installFakeGh({ "pr view": prView, "api graphql": graphql });
+      await expect(lookup()).resolves.toMatchObject({
+        outcome: "unavailable",
+      });
+    },
+  );
 
   it("returns none when gh finds no pull request", async () => {
     await installFakeGh({
@@ -338,8 +284,11 @@ describe("getPullRequestForCurrentBranch", () => {
     });
   });
 
-  it("returns unavailable for unparseable gh output", async () => {
-    await installFakeGh({ "pr view": { stdout: "not json at all" } });
+  it.each([
+    ["non-JSON output", "not json at all"],
+    ["a missing url", JSON.stringify({ number: 42 })],
+  ])("returns unavailable when gh pr view prints %s", async (_name, stdout) => {
+    await installFakeGh({ "pr view": { stdout } });
     await expect(lookup()).resolves.toEqual({
       outcome: "unavailable",
       message: "gh pr view returned unparseable output",

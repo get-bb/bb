@@ -20,17 +20,17 @@
     "@bb/server": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/test-helpers": "workspace:*",
-    "@hono/node-server": "^1.19.11",
+    "@hono/node-server": "^1.19.18",
     "bb-plugin-bb--git": "workspace:*",
-    "drizzle-orm": "^0.38.4",
-    "zod": "^4.3.6"
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/node": "^22.0.0",
-    "better-sqlite3": "12.10.0",
+    "@types/node": "^22.20.5",
+    "better-sqlite3": "12.11.1",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   }
 }

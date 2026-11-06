@@ -80,6 +80,7 @@ export function makePluginListItem(
     catalogMarketplaceName: null,
     publisherLabel: null,
     sourceDisplay: "path · /plugins/plugin-test",
+    sourceNotice: null,
     updateState: {
       outcome: null,
       detail: null,
@@ -119,6 +120,7 @@ export function makeInstalledPlugin(
     isOrphanedBuiltin: false,
     publisherLabel: null,
     sourceDisplay: "path · /plugins/plugin-test",
+    sourceNotice: null,
     updateState: {},
     enabled: true,
     description: null,

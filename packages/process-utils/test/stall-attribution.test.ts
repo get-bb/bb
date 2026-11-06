@@ -90,12 +90,12 @@ describe("stall sample attribution", () => {
       startedAt: 990,
       endedAt: 1100,
     });
-    expect(result).toMatchObject({ sampledMs: 25, unobservedMs: 85 });
+    expect(result).toMatchObject({ sampledMs: 35, unobservedMs: 75 });
     expect(
       result.stacks.find(
         (stack) => stack.frames[0]?.functionName === "(garbage collector)",
       )?.sampledMs,
-    ).toBe(10);
+    ).toBe(20);
     expect(
       createStallSampleSummarizer({ ...profileWithSamples([]), samples: [] })({
         startedAt: 1000,

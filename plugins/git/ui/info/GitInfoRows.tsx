@@ -9,7 +9,7 @@ import { useSdkClipboardCopy } from "@bb/shared-ui/sdk-clipboard-copy";
 import {
   getGitStatusDisplay,
   SquashMergeInfo,
-} from "@bb/shared-ui/git-status-display";
+} from "../git-status-display.js";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   getMergeBaseBranchCandidateGroups,

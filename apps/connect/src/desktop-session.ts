@@ -6,6 +6,7 @@ import {
   server,
   session,
   type ConnectDb,
+  first,
 } from "@bb/connect-db";
 import { SettledLookupCache } from "./session.js";
 
@@ -196,42 +197,48 @@ async function lookupGrantUserId(
 ): Promise<string | null> {
   switch (grant.kind) {
     case "machine": {
-      const row = await db
-        .select({ userId: machine.userId })
-        .from(machine)
-        .where(
-          and(
-            eq(machine.credentialHash, grant.credentialHash),
-            isNull(machine.revokedAt),
-          ),
-        )
-        .get();
+      const row = await first(
+        db
+          .select({ userId: machine.userId })
+          .from(machine)
+          .where(
+            and(
+              eq(machine.credentialHash, grant.credentialHash),
+              isNull(machine.revokedAt),
+            ),
+          )
+          .limit(1),
+      );
       return row?.userId ?? null;
     }
     case "server": {
-      const row = await db
-        .select({ userId: server.userId })
-        .from(server)
-        .where(
-          and(
-            eq(server.credentialHash, grant.credentialHash),
-            isNull(server.revokedAt),
-          ),
-        )
-        .get();
+      const row = await first(
+        db
+          .select({ userId: server.userId })
+          .from(server)
+          .where(
+            and(
+              eq(server.credentialHash, grant.credentialHash),
+              isNull(server.revokedAt),
+            ),
+          )
+          .limit(1),
+      );
       return row?.userId ?? null;
     }
     case "session": {
-      const row = await db
-        .select({ userId: session.userId })
-        .from(session)
-        .where(
-          and(
-            eq(session.id, grant.sessionId),
-            gt(session.expiresAt, new Date(now)),
-          ),
-        )
-        .get();
+      const row = await first(
+        db
+          .select({ userId: session.userId })
+          .from(session)
+          .where(
+            and(
+              eq(session.id, grant.sessionId),
+              gt(session.expiresAt, new Date(now)),
+            ),
+          )
+          .limit(1),
+      );
       return row?.userId ?? null;
     }
   }

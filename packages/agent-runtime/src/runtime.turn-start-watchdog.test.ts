@@ -1,15 +1,17 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import {
+  createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
   fullRuntimeOptions,
   wait,
   type LaunchBoundAgentRuntime,
 } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
+import { CompetingTurnError } from "./runtime.js";
 
 describe("turn-start watchdog", () => {
   let tmpDir: string;
@@ -85,6 +87,123 @@ describe("turn-start watchdog", () => {
           event.code === "provider_turn_start_timeout",
       ),
     ).toHaveLength(1);
+  });
+
+  it("keeps a turn start the provider never answered pending instead of failing it", async () => {
+    const realSetTimeout = setTimeout;
+    const record = createScriptedEchoRequestRecord();
+    runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, env: record.env, onEvent: () => {} },
+      launch: {
+        scripted: {
+          swallowTurnStart: true,
+          turnStartResponseDelayMs: 600_000,
+        },
+      },
+    });
+    const liveRuntime = runtime;
+
+    await liveRuntime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+
+    vi.useFakeTimers();
+    try {
+      const turnStart = liveRuntime.runTurn({
+        clientRequestId: "creq_222222222u",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: fullRuntimeOptions,
+      });
+      for (
+        let attempt = 0;
+        record.last("turn/start") === undefined;
+        attempt += 1
+      ) {
+        if (attempt >= 1_000) {
+          throw new Error("The bridge never received turn/start");
+        }
+        await new Promise((resolve) => realSetTimeout(resolve, 10));
+      }
+      await vi.advanceTimersByTimeAsync(30_001);
+
+      await expect(turnStart).resolves.toEqual({ status: "unconfirmed" });
+      expect(liveRuntime.getLiveThreadIds()).toEqual(["t1"]);
+      await expect(
+        liveRuntime.runTurn({
+          clientRequestId: "creq_222222222v",
+          threadId: "t1",
+          input: [promptTextInput({ text: "competing" })],
+          options: fullRuntimeOptions,
+        }),
+      ).rejects.toThrow(CompetingTurnError);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails a timed-out turn start once the provider answers it with an error", async () => {
+    const realSetTimeout = setTimeout;
+    const events: ThreadEvent[] = [];
+    const record = createScriptedEchoRequestRecord();
+    runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        env: record.env,
+        onEvent: (event) => events.push(event),
+      },
+      launch: { scripted: { turnStartErrorAfterMs: 1_500 } },
+    });
+    const liveRuntime = runtime;
+
+    await liveRuntime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+
+    vi.useFakeTimers();
+    try {
+      const turnStart = liveRuntime.runTurn({
+        clientRequestId: "creq_222222222t",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: fullRuntimeOptions,
+      });
+      for (
+        let attempt = 0;
+        record.last("turn/start") === undefined;
+        attempt += 1
+      ) {
+        if (attempt >= 1_000) {
+          throw new Error("The bridge never received turn/start");
+        }
+        await new Promise((resolve) => realSetTimeout(resolve, 10));
+      }
+      await vi.advanceTimersByTimeAsync(30_001);
+      await expect(turnStart).resolves.toEqual({ status: "unconfirmed" });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const failure = await waitFor(() =>
+      events.find(
+        (event) =>
+          event.type === "system/error" &&
+          event.code === "provider_turn_start_failed",
+      ),
+    );
+    expect(failure).toMatchObject({
+      threadId: "t1",
+      scope: { kind: "thread" },
+    });
+    expect(liveRuntime.getLiveThreadIds()).toEqual([]);
   });
 
   it("stays silent when the turn starts within the threshold", async () => {

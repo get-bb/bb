@@ -94,6 +94,11 @@ describe("tool-call shell parsing", () => {
     );
 
     expect(command).toBe('grep "a|b" src/app.ts');
+    expect(
+      extractShellCommandFromString(
+        'bash -lc "echo \\$HOME \\`x\\` a\\b \\\\\\\\ line\\\n end\\"',
+      ),
+    ).toBe("echo $HOME `x` a\\b \\\\ line\n end\\");
     expect(parseShellCommandIntents(command)).toEqual([
       {
         type: "search",

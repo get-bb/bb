@@ -48,7 +48,7 @@ import {
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import {
   selectWorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../../../../../plugins/git/ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   GitSegmentFixtureProvider,
@@ -742,6 +742,7 @@ function Row({
         queuedMessages={storyQueuedMessages}
         inlineEditor={inlineEditor}
         sendAction="send-now"
+        threadStatus="active"
         sendDisabled={false}
         actionDisabled={false}
         processingMessageId={null}

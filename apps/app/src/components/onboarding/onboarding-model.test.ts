@@ -72,7 +72,7 @@ describe("resolveAgentSetupState", () => {
   it("shows the account and plan for a ready agent, even while a stale install job lingers", () => {
     expect(
       resolveAgentSetupState({
-        health: health({ accountEmail: "a@b.dev", planLabel: "Max (20x)" }),
+        health: health({ accountEmail: "a@b.dev", planLabel: "Ultra" }),
         cliStatus: cliStatus(),
         installing: true,
         installFailure: "old failure",
@@ -80,7 +80,7 @@ describe("resolveAgentSetupState", () => {
         signInFailed: true,
         installInfoPending: true,
       }),
-    ).toEqual({ status: "ready", detail: "a@b.dev · Max (20x)" });
+    ).toEqual({ status: "ready", detail: "a@b.dev · Ultra" });
     expect(
       resolveAgentSetupState({
         health: health(),

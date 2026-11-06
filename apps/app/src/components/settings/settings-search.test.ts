@@ -128,7 +128,6 @@ describe("searchSettings", () => {
     expect(searchTitles("linear")).toEqual([
       "Plugin settings › Linear",
       "General › App links",
-      "Experiments › App links",
       "Linear › API key",
       "Linear › Default team",
     ]);

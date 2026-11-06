@@ -741,6 +741,9 @@ function printPlugin(plugin: PluginEntry): void {
   const detail = plugin.statusDetail ? `  (${plugin.statusDetail})` : "";
   console.log(`${plugin.id}@${plugin.version}  ${state}${detail}`);
   console.log(`  source: ${plugin.source}`);
+  if (plugin.sourceNotice !== null) {
+    console.log(`  note: ${plugin.sourceNotice}`);
+  }
   const stats = plugin.handlerStats;
   if (stats && stats.count > 0) {
     const errors = stats.errorCount > 0 ? `, ${stats.errorCount} errors` : "";
@@ -1778,7 +1781,7 @@ export function registerPluginCommands(
               rootDir,
               resolveBbCliVersion(),
               await cliBuildToolchain(),
-              { minify: false },
+              { minify: false, hostProvidedZod: false },
             );
             for (const warning of app.migrationWarnings)
               console.warn(`warning: ${warning}`);

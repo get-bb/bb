@@ -296,7 +296,7 @@ export const guide: Guide = {
     },
   ],
   closer: {
-    title: "Hand off the work you repeat",
+    title: "Hand off the work you repeat.",
     body: "Free and open source. Bring the Claude and ChatGPT plans you already have.",
   },
 };

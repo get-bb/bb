@@ -253,6 +253,47 @@ pushed delta as unusable and refetches. That older client sends
 client reading from a server from before tags treats untagged responses and
 pushes as unusable and reads full windows.
 
+## Latest window selection and projection on push
+
+The server keeps the latest window's event selection between reads (16
+windows, of which at most 4 belong to threads that are not active) and extends
+it with appended events whenever a fresh selection would be the previous one
+plus those events. That covers streaming output, tool calls without children,
+children of parents that have no tool-call rows, turn starts, acceptances and
+completions, background task starts and completions, and new requests. Each
+case is checked against the rows a fresh selection would add: earlier rows of a
+newly fetched turn, children of a newly visible tool call, rows of a newly seen
+parent, a request outside the selection, or background task rows that a
+completion would drop. Any of those, and any other event that changes the
+selection (rejections, interruptions, background task progress, delegations,
+plans, goals, extension state), selects afresh.
+
+When appended events move the window start, the server reruns the selection
+over the kept rows plus the appended events instead of the database, since the
+new window is a part of the old one. It falls back to the database whenever a
+query would need a row the kept selection does not hold. The ordering context
+behind turn grouping keeps its rows and reads only rows after the last read, so
+a turn boundary no longer rescans the thread.
+
+The appended events themselves are not read back: the server remembers each
+committed event row per thread (64 threads, 128 rows each) and the extension
+takes those rows after an id-only query confirms they are exactly the rows in
+the appended range. A row longer than the inline output limit, or a range with
+background task progress or diagnostic events, which the SQL window filters
+decide, is still read from the database. The other queries a push runs are
+prepared once per connection, and app settings and experiments are parsed only
+when their stored rows change.
+
+While a thread is active, the server also keeps the projection of that
+selection: its fold over the events, before the step that finishes pending
+work. A read that only extends the selection folds just the appended events
+into the kept state and finishes a copy, so the kept state is never consumed.
+Any read that selects afresh, adds a request, acceptance or turn start, or
+reads a thread that is no longer active projects the whole selection again,
+exactly as a first read does, and keeps that projection for the next read. A
+history rewrite, a compaction or a write from another connection drops the
+kept selection and projection. Dropping either only costs a fresh read.
+
 ## Conversation outline caching
 
 The conversation outline returns the full list of message previews;

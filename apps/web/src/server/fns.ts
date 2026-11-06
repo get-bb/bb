@@ -12,7 +12,6 @@ import {
   claimHandle,
   createConnectCode,
   createServer,
-  depsFromEnv,
   disconnectServer,
   removeServer,
   revokeMachine,
@@ -20,6 +19,7 @@ import {
   type AccountState,
   type Deps,
 } from "./api.js";
+import { depsFromEnv } from "./deps.js";
 import { getEnv } from "./env.js";
 import { getSessionUserId } from "./current-user.server.js";
 import { resolveDevEmailPasswordEnabled } from "./local-auth.js";

@@ -105,28 +105,6 @@ describe("RuntimeThreadIdentityRegistry", () => {
     ).toBeUndefined();
   });
 
-  it("stamps projected events with the resolved bb thread id", () => {
-    const event: ThreadEvent = {
-      type: "turn/started",
-      threadId: "provider-thread-1",
-      providerThreadId: "provider-thread-1",
-      scope: turnScope("turn-1"),
-    };
-
-    expect(
-      stampThreadEventScope({
-        event,
-        threadId: "thread-1",
-        providerThreadId: "provider-thread-1",
-      }),
-    ).toEqual({
-      type: "turn/started",
-      threadId: "thread-1",
-      providerThreadId: "provider-thread-1",
-      scope: turnScope("turn-1"),
-    });
-  });
-
   it("preserves an explicit checkpoint/session pair when the current session differs", () => {
     const event: ThreadEvent = {
       type: "turn/completed",

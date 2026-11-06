@@ -28,6 +28,7 @@ const SNAPSHOT_FENCE_CLASSIFICATION: Record<
   "terminal.opened": "fenced",
   "terminal.output": "unfenced",
   "terminal.replay": "unfenced",
+  "thread-storage-change": "unfenced",
 };
 
 interface MessageSchemaNode {

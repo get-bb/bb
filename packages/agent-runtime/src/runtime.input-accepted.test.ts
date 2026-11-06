@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { getThreadEventScopeTurnId } from "@bb/domain";
 import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
@@ -35,7 +35,7 @@ describe("createAgentRuntime input accepted events", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("emits input accepted events only after accepted commands", async () => {
+  it("scopes an accepted steer's input event to the active turn", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createScriptedEchoRuntime({
       runtime: {
@@ -63,7 +63,6 @@ describe("createAgentRuntime input accepted events", () => {
       runtime,
       threadId: "t1",
     });
-    expect(inputAcceptedEvents(events, "creq_23456789ae")).toHaveLength(0);
 
     await expect(
       runtime.steerTurn({
@@ -88,7 +87,7 @@ describe("createAgentRuntime input accepted events", () => {
     await runtime.shutdown();
   });
 
-  it("does not emit provider accepted-command events when a command is rejected", async () => {
+  it("throws a rejected steer and keeps the active turn", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createScriptedEchoRuntime({
       runtime: {
@@ -132,13 +131,17 @@ describe("createAgentRuntime input accepted events", () => {
       }),
     ).rejects.toThrow(/No active session/);
 
-    expect(inputAcceptedEvents(events, "creq_222222222w")).toHaveLength(0);
     expect(runtime.getActiveTurnId("t1")).toBe(turnId);
 
     await runtime.shutdown();
   });
 
-  it("maps a staleTurn steer rejection to a stale steer", async () => {
+  it("reports a timed-out steer as unconfirmed and keeps the provider's late acceptance", async () => {
+    const realSetTimeout = setTimeout;
+    const sleepReal = (ms: number): Promise<void> =>
+      new Promise((resolve) => {
+        realSetTimeout(resolve, ms);
+      });
     const events: ThreadEvent[] = [];
     const record = createScriptedEchoRequestRecord();
     const runtime = createScriptedEchoRuntime({
@@ -147,70 +150,147 @@ describe("createAgentRuntime input accepted events", () => {
         env: record.env,
         onEvent: (event) => events.push(event),
       },
-      launch: {
-        scripted: {
-          failMethods: [
-            {
-              method: "turn/steer",
-              message: "No active turn to steer",
-              code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-              recovery: { kind: "staleTurn", retryable: false },
-            },
-          ],
-        },
-      },
+      launch: { scripted: { steerResponseDelayMs: 1_000 } },
     });
 
     await runtime.startThread({
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
-      providerId: "acp-cursor",
+      providerId: "fake",
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
-      clientRequestId: "creq_222222222x",
+      clientRequestId: "creq_2345678tsa",
       threadId: "t1",
-      input: [promptTextInput({ text: "delay:500 active turn" })],
+      input: [promptTextInput({ text: "delay:5000 active turn" })],
       options: fullRuntimeOptions,
     });
     const { turnId } = await waitForThreadTurnStarted({
       events,
-      providerId: "acp-cursor",
+      providerId: "fake",
       runtime,
       threadId: "t1",
     });
 
-    await expect(
-      runtime.steerTurn({
-        clientRequestId: "creq_222222222y",
+    vi.useFakeTimers();
+    try {
+      const steer = runtime.steerTurn({
+        clientRequestId: "creq_2345678tsb",
         threadId: "t1",
         expectedTurnId: turnId,
-        input: [promptTextInput({ text: "late steer" })],
+        input: [promptTextInput({ text: "slow steer" })],
         options: fullRuntimeOptions,
-      }),
-    ).resolves.toEqual({ status: "stale", activeTurnId: null });
-    expect(runtime.getActiveTurnId("t1")).toBeNull();
-    const steersSentSoFar = record
-      .read()
-      .filter((request) => request.method === "turn/steer").length;
-    expect(steersSentSoFar).toBe(1);
+      });
+      for (
+        let attempt = 0;
+        record.last("turn/steer") === undefined;
+        attempt += 1
+      ) {
+        if (attempt >= 1_000) {
+          throw new Error("The bridge never received turn/steer");
+        }
+        await sleepReal(10);
+      }
+      await vi.advanceTimersByTimeAsync(30_001);
 
-    await expect(
-      runtime.steerTurn({
-        clientRequestId: "creq_222222222z",
-        threadId: "t1",
-        expectedTurnId: turnId,
-        input: [promptTextInput({ text: "still late" })],
-        options: fullRuntimeOptions,
-      }),
-    ).resolves.toEqual({ status: "stale", activeTurnId: null });
-    expect(
-      record.read().filter((request) => request.method === "turn/steer"),
-    ).toHaveLength(1);
-    expect(inputAcceptedEvents(events, "creq_222222222y")).toHaveLength(0);
-    expect(inputAcceptedEvents(events, "creq_222222222z")).toHaveLength(0);
+      await expect(steer).resolves.toEqual({ status: "unconfirmed" });
+      expect(inputAcceptedEvents(events, "creq_2345678tsb")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await vi.waitFor(
+      () => {
+        expect(inputAcceptedEvents(events, "creq_2345678tsb")).toHaveLength(1);
+      },
+      { timeout: 5_000 },
+    );
+    expect(runtime.getActiveTurnId("t1")).toBe(turnId);
 
     await runtime.shutdown();
   });
+
+  it.each([
+    {
+      name: "a staleTurn recovery hint",
+      recovery: { kind: "staleTurn" as const, retryable: false },
+    },
+    { name: "the no-active-turn code alone", recovery: undefined },
+  ])(
+    "maps a steer rejection with $name to a stale steer",
+    async ({ recovery }) => {
+      const events: ThreadEvent[] = [];
+      const record = createScriptedEchoRequestRecord();
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: (event) => events.push(event),
+        },
+        launch: {
+          scripted: {
+            failMethods: [
+              {
+                method: "turn/steer",
+                message: "No active turn to steer",
+                code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+                ...(recovery === undefined ? {} : { recovery }),
+              },
+            ],
+          },
+        },
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "acp-cursor",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222222x",
+        threadId: "t1",
+        input: [promptTextInput({ text: "delay:500 active turn" })],
+        options: fullRuntimeOptions,
+      });
+      const { turnId } = await waitForThreadTurnStarted({
+        events,
+        providerId: "acp-cursor",
+        runtime,
+        threadId: "t1",
+      });
+
+      await expect(
+        runtime.steerTurn({
+          clientRequestId: "creq_222222222y",
+          threadId: "t1",
+          expectedTurnId: turnId,
+          input: [promptTextInput({ text: "late steer" })],
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({ status: "stale", activeTurnId: null });
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
+      const steersSentSoFar = record
+        .read()
+        .filter((request) => request.method === "turn/steer").length;
+      expect(steersSentSoFar).toBe(1);
+
+      await expect(
+        runtime.steerTurn({
+          clientRequestId: "creq_222222222z",
+          threadId: "t1",
+          expectedTurnId: turnId,
+          input: [promptTextInput({ text: "still late" })],
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({ status: "stale", activeTurnId: null });
+      expect(
+        record.read().filter((request) => request.method === "turn/steer"),
+      ).toHaveLength(1);
+
+      await runtime.shutdown();
+    },
+  );
 });

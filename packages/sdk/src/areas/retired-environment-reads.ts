@@ -240,5 +240,50 @@ export function createRetiredEnvironmentReads(
         args.signal,
       );
     },
+    experimental_diffViewed(
+      args: EnvironmentReadArgs & DiffTargetArgs & { paths?: string[] },
+    ) {
+      return callGit(
+        "viewed",
+        {
+          environmentId: args.environmentId,
+          target: toWorkspaceDiffTarget(args),
+          ...(args.paths === undefined ? {} : { paths: args.paths }),
+        },
+        args.signal,
+      );
+    },
+    experimental_markDiffViewed(args: {
+      environmentId: string;
+      target: WorkspaceDiffTarget;
+      path: string;
+      revision: string;
+    }) {
+      return callGit(
+        "markViewed",
+        {
+          environmentId: args.environmentId,
+          target: args.target,
+          path: args.path,
+          revision: args.revision,
+        },
+        undefined,
+      );
+    },
+    experimental_clearDiffViewed(args: {
+      environmentId: string;
+      target: WorkspaceDiffTarget;
+      path?: string;
+    }) {
+      return callGit(
+        "clearViewed",
+        {
+          environmentId: args.environmentId,
+          target: args.target,
+          ...(args.path === undefined ? {} : { path: args.path }),
+        },
+        undefined,
+      );
+    },
   };
 }

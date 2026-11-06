@@ -11,7 +11,7 @@ import {
 } from "@/components/plugin/PluginPanelActions";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { GIT_DIFF_TAB_REFERENCE } from "@/lib/git-diff-tab";
-import { useGitWorkspaceStatus } from "@/hooks/queries/git-plugin-queries";
+import { useEnvironmentCheckoutDisplay } from "@/hooks/queries/git-plugin-queries";
 import {
   useThreadFixedTabs,
   createThreadFixedTabDescriptor,
@@ -50,7 +50,6 @@ import {
   usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
-import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import { useUpdateThread } from "../../hooks/mutations/thread-state-mutations";
 import { useEnvironment } from "../../hooks/queries/environment-queries";
 import {
@@ -96,7 +95,6 @@ import {
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import { formatWorkspaceCheckoutDisplay } from "@bb/shared-ui/lib/workspace-checkout-display";
 import { resolveAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
@@ -297,13 +295,7 @@ function ThreadDetailViewInternal(
     threadDetailBootstrapQuery,
     threadQuery: { data: thread, isFetching, isLoadingError, error },
     unreadDividerState,
-  } = useThreadDetailThread(
-    threadId,
-    timelineEnabled,
-    systemConfigQuery.data?.experiments.unreadDividerAtAnswer === true
-      ? "turn-answer"
-      : "first-unread-row",
-  );
+  } = useThreadDetailThread(threadId, timelineEnabled);
   const environmentQuery = useEnvironment(thread?.environmentId, {
     enabled: hasThreadDetailBootstrapSettled,
     staleTime: 5_000,
@@ -545,7 +537,6 @@ function ThreadDetailViewInternal(
     threadId,
     enabled: timelineEnabled,
   });
-  const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
   });
@@ -1041,7 +1032,8 @@ function ThreadDetailViewInternal(
     }
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
   }, [handleCloseWindowRequest, isFocused]);
-  const workspaceStatus = useGitWorkspaceStatus(threadEnvironmentId).workspace;
+  const threadCheckoutDisplay =
+    useEnvironmentCheckoutDisplay(threadEnvironmentId);
   const { isLocalDaemonHost } = useHostDaemon();
   const threadEnvironmentIsLocal = environment
     ? isLocalDaemonHost(environment.hostId)
@@ -1398,9 +1390,6 @@ function ThreadDetailViewInternal(
     isThreadOnReusableEnvironment && projectId && thread.environmentId !== null
       ? createThreadInEnvironment
       : undefined;
-  const threadCheckoutDisplay = workspaceStatus
-    ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
-    : undefined;
   const threadTitle = getThreadDisplayTitle(thread);
   const responsiveWorkspaceActions: PluginThreadActionsInlineItem[] =
     workspaceOpenPath && preferredDirectoryTarget
@@ -1764,8 +1753,7 @@ function ThreadDetailViewInternal(
                 environmentProvisioningFailure,
                 environmentDisplayHost: environmentDisplayHostContext,
                 threadEnvironmentId: threadTabEnvironmentId,
-                updateThreadPending:
-                  updateThread.isPending || updateEnvironment.isPending,
+                updateThreadPending: updateThread.isPending,
                 storage: metadataStorage,
                 onAssignParent: handleAssignParent,
                 onParentSelectorOpenChange: handleParentSelectorOpenChange,

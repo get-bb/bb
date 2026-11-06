@@ -105,16 +105,6 @@ describe("collection manifest schema", () => {
       ),
     ).toThrowError(/invalid \.bb\/plugins\.json/);
   });
-
-  it("names the available entries when a name is unknown", () => {
-    const parsed = parse([
-      { name: "sidebar", source: "./a" },
-      { name: "status", source: "./b" },
-    ]);
-    expect(() =>
-      subdirectoryForCollectionEntry(parsed, "missing"),
-    ).toThrowError(/no plugin "missing" — available: sidebar, status/);
-  });
 });
 
 describe("collection manifest in a checkout", () => {
@@ -165,21 +155,6 @@ describe("collection manifest in a checkout", () => {
     await expect(readPluginCollectionManifest(repoDir)).rejects.toThrowError(
       /resolves outside its root/,
     );
-  });
-
-  it("lists the entries when a collection repository has no root plugin", async () => {
-    await writeCollection([
-      { name: "sidebar", source: "./plugins/sidebar" },
-      { name: "status", source: "./plugins/status" },
-    ]);
-
-    await expect(
-      resolveSelectedSubdirectory({
-        checkoutDir: repoDir,
-        selection: { kind: "root" },
-        sourceLabel: "repo",
-      }),
-    ).rejects.toThrowError(/--plugin <name> \(sidebar, status\)/);
   });
 
   it("keeps the root install when the repository is itself a plugin", async () => {

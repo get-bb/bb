@@ -1,5 +1,10 @@
 import { and, eq, lt, sql } from "drizzle-orm";
-import { type ConnectDb, aiRequestLog, aiUsageDay } from "@bb/connect-db";
+import {
+  type ConnectDb,
+  aiRequestLog,
+  aiUsageDay,
+  first,
+} from "@bb/connect-db";
 
 export const RESERVE_MICROS = 5_000;
 export const TRANSCRIBE_RESERVE_MICROS = 20_000;
@@ -31,24 +36,25 @@ export async function reserveBudget(
   reserveMicros: number,
 ): Promise<{ spentMicros: number } | null> {
   if (reserveMicros > limitMicros) return null;
-  const reserved = await db
-    .insert(aiUsageDay)
-    .values({
-      userId: key.userId,
-      day: key.day,
-      reservedMicros: reserveMicros,
-      requests: 1,
-    })
-    .onConflictDoUpdate({
-      target: [aiUsageDay.userId, aiUsageDay.day],
-      set: {
-        reservedMicros: sql`${aiUsageDay.reservedMicros} + ${reserveMicros}`,
-        requests: sql`${aiUsageDay.requests} + 1`,
-      },
-      setWhere: sql`${aiUsageDay.spentMicros} + ${aiUsageDay.reservedMicros} + ${reserveMicros} <= ${limitMicros}`,
-    })
-    .returning({ spentMicros: aiUsageDay.spentMicros })
-    .get();
+  const reserved = await first(
+    db
+      .insert(aiUsageDay)
+      .values({
+        userId: key.userId,
+        day: key.day,
+        reservedMicros: reserveMicros,
+        requests: 1,
+      })
+      .onConflictDoUpdate({
+        target: [aiUsageDay.userId, aiUsageDay.day],
+        set: {
+          reservedMicros: sql`${aiUsageDay.reservedMicros} + ${reserveMicros}`,
+          requests: sql`${aiUsageDay.requests} + 1`,
+        },
+        setWhere: sql`${aiUsageDay.spentMicros} + ${aiUsageDay.reservedMicros} + ${reserveMicros} <= ${limitMicros}`,
+      })
+      .returning({ spentMicros: aiUsageDay.spentMicros }),
+  );
   return reserved ?? null;
 }
 
@@ -62,22 +68,25 @@ export async function settleBudget(
   await db
     .update(aiUsageDay)
     .set({
-      reservedMicros: sql`max(${aiUsageDay.reservedMicros} - ${reserveMicros}, 0)`,
+      reservedMicros: sql`case when ${aiUsageDay.reservedMicros} > ${reserveMicros} then ${aiUsageDay.reservedMicros} - ${reserveMicros} else 0 end`,
       spentMicros: sql`${aiUsageDay.spentMicros} + ${charged}`,
     })
-    .where(and(eq(aiUsageDay.userId, key.userId), eq(aiUsageDay.day, key.day)))
-    .run();
+    .where(and(eq(aiUsageDay.userId, key.userId), eq(aiUsageDay.day, key.day)));
 }
 
 export async function spentMicros(
   db: ConnectDb,
   key: BudgetKey,
 ): Promise<number> {
-  const row = await db
-    .select({ spentMicros: aiUsageDay.spentMicros })
-    .from(aiUsageDay)
-    .where(and(eq(aiUsageDay.userId, key.userId), eq(aiUsageDay.day, key.day)))
-    .get();
+  const row = await first(
+    db
+      .select({ spentMicros: aiUsageDay.spentMicros })
+      .from(aiUsageDay)
+      .where(
+        and(eq(aiUsageDay.userId, key.userId), eq(aiUsageDay.day, key.day)),
+      )
+      .limit(1),
+  );
   return row?.spentMicros ?? 0;
 }
 
@@ -85,10 +94,6 @@ export async function pruneAiUsage(db: ConnectDb, now: number): Promise<void> {
   const cutoff = now - RETENTION_DAYS * DAY_MS;
   await db
     .delete(aiRequestLog)
-    .where(lt(aiRequestLog.createdAt, new Date(cutoff)))
-    .run();
-  await db
-    .delete(aiUsageDay)
-    .where(lt(aiUsageDay.day, utcDay(cutoff)))
-    .run();
+    .where(lt(aiRequestLog.createdAt, new Date(cutoff)));
+  await db.delete(aiUsageDay).where(lt(aiUsageDay.day, utcDay(cutoff)));
 }

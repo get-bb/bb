@@ -31,6 +31,7 @@ import {
   useSystemVersion,
 } from "@/hooks/queries/system-queries";
 import { hostCanRetryUpdate } from "@/lib/host-update-status";
+import { useTimeReached } from "@/hooks/useTimeReached";
 import { sdk } from "@/lib/sdk";
 
 export interface UpdateInventoryMachine {
@@ -129,6 +130,30 @@ export function resolveAppUpdateAvailable(args: {
   );
 }
 
+const SOURCE_UPDATE_BADGE_COMMIT_COUNT = 30;
+const SOURCE_UPDATE_BADGE_AGE_MS = 6 * 60 * 60 * 1000;
+
+export function sourceUpdateBadgeDueAt(
+  appUpdate: SystemAppUpdateStatus | undefined,
+): number | null {
+  if (
+    appUpdate?.support.kind !== "supported" ||
+    appUpdate.support.mode !== "source" ||
+    appUpdate.available?.behindSince == null ||
+    appUpdate.blocked !== null
+  ) {
+    return null;
+  }
+  if (
+    (appUpdate.available.commitCount ?? 0) > SOURCE_UPDATE_BADGE_COMMIT_COUNT
+  ) {
+    return 0;
+  }
+  return (
+    Date.parse(appUpdate.available.behindSince) + SOURCE_UPDATE_BADGE_AGE_MS
+  );
+}
+
 export function updateInventoryHosts(hosts: readonly Host[]): Host[] {
   return hosts.filter((host) => host.type !== "ephemeral");
 }
@@ -205,11 +230,16 @@ export function useUpdateInventory(
   });
 
   const systemVersion = systemVersionQuery.data;
-  const appUpdateAvailable = resolveAppUpdateAvailable({
-    appUpdate: appUpdateStatusQuery.data,
-    isDesktop,
-    systemVersion,
-  });
+  const sourceUpdateDue = useTimeReached(
+    sourceUpdateBadgeDueAt(appUpdateStatusQuery.data),
+  );
+  const appUpdateAvailable =
+    sourceUpdateDue ||
+    resolveAppUpdateAvailable({
+      appUpdate: appUpdateStatusQuery.data,
+      isDesktop,
+      systemVersion,
+    });
   const desktopUpdateReady = desktopInfo?.updateDownloaded === true;
   const actionableCount =
     machines.reduce(

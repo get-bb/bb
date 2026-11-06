@@ -13,7 +13,7 @@ import {
   toChangeTally,
   type WorkspaceChangedFileSelection,
   type WorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "./workspace-change-summary.js";
 import { useCallback } from "react";
 import {
   GIT_DIFF_TAB_ID,

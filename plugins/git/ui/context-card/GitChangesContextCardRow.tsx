@@ -6,7 +6,7 @@ import {
 import {
   formatChangeSummary,
   toChangeTally,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../workspace-change-summary.js";
 import { DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
 import { GIT_DIFF_TAB_ID } from "../../contract.js";
 import { useGitStatus, useShowGitChanges } from "../queries.js";

@@ -44,6 +44,7 @@ export function queueInputForStartingTurn(
         {
           thread,
           message: args.input,
+          placement: "back",
           waitingOn: { kind: "turn-starting" },
           sendAt: null,
           claimed: args.claimed,

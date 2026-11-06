@@ -30,6 +30,10 @@ export interface HostGetArgs {
   signal?: AbortSignal;
 }
 
+export interface HostProviderCliStatusArgs extends HostGetArgs {
+  refresh?: boolean;
+}
+
 export interface HostDeleteArgs {
   hostId: string;
   force?: boolean;
@@ -145,7 +149,9 @@ export interface HostsArea {
   ): Promise<MachineProviderListResult>;
   pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
   pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
-  providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
+  providerCliStatus(
+    args: HostProviderCliStatusArgs,
+  ): Promise<HostProviderCliStatusResult>;
   experimental_resume(args: HostActionArgs): Promise<Host>;
   experimental_retryCleanup(args: HostActionArgs): Promise<HostActionResult>;
   retryUpdate(args: HostRetryUpdateArgs): Promise<HostRetryUpdateResult>;
@@ -337,6 +343,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         transport.api.v1.hosts[":id"]["provider-clis"].status.$get(
           {
             param: { id: input.hostId },
+            query: input.refresh ? { refresh: "true" } : {},
           },
           ...signalRequestArgs(input.signal),
         ),

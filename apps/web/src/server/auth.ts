@@ -1,6 +1,5 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import { drizzle } from "drizzle-orm/d1";
 import {
   account,
   CONNECT_SESSION_EXPIRES_IN_SECONDS,
@@ -9,11 +8,12 @@ import {
   user,
   verification,
 } from "@bb/connect-db";
+import { connectDbFromEnv } from "./connect-db.js";
 import type { Env } from "./env.js";
 import { resolveDevEmailPasswordEnabled } from "./local-auth.js";
 
 export function createAuth(env: Env) {
-  const db = drizzle(env.DB);
+  const db = connectDbFromEnv(env);
   const appUrl = new URL(env.APP_URL);
   const devEmailPasswordEnabled = resolveDevEmailPasswordEnabled(env);
   const subdomainOrigin = `${appUrl.protocol}//*.${env.BASE_DOMAIN}${
@@ -25,7 +25,7 @@ export function createAuth(env: Env) {
     baseURL: env.APP_URL,
     trustedOrigins: [env.APP_URL, subdomainOrigin],
     database: drizzleAdapter(db, {
-      provider: "sqlite",
+      provider: "pg",
       schema: { user, session, account, verification },
     }) as unknown as Parameters<typeof betterAuth>[0]["database"],
     session: {

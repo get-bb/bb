@@ -172,6 +172,14 @@ export function gitViewedTag(environmentId: string): string {
   return `viewed:${environmentId}`;
 }
 
+export const gitViewedFileSchema = z
+  .object({
+    path: z.string().min(1),
+    revision: z.string().min(1),
+  })
+  .strict();
+export type GitViewedFile = z.infer<typeof gitViewedFileSchema>;
+
 const notApplicableSchema = z
   .object({
     outcome: z.literal("not_applicable"),
@@ -436,5 +444,9 @@ export const gitHostContract = defineRpcContract({
       })
       .strict(),
     output: gitBranchOptionsSchema,
+  },
+  fetchRemoteBranches: {
+    input: hostPathSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
   },
 });

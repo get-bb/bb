@@ -1,11 +1,11 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   TUNNEL_STATUS_HEADER,
   machine,
   presenceWritesOnChange,
   server,
 } from "@bb/connect-db";
+import { type OpenConnectDb, openConnectDb } from "@bb/connect-db-pg";
 import {
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
@@ -33,7 +33,7 @@ import {
 
 export interface Env {
   TUNNEL_DO: DurableObjectNamespace;
-  DB: D1Database;
+  HYPERDRIVE: Hyperdrive;
   BASE_DOMAIN: string;
   BETTER_AUTH_SECRET: string;
   GATE_EVENTS: AnalyticsEngineDataset;
@@ -279,22 +279,25 @@ export class TunnelDO {
     const serverId = await this.state.storage.get<string>("serverId");
     const machineId = await this.state.storage.get<string>("machineId");
     if (!serverId && !machineId) return;
+    let opened: OpenConnectDb | null = null;
     try {
-      const db = drizzle(this.env.DB);
+      opened = openConnectDb(this.env);
+      const { db } = opened;
       if (machineId) {
         await db
           .update(machine)
           .set({ lastSeenAt: new Date() })
-          .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)))
-          .run();
+          .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)));
       } else if (serverId) {
         await db
           .update(server)
           .set({ lastSeenAt: new Date() })
-          .where(eq(server.id, serverId))
-          .run();
+          .where(eq(server.id, serverId));
       }
-    } catch {}
+    } catch {
+    } finally {
+      await opened?.close().catch(() => undefined);
+    }
   }
 
   private async restartIfTunnelVanished(): Promise<void> {

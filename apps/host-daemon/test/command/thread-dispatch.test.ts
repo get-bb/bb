@@ -649,7 +649,7 @@ describe("thread command dispatch", () => {
     const originalRunTurn = harness.runtime.runTurn;
     harness.runtime.runTurn = async (args) => {
       expect(harness.runtime.hasThread(args.threadId)).toBe(true);
-      await originalRunTurn(args);
+      return originalRunTurn(args);
     };
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(
       async (args) => {
@@ -1295,6 +1295,69 @@ describe("thread command dispatch", () => {
         ),
       ),
     ).rejects.toThrow();
+  });
+
+  it("reports an unanswered turn start as unconfirmed and keeps its staged attachments", async () => {
+    const threadStorageRootPath = await makeTempDir(
+      "bb-unconfirmed-turn-attachments-",
+    );
+    const harness = createHarness();
+    harness.runtime.runTurn = async () => ({ status: "unconfirmed" });
+    const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
+      content: attachmentContent("content"),
+    }));
+
+    await expect(
+      dispatchCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "turn.submit",
+          environmentId: "env-unconfirmed-turn",
+          threadId: "thread-unconfirmed-turn",
+          requestId: nextClientRequestId(),
+          input: [{ type: "localFile", path: "unconfirmed-uploaded.txt" }],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            providerOptions: {},
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+          resumeContext: {
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+            workspaceContext: {
+              workspacePath: "/tmp/env-unconfirmed-turn",
+            },
+            projectId: "project-unconfirmed-turn",
+            providerId: "fake",
+            providerThreadId: "provider-unconfirmed-turn",
+            instructions: "Be a helpful coding agent.",
+            dynamicTools: [],
+            contributedEnv: [],
+            injectedSkillSources: [],
+            instructionMode: "append",
+          },
+          target: { mode: "start" },
+        },
+        {
+          ...harness.dispatchOptions({ threadStorageRootPath }),
+          fetchProjectAttachment,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "turn_start_unconfirmed" });
+    await expect(
+      fs.stat(
+        path.join(
+          threadStorageRootPath,
+          "thread-unconfirmed-turn",
+          "Attachments",
+          "unconfirmed-uploaded.txt",
+        ),
+      ),
+    ).resolves.toBeDefined();
   });
 
   it("covers thread lifecycle commands", async () => {
@@ -2009,6 +2072,61 @@ describe("thread command dispatch", () => {
 
     expect(result).toEqual({ trace: { spans: [] } });
     expect(steeredTurnIds).toEqual(["turn-old", "turn-new"]);
+    expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
+  });
+
+  it("reports a steer the provider never answered as unconfirmed, without retrying it as a new turn", async () => {
+    const harness = createHarness();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    harness.threadControls.setActiveTurn("thread-1", "turn-1");
+    let steerAttempts = 0;
+    harness.runtime.steerTurn = async () => {
+      steerAttempts += 1;
+      return { status: "unconfirmed" };
+    };
+
+    await expect(
+      dispatchCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "turn.submit",
+          environmentId: "env-1",
+          threadId: "thread-1",
+          requestId: nextClientRequestId(),
+          input: [textPromptInput("steer a frozen provider")],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            providerOptions: {},
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+          resumeContext: {
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+            workspaceContext: {
+              workspacePath: "/tmp/env-1",
+            },
+            projectId: "project-1",
+            providerId: "fake",
+            providerThreadId: "provider-1",
+            instructions: "Be a helpful coding agent.",
+            dynamicTools: [],
+            contributedEnv: [],
+            injectedSkillSources: [],
+            instructionMode: "append",
+          },
+          target: { mode: "steer", expectedTurnId: "turn-1" },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).rejects.toMatchObject({ code: "steer_unconfirmed" });
+    expect(steerAttempts).toBe(1);
     expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
   });
 
