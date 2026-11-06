@@ -33,7 +33,6 @@ import {
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import {
-  LEGACY_CODEX_GOAL_EXTENSION_KIND,
   THREAD_PROVIDER_COMMANDS_STATE_KIND,
   THREAD_SESSION_OPTIONS_STATE_KIND,
   THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
@@ -969,10 +968,6 @@ function listLatestTimelineHeadStateRows(
     ),
     ...listLatestThreadStateEventRowsByThreadIds(db, {
       threadIds: [threadId],
-      kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
-    }),
-    ...listLatestThreadStateEventRowsByThreadIds(db, {
-      threadIds: [threadId],
       kind: THREAD_PROVIDER_COMMANDS_STATE_KIND,
     }),
     ...listLatestThreadStateEventRowsByThreadIds(db, {
@@ -1621,7 +1616,6 @@ function buildThreadTimelineInternal(
       options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     pendingTodos: timeline.pendingTodos,
     extensionStates: timeline.extensionStates,
-    goal: timeline.goal,
     providerCommands: timeline.providerCommands,
     sessionOptions: timeline.sessionOptions,
     modelFallback:

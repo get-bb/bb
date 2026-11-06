@@ -46,6 +46,7 @@ import {
 
 interface BuildArgs {
   eventBudget: number;
+  extensionStateKinds?: readonly string[];
   includeDiagnosticOperations: boolean;
   maxSeq?: number;
   page: ThreadTimelinePageRequest;
@@ -664,6 +665,8 @@ function latestArgs(
   };
 }
 
+const CODEX_GOAL_KIND = "provider-codex/goal";
+
 const singleSegmentArgs: BuildArgs = {
   eventBudget: 200,
   includeDiagnosticOperations: false,
@@ -991,6 +994,10 @@ describe("latest timeline selection memo", () => {
   it("rebuilds a snapshot below the head without leaking later head state, and reuses at the head", () => {
     withTestThread((testThread) => {
       const state = initialState();
+      const args: BuildArgs = {
+        ...singleSegmentArgs,
+        extensionStateKinds: [CODEX_GOAL_KIND],
+      };
       append(testThread, [
         ...startTurn(state),
         goalRow(testThread.thread.id, "first goal"),
@@ -1010,15 +1017,15 @@ describe("latest timeline selection memo", () => {
       ]);
       const initial = expectWarmEqualsCold(
         testThread,
-        singleSegmentArgs,
+        args,
         "initial",
       );
       expect({
-        goal: initial.response.goal?.objective,
+        goal: initial.response.extensionStates[CODEX_GOAL_KIND],
         todos: initial.response.pendingTodos?.items.map((item) => item.text),
         workflows: initial.response.activeWorkflows.map((row) => row.itemId),
       }).toEqual({
-        goal: "first goal",
+        goal: expect.objectContaining({ objective: "first goal" }),
         todos: ["Ship it", "Ship it docs"],
         workflows: ["task:wf-1"],
       });
@@ -1033,25 +1040,25 @@ describe("latest timeline selection memo", () => {
       ]);
       const lagging = expectWarmEqualsCold(
         testThread,
-        { ...singleSegmentArgs, maxSeq: laggingSeq },
+        { ...args, maxSeq: laggingSeq },
         "lagging snapshot",
       );
       expect(selectionWasReused(lagging.profile)).toBe(false);
       expect({
         activeWorkflows: lagging.response.activeWorkflows,
-        goal: lagging.response.goal,
+        extensionStates: lagging.response.extensionStates,
         maxSeq: lagging.response.maxSeq,
         pendingTodos: lagging.response.pendingTodos,
       }).toEqual({
         activeWorkflows: [],
-        goal: null,
+        extensionStates: {},
         maxSeq: laggingSeq,
         pendingTodos: null,
       });
 
-      expectWarmEqualsCold(testThread, singleSegmentArgs, "head snapshot");
+      expectWarmEqualsCold(testThread, args, "head snapshot");
       append(testThread, [messageDelta("turn-2", "message-2", "four\n")]);
-      const head = expectWarmEqualsCold(testThread, singleSegmentArgs, "head");
+      const head = expectWarmEqualsCold(testThread, args, "head");
       expect(selectionWasReused(head.profile)).toBe(true);
     });
   });

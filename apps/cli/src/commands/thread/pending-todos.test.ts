@@ -113,7 +113,6 @@ describe("fetchThreadPendingTodos", () => {
       activeBackgroundCommands: [],
       pendingTodos,
       extensionStates: {},
-      goal: null,
       providerCommands: null,
       sessionOptions: null,
       modelFallback: null,

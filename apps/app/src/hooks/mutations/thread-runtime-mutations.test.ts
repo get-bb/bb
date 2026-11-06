@@ -110,14 +110,14 @@ function makeBannerTimeline(): ThreadTimelineResponse {
       providerId: "codex",
       prompt: "Plan the work",
     },
-    goal: {
-      sourceSeq: 1,
-      updatedAt: 100,
-      objective: "Finish the work",
-      status: "active",
-      tokenBudget: null,
-      tokensUsed: 100,
-      timeUsedSeconds: 10,
+    extensionStates: {
+      "provider-codex/goal": {
+        objective: "Finish the work",
+        status: "active",
+        tokenBudget: null,
+        tokensUsed: 100,
+        timeUsedSeconds: 10,
+      },
     },
   });
 }
@@ -266,7 +266,7 @@ describe("thread runtime mutations", () => {
       ),
     ).toMatchObject({
       activePromptMode: { mode: "plan" },
-      goal: { status: "active" },
+      extensionStates: { "provider-codex/goal": { status: "active" } },
     });
 
     cancellation.resolve({ ok: true });
@@ -278,7 +278,9 @@ describe("thread runtime mutations", () => {
         threadTimelineQueryKey("thread-1"),
       );
     expect(timelineAfterSuccess?.activePromptMode).toBeNull();
-    expect(timelineAfterSuccess?.goal).toMatchObject({ status: "active" });
+    expect(timelineAfterSuccess?.extensionStates).toMatchObject({
+      "provider-codex/goal": { status: "active" },
+    });
 
     invalidateQueries.mockClear();
     queryClient.setQueryData(
@@ -298,7 +300,7 @@ describe("thread runtime mutations", () => {
       ),
     ).toMatchObject({
       activePromptMode: { mode: "plan" },
-      goal: { status: "active" },
+      extensionStates: { "provider-codex/goal": { status: "active" } },
     });
   });
 

@@ -30,7 +30,6 @@ import {
   threadSearchSourceKindSchema,
   threadStatusSchema,
   threadTimelineActivePromptModeSchema,
-  threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
   threadEventTypeValues,
@@ -1236,7 +1235,6 @@ const threadTimelineWindowFieldsShape = {
   activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   extensionStates: z.record(z.string(), jsonValueSchema),
-  goal: threadTimelineGoalSchema.nullable(),
   providerCommands: z
     .array(providerCommandSchema.omit({ pluginId: true }))
     .nullable(),
@@ -1254,7 +1252,6 @@ export const THREAD_TIMELINE_WINDOW_FIELD_KEYS = [
   "activeBackgroundCommands",
   "pendingTodos",
   "extensionStates",
-  "goal",
   "providerCommands",
   "sessionOptions",
   "modelFallback",

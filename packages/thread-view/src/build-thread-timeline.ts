@@ -24,7 +24,6 @@ import {
   type Thread,
   type ThreadEventItemPresentation,
   type ThreadTimelineActivePromptMode,
-  type ThreadTimelineGoal,
   type ThreadTimelineModelFallback,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
@@ -68,7 +67,6 @@ import {
   extractThreadTimelineActivePromptMode,
   type PlanCommand,
 } from "./active-prompt-mode-extraction.js";
-import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import {
   extractThreadExtensionStates,
   extractThreadProviderCommands,
@@ -145,7 +143,6 @@ export interface ThreadTimelineFromEventsResult {
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   contextWindowUsage: ThreadContextWindowUsage | null;
   extensionStates: Record<string, JsonValue>;
-  goal: ThreadTimelineGoal | null;
   modelFallback: ThreadTimelineModelFallback | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   providerCommands: ProviderCommand[] | null;
@@ -1265,9 +1262,6 @@ export function buildThreadTimelineFromEvents(
           stateEvents,
           args.options.extensionStateKinds ?? [],
         ),
-    goal: !args.options.isLatestPage
-      ? null
-      : extractThreadTimelineGoal(stateEvents),
     providerCommands: !args.options.isLatestPage
       ? null
       : extractThreadProviderCommands(stateEvents),

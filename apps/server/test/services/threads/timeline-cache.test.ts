@@ -34,7 +34,6 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     activeBackgroundCommands: [],
     pendingTodos: null,
     extensionStates: {},
-    goal: null,
     providerCommands: null,
     sessionOptions: null,
     modelFallback: null,

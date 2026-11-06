@@ -205,9 +205,9 @@ async function readTimelineGoalStatus(
   );
   expect(response.status).toBe(200);
   const timeline = (await readJson(response)) as {
-    goal: { status: string } | null;
+    extensionStates: Record<string, { status: string } | undefined>;
   };
-  return timeline.goal?.status ?? null;
+  return timeline.extensionStates["provider-codex/goal"]?.status ?? null;
 }
 
 describe("public thread banner actions", () => {

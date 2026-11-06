@@ -21,12 +21,10 @@ import type {
   ThreadQueuedWork,
   ThreadRuntimeState,
   ThreadStatus,
-  ThreadTimelineGoal,
   ThreadWithRuntime,
 } from "@bb/domain";
 import {
   extractThreadTimelineActivePlanTurn,
-  extractThreadTimelineGoal,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import type { ThreadResponse } from "@bb/server-contract";
@@ -442,16 +440,21 @@ function buildThreadPromptBannerActivityByThreadId(
   return result;
 }
 
-export function getThreadTimelineGoal(
+export function threadHasGoal(
   deps: ThreadPromptBannerDeps,
   thread: Thread,
-): ThreadTimelineGoal | null {
-  return extractThreadTimelineGoal(
-    listLatestThreadStateEventRowsByThreadIds(deps.db, {
-      threadIds: [thread.id],
-      kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
-    }).map(toThreadEventWithMeta),
-  );
+): boolean {
+  return listLatestThreadStateEventRowsByThreadIds(deps.db, {
+    threadIds: [thread.id],
+    kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
+  })
+    .map(toThreadEventWithMeta)
+    .some(
+      ({ event }) =>
+        event.type === "thread/extensionState/updated" &&
+        event.kind === LEGACY_CODEX_GOAL_EXTENSION_KIND &&
+        event.payload !== null,
+    );
 }
 
 export function getThreadPromptBannerActivity(

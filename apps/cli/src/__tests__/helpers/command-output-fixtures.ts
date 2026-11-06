@@ -74,7 +74,6 @@ export function makeTimelineResponse(
     activeBackgroundCommands: [],
     pendingTodos: null,
     extensionStates: {},
-    goal: null,
     providerCommands: null,
     sessionOptions: null,
     modelFallback: null,
