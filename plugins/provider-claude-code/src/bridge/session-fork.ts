@@ -33,10 +33,11 @@ type ClaudeSessionFork = {
   upToMessageId: string | undefined;
 };
 
-export function claudeConfigDirectory(env: NodeJS.ProcessEnv): string {
-  return env.CLAUDE_CONFIG_DIR
-    ? resolve(env.CLAUDE_CONFIG_DIR)
-    : join(homedir(), ".claude");
+export function claudeConfigDirectory(
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+): string {
+  return resolve(cwd, env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"));
 }
 
 export function forkClaudeSession(args: ClaudeSessionFork): Promise<string> {

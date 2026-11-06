@@ -9,11 +9,11 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { forkClaudeSession } from "./session-fork.js";
+import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -59,7 +59,7 @@ describe("forkClaudeSession", () => {
       "w",
     );
     let parentUuid: string | null = null;
-    for (let bytes = 0; bytes < 128 * 1024 * 1024;) {
+    for (let bytes = 0; bytes < 128 * 1024 * 1024; ) {
       const uuid = randomUUID();
       const line = `${JSON.stringify({
         type: "user",
@@ -105,4 +105,21 @@ console.log("caller still running with " + callerState.length + " entries");
       `Claude session ${sourceSessionId} is too large to fork: forking it ran out of memory\ncaller still running with 1000 entries\n`,
     );
   }, 30_000);
+});
+
+describe("claudeConfigDirectory", () => {
+  const cwd = resolve("/workspace");
+
+  it("resolves a relative CLAUDE_CONFIG_DIR against the session's cwd", () => {
+    expect(claudeConfigDirectory({ CLAUDE_CONFIG_DIR: "profile" }, cwd)).toBe(
+      join(cwd, "profile"),
+    );
+  });
+
+  it("uses ~/.claude when CLAUDE_CONFIG_DIR is unset or empty", () => {
+    expect(claudeConfigDirectory({}, cwd)).toBe(join(homedir(), ".claude"));
+    expect(claudeConfigDirectory({ CLAUDE_CONFIG_DIR: "" }, cwd)).toBe(
+      join(homedir(), ".claude"),
+    );
+  });
 });
