@@ -158,16 +158,22 @@ export function ProviderChips() {
 export function Band({
   title,
   flip,
+  section,
   visual,
   children,
 }: {
   title: ReactNode;
   flip?: boolean;
+  section?: string;
   visual: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className={flip ? "band band-flip" : "band"} data-reveal>
+    <section
+      className={flip ? "band band-flip" : "band"}
+      data-reveal
+      data-section={section}
+    >
       <div className="band-grid">
         <div className="band-copy">
           <h2>{title}</h2>
