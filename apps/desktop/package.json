@@ -1,6 +1,6 @@
 {
   "name": "@bb/desktop",
-  "version": "0.48.1",
+  "version": "0.49.0",
   "private": true,
   "description": "macOS, Linux, and Windows Electron shell for bb",
   "main": "dist/main.js",
