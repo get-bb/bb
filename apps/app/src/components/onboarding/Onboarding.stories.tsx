@@ -1368,10 +1368,8 @@ export function RedesignAgentInstallError() {
 
 function RedesignPluginsFrame({
   enabledIds,
-  pendingIds = new Set<string>(),
 }: {
   enabledIds: ReadonlySet<string>;
-  pendingIds?: ReadonlySet<string>;
 }) {
   return (
     <TooltipProvider>
@@ -1395,7 +1393,7 @@ function RedesignPluginsFrame({
               description={plugin.description}
               icon={{ icon: plugin.icon, iconUrl: null, iconTinted: false }}
               enabled={enabledIds.has(plugin.id)}
-              pending={pendingIds.has(plugin.id)}
+              pending={false}
               unavailableReason={null}
               onToggle={noop}
             />

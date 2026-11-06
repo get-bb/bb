@@ -255,14 +255,12 @@ export async function discoverRepos(
 
   return {
     repos: await Promise.all(
-      recent.map(
-        async (repo): Promise<DiscoveredRepo> => ({
-          path: repo.path,
-          name: basename(repo.path),
-          lastActivityAt: new Date(repo.lastActivityMs).toISOString(),
-          originUrl: await readOriginUrl(repo.path),
-        }),
-      ),
+      recent.map(async (repo): Promise<DiscoveredRepo> => ({
+        path: repo.path,
+        name: basename(repo.path),
+        lastActivityAt: new Date(repo.lastActivityMs).toISOString(),
+        originUrl: await readOriginUrl(repo.path),
+      })),
     ),
     truncated,
     unreadableCount,

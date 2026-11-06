@@ -25,7 +25,10 @@ interface SignInSession {
 type SignInOutcome = "ready" | "exited" | "failed" | "cancelled";
 
 type SignInFailureReason =
-  OperationFailureReason | "no_host" | "command_failed" | "unsupported";
+  | OperationFailureReason
+  | "no_host"
+  | "command_failed"
+  | "unsupported";
 
 interface SignInExit {
   exitCode: number | null;

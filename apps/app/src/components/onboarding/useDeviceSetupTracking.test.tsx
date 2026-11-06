@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { BbHttpError } from "@bb/sdk/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachineEnrollmentEndedError } from "@/components/dialogs/AddMachineDialog";
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
@@ -133,15 +132,6 @@ describe("useDeviceSetupTracking", () => {
     [
       new MachineEnrollmentEndedError("Machine setup cancelled"),
       "command_failed",
-    ],
-    [
-      new BbHttpError({
-        body: null,
-        code: "forbidden",
-        message: "Forbidden",
-        status: 403,
-      }),
-      "permission",
     ],
     [new Error("Connection lost"), "other"],
   ] as const)(

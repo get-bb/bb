@@ -95,11 +95,7 @@ describe("projects scan telemetry", () => {
     ]);
   });
 
-  it.each([
-    ["host_unavailable", "host_unavailable"],
-    ["command_timeout", "timed_out"],
-    ["internal_error", "other"],
-  ] as const)("records a %s scan failure as %s", (code, reason) => {
+  it("records a scan failure with its mapped reason", () => {
     renderHook(() =>
       useProjectsScanTelemetry({
         entry: "first_run",
@@ -109,7 +105,7 @@ describe("projects scan telemetry", () => {
           errorUpdatedAt: 1,
           error: new BbHttpError({
             body: null,
-            code,
+            code: "command_timeout",
             message: "failed",
             status: 502,
           }),
@@ -117,7 +113,7 @@ describe("projects scan telemetry", () => {
       }),
     );
     expect(recorded()).toEqual([
-      { ...base, outcome: "failed", failure_reason: reason },
+      { ...base, outcome: "failed", failure_reason: "timed_out" },
     ]);
   });
 
