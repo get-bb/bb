@@ -3926,6 +3926,11 @@ until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts.
+`onboarding_exposed` (`entry`) marks the guide being shown; the server saves
+the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
+`setup_guide_variant` as a person property (`$set`), and sends
+`$feature_flag_called` when the variant came from the PostHog flag. Every
+setup-guide event gets `setup_guide_variant` from the server.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
