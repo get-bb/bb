@@ -159,32 +159,18 @@ export function DisclosureToggle({
 }
 
 export function InlinePanel({
-  flush = false,
-  flushBottom = false,
   hasBody = true,
   children,
   toggles,
   expanded,
 }: {
-  flush?: boolean;
-  flushBottom?: boolean;
   hasBody?: boolean;
   children: ReactNode;
   toggles?: ReactNode;
   expanded?: ReactNode;
 }) {
   return (
-    <div
-      className={cn(
-        "overflow-hidden bg-surface-recessed text-xs text-muted-foreground",
-        flush
-          ? cn(
-              "-mx-3 border-t border-border-hairline",
-              flushBottom ? "-mb-3" : "border-b",
-            )
-          : "rounded-md border border-border",
-      )}
-    >
+    <div className="-mx-3 -mb-3 overflow-hidden border-t border-border-hairline bg-surface-recessed text-xs text-muted-foreground">
       {hasBody ? (
         <div className="flex flex-col gap-3 p-3">{children}</div>
       ) : null}
@@ -199,9 +185,7 @@ export function InlinePanel({
         </div>
       )}
       {expanded === undefined || expanded === null ? null : (
-        <div className={cn(!flush && "border-t border-border-hairline")}>
-          {expanded}
-        </div>
+        <div>{expanded}</div>
       )}
     </div>
   );
@@ -277,38 +261,23 @@ export type SignInPanelVariant =
   | { kind: "waiting" };
 
 export function SignInPanel({
-  flush = false,
-  flushBottom = false,
   status,
-  instruction,
   variant,
   toggles,
   expanded,
 }: {
-  flush?: boolean;
-  flushBottom?: boolean;
   status?: string;
-  instruction?: ReactNode;
   variant: SignInPanelVariant;
   toggles?: ReactNode;
   expanded?: ReactNode;
 }) {
   return (
     <InlinePanel
-      flush={flush}
-      flushBottom={flushBottom}
-      hasBody={
-        status !== undefined ||
-        instruction !== undefined ||
-        variant.kind !== "waiting"
-      }
+      hasBody={status !== undefined || variant.kind !== "waiting"}
       toggles={toggles}
       expanded={expanded}
     >
       {status === undefined ? null : <PendingStatus>{status}</PendingStatus>}
-      {instruction === undefined ? null : (
-        <p className="text-foreground">{instruction}</p>
-      )}
       {variant.kind === "code" ? (
         <CodeDisplay
           code={variant.code}
