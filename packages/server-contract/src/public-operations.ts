@@ -1,6 +1,5 @@
 import {
   routeParamNames,
-  routeResponseFormat,
   routeSuccessStatus,
   validationMessageFromZodError,
   type RouteDefinition,
@@ -102,36 +101,6 @@ export function routeInputFromRequest(
   return { ...param };
 }
 
-export interface RouteRequestInput {
-  param?: Record<string, unknown>;
-  json?: unknown;
-  query?: Record<string, unknown>;
-  form?: Record<string, unknown>;
-}
-
-export function routeRequestFromInput(
-  route: RouteDefinition,
-  input: unknown,
-): RouteRequestInput {
-  const record = isRecord(input) ? input : {};
-  const names = routeParamNames(route.path);
-  const param: Record<string, unknown> = {};
-  for (const name of names) {
-    if (name in record) param[name] = record[name];
-  }
-  const rest = withoutKeys(record, names);
-  const request: RouteRequestInput = names.length === 0 ? {} : { param };
-  if (route.request.source === "json") {
-    request.json =
-      route.request.field === null ? rest : rest[route.request.field];
-  } else if (route.request.source === "query") {
-    if (Object.keys(rest).length > 0) request.query = rest;
-  } else if (route.request.source === "form") {
-    request.form = rest;
-  }
-  return request;
-}
-
 function routeParser(route: RouteDefinition): (raw: unknown) => unknown {
   const names = routeParamNames(route.path);
   return (raw) => {
@@ -163,10 +132,6 @@ function routeParser(route: RouteDefinition): (raw: unknown) => unknown {
     if (request.source === "form") return { ...rest, ...param };
     return param;
   };
-}
-
-export function routeReturnsBody(route: RouteDefinition): boolean {
-  return routeResponseFormat(route) !== "json";
 }
 
 export interface PublicRouteEntry {
@@ -285,23 +250,20 @@ function buildOperation(name: string, route: RouteDefinition): Operation {
 
 export interface PublicOperationSet {
   operations: ReadonlyMap<string, Operation>;
-  routes: ReadonlyMap<string, RouteDefinition>;
   byRoute: WeakMap<RouteDefinition, Operation>;
 }
 
 export function createPublicOperations(tree: object): PublicOperationSet {
   const operations = new Map<string, Operation>();
-  const routes = new Map<string, RouteDefinition>();
   const byRoute = new WeakMap<RouteDefinition, Operation>();
   for (const { key, route } of listRouteEntries(tree)) {
     const clash = routeFieldClash(key, route);
     if (clash !== null) throw new Error(clash);
     const operation = buildOperation(key, route);
     operations.set(key, operation);
-    routes.set(key, route);
     byRoute.set(route, operation);
   }
-  return { operations, routes, byRoute };
+  return { operations, byRoute };
 }
 
 let built: PublicOperationSet | null = null;
@@ -323,10 +285,26 @@ export function publicOperation<Name extends PublicOperationName>(
   return operation as Operation<PublicOperationInput<Name>>;
 }
 
+function isRouteDefinition(value: unknown): value is RouteDefinition {
+  return (
+    isRecord(value) &&
+    "path" in value &&
+    "method" in value &&
+    "request" in value
+  );
+}
+
 export function publicOperationRouteDefinition(
   name: string,
 ): RouteDefinition | null {
-  return publicOperationSet().routes.get(name) ?? null;
+  let node: unknown = publicApiRoutes;
+  for (const segment of name.split(".")) {
+    node =
+      isRecord(node) && Object.hasOwn(node, segment)
+        ? node[segment]
+        : undefined;
+  }
+  return isRouteDefinition(node) ? node : null;
 }
 
 export function publicOperationForRoute(route: RouteDefinition): Operation {

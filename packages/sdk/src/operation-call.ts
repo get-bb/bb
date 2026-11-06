@@ -1,8 +1,7 @@
 import { operationBodyFromResponse } from "@bb/operations";
 import {
-  publicOperationRouteDefinition,
+  publicRouteIndex,
   routeRequestFromInput,
-  routeReturnsBody,
   type PublicOperationInput,
   type PublicOperationName,
   type PublicOperationOutput,
@@ -15,9 +14,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function routeEndpoint(transport: BbSdkTransport, name: string): RouteCall {
-  const route = publicOperationRouteDefinition(name);
-  if (route === null) throw new Error(`Unknown operation ${name}`);
+type RouteShape = (typeof publicRouteIndex)[PublicOperationName];
+
+function routeEndpoint(
+  transport: BbSdkTransport,
+  route: RouteShape,
+): RouteCall {
   let node: unknown = transport.api.v1;
   for (const segment of route.path.split("/").filter(Boolean)) {
     node =
@@ -84,11 +86,10 @@ function request(
   input: unknown,
   options: OperationCallOptions,
 ): Promise<Response> {
-  const route = publicOperationRouteDefinition(name);
-  if (route === null) throw new Error(`Unknown operation ${name}`);
+  const route = publicRouteIndex[name];
   const { param, ...rest } = routeRequestFromInput(route, input);
   return transport.resolve(
-    routeEndpoint(transport, name)(
+    routeEndpoint(transport, route)(
       param === undefined
         ? rest
         : { ...rest, param: encodedParams(route.path, param) },
@@ -116,8 +117,7 @@ export function createOperationCaller(
   return {
     async call(name, input, options = {}) {
       const response = await request(transport, name, input, options);
-      const route = publicOperationRouteDefinition(name);
-      if (route !== null && routeReturnsBody(route)) {
+      if (publicRouteIndex[name].format !== "json") {
         return operationBodyFromResponse(response) as PublicOperationOutput<
           typeof name
         >;

@@ -3,6 +3,9 @@ import {
   publicApiRoutes,
   publicOperation,
   routeInputFromRequest,
+  listPublicApiRoutes,
+  publicRouteIndex,
+  routeCallShape,
   routeRequestFromInput,
 } from "../src/index.js";
 
@@ -27,7 +30,9 @@ describe("public operations", () => {
     const route = publicApiRoutes.system.keyboardSettings;
     const input = routeInputFromRequest(route, { param: {}, body: [] });
     expect(input).toEqual({ overrides: [] });
-    expect(routeRequestFromInput(route, input)).toEqual({ json: [] });
+    expect(routeRequestFromInput(routeCallShape(route), input)).toEqual({
+      json: [],
+    });
   });
 
   it("rejects a non-object body with the route schema's own message", () => {
@@ -50,7 +55,10 @@ describe("public operations", () => {
       }),
     ).toEqual({ id: "thr_path", title: "Renamed" });
     expect(
-      routeRequestFromInput(route, { id: "thr_path", title: "Renamed" }),
+      routeRequestFromInput(routeCallShape(route), {
+        id: "thr_path",
+        title: "Renamed",
+      }),
     ).toEqual({ param: { id: "thr_path" }, json: { title: "Renamed" } });
   });
 
@@ -64,5 +72,20 @@ describe("public operations", () => {
     expect(publicOperation("system.mobileAppReleases").http.headers).toEqual({
       "cache-control": "no-store",
     });
+  });
+});
+
+describe("public route index", () => {
+  it("matches the route definitions for every operation", () => {
+    const routes = listPublicApiRoutes();
+    expect(Object.keys(publicRouteIndex).sort()).toEqual(
+      routes.map(({ key }) => key).sort(),
+    );
+    for (const { key, route } of routes) {
+      expect(
+        publicRouteIndex[key as keyof typeof publicRouteIndex],
+        key,
+      ).toEqual(routeCallShape(route));
+    }
   });
 });

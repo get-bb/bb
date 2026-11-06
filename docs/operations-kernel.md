@@ -70,7 +70,11 @@ value | OperationBody)`. There is no HTTP-only registration.
 
 `packages/sdk/src/operation-call.ts` (`@bb/sdk/operation-call`, internal)
 calls a public operation by name with its flat input: it finds the route in
-the contract, splits the input into path params, query, JSON or form body
+`publicRouteIndex`, a module generated from `publicApiRoutes` by the
+`@bb/server-contract#generate:route-index` Turbo task (gitignored, like the
+other generated modules) that holds only each route's method, path, body
+source and field, and response format, so the app's boot bundle carries no
+route schemas; it splits the input into path params, query, JSON or form body
 with `routeRequestFromInput`, escapes path params (each segment of a
 `:filePath{.+}` param), and sends it through the transport's typed client.
 Options carry the signal, extra headers (`prefer: respond-async` for plugin
