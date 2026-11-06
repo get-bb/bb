@@ -1162,6 +1162,64 @@ describe("plugin bb.sdk against a running server", () => {
     }
   });
 
+  it("sends a plugin's retired environment pull request calls with its caller token, so they are not served stale viewer rows", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-retired-pr-"));
+    try {
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-caller",
+        serverSource: `export default function plugin() {}`,
+      });
+      expect((await server.pluginService.installPath(rootDir)).status).toBe(
+        "running",
+      );
+      const callerTokens: (string | null)[] = [];
+      const realFetch = globalThis.fetch;
+      vi.stubGlobal(
+        "fetch",
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (!url.includes("/api/v1/plugins/bb--github-pr-status/rpc/")) {
+            return realFetch(input, init);
+          }
+          callerTokens.push(
+            new Headers(init?.headers).get("x-bb-plugin-caller"),
+          );
+          return Response.json({
+            ok: true,
+            result: url.endsWith("/pullRequests")
+              ? { env_1: { outcome: "absent" } }
+              : { message: "Pull request marked ready" },
+          });
+        },
+      );
+      const environments: object = requireApi(server.pluginService, "caller")
+        .sdk.environments;
+      const call = (name: string) => {
+        const member: unknown = Reflect.get(environments, name);
+        if (typeof member !== "function") throw new Error(`${name} is missing`);
+        return Reflect.apply(member, environments, [
+          { environmentId: "env_1" },
+        ]);
+      };
+
+      await expect(call("pullRequest")).resolves.toEqual({ outcome: "absent" });
+      await expect(call("markPullRequestReady")).resolves.toMatchObject({
+        action: "pull_request_ready",
+      });
+      expect(callerTokens).toHaveLength(2);
+      expect(
+        callerTokens.every((token) => token !== null && token !== ""),
+      ).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
   it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));
