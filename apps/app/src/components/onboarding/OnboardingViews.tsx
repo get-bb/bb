@@ -50,6 +50,7 @@ const CONTENT_COLUMN_CLASS =
 
 interface OnboardingLayoutProps {
   step: OnboardingStepId;
+  width?: "default" | "wide";
   showSkipAll?: boolean;
   skippedSteps?: ReadonlySet<OnboardingStepId>;
   composition?: "docked" | "centered";
@@ -72,6 +73,7 @@ interface OnboardingLayoutProps {
 
 export function OnboardingLayout({
   step,
+  width = "default",
   showSkipAll = true,
   skippedSteps,
   composition = "docked",
@@ -228,6 +230,7 @@ export function OnboardingLayout({
         <div
           className={cn(
             CONTENT_COLUMN_CLASS,
+            width === "wide" && "max-w-3xl",
             "flex flex-col",
             centered ? "gap-5" : "gap-6",
             compact ? "py-4" : "py-6",
@@ -1068,13 +1071,15 @@ export function ProjectsStep({
 
 export function OnboardingPluginGrid({
   compact = false,
+  showHelp = true,
   children,
 }: {
   compact?: boolean;
+  showHelp?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col", showHelp ? "gap-4" : "gap-2")}>
       <ResourceBrowseGrid
         className={cn(
           "w-full gap-2",
@@ -1085,11 +1090,13 @@ export function OnboardingPluginGrid({
       >
         {children}
       </ResourceBrowseGrid>
-      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon name="Puzzle" aria-hidden className="size-3.5 shrink-0" />
-        Want something that isn't here? Ask an agent to build a plugin at any
-        time.
-      </p>
+      {showHelp ? (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Icon name="Puzzle" aria-hidden className="size-3.5 shrink-0" />
+          Want something that isn't here? Ask an agent to build a plugin at any
+          time.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -1112,6 +1119,7 @@ export function OnboardingPluginGridSkeleton({ count }: { count: number }) {
 }
 
 interface OnboardingPluginCardProps {
+  density?: "default" | "compact";
   name: string;
   description: string;
   icon: { icon: string | null; iconUrl: string | null; iconTinted: boolean };
@@ -1122,6 +1130,7 @@ interface OnboardingPluginCardProps {
 }
 
 export function OnboardingPluginCard({
+  density = "default",
   name,
   description,
   icon,
@@ -1138,7 +1147,8 @@ export function OnboardingPluginCard({
       }
       title={name}
       description={unavailableReason ?? description}
-      descriptionLines="expandable"
+      descriptionLines={density === "compact" ? 3 : "expandable"}
+      density={density}
       disabled={disabled}
       byline={
         <PluginAuthorByline name="BB Official" github={null} official>
@@ -1158,7 +1168,7 @@ export function OnboardingPluginCard({
               aria-hidden
               className="size-3.5 animate-spin"
             />
-          ) : enabled ? (
+          ) : density === "compact" ? null : enabled ? (
             "On"
           ) : (
             "Off"

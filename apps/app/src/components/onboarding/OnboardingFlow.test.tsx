@@ -21,6 +21,7 @@ import { AppToasterView } from "@/components/AppToasterView";
 import { appToast } from "@/components/ui/app-toast";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
+import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -199,6 +200,28 @@ describe("OnboardingFlow", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(finishedOutcomes()).toEqual(["skipped"]);
   });
+
+  it.each([
+    ["control", false],
+    ["new", true],
+  ] as const)(
+    "prefetches the plugin catalog when the guide opens only in the new guide (%s)",
+    (variant, prefetched) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise<never>(() => {})),
+      );
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const { queryClient } = renderFlow({ initialStep: "agent", variant });
+
+      expect(
+        queryClient.getQueryState(pluginCatalogSearchQueryKey("")) !==
+          undefined,
+      ).toBe(prefetched);
+    },
+  );
 
   it("offers Retry and Continue when the agent check never answers", () => {
     vi.useFakeTimers();

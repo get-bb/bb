@@ -102,12 +102,18 @@ export async function markEnabledPluginListStale(args: {
   });
 }
 
+export function refreshPluginCatalogSearch(args: {
+  queryClient: QueryClient;
+}): Promise<void> {
+  return args.queryClient.invalidateQueries({
+    queryKey: allPluginCatalogSearchQueryKeyPrefix(),
+  });
+}
+
 export function invalidatePluginCatalogSearch(args: {
   queryClient: QueryClient;
 }): void {
-  void args.queryClient.invalidateQueries({
-    queryKey: allPluginCatalogSearchQueryKeyPrefix(),
-  });
+  void refreshPluginCatalogSearch(args);
 }
 
 export function invalidatePluginMarketplaces(args: {
