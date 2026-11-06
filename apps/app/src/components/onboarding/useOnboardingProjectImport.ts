@@ -7,6 +7,7 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
+import { operationFailureReason } from "./onboarding-model";
 
 export function useOnboardingProjectImport({
   entry,
@@ -52,7 +53,10 @@ export function useOnboardingProjectImport({
     setImporting(true);
     let lastImportedProjectId: string | null = null;
     let succeededCount = 0;
-    const recordOutcome = (outcome: "started" | "succeeded" | "failed") =>
+    const recordOutcome = (
+      outcome: "started" | "succeeded" | "failed",
+      error?: unknown,
+    ) =>
       recordTelemetryEvent({
         name: "onboarding_operation",
         properties: {
@@ -62,6 +66,9 @@ export function useOnboardingProjectImport({
           outcome,
           item_count: repos.length,
           succeeded_count: succeededCount,
+          ...(outcome === "failed"
+            ? { failure_reason: operationFailureReason(error) }
+            : {}),
         },
       });
     recordOutcome("started");
@@ -76,8 +83,8 @@ export function useOnboardingProjectImport({
         succeededCount += 1;
       }
       recordOutcome("succeeded");
-    } catch {
-      recordOutcome("failed");
+    } catch (error) {
+      recordOutcome("failed", error);
       return;
     } finally {
       if (lifetime.active) {

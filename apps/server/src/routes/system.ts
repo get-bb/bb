@@ -1,4 +1,4 @@
-import { reportedProviderId } from "../services/system/provider-telemetry.js";
+import { withReportedProviderId } from "../services/system/provider-telemetry.js";
 import { rememberPluginRecommendation } from "../services/plugins/plugin-use-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
@@ -368,19 +368,7 @@ export function registerSystemRoutes(
       return context.json({ ok: true });
     }
     deps.telemetry.capture(
-      await deps.setupGuideExperiment.annotate(
-        payload.name === "onboarding_operation" &&
-          payload.properties.step === "agent" &&
-          payload.properties.resource_id !== undefined
-          ? {
-              ...payload,
-              properties: {
-                ...payload.properties,
-                resource_id: reportedProviderId(payload.properties.resource_id),
-              },
-            }
-          : payload,
-      ),
+      await deps.setupGuideExperiment.annotate(withReportedProviderId(payload)),
     );
     return context.json({ ok: true });
   });

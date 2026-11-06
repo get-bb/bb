@@ -13,6 +13,10 @@ import { invalidateSystemExecutionOptions } from "@/hooks/cache-owners/system-ca
 import { asHttpError, getHttpErrorMessage } from "@/lib/http-error";
 import { sdk } from "@/lib/sdk";
 import {
+  operationFailureReason,
+  type OperationFailureReason,
+} from "@/components/onboarding/onboarding-model";
+import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "@/components/onboarding/onboarding-telemetry";
@@ -263,7 +267,10 @@ function runInstall(job: ProviderCliInstallJob): void {
   const { hostId, issue, onboardingEntry } = job;
   const { action, provider } = issue;
   const jobKey = providerCliJobKey(hostId, provider);
-  const recordOutcome = (outcome: "started" | "succeeded" | "failed") => {
+  const recordOutcome = (
+    outcome: "started" | "succeeded" | "failed",
+    failureReason?: OperationFailureReason | "command_failed",
+  ) => {
     if (onboardingEntry === undefined) return;
     recordTelemetryEvent({
       name: "onboarding_operation",
@@ -273,6 +280,9 @@ function runInstall(job: ProviderCliInstallJob): void {
         operation: action.kind,
         outcome,
         resource_id: provider,
+        ...(failureReason === undefined
+          ? {}
+          : { failure_reason: failureReason }),
       },
     });
   };
@@ -312,7 +322,8 @@ function runInstall(job: ProviderCliInstallJob): void {
         }
       }
 
-      recordOutcome(completedEvent?.success ? "succeeded" : "failed");
+      if (completedEvent?.success) recordOutcome("succeeded");
+      else recordOutcome("failed", "command_failed");
       if (completedEvent?.success) {
         if (queryClient !== null) {
           void invalidateHostProviderCliStatus({ queryClient, hostId });
@@ -336,7 +347,7 @@ function runInstall(job: ProviderCliInstallJob): void {
       });
     })
     .catch((error: unknown) => {
-      recordOutcome("failed");
+      recordOutcome("failed", operationFailureReason(error));
       const message = error instanceof Error ? error.message : String(error);
       installLogChunks.push(`\n${message}\n`);
       showProviderCliInstallFailureToast({

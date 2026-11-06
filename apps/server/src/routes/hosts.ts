@@ -364,6 +364,7 @@ export function registerHostRoutes(
           })?.id ?? null,
       })),
       truncated: result.truncated,
+      unreadableCount: result.unreadableCount,
     });
   });
 

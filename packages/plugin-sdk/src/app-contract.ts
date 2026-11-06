@@ -67,9 +67,33 @@ export interface PluginHomepageSectionProps {
 /**
  * Props passed to a `settingsSection` component.
  *
- * Deliberately empty in V1; versioned additive like the other slot props.
+ * Versioned additive like the other slot props.
  */
-export interface PluginSettingsSectionProps {}
+export interface PluginSettingsSectionProps {
+  /**
+   * Internal to bb's bundled connect plugin; not part of the plugin API.
+   * Set only when the setup guide renders the section; call it when the user
+   * starts setting it up.
+   */
+  internal_DO_NOT_USE_onSetupStarted?: () => void;
+  /**
+   * Internal to bb's bundled connect plugin; not part of the plugin API.
+   * Set only when the setup guide renders the section; call it when a setup
+   * attempt fails, with the stage that failed.
+   */
+  internal_DO_NOT_USE_onSetupFailed?: (
+    stage: InternalDoNotUseSetupFailureStage,
+  ) => void;
+}
+
+/**
+ * Stage of a setup guide section's setup attempt that failed.
+ * Internal to bb's bundled connect plugin; not part of the plugin API.
+ */
+export type InternalDoNotUseSetupFailureStage =
+  | "sign_in"
+  | "pairing"
+  | "turn_on";
 
 /**
  * Props passed to an `experimental_appOverlay` component.
@@ -86,6 +110,10 @@ export interface ExperimentalAppOverlayProps {}
 export interface InternalDoNotUseSetupGuideSectionProps {
   /** True when the setup guide is open on a phone. */
   onPhone: boolean;
+  /** Call when the user starts setting up this section. */
+  onSetupStarted: () => void;
+  /** Call when a setup attempt fails, with the stage that failed. */
+  onSetupFailed: (stage: InternalDoNotUseSetupFailureStage) => void;
 }
 
 export type ExperimentalPageTitle = (

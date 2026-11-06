@@ -40,6 +40,7 @@ describe("bb project command output", () => {
         },
       ],
       truncated: true,
+      unreadableCount: 0,
     }));
     stubServerApi({ "v1.hosts.:id.discovered-repos.$get": get });
 
@@ -64,6 +65,7 @@ describe("bb project command output", () => {
       "v1.hosts.:id.discovered-repos.$get": vi.fn(async () => ({
         repos: [],
         truncated: false,
+        unreadableCount: 0,
       })),
     });
 
