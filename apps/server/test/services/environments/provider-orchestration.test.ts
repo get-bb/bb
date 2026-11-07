@@ -515,6 +515,38 @@ describe("core environment orchestration", () => {
       );
     }));
 
+  it("logs what the provider reports while removing an environment", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        policy: { retireGraceMs: 0 },
+        remove: async (context) => {
+          context.report.step("Removing worktree");
+          context.report.log("Kept branch bb/work because it has commits");
+          return { status: "removed" };
+        },
+      });
+      const info = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, info };
+      fixture.ask();
+      await fixture.settled();
+      const environmentId = fixture.attach();
+      await sweepProviderEnvironment(harness.deps, environmentId);
+      expect(
+        info.mock.calls.filter(
+          ([, message]) => message === "Environment removal",
+        ),
+      ).toEqual([
+        [{ environmentId, text: "Removing worktree" }, "Environment removal"],
+        [
+          {
+            environmentId,
+            text: "Kept branch bb/work because it has commits",
+          },
+          "Environment removal",
+        ],
+      ]);
+    }));
+
   it("copies a path plugin out of a workspace before removing it", async () =>
     withTestHarness(async (harness) => {
       const workspace = await mkdtemp(join(tmpdir(), "bb-env-plugin-"));
