@@ -46,11 +46,17 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  started registering, which then finishes
   bb plugin outdated             Check installed plugins for compatible
                                  updates (--json for raw results), including
-                                 newer releases blocked by engine ranges
+                                 newer releases blocked by engine ranges and
+                                 releases outside the saved version range
   bb plugin update <id> | --all  Apply compatible updates for one plugin or
                                  every tracking plugin. Same confirmation as
                                  install (--yes skips; non-TTY refuses
                                  without --yes)
+  bb plugin update <id> --range <range>
+                                 Change one plugin's saved version range and
+                                 install the newest compatible release it
+                                 admits; settings, secrets, schedules, and
+                                 data are kept
   bb plugin list                 Status, services, schedules, handler timings,
                                  and contributed CLI commands. `bb status`
                                  also names enabled plugins that are
@@ -318,6 +324,27 @@ plugin (notes/v1.2.3).
 bb records the selected tag and its commit. If that tag later points at
 another commit, bb refuses it and names both commits; remove and reinstall
 the plugin to accept the new commit.
+
+Releases outside the saved range
+
+bb saves a plugin's range at install and updates only within it; on 0.x a
+caret range admits patches only (`^0.2.0` stops before 0.3.0). Each update
+check also reports one newer release outside that range, for git semver and
+npm range sources. A plugin installed from a marketplace is offered only a
+release its entry's current range admits, and that range is proposed; other
+plugins are offered their newest stable release with `^<version>`. Pinned
+sources are never offered one. `bb plugin outdated` prints the release, the
+proposed range, whether it may break (a new major, or a new minor on 0.x),
+and the command to take it:
+
+  bb plugin update theme-toggle --range '^0.3.0'
+
+bb never applies these on its own: `bb plugin update --all` and Update all
+skip them. With --range bb confirms the release it checked and refuses one
+that changed since, a range with nothing newer, or a downgrade. It keeps the
+engines checks and the same snapshot and rollback as any update; a failed
+activation restores the previous release and range. Plugin details and the
+installed list show it with a Review action that names both ranges.
 
 A bare spec that reads as a range (`^1.2.0`, `1.x`, `>=1 <2`) resolves over
 tags only when no branch or tag has that literal name; when one does, the

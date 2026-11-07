@@ -73,6 +73,7 @@ function npmIntent(
 describe("npm update candidate selection", () => {
   it("selects an older compatible range candidate and reports the newer block", async () => {
     const resolution = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent("^1.0.0", "range"),
       current: {
         version: "1.0.0",
@@ -100,8 +101,41 @@ describe("npm update candidate selection", () => {
     });
   });
 
+  it("reports a compatible npm release outside the saved range", async () => {
+    const resolution = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "release" },
+      intent: npmIntent("^1.0.0", "range"),
+      current: {
+        version: "1.2.0",
+        label: "1.2.0",
+        display: "bb-plugin-matrix@1.2.0",
+      },
+      appVersion: "1.5.0",
+      run: createNpmResolverRun({
+        fetch: packumentFetch({
+          "2.1.0": { bb: ">=2" },
+          "2.0.0": { bb: ">=1" },
+          "3.0.0-beta.1": { bb: ">=1" },
+          "1.2.0": { bb: ">=1" },
+        }),
+      }),
+    });
+
+    expect(resolution).toMatchObject({
+      outcome: "current",
+      rangeUpgrade: {
+        range: "^2.0.0",
+        basis: "release",
+        candidate: { version: "2.0.0", display: "bb-plugin-matrix@2.0.0" },
+        breaking: true,
+        reasons: [],
+      },
+    });
+  });
+
   it("enforces SDK compatibility and returns incompatible when none match", async () => {
     const resolution = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent("", "default"),
       current: {
         version: "1.0.0",
@@ -136,6 +170,7 @@ describe("npm update candidate selection", () => {
       "1.0.0-beta.1": {},
     });
     const stable = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent("", "default"),
       current: {
         version: "1.0.0",
@@ -146,6 +181,7 @@ describe("npm update candidate selection", () => {
       run: createNpmResolverRun({ fetch }),
     });
     const prerelease = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent(">=1.0.0-beta.1 <1.0.0", "range"),
       current: {
         version: "1.0.0-alpha.1",
@@ -168,6 +204,7 @@ describe("npm update candidate selection", () => {
 
   it("labels dev mode, ignores engines.bb for selection, and still enforces SDK", async () => {
     const resolution = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent("", "default"),
       current: {
         version: "1.0.0",
@@ -198,6 +235,7 @@ describe("npm update candidate selection", () => {
       fetch: packumentFetch({ "1.0.0": {}, "2.0.0": {} }, { next: "2.0.0" }),
     });
     const tagged = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent("next", "tag"),
       current: {
         version: "1.0.0",
@@ -208,6 +246,7 @@ describe("npm update candidate selection", () => {
       run,
     });
     const exact = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent("1.0.0", "exact"),
       current: {
         version: "1.0.0",
@@ -233,6 +272,7 @@ describe("npm update candidate selection", () => {
 
   it("binds a registry version when the registry omits integrity", async () => {
     const resolution = await resolveNpmUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       intent: npmIntent("next", "tag"),
       current: {
         version: "1.0.0",
@@ -293,6 +333,7 @@ describe("git update resolution", () => {
     });
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: { kind: "ref", ref: "main", refKind: "branch" },
         currentCommit: first,
@@ -307,6 +348,7 @@ describe("git update resolution", () => {
     ).stdout.trim();
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: { kind: "ref", ref: "main", refKind: "branch" },
         currentCommit: first,
@@ -318,6 +360,7 @@ describe("git update resolution", () => {
     });
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: { kind: "ref", ref: "v1", refKind: "tag" },
         currentCommit: first,
@@ -326,6 +369,7 @@ describe("git update resolution", () => {
     ).toMatchObject({ outcome: "pinned" });
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: { kind: "ref", ref: first, refKind: "commit" },
         currentCommit: first,
@@ -493,6 +537,7 @@ describe("git semver tag resolution", () => {
 
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: {
           kind: "range",
@@ -509,6 +554,7 @@ describe("git semver tag resolution", () => {
     });
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: {
           kind: "range",
@@ -536,6 +582,7 @@ describe("git semver tag resolution", () => {
     ]) {
       expect(
         await resolveGitUpdate({
+          rangeUpgradeBasis: { kind: "none" },
           url: repo,
           intent,
           currentCommit: installed,
@@ -549,6 +596,7 @@ describe("git semver tag resolution", () => {
       });
       expect(
         await resolveGitUpdate({
+          rangeUpgradeBasis: { kind: "none" },
           url: repo,
           intent,
           currentCommit: installed,
@@ -565,6 +613,7 @@ describe("git semver tag resolution", () => {
     const probed: string[] = [];
 
     const resolution = await resolveGitUpdate({
+      rangeUpgradeBasis: { kind: "none" },
       url: repo,
       intent: {
         kind: "range",
@@ -613,6 +662,7 @@ describe("git semver tag resolution", () => {
 
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: {
           kind: "range",
@@ -643,12 +693,130 @@ describe("git semver tag resolution", () => {
     });
   });
 
+  it("offers the newest release outside a directly installed range as a breaking range change", async () => {
+    const { repo, commitOf } = await tagRepo();
+
+    expect(
+      await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "release" },
+        url: repo,
+        intent: {
+          kind: "range",
+          range: "^1.0.0",
+          tagPrefix: "",
+          resolvedTag: "v1.1.0",
+        },
+        currentCommit: commitOf.get("v1.1.0") ?? "",
+        probeCandidate: compatibleProbe,
+      }),
+    ).toMatchObject({
+      outcome: "current",
+      rangeUpgrade: {
+        range: "^2.0.0",
+        basis: "release",
+        candidate: { version: commitOf.get("v2.0.0"), label: "2.0.0" },
+        candidateGitTag: "v2.0.0",
+        breaking: true,
+        reasons: [],
+      },
+    });
+  });
+
+  it("offers only what the catalog's current range admits", async () => {
+    const { repo, commitOf } = await tagRepo();
+    const intent = {
+      kind: "range" as const,
+      range: "~1.0.0",
+      tagPrefix: "",
+      resolvedTag: "v1.0.0",
+    };
+
+    expect(
+      await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "catalog", range: "^1.0.0" },
+        url: repo,
+        intent,
+        currentCommit: commitOf.get("v1.0.0") ?? "",
+        probeCandidate: compatibleProbe,
+      }),
+    ).toMatchObject({
+      outcome: "current",
+      rangeUpgrade: {
+        range: "^1.0.0",
+        basis: "catalog",
+        candidate: { label: "1.1.0" },
+        breaking: false,
+      },
+    });
+    const unchangedCatalog = await resolveGitUpdate({
+      rangeUpgradeBasis: { kind: "catalog", range: "~1.0.0" },
+      url: repo,
+      intent,
+      currentCommit: commitOf.get("v1.0.0") ?? "",
+      probeCandidate: compatibleProbe,
+    });
+    expect(unchangedCatalog.rangeUpgrade).toBeUndefined();
+  });
+
+  it("falls back to an older out-of-range release when the newest does not run on this bb", async () => {
+    const { repo, commitOf } = await tagRepo();
+    const blockedNewest: GitCandidateProbe = async (candidate) =>
+      candidate.tag === "v2.0.0"
+        ? {
+            outcome: "incompatible",
+            devMode: false,
+            reasons: [
+              {
+                engine: "bb",
+                required: ">=99.0.0",
+                actual: "1.0.0",
+                message: "requires bb >=99.0.0, running bb is 1.0.0",
+              },
+            ],
+          }
+        : compatibleProbe(candidate);
+    const intent = {
+      kind: "range" as const,
+      range: "~1.0.0",
+      tagPrefix: "",
+      resolvedTag: "v1.0.0",
+    };
+
+    expect(
+      await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "release" },
+        url: repo,
+        intent,
+        currentCommit: commitOf.get("v1.0.0") ?? "",
+        probeCandidate: blockedNewest,
+      }),
+    ).toMatchObject({
+      rangeUpgrade: { range: "^1.1.0", candidate: { label: "1.1.0" } },
+    });
+    expect(
+      await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "release" },
+        url: repo,
+        intent: { ...intent, range: "^1.0.0", resolvedTag: "v1.1.0" },
+        currentCommit: commitOf.get("v1.1.0") ?? "",
+        probeCandidate: blockedNewest,
+      }),
+    ).toMatchObject({
+      rangeUpgrade: {
+        range: "^2.0.0",
+        candidate: { label: "2.0.0" },
+        reasons: [{ engine: "bb", required: ">=99.0.0" }],
+      },
+    });
+  });
+
   it("refuses to downgrade when the recorded range tag disappeared", async () => {
     const { repo, commitOf } = await tagRepo();
     await run("git", ["tag", "-d", "v1.1.0"], { cwd: repo });
 
     expect(
       await resolveGitUpdate({
+        rangeUpgradeBasis: { kind: "none" },
         url: repo,
         intent: {
           kind: "range",
