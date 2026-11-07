@@ -14,14 +14,12 @@ interface StoredEventDecodeEntry {
 
 interface StoredEventDecodeCache {
   byRow: WeakMap<StoredEventRow, StoredEventDecodeEntry>;
-  current: Map<string, StoredEventDecodeEntry>;
-  currentDataChars: number;
-  previous: Map<string, StoredEventDecodeEntry>;
-  previousDataChars: number;
+  dataChars: number;
+  entries: Map<string, StoredEventDecodeEntry>;
 }
 
 export const STORED_EVENT_DECODE_CACHE_MAX_ENTRIES = 100_000;
-export const STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS = 8_000_000;
+export const STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS = 16_000_000;
 
 const decodeCaches = new WeakMap<DbConnection, StoredEventDecodeCache>();
 let freezeDecodedEvents = false;
@@ -44,10 +42,7 @@ export function readStoredEventDecodeCacheSize(db: DbConnection): {
   if (cache === undefined) {
     return { dataChars: 0, entryCount: 0 };
   }
-  return {
-    dataChars: cache.currentDataChars + cache.previousDataChars,
-    entryCount: cache.current.size + cache.previous.size,
-  };
+  return { dataChars: cache.dataChars, entryCount: cache.entries.size };
 }
 
 function deepFreeze(value: unknown): void {
@@ -77,16 +72,17 @@ function entryMatchesRow(
 function getDecodeCache(db: DbConnection): StoredEventDecodeCache {
   let cache = decodeCaches.get(db);
   if (cache === undefined) {
-    cache = {
-      byRow: new WeakMap(),
-      current: new Map(),
-      currentDataChars: 0,
-      previous: new Map(),
-      previousDataChars: 0,
-    };
+    cache = { byRow: new WeakMap(), dataChars: 0, entries: new Map() };
     decodeCaches.set(db, cache);
   }
   return cache;
+}
+
+function forgetEntry(cache: StoredEventDecodeCache, rowId: string): void {
+  const entry = cache.entries.get(rowId);
+  if (entry === undefined) return;
+  cache.entries.delete(rowId);
+  cache.dataChars -= entry.data.length;
 }
 
 function rememberEntry(
@@ -94,27 +90,21 @@ function rememberEntry(
   rowId: string,
   entry: StoredEventDecodeEntry,
 ): void {
-  const generationEntryLimit = STORED_EVENT_DECODE_CACHE_MAX_ENTRIES / 2;
-  const generationDataCharLimit = STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS / 2;
-  if (entry.data.length > generationDataCharLimit) {
+  forgetEntry(cache, rowId);
+  if (entry.data.length > STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS / 2) {
     return;
   }
-  const replaced = cache.current.get(rowId);
-  if (replaced !== undefined) {
-    cache.current.delete(rowId);
-    cache.currentDataChars -= replaced.data.length;
+  cache.entries.set(rowId, entry);
+  cache.dataChars += entry.data.length;
+  for (const oldest of cache.entries.keys()) {
+    if (
+      cache.entries.size <= STORED_EVENT_DECODE_CACHE_MAX_ENTRIES &&
+      cache.dataChars <= STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS
+    ) {
+      return;
+    }
+    forgetEntry(cache, oldest);
   }
-  if (
-    cache.current.size + 1 > generationEntryLimit ||
-    cache.currentDataChars + entry.data.length > generationDataCharLimit
-  ) {
-    cache.previous = cache.current;
-    cache.previousDataChars = cache.currentDataChars;
-    cache.current = new Map();
-    cache.currentDataChars = 0;
-  }
-  cache.current.set(rowId, entry);
-  cache.currentDataChars += entry.data.length;
 }
 
 export function decodeStoredEventRowCached(
@@ -126,16 +116,11 @@ export function decodeStoredEventRowCached(
   if (byRow !== undefined && entryMatchesRow(byRow, row)) {
     return byRow.event;
   }
-  const current = cache.current.get(row.id);
-  if (current !== undefined && entryMatchesRow(current, row)) {
-    cache.byRow.set(row, current);
-    return current.event;
-  }
-  const previous = cache.previous.get(row.id);
-  if (previous !== undefined && entryMatchesRow(previous, row)) {
-    rememberEntry(cache, row.id, previous);
-    cache.byRow.set(row, previous);
-    return previous.event;
+  const cached = cache.entries.get(row.id);
+  if (cached !== undefined && entryMatchesRow(cached, row)) {
+    rememberEntry(cache, row.id, cached);
+    cache.byRow.set(row, cached);
+    return cached.event;
   }
   const event = parseStoredEvent(row);
   if (freezeDecodedEvents) {

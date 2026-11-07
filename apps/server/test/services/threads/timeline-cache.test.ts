@@ -67,8 +67,16 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
 
 const baseRevisionArgs: ThreadTimelineCacheRevisionArgs = {
   maxSeq: 10,
+  page: latestPage,
+  rewriteGeneration: 0,
   status: "idle",
   surface: "surface-a",
+};
+
+const olderPage: ThreadTimelinePageRequest = {
+  kind: "older",
+  segmentLimit: 20,
+  beforeCursor: { anchorSeq: 4, anchorId: "a4" },
 };
 
 describe("createThreadTimelineCache", () => {
@@ -94,6 +102,20 @@ describe("createThreadTimelineCache", () => {
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(cache.size).toBe(0);
+  });
+
+  it("caches a multi-megabyte window by default", () => {
+    const cache = createThreadTimelineCache();
+    const rowCount = Math.ceil(
+      (3 * 1024 * 1024) / (windowBytes(2) - windowBytes(1)),
+    );
+    const build = vi.fn(() => makeResponse(rowCount));
+
+    const first = cache.getOrBuild("thr_x", "k", "r10", build);
+
+    expect(timelineWindowJsonLength(first)).toBeGreaterThan(3 * 1024 * 1024);
+    expect(cache.getOrBuild("thr_x", "k", "r10", build)).toBe(first);
+    expect(build).toHaveBeenCalledTimes(1);
   });
 
   it("caches windows with many rows when they fit the byte limit", () => {
@@ -166,7 +188,9 @@ describe("createThreadTimelineCache", () => {
     const idle = cache.getOrBuild("thr_idle", "idle", "r7", idleBuild);
 
     for (let maxSeq = 1; maxSeq <= 20; maxSeq += 1) {
-      cache.getOrBuild("thr_active", "active", `r${maxSeq}`, () => makeResponse(1));
+      cache.getOrBuild("thr_active", "active", `r${maxSeq}`, () =>
+        makeResponse(1),
+      );
     }
 
     expect(cache.getOrBuild("thr_idle", "idle", "r7", idleBuild)).toBe(idle);
@@ -255,11 +279,30 @@ describe("buildThreadTimelineCacheRevision", () => {
     const base = buildThreadTimelineCacheRevision(baseRevisionArgs);
     const variants: ThreadTimelineCacheRevisionArgs[] = [
       { ...baseRevisionArgs, maxSeq: 11 },
+      { ...baseRevisionArgs, rewriteGeneration: 1 },
       { ...baseRevisionArgs, status: "active" },
       { ...baseRevisionArgs, surface: "surface-b" },
     ];
     for (const variant of variants) {
       expect(buildThreadTimelineCacheRevision(variant)).not.toBe(base);
     }
+  });
+
+  it("keys older pages on their cursor snapshot, not on the thread head", () => {
+    const older = { ...baseRevisionArgs, page: olderPage };
+    const base = buildThreadTimelineCacheRevision(older);
+    expect(
+      buildThreadTimelineCacheRevision({
+        ...older,
+        maxSeq: 99,
+        status: "active",
+      }),
+    ).toBe(base);
+    expect(
+      buildThreadTimelineCacheRevision({ ...older, rewriteGeneration: 1 }),
+    ).not.toBe(base);
+    expect(
+      buildThreadTimelineCacheRevision({ ...older, surface: "surface-b" }),
+    ).not.toBe(base);
   });
 });
