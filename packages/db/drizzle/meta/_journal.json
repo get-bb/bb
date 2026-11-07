@@ -1030,6 +1030,62 @@
       "when": 1792453324528,
       "tag": "0146_diff_viewed_files",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "6",
+      "when": 1793141159432,
+      "tag": "0147_git_and_pr_status_plugin_show_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "6",
+      "when": 1793309187609,
+      "tag": "0148_queued_message_delivery_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "6",
+      "when": 1793380935401,
+      "tag": "0149_coalesced_system_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "6",
+      "when": 1793664307128,
+      "tag": "0150_thread_status_changed_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "6",
+      "when": 1793738260717,
+      "tag": "0151_hand_diff_viewed_files_to_git_plugin",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "6",
+      "when": 1793861269499,
+      "tag": "0152_small_storage_cleanups",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "6",
+      "when": 1793986806947,
+      "tag": "0153_sweep_item_failures",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "6",
+      "when": 1794003147178,
+      "tag": "0154_thread_purges",
+      "breakpoints": true
     }
   ]
 }

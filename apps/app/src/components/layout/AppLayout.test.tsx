@@ -8,6 +8,8 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { buildBridgeInjectionScript } from "@bb/mobile-bridge";
 import { defaultAppSettings } from "@bb/domain";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -18,13 +20,19 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { resetNativeShellForTests } from "@/lib/native-shell";
+import {
+  useEffect,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { AppLayout } from "./AppLayout";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
+import { beginSplitDrag } from "@/lib/split-drag";
 
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
@@ -41,6 +49,11 @@ const useThreadDetailBootstrapMock = vi.hoisted(() =>
     } => ({ isError: false, isSuccess: false }),
   ),
 );
+
+const sidebarThreadsMock = vi.hoisted(() => {
+  const threads: import("@bb/domain").ThreadListEntry[] = [];
+  return { threads };
+});
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_STORAGE_KEY = "bb.sidebar.open";
@@ -168,7 +181,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
         kind: "personal",
         name: "Personal",
         sources: [],
-        threads: [],
+        threads: sidebarThreadsMock.threads,
         defaultExecutionOptions: null,
         createdAt: 1,
         updatedAt: 1,
@@ -217,8 +230,8 @@ function RouteContent() {
   );
 }
 
-function renderLayout(initialPath = "/", children: ReactNode = null) {
-  return render(
+function layoutTree(initialPath: string, children: ReactNode) {
+  return (
     <MemoryRouter initialEntries={[initialPath]}>
       <AppCommandProvider>
         <AppLayout>
@@ -226,11 +239,16 @@ function renderLayout(initialPath = "/", children: ReactNode = null) {
           {children}
         </AppLayout>
       </AppCommandProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
+function renderLayout(initialPath = "/", children: ReactNode = null) {
+  return render(layoutTree(initialPath, children));
+}
+
 beforeEach(() => {
+  sidebarThreadsMock.threads = [];
   window.localStorage.clear();
   window.sessionStorage.clear();
   useThreadDetailBootstrapMock.mockReset();
@@ -246,6 +264,7 @@ afterEach(() => {
   resetAllCrashedPluginSlotsForTest();
   setCompactSecondaryPanelPresentation("closed");
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
@@ -272,6 +291,31 @@ describe("canonical thread routes", () => {
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(expected),
     );
+  });
+
+  it("keeps the layout mounted while redirecting to the thread's project route", async () => {
+    let mounts = 0;
+    function MountCounter() {
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return null;
+    }
+    const view = renderLayout("/threads/thr_one", <MountCounter />);
+    useThreadDetailBootstrapMock.mockReturnValue({
+      data: { projectId: "proj_actual" },
+      isError: false,
+      isSuccess: true,
+    });
+
+    view.rerender(layoutTree("/threads/thr_one", <MountCounter />));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj_actual/threads/thr_one",
+      ),
+    );
+    expect(mounts).toBe(1);
   });
 
   it("keeps an already canonical thread route", () => {
@@ -325,6 +369,55 @@ describe("mobile workspace sidebar access", () => {
 });
 
 describe("AppLayout Back to app", () => {
+  it.each([...SECONDARY_ROUTES, "/plugins/drag-test/panel"])(
+    "keeps %s open when a split drag cancels sidebar reordering",
+    (route) => {
+      setPluginSlotRegistrations(
+        "drag-test",
+        makePluginRegistrationSet({
+          navPanels: [
+            {
+              id: "panel",
+              title: "Drag test",
+              path: "panel",
+              icon: "House",
+              component: () => null,
+              experimental_sidebar: () => null,
+            },
+          ],
+        }),
+      );
+      renderLayout(route);
+      const originalElementsFromPoint = document.elementsFromPoint;
+      document.elementsFromPoint = () => [];
+      const onEnd = vi.fn();
+      try {
+        beginSplitDrag({
+          ghostLabel: "Panel tab",
+          cancelSidebarReorderOnEngage: true,
+          shouldEngage: () => true,
+          decide: () => null,
+          onDrop: vi.fn(),
+          onEnd,
+        });
+        fireEvent.pointerMove(window, { clientX: 500, clientY: 300 });
+        expect(screen.getByTestId("location").textContent).toBe(route);
+        expect(document.body.style.cursor).toBe("grabbing");
+
+        fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+        expect(onEnd).toHaveBeenCalledWith({ dropped: false });
+        expect(screen.getByTestId("location").textContent).toBe(route);
+
+        fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+        expect(screen.getByTestId("location").textContent).toBe("/");
+      } finally {
+        fireEvent.pointerCancel(window);
+        fireEvent.click(document.body);
+        document.elementsFromPoint = originalElementsFromPoint;
+      }
+    },
+  );
+
   it.each(SECONDARY_ROUTES)(
     "returns from %s with the remembered query and hash, then releases Escape",
     (route) => {
@@ -631,4 +724,101 @@ describe("AppLayout plugin overlay contexts", () => {
       expect(warnings).not.toHaveBeenCalled();
     },
   );
+});
+
+it("badges the phone app with the number of threads waiting for input", async () => {
+  const posted: unknown[] = [];
+  vi.stubGlobal("ReactNativeWebView", {
+    postMessage: (raw: string) => posted.push(JSON.parse(raw)),
+  });
+  // eslint-disable-next-line no-new-func
+  new Function(
+    "window",
+    buildBridgeInjectionScript({
+      bridgeVersion: 1,
+      appVersion: "0.39.0",
+      platform: "ios",
+      profileMode: "connect",
+      secureContext: true,
+      safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+      capabilities: ["badge"],
+    }),
+  )(window);
+  resetNativeShellForTests();
+  const badges = () =>
+    posted.filter(
+      (message): message is { type: "badge"; count: number } =>
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        message.type === "badge",
+    );
+  try {
+    sidebarThreadsMock.threads = [
+      makeThreadListEntry({ id: "pending-one", hasPendingInteraction: true }),
+      makeThreadListEntry({ id: "pending-two", hasPendingInteraction: true }),
+      makeThreadListEntry({
+        id: "unread",
+        lastReadAt: 10,
+        latestAttentionAt: 20,
+      }),
+    ];
+    renderLayout();
+    await waitFor(() =>
+      expect(badges().at(-1)).toEqual({ type: "badge", count: 2 }),
+    );
+    sidebarThreadsMock.threads = [
+      makeThreadListEntry({
+        id: "unread",
+        lastReadAt: 10,
+        latestAttentionAt: 20,
+      }),
+    ];
+    fireEvent.click(screen.getByRole("link", { name: SETTINGS_ROUTE }));
+    await waitFor(() =>
+      expect(badges().at(-1)).toEqual({ type: "badge", count: 0 }),
+    );
+  } finally {
+    Reflect.deleteProperty(window as unknown as Record<string, unknown>, "bb");
+    resetNativeShellForTests();
+  }
+});
+
+it("synchronizes desktop attention when sidebar state changes and clears its report on unmount", async () => {
+  const setAttentionThreads = vi.fn();
+  vi.stubGlobal("bbDesktop", { setAttentionThreads });
+  sidebarThreadsMock.threads = [
+    makeThreadListEntry({
+      id: "unread",
+      lastReadAt: 10,
+      latestAttentionAt: 20,
+    }),
+  ];
+  const view = renderLayout();
+  await waitFor(() =>
+    expect(setAttentionThreads).toHaveBeenLastCalledWith({
+      pendingThreadIds: [],
+      unreadThreadIds: ["unread"],
+    }),
+  );
+  sidebarThreadsMock.threads = [
+    makeThreadListEntry({
+      id: "pending",
+      lastReadAt: 30,
+      latestAttentionAt: 20,
+      hasPendingInteraction: true,
+    }),
+  ];
+  fireEvent.click(screen.getByRole("link", { name: SETTINGS_ROUTE }));
+  await waitFor(() =>
+    expect(setAttentionThreads).toHaveBeenLastCalledWith({
+      pendingThreadIds: ["pending"],
+      unreadThreadIds: [],
+    }),
+  );
+  view.unmount();
+  expect(setAttentionThreads).toHaveBeenLastCalledWith({
+    pendingThreadIds: [],
+    unreadThreadIds: [],
+  });
 });

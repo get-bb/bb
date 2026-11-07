@@ -1,0 +1,53 @@
+{
+  "name": "bb-plugin-bb--github-star",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Asks once for a GitHub star after you have sent a few prompts.",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.6.86"
+  },
+  "bb": {
+    "name": "GitHub Star",
+    "description": "Asks once for a GitHub star after you have sent a few prompts.",
+    "branding": {
+      "icon": "Star"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "typecheck": "tsrs --noEmit",
+    "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
+    "test": "vitest run --config vitest.config.ts",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "better-sqlite3": "12.11.1",
+    "cron-parser": "^5.10.3",
+    "hono": "4.13.16",
+    "jsdom": "^29.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sonner": "^1.7.4",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.12"
+  }
+}

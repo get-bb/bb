@@ -202,7 +202,7 @@ export type ApprovalPendingInteractionPayload = z.infer<
   typeof approvalPendingInteractionPayloadSchema
 >;
 
-export const USER_QUESTION_MAX_QUESTIONS = 4;
+export const USER_QUESTION_MAX_QUESTIONS = 10;
 export const USER_QUESTION_MAX_OPTIONS = 4;
 export const USER_QUESTION_MAX_SELECTED = 4;
 export const USER_QUESTION_MAX_FREE_TEXT_LENGTH = 4096;
@@ -280,6 +280,7 @@ export const pendingInteractionUserQuestionQuestionSchema = z
       )
       .optional(),
     allowFreeText: z.boolean(),
+    required: z.boolean().default(true),
   })
   .superRefine((question, context) => {
     const optionValues = new Set<string>();
@@ -490,6 +491,24 @@ export type PluginExtensionInteractionResolution = z.infer<
   typeof pluginExtensionInteractionResolutionSchema
 >;
 
+const resolutionDiscriminatorKeys = new Set<PropertyKey>(["decision", "kind"]);
+
+function pendingInteractionResolutionError(issue: z.core.$ZodRawIssue): string {
+  if (issue.code !== "invalid_union") {
+    return approvalDecisionDiscriminatorError;
+  }
+  for (const branch of issue.errors) {
+    const first = branch[0];
+    if (
+      first !== undefined &&
+      !resolutionDiscriminatorKeys.has(first.path[0] ?? "")
+    ) {
+      return first.message;
+    }
+  }
+  return approvalDecisionDiscriminatorError;
+}
+
 export const pendingInteractionResolutionSchema = z.union(
   [
     approvalPendingInteractionResolutionSchema,
@@ -497,7 +516,7 @@ export const pendingInteractionResolutionSchema = z.union(
     pluginPendingInteractionResolutionSchema,
     pluginExtensionInteractionResolutionSchema,
   ],
-  approvalDecisionDiscriminatorError,
+  { error: pendingInteractionResolutionError },
 );
 export type PendingInteractionResolution = z.infer<
   typeof pendingInteractionResolutionSchema

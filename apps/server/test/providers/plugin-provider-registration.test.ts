@@ -211,6 +211,7 @@ describe("buildPluginProviderRegistration", () => {
         model: "m-1",
         displayName: "Model One",
         description: "The one.",
+        reasoningDiscovery: "known",
         supportedReasoningEfforts: [
           { reasoningEffort: "low", description: "Low." },
           { reasoningEffort: "high", description: "High." },
@@ -271,6 +272,21 @@ describe("buildPluginProviderRegistration", () => {
       supportsFork: true,
       supportsSessionRewind: true,
     });
+  });
+
+  it("keeps a declared guided sign-in on the registration, not on ProviderInfo", () => {
+    const registration = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({ internal_DO_NOT_USE_guidedSignIn: true }),
+      iconHash: null,
+      readSettings: NO_SETTINGS,
+    });
+
+    expect(registration.guidedSignIn).toBe(true);
+    expect(registration.info).not.toHaveProperty(
+      "internal_DO_NOT_USE_guidedSignIn",
+    );
   });
 
   it("maps an icon-less declaration to a null logoUrl and skills-only actions", () => {

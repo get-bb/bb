@@ -24,7 +24,7 @@ import {
   makeThreadListEntry,
   makeTypeaheadConfig,
 } from "../../.ladle/story-fixtures";
-import { RootComposeCompactHome } from "./RootComposeCompactHome";
+import { RootComposeHome } from "./RootComposeHome";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 
@@ -217,11 +217,12 @@ export function CompactHomePage({
   composerValue?: string;
 }) {
   return (
-    <RootComposeCompactHome
+    <RootComposeHome
+      isCompact
       composer={<StoryComposer initialValue={composerValue} />}
-    >
-      <HomeRecents threads={threads} />
-    </RootComposeCompactHome>
+      compactScrollContent={<HomeRecents threads={threads} />}
+      homepageSections={null}
+    />
   );
 }
 

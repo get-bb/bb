@@ -7,6 +7,7 @@ import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
+import { operationFailureReason } from "@/components/onboarding/onboarding-model";
 import {
   getPluginConfigurationRoutePath,
   getSettingsRoutePath,
@@ -42,6 +43,7 @@ import type {
   SidebarBootstrapResponse,
   SystemEnvironmentProvider,
   SystemExecutionOptionsModelLoadError,
+  RecordTelemetryEventRequest,
 } from "@bb/server-contract";
 import type { ProjectSelectorCreateProjectConfig } from "@/components/pickers/ProjectSelector";
 import {
@@ -207,7 +209,7 @@ interface NewThreadComposerPromptOptions {
   placeholder?: string;
   autoFocus?: boolean;
   banner?: ReactNode;
-  blockedReason?: string;
+  blocker?: NewThreadBlocker;
   resolveMentionLink?: PromptMentionLinkResolver;
   pluginComposerHost?: PluginComposerHost;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
@@ -301,15 +303,28 @@ type LiveDraftNewThreadPromptBoxProps = Omit<
   attachments: Omit<NewThreadPromptBoxProps["attachments"], "items">;
   history: Omit<NewThreadPromptBoxProps["history"], "currentDraft">;
   promptDraft: PromptDraftController;
+  blockerReason: NewThreadBlockerReason | null;
 };
 
 function LiveDraftNewThreadPromptBox({
   attachments,
   history,
   promptDraft,
+  blockerReason,
   ...promptBoxProps
 }: LiveDraftNewThreadPromptBoxProps) {
   const draft = usePromptDraftSnapshot(promptDraft);
+  const hasDraft = !isPromptDraftEmpty(draft);
+  const reportedBlockers = useRef(new Set<NewThreadBlockerReason>());
+  useEffect(() => {
+    if (!hasDraft || blockerReason === null) return;
+    if (reportedBlockers.current.has(blockerReason)) return;
+    reportedBlockers.current.add(blockerReason);
+    recordTelemetryEvent({
+      name: "new_thread_blocker",
+      properties: { reason: blockerReason },
+    });
+  }, [blockerReason, hasDraft]);
   return (
     <NewThreadPromptBox
       {...promptBoxProps}
@@ -343,7 +358,23 @@ export interface ResolveNewThreadSubmitDisabledReasonArgs {
   submissionEnvironmentUnavailable: boolean;
 }
 
-export function resolveNewThreadSubmitDisabledReason({
+export type NewThreadBlockerReason = Extract<
+  RecordTelemetryEventRequest,
+  { name: "new_thread_blocker" }
+>["properties"]["reason"];
+
+export interface NewThreadBlocker {
+  message: string;
+  reason: NewThreadBlockerReason | null;
+}
+
+export function resolveNewThreadSubmitDisabledReason(
+  args: ResolveNewThreadSubmitDisabledReasonArgs,
+): string | null {
+  return resolveNewThreadBlocker(args)?.message ?? null;
+}
+
+export function resolveNewThreadBlocker({
   environmentProviderInputsBlocker,
   environmentSetupRequiredReason,
   isCopyingAttachments,
@@ -358,20 +389,26 @@ export function resolveNewThreadSubmitDisabledReason({
   selectedProviderId,
   selectedThreadModel,
   submissionEnvironmentUnavailable,
-}: ResolveNewThreadSubmitDisabledReasonArgs): string | null {
-  if (isSubmitting) return "Starting thread...";
+}: ResolveNewThreadSubmitDisabledReasonArgs): NewThreadBlocker | null {
+  const pending = (message: string) => ({ message, reason: null });
+  if (isSubmitting) return pending("Starting thread...");
   if (isCopyingAttachments) {
-    return "Moving attachments to the selected project...";
+    return pending("Moving attachments to the selected project...");
   }
-  if (isUploading) return "Uploading attachments...";
+  if (isUploading) return pending("Uploading attachments...");
   if (projectDefaultsUnavailable) {
     return projectDefaultsStatus === "error"
-      ? "Could not load the project's execution defaults."
-      : "Loading the project's execution defaults...";
+      ? {
+          message: "Could not load the project's execution defaults.",
+          reason: "project_setup",
+        }
+      : pending("Loading the project's execution defaults...");
   }
-  if (!selectedProviderId) return "Select a provider.";
+  if (!selectedProviderId) {
+    return { message: "Select a provider.", reason: "provider_selection" };
+  }
   if (isLoadingModels) {
-    return "Loading models from the selected machine...";
+    return pending("Loading models from the selected machine...");
   }
 
   const fatalModelLoadError =
@@ -379,16 +416,28 @@ export function resolveNewThreadSubmitDisabledReason({
     modelLoadError?.code === "missing_executable" ||
     modelLoadError?.code === "auth_required";
   if (modelLoadError && (fatalModelLoadError || !selectedThreadModel)) {
-    return formatModelLoadErrorText({
-      error: modelLoadError,
-      providerLabel: providerDisplayName || selectedProviderId,
-    });
+    return {
+      message: formatModelLoadErrorText({
+        error: modelLoadError,
+        providerLabel: providerDisplayName || selectedProviderId,
+      }),
+      reason:
+        modelLoadError.code === "missing_executable"
+          ? "agent_missing"
+          : modelLoadError.code === "auth_required"
+            ? "sign_in"
+            : "model_unavailable",
+    };
   }
-  if (!selectedThreadModel) return "Select a model.";
-  if (environmentSetupRequiredReason) return environmentSetupRequiredReason;
-  if (environmentProviderInputsBlocker) return environmentProviderInputsBlocker;
-  if (submissionEnvironmentUnavailable) return "Select an environment.";
-  if (promptInputEmpty) return "Enter a prompt or attach a file.";
+  if (!selectedThreadModel) {
+    return { message: "Select a model.", reason: "model_selection" };
+  }
+  const setupMessage =
+    environmentSetupRequiredReason ||
+    environmentProviderInputsBlocker ||
+    (submissionEnvironmentUnavailable ? "Select an environment." : null);
+  if (setupMessage) return { message: setupMessage, reason: "project_setup" };
+  if (promptInputEmpty) return pending("Enter a prompt or attach a file.");
   return null;
 }
 
@@ -1615,7 +1664,7 @@ export function NewThreadComposer({
     : (selectedEnvironment ??
       (selectionScope === "new-thread" ? seed?.environment : undefined) ??
       null);
-  const submissionReadinessReason = resolveNewThreadSubmitDisabledReason({
+  const submissionBlocker = resolveNewThreadBlocker({
     environmentProviderInputsBlocker:
       machineProviderInputs.blockedReason ?? environmentProviderInputsBlocker,
     environmentSetupRequiredReason:
@@ -1633,6 +1682,8 @@ export function NewThreadComposer({
     selectedThreadModel,
     submissionEnvironmentUnavailable: submissionEnvironment === null,
   });
+  const submissionReadinessReason = submissionBlocker?.message ?? null;
+  const submissionBlockerReason = submissionBlocker?.reason ?? null;
   const submitDisabledReason =
     submissionReadinessReason ??
     (promptInputEmpty ? "Enter a prompt or attach a file." : null);
@@ -1703,7 +1754,10 @@ export function NewThreadComposer({
       } catch (submitError) {
         recordTelemetryEvent({
           name: "new_thread_submit",
-          properties: { outcome: "failed" },
+          properties: {
+            outcome: "failed",
+            failure_reason: operationFailureReason(submitError),
+          },
         });
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
@@ -1949,15 +2003,18 @@ export function NewThreadComposer({
     (options: NewThreadComposerPromptOptions) => {
       const locks = options.locks ?? {};
       pickerLocksRef.current = locks;
-      const disabledReason = options.blockedReason ?? submitDisabledReason;
+      const disabledReason = options.blocker?.message ?? submitDisabledReason;
       return (
         <LiveDraftNewThreadPromptBox
+          blockerReason={
+            options.blocker ? options.blocker.reason : submissionBlockerReason
+          }
           promptDraft={promptDraft}
           id={options.id}
           focusRequest={promptBoxFocusRequest}
           onChange={promptDraft.setTextAndMentions}
           onSubmit={(extras) =>
-            handleSubmit(options.blockedReason ?? null, extras)
+            handleSubmit(options.blocker?.message ?? null, extras)
           }
           isSubmitting={isSubmitting}
           disabled={disabledReason !== null}
@@ -2183,6 +2240,7 @@ export function NewThreadComposer({
       supportsPermissionModeSelection,
       supportsServiceTier,
       submitDisabledReason,
+      submissionBlockerReason,
       machineServerAccessReason,
       setupRequiredProvider,
       environmentSetupRequiredReason,

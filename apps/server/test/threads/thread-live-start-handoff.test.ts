@@ -31,6 +31,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { runThreadPurges } from "../helpers/thread-purges.js";
 
 const START_EXECUTION = {
   model: "gpt-5",
@@ -113,45 +114,6 @@ async function failLiveStartRpc(args: FailLiveStartRpcArgs): Promise<void> {
 }
 
 describe("live thread start handoff", () => {
-  it("sends live stop when manual stop races with an unsettled thread start", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = await startLiveThreadStartRpc({
-        harness,
-        requestIdValue: 1,
-      });
-      try {
-        requestThreadStopForCurrentState(
-          harness.deps,
-          fixture.thread,
-          fixture.environment,
-        );
-
-        const stopCommand = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "thread.stop" &&
-            command.threadId === fixture.thread.id,
-        );
-        expect(stopCommand.command).toMatchObject({
-          type: "thread.stop",
-          environmentId: fixture.environment.id,
-          threadId: fixture.thread.id,
-        });
-        expect(getThread(harness.db, fixture.thread.id)?.status).toBe(
-          "stopping",
-        );
-        await reportQueuedCommandSuccess(harness, stopCommand, {
-          providerCheckpointId: null,
-        });
-      } finally {
-        await failLiveStartRpc({
-          harness,
-          startCommand: fixture.startCommand,
-        });
-      }
-    });
-  });
-
   it("sends live stop when archive races with an unsettled thread start", async () => {
     await withTestHarness(async (harness) => {
       const fixture = await startLiveThreadStartRpc({
@@ -233,6 +195,7 @@ describe("live thread start handoff", () => {
         await reportQueuedCommandSuccess(harness, storageDeleteCommand, {
           providerCheckpointId: null,
         });
+        await runThreadPurges(harness.deps);
         expect(getThread(harness.db, fixture.thread.id)).toBeNull();
       } finally {
         await failLiveStartRpc({
@@ -297,6 +260,11 @@ describe("live thread start handoff", () => {
           command.type === "thread.stop" &&
           command.threadId === fixture.thread.id,
       );
+      expect(stopCommand.command).toMatchObject({
+        type: "thread.stop",
+        environmentId: fixture.environment.id,
+        threadId: fixture.thread.id,
+      });
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         status: "stopping",
       });
@@ -422,6 +390,7 @@ describe("live thread start handoff", () => {
             status: "idle",
           });
         } else {
+          await runThreadPurges(harness.deps);
           expect(getThread(harness.db, fixture.thread.id)).toBeNull();
         }
 

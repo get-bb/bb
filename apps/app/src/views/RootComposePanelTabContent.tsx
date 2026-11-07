@@ -1,3 +1,4 @@
+import { PluginDetailTabContent } from "@/components/plugin/plugin-detail-navigation";
 import type { ReactNode } from "react";
 import type { SidebarProject } from "@/hooks/queries/project-queries";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
@@ -13,6 +14,7 @@ import type { SecondaryPanelPaneRenderContext } from "@/components/secondary-pan
 import {
   LazyFilePreview,
   LazyHostFilePreviewTabContent,
+  LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
   LazyProjectFilePreviewTabContent,
   LazyThreadStorageFilePreviewTabContent,
@@ -32,10 +34,10 @@ import {
 } from "@/components/plugin/file-opener-tabs";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThreadStorageLocation } from "@/hooks/queries/thread-panel-queries";
-import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
+import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { getFilePreviewLineRangeStart } from "@bb/client-core";
-import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
+import { resolveAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 
@@ -149,6 +151,8 @@ export function RootComposePanelTabContent({
   terminalTarget,
 }: RootComposePanelTabContentProps) {
   switch (tab.kind) {
+    case "plugin-detail":
+      return <PluginDetailTabContent detailKey={tab.detailKey} />;
     case "browser":
       return null;
     case "attachment-file-preview":
@@ -378,7 +382,8 @@ function RootComposeFilePreviewTabContent({
                 path: projectPreviewPath,
               }
             : null;
-  const canOpenFileExternally = useCanOpenFileExternally(externalFileTarget);
+  const canOpenFileExternally =
+    useLiveFileOpenTargets(externalFileTarget).canOpenExternally;
   const { openFileExternally } = useAppNavigationHost();
   const hostFileLineNumber = getFilePreviewLineRangeStart({
     lineRange: tab.kind === "host-file-preview" ? tab.lineRange : null,
@@ -455,7 +460,15 @@ function RootComposeFilePreviewTabContent({
           ? (tab.threadId ?? rootPanelThreadId)
           : fileOpenerSource.threadId;
       original =
-        threadId && environmentId ? (
+        tab.hostId !== null ? (
+          <LazyHostScopedFilePreviewTabContent
+            activePath={tab.path}
+            hostId={tab.hostId}
+            isPanelOpen={isPanelOpen}
+            lineRange={tab.lineRange}
+            onOpenInEditor={onOpenInEditor}
+          />
+        ) : threadId && environmentId ? (
           <LazyHostFilePreviewTabContent
             activePath={tab.path}
             copyPath={tab.path}

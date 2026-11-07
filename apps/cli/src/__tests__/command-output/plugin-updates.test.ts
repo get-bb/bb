@@ -8,7 +8,11 @@ import {
 } from "../helpers/command-output-harness.js";
 import { registerPluginCommands } from "../../commands/plugin.js";
 
-const version = (value: string) => ({ version: value, display: value });
+const version = (value: string) => ({
+  version: value,
+  label: value,
+  display: value,
+});
 
 const pluginList = (id: string, source: string) => ({
   plugins: [
@@ -21,6 +25,7 @@ const pluginList = (id: string, source: string) => ({
       publisherLabel: null,
       isOrphanedBuiltin: false,
       sourceDisplay: `npm · ${id} · tracks compatible`,
+      sourceNotice: null,
       updateState: {},
       enabled: true,
       description: null,
@@ -69,7 +74,11 @@ describe("bb plugin update commands", () => {
             outcome: "incompatible",
             devMode: true,
             installed: version("1.0.0"),
-            blocked: { version: "2.0.0", reasons: ["requires bb >= 9"] },
+            blocked: {
+              version: "2.0.0",
+              label: "2.0.0",
+              reasons: ["requires bb >= 9"],
+            },
           },
           {
             id: "e",
@@ -285,7 +294,11 @@ describe("bb plugin update commands", () => {
               id: "bad",
               outcome: "incompatible",
               installed: version("1"),
-              blocked: { version: "2", reasons: ["requires newer bb"] },
+              blocked: {
+                version: "2",
+                label: "2",
+                reasons: ["requires newer bb"],
+              },
             },
             {
               id: "good",

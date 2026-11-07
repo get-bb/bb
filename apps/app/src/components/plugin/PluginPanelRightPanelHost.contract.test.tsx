@@ -30,6 +30,7 @@ import {
   contractTarget,
   describePanelControllerContract,
   readContractPanel,
+  readContractTabs,
   snapshotFromState,
   type ContractPanelRef,
   type ContractStateSink,
@@ -173,7 +174,7 @@ afterEach(() => {
 
 describePanelControllerContract(
   "plugin nav-panel page",
-  { fixedTabs: true, diffToggle: false },
+  { fixedTabs: true },
   async () => {
     const probe: ContractPanelRef = { current: null };
     const sink: ContractStateSink = { current: null };
@@ -217,6 +218,9 @@ describePanelControllerContract(
     return {
       panel: () => readContractPanel(probe),
       snapshot: () => snapshotFromState(sink),
+      tabs: () => readContractTabs(probe),
+      renderedTabVisible: () =>
+        screen.queryByTestId("contract-tab-visible")?.textContent ?? null,
       renderedTarget: () =>
         screen.queryByTestId("contract-target")?.textContent ?? null,
       command: (id) => appCommandHandlers.get(id)?.() !== false,
@@ -233,7 +237,6 @@ describePanelControllerContract(
         context: { kind: "thread" },
         availability: "action",
       },
-      diff: null,
       toggleRestoresActiveTab: true,
     };
   },

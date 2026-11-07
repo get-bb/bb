@@ -29,6 +29,8 @@ Hooks:
   durable server state on subsequent transitions to `connected` (not the first
   connection) because plugin signals are ephemeral and are not replayed.
 - `experimental_useExperiment(key)` → whether a known bb experiment is enabled, following live changes; false while configuration loads or for unknown keys.
+- `experimental_useThreadContextKind()` → `"banner"` or `"card"`: how the calling component's thread pane shows its thread context; `banner` outside a thread pane. See frontend-thread-context-card.md.
+- `experimental_useThreadExtensionState(threadId, kind)` → the latest state your provider bridge emitted for one of your declared `extensionKinds` (the local name, without your plugin id) on that thread, or null when there is none. It follows live updates while bb shows the thread; parse the value with your kind's schema before use. Only your own plugin's kinds are readable.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
@@ -37,9 +39,12 @@ Hooks:
   it (localStorage entries, log prefixes) so a copy published under another
   package name does not share the original's state. `renderSlot` returns its
   `pluginId` option, `test-plugin` by default.
-- `experimental_useQuestionFormHost()` → `{ shortcuts, registerChoiceHandler }`
-  inside a `pendingInteraction` component: the host-owned answer shortcuts by
-  zero-based option index, and a way to act when the person presses one. The
+- `experimental_useQuestionFormHost()` → `{ shortcuts, actionShortcuts,
+registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
+  component: the host-owned answer shortcuts by zero-based option index, the
+  `submit`, `previous`, `next`, and `cancel` action shortcuts, and a way to act
+  when the person presses one. Action shortcuts also
+  fire from text fields inside an element marked `data-question-form`. The
   registry's `question-form` item uses it. Empty outside a pending interaction
   and in `renderSlot`.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
@@ -51,7 +56,8 @@ experimental_openFileExternally(options), experimental_openTerminal({ terminalId
   with the [panel controller](#panel-controller).
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
-  `ExperimentalFileOpenOptions` live-file target.
+  `ExperimentalFileOpenOptions` live-file target; the preview also accepts
+  `ExperimentalFilePreviewOptions.opener`, one of your `fileOpener` ids.
   `experimental_openTerminal` shows a terminal the plugin created with
   `useSdk().terminals.create` in the current surface's terminal panel; the
   create scope (thread, environment, or host path) picks its directory. It
@@ -190,8 +196,9 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
 - `actions` and `banners` are plugin React components. `useComposer()` inside
   them is bound to the composer that mounted the component. Actions render
   before native voice/submit and are unavailable in compact layout; banners
-  render above the composer. A banner's `chrome` is `"card"` by default or
-  `"bare"`.
+  render above the composer, and not at all on a thread whose composer is
+  hidden because it is archived or its environment is gone. A banner's
+  `chrome` is `"card"` by default or `"bare"`.
 - `plusMenu` rows (the `+` menu) and `sendMenu` rows (the menu beside the send
   button, shown only while the composer can submit) are host-rendered so
   keyboard navigation, focus restoration, and mobile layout remain correct.
@@ -277,10 +284,13 @@ composer.
 - Also never bundled, for size rather than singleton reasons: `clsx`,
   `tailwind-merge`, and `class-variance-authority`. Your app bundle uses the
   host's installed copies (tailwind-merge ^3, clsx ^2, cva ^0.7), so keep
-  your declared ranges inside those majors. `zod` is NOT shimmed (exposing
-  its namespace would bloat the host's boot payload) — it bundles from your
-  `node_modules` in both `app.tsx` and `server.ts`, so keep it in
-  `dependencies`.
+  your declared ranges inside those majors.
+- `zod` bundles from your `node_modules`, so keep it in `dependencies`.
+  When bb itself builds your frontend (git and local installs), it instead
+  uses one copy the host loads on demand and shares across plugins, provided
+  your installed `zod` has the host's major and is not newer than the host's
+  copy (bb ships zod 4). `bb plugin build` artifacts, `server.ts` and
+  `zod/mini` always bundle their own, so a prebuilt bundle runs on older bb.
 - Source and diffs: use the host components
   `experimental_SourceCode` / `experimental_Diff` (frontend-components.md),
   NOT a direct
@@ -288,7 +298,7 @@ composer.
   Pierre usage means owning patch normalization and the code theme yourself,
   and it opts you out of any installed renderer replacement.
 - Everything else bundles from YOUR `node_modules` (lucide,
-  non-portal radix, zod, form/calendar/chart libs): run `npm install`
+  non-portal radix, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
   npm. Managed source installs run bb's bundled npm.
@@ -349,14 +359,25 @@ panel.close();
   fixed tab selected with the panel open (the target is ignored), or the action
   tab instance with the same params selected — otherwise it calls `openTab`.
 - `close()` closes the side panel.
+- `selectTab(key)` and `closeTab(key)` act on any open tab, bb's or another
+  plugin's, by the `key` from `experimental_usePanelTabs()`. They run the same
+  select and close the tab strip runs, so closing a terminal's tab ends the
+  terminal; `closeTab` declines tabs without a close button. List the open
+  tabs with `experimental_usePanelTabs()`, or once with `getTabs()` outside
+  components; see frontend-panel-tabs.md.
 - Each call returns true when the host accepted it and false when it declined:
   no side panel on this surface, a tab this plugin did not register for the
   surface, or a target or params that are not JSON or fail validation. On the
   New thread screen a `{ context: { kind: "thread" }, availability: "action" }`
   tab resolves against `experimental_newThreadPanelAction` with the same id.
 
-bb's own panel shortcuts and controls (Mod+D, panel toggle, Info, tab strip,
-close buttons) go through the same controller.
+bb's own panel shortcuts and controls (panel toggle, Info, tab strip, close
+buttons) and the Git plugin's Mod+D command go through the same controller.
+
+`experimental_useTabVisible()` is true while the panel tab it renders in is
+the selected tab and the side panel is open, false otherwise. bb keeps a
+closed panel's tab mounted, so pause reads that only feed the tab while it is
+false; the Git plugin's Diff tab does.
 
 Retired members keep working for existing plugins, and `bb plugin build` warns
 with the replacement:
@@ -391,8 +412,10 @@ All live hooks take `{ contract, method, ... }` and infer their types without
 explicit generic arguments. Plain queries add `input`; mutations add optional
 `optimistic`. Use `experimental_useRpcKeyedQuery({ contract, method, keys, select? })` for
 contract-inferred rows and selection results. Keyed methods accept `{ keys }`
-and return a record containing every requested key. Tags are plain strings;
-reads and writes use matching strings to declare their dependencies.
+and return a record containing every requested key. Tags are plain strings:
+reads declare them, and the server marks them stale with
+`bb.rpc.experimental_invalidate` where the data changes (see "Tags and
+invalidation" below).
 
 `data` retains the last successful value and optimistic predictions during
 refreshes and refresh errors. Plain reads start undefined; keyed selections
@@ -401,7 +424,9 @@ read is fetching never-loaded requested data. `isFetching` includes background
 attempts; keyed views share method activity. `error` is the last completed
 failure, cleared on success; retrying a first load clears its old error while
 loading. `refetch` forces an attempt, waits through retries, and records any
-failure in `error` without rejecting or discarding existing data.
+failure in `error` without rejecting or discarding existing data. Keyed reads
+also return `refetchKeys(keys)`, which reads only those keys again and keeps
+every other row, for a per-row Retry.
 
 Reads stay fresh for two seconds without polling. Focus does not refetch while
 BB's realtime connection is healthy. While disconnected, focus/browser-online
@@ -416,3 +441,42 @@ Its `code` is required; use a fallback when switching because error codes may
 grow. Unknown server codes become `unknown_error` with the original `serverCode`.
 Client failures use `transport_error` or `invalid_response`. The CLI preserves
 unrecognized codes in text and JSON output.
+
+## Tags and invalidation
+
+A read declares what it depends on with `tags(input, output)`, or
+`keyTags(key, value)` for each row of a keyed read. Writes declare nothing.
+Call `bb.rpc.experimental_invalidate(tags)` in the server code that changes
+the data, after the change, so a write from the app, the CLI, an agent tool
+or background work refreshes every matching read in every client once.
+`bb.rpc.experimental_invalidateAll()` refreshes all of the plugin's reads,
+including untagged ones.
+
+```ts
+const rpcContract = defineRpcContract({
+  item: {
+    input: z.object({ id: z.string() }).strict(),
+    output: itemSchema,
+    tags: ({ id }) => [`item:${id}`],
+  },
+  rename: {
+    input: z.object({ id: z.string(), title: z.string() }).strict(),
+    output: itemSchema,
+  },
+});
+
+async function rename(bb: BbPluginApi, id: string, title: string) {
+  const item = await saveTitle(id, title);
+  bb.rpc.experimental_invalidate([`item:${id}`]);
+  return item;
+}
+```
+
+Register `rename` as the RPC handler and call the same function from the CLI
+command and agent tool. When core already reports the change, invalidate from
+that event instead, as the Git plugin does for git status on
+`environment:changed`; invalidating in both places refreshes twice.
+
+Contract `invalidates(input, output)` is retired. It fired only when the write
+came through that RPC method. Existing plugins keep working, and
+`bb plugin build` warns with this replacement.

@@ -3,7 +3,11 @@ import { isPromptDraftEmpty } from "@bb/client-core";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
 import { usePromptDraftController } from "@/hooks/usePromptDraftStorage";
 import { useImportedProjectDefault } from "@/lib/root-compose-selection";
-import type { OnboardingEntry } from "./onboarding-telemetry";
+import {
+  recordTelemetryEvent,
+  type OnboardingEntry,
+} from "./onboarding-telemetry";
+import { operationFailureReason } from "./onboarding-model";
 
 export function useOnboardingProjectImport({
   entry,
@@ -48,6 +52,26 @@ export function useOnboardingProjectImport({
     if (importing || !lifetime?.active) return;
     setImporting(true);
     let lastImportedProjectId: string | null = null;
+    let succeededCount = 0;
+    const recordOutcome = (
+      outcome: "started" | "succeeded" | "failed",
+      error?: unknown,
+    ) =>
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          entry,
+          step: "projects",
+          operation: "import",
+          outcome,
+          item_count: repos.length,
+          succeeded_count: succeededCount,
+          ...(outcome === "failed"
+            ? { failure_reason: operationFailureReason(error) }
+            : {}),
+        },
+      });
+    recordOutcome("started");
     try {
       for (const repo of repos) {
         if (!lifetime.active) return;
@@ -56,8 +80,11 @@ export function useOnboardingProjectImport({
           source: { type: "local_path", hostId, path: repo.path },
         });
         lastImportedProjectId = project.id;
+        succeededCount += 1;
       }
-    } catch {
+      recordOutcome("succeeded");
+    } catch (error) {
+      recordOutcome("failed", error);
       return;
     } finally {
       if (lifetime.active) {

@@ -38,6 +38,7 @@ import {
   type ComposerView,
   type ExperimentalTabRegistration,
   type ExperimentalAppOverlayRegistration,
+  type InternalDoNotUseSetupGuideSectionRegistration,
   type ExperimentalSidebarNavigationActions,
   type ExperimentalSidebarNavigationTarget,
   type ExperimentalSidebarNavigationIconProps,
@@ -61,6 +62,7 @@ import {
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
+  type ExperimentalMessageMetadataRegistration,
   type PluginMessageDirectiveRegistration,
   type ExperimentalCodeFenceRendererRegistration,
   type PluginDiffRendererRegistration,
@@ -104,10 +106,16 @@ import {
   type PluginProvidersState,
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
-  type PluginThreadHeaderActionRegistration,
   type ExperimentalThreadContextSegmentRegistration,
+  type ExperimentalCollapsibleStackCardProps,
   type ExperimentalThreadInfoRowRegistration,
   type ExperimentalThreadInfoSectionRegistration,
+  type ExperimentalThreadContextCardRowRegistration,
+  type ExperimentalThreadContextCardSectionRegistration,
+  type ExperimentalThreadContextKind,
+  type ExperimentalThreadContextCardRowProps,
+  type ExperimentalPanelTabIconProps,
+  type ExperimentalPanelTabs,
   type ExperimentalInfoSectionProps,
   type ExperimentalDetailRowProps,
   type ExperimentalInfoListProps,
@@ -118,6 +126,8 @@ import {
   type PluginThreadActionsContextMenuProps,
   type PluginThreadActionsMenuProps,
   type PluginThreadStatusGlyphProps,
+  type ExperimentalThreadRowMetadataLineProps,
+  type ExperimentalThreadRowMetadataRegistration,
   type PluginThreadActionsOptions,
   type PluginThreadActionTarget,
   type ExperimentalPluginBrowserToolbarActionRegistration,
@@ -130,7 +140,11 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalFilePreviewFile,
+  type ExperimentalFilePreviewOptions,
+  type ExperimentalFilePreviewProps,
   type ExperimentalLiveFileTarget,
+  type ExperimentalServers,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenTabOptions,
   type ExperimentalPanelController,
@@ -158,6 +172,7 @@ import {
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
+import { experimental_resolveThreadStatus } from "../internal/thread-status.js";
 import {
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
@@ -239,7 +254,7 @@ export type NavigateCall =
   | { method: "openUrl"; url: string }
   | {
       method: "experimental_openFilePreview";
-      options: ExperimentalFileOpenOptions;
+      options: ExperimentalFilePreviewOptions;
     }
   | {
       method: "experimental_openFileExternally";
@@ -278,6 +293,7 @@ type ExperimentalPanelCall =
       method: "openTab" | "toggleTab";
       options: ExperimentalOpenTabOptions;
     }
+  | { method: "selectTab" | "closeTab"; key: string }
   | { method: "close" };
 
 export interface ComposerLog {
@@ -346,6 +362,7 @@ interface SlotEnv {
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
   appPanel: ExperimentalPanelController;
+  panelTabs: ExperimentalPanelTabs;
   fixedTabTarget: TestFixedTabTargetStore;
   composer: TestComposerStore;
   composerLog: ComposerLog;
@@ -360,6 +377,10 @@ interface SlotEnv {
   threadActionRegistrations: readonly PluginThreadActionRegistrationInfo[];
   sidebarDraftThreadIds: ReadonlySet<string>;
   experiments: ReadonlySet<string>;
+  threadContextKind: ExperimentalThreadContextKind;
+  threadExtensionStates: Readonly<
+    Record<string, Readonly<Record<string, unknown>>>
+  >;
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
   sidebarSplitLayout: PluginSidebarSplitLayout | null;
@@ -370,6 +391,11 @@ interface SlotEnv {
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
   canOpenFileExternally: (target: ExperimentalLiveFileTarget) => boolean;
+  filePreview: (
+    target: ExperimentalLiveFileTarget,
+  ) => ExperimentalFilePreviewFile | null;
+  tabVisible: boolean;
+  servers: ExperimentalServers | null;
   branchesState: BranchesState;
   checkoutState: CheckoutState;
 }
@@ -553,6 +579,16 @@ function TestThreadStatusGlyph({
       data-size={size}
     />
   );
+}
+
+/**
+ * `experimental_ThreadRowMetadata` marks where a row renders other plugins' row
+ * items; the test runtime knows no other plugins, so it renders a marker.
+ */
+function TestThreadRowMetadata({
+  thread,
+}: ExperimentalThreadRowMetadataLineProps) {
+  return <span data-thread-row-metadata={thread.id} />;
 }
 
 function SlotLifecycleGuard({
@@ -1419,6 +1455,20 @@ function TestVoiceInputTextarea({
 }
 
 /**
+ * Stand-in for the host-owned file preview: a recognizable wrapper carrying
+ * the target path, with the plugin's Preview body drawn from the file the
+ * `filePreview` option returns for the target (nothing when it returns null).
+ */
+function TestFilePreview({ target, renderPreview }: ExperimentalFilePreviewProps) {
+  const file = useSlotEnv("experimental_FilePreview").filePreview(target);
+  return (
+    <div data-testid="bb-file-preview" data-path={target.path}>
+      {file === null ? null : renderPreview(file)}
+    </div>
+  );
+}
+
+/**
  * Stand-in for the host-owned source viewer: emits the raw source in a
  * recognizable wrapper carrying the resolved presentation, so plugin tests can
  * assert what they asked the host to render without the real highlighter.
@@ -1498,6 +1548,33 @@ function TestInfoSection({
   );
 }
 
+/** Stand-in for bb's collapsible stack card; always shows its body. */
+function TestCollapsibleStackCard({
+  label,
+  title,
+  icon,
+  isActive,
+  dismiss,
+  children,
+}: ExperimentalCollapsibleStackCardProps) {
+  return (
+    <section
+      aria-label={label}
+      data-testid="bb-collapsible-stack-card"
+      data-icon={icon}
+      data-active={isActive ? "true" : "false"}
+    >
+      <h3>{title}</h3>
+      {dismiss === undefined ? null : (
+        <button type="button" onClick={() => void dismiss.onDismiss()}>
+          {dismiss.label}
+        </button>
+      )}
+      {children}
+    </section>
+  );
+}
+
 /** Stand-in for the Info tab label and value row. */
 function TestDetailRow({ label, icon, children }: ExperimentalDetailRowProps) {
   return (
@@ -1505,6 +1582,56 @@ function TestDetailRow({ label, icon, children }: ExperimentalDetailRowProps) {
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
+  );
+}
+
+const NO_PANEL_TABS: ExperimentalPanelTabs = {
+  open: false,
+  selectedKey: null,
+  tabs: [],
+};
+
+function TestPanelTabIcon({ tabKey }: ExperimentalPanelTabIconProps) {
+  return <span data-panel-tab-icon={tabKey} />;
+}
+
+function TestThreadContextCardRow(
+  props: ExperimentalThreadContextCardRowProps,
+) {
+  const { icon, leading, label, trailing, title, disabled, action } = props;
+  const content = (
+    <>
+      {leading}
+      {label}
+      {trailing}
+    </>
+  );
+  const main =
+    props.onClick !== undefined ? (
+      <button
+        type="button"
+        data-testid="bb-thread-context-card-row"
+        data-icon={icon}
+        title={title}
+        disabled={disabled}
+        onClick={() => props.onClick?.()}
+      >
+        {content}
+      </button>
+    ) : (
+      <div
+        data-testid="bb-thread-context-card-row"
+        data-icon={icon}
+        title={title}
+      >
+        {content}
+      </div>
+    );
+  return (
+    <>
+      {main}
+      {action}
+    </>
   );
 }
 
@@ -1567,6 +1694,10 @@ function captureClipboardWrites(
 }
 
 const testPluginSdkApp = {
+  experimental_getApplicationLinkApprovals: async (): Promise<string[]> => [],
+  experimental_revokeApplicationLinkApproval: async (
+    _scheme: string | null,
+  ): Promise<string[]> => [],
   definePluginApp,
   ...createRpcQueryHooks(() => useSlotEnv("rpc query").rpcQueryHost),
   useRpc<
@@ -1610,6 +1741,16 @@ const testPluginSdkApp = {
   experimental_useExperiment(key): boolean {
     return useSlotEnv("experimental_useExperiment").experiments.has(key);
   },
+  experimental_useThreadContextKind(): ExperimentalThreadContextKind {
+    return useSlotEnv("experimental_useThreadContextKind").threadContextKind;
+  },
+  experimental_useThreadExtensionState(threadId, kind): unknown {
+    return (
+      useSlotEnv("experimental_useThreadExtensionState").threadExtensionStates[
+        threadId
+      ]?.[kind] ?? null
+    );
+  },
   useBbContext(): BbContext {
     return useSlotEnv("useBbContext").bbContext;
   },
@@ -1624,6 +1765,9 @@ const testPluginSdkApp = {
   },
   experimental_useAppPanel(): ExperimentalPanelController {
     return useSlotEnv("experimental_useAppPanel").appPanel;
+  },
+  experimental_usePanelTabs(): ExperimentalPanelTabs {
+    return useSlotEnv("experimental_usePanelTabs").panelTabs;
   },
   experimental_useFixedTabTarget<Target extends JsonValue>(
     tab:
@@ -1745,9 +1889,13 @@ const testPluginSdkApp = {
     return useSlotEnv("experimental_useCheckoutState").checkoutState;
   },
   experimental_SourceCode: TestSourceCode,
+  experimental_FilePreview: TestFilePreview,
   experimental_Diff: TestDiff,
   experimental_InfoSection: TestInfoSection,
+  experimental_CollapsibleStackCard: TestCollapsibleStackCard,
   experimental_DetailRow: TestDetailRow,
+  experimental_ThreadContextCardRow: TestThreadContextCardRow,
+  experimental_PanelTabIcon: TestPanelTabIcon,
   experimental_InfoList: TestInfoList,
   experimental_InfoListRow: TestInfoListRow,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
@@ -1765,6 +1913,12 @@ const testPluginSdkApp = {
     return useSlotEnv(
       "experimental_useCanOpenFileExternally",
     ).canOpenFileExternally(target);
+  },
+  experimental_useTabVisible(): boolean {
+    return useSlotEnv("experimental_useTabVisible").tabVisible;
+  },
+  experimental_useServers(): ExperimentalServers | null {
+    return useSlotEnv("experimental_useServers").servers;
   },
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
@@ -1885,6 +2039,8 @@ const testPluginSdkApp = {
   },
   ThreadTitle: TestThreadTitle,
   experimental_ThreadStatusGlyph: TestThreadStatusGlyph,
+  experimental_resolveThreadStatus,
+  experimental_ThreadRowMetadata: TestThreadRowMetadata,
   useEnvironmentProviders(): PluginEnvironmentProvidersState {
     return useSlotEnv("useEnvironmentProviders").environmentProviders;
   },
@@ -1971,6 +2127,7 @@ export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
+  setupGuideSections: InternalDoNotUseSetupGuideSectionRegistration[];
   navPanels: import("../internal/plugin-app-registration-collector.js").LegacyNavPanelRegistration[];
   tabs: ExperimentalTabRegistration[];
   threadPanelActions: import("../internal/plugin-app-registration-collector.js").LegacyThreadPanelActionRegistration[];
@@ -1981,10 +2138,13 @@ export interface CapturedPluginApp {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
-  threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadHeaderActions: import("../internal/plugin-app-registration-collector.js").LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
+  threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
+  threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
+  threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -1994,6 +2154,7 @@ export interface CapturedPluginApp {
   messageDirectives: PluginMessageDirectiveRegistration[];
   codeFenceRenderers: ExperimentalCodeFenceRendererRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  messageMetadata: ExperimentalMessageMetadataRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
   icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
@@ -2263,6 +2424,16 @@ export interface RenderSlotOptions<
   sidebarDraftThreadIds?: readonly string[];
   /** Experiment keys `experimental_useExperiment()` reports as on. Omitted → none. */
   experiments?: readonly string[];
+  /** What `experimental_useThreadContextKind()` reports. Omitted → `banner`. */
+  threadContextKind?: ExperimentalThreadContextKind;
+  /**
+   * What `experimental_useThreadExtensionState(threadId, kind)` reports,
+   * keyed by thread id and then by the kind's local name. Omitted → null for
+   * every thread and kind.
+   */
+  threadExtensionStates?: Readonly<
+    Record<string, Readonly<Record<string, unknown>>>
+  >;
   /**
    * Row statuses `useSidebarThreadRowStatus()` reports, keyed by thread id.
    * Omitted → every thread reports null.
@@ -2322,7 +2493,7 @@ export interface RenderSlotOptions<
   /** Host acceptance for URL intents from the hook or `UrlLink`. */
   openUrl?: (url: string) => boolean;
   /** Host acceptance for preview intents from the hook or file link. */
-  openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
+  openFilePreview?: (options: ExperimentalFilePreviewOptions) => boolean;
   /** Host acceptance for preferred-external file intents. */
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
   /**
@@ -2330,6 +2501,24 @@ export interface RenderSlotOptions<
    * false for every target.
    */
   canOpenFileExternally?: (target: ExperimentalLiveFileTarget) => boolean;
+  /**
+   * The loaded file `experimental_FilePreview` hands its `renderPreview` for a
+   * target. Omitted or null → the stand-in draws no Preview body.
+   */
+  filePreview?: (
+    target: ExperimentalLiveFileTarget,
+  ) => ExperimentalFilePreviewFile | null;
+  /**
+   * Answer for `experimental_useTabVisible()`. Omitted → true, as for a tab
+   * that is selected in an open panel.
+   */
+  tabVisible?: boolean;
+  /**
+   * Answer for `experimental_useServers()`. Omitted → null, as in a web
+   * browser. Pass `{ status, servers, switchTo }` to act as bb Desktop or the
+   * mobile app.
+   */
+  servers?: ExperimentalServers | null;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
   openTerminal?: (
     options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
@@ -2340,6 +2529,11 @@ export interface RenderSlotOptions<
    * with a `target` makes that target visible to `experimental_useFixedTabTarget`.
    */
   experimental_panel?: Partial<ExperimentalPanelController>;
+  /**
+   * What `experimental_usePanelTabs()` reports. Omitted → a closed panel with
+   * no tabs.
+   */
+  experimental_panelTabs?: ExperimentalPanelTabs;
   /**
    * Initial session target visible to `experimental_useFixedTabTarget`.
    * Omit `panelId` for a thread fixed tab.
@@ -2354,13 +2548,19 @@ export interface RenderSlotOptions<
 /** Host-originated inputs a slot test can drive deterministically. */
 export interface RenderedSlotBehaviorDrivers {
   /**
-   * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
-   * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
+   * Invalidate the plugin's cached `useRpc` reads carrying any of `tags`, as a
+   * backend `bb.rpc.experimental_invalidate` does, wrapped in act. `null`
+   * invalidates every read, like `experimental_invalidateAll`. `pluginId`
+   * defaults to the rendered plugin.
    */
   experimental_invalidateRpc(
     tags: readonly string[] | null,
     pluginId?: string,
   ): Promise<void>;
+  /**
+   * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
+   * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
+   */
   emitRealtime(channel: string, payload: unknown): Promise<void>;
   /** Drive the lifecycle of the same connection used by realtime events. */
   setRealtimeConnectionState(
@@ -2679,6 +2879,21 @@ export function renderSlot<
       const json = jsonTabOptions(tabOptions);
       if (json === null) return false;
       return options.experimental_panel?.toggleTab?.(json) ?? false;
+    },
+    getTabs() {
+      return (
+        options.experimental_panel?.getTabs?.() ??
+        options.experimental_panelTabs ??
+        NO_PANEL_TABS
+      );
+    },
+    selectTab(key) {
+      experimental_panelCalls.push({ method: "selectTab", key });
+      return options.experimental_panel?.selectTab?.(key) ?? false;
+    },
+    closeTab(key) {
+      experimental_panelCalls.push({ method: "closeTab", key });
+      return options.experimental_panel?.closeTab?.(key) ?? false;
     },
     close() {
       experimental_panelCalls.push({ method: "close" });
@@ -3205,11 +3420,14 @@ export function renderSlot<
     pluginId: options.pluginId ?? "test-plugin",
     questionFormHost: {
       shortcuts: new Map(),
+      actionShortcuts: new Map(),
       registerChoiceHandler: () => () => {},
+      registerActionHandler: () => () => {},
     },
     navigate,
     navigateCalls,
     appPanel,
+    panelTabs: options.experimental_panelTabs ?? NO_PANEL_TABS,
     fixedTabTarget,
     composer,
     composerLog,
@@ -3225,6 +3443,8 @@ export function renderSlot<
       options.threadActionRegistrations ?? NO_THREAD_ACTION_REGISTRATIONS,
     sidebarDraftThreadIds,
     experiments: new Set(options.experiments ?? []),
+    threadContextKind: options.threadContextKind ?? "banner",
+    threadExtensionStates: options.threadExtensionStates ?? {},
     sidebarRowStatuses,
     sidebarShortcuts,
     sidebarSplitLayout: options.sidebarSplitLayout ?? null,
@@ -3235,6 +3455,9 @@ export function renderSlot<
     providers,
     codeTheme,
     canOpenFileExternally: options.canOpenFileExternally ?? (() => false),
+    filePreview: options.filePreview ?? (() => null),
+    tabVisible: options.tabVisible ?? true,
+    servers: options.servers ?? null,
     branchesState: {
       branches: options.branchesState?.branches ?? [],
       remoteBranches: options.branchesState?.remoteBranches ?? [],

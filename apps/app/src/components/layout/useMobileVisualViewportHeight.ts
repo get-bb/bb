@@ -22,12 +22,11 @@ export function isKeyboardFocusTarget(target: EventTarget | null): boolean {
 
 export function useMobileVisualViewportHeight(
   shell: AppShellElement | null,
-  enabled: boolean,
   restoreImmediatelyOnKeyboardDismissal: boolean,
 ) {
   useEffect(() => {
     const visualViewport = window.visualViewport;
-    if (!shell || !enabled || !visualViewport) return;
+    if (!shell || !visualViewport) return;
     const viewportStyleRoot = shell.ownerDocument.body;
 
     let animationFrame: number | null = null;
@@ -172,5 +171,5 @@ export function useMobileVisualViewportHeight(
       setKeyboardInset(false);
       clearViewportOverride();
     };
-  }, [enabled, restoreImmediatelyOnKeyboardDismissal, shell]);
+  }, [restoreImmediatelyOnKeyboardDismissal, shell]);
 }

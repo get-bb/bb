@@ -338,6 +338,32 @@ describe("@bb/sdk", () => {
     expect(receivedSignal).toBe(controller.signal);
   });
 
+  it("sends telemetry as a keepalive request only when asked", async () => {
+    const keepalives: Array<boolean | undefined> = [];
+    const fetch: FetchImplementation = async (_input, init) => {
+      keepalives.push(init?.keepalive);
+      return jsonResponse({ body: { ok: true } });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "node",
+      }),
+    });
+    const event = {
+      name: "onboarding_left",
+      properties: { step: "projects", entry: "first_run" },
+    } as const;
+
+    await sdk.system.experimental_recordTelemetryEvent(event);
+    await sdk.system.experimental_recordTelemetryEvent(event, {
+      keepalive: true,
+    });
+
+    expect(keepalives).toEqual([undefined, true]);
+  });
+
   it("forwards thread read action abort signals to fetch", async () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | null | undefined;
@@ -611,6 +637,45 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("uploads the bytes a dropped File reads, not its unreadable handle", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const dropped = new File([], "dropped.png", { type: "image/png" });
+    dropped.arrayBuffer = async () => bytes.slice().buffer;
+    let body: BodyInit | null | undefined;
+    const fetch: FetchImplementation = async (_input, init) => {
+      body = init?.body;
+      return jsonResponse({
+        body: {
+          type: "localImage",
+          path: "dropped-uploaded.png",
+          name: "dropped.png",
+          mimeType: "image/png",
+          sizeBytes: bytes.byteLength,
+        },
+        status: 201,
+      });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "browser",
+      }),
+    });
+
+    await sdk.projects.attachments.upload({
+      clientFile: dropped,
+      projectId: "proj_image",
+    });
+
+    if (!(body instanceof FormData)) throw new Error("Expected FormData body");
+    const uploaded = body.get("file");
+    if (!(uploaded instanceof File)) throw new Error("Expected uploaded File");
+    expect(uploaded.name).toBe("dropped.png");
+    expect(uploaded.type).toBe("image/png");
+    expect(new Uint8Array(await uploaded.arrayBuffer())).toEqual(bytes);
+  });
+
   it("preserves project attachment error envelopes", async () => {
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -764,6 +829,7 @@ describe("@bb/sdk", () => {
       sdk.providers.models({
         environmentId: "env_remote",
         providerId: "acp-remote",
+        preferCached: true,
       }),
     ).resolves.toMatchObject({ models: [], providers: [] });
     await expect(
@@ -783,7 +849,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote",
+        url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote&preferCached=true",
       },
       {
         bodyText: undefined,
@@ -1587,7 +1653,7 @@ describe("@bb/sdk", () => {
     expect(
       queue.requests.map((request) => `${request.method} ${request.url}`),
     ).toEqual([
-      "GET http://bb.test/api/v1/queued-messages?",
+      "GET http://bb.test/api/v1/queued-messages",
       "POST http://bb.test/api/v1/threads/thr_123/queued-messages/qm_1/send",
       "DELETE http://bb.test/api/v1/threads/thr_123/queued-messages/qm_1",
     ]);
@@ -1692,7 +1758,7 @@ describe("@bb/sdk", () => {
       ],
     });
 
-    expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/count?");
+    expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/count");
     expect(queue.requests[1].url).toBe(
       "http://bb.test/api/v1/threads/count?status=active&hostId=host_a&providerId=codex&projectId=proj_123&parentThreadId=none&groupBy=host",
     );
@@ -1815,6 +1881,7 @@ describe("@bb/sdk", () => {
       catalogEntryId: "notes",
       publisherLabel: "BB Community",
       sourceDisplay: "npm · @bb/notes · tracks compatible",
+      sourceNotice: null,
       updateState: {},
       enabled: true,
       description: "Notes",
@@ -1845,8 +1912,8 @@ describe("@bb/sdk", () => {
     const checked = {
       id: "notes",
       outcome: "update-available" as const,
-      installed: { version: "1.2.0", display: "1.2.0" },
-      candidate: { version: "1.3.0", display: "1.3.0" },
+      installed: { version: "1.2.0", label: "1.2.0", display: "1.2.0" },
+      candidate: { version: "1.3.0", label: "1.3.0", display: "1.3.0" },
     };
     const queue = createFetchQueue([
       { body: { plugins: [plugin] } },

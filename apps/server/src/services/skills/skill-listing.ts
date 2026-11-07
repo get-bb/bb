@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
+import { getRelativeHostPathSegments } from "@bb/domain";
 import { replaceFile } from "@bb/file-transfer";
 import type { DiscoveredSkill, SkillRootKind } from "@bb/host-daemon-contract";
 import type {
@@ -20,6 +21,11 @@ import {
 } from "../hosts/daemon-file-response.js";
 import type { AppDeps } from "../../types.js";
 import {
+  hostPathBasename,
+  hostPathDirname,
+  joinHostPathSegments,
+} from "../lib/host-path.js";
+import {
   callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
 } from "../hosts/online-rpc.js";
@@ -27,7 +33,7 @@ import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/pr
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
-import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
+import { resolveSharedSkills } from "./shared-skills.js";
 import {
   DEFAULT_PATH_LIST_EXCLUDE_NAMES,
   SKILL_PATH_LIST_INCLUDE_HIDDEN,
@@ -53,18 +59,6 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "provider-user",
   "plugin",
 ];
-
-function hostPathBasename(filePath: string): string {
-  return /^[a-zA-Z]:[\\/]/u.test(filePath)
-    ? path.win32.basename(filePath)
-    : path.posix.basename(filePath);
-}
-
-function hostPathJoin(rootPath: string, segments: readonly string[]): string {
-  return /^[a-zA-Z]:[\\/]/u.test(rootPath)
-    ? path.win32.join(rootPath, ...segments)
-    : path.posix.join(rootPath, ...segments);
-}
 
 function isBundledProviderSkill(filePath: string): boolean {
   return /(^|[\\/])\.system([\\/]|$)/u.test(filePath);
@@ -221,6 +215,28 @@ async function listBbPluginSkills(deps: AppDeps): Promise<SkillSummary[]> {
     .sort(compareSkillSummaries);
 }
 
+async function listServerSkills(deps: AppDeps): Promise<SkillSummary[]> {
+  return [
+    ...(await listServerOwnedSkills(deps)),
+    ...(await listBbPluginSkills(deps)),
+  ];
+}
+
+async function confirmServerSkillManageable(
+  skill: SkillSummary,
+): Promise<void> {
+  if (!skill.manageable) return;
+  const directory = path.dirname(skill.filePath);
+  const stats = await Promise.all(
+    [path.dirname(directory), directory, skill.filePath].map((entry) =>
+      fs.lstat(entry).catch(() => null),
+    ),
+  );
+  skill.manageable = stats.every(
+    (stat) => stat !== null && !stat.isSymbolicLink(),
+  );
+}
+
 async function projectSkillIndex(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
@@ -250,10 +266,7 @@ async function projectSkillIndex(
       cwd: args.workspace.cwd,
     }),
   ]);
-  const serverSkills = [
-    ...(await listServerOwnedSkills(deps)),
-    ...(await listBbPluginSkills(deps)),
-  ];
+  const serverSkills = await listServerSkills(deps);
   const identities = new Map(sharedSkills.identities);
   for (const { skills } of perProvider) {
     for (const skill of skills)
@@ -263,17 +276,7 @@ async function projectSkillIndex(
       });
   }
   for (const skill of serverSkills) {
-    if (skill.manageable) {
-      const directory = path.dirname(skill.filePath);
-      const stats = await Promise.all(
-        [path.dirname(directory), directory, skill.filePath].map((entry) =>
-          fs.lstat(entry).catch(() => null),
-        ),
-      );
-      skill.manageable = stats.every(
-        (stat) => stat !== null && !stat.isSymbolicLink(),
-      );
-    }
+    await confirmServerSkillManageable(skill);
     const bytes = await fs.readFile(skill.filePath).catch(() => null);
     const realPath = await fs.realpath(skill.filePath).catch(() => null);
     if (bytes !== null && realPath !== null)
@@ -339,23 +342,11 @@ function isServerOwnedSkill(deps: AppDeps, skill: SkillSummary): boolean {
 }
 
 function validateServerSkillRelativePath(relativePath: string): string[] {
-  if (
-    relativePath.includes("\0") ||
-    relativePath.includes("\\") ||
-    path.posix.isAbsolute(relativePath)
-  ) {
-    throw new ApiError(400, "invalid_path", "Path must be relative");
+  const segments = getRelativeHostPathSegments(relativePath);
+  if (segments === null) {
+    throw new ApiError(400, "invalid_path", "Invalid file path");
   }
-  const segments = relativePath.split("/");
-  if (
-    segments.some(
-      (segment) =>
-        segment.length === 0 ||
-        segment === "." ||
-        segment === ".." ||
-        segment.startsWith("."),
-    )
-  ) {
+  if (segments.some((segment) => segment.startsWith("."))) {
     throw new ApiError(404, "not_found", "Skill file not found");
   }
   return segments;
@@ -440,6 +431,18 @@ async function resolveProjectSkill(
     workspace: CommandWorkspace;
   },
 ): Promise<IndexedSkillSummary> {
+  const serverSkill = (await listServerSkills(deps)).find(
+    (skill) => skill.id === args.skillId,
+  );
+  if (serverSkill !== undefined) {
+    await confirmServerSkillManageable(serverSkill);
+    return {
+      ...serverSkill,
+      realPath: await fs
+        .realpath(serverSkill.filePath)
+        .catch(() => serverSkill.filePath),
+    };
+  }
   const index = await projectSkillIndex(deps, { workspace: args.workspace });
   const match = index.registrations.find((skill) => skill.id === args.skillId);
   if (!match) {
@@ -518,7 +521,10 @@ export async function readProjectSkill(
       path:
         args.path === SKILL_FILE_NAME
           ? skill.realPath
-          : hostPathJoin(rootPath, validateServerSkillRelativePath(args.path)),
+          : joinHostPathSegments(
+              rootPath,
+              ...validateServerSkillRelativePath(args.path),
+            ),
       rootPath,
       followRootSymlink: true,
     },

@@ -408,6 +408,17 @@ if [ "$node_supported" != yes ]; then
   exit 1
 fi
 node_bin=$(command -v node)
+fnm_session_dir=${node_bin%/bin/node}
+case "${fnm_session_dir%/*}" in
+  */fnm_multishells)
+    if fnm_session_target=$(readlink "$fnm_session_dir"); then
+      case "$fnm_session_target" in
+        /*) node_bin="$fnm_session_target/bin/node" ;;
+        *) node_bin="${fnm_session_dir%/*}/$fnm_session_target/bin/node" ;;
+      esac
+    fi
+    ;;
+esac
 
 if [ -z "${HOME:-}" ]; then
   HOME=$(node -e 'const home = require("node:os").homedir(); if (!require("node:path").isAbsolute(home)) process.exit(1); process.stdout.write(home);')
@@ -1164,6 +1175,7 @@ Environment="BB_APP_NPM_PREFIX=$escaped_bb_app_npm_prefix"
 Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2
+OOMPolicy=continue
 
 [Install]
 WantedBy=$service_target

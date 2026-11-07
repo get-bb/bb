@@ -1,0 +1,63 @@
+export const piManagedLauncherJs = [
+  'const fs = require("node:fs");',
+  'const path = require("node:path");',
+  'const { spawnSync } = require("node:child_process");',
+  "",
+  'const packageName = "@earendil-works/pi-coding-agent";',
+  'const commandName = "pi";',
+  "const agentDir = path.dirname(__dirname);",
+  'const installRoot = path.join(agentDir, "install");',
+  'const currentFile = path.join(installRoot, "current-version");',
+  'const currentVersion = fs.readFileSync(currentFile, "utf8").trim();',
+  'if (!currentVersion || currentVersion === "." || currentVersion === ".." || !/^[0-9A-Za-z._+-]+$/.test(currentVersion)) {',
+  "\tthrow new Error(`Managed Pi version file is invalid: ${currentFile}`);",
+  "}",
+  "",
+  'const releaseDir = path.join(installRoot, "releases", currentVersion);',
+  'const packageDir = path.join(releaseDir, "node_modules", ...packageName.split("/"));',
+  'const packageJson = JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8"));',
+  'const binPath = typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin?.[commandName];',
+  "if (!binPath) {",
+  "\tthrow new Error(`${packageName} does not declare a ${commandName} bin`);",
+  "}",
+  "const cliPath = path.resolve(packageDir, binPath);",
+  "const cliRelative = path.relative(packageDir, cliPath);",
+  'if (cliRelative.startsWith("..") || path.isAbsolute(cliRelative) || !fs.statSync(cliPath).isFile()) {',
+  "\tthrow new Error(`Managed Pi executable is invalid: ${cliPath}`);",
+  "}",
+  "",
+  "const result = spawnSync(process.execPath, [cliPath, ...process.argv.slice(2)], {",
+  '\tstdio: "inherit",',
+  "\tenv: { ...process.env, PI_MANAGED_INSTALL_ROOT: installRoot },",
+  "});",
+  "if (result.error) throw result.error;",
+  "process.exit(result.status ?? 1);",
+].join("\r\n");
+
+export function piManagedCmdLauncher(
+  node: "path" | "standalone" = "path",
+): string {
+  return [
+    "@ECHO off",
+    "SETLOCAL",
+    'SET "node=node"',
+    ...(node === "standalone"
+      ? [
+          'IF EXIST "%LOCALAPPDATA%\\pi-node\\current\\node.exe" SET "node=%LOCALAPPDATA%\\pi-node\\current\\node.exe"',
+        ]
+      : []),
+    '"%node%" "%~dp0pi-launcher.js" %*',
+    'SET "pi_exit_code=%ERRORLEVEL%"',
+    'IF "%pi_exit_code%"=="9009" (',
+    '  IF "%node%"=="node" (',
+    '    "%SystemRoot%\\System32\\where.exe" /Q node',
+    "    IF ERRORLEVEL 1 GOTO node_missing",
+    '  ) ELSE IF NOT EXIST "%node%" GOTO node_missing',
+    ")",
+    "EXIT /B %pi_exit_code%",
+    ":node_missing",
+    "ECHO Pi could not find Node.js. Install Node.js 22.19.0 or newer, or rerun the installer at https://pi.dev. 1>&2",
+    "EXIT /B %pi_exit_code%",
+    "",
+  ].join("\r\n");
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
+  type Label,
   type Task,
   type TaskPriority,
   type TaskStatus,
@@ -15,7 +16,12 @@ import {
   useStagedAttachmentRetry,
   type StagedAttachment,
 } from "../../components/staged-attachments.js";
-import { useProjects, useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import {
+  selectLabels,
+  useProjects,
+  useTasksQuery,
+  useTasksRpc,
+} from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import {
@@ -50,6 +56,8 @@ import {
   type NewTaskDraft,
 } from "./new-task-draft.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
+
+const NO_LABELS: Label[] = [];
 
 const CHIP_TRIGGER =
   "h-7 w-auto gap-1.5 rounded-md px-2 text-xs text-muted-foreground";
@@ -222,23 +230,15 @@ export function NewTaskDialog({
   }, [open, draft.projectId, effectiveProjectId]);
 
   const labelsQuery = useTasksQuery(
-    async (rpc) => ({
-      projectId: effectiveProjectId,
-      labels: effectiveProjectId
-        ? (await rpc.call("listLabels", { projectId: effectiveProjectId }))
-            .labels
-        : [],
-    }),
-    ["projects:changed"],
-    [effectiveProjectId],
+    "listLabels",
+    { projectId: effectiveProjectId ?? "" },
+    selectLabels,
+    { enabled: effectiveProjectId !== null },
   );
-  const labels = {
-    ...labelsQuery,
-    data:
-      labelsQuery.data?.projectId === effectiveProjectId
-        ? labelsQuery.data.labels
-        : undefined,
-  };
+  const labels =
+    effectiveProjectId === null
+      ? { ...labelsQuery, data: NO_LABELS, isLoading: false }
+      : labelsQuery;
   const labelIds = draft.labelIds.filter((id) =>
     labels.data?.some((label) => label.id === id),
   );
@@ -271,7 +271,6 @@ export function NewTaskDialog({
         name,
         color: DEFAULT_COLOR,
       });
-      labels.refresh();
       updateDraft((current) => ({
         labelIds: [...current.labelIds, label.id],
       }));

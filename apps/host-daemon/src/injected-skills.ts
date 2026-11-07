@@ -4,6 +4,7 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
+import { getRelativeHostPathSegments } from "@bb/domain";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import {
   hostDaemonSkillTreeManifestSchema,
@@ -729,16 +730,8 @@ function resolveStoredTreeRootPath(dataDir: string, treeHash: string): string {
 }
 
 function isSafeTreePath(entryPath: string): boolean {
-  const segments = entryPath.split("/");
-  return (
-    !entryPath.includes("\\") &&
-    !path.posix.isAbsolute(entryPath) &&
-    !path.win32.isAbsolute(entryPath) &&
-    segments.length <= MAX_STAGED_SKILL_DEPTH + 1 &&
-    segments.every(
-      (segment) => segment !== "" && segment !== "." && segment !== "..",
-    )
-  );
+  const segments = getRelativeHostPathSegments(entryPath);
+  return segments !== null && segments.length <= MAX_STAGED_SKILL_DEPTH + 1;
 }
 
 function validatedManifestFiles(

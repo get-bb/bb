@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { availableModelSchema } from "./provider-types.js";
+import {
+  threadSessionOptionSchema,
+  type ThreadSessionOption,
+} from "./thread-session-option.js";
 import type { ExtensionKind } from "./provider-extension-kind.js";
 import {
   sessionOptionSelectionsSchema,
@@ -6,10 +11,24 @@ import {
   type SessionOptionValue,
 } from "./shared-types.js";
 
+export {
+  threadSessionOptionSchema,
+  threadSessionOptionValueSchema,
+  type ThreadSessionOption,
+  type ThreadSessionOptionValue,
+} from "./thread-session-option.js";
+
 export const THREAD_PROVIDER_COMMANDS_STATE_KIND =
   "bb/provider-commands" satisfies ExtensionKind;
 export const THREAD_SESSION_OPTIONS_STATE_KIND =
   "bb/session-options" satisfies ExtensionKind;
+export const THREAD_PROVIDER_MODEL_CATALOG_STATE_KIND =
+  "bb/provider-model-catalog" satisfies ExtensionKind;
+
+export const threadProviderModelCatalogStateSchema = z.object({
+  models: z.array(availableModelSchema).max(1000),
+  selectedOnlyModels: z.array(availableModelSchema).max(1000),
+});
 
 export const threadProviderCommandSchema = z.object({
   name: z.string().min(1),
@@ -24,39 +43,6 @@ export const threadProviderCommandsStateSchema = z.object({
 export type ThreadProviderCommandsState = z.infer<
   typeof threadProviderCommandsStateSchema
 >;
-
-export const threadSessionOptionValueSchema = z.object({
-  id: z.string().min(1),
-  label: z.string().min(1),
-  description: z.string().min(1).optional(),
-  group: z.string().min(1).optional(),
-});
-export type ThreadSessionOptionValue = z.infer<
-  typeof threadSessionOptionValueSchema
->;
-
-const threadSessionOptionBaseShape = {
-  id: z.string().min(1),
-  label: z.string().min(1),
-  description: z.string().min(1).optional(),
-  category: z.string().min(1).optional(),
-};
-
-export const threadSessionOptionSchema = z.discriminatedUnion("type", [
-  z.object({
-    ...threadSessionOptionBaseShape,
-    type: z.literal("select"),
-    value: z.string(),
-    values: z.array(threadSessionOptionValueSchema).max(1000),
-  }),
-  z.object({
-    ...threadSessionOptionBaseShape,
-    type: z.literal("boolean"),
-    value: z.boolean(),
-    fixed: z.boolean().optional(),
-  }),
-]);
-export type ThreadSessionOption = z.infer<typeof threadSessionOptionSchema>;
 
 export const threadSessionOptionsStateSchema = z.object({
   options: z.array(threadSessionOptionSchema).max(64),
@@ -279,6 +265,8 @@ export function applySessionOptionSelectionPatch(args: {
 }
 
 const CORE_THREAD_STATE_SCHEMAS = {
+  [THREAD_PROVIDER_MODEL_CATALOG_STATE_KIND]:
+    threadProviderModelCatalogStateSchema,
   [THREAD_PROVIDER_COMMANDS_STATE_KIND]: threadProviderCommandsStateSchema,
   [THREAD_SESSION_OPTIONS_STATE_KIND]: threadSessionOptionsStateSchema,
 } as const;

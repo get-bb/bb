@@ -6,6 +6,7 @@ import {
   deriveStoredEventItemFields,
   getThread,
   getLatestThreadSequence,
+  isStoredTurnContextCompactionOnly,
   listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
@@ -27,6 +28,7 @@ import {
 } from "@bb/host-daemon-contract";
 import {
   THREAD_SESSION_OPTIONS_STATE_KIND,
+  THREAD_PROVIDER_MODEL_CATALOG_STATE_KIND,
   requireThreadEventScopeTurnId,
   systemThreadInterruptedEventDataSchema,
   type ChildThreadOutcome,
@@ -61,6 +63,8 @@ import {
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 import { dropSettledThreadSessionOptionSelections } from "../services/threads/thread-session-options.js";
+import { rejectUnstartedTurnRequest } from "../services/threads/unconfirmed-turn-requests.js";
+import { rememberSessionModelCatalog } from "../services/providers/session-model-catalog.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
 import {
   applyGeneratedThreadTitle,
@@ -238,6 +242,7 @@ interface AddParentTurnNotificationFollowUpArgs {
   followUps: EventEffectFollowUp[] | ParentTurnNotificationFollowUp[];
   thread: NonNullable<ReturnType<typeof getThread>>;
   turnStatus: ThreadEventTurnStatus;
+  turnId: string | null;
   interruption?: ChildThreadOutcome["interruption"];
 }
 
@@ -248,6 +253,7 @@ interface ParentTurnNotificationFollowUp {
   parentThreadId: string;
   title: string | null;
   turnStatus: ThreadEventTurnStatus;
+  turnId: string | null;
   interruption?: ChildThreadOutcome["interruption"];
 }
 
@@ -404,6 +410,7 @@ function addParentTurnNotificationFollowUp(
     parentThreadId: args.thread.parentThreadId,
     title: args.thread.title,
     turnStatus: args.turnStatus,
+    turnId: args.turnId,
     ...(args.interruption ? { interruption: args.interruption } : {}),
   });
 }
@@ -461,6 +468,9 @@ async function applyEventEffects(
       }
 
       if (event.type === "thread/extensionState/updated") {
+        if (event.kind === THREAD_PROVIDER_MODEL_CATALOG_STATE_KIND) {
+          await rememberSessionModelCatalog(deps, entry);
+        }
         if (event.kind === THREAD_SESSION_OPTIONS_STATE_KIND) {
           dropSettledThreadSessionOptionSelections(deps, {
             threadId: entry.threadId,
@@ -536,12 +546,23 @@ async function applyEventEffects(
                 threadId: turnCompleted.thread.id,
                 turnId,
               }));
-          if (!alreadyHandledByCommandFailure && !manuallyStopped) {
+          const compactionOnly =
+            event.status === "completed" &&
+            isStoredTurnContextCompactionOnly(deps.db, {
+              threadId: turnCompleted.thread.id,
+              turnId,
+            });
+          if (
+            !alreadyHandledByCommandFailure &&
+            !manuallyStopped &&
+            !compactionOnly
+          ) {
             addParentTurnNotificationFollowUp({
               failedParentNotificationThreadIds,
               followUps: continuation ? deferredParentNotifications : followUps,
               thread: turnCompleted.thread,
               turnStatus: event.status,
+              turnId,
               ...(interruption ? { interruption } : {}),
             });
           }
@@ -569,17 +590,23 @@ async function applyEventEffects(
 
       if (
         event.type === "system/error" &&
-        event.code === "provider_process_exited"
+        (event.code === "provider_process_exited" ||
+          event.code === "provider_turn_start_failed")
       ) {
         const thread = getThread(deps.db, entry.threadId);
         if (!thread) {
           continue;
         }
-        deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
-          threadIds: [entry.threadId],
-          reason:
-            "Provider process exited while awaiting user interaction; retry the thread to continue",
-        });
+        if (event.code === "provider_process_exited") {
+          deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
+            threadIds: [entry.threadId],
+            reason:
+              "Provider process exited while awaiting user interaction; retry the thread to continue",
+          });
+        }
+        if (event.scope.kind === "thread") {
+          rejectUnstartedTurnRequest(deps, entry.threadId);
+        }
         const outcome = applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.failed" },
           threadId: entry.threadId,
@@ -590,6 +617,7 @@ async function applyEventEffects(
             followUps,
             thread,
             turnStatus: "failed",
+            turnId: null,
           });
         }
         continue;
@@ -623,6 +651,7 @@ async function executeEventFollowUpBestEffort(
           },
           parentThreadId: followUp.parentThreadId,
           turnStatus: followUp.turnStatus,
+          turnId: followUp.turnId,
           ...(followUp.interruption
             ? { interruption: followUp.interruption }
             : {}),

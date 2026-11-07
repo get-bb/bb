@@ -31,7 +31,11 @@ function plugin(
 
 describe("pluginRowSignal (the one-signal rule)", () => {
   it("badges an available compatible update", () => {
-    expect(pluginRowSignal(plugin({ availableVersion: "1.7.0" }))).toEqual({
+    expect(
+      pluginRowSignal(
+        plugin({ availableVersion: "1.7.0", availableLabel: "1.7.0" }),
+      ),
+    ).toEqual({
       kind: "update",
       version: "1.7.0",
     });
@@ -42,6 +46,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
       pluginRowSignal(
         plugin({
           blockedVersion: "1.9.0",
+          blockedLabel: "1.9.0",
           blockedReasons: ["requires bb >= 0.15"],
         }),
       ),
@@ -75,7 +80,13 @@ describe("pluginRowSignal (the one-signal rule)", () => {
       pluginRowSignal(
         plugin({
           availableVersion: "1.7.0",
-          lastFailure: { version: "1.7.0", at: 1, detail: "boom" },
+          availableLabel: "1.7.0",
+          lastFailure: {
+            version: "1.7.0",
+            label: "1.7.0",
+            at: 1,
+            detail: "boom",
+          },
         }),
       ),
     ).toEqual({
@@ -117,7 +128,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
     expect(
       pluginRowSignal(
         plugin({
-          lastFailure: { version: "1.7.0", at: 1, detail: "" },
+          lastFailure: { version: "1.7.0", label: "1.7.0", at: 1, detail: "" },
         }),
       ),
     ).toEqual({

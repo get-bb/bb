@@ -58,7 +58,7 @@ describe("GitHub app navigation", () => {
   it("keeps removed pull-request files out of live workspace navigation", async () => {
     const slot = renderSlot(
       app.threadPanelActions[0]!,
-      { threadId: "thr-1", params: null },
+      { threadId: "thr-1", environment: null, params: null },
       {
         rpc: {
           pullForThread: () => ({

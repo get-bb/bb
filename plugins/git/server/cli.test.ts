@@ -33,8 +33,6 @@ const ENVIRONMENT = {
   workspaceProvisionType: "worktree",
 } as Environment;
 
-const VIEWED_FILES = [{ path: "src/a.ts", revision: "rev-a" }];
-
 function unexpectedHostCall(call: ExperimentalFakeHostRpcCall): never {
   throw new Error(`unexpected host call ${call.method}`);
 }
@@ -43,7 +41,6 @@ function setup(
   host: (call: ExperimentalFakeHostRpcCall) => unknown,
   options: {
     environment?: Environment;
-    viewedFiles?: { path: string; revision: string }[];
     file?: {
       path: string;
       content: string;
@@ -53,25 +50,12 @@ function setup(
     };
   } = {},
 ) {
-  const viewedCalls: { method: string; args: unknown }[] = [];
   const fileReads: unknown[] = [];
   const fake = createFakePluginHost({
     pluginId: "bb--git",
     sdk: {
       environments: {
         get: async () => options.environment ?? ENVIRONMENT,
-        experimental_diffViewed: async (args: unknown) => {
-          viewedCalls.push({ method: "list", args });
-          return { files: options.viewedFiles ?? VIEWED_FILES };
-        },
-        experimental_markDiffViewed: async (args: unknown) => {
-          viewedCalls.push({ method: "mark", args });
-          return { ok: true };
-        },
-        experimental_clearDiffViewed: async (args: unknown) => {
-          viewedCalls.push({ method: "clear", args });
-          return { ok: true };
-        },
       },
       files: {
         read: async (args: unknown) => {
@@ -84,7 +68,7 @@ function setup(
     experimental_callHostRpc: host,
   });
   plugin(fake.bb);
-  return { fake, viewedCalls, fileReads };
+  return { fake, fileReads };
 }
 
 async function stdout(
@@ -238,6 +222,7 @@ describe("bb git", () => {
       "checkout",
       "branch",
       "mergeBase",
+      "allChanges",
     ]);
     expect(Object.keys(parsed.workspace.workingTree)).toEqual([
       "insertions",
@@ -265,13 +250,17 @@ describe("bb git", () => {
   });
 
   it("lists local and remote branches with truncation", async () => {
-    const { fake } = setup(() => ({
-      branches: ["main", "release"],
-      branchesTruncated: false,
-      remoteBranches: [],
-      remoteBranchesTruncated: true,
-      selectedBranch: null,
-    }));
+    const { fake } = setup((call) =>
+      call.method === "fetchRemoteBranches"
+        ? { ok: true }
+        : {
+            branches: ["main", "release"],
+            branchesTruncated: false,
+            remoteBranches: [],
+            remoteBranchesTruncated: true,
+            selectedBranch: null,
+          },
+    );
     expect(
       await stdout(fake, [
         "branches",
@@ -293,6 +282,7 @@ describe("bb git", () => {
       ].join("\n"),
     );
     expect(fake.harness.experimental_hostRpcCalls).toMatchObject([
+      { method: "fetchRemoteBranches", input: { path: "/work/env-1" } },
       { method: "branches", input: { query: "main", limit: 20 } },
     ]);
   });
@@ -624,49 +614,30 @@ describe("bb git", () => {
     ]);
   });
 
-  it("lists Viewed files and says so when there are none", async () => {
-    const marked = setup(() => {
+  it("lists, marks and clears Viewed files", async () => {
+    const { fake } = setup(() => {
       throw new Error("viewed reads do not reach the host");
     });
+    const viewed = (...args: string[]) =>
+      stdout(fake, ["viewed", ...args, "env-1", "--target", "uncommitted"]);
+    expect(await viewed("list")).toBe("No files marked Viewed.\n");
+    expect(await viewed("list", "--json")).toBe('{\n  "files": []\n}\n');
     expect(
-      await stdout(marked.fake, [
-        "viewed",
-        "list",
-        "env-1",
-        "--target",
-        "uncommitted",
-      ]),
-    ).toBe("rev-a\tsrc/a.ts\n");
-
-    const none = setup(
-      () => {
-        throw new Error("viewed reads do not reach the host");
-      },
-      { viewedFiles: [] },
+      await viewed("mark", "--path", "src/b.ts", "--revision", "rev-b"),
+    ).toBe("Viewed state updated.\n");
+    await viewed("mark", "--path", "src/a.ts", "--revision", "rev-a");
+    expect(await viewed("list")).toBe("rev-a\tsrc/a.ts\nrev-b\tsrc/b.ts\n");
+    expect(await viewed("list", "--path", "src/b.ts")).toBe(
+      "rev-b\tsrc/b.ts\n",
     );
-    expect(
-      await stdout(none.fake, [
-        "viewed",
-        "list",
-        "env-1",
-        "--target",
-        "uncommitted",
-      ]),
-    ).toBe("No files marked Viewed.\n");
-    expect(
-      await stdout(none.fake, [
-        "viewed",
-        "list",
-        "env-1",
-        "--target",
-        "uncommitted",
-        "--json",
-      ]),
-    ).toBe('{\n  "files": []\n}\n');
+    await viewed("unmark", "--path", "src/a.ts");
+    expect(await viewed("list")).toBe("rev-b\tsrc/b.ts\n");
+    await viewed("clear");
+    expect(await viewed("list")).toBe("No files marked Viewed.\n");
   });
 
   it("marks a file Viewed at its current revision", async () => {
-    const { fake, viewedCalls } = setup(filesHost);
+    const { fake } = setup(filesHost);
     expect(
       await stdout(fake, [
         "viewed",
@@ -678,17 +649,15 @@ describe("bb git", () => {
         "src/a.ts",
       ]),
     ).toBe("Viewed state updated.\n");
-    expect(viewedCalls).toEqual([
-      {
-        method: "mark",
-        args: {
-          environmentId: "env-1",
-          target: { type: "uncommitted" },
-          path: "src/a.ts",
-          revision: "100644:aaa:100644:bbb",
-        },
-      },
-    ]);
+    expect(
+      await stdout(fake, [
+        "viewed",
+        "list",
+        "env-1",
+        "--target",
+        "uncommitted",
+      ]),
+    ).toBe("100644:aaa:100644:bbb\tsrc/a.ts\n");
   });
 
   it("rejects a commit target without a SHA before reading git", async () => {

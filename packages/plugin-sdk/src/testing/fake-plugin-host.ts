@@ -1,10 +1,10 @@
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
-import { rpcInvalidationTags, rpcResponseTags } from "../internal/rpc-tags.js";
 import {
+  rpcInvalidationTags,
+  rpcResponseTags,
   type ContractTagDeclarations,
-  deepFreezePluginMetadata,
-  validatePluginMetadata,
-} from "@bb/domain";
+} from "../internal/rpc-tags.js";
+import { deepFreezePluginMetadata, validatePluginMetadata } from "@bb/domain";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -343,9 +343,17 @@ export interface FakePluginInspectionState {
   readonly pluginId: string;
   /** Every `bb.log` line, in order. */
   readonly logEntries: FakeLogEntry[];
-  /** Every `bb.realtime.publish`, payload normalized like the wire. */
+  /**
+   * Call `listener` on every `bb.rpc.experimental_invalidate` and
+   * `experimental_invalidateAll`; returns the unsubscribe function.
+   */
   experimental_onRpcInvalidation(listener: () => void): () => void;
+  /**
+   * The tags of every `bb.rpc.experimental_invalidate`, in order; `null`
+   * records an `experimental_invalidateAll`.
+   */
   readonly experimental_rpcInvalidations: (readonly string[] | null)[];
+  /** Every `bb.realtime.publish`, payload normalized like the wire. */
   readonly realtimeSignals: FakeRealtimeSignal[];
   /** Every `bb.status.needsConfiguration` message, in order. */
   readonly needsConfigurationMessages: string[];
@@ -405,12 +413,17 @@ export interface FakePluginBehaviorDrivers {
    * with the same message/code/issues the frontend client surfaces. The
    * handler sees `options.experimental_caller` as its caller, `{ kind:
    * "client" }` by default; pass `{ kind: "plugin", pluginId }` to act as
-   * another plugin calling through `bb.sdk.plugins.callRpc`.
+   * another plugin calling through `bb.sdk.plugins.callRpc`. The handler's
+   * `experimental_signal` aborts when `options.signal` aborts or the fake
+   * host is disposed.
    */
   callRpc(
     method: string,
     input?: unknown,
-    options?: { experimental_caller?: ExperimentalPluginRpcCaller },
+    options?: {
+      experimental_caller?: ExperimentalPluginRpcCaller;
+      signal?: AbortSignal;
+    },
   ): Promise<unknown>;
   /**
    * Start a client watch of one read, as the first client of a watched read
@@ -770,6 +783,8 @@ function createFakePluginHostInternal(
       assertLive();
       if (!databaseHandle?.open) {
         databaseHandle = new Database(join(storageRoot, "data.db"));
+        databaseHandle.pragma("auto_vacuum = INCREMENTAL");
+        databaseHandle.pragma("journal_mode = WAL");
         databaseHandle.pragma("busy_timeout = 5000");
       }
       return databaseHandle;
@@ -1223,6 +1238,7 @@ function createFakePluginHostInternal(
   } = {
     "experimental_thread.events": [],
     "experimental_thread.parentChanged": [],
+    "experimental_thread.read": [],
     "experimental_terminal.input": [],
     "experimental_host.deleted": [],
     "experimental_environment.removed": [],
@@ -1617,6 +1633,9 @@ function createFakePluginHostInternal(
   };
 
   const bb: BbPluginApi = {
+    internal_DO_NOT_USE_recordPluginUse() {
+      assertLive();
+    },
     pluginId,
     log,
     settings,
@@ -1669,9 +1688,11 @@ function createFakePluginHostInternal(
     },
   };
 
+  const hostLifetime = new AbortController();
   async function disposeHost(cleanupStorage: boolean): Promise<void> {
     if (disposed) return;
     disposed = true;
+    hostLifetime.abort();
     for (const [id, pending] of pendingInteractions) {
       clearTimeout(pending.timer);
       pendingInteractions.delete(id);
@@ -1772,6 +1793,8 @@ function createFakePluginHostInternal(
             threadEventHandlers["experimental_thread.events"].length,
           "experimental_thread.parentChanged":
             threadEventHandlers["experimental_thread.parentChanged"].length,
+          "experimental_thread.read":
+            threadEventHandlers["experimental_thread.read"].length,
           "experimental_terminal.input":
             threadEventHandlers["experimental_terminal.input"].length,
           "experimental_environment.removed":
@@ -1951,6 +1974,10 @@ function createFakePluginHostInternal(
           experimental_caller: options.experimental_caller ?? {
             kind: "client",
           },
+          experimental_signal:
+            options.signal === undefined
+              ? hostLifetime.signal
+              : AbortSignal.any([options.signal, hostLifetime.signal]),
         });
       } catch (error) {
         const refusal = readPluginRpcRefusal(error);

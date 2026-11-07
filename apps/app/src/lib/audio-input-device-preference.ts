@@ -40,7 +40,7 @@ const audioInputDevicePreferenceAtom =
     { getOnInit: true },
   );
 
-export function buildAudioInputConstraints(
+function buildAudioInputConstraints(
   preferredDeviceId: PreferredAudioInputDeviceId,
 ): MediaStreamConstraints {
   if (preferredDeviceId === null) {

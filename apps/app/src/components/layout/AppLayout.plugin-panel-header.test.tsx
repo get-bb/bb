@@ -52,10 +52,8 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       experiments: {
-        changelogPreview: false,
         serverMove: false,
         performanceDiagnostics: false,
-        timelinePush: false,
       },
     },
   }),
@@ -121,6 +119,10 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
 
 vi.mock("@/components/plugin/PluginAppOverlays", () => ({
   PluginAppOverlays: () => <div data-testid="plugin-app-overlays" />,
+}));
+
+vi.mock("@/components/plugin/ThreadRowMetadataCollectors", () => ({
+  ThreadRowMetadataCollectors: () => null,
 }));
 
 vi.mock("@/components/dialogs/ProjectPathDialog", () => ({

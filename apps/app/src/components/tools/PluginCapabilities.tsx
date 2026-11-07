@@ -305,6 +305,12 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadRowMetadata,
+      "thread-row-item",
+      "Adds an item to each thread row in the sidebar.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadInfoRows,
       "thread-info-row",
       "Adds a row to the thread Info tab.",
@@ -314,6 +320,18 @@ function pluginAppSurfaceItems(
       slots.threadInfoSections,
       "thread-info-section",
       "Adds a section to the thread Info tab.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadContextCardRows,
+      "thread-context-card-row",
+      "Adds a row to the thread context card.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadContextCardSections,
+      "thread-context-card-section",
+      "Adds a section to the thread context card.",
     ),
     ...namedSlotItems(
       pluginId,
@@ -381,14 +399,17 @@ function pluginAppSurfaceItems(
           "Opens supported files in a plugin-provided viewer.",
           getSettingsRoutePath("files"),
         ),
-        detail: (
-          <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span>Opens these files in a plugin-provided viewer:</span>
-            <span className="font-mono">
-              {slot.extensions.map((extension) => `.${extension}`).join(", ")}
+        detail:
+          slot.extensions.length === 0 ? (
+            <span>Opens files the plugin shows in a plugin-provided viewer.</span>
+          ) : (
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <span>Opens these files in a plugin-provided viewer:</span>
+              <span className="font-mono">
+                {slot.extensions.map((extension) => `.${extension}`).join(", ")}
+              </span>
             </span>
-          </span>
-        ),
+          ),
       })),
     ...slots.messageDirectives
       .filter((slot) => slot.pluginId === pluginId)

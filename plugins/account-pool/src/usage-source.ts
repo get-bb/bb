@@ -21,14 +21,18 @@ export function usageWindowLabel(
     : `${minutes / 60} hour limit`;
 }
 
-export function usagePlanLabel(
+export function usagePlan(
   account: Pick<AccountSummary, "subscriptionType" | "rateLimitTier">,
-): string | null {
-  const maxMatch = (account.rateLimitTier ?? "").match(/max_(\d+)x/u);
-  if (maxMatch) return `Max (${maxMatch[1]}x)`;
+): { id: string; label: string } | null {
+  const tier = account.rateLimitTier ?? "";
+  if (/max_20x/u.test(tier)) return { id: "ultra", label: "Ultra" };
+  if (/max_\d+x/u.test(tier)) return { id: "max", label: "Max" };
   const subscription = account.subscriptionType;
   return subscription
-    ? subscription.charAt(0).toUpperCase() + subscription.slice(1)
+    ? {
+        id: subscription.toLowerCase(),
+        label: subscription.charAt(0).toUpperCase() + subscription.slice(1),
+      }
     : null;
 }
 
@@ -42,12 +46,19 @@ function accountKey(account: AccountSummary): string | null {
       : null;
 }
 
+async function subscriptionAccounts(
+  hub: AccountPoolHub,
+): Promise<AccountSummary[]> {
+  const { accounts } = await hub.status();
+  return accounts.filter((account) => account.kind === "oauth");
+}
+
 export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
   bb.rpc.register(
     usageSourceRpcContract,
     {
       async [usageListMethod]() {
-        const { accounts } = await hub.status();
+        const accounts = await subscriptionAccounts(hub);
         return {
           label: "Account Pooler",
           resources: accounts.map((account) => ({
@@ -63,14 +74,13 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
       },
       async [usageFetchMethod]({ resourceId, refresh }) {
         if (
-          !(await hub.status()).accounts.some(
+          !(await subscriptionAccounts(hub)).some(
             (account) => account.id === resourceId,
           )
         )
           throw new Error("Usage resource no longer exists.");
         await hub.refreshUsage(resourceId, refresh);
-        const { accounts: allAccounts } = await hub.status();
-        const accounts = allAccounts.filter(
+        const accounts = (await subscriptionAccounts(hub)).filter(
           (account) => account.id === resourceId,
         );
         if (accounts.length === 0)
@@ -105,29 +115,12 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
               cost: null,
             });
           };
-          if (account.limitWindows.length > 0) {
-            for (const window of account.limitWindows) {
-              add(
-                window.slot,
-                usageWindowLabel(window.windowMinutes, window.slot),
-                window.utilization,
-                window.resetAt,
-                null,
-              );
-            }
-          } else {
+          for (const window of account.limitWindows) {
             add(
-              "five-hour",
-              "Five-hour limit",
-              account.fiveHourUtilization,
-              account.fiveHourResetAt,
-              null,
-            );
-            add(
-              "weekly",
-              "Weekly limit",
-              account.sevenDayUtilization,
-              account.sevenDayResetAt,
+              window.slot,
+              usageWindowLabel(window.windowMinutes, window.slot),
+              window.utilization,
+              window.resetAt,
               null,
             );
           }
@@ -141,17 +134,11 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
                 family,
               );
           }
+          const plan = usagePlan(account);
           const accountFields = {
-            plan: account.subscriptionType
-              ? {
-                  id: account.subscriptionType.toLowerCase(),
-                  multiplier:
-                    Number(account.rateLimitTier?.match(/max_(\d+)x/u)?.[1]) ||
-                    null,
-                }
-              : null,
+            plan: plan ? { id: plan.id, multiplier: null } : null,
             accountEmail: account.email,
-            planLabel: usagePlanLabel(account),
+            planLabel: plan?.label ?? null,
           };
           const error =
             (account.error === null
@@ -184,7 +171,7 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
     {
       experimental_discoverable: true,
       experimental_description:
-        "Usage windows for Account Pooler's shared accounts, independent of routing settings and host-local credentials.",
+        "Usage windows for Account Pooler's signed-in subscription accounts, independent of routing settings and host-local credentials. API-key accounts have no usage windows and are not listed.",
     },
   );
 }

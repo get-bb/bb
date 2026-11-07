@@ -128,17 +128,40 @@ vi.mock("@/hooks/useUpdateInventory", () => ({
     appUpdateAvailable: true,
     desktopUpdateReady: false,
     machines: [],
+    plugins: { trackedCount: 0, items: [] },
     isLoading: false,
   }),
 }));
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemProviders: () => ({ data: [] }),
+  useSystemConfig: () => ({ data: undefined }),
+}));
+vi.mock("@/hooks/useStartPluginUpdates", () => ({
+  useStartPluginUpdates: () => vi.fn(),
+}));
+vi.mock("@/hooks/queries/app-update-queries", () => ({
+  useAppUpdateStatus: () => ({ data: undefined }),
+}));
+vi.mock("@/hooks/mutations/app-update-mutations", () => ({
+  useApplyAppUpdate: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+vi.mock("@/hooks/queries/plugin-update-job-queries", () => ({
+  usePluginUpdateJobs: () => ({ data: [] }),
+  startPluginUpdate: vi.fn(),
 }));
 vi.mock("@/hooks/useMachineAttention", () => ({
   useMachineAttention: () => ({ label: null }),
 }));
-vi.mock("@/components/provider-cli/provider-cli-install", () => ({
-  useProviderCliInstallRunner: () => ({ runningJobKey: null }),
+vi.mock("@/components/provider-cli/provider-cli-install", async (original) => ({
+  ...(await original<
+    typeof import("@/components/provider-cli/provider-cli-install")
+  >()),
+  useProviderCliInstallRunner: () => ({
+    runningJobKey: null,
+    queuedJobKeys: new Set(),
+    failuresByJobKey: new Map(),
+    startInstall: vi.fn(),
+  }),
 }));
 
 const THREAD_PATH = getThreadRoutePath({
@@ -497,6 +520,41 @@ describe("Rail", () => {
     expect(currentRailLabels()).toEqual(["Home"]);
   });
 
+  it("sends Home to a new thread after a cold load onto a plugin panel that registers late", () => {
+    resetPluginFrontendBootStateForTest();
+    const automationsPath = getPluginPanelRoutePath({
+      pluginId: AUTOMATIONS_PLUGIN_ID,
+      path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+    });
+    renderRail(automationsPath);
+    expect(currentRailLabels()).toEqual([]);
+
+    act(() => {
+      setPluginSlotRegistrations(
+        AUTOMATIONS_PLUGIN_ID,
+        registrationSet({
+          navPanels: [
+            {
+              id: AUTOMATIONS_PLUGIN_PANEL_PATH,
+              title: "Automations",
+              icon: "Calendar",
+              path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+              component: () => null,
+            },
+          ],
+        }),
+      );
+      markPluginFrontendsSettled();
+    });
+    expect(currentRailLabels()).toEqual(["Automations"]);
+
+    fireEvent.click(railButton("Skills"));
+    fireEvent.click(railButton("Home"));
+
+    expect(pathname()).toBe(getRootComposeRoutePath());
+    expect(currentRailLabels()).toEqual(["Home"]);
+  });
+
   it.each([{ metaKey: true }, { ctrlKey: true }])(
     "opens the new thread screen in a browser tab from Home with %j",
     (modifier) => {
@@ -541,7 +599,9 @@ describe("Rail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
     act(() => vi.advanceTimersByTime(250));
 
-    fireEvent.click(screen.getByRole("link", { name: "bb update available" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 update available" }));
+    act(() => vi.advanceTimersByTime(250));
+    fireEvent.click(screen.getByRole("link", { name: "Details" }));
     expect(pathname()).toBe(`${SETTINGS_ROUTE_PATH}/updates`);
     act(() => vi.advanceTimersByTime(250));
 

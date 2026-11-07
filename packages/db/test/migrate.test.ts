@@ -9,6 +9,9 @@ import {
   rewindThreadPruningWork,
   dropMarketplaceSourceGitSubdirectoryColumn,
   dropThreadParentNotificationsColumn,
+  dropQueuedMessageDeliveryColumns,
+  dropThreadStatusChangedAtColumn,
+  restoreDiffViewedFilesTable,
   dropQueuedMessageEditHeldUntilColumn,
   rewindQueuedMessageStateMigration,
 } from "./helpers/rewind.js";
@@ -255,6 +258,12 @@ const latestMigrationWhen = Math.max(
   ).entries.map((entry) => entry.when),
 );
 
+const threadStatusChangedAtMigrationWhen = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+  ) as { entries: { tag: string; when: number }[] }
+).entries.find((entry) => entry.tag === "0150_thread_status_changed_at")!.when;
+
 function restoreWideExperimentsTable(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
@@ -458,6 +467,12 @@ const providerSettingsToPluginsMigrationPath = resolve(
   "drizzle",
   "0105_provider_settings_to_plugins.sql",
 );
+const showGitChangesToPluginsMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0147_git_and_pr_status_plugin_show_settings.sql",
+);
 const retireRequestedAtMigrationPath = resolve(
   __dirname,
   "..",
@@ -481,6 +496,12 @@ const curatedMarketplaceRenameMigrationPath = resolve(
   "..",
   "drizzle",
   "0098_rename_curated_marketplace.sql",
+);
+const smallStorageCleanupsMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0152_small_storage_cleanups.sql",
 );
 const providerUsagePluginIdMigrationPath = resolve(
   __dirname,
@@ -725,6 +746,8 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropQueuedMessageEditHeldUntilColumn(db);
   dropMarketplaceSourceGitSubdirectoryColumn(db);
   dropThreadParentNotificationsColumn(db);
+  dropQueuedMessageDeliveryColumns(db);
+  dropThreadStatusChangedAtColumn(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
   db.$client.exec("DROP INDEX IF EXISTS threads_lifecycle_owner_idx");
@@ -772,6 +795,8 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
 function dropQueuedMessageAttemptColumns(db: DbConnection): void {
   rewindQueuedMessageStateMigration(db);
   dropThreadParentNotificationsColumn(db);
+  dropQueuedMessageDeliveryColumns(db);
+  dropThreadStatusChangedAtColumn(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();
@@ -851,6 +876,8 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   dropQueuedMessageEditHeldUntilColumn(db);
   dropMarketplaceSourceGitSubdirectoryColumn(db);
   dropThreadParentNotificationsColumn(db);
+  dropQueuedMessageDeliveryColumns(db);
+  dropThreadStatusChangedAtColumn(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -1785,7 +1812,6 @@ describe("migrate", () => {
 
       expect(getAppSettings(db)).toEqual({
         showKeyboardHints: false,
-        showGitChanges: true,
         steerActiveThreadOnEnter: true,
         terminalCopyOnSelect: true,
         confirmThreadArchive: true,
@@ -1906,6 +1932,67 @@ describe("migrate", () => {
           key: "subagentsDisabled",
           value: "true",
           updatedAt: 12,
+        },
+      ]);
+      expect(
+        db.$client
+          .prepare<[], { key: string }>(
+            "SELECT key FROM app_settings_values ORDER BY key",
+          )
+          .all(),
+      ).toEqual([{ key: "showKeyboardHints" }]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("carries showGitChanges into the Git and GitHub PR Status plugins and retires the shared row", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings_values (
+          key text PRIMARY KEY NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL
+        );
+        CREATE TABLE plugin_settings (
+          plugin_id text NOT NULL,
+          key text NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL,
+          PRIMARY KEY (plugin_id, key)
+        );
+        INSERT INTO app_settings_values (key, value, updated_at) VALUES
+          ('showKeyboardHints', 'false', 10),
+          ('showGitChanges', 'false', 11);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: showGitChangesToPluginsMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { pluginId: string; key: string; value: string; updatedAt: number }
+          >(
+            "SELECT plugin_id AS pluginId, key, value, updated_at AS updatedAt FROM plugin_settings ORDER BY plugin_id, key",
+          )
+          .all(),
+      ).toEqual([
+        {
+          pluginId: "bb--git",
+          key: "showGitChanges",
+          value: "false",
+          updatedAt: 11,
+        },
+        {
+          pluginId: "bb--github-pr-status",
+          key: "showPullRequest",
+          value: "false",
+          updatedAt: 11,
         },
       ]);
       expect(
@@ -2508,6 +2595,53 @@ describe("migrate", () => {
           )
           .run(),
       ).toThrow();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("backfills each thread's status change time from its last update", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "status-changed-at-host",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "status-changed-at-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/status-changed-at",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      dropThreadStatusChangedAtColumn(db);
+      restoreDiffViewedFilesTable(db);
+      db.$client
+        .prepare<[number, string]>(
+          "UPDATE threads SET updated_at = ? WHERE id = ?",
+        )
+        .run(1_234, thread.id);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(threadStatusChangedAtMigrationWhen);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[string], { statusChangedAt: number }>(
+            "SELECT status_changed_at AS statusChangedAt FROM threads WHERE id = ?",
+          )
+          .get(thread.id),
+      ).toEqual({ statusChangedAt: 1_234 });
     } finally {
       closeConnection(db);
     }
@@ -3320,6 +3454,8 @@ describe("migrate", () => {
       dropQueuedMessageEditHeldUntilColumn(db);
       dropMarketplaceSourceGitSubdirectoryColumn(db);
       dropThreadParentNotificationsColumn(db);
+      dropQueuedMessageDeliveryColumns(db);
+      dropThreadStatusChangedAtColumn(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
       db.$client.prepare("ALTER TABLE events ADD producer_event_id text").run();
@@ -4271,6 +4407,81 @@ describe("migrate", () => {
         },
         { name: "bb-community", etag: null, lastModified: null },
       ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("drops archived threads' per-thread pruning cursors and the superseded truncation cursors", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        id: "host-small-storage-cleanups",
+        name: "Cleanup Host",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "Cleanup Project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/small-storage-cleanups",
+        },
+      });
+      const live = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const archived = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      db.$client
+        .prepare<[string]>("UPDATE threads SET archived_at = 1 WHERE id = ?")
+        .run(archived.id);
+      const insertCursor = db.$client.prepare<[string, string, string | null]>(
+        `INSERT INTO thread_pruning_cursors (policy, scope, thread_id, version, updated_at)
+          VALUES (?, ?, ?, 1, 1)`,
+      );
+      insertCursor.run("usage", "", null);
+      insertCursor.run("usage", live.id, live.id);
+      insertCursor.run("usage", archived.id, archived.id);
+      insertCursor.run("turn-diffs", archived.id, archived.id);
+      const insertScanCursor = db.$client.prepare<[string, string]>(
+        `INSERT INTO maintenance_scan_cursors (id, policy, version, item_kind, output_path, updated_at)
+          VALUES (?, ?, 1, 'commandExecution', 'aggregatedOutput', 1)`,
+      );
+      insertScanCursor.run(
+        "completed_event_output_truncation:v1:commandExecution:aggregatedOutput",
+        "completed_event_output_truncation",
+      );
+      insertScanCursor.run(
+        "legacy_completed_event_output_sidecar:v1:commandExecution:aggregatedOutput",
+        "legacy_completed_event_output_sidecar",
+      );
+
+      runMigrationFile({
+        db,
+        migrationPath: smallStorageCleanupsMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], { policy: string; scope: string }>(
+            "SELECT policy, scope FROM thread_pruning_cursors ORDER BY scope",
+          )
+          .all(),
+      ).toEqual([
+        { policy: "usage", scope: "" },
+        { policy: "usage", scope: live.id },
+      ]);
+      expect(
+        db.$client
+          .prepare<[], { policy: string }>(
+            "SELECT policy FROM maintenance_scan_cursors",
+          )
+          .all(),
+      ).toEqual([{ policy: "legacy_completed_event_output_sidecar" }]);
     } finally {
       closeConnection(db);
     }

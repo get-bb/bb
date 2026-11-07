@@ -7,10 +7,11 @@ Keep threads moving when a provider is overloaded or unreachable, or your subscr
 - Automatic retry after a subscription limit, timed to the reset the provider reports.
 - A queued message card on the thread that you can send now or cancel.
 - A cap of four retries per turn.
+- No retry of a scheduled run of a recurring automation. That automation runs again on its own schedule.
 
 ## How it works
 
-The plugin reacts to each failed turn. It retries overload errors, server and connection errors, subscription-window rate limits with a known reset time, and rate-limit failures routed through Account Pooler when the pool reports a usable account or a known recovery time. Credit and spend limits are not retried. Each retry waits a little past the reset and adds a random spread. Many threads on one account then do not wake at the same instant.
+The plugin reacts to each failed turn. It retries overload errors, server and connection errors, subscription-window rate limits with a known reset time, and rate-limit failures routed through Account Pooler when the pool reports a usable account or a known recovery time. Credit and spend limits are not retried. Each retry waits a little past the reset and adds a random spread. Many threads on one account then do not wake at the same instant. Messages that fail while a retry is already waiting join it instead of adding another retry turn, unless the provider never received them.
 
 ## Settings
 

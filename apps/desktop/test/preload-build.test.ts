@@ -131,10 +131,8 @@ async function startDesktopSmokeServer(
           pluginThemes: [],
           dataDir: args.dataDir,
           experiments: {
-            changelogPreview: false,
             serverMove: false,
             performanceDiagnostics: false,
-            timelinePush: false,
           },
           featureFlags: {
             placeholder: false,
@@ -433,11 +431,11 @@ describe("desktop build", () => {
         ).toBeNull();
 
         for (const scenario of [
-          "custom",
-          "connect",
           "fatal",
           "attached",
           "crashed",
+          "custom",
+          "connect",
         ]) {
           const retryProfile = join(smokeRoot, `retry-${scenario}`);
           await mkdir(retryProfile);

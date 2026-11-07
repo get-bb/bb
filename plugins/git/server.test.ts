@@ -4,9 +4,10 @@ import {
   type ExperimentalFakeHostRpcCall,
 } from "@get-bb/plugin-sdk/testing";
 import { makeWorkspaceStatus } from "./testing.js";
-import { describe, expect, it } from "vitest";
-import { gitPatchKey } from "./contract.js";
+import { describe, expect, it, vi } from "vitest";
+import { gitPatchKey, gitViewedTag } from "./contract.js";
 import plugin from "./server.js";
+import { VIEWED_MARKS_FROM_CORE_KEY } from "./server/viewed.js";
 
 type Environment = Awaited<
   ReturnType<BbPluginApi["sdk"]["environments"]["get"]>
@@ -131,7 +132,6 @@ describe("Git plugin server", () => {
           activity: {
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
-            activeGoalCount: 0,
             activePlanModeCount: 0,
             activeWorkflowCount: 0,
           },
@@ -229,7 +229,10 @@ describe("Git plugin server", () => {
     const { fake } = await setup({
       "env-1": environment({ mergeBaseBranch: "release" }),
       "env-plain": environment({ id: "env-plain", isGitRepo: false }),
-      "env-starting": environment({ id: "env-starting", status: "provisioning" }),
+      "env-starting": environment({
+        id: "env-starting",
+        status: "provisioning",
+      }),
     });
 
     await expect(
@@ -332,7 +335,9 @@ describe("Git plugin server", () => {
         return {
           outcome: "available",
           value: {
-            patches: [{ path: first, patch: `patch ${first}`, truncated: false }],
+            patches: [
+              { path: first, patch: `patch ${first}`, truncated: false },
+            ],
             deferred: rest,
           },
         };
@@ -438,6 +443,143 @@ describe("Git plugin server", () => {
       environmentId: "env-1",
       mergeBaseBranch: makeWorkspaceStatus().branch.defaultBranch,
     });
-    expect(updates).toEqual([{ environmentId: "env-1", mergeBaseBranch: null }]);
+    expect(updates).toEqual([
+      { environmentId: "env-1", mergeBaseBranch: null },
+    ]);
+  });
+});
+
+describe("Git plugin Viewed marks", () => {
+  async function viewedHost(
+    options: { coreMarks?: unknown; existing?: string[] } = {},
+  ) {
+    const existing = options.existing ?? ["env-1", "env-2"];
+    const fake = createFakePluginHost({
+      pluginId: "bb--git",
+      sdk: {
+        subscribe: () => () => {},
+        environments: {
+          get: async ({ environmentId }: { environmentId: string }) => {
+            if (!existing.includes(environmentId)) {
+              throw Object.assign(new Error("Environment not found"), {
+                status: 404,
+              });
+            }
+            return environment({ id: environmentId });
+          },
+          list: async (args?: { status?: string }) =>
+            args?.status === "destroyed"
+              ? []
+              : existing.map((id) => environment({ id })),
+        },
+      },
+    });
+    if (options.coreMarks !== undefined) {
+      await fake.bb.storage.kv.set(VIEWED_MARKS_FROM_CORE_KEY, options.coreMarks);
+    }
+    plugin(fake.bb);
+    const call = (method: string, input: Record<string, unknown>) =>
+      fake.harness.callRpc(method, { environmentId: "env-1", ...input });
+    const list = (target: unknown, paths?: string[]) =>
+      call("viewed", { target, ...(paths === undefined ? {} : { paths }) });
+    return { fake, call, list };
+  }
+
+  const uncommitted = { type: "uncommitted" };
+
+  it("keeps marks per environment and diff target", async () => {
+    const { call, list } = await viewedHost();
+    await call("markViewed", { target: uncommitted, path: "b.ts", revision: "rev-b" });
+    await call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev-1" });
+    await expect(
+      call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev-2" }),
+    ).resolves.toEqual({ ok: true });
+    await call("markViewed", {
+      target: { type: "commit", sha: "ABCDEF1" },
+      path: "a.ts",
+      revision: "rev-commit",
+    });
+
+    await expect(list(uncommitted)).resolves.toEqual({
+      files: [
+        { path: "a.ts", revision: "rev-2" },
+        { path: "b.ts", revision: "rev-b" },
+      ],
+    });
+    await expect(list(uncommitted, ["b.ts", "missing.ts", "b.ts"])).resolves.toEqual({
+      files: [{ path: "b.ts", revision: "rev-b" }],
+    });
+    await expect(list(uncommitted, [])).resolves.toEqual({ files: [] });
+    await expect(list({ type: "commit", sha: "abcdef1" })).resolves.toEqual({
+      files: [{ path: "a.ts", revision: "rev-commit" }],
+    });
+    await expect(
+      call("viewed", { environmentId: "env-2", target: uncommitted }),
+    ).resolves.toEqual({ files: [] });
+
+    await call("clearViewed", { target: uncommitted, path: "a.ts" });
+    await expect(list(uncommitted)).resolves.toEqual({
+      files: [{ path: "b.ts", revision: "rev-b" }],
+    });
+    await call("clearViewed", { target: uncommitted });
+    await expect(list(uncommitted)).resolves.toEqual({ files: [] });
+    await expect(list({ type: "commit", sha: "abcdef1" })).resolves.toEqual({
+      files: [{ path: "a.ts", revision: "rev-commit" }],
+    });
+
+    await expect(
+      call("markViewed", { target: uncommitted, path: "", revision: "rev" }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      call("markViewed", {
+        environmentId: "env-missing",
+        target: uncommitted,
+        path: "a.ts",
+        revision: "rev",
+      }),
+    ).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("takes over the marks core stored once and forgets deleted environments", async () => {
+    const mark = (environmentId: string, path: string) => ({
+      environmentId,
+      targetKey: "uncommitted",
+      path,
+      revision: `rev-${path}`,
+      updatedAt: 1,
+    });
+    const { fake, list } = await viewedHost({
+      coreMarks: [mark("env-1", "a.ts"), mark("env-gone", "b.ts")],
+      existing: ["env-1"],
+    });
+
+    await expect(list(uncommitted)).resolves.toEqual({
+      files: [{ path: "a.ts", revision: "rev-a.ts" }],
+    });
+    await expect(
+      fake.bb.storage.kv.get(VIEWED_MARKS_FROM_CORE_KEY),
+    ).resolves.toBeUndefined();
+    await vi.waitFor(() =>
+      expect(
+        fake.bb.storage
+          .database()
+          .prepare("SELECT DISTINCT environment_id FROM viewed_files")
+          .pluck()
+          .all(),
+      ).toEqual(["env-1"]),
+    );
+  });
+
+  it("refreshes watched Viewed reads after a change", async () => {
+    const { fake, call } = await viewedHost();
+    fake.harness.experimental_watchRpc("viewed", {
+      input: { environmentId: "env-1", target: uncommitted },
+    });
+    await call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev" });
+    await vi.waitFor(() =>
+      expect(fake.harness.experimental_rpcInvalidations).toContainEqual([
+        gitViewedTag("env-1"),
+      ]),
+    );
   });
 });

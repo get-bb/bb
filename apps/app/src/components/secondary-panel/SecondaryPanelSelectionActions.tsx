@@ -56,7 +56,7 @@ function markdownWithinNode(range: Range, node: HTMLElement): string {
   if (!node.contains(range.startContainer)) clipped.setStart(node, 0);
   if (!node.contains(range.endContainer))
     clipped.setEnd(node, node.childNodes.length);
-  return selectionClipboard(clipped, node).text;
+  return selectionClipboard(clipped, node, "markdown").text;
 }
 
 function readSelectionWithinPanel({
@@ -233,7 +233,7 @@ export function SecondaryPanelSelectionActions({
         !node.contains(range.endContainer)
       )
         return;
-      const payload = selectionClipboard(range, node);
+      const payload = selectionClipboard(range, node, "text");
       if (!payload.text) return;
       event.clipboardData.setData("text/plain", payload.text);
       event.clipboardData.setData("text/html", payload.html);

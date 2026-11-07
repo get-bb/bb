@@ -4,7 +4,7 @@ import { act } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { LazyPluginDiff } from "@/components/plugin/lazy-plugin-renderers";
-import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
+import { parseGitDiffFiles } from "@bb/shared-ui/git-diff/parsing";
 import { DiffHost } from "./DiffHost";
 import { SourceCodeHost } from "./SourceCodeHost";
 

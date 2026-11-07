@@ -152,6 +152,24 @@ describe("bb.providers.register (server)", () => {
     });
   });
 
+  it("unregisters providers on stop without telling clients they disappeared", async () => {
+    await withTestHarness(async (harness) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-stopping-agent",
+        serverSource: REGISTER_PROVIDER_SOURCE("stopping-agent"),
+      });
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status).toBe("running");
+
+      const notifySystem = vi.spyOn(harness.deps.hub, "notifySystem");
+      await harness.pluginService.stop();
+
+      expect(harness.deps.providerRegistry.get("stopping-agent")).toBeNull();
+      expect(notifySystem).not.toHaveBeenCalled();
+      notifySystem.mockRestore();
+    });
+  });
+
   it("keeps a failed provider in the listing as unavailable", async () => {
     await withTestHarness(async (harness) => {
       const rootDir = await writePlugin(workDir, {

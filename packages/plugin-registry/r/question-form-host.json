@@ -7,7 +7,7 @@
   "files": [
     {
       "path": "registry/components/ui/question-form-host.tsx",
-      "content": "import {\n  experimental_useQuestionFormHost,\n  type ExperimentalQuestionFormHost,\n  type ExperimentalQuestionShortcut,\n} from \"@get-bb/plugin-sdk/app\";\n\nexport type QuestionFormHost = ExperimentalQuestionFormHost & {\n  density: \"default\" | \"compact\";\n  promptShownAbove: string | null;\n  closeInline: (() => void) | null;\n};\nexport type QuestionShortcut = ExperimentalQuestionShortcut;\nexport function useQuestionFormHost(): QuestionFormHost {\n  return {\n    ...experimental_useQuestionFormHost(),\n    density: \"default\",\n    promptShownAbove: null,\n    closeInline: null,\n  };\n}\n",
+      "content": "import {\n  experimental_useQuestionFormHost,\n  type ExperimentalQuestionFormAction,\n  type ExperimentalQuestionFormHost,\n  type ExperimentalQuestionShortcut,\n} from \"@get-bb/plugin-sdk/app\";\n\nexport type QuestionFormHost = ExperimentalQuestionFormHost & {\n  density: \"default\" | \"compact\";\n  promptShownAbove: string | null;\n  closeInline: (() => void) | null;\n};\nexport type QuestionShortcut = ExperimentalQuestionShortcut;\nexport type QuestionFormAction = ExperimentalQuestionFormAction;\nexport function useQuestionFormHost(): QuestionFormHost {\n  return {\n    ...experimental_useQuestionFormHost(),\n    density: \"default\",\n    promptShownAbove: null,\n    closeInline: null,\n  };\n}\n",
       "type": "registry:ui",
       "target": "components/ui/question-form-host.tsx"
     }

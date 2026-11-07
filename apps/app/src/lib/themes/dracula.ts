@@ -15,6 +15,7 @@ export const draculaThemeCss = `
   --warning-text: #8f5a22;
   --attention: #9a7d00;
   --success: #2c7a4b;
+  --success-foreground: #2c7a4b;
   --diff-added: #2c7a4b;
   --diff-removed: #c4314b;
   --pr-merged: #7d5bbe;
@@ -65,6 +66,7 @@ export const draculaThemeCss = `
   --warning-text: #ffb86c;
   --attention: #f1fa8c;
   --success: #50fa7b;
+  --success-foreground: #50fa7b;
   --diff-added: #50fa7b;
   --diff-removed: #ff5555;
   --pr-merged: #bd93f9;

@@ -4,11 +4,12 @@ import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import type { MachineAuthService } from "./services/machine-auth.js";
-import type { AppUpdateService } from "./services/system/app-update.js";
+import type { ScheduledAppUpdateService } from "./services/system/app-update-schedule.js";
 import type { CliCommandService } from "./services/system/cli-command.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import type { TelemetryService } from "./services/system/telemetry.js";
+import type { SetupGuideExperiment } from "./services/system/setup-guide-experiment.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
@@ -63,10 +64,11 @@ export interface AppDeps {
 }
 
 export interface ServerAppDeps extends AppDeps {
-  appUpdate: AppUpdateService;
+  appUpdate: ScheduledAppUpdateService;
   appVersion: AppVersionService;
   bbAppManagedConfig: BbAppManagedConfigReloader;
   cliCommand: CliCommandService;
+  setupGuideExperiment: SetupGuideExperiment;
 }
 
 export type WorkSessionDeps = Pick<

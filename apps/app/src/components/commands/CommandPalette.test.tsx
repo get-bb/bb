@@ -120,6 +120,7 @@ const testState = vi.hoisted(() => ({
 const modeState = vi.hoisted(() => ({
   activeRecents: [] as ThreadListEntry[],
   archivedRecents: [] as ThreadListEntry[],
+  archivedRecentsEnabled: false,
   threadDraftIds: new Set<string>(),
   searchResponse: undefined as ThreadSearchResponse | undefined,
   recentLoading: false,
@@ -243,11 +244,14 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/palette-thread-queries", () => ({
-  usePaletteRecentArchivedThreads: () => ({
-    data: modeState.archivedRecents,
-    isLoading: false,
-    isError: false,
-  }),
+  usePaletteRecentArchivedThreads: ({ enabled }: { enabled: boolean }) => {
+    modeState.archivedRecentsEnabled = enabled;
+    return {
+      data: modeState.archivedRecents,
+      isLoading: false,
+      isError: false,
+    };
+  },
 }));
 
 vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
@@ -311,7 +315,6 @@ function makeThread(
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
       activePlanModeCount: 0,
-      activeGoalCount: 0,
     },
     hasPendingInteraction: false,
     environmentHostId: null,
@@ -414,6 +417,7 @@ afterEach(() => {
   testState.plugins.length = 0;
   modeState.activeRecents = [];
   modeState.archivedRecents = [];
+  modeState.archivedRecentsEnabled = false;
   modeState.threadDraftIds.clear();
   modeState.searchResponse = undefined;
   modeState.recentLoading = false;
@@ -631,6 +635,15 @@ describe("CommandPalette", () => {
       expect(screen.queryByRole("combobox")).toBeNull();
       expect(testState.targets).toEqual([screen.getByTestId("origin")]);
       expect(document.activeElement).toBe(screen.getByTestId("origin"));
+
+      fireEvent.keyDown(screen.getByTestId("origin"), {
+        key: "o",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      await waitFor(() =>
+        expect(testState.calls).toEqual(["thread.new", "thread.new"]),
+      );
     },
   );
 
@@ -873,6 +886,7 @@ describe("CommandPalette", () => {
 
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    expect(testState.calls).toEqual([]);
   });
 
   it("uses the shared tab-pill clear affordance without running the mode command", async () => {
@@ -1097,6 +1111,22 @@ describe("CommandPalette", () => {
     expect(input.getAttribute("aria-activedescendant")).toBe(
       selectedOption()?.id,
     );
+  });
+
+  it("loads archived recents only while Archived is selected and the query is empty", async () => {
+    const { store } = renderPalette();
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Search threads" });
+    expect(modeState.archivedRecentsEnabled).toBe(false);
+
+    act(() => store.set(paletteThreadLifecyclesAtom, ["active", "archived"]));
+    expect(modeState.archivedRecentsEnabled).toBe(true);
+
+    fireEvent.change(searchField(), { target: { value: "match" } });
+    expect(modeState.archivedRecentsEnabled).toBe(false);
+
+    fireEvent.change(searchField(), { target: { value: "  " } });
+    expect(modeState.archivedRecentsEnabled).toBe(true);
   });
 
   it("operates the lifecycle filter with the keyboard without selecting a result", async () => {
@@ -1348,11 +1378,12 @@ describe("CommandPalette", () => {
   });
 
   it("matches loaded titles on the first character and keeps the highlight when server rows merge in", async () => {
+    const now = Date.now();
     modeState.activeRecents = Array.from({ length: 6 }, (_, index) =>
       makeThread(`fix-${index}`, {
         title: `Fix ${index}`,
-        lastReadAt: Date.now(),
-        updatedAt: Date.now() - index,
+        lastReadAt: now,
+        updatedAt: now - index,
       }),
     );
     const { rerenderPalette } = renderPalette();
@@ -1420,11 +1451,12 @@ describe("CommandPalette", () => {
   });
 
   it("keeps a highlighted row in view when server rows push it down", async () => {
+    const now = Date.now();
     modeState.activeRecents = Array.from({ length: 6 }, (_, index) =>
       makeThread(`fix-${index}`, {
         title: `Fix ${index}`,
-        lastReadAt: Date.now(),
-        updatedAt: Date.now() - index,
+        lastReadAt: now,
+        updatedAt: now - index,
       }),
     );
     const { rerenderPalette } = renderPalette();
@@ -2097,38 +2129,6 @@ describe("CommandPalette", () => {
     expect(optionTitles()).toEqual(initialTitles);
   });
 
-  it("closes on Escape without running anything", async () => {
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-
-    fireEvent.keyDown(searchField(), { key: "Escape" });
-
-    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-    expect(testState.calls).toEqual([]);
-  });
-
-  it("keeps app shortcuts working after a shortcut closes the palette", async () => {
-    renderPalette();
-    const pressThreadNew = () =>
-      fireEvent.keyDown(document.activeElement ?? window, {
-        key: "o",
-        ctrlKey: true,
-        shiftKey: true,
-        bubbles: true,
-      });
-
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-    pressThreadNew();
-    await waitFor(() => expect(testState.calls).toEqual(["thread.new"]));
-    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-    pressThreadNew();
-    await waitFor(() =>
-      expect(testState.calls).toEqual(["thread.new", "thread.new"]),
-    );
-  });
-
   it("scrolls the highlighted row into view when arrowing, but not on hover", async () => {
     const scrollIntoView = vi.spyOn(
       Element.prototype,
@@ -2274,26 +2274,6 @@ describe("CommandPalette", () => {
       );
     },
   );
-
-  it("opens a specific settings page", async () => {
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-
-    fireEvent.change(searchField(), {
-      target: { value: "keyboard settings" },
-    });
-    await waitFor(() =>
-      expect(selectedOption()?.textContent).toContain("Keyboard settings"),
-    );
-    fireEvent.keyDown(searchField(), { key: "Enter" });
-
-    await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe(
-        "/settings/keyboard",
-      ),
-    );
-  });
 
   it("only includes Files settings when local helper access is available", async () => {
     renderPalette();

@@ -1,5 +1,197 @@
 # Changelog
 
+## 0.49.0
+
+A reliability release: threads get unstuck on their own, retries and automations ride out provider outages, reconnecting machines catch up on what they missed, and the server no longer stalls on database maintenance or long threads. bb also loads pages and creates threads faster. This release includes everything from 0.48.1, which shipped without notes.
+
+### Reliability
+
+- **Stuck turns end:** a turn the provider accepts but never starts now fails after 5 minutes instead of leaving the thread running. A steer or new message whose start times out keeps the thread running instead of failing a turn that's still going.
+- **Retries don't pile up:** a thread that hits a subscription limit keeps one pending retry instead of one per message (one thread had 28 "Please continue." turns waiting). A retry is dropped or held once a newer message overtakes it, retries of a turn that never started no longer send their input twice, and Pi overloads and dropped connections now retry automatically.
+- **Reconnects catch up:** when a machine reconnects, bb syncs open questions and background tasks with it and re-sends a Stop you pressed while it was away. Background commands are settled when their bridge, Claude Code or daemon stops, and after a restart bb waits for plugins to load before it handles interrupted turns.
+- **Recurring automations survive provider outages:** a failed turn no longer pauses every automation that targets the thread, and three failures in a row no longer retire it. A thread that received a scheduled prompt can schedule its own follow-ups, `bb automation update --script-file` keeps the script's env vars and timeout, and script runs clean up the processes they leave behind.
+- **No more server stalls:** bb no longer scans the whole database every hour, or runs a full VACUUM on its own, on databases created before May 29, 2026 or moved from one with `bb server move`. On a 3.9 GB database that scan blocked the server for 12.5 seconds after every start and again each hour. Sending into a long, active thread no longer blocks the server for seconds either.
+- Two threads starting at once in the same environment no longer shut down each other's agent. With Composer Predictions installed, this rejected messages sent just after a Claude Code thread went idle.
+- **Safer under memory pressure:** on Linux, the out-of-memory killer now stops agent processes before bb's server and daemon. Prompt history skips very large prompts, such as ones with inline images, that could exhaust the server's memory. Editing or forking a Claude Code thread works with transcripts over 512 MiB, and runs in a worker so a large fork can't crash other threads.
+- **Account Pooler:** a pinned conversation retries its own account on transient errors before failing over, accounts past the switch threshold keep serving until the provider refuses them, and a rejected token refresh no longer marks an account as failed while its token still works. A Claude account no longer keeps an old 5-hour limit after Anthropic stops reporting it, which showed "resets in 1m" or kept the account exhausted, and API-key accounts no longer appear in Provider usage.
+- **bb connect:** large uploads no longer overload the tunnel, bb waits for slow responses on a healthy tunnel, a sidebar refetch loop that slowed thread loads is fixed, and thread titles from bb cloud no longer time out at peak hours. Attachments over the 35 MB limit are refused before uploading, with a message that says why.
+- **Desktop:** on Windows, opening bb during an update waits for the installer instead of showing "Could not start bb". Desktop uses the server port you saved, waits for a moved server to be ready, and agents it launches can use Computer Use that sends Apple Events on macOS.
+- Machines installed with fnm keep working after a reboot, and daemon self-updates send your configured server headers.
+
+### Performance
+
+- **Faster page loads:** the app now loads a few files per page instead of about 150 small ones. Over HTTP/1.1, such as direct LAN or Tailscale access, cold loads take about half as long. Bundled plugins share one copy of zod instead of twelve, about 540 KB less per cold load. Provider CLI status, which used to finish last at 3–5 seconds, now comes from a cache that refreshes in the background.
+- **New threads appear sooner:** creating a thread checks only the git checkout instead of listing every branch, about 400 ms down to 60 ms on a large repository.
+- **Switching between busy threads:** the server caches timeline windows by size instead of row count, and a streaming thread no longer pushes the others out of the cache. Switching among 150 busy threads, every one now reopens from the cache, where about half used to be rebuilt from scratch.
+- **Cheaper live updates:** each update to a running thread extends its latest timeline window instead of rebuilding it, which cuts server CPU and garbage collection.
+- **Less git work:** branch pickers cache branch lists and fetch only `origin`, status checks no longer list every untracked file, pull request actions reuse the pull request bb already found, and storage scans skip bb's own worktrees. When a branch moves, bb lists a repository's branches once instead of once for every worktree, and only the worktrees that use that branch refresh. Creating or deleting a branch refreshes only branch lists.
+- **Less disk use:** event history is pruned even while other threads are busy, finished terminals are deleted after 7 days, plugin databases created from now on give back their free space, and a plugin update's rollback copy is removed once the update succeeds.
+- **Snappier UI:** clicking or renaming in the sidebar redraws only the affected rows, resizing the right panel runs at 60 fps instead of 30, Stop no longer waits 5 seconds when no turn is starting, the desktop app restores saved windows in parallel, and skills are only re-read when they change.
+
+### Usability
+
+- **Release notes in Settings → Updates:** click **Changelog** next to the bb or Desktop version to read a release's notes without leaving bb. Nightly builds show the newest release they include, and source checkouts list the commits an update would pull from `main`.
+- **Desktop updates in one step:** the desktop app keeps checking for updates after one has downloaded, so you no longer have to update twice to reach the latest build.
+- **`bb terminal run`** runs a command on any machine and returns its output and exit code in one call.
+- **Send your own notifications:** `bb push-notifications send --title <title>` and the push notifications plugin's `notifications.send` RPC notify your web, desktop and phone clients, with or without a thread.
+- **Badges:** the desktop Dock shows unread and waiting threads, and the phone app icon counts threads waiting for input. Clicking a notification brings the desktop window forward on every platform.
+- **Better titles:** thread titles are written in the task's language, and **Regenerate title** in the thread menu, or `bb thread regenerate-title`, writes a new title from the conversation so far.
+- **Message times** show in each message's action row when you use a mouse or trackpad.
+- **Edit queued messages:** change a scheduled message's send time, model, reasoning level or permission mode from the queue, or with `bb thread queue update --send-at`, `--model` and related flags.
+- **Question cards work from the keyboard:** Cmd/Ctrl+Enter submits, ←/→ move between questions, Cmd/Ctrl+. cancels, and Enter in a free-text answer sends, like the composer. You can remap these in Settings → Keyboard. Agents can now ask up to 10 questions and mark some as optional.
+- Arrow keys, Home and End move through the branch pickers.
+- **Quieter child-thread notices:** notices that arrive while the parent is busy merge into one, ownership changes to several children arrive as one notice, `/compact` turns don't notify, and a completion notice quotes the turn that finished instead of an earlier one.
+- Set **Notify parent** from the thread menu, or for several selected threads at once.
+- Hide project groups with no threads: turn off **Empty projects** in the sidebar's Filter menu.
+- **Change folder** in a project's Checkouts settings works for every online machine.
+- Claude Code command rows show the command's description and its real exit code.
+- On desktop, right-click an image to **Copy Image** or **Save Image As…**, and the embedded browser has the same context menu as the window.
+- Expanded inline-vis pages keep bb's theme, and inline-vis pages load in the iOS app.
+- In thread rows, the unread dot shows over the background agent and command icons.
+- Open in external browser stays visible in narrow file previews, and links in Markdown file previews work, including `#heading` links.
+- Inline code that looks like a file name becomes a link only when the file exists.
+- The model picker shows new models from a provider within a minute instead of ten, and Codex models appear as soon as a Codex session sees them.
+- Source checkouts show the sidebar update badge once they are 30 commits or six hours behind `main`, and count incoming commits from the commit that's running.
+- Some new installs see a redesigned setup guide while we compare it with the current one.
+
+### Now on for everyone
+
+These early-adopter experiments now ship to everyone: **Select multiple sidebar threads**, **App links**, **Compressed live updates**, and **NEW divider before final assistant message**.
+
+### New experiments
+
+Turn on **Become an early adopter** in Settings → Experiments to get the first four, or turn each one on by itself.
+
+- **Update when idle:** update once running threads finish, from Settings → Updates or `bb updates app apply --when-idle`. Turn on **Restart and update bb automatically** to check every hour and restart into a new version after no thread has run for 15 minutes. New messages wait while bb restarts, **Skip this version** holds a version back until a newer one appears, and `bb updates app cancel` and `bb updates app auto` do the same from the CLI.
+- **Plugin updates:** Settings → Updates lists plugins with updates, with **Update** and **Update all**, and the sidebar updates badge counts them.
+- **Skip notifications for the thread you're viewing:** no system notification for a thread that's open in a focused bb window.
+- **Thread row metadata:** add Metadata to the sidebar's Organize → Rows menu, so plugins such as GitHub PR Status can show details under a thread's title. GitHub PR Status's badge shows a red cross whenever the pull request needs action, including requested changes, a base it's behind, or rules blocking it.
+
+Off by default, even for early adopters:
+
+- **Resume interrupted threads after a restart:** when an update, crash or restart cuts off a running thread or stops a background command it's waiting on, bb resumes the thread and tells the agent what was cut off.
+- **Clear notifications once a thread is read:** reading a thread on any device removes its notifications from your phones and open bb windows. Phones need an app version that supports it.
+- **Thread context card:** show a thread's changes, pull request and related threads in a card at the upper right of the thread instead of above the composer.
+- **Faster plugin styles:** each plugin's stylesheet only matches that plugin's own UI, which makes style updates cheaper.
+
+### Agents
+
+- **Codex:** uses the project's `CODEX_HOME`, picks up changed environment variables such as rotated secrets on the next turn, ends turns that fail with error codes bb doesn't know instead of leaving them running, and pauses a Goal when you stop its turn. `/goal pause`, `/goal resume` and `/goal clear` are handled by bb. The Goal card is now part of the Codex plugin, and threads with a goal show the usual working indicator in the sidebar.
+- **Claude Code:** bb asks Claude Code for the signed-in account and its usage instead of reading Claude's login files, so it reports the right account when `CLAUDE_CONFIG_DIR` points to another profile, and a working login no longer shows as expired. With `CLAUDE_CONFIG_DIR` set, the skill list no longer offers skills from `~/.claude/skills`. A skill picked mid-sentence moves to the front of the prompt so Claude loads it, turning off subagents removes their tools, and the Max 20x plan shows as Ultra.
+- **Pi:** installs from Pi's own installer update with `pi update` and work behind any launcher, including on Windows. Images Pi can't read become notes for the agent, and a message that fails mid-stream stays visible when Pi retries.
+- **ACP agents:** models whose reasoning levels weren't scanned no longer get a made-up Medium level, and bb asks the agent for their levels when you select one. Kimi Code's tool progress no longer shows as command output, OpenCode project commands appear, and model setup errors are shown as the agent reported them.
+- Workflows no longer fail when a worker inherits a reasoning level its model doesn't list.
+- `--plan` is refused for providers without plan mode, and threads can't be created with a provider that isn't registered.
+
+### Bug fixes
+
+- Fix script automations that call `bb` starting `bb` again without end (also fixed in 0.48.1).
+- Fix pull request status counting cancelled duplicate check runs as failures, the PR badge disappearing after a restart, a thread staying linked to a merged PR after it opened a new one from the same branch, and PRs that GitHub reports as mergeable with hooks showing "Blocked by hooks" instead of offering Merge.
+- Fix images dragged onto the composer on iOS uploading empty.
+- Fix browsing another provider in the model picker starting a handoff.
+- Fix text typed after a mention pill joining onto it, and multi-word @ mentions with no matches keeping the menu open.
+- Fix a voice recording being lost when you leave the thread while recording.
+- Fix created and deleted file diffs leaving out lines that start with `-` or a space.
+- Fix dollar amounts rendering as math, emoji being cut in half at the output limit, and copying inline code, links or bold text including Markdown syntax.
+- Fix the timeline jumping when the changes bar appears above the composer, trackpad scrolls over inline previews snapping back to the bottom, and the Diff tab's scrollbar jumping between files.
+- Fix a new terminal tab jumping back to Info, sidebar rows reloading after you leave Settings, another window's echo undoing your newer sidebar toggles, and a quick sidebar drag leaving a row faded.
+- A thread that isn't in a split no longer shows a Close button that only went to New Thread.
+- Fix Side chat replies inside a running turn quoting an older point in the thread. Side chat now refuses those replies.
+- Fix the setup guide flashing back open after **Start using bb**, and the model picker changing while the desktop app quits.
+- Fix opening files on Windows network paths (`\\server\share`).
+- Fix Docs changing tables and tight task lists when you edit them, and YAML colors and comment opacity in the code editor.
+- Fix self-reloading pages in the desktop browser taking focus from the composer, and the window's main card losing its rounded right corners.
+- Fix the Tasks list staying on placeholder rows after switching between All, Active and a project.
+- Fix the error shown when deleting an environment whose archived thread is still running.
+- On mobile, fix the iOS keyboard covering the composer on unfolded phones and iPad, a long draft pushing the composer under the header while the iPhone keyboard is open, extra bottom padding on Settings pages, Android's selection toolbar covering bb's selection menu, iOS Pinyin input in the terminal, stuck sidebar drags, and the right-panel toggle moving when the drawer opens.
+
+### Plugins
+
+- **New surfaces:** `app.slots.experimental_messageMetadata` for details beside messages (bb's message times use it), `experimental_usePanelTabs` with `selectTab` and `closeTab` on the panel controller for every side panel tab, `experimental_useServers` for the desktop and mobile server list, `experimental_resolveThreadStatus`, host path helpers such as `experimental_joinHostPath`, the `experimental_thread.read` event, `bb.sdk.threads.experimental_regenerateTitle`, `experimental_signal` for RPC cancellation, `experimental_useThreadExtensionState` for a provider plugin's own thread state, `experimental_CollapsibleStackCard` for cards above the composer (bb's Plan card uses it), app update scheduling on `bb.sdk.system`, and New project in `experimental_NewThreadComposer`.
+- Plugin instructions added with `bb.agents.configure()` or `bb.agents.contributeInstructions` can be up to 32,768 characters, up from 4,096.
+- Plugins installed from a path keep working when bb deletes the thread storage or worktree they were built in.
+- A plugin keeps its old UI until its new stylesheet loads, one plugin's failed update check no longer hides results for the others, and community plugins built from source reuse their cached build instead of rebuilding at every launch.
+- The GitHub plugin renders pull request and issue bodies with bb's Markdown.
+- **For plugin authors upgrading:** `invalidates` on RPC contracts is retired; call `bb.rpc.experimental_invalidate` where the data changes. Diff Viewed marks move from `bb.sdk.environments` to the Git plugin's RPCs, and the composer renderer's `view` and `key` are replaced by `useComposer().scope` and `.key`. The sidebar's `goal` thread indicator and the `goals` activity count are removed. Built plugins keep working, and the plugin build warns with the replacement.
+
+### Security
+
+- Updated dependencies to patch published security advisories, including Better Auth 1.7.17, TanStack Start, hono, drizzle-orm, undici and handlebars.
+
+### Thanks
+
+Thank you to [@Andrew-Girgis](https://github.com/Andrew-Girgis), [@Danielalnajjar](https://github.com/Danielalnajjar), [@JackALaing](https://github.com/JackALaing), [@MGrin](https://github.com/MGrin), [@MarcoFlare](https://github.com/MarcoFlare), [@OXI-717](https://github.com/OXI-717), [@SergeyZh](https://github.com/SergeyZh), [@Willhong](https://github.com/Willhong), [@aMoonshine](https://github.com/aMoonshine), [@ahmedhesham6](https://github.com/ahmedhesham6), [@alexandre-vl](https://github.com/alexandre-vl), [@biesnecker](https://github.com/biesnecker), [@dillonzq](https://github.com/dillonzq), [@dpolishuk](https://github.com/dpolishuk), [@hellno](https://github.com/hellno), [@lanjak](https://github.com/lanjak), [@neoromantic](https://github.com/neoromantic), [@nwlodychak](https://github.com/nwlodychak), [@ratulsarna](https://github.com/ratulsarna), [@renescheepers](https://github.com/renescheepers), [@salemsayed](https://github.com/salemsayed), [@scowalt](https://github.com/scowalt), [@smsunarto](https://github.com/smsunarto), and [@yteruel31](https://github.com/yteruel31) for contributions to this release.
+
+## 0.48.0
+
+A quality and performance release: bb loads faster, sends far less over the wire, uses less CPU and memory on your machines, and fixes a long list of rough edges.
+
+### Reliability
+
+- **The timeline stays at the bottom:** collapsing a tool call, resizing, restoring a thread, or an idle scroll no longer leaves you just above the latest message with the jump-to-bottom button showing.
+- **Message queue edge cases:** messages queued after you press Stop are sent instead of held, a queued message can no longer jump ahead of one that's still sending, and messages and child-thread notices that arrive while a thread compacts wait instead of failing.
+- **No more stale state:** sidebar spinners stop when a thread stops, pull request status updates in every open view (including draft PRs and reloaded thread pages), collapsed sidebar groups stay collapsed when background threads become unread, and switching threads keeps cached plugin data.
+- **bb finds your tools:** tools installed with mise, asdf, Volta or Homebrew are found when bb runs as a service or from the Dock, plugins can run `bb`, and bb's own processes use your shell's proxy settings and the system's certificates.
+- **Safer files and updates:** file saves on machines are atomic, so a crash or full disk can't leave a half-written file, and updates and plugin downloads are checksum-verified.
+- **Connections recover:** machine tunnels give up on a stalled handshake, such as after the computer sleeps mid-connect, and reconnect. bb connect next shows a bb page instead of frp's error page.
+- **Git:** diffs work when the default branch exists only on the remote, and `bb thread spawn --base-branch <name>` starts from `origin/<name>` when your local branch is behind, falling back to the last fetched copy when the fetch fails.
+- **Agents:** Pi completes each assistant message on time, Claude Code threads fork when `CLAUDE_CONFIG_DIR` is set as a project variable, ACP agents keep file-write approvals on the tool call's row and accept messages sent while a permission change restarts them, skills are listed once even when several folders provide them, symlinked skill folders work, and large skills no longer stop threads from starting.
+
+### Performance
+
+- **The composer is ready sooner:** threads fetch the composer's data and runtime alongside the page instead of after it, and code only some plugins use no longer delays the composer and sidebar. After a reload, the open panel tab's plugin loads first.
+- **Commands without the wait:** slash command and skill lists come from a cache instead of waiting on the machine for each new thread.
+- **Much smaller live updates:** a running thread sends only what changed, about 1–2 KB instead of 11–42 KB per update, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller.
+- **Less CPU on busy Macs:** bb watches only the threads you're viewing instead of every thread's files, so macOS file watching stays quiet on machines running many agents.
+- **Less memory and bandwidth:** editing a skill resends only the files that changed instead of the whole folder, a 34 MiB attachment peaks at under 2 MiB of memory instead of 65 MiB, and updates and plugin downloads stream to disk.
+- **Snappier UI:** opening or closing a plugin page no longer restyles the whole app, and the Open menu answers instantly instead of rescanning your apps each time.
+
+### Usability
+
+- **Claude Code's Full Access approves everything again**, as it did before 0.47.0. Turn on the new **Approvals in Full Access** setting to keep being asked about `permissions.ask` rules, hooks that answer "ask", and Claude Code's own safety checks.
+- Search the terminal's scrollback with Cmd+F on macOS or Ctrl+Shift+F elsewhere, and Cmd/Ctrl+click file paths such as `src/main.ts:12:3` to open them. Web links in the terminal now also open with Cmd/Ctrl+click instead of a plain click, so a stray click no longer opens them.
+- Zoom and pan images in the lightbox, and the right sidebar remembers its width for each thread and plugin page.
+- On desktop, right-click a link to **Open in Browser**.
+- Mark read and Pin can be bound to keyboard shortcuts.
+- **The Commit button is hidden by default.** Turn on **Show Commit button** in the Git plugin's settings, or run `bb plugin config bb--git set showCommitButton true`. The old "Show Git changes and Commit button" setting is now **Show Git changes above the composer** (Git) and **Show pull request above the composer** (GitHub PR Status), and your saved choice carries over to both.
+- Side chat and plugin thread chats match the main thread view: interactions, editing and forking messages, context usage, and the cards above the composer.
+
+### New experiments
+
+These are on for early adopters. Turn on **Become an early adopter** in Settings → Experiments to get them, or turn each one on by itself.
+
+- **Select multiple sidebar threads:** Shift-click or Cmd/Ctrl+Shift-click threads to archive, delete, or set notifications for all of them, or drag them together into a section, under a thread, into Pinned, or into the composer as mentions.
+- **App links:** links such as `linear://` and `slack://` open in their apps, after asking first.
+- **Compressed live updates:** live updates are about 4x smaller.
+- **NEW divider before final assistant message:** a thread that finished while you were away opens at its answer instead of its first tool call.
+
+### Other improvements
+
+- Docs shows changes from other windows, agents and `bb docs write` as they happen, and editing a note's heading no longer renames its file.
+- Codex receives the skills you pick as skills, ACP agents receive extra writable folders, omp and opencode models show which service runs them, and Codex's Ultrafast tier has its own icon.
+- Storage & retention (Experimental) finds and removes worktrees created outside bb, also with `bb storage-retention remove-external-worktrees`, and removes worktrees in the background.
+
+### Bug fixes
+
+- Fix the desktop "Show right panel" button sometimes not responding.
+- Fix copying a file-path link, which now gives a plain path, and inline code, which now stays inline code.
+- Fix the voice waveform staying still with reduced motion on.
+- Fix failed plugin actions showing two error toasts.
+- Fix the composer resetting when the window resizes across the compact breakpoint.
+- Fix find in page snapping back while a scrolled-up thread is streaming, and the timeline's scroll height being wrong after its hidden pane is shown again.
+- On mobile, fix long-pressing a sidebar thread opening more than its menu, double taps starting a rename, closing a header menu moving the timeline, and sidebar and Thread Info icon alignment and safe-area padding.
+
+### Plugins
+
+- **Git and pull requests as plugins:** the Diff tab, the Info tab's git rows, the changed-files and pull request segments above the composer, and the Commit button now come from the bundled Git and GitHub PR Status plugins, so plugins can replace them.
+- **New surfaces:** `app.slots.experimental_threadRowMetadata` for sidebar row metadata, thread actions with `placement: "header"`, `@get-bb/plugin-sdk/process` for launching host processes the way bb does, `experimental_useCanOpenFileExternally`, file previews at a git revision, Add to chat on `experimental_Diff` and `experimental_SourceCode` inside threads, and retryable host RPCs.
+- **For plugin authors upgrading:** one panel controller (`experimental_useAppPanel()` and `ctx.experimental_panel`) replaces `ctx.openPanel`, `openThreadPanel`, `experimental_openTab` and `openFixedTab`, and header thread actions replace `app.slots.experimental_threadHeaderAction`. The old members keep working, and the plugin build warns with the replacement.
+- Shared diff and syntax-highlighting code loads only for plugins that use it.
+
+### Thanks
+
+Thank you to [@JackALaing](https://github.com/JackALaing), [@artwist-polyakov](https://github.com/artwist-polyakov), [@dillonzq](https://github.com/dillonzq), [@dpolishuk](https://github.com/dpolishuk), [@hellno](https://github.com/hellno), [@smsunarto](https://github.com/smsunarto), and [@steveafrost](https://github.com/steveafrost) for contributions to this release.
+
 ## 0.47.0
 
 Customizable sidebar navigation, new and improved ACP support, file-by-file diff review, and more of bb you can replace with plugins.

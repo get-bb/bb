@@ -40,8 +40,9 @@ Messaging:
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
-  Code and Codex threads). Plain "/plan ..." text is not recognized; it reaches
-  the provider as literal text. Approve or deny the proposed plan with
+  Code and Codex threads). Providers without a declared plan action reject
+  --plan with an error for both spawn and tell. Plain "/plan ..." text is not
+  recognized; it reaches the provider as literal text. Approve or deny the proposed plan with
   `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode early.
   SDK callers build the same input with
   `createBuiltinPlanCommandTextInput(text)` from `@bb/sdk` and pass it as
@@ -69,6 +70,17 @@ Ownership:
   validates them against that provider's current model catalog, applies them on
   the next turn, and keeps using them on later turns until changed.
 
+  bb thread regenerate-title [id]          Replace the title with a generated one
+    --self                                 Target current thread
+
+  regenerate-title asks the thread-title AI service (Settings → AI services)
+  for a title built from the thread's first task message, its latest user
+  messages, and the agent's latest replies, written in the task's language. It
+  replaces the current title, including one set by hand, unless that title
+  still fits. The title is kept when no service is available or generation
+  fails, and the error says why. bb never regenerates on its own.
+  SDK: `threads.experimental_regenerateTitle({ threadId })`.
+
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread
   bb thread reorder-pinned <id> [--after <id>] [--before <id>]
@@ -91,6 +103,7 @@ Interactions:
     --self                                 Target current thread (every subcommand)
     --json                                 Machine-readable output (every subcommand)
 
+  `answer` may skip questions that `show` marks Optional.
   `show` prints a plugin form's `Data` so you can shape the `--value` JSON.
   A provider's plugin-defined request cannot be cancelled; stop the thread to
   back out of it.
@@ -99,7 +112,10 @@ Queued messages:
 
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
   bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
-  bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
+  bb thread queue update <thread-id> <message-id> [<message>] [--file <path>] [--image <path>]
+                         [--send-at <when> | --clear-send-at] [--model <model>]
+                         [--reasoning-level <level>] [--permission-mode <mode>]
+                         [--service-tier <tier>]
                                            create and update also take --message-file <path>
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
@@ -116,7 +132,8 @@ Queued messages:
   `queuedWork: none|waiting|failed`. Every one carries a typed reason in its
   `Waiting on` column (`waitingOn.kind` in JSON: `thread-busy`,
   `turn-starting`, `provisioning`, `host-offline`, `interaction`, `time` for
-  `Send at`, or `plugin` with `pluginId` and a reason). `queue list` with no thread id lists every
+  `Send at`, `plugin` with `pluginId` and a reason, or `superseded` for a
+  retry a newer message overtook, which is never sent automatically). `queue list` with no thread id lists every
   queued row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
   the rows one plugin is holding.
 
@@ -129,7 +146,27 @@ Queued messages:
   Failed rows show their failure reason instead of their previous wait, followed
   by a recovery command: `bb thread queue send <thread-id> <message-id>`.
   Use it to retry immediately, including after automatic retries are exhausted.
-  Editing the message does not clear its failure or trigger a retry.
+  Editing the message does not clear its failure or trigger a retry; setting a
+  new send time with `--send-at` does, and the row retries at that time.
+
+  `queue update --send-at <when>` moves a row to a new send time, earlier or
+  later, and `--clear-send-at` removes its send time so it goes as soon as
+  nothing else holds it. Either works on any row not already sending, including
+  a retry, and the message text is optional when you pass one. Changing only
+  the time keeps an edit in progress in the app and does not touch the text. When
+  the new time arrives the row is dispatched the same way as any scheduled send:
+  `message.dispatch` hooks still apply, and a busy thread queues it again. The
+  SDK takes `sendAt` (epoch ms, or null to clear) on
+  `threads.queuedMessages.update`, with or without `input`; a time that has
+  passed is rejected.
+
+  `queue update --model`, `--reasoning-level`, `--permission-mode`, and
+  `--service-tier` change what the row will run with; flags you leave out keep
+  the row's current values, the same checks as a send apply (the machine's
+  permission ceiling, the provider's levels), and the message text is optional.
+  A row grouped with other rows is refused when its new options would no longer
+  match theirs; ungroup it first. The SDK takes the same four fields on
+  `threads.queuedMessages.update`.
 
   `queue send` dispatches a row now, bypassing every plugin wait and its own
   schedule — the invariants (a running turn, an unfinished workspace, an
@@ -152,3 +189,19 @@ Queued messages:
   scheduled spawn creates a `pending` thread and does no environment work (no
   worktree, no setup script) until it is due. The SDK takes `sendAt` in epoch
   milliseconds on `threads.spawn` and `threads.send`.
+
+Application links in messages:
+
+  Use an explicit Markdown link such as `[Review note](reflect://note/Project%20X)`
+  or `[Open issue](linear://issue/ABC-123)`. The receiving user clicks the link
+  to open it on their viewing device; sending or rendering a message never
+  launches an application. Bare custom-scheme text is not auto-linked.
+
+  BB asks before launching unless the user
+  chose Always allow for that scheme on this BB site and device. Settings →
+  General → Links → App links can revoke saved choices. Executable
+  web schemes and reserved editor-action
+  schemes remain blocked. Existing editor file links keep their file-opening
+  behavior. Desktop and native mobile clients need application-link support
+  (mobile bridge version 3); older clients show an update message. Web browsers
+  handle their own OS handoff and cannot reliably report missing applications.

@@ -1,9 +1,4 @@
 import {
-  uiPreferencesRoute,
-  updateUiPreferenceRoute,
-  resetUiPreferenceRoute,
-} from "./client-route-descriptors.js";
-import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -123,11 +118,6 @@ import {
   type EnvironmentActionRequest,
   type EnvironmentActionResponse,
   type EnvironmentArchiveThreadsResponse,
-  type EnvironmentDiffQuery,
-  type EnvironmentDiffViewedClearRequest,
-  type EnvironmentDiffViewedQueryRequest,
-  type EnvironmentDiffViewedMarkRequest,
-  type EnvironmentDiffViewedResponse,
   type EnvironmentPathsQuery,
   type HostDirectoryListing,
   type HostDirectoryQuery,
@@ -136,6 +126,7 @@ import {
   type HostReconnectResponse,
   type HostListQuery,
   type HostDeleteQuery,
+  type HostProviderCliStatusQuery,
   type EnvironmentCleanupQuery,
   type HostActionResponse,
   type HostCloneDefaultPathQuery,
@@ -204,6 +195,7 @@ import {
   type SendQueuedMessageResponse,
   type SidebarBootstrapResponse,
   type SystemAttentionResponse,
+  type SystemSetupGuideResponse,
   type SystemConfigReloadResponse,
   type SystemConfigResponse,
   type SystemMobileAppReleasesResponse,
@@ -221,6 +213,7 @@ import {
   type SystemProviderStatesResponse,
   type SystemUsageLimitsQuery,
   type SystemAppUpdateAcknowledgeRequest,
+  type SystemAppUpdateAutoRequest,
   type SystemAppUpdateApplyRequest,
   type SystemAppUpdateQuery,
   type SystemAppUpdateStatus,
@@ -322,14 +315,11 @@ import {
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
-  environmentDiffQuerySchema,
-  environmentDiffViewedClearRequestSchema,
-  environmentDiffViewedQueryRequestSchema,
-  environmentDiffViewedMarkRequestSchema,
   environmentPathsQuerySchema,
   hostDirectoryQuerySchema,
   hostListQuerySchema,
   hostDeleteQuerySchema,
+  hostProviderCliStatusQuerySchema,
   environmentCleanupQuerySchema,
   hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
@@ -373,6 +363,7 @@ import {
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   systemAppUpdateAcknowledgeRequestSchema,
+  systemAppUpdateAutoRequestSchema,
   systemAppUpdateApplyRequestSchema,
   systemAppUpdateQuerySchema,
   threadEventWaitQuerySchema,
@@ -420,6 +411,13 @@ import {
   type ServerMoveStatus,
   type ServerMoveStatusResponse,
 } from "./api/server-move.js";
+import {
+  updateUiPreferenceRequestSchema,
+  type PathUiPreferenceKey,
+  type UiPreferenceResponse,
+  type UiPreferencesResponse,
+  type UpdateUiPreferenceRequest,
+} from "./api/ui-preferences.js";
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
@@ -1001,7 +999,9 @@ export const publicApiRoutes = {
     providerCliStatus: defineRoute({
       path: "/hosts/:id/provider-clis/status",
       method: "get",
-      request: noRequest<PathId>(),
+      request: optionalQueryRequest<PathId, HostProviderCliStatusQuery>(
+        hostProviderCliStatusQuerySchema,
+      ),
       response: jsonResponse<HostProviderCliStatusResponse>(),
     }),
     providerCliInstall: defineRoute({
@@ -1172,38 +1172,6 @@ export const publicApiRoutes = {
         updateEnvironmentRequestSchema,
       ),
       response: jsonResponse<Environment>(),
-    }),
-    diffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "get",
-      request: queryRequest<PathId, EnvironmentDiffQuery>(
-        environmentDiffQuerySchema,
-      ),
-      response: jsonResponse<EnvironmentDiffViewedResponse>(),
-    }),
-    queryDiffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "post",
-      request: jsonRequest<PathId, EnvironmentDiffViewedQueryRequest>(
-        environmentDiffViewedQueryRequestSchema,
-      ),
-      response: jsonResponse<EnvironmentDiffViewedResponse>(),
-    }),
-    markDiffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "put",
-      request: jsonRequest<PathId, EnvironmentDiffViewedMarkRequest>(
-        environmentDiffViewedMarkRequestSchema,
-      ),
-      response: jsonResponse<{ ok: true }>(),
-    }),
-    clearDiffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "delete",
-      request: jsonRequest<PathId, EnvironmentDiffViewedClearRequest>(
-        environmentDiffViewedClearRequestSchema,
-      ),
-      response: jsonResponse<{ ok: true }>(),
     }),
     paths: defineRoute({
       path: "/environments/:id/paths",
@@ -1649,6 +1617,18 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadResponse>(),
     }),
+    /**
+     * Generate a new title from the thread's first task message, its latest
+     * user messages, and the agent's latest replies, replacing the current
+     * title unless it still fits. The title is unchanged when no title service
+     * is available or generation fails, and the error says why.
+     */
+    regenerateTitle: defineRoute({
+      path: "/threads/:id/title/regenerate",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadResponse>(),
+    }),
     pinOrder: defineRoute({
       path: "/threads/:id/pin-order",
       method: "patch",
@@ -1924,6 +1904,12 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<TestAiServiceResponse>(),
     }),
+    setupGuide: defineRoute({
+      path: "/system/setup-guide",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemSetupGuideResponse>(),
+    }),
     recordTelemetryEvent: defineRoute({
       path: "/system/telemetry/events",
       method: "post",
@@ -1966,9 +1952,33 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<AppTheme>(),
     }),
-    uiPreferences: uiPreferencesRoute,
-    updateUiPreference: updateUiPreferenceRoute,
-    resetUiPreference: resetUiPreferenceRoute,
+    uiPreferences: defineRoute({
+      path: "/preferences/ui",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<UiPreferencesResponse>(),
+    }),
+    updateUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "put",
+      request: jsonRequest<PathUiPreferenceKey, UpdateUiPreferenceRequest>(
+        updateUiPreferenceRequestSchema,
+      ),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
+    resetUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "delete",
+      request: noRequest<PathUiPreferenceKey>(),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
+    }),
     themes: defineRoute({
       path: "/settings/themes",
       method: "get",
@@ -2111,6 +2121,26 @@ export const publicApiRoutes = {
       method: "post",
       request: jsonRequest<EmptyInput, SystemAppUpdateAcknowledgeRequest>(
         systemAppUpdateAcknowledgeRequestSchema,
+      ),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    scheduleAppUpdate: defineRoute({
+      path: "/system/app-update/schedule",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    cancelScheduledAppUpdate: defineRoute({
+      path: "/system/app-update/schedule/cancel",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    setAppUpdateAuto: defineRoute({
+      path: "/system/app-update/auto",
+      method: "post",
+      request: jsonRequest<EmptyInput, SystemAppUpdateAutoRequest>(
+        systemAppUpdateAutoRequestSchema,
       ),
       response: jsonResponse<SystemAppUpdateStatus>(),
     }),

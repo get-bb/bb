@@ -6,17 +6,23 @@ import {
 } from "@bb/host-daemon-contract";
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
 import type { ProviderCliInstallFailure } from "@/components/provider-cli/provider-cli-install-store";
-import type { UpdateInventoryMachine } from "@/hooks/useUpdateInventory";
+import {
+  buildUpdateInventoryPlugins,
+  type UpdateInventoryMachine,
+} from "@/hooks/useUpdateInventory";
+import { makePluginListItem } from "@/test/fixtures/plugins";
 import {
   makeHost,
   makeProviderCliStatus,
 } from "../../../.ladle/story-fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { ReleaseNotesPanel } from "./ReleaseNotesPanel";
 import {
+  AutoAppUpdateSetting,
   BbAppUpdateRows,
   BbUpdatesCard,
-  ChangelogPreviewCard,
   MachineUpdateRow,
+  PluginUpdatesSection,
   ProviderCliUpdatesSection,
 } from "./UpdatesSettingsSection";
 
@@ -25,6 +31,26 @@ export default {
 };
 
 const noop = () => {};
+
+function storyReleaseNotes(version: string, expanded = false) {
+  return {
+    version,
+    panelId: `story-release-notes-${version}`,
+    expanded,
+    onToggle: noop,
+  };
+}
+const SOURCE_FROM_COMMIT = "916d684a1b2c3d4e5f60718293a4b5c6d7e8f901";
+const SOURCE_INCOMING_SUBJECTS = [
+  "Wait for a moved server's ready state on desktop, with one shared health probe (#6757)",
+  "Use launcher resolution for the desktop local server URL (#6758)",
+  "Show all changes in the thread context card's diff stats (#6848)",
+  "Cancel dnd-kit drags released before the drag-start render (#6847)",
+  "Add @neoromantic to allow list",
+  "Let queued messages change their send time and execution options (#6750)",
+];
+
+const SOURCE_TO_COMMIT = "1555ccfc15a1b2c3d4e5f60718293a4b5c6d7e8f";
 const NO_JOBS: ReadonlySet<string> = new Set();
 const NO_FAILURES: ReadonlyMap<string, ProviderCliInstallFailure> = new Map();
 const STORY_NOW = 1_800_000_000_000;
@@ -43,6 +69,7 @@ const NPM_VERSION = {
 const IN_APP_UPDATE: SystemAppUpdateStatus = {
   activity: { phase: "idle" },
   available: {
+    behindSince: null,
     channel: "latest",
     commit: null,
     commitCount: null,
@@ -52,7 +79,10 @@ const IN_APP_UPDATE: SystemAppUpdateStatus = {
   blocked: null,
   current: { commit: null, version: "0.38.0" },
   lastResult: null,
+  autoUpdate: false,
+  availableSkipped: false,
   runningThreadCount: 0,
+  scheduled: null,
   support: { kind: "supported", mode: "npm" },
 };
 
@@ -314,7 +344,7 @@ export function RowVariations() {
         <h2 className="px-4 py-3 text-sm font-semibold">Server and desktop</h2>
         <StoryRow
           label="Up to date"
-          hint="Nothing to do. The settled state stays visually quiet."
+          hint="Nothing to do. The settled state stays visually quiet; Changelog opens the installed version's changes below the row."
         >
           <div className="w-full">
             <BbUpdatesCard>
@@ -324,6 +354,7 @@ export function RowVariations() {
                 isDesktop={false}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
+                releaseNotes={storyReleaseNotes(NPM_VERSION.currentVersion)}
               />
             </BbUpdatesCard>
           </div>
@@ -348,20 +379,26 @@ export function RowVariations() {
 
         <StoryRow
           label="Update available"
-          hint="A web install cannot replace itself, so its action copies the upgrade command."
+          hint="A web install cannot replace itself, so its action copies the upgrade command. Changelog opens the new version's changes below the row."
         >
           <div className="w-full">
             <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
-                  latestVersion: "0.39.0",
+                  latestVersion: "0.48.0",
                   updateAvailable: true,
                 }}
                 desktopInfo={null}
                 isDesktop={false}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
+                releaseNotes={storyReleaseNotes("0.48.0", true)}
+              />
+              <ReleaseNotesPanel
+                id="story-release-notes-0.48.0"
+                version="0.48.0"
+                sourceUpdate={null}
               />
             </BbUpdatesCard>
           </div>
@@ -382,6 +419,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
+                releaseNotes={storyReleaseNotes("0.39.0")}
               />
             </BbUpdatesCard>
           </div>
@@ -408,6 +446,120 @@ export function RowVariations() {
                 desktopInfo={null}
                 isDesktop={false}
                 onApplyAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
+          label="In-app update while threads run"
+          hint="Update asks before interrupting running threads. With automatic updates on, the update waits for them instead."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={NPM_VERSION}
+                appUpdate={{ ...IN_APP_UPDATE, runningThreadCount: 2 }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
+          label="In-app update waiting for threads"
+          hint="Automatic updates found this version; the server starts it once no thread has run for 15 minutes. Skip this version keeps it from installing until a newer one appears."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={NPM_VERSION}
+                appUpdate={{
+                  ...IN_APP_UPDATE,
+                  runningThreadCount: 2,
+                  scheduled: {
+                    requestedAt: "2026-10-23T00:00:00.000Z",
+                    requiredIdleMs: 15 * 60_000,
+                  },
+                }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onCancelScheduledAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+              />
+              <AutoAppUpdateSetting
+                label="Restart and update bb automatically"
+                checked
+                onCheckedChange={noop}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
+          label="In-app update waiting for idle time"
+          hint="Every thread has finished; the automatic update still waits until no thread has run for 15 minutes, so bb does not restart between turns."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={NPM_VERSION}
+                appUpdate={{
+                  ...IN_APP_UPDATE,
+                  runningThreadCount: 0,
+                  scheduled: {
+                    requestedAt: "2026-10-23T00:00:00.000Z",
+                    requiredIdleMs: 15 * 60_000,
+                  },
+                }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onCancelScheduledAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+              />
+              <AutoAppUpdateSetting
+                label="Restart and update bb automatically"
+                checked
+                onCheckedChange={noop}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
+          label="Requested update waiting for threads"
+          hint="bb updates app apply --when-idle asked for this update; the server starts it a few seconds after the running threads finish."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={NPM_VERSION}
+                appUpdate={{
+                  ...IN_APP_UPDATE,
+                  runningThreadCount: 2,
+                  scheduled: {
+                    requestedAt: "2026-10-23T00:00:00.000Z",
+                    requiredIdleMs: 5_000,
+                  },
+                }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onCancelScheduledAppUpdate={noop}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
@@ -623,6 +775,7 @@ export function RowVariations() {
                 appUpdate={{
                   ...IN_APP_UPDATE,
                   available: {
+                    behindSince: "2026-11-02T12:00:00.000Z",
                     channel: "main",
                     commit: "76a1ebcaf5c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5",
                     commitCount: 54,
@@ -647,6 +800,55 @@ export function RowVariations() {
         </StoryRow>
 
         <StoryRow
+          label="Source checkout — changelog"
+          hint="Changelog lists the incoming commits on main and compares the range on GitHub."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={{
+                  ...NPM_VERSION,
+                  currentVersion: "0.48.0",
+                  currentCommit: SOURCE_FROM_COMMIT,
+                  installKind: "source",
+                  latestVersion: null,
+                }}
+                appUpdate={{
+                  ...IN_APP_UPDATE,
+                  available: {
+                    behindSince: "2026-11-02T12:00:00.000Z",
+                    channel: "main",
+                    commit: SOURCE_TO_COMMIT,
+                    commitCount: 41,
+                    subjects: SOURCE_INCOMING_SUBJECTS,
+                    version: "0.48.0",
+                  },
+                  current: { commit: SOURCE_FROM_COMMIT, version: "0.48.0" },
+                  support: { kind: "supported", mode: "source" },
+                }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+                releaseNotes={storyReleaseNotes("0.48.0", true)}
+              />
+              <ReleaseNotesPanel
+                id="story-release-notes-source"
+                version="0.48.0"
+                sourceUpdate={{
+                  from: SOURCE_FROM_COMMIT,
+                  to: SOURCE_TO_COMMIT,
+                  commitCount: 41,
+                  subjects: SOURCE_INCOMING_SUBJECTS,
+                }}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
           label="Source checkout — checking update"
           hint="The launcher rechecks origin/main before accepting the update target. The spinner and step replace the Update button."
         >
@@ -662,6 +864,7 @@ export function RowVariations() {
                 appUpdate={{
                   ...IN_APP_UPDATE,
                   available: {
+                    behindSince: "2026-11-02T12:00:00.000Z",
                     channel: "main",
                     commit: "b".repeat(40),
                     commitCount: 54,
@@ -704,6 +907,7 @@ export function RowVariations() {
                 appUpdate={{
                   ...IN_APP_UPDATE,
                   available: {
+                    behindSince: "2026-11-02T12:00:00.000Z",
                     channel: "main",
                     commit: "b".repeat(40),
                     commitCount: 54,
@@ -746,6 +950,7 @@ export function RowVariations() {
                 appUpdate={{
                   ...IN_APP_UPDATE,
                   available: {
+                    behindSince: "2026-11-02T12:00:00.000Z",
                     channel: "main",
                     commit: "b".repeat(40),
                     commitCount: 54,
@@ -786,6 +991,7 @@ export function RowVariations() {
                 appUpdate={{
                   ...IN_APP_UPDATE,
                   available: {
+                    behindSince: "2026-11-02T12:00:00.000Z",
                     channel: "main",
                     commit: "4f1c2e9a7b0d3c5e8f1a2b3c4d5e6f7a8b9c0d1e",
                     commitCount: 12,
@@ -1174,14 +1380,110 @@ export function SectionVariations() {
           />
         </div>
       </StoryRow>
+    </StoryCard>
+  );
+}
+
+const STORY_PLUGINS = buildUpdateInventoryPlugins([
+  makePluginListItem({
+    id: "github-pr-status",
+    name: "GitHub PR Status",
+    icon: "GitPullRequest",
+    source: "npm:@acme/github-pr-status@^1.2.0",
+    version: "1.2.0",
+    updateState: {
+      outcome: "update-available",
+      availableVersion: "1.4.1",
+      availableLabel: "1.4.1",
+    },
+  }),
+  makePluginListItem({
+    id: "linear",
+    name: "Linear",
+    icon: "Zap",
+    source: "git:github.com/acme/linear@^0.8.0",
+    version: "0.8.2",
+    updateState: {
+      outcome: "update-available",
+      availableVersion: "0.9.0",
+      availableLabel: "0.9.0",
+      lastFailure: {
+        version: "0.9.0",
+        label: "0.9.0",
+        at: STORY_NOW,
+        detail: "activation failed: settings schema rejected stored values",
+      },
+    },
+  }),
+  makePluginListItem({
+    id: "notes",
+    name: "Notes",
+    icon: "File",
+    source: "npm:@acme/notes@^2.0.0",
+    version: "2.3.0",
+    updateState: {
+      outcome: "incompatible",
+      blockedVersion: "3.0.0",
+      blockedLabel: "3.0.0",
+      blockedReasons: ["engines.bb requires >=0.40.0 (running 0.38.0)"],
+    },
+  }),
+  makePluginListItem({
+    id: "pinned",
+    name: "Pinned",
+    source: "npm:@acme/pinned@1.0.0",
+    updateState: { outcome: "pinned" },
+  }),
+]);
+
+export function PluginSectionVariations() {
+  return (
+    <StoryCard className="max-w-5xl" labelWidth="240px">
+      <h2 className="px-4 py-3 text-sm font-semibold">Plugins</h2>
       <StoryRow
-        label="Changelog preview"
-        hint="The optional release preview appears above the update cards."
+        label="Updates"
+        hint="Update, a failed update with Retry, and an engines-blocked candidate."
       >
-        <div className="w-full space-y-6">
-          <ChangelogPreviewCard />
-          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
-          <StoryProviderClis machines={[workstation]} />
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={STORY_PLUGINS}
+            updatingPluginIds={NO_JOBS}
+            checking={false}
+            onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="Updating"
+        hint="Update all gives way to progress while the queue drains."
+      >
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={STORY_PLUGINS}
+            updatingPluginIds={new Set(["github-pr-status", "linear"])}
+            checking={false}
+            onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow label="Quiet" hint="Every tracking plugin is current.">
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={{ trackedCount: 6, items: [] }}
+            updatingPluginIds={NO_JOBS}
+            checking={false}
+            onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow label="Checking" hint="The page-load check is running.">
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={{ trackedCount: 6, items: [] }}
+            updatingPluginIds={NO_JOBS}
+            checking
+            onStartUpdates={noop}
+          />
         </div>
       </StoryRow>
     </StoryCard>

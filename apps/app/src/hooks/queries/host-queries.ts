@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  queryOptions,
+  skipToken,
+  useQuery,
+} from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type {
   HostDirectoryListing,
@@ -8,6 +13,7 @@ import type {
 import { sdk } from "@/lib/sdk";
 import { useHostListRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { keepNewerByUpdatedAt } from "@/hooks/cache-owners/cache-effect-utils";
 import {
   hostCloneDefaultPathQueryKey,
   hostDirectoryQueryKey,
@@ -23,11 +29,25 @@ export function useHosts(
   const includeCreating = options?.includeCreating ?? false;
   useHostListRealtimeSubscription({ enabled });
 
-  return useQuery<Host[]>({
-    queryKey: hostsQueryKey(includeCreating),
-    queryFn: ({ signal }) => sdk.hosts.list({ signal, includeCreating }),
+  return useQuery({
+    ...hostsQueryOptions(includeCreating),
     enabled,
     staleTime: 60_000,
+  });
+}
+
+export function hostsQueryOptions(includeCreating: boolean) {
+  return queryOptions<Host[]>({
+    queryKey: hostsQueryKey(includeCreating),
+    queryFn: async ({ client, queryKey, signal }) => {
+      const hosts = await sdk.hosts.list({ signal, includeCreating });
+      const cached = new Map(
+        client.getQueryData<Host[]>(queryKey)?.map((host) => [host.id, host]),
+      );
+      return hosts.map((host) =>
+        keepNewerByUpdatedAt(cached.get(host.id), host),
+      );
+    },
   });
 }
 

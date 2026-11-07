@@ -14,6 +14,86 @@ const app = await loadPluginApp(() => import("./app.js"));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
+
+describe("notification delivery", () => {
+  it.each([
+    [["skipFocusedThreadNotifications"], 0],
+    [[], 1],
+  ])(
+    "with experiments %j shows %i notifications for the focused thread",
+    async (experiments, expected) => {
+      const shown: string[] = [];
+      vi.stubGlobal(
+        "Notification",
+        class {
+          static permission = "granted";
+          close = vi.fn();
+          constructor(title: string) {
+            shown.push(title);
+          }
+        },
+      );
+      vi.stubGlobal("isSecureContext", true);
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+      const view = renderSlot(
+        app.appOverlays[0]!,
+        {},
+        {
+          settings: { webEnabled: true },
+          context: { threadId: "thr_open" },
+          experiments,
+        },
+      );
+      await view.emitRealtime("notification", {
+        id: "event-1",
+        title: "Finished",
+        body: "Ready",
+        threadId: "thr_open",
+        channels: ["web"],
+      });
+      await waitFor(() => expect(shown).toHaveLength(expected));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(shown).toHaveLength(expected);
+    },
+  );
+
+  it("closes a thread's notification when the server says it was read", async () => {
+    const closed: string[] = [];
+    vi.stubGlobal(
+      "Notification",
+      class {
+        static permission = "granted";
+        readonly tag: string;
+        constructor(_title: string, options: NotificationOptions) {
+          this.tag = options.tag ?? "";
+        }
+        close() {
+          closed.push(this.tag);
+        }
+      },
+    );
+    vi.stubGlobal("isSecureContext", true);
+    const view = renderSlot(
+      app.appOverlays[0]!,
+      {},
+      { settings: { webEnabled: true } },
+    );
+    for (const threadId of ["thr_read", "thr_other"]) {
+      await view.emitRealtime("notification", {
+        id: `event-${threadId}`,
+        title: "Finished",
+        body: "Ready",
+        threadId,
+        channels: ["web"],
+      });
+    }
+    await view.emitRealtime("notification-dismiss", { threadId: "thr_read" });
+    await waitFor(() => expect(closed).toEqual(["bb-thr_read"]));
+  });
 });
 
 describe("device notification settings", () => {
@@ -69,6 +149,7 @@ function makeTarget(
     id: "thr_top",
     projectId: "proj_test",
     parentThreadId: null,
+    parentNotifications: "auto",
     archivedAt: null,
     pinnedAt: null,
     sectionId: null,

@@ -375,6 +375,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       dataDir,
       now: Date.now() + 1_000,
       retentionMs: 0,
+      snapshotsCreatedBefore: 0,
       warn: (message) => warnings.push(message),
     });
 
@@ -443,6 +444,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       dataDir,
       now: Date.now() + 1_000,
       retentionMs: 0,
+      snapshotsCreatedBefore: 0,
       warn: (message) => warnings.push(message),
     });
 
@@ -511,6 +513,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       dataDir,
       now: Date.now() + 1_000,
       retentionMs: 0,
+      snapshotsCreatedBefore: 0,
       warn: (message) => warnings.push(message),
     });
 
@@ -553,6 +556,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       dataDir,
       now: Date.now() + 1_000,
       retentionMs: 0,
+      snapshotsCreatedBefore: 0,
       warn: (message) => warnings.push(message),
     });
 
@@ -646,6 +650,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       dataDir,
       now: Date.now() + 1_000,
       retentionMs: 0,
+      snapshotsCreatedBefore: 0,
       warn: (message) => warnings.push(message),
     });
 
@@ -659,5 +664,65 @@ describe("plugin activation snapshots and garbage collection", () => {
     expect(warnings).toEqual([
       expect.stringContaining("refusing to garbage collect unmanaged"),
     ]);
+  });
+
+  it("discards snapshots an earlier server process left behind unless their rollback is unfinished", async () => {
+    const statuses = [
+      { id: "settled", status: "ready", createdAt: 100 },
+      { id: "rolled-back", status: "restored", createdAt: 100 },
+      { id: "unfinished", status: "rollback-pending", createdAt: 100 },
+      { id: "restoring", status: "restoring", createdAt: 100 },
+      { id: "current", status: "ready", createdAt: 300 },
+    ] as const;
+    for (const snapshot of statuses) {
+      const snapshotPath = join(
+        dataDir,
+        "plugins",
+        "snapshots",
+        "gc-test",
+        snapshot.id,
+      );
+      await mkdir(snapshotPath, { recursive: true });
+      await writeFile(join(snapshotPath, "data.db"), "copy");
+      createPluginStateSnapshot(db, {
+        id: snapshot.id,
+        pluginId: "gc-test",
+        fromArtifactId: null,
+        toArtifactId: "active",
+        snapshotPath,
+        databasePath: join(snapshotPath, "data.db"),
+        statePath: join(snapshotPath, "state.json"),
+        secretsPath: null,
+        registrationPath: null,
+        status: snapshot.status,
+        rollbackCandidateVersion: null,
+        rollbackSourceFingerprint: null,
+        rollbackBbVersion: null,
+        rollbackSdkVersion: null,
+        rollbackDetail: null,
+        createdAt: snapshot.createdAt,
+        retainedUntil: 10_000,
+        updatedAt: snapshot.createdAt,
+      });
+    }
+
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: 400,
+      retentionMs: 10_000,
+      snapshotsCreatedBefore: 200,
+      warn: (message) => {
+        throw new Error(message);
+      },
+    });
+
+    expect(
+      listPluginStateSnapshots(db, "gc-test").map((snapshot) => snapshot.id),
+    ).toEqual(["restoring", "unfinished", "current"]);
+    await expect(
+      stat(join(dataDir, "plugins", "snapshots", "gc-test", "settled")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await stat(join(dataDir, "plugins", "snapshots", "gc-test", "current"));
   });
 });

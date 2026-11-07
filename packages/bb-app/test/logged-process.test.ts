@@ -126,6 +126,30 @@ describe("spawnLoggedProcess", () => {
     },
   );
 
+  it.runIf(process.platform === "darwin")(
+    "keeps the loopback proxy bypass for a proxied child under app scheduling",
+    async () => {
+      const logDir = scratchDir();
+      const child = spawnLoggedProcess({
+        appScheduling: true,
+        command: process.execPath,
+        args: ["--use-env-proxy", "-e", "console.log(process.env.NO_PROXY)"],
+        env: {
+          ...process.env,
+          HTTPS_PROXY: "http://proxy.invalid:3128",
+          NO_PROXY: "example.com",
+        },
+        logDir,
+        logName: "server",
+      });
+      expect(await waitForExit(child)).toBe(0);
+      expect(child.spawnfile).toBe("/usr/sbin/taskpolicy");
+      expect(
+        readFileSync(join(logDir, "server-stdio.log"), "utf8").split("\n")[0],
+      ).toBe("example.com,localhost,127.0.0.1,::1,[::1]");
+    },
+  );
+
   it("preserves output across child restarts, including early failures", async () => {
     const logDir = scratchDir();
     for (const message of ["first startup", "second startup"]) {

@@ -11,9 +11,9 @@ import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
-import { sendThreadMessage } from "./thread-send.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import { runWithTurnTrace } from "../system/turn-trace.js";
+import { assertProviderAcceptsPromptActions } from "../providers/provider-plan-command.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -25,16 +25,26 @@ export async function acceptThreadSendRequest(
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
   assertThreadHostAcceptsWork(deps.db, args.thread);
+  assertProviderAcceptsPromptActions(deps.providerRegistry, {
+    input: args.payload.input,
+    providerId: args.thread.providerId,
+  });
   const { compactFirst, ...request } = args.payload;
   if (isStandaloneBuiltinClearCommand(request.input)) {
     if (compactFirst) throwInvalidCompactFirst("cannot clear the context");
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,
     });
-    await sendThreadMessage(deps, {
-      environment,
-      payload: request,
+    await attemptDispatch(deps, {
       thread: args.thread,
+      payload: request,
+      source: { kind: "operation", environment },
+      queuePayload: { kind: "inline" },
+      pluginSubmission: null,
+      systemNotice: null,
+      origin: null,
+      originPluginId: null,
+      startedOnBehalfOf: null,
       trigger: "user",
     });
     return { ok: true, delivery: "sent" };
@@ -65,6 +75,7 @@ export async function acceptThreadSendRequest(
         source: { kind: "inline" },
         queuePayload: { kind: "inline" },
         pluginSubmission: payload.pluginSubmission ?? null,
+        systemNotice: null,
         origin: payload.originPluginId === undefined ? null : "plugin",
         originPluginId: payload.originPluginId ?? null,
         startedOnBehalfOf: null,

@@ -4,7 +4,7 @@ See an agent's chart, mockup, demo, report, or Markdown document in the conversa
 
 - An HTML page shown as part of the reply: no card and no title bar, on the thread's own background, as tall as its content.
 - The page in your theme. It gets bb's colours, radius, shadows, and font as CSS variables, and follows a theme or light/dark change live without reloading.
-- For a page from a file, a button that appears on hover and opens the file in bb's sidebar viewer. Cmd-click, Ctrl-click, or middle-click it to open the rendered page in a browser tab instead.
+- For a page from a file, a button that appears on hover and opens the page in the sidebar with the same theme. Cmd-click, Ctrl-click, or middle-click it to open the rendered page in a browser tab instead.
 - For a page written in the reply, a button that appears on hover and shows or hides the HTML source below the page.
 - A formatted Markdown document in a card that shows its file name, with buttons to copy the Markdown and open the file in the sidebar. A long document shows a preview and expands in place with "Show more".
 - A clear inline error when a file is missing, too large, or unsupported.

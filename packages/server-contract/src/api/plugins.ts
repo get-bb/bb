@@ -29,6 +29,7 @@ export const pluginUpdateOutcomeSchema = z.enum([
 
 export const pluginResolvedVersionSchema = z.object({
   version: z.string(),
+  label: z.string(),
   display: z.string(),
 });
 
@@ -39,7 +40,11 @@ export const pluginUpdateCheckEntrySchema = z.object({
   installed: pluginResolvedVersionSchema,
   candidate: pluginResolvedVersionSchema.optional(),
   blocked: z
-    .object({ version: z.string(), reasons: z.array(z.string()) })
+    .object({
+      version: z.string(),
+      label: z.string(),
+      reasons: z.array(z.string()),
+    })
     .optional(),
   detail: z.string().optional(),
 });
@@ -135,11 +140,18 @@ export const pluginUpdateStateSchema = z.object({
   outcome: pluginUpdateOutcomeSchema.optional(),
   detail: z.string().optional(),
   availableVersion: z.string().optional(),
+  availableLabel: z.string().optional(),
   blockedVersion: z.string().optional(),
+  blockedLabel: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),
   lastCheckAt: z.number().optional(),
   lastFailure: z
-    .object({ version: z.string(), at: z.number(), detail: z.string() })
+    .object({
+      version: z.string(),
+      label: z.string(),
+      at: z.number(),
+      detail: z.string(),
+    })
     .optional(),
 });
 
@@ -204,6 +216,7 @@ export const installedPluginSchema = z.object({
   catalogMarketplaceName: z.string().optional(),
   publisherLabel: z.string().nullable().default(null),
   sourceDisplay: z.string(),
+  sourceNotice: z.string().nullable().default(null),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
   description: z.string().nullable(),

@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import {
   CONNECT_SESSION_EXPIRES_IN_SECONDS,
   CONNECT_SESSION_UPDATE_AGE_SECONDS,
@@ -6,6 +6,7 @@ import {
   server,
   session,
   type ConnectDb,
+  first,
 } from "@bb/connect-db";
 import { SettledLookupCache } from "./session.js";
 
@@ -14,7 +15,9 @@ const DESKTOP_SESSION_REFRESH_BEFORE_EXPIRY_MS =
   (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
   1000;
 const LEGACY_DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
-const GRANT_TTL_MS = 20_000;
+const GRANT_TTL_MS = 60_000;
+export const DESKTOP_SESSION_USE_WRITE_MS = 60 * 60 * 1000;
+const GRANT_MISS_TTL_MS = 20_000;
 
 export type DesktopSessionGrant =
   | { kind: "machine"; credentialHash: string }
@@ -36,14 +39,41 @@ export interface DesktopSessionCookie {
 export interface VerifiedDesktopSession {
   userId: string;
   refreshGrant: DesktopSessionGrant | null;
+  unrecordedUse: DesktopSessionGrant | null;
 }
 
-const grantCache = new SettledLookupCache<string | null>();
+interface GrantOwner {
+  userId: string | null;
+  lastUsedAt: number | null;
+}
+
+const grantCache = new SettledLookupCache<GrantOwner>();
 
 function grantKey(grant: DesktopSessionGrant): string {
   return grant.kind === "session"
     ? `session:${grant.sessionId}`
     : `${grant.kind}:${grant.credentialHash}`;
+}
+
+export async function recordDesktopSessionUse(
+  grant: DesktopSessionGrant,
+  db: ConnectDb,
+  now: number = Date.now(),
+): Promise<void> {
+  if (grant.kind !== "machine") return;
+  await db
+    .update(machine)
+    .set({ lastSeenAt: new Date(now) })
+    .where(
+      and(
+        eq(machine.credentialHash, grant.credentialHash),
+        isNull(machine.revokedAt),
+        or(
+          isNull(machine.lastSeenAt),
+          lt(machine.lastSeenAt, new Date(now - DESKTOP_SESSION_USE_WRITE_MS)),
+        ),
+      ),
+    );
 }
 
 export function invalidateDesktopSessionGrant(
@@ -188,64 +218,90 @@ function parsePayload(decoded: string): DesktopSessionPayload | null {
     : { userId: value.userId, expiresAt: value.expiresAt, grant };
 }
 
-async function lookupGrantUserId(
+async function lookupGrantOwner(
   grant: DesktopSessionGrant,
   db: ConnectDb,
   now: number,
-): Promise<string | null> {
+): Promise<GrantOwner> {
   switch (grant.kind) {
     case "machine": {
-      const row = await db
-        .select({ userId: machine.userId })
-        .from(machine)
-        .where(
-          and(
-            eq(machine.credentialHash, grant.credentialHash),
-            isNull(machine.revokedAt),
-          ),
-        )
-        .get();
-      return row?.userId ?? null;
+      const row = await first(
+        db
+          .select({ userId: machine.userId, lastSeenAt: machine.lastSeenAt })
+          .from(machine)
+          .where(
+            and(
+              eq(machine.credentialHash, grant.credentialHash),
+              isNull(machine.revokedAt),
+            ),
+          )
+          .limit(1),
+      );
+      return {
+        userId: row?.userId ?? null,
+        lastUsedAt: row?.lastSeenAt?.getTime() ?? null,
+      };
     }
     case "server": {
-      const row = await db
-        .select({ userId: server.userId })
-        .from(server)
-        .where(
-          and(
-            eq(server.credentialHash, grant.credentialHash),
-            isNull(server.revokedAt),
-          ),
-        )
-        .get();
-      return row?.userId ?? null;
+      const row = await first(
+        db
+          .select({ userId: server.userId })
+          .from(server)
+          .where(
+            and(
+              eq(server.credentialHash, grant.credentialHash),
+              isNull(server.revokedAt),
+            ),
+          )
+          .limit(1),
+      );
+      return { userId: row?.userId ?? null, lastUsedAt: null };
     }
     case "session": {
-      const row = await db
-        .select({ userId: session.userId })
-        .from(session)
-        .where(
-          and(
-            eq(session.id, grant.sessionId),
-            gt(session.expiresAt, new Date(now)),
-          ),
-        )
-        .get();
-      return row?.userId ?? null;
+      const row = await first(
+        db
+          .select({ userId: session.userId })
+          .from(session)
+          .where(
+            and(
+              eq(session.id, grant.sessionId),
+              gt(session.expiresAt, new Date(now)),
+            ),
+          )
+          .limit(1),
+      );
+      return { userId: row?.userId ?? null, lastUsedAt: null };
     }
   }
 }
 
-function resolveGrantUserId(
+function resolveGrantOwner(
   grant: DesktopSessionGrant,
   db: ConnectDb,
   now: number,
-): Promise<string | null> {
+): Promise<GrantOwner> {
   return grantCache.read(grantKey(grant), {
     now,
-    expires: () => now + GRANT_TTL_MS,
-    load: () => lookupGrantUserId(grant, db, now),
+    expires: (owner) =>
+      now + (owner.userId === null ? GRANT_MISS_TTL_MS : GRANT_TTL_MS),
+    load: () => lookupGrantOwner(grant, db, now),
   });
+}
+
+function claimUnrecordedUse(
+  grant: DesktopSessionGrant,
+  owner: GrantOwner,
+  now: number,
+): DesktopSessionGrant | null {
+  if (grant.kind !== "machine") return null;
+  if (
+    owner.lastUsedAt !== null &&
+    now - owner.lastUsedAt < DESKTOP_SESSION_USE_WRITE_MS
+  ) {
+    return null;
+  }
+  owner.lastUsedAt = now;
+  return grant;
 }
 
 export async function verifyDesktopSessionCookie(
@@ -273,17 +329,18 @@ export async function verifyDesktopSessionCookie(
 
   if (parsed.grant === null) {
     return parsed.expiresAt <= now + LEGACY_DESKTOP_SESSION_TTL_MS
-      ? { userId: parsed.userId, refreshGrant: null }
+      ? { userId: parsed.userId, refreshGrant: null, unrecordedUse: null }
       : null;
   }
 
-  const grantUserId = await resolveGrantUserId(parsed.grant, db, now);
-  if (grantUserId !== parsed.userId) return null;
+  const owner = await resolveGrantOwner(parsed.grant, db, now);
+  if (owner.userId !== parsed.userId) return null;
   return {
     userId: parsed.userId,
     refreshGrant:
       parsed.expiresAt <= now + DESKTOP_SESSION_REFRESH_BEFORE_EXPIRY_MS
         ? parsed.grant
         : null,
+    unrecordedUse: claimUnrecordedUse(parsed.grant, owner, now),
   };
 }

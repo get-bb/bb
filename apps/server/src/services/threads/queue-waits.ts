@@ -1,4 +1,5 @@
 import {
+  moveQueuedThreadMessageToFrontInTransaction,
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessageInTransaction,
   requeueClaimedQueuedThreadMessages,
@@ -10,6 +11,7 @@ import {
 } from "@bb/db";
 import type {
   PromptInput,
+  QueuedMessageDeliveryMode,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
@@ -75,11 +77,13 @@ export interface QueuedDispatchMessage {
   payload: QueuedMessagePayload;
   /** Non-null only when core is queueing one of its own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
+  deliveryMode: QueuedMessageDeliveryMode;
 }
 
 export interface RecordQueuedMessageWaitArgs {
   thread: Thread;
   message: QueuedDispatchMessage;
+  placement: "back" | "front";
   waitingOn: QueuedMessageWaitingOn;
   /**
    * The row's scheduled instant. Passed every time the wait is written rather
@@ -121,7 +125,7 @@ export function recordQueuedMessageWait(
     row = deps.db.transaction(
       (tx) => {
         assertThreadHostAcceptsWork(tx, args.thread);
-        return createQueuedThreadMessageInTransaction(tx, {
+        const created = createQueuedThreadMessageInTransaction(tx, {
           threadId: args.thread.id,
           content: args.message.input,
           senderThreadId: args.message.senderThreadId,
@@ -136,7 +140,11 @@ export function recordQueuedMessageWait(
           sendAt: args.sendAt,
           payload: args.message.payload,
           systemNotice: args.message.systemNotice,
+          deliveryMode: args.message.deliveryMode,
         });
+        return args.placement === "front"
+          ? moveQueuedThreadMessageToFrontInTransaction(tx, created)
+          : created;
       },
       { behavior: "immediate" },
     );

@@ -27,6 +27,7 @@ interface SpawnLoggedProcessArgs {
 interface ProcessLaunch {
   args: string[];
   command: string;
+  env: NodeJS.ProcessEnv;
 }
 
 function isExecutable(path: string): boolean {
@@ -41,21 +42,23 @@ function isExecutable(path: string): boolean {
 function resolveLoggedProcessLaunch(
   args: SpawnLoggedProcessArgs,
 ): ProcessLaunch {
+  const direct = { command: args.command, args: args.args, env: args.env };
+  if (
+    !args.appScheduling ||
+    process.platform !== "darwin" ||
+    !isExecutable(MACOS_TASKPOLICY_PATH)
+  ) {
+    return direct;
+  }
   const launch = hostToolchain.command(args.command, args.args, {
     cwd: process.cwd(),
     env: args.env,
   });
-  if (
-    !args.appScheduling ||
-    process.platform !== "darwin" ||
-    !isExecutable(MACOS_TASKPOLICY_PATH) ||
-    !isExecutable(launch.command)
-  ) {
-    return { command: launch.command, args: launch.args };
-  }
+  if (!isExecutable(launch.command)) return direct;
   return {
     command: MACOS_TASKPOLICY_PATH,
     args: ["-a", launch.command, ...launch.args],
+    env: launch.env,
   };
 }
 
@@ -73,7 +76,7 @@ export function spawnLoggedProcess(args: SpawnLoggedProcessArgs): ChildProcess {
   try {
     return spawn(launch.command, launch.args, {
       cwd: process.cwd(),
-      env: args.env,
+      env: launch.env,
       stdio: args.ipc === true ? ["ignore", fd, fd, "ipc"] : ["ignore", fd, fd],
     });
   } finally {

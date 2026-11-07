@@ -2,7 +2,9 @@ import {
   THREAD_PROVIDER_COMMANDS_STATE_KIND,
   THREAD_SESSION_OPTIONS_STATE_KIND,
   THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
+  jsonValueSchema,
   pendingSessionOptionSelections,
+  type JsonValue,
   threadProviderCommandsStateSchema,
   threadSessionOptionSelectionsStateSchema,
   threadSessionOptionsStateSchema,
@@ -30,6 +32,20 @@ function latestStatePayload(
     }
   }
   return payload;
+}
+
+export function extractThreadExtensionStates(
+  events: readonly ThreadEventWithMeta[],
+  kinds: readonly string[],
+): Record<string, JsonValue> {
+  const states: Record<string, JsonValue> = {};
+  for (const kind of kinds) {
+    const payload = jsonValueSchema.safeParse(latestStatePayload(events, kind));
+    if (payload.success && payload.data !== null) {
+      states[kind] = payload.data;
+    }
+  }
+  return states;
 }
 
 export function extractThreadProviderCommands(

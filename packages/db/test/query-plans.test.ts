@@ -31,6 +31,7 @@ import {
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
   insertEvents,
+  isStoredTurnProviderCompactionRunning,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
@@ -161,6 +162,7 @@ function setup(): TestDb {
     source: { type: "local_path", hostId: host.id, path: "/tmp/query-plan" },
   });
   const thread = createThread(db, noopNotifier, {
+    status: "idle",
     projectId: project.id,
     providerId: "codex",
   });
@@ -972,6 +974,96 @@ describe("slow query index plans", () => {
       "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=?)",
     );
     expectNoThreadOnlyEventSeek(details);
+
+    db.$client.close();
+  });
+
+  it("finds a turn's running provider compaction through the turn index", () => {
+    const { db, thread } = setup();
+    const compactionEvent = (args: {
+      sequence: number;
+      turnId: string;
+      type: "item/started" | "item/completed";
+      itemId: string;
+      parentToolCallId?: string;
+    }) => ({
+      threadId: thread.id,
+      sequence: args.sequence,
+      type: args.type,
+      scope: turnScope(args.turnId),
+      itemId: args.itemId,
+      itemKind: "contextCompaction" as const,
+      parentToolCallId: args.parentToolCallId ?? null,
+      data: JSON.stringify({
+        providerThreadId: "provider-plan",
+        item: { type: "contextCompaction", id: args.itemId },
+      }),
+    });
+    insertEvents(db, noopNotifier, [
+      compactionEvent({
+        sequence: 1,
+        turnId: "turn-running",
+        type: "item/started",
+        itemId: "compaction-running",
+      }),
+      compactionEvent({
+        sequence: 2,
+        turnId: "turn-completed",
+        type: "item/started",
+        itemId: "compaction-completed",
+      }),
+      compactionEvent({
+        sequence: 3,
+        turnId: "turn-completed",
+        type: "item/completed",
+        itemId: "compaction-completed",
+      }),
+      compactionEvent({
+        sequence: 4,
+        turnId: "turn-nested",
+        type: "item/started",
+        itemId: "compaction-nested",
+        parentToolCallId: "call-child-agent",
+      }),
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-accepted"),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider-plan" }),
+      },
+      compactionEvent({
+        sequence: 6,
+        turnId: "turn-accepted",
+        type: "item/started",
+        itemId: "compaction-accepted",
+      }),
+    ]);
+
+    const isRunning = (turnId: string) =>
+      isStoredTurnProviderCompactionRunning(db, {
+        threadId: thread.id,
+        turnId,
+      });
+    const captured = captureStatements(db, () => {
+      expect(isRunning("turn-running")).toBe(true);
+    });
+    expect(isRunning("turn-completed")).toBe(false);
+    expect(isRunning("turn-nested")).toBe(false);
+    expect(isRunning("turn-accepted")).toBe(false);
+    expect(isRunning("turn-without-compaction")).toBe(false);
+
+    expect(captured).toHaveLength(2);
+    const [compactionQuery] = captured;
+    expect(queryPlanDetails({ db, ...compactionQuery! })).toContain(
+      "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+    );
+    for (const query of captured) {
+      expectNoThreadOnlyEventSeek(queryPlanDetails({ db, ...query }));
+    }
 
     db.$client.close();
   });
@@ -1872,19 +1964,17 @@ describe("slow query index plans", () => {
     }
   });
 
-  it("pins multi-thread latest state lookups to one candidate seek per requested thread", () => {
+  it("rescans only state rows newer than the cached scan watermark", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
     });
-    insertEvents(
-      db,
-      noopNotifier,
+    const stateEvents = (sequenceStart: number) =>
       [thread, otherThread].flatMap((stateThread, threadIndex) =>
         Array.from({ length: 64 }, (_, index) => ({
           data: JSON.stringify(
-            index === 63
+            index === 0 && sequenceStart === 1
               ? { goal: `goal-${threadIndex}` }
               : { kind: "other-plugin/state", payload: { index } },
           ),
@@ -1892,40 +1982,56 @@ describe("slow query index plans", () => {
           itemKind: null,
           parentToolCallId: null,
           scope: threadScope(),
-          sequence: index + 1,
+          sequence: sequenceStart + index,
           threadId: stateThread.id,
           type:
-            index === 63
+            index === 0 && sequenceStart === 1
               ? ("thread/goal/updated" as const)
               : ("thread/extensionState/updated" as const),
         })),
-      ),
-    );
+      );
+    insertEvents(db, noopNotifier, stateEvents(1));
+    const lookup = () =>
+      captureStatements(db, () => {
+        expect(
+          listLatestThreadStateEventRowsByThreadIds(db, {
+            threadIds: [thread.id, otherThread.id],
+            kind: "provider-codex/goal",
+          }).map((row) => row.sequence),
+        ).toEqual([1, 1]);
+      }).find((entry) =>
+        entry.sql.includes("events_thread_state_thread_sequence_idx"),
+      );
 
-    const captured = captureStatements(db, () => {
-      expect(
-        listLatestThreadStateEventRowsByThreadIds(db, {
-          threadIds: [thread.id, otherThread.id],
-          kind: "provider-codex/goal",
-        }),
-      ).toHaveLength(2);
-    });
-    const statement = captured.find((entry) =>
-      entry.sql.includes("events_thread_state_thread_sequence_idx"),
-    );
-    if (!statement) {
-      throw new Error("Expected the latest-thread-state lookup SQL");
+    const cold = lookup();
+    insertEvents(db, noopNotifier, stateEvents(65));
+    const warm = lookup();
+    if (!cold || !warm) {
+      throw new Error("Expected the latest-thread-state scan SQL");
     }
 
-    expect(statement.sql).toContain("VALUES");
+    expect(cold.params).toEqual([
+      "provider-codex/goal",
+      thread.id,
+      -1,
+      otherThread.id,
+      -1,
+    ]);
+    expect(warm.params).toEqual([
+      "provider-codex/goal",
+      thread.id,
+      64,
+      otherThread.id,
+      64,
+    ]);
     const details = queryPlanDetails({
       db,
-      params: statement.params,
-      sql: statement.sql,
+      params: warm.params,
+      sql: warm.sql,
     });
     expect(
       details.match(
-        /USING (?:COVERING )?INDEX events_thread_state_thread_sequence_idx/gu,
+        /USING (?:COVERING )?INDEX events_thread_state_thread_sequence_idx \(thread_id=\? AND sequence>\?\)/gu,
       ),
     ).toHaveLength(1);
     expect(details).not.toMatch(

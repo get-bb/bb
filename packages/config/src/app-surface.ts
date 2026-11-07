@@ -38,3 +38,6 @@ export function parseRequestAppSurface(
 export function formatAppSurfaceValues(): string {
   return APP_SURFACE_VALUES.join(", ");
 }
+
+export const CLI_REQUEST_HEADER_NAME = "x-bb-cli";
+export const CALLER_THREAD_HEADER_NAME = "x-bb-caller-thread";

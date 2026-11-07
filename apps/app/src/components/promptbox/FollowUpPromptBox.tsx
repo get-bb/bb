@@ -211,7 +211,7 @@ function FollowUpPromptBoxStackOnly({
     isRunning: false,
     isSubmitting: false,
   });
-  if (!stack && !composerScope) {
+  if (!stack) {
     return null;
   }
   return (
@@ -219,11 +219,7 @@ function FollowUpPromptBoxStackOnly({
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
         <div data-promptbox-shell="" className="space-y-2">
           <div className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}>
-            {composerScope ? (
-              <ComposerBannersSlot>{stack}</ComposerBannersSlot>
-            ) : (
-              stack
-            )}
+            {stack}
           </div>
         </div>
       </PluginComposerHostProvider>
@@ -663,6 +659,7 @@ function FollowUpPromptBoxWithComposer({
       permissionPickerDisabled,
     ],
   );
+  const positionKeeper = useBottomAnchoredScroll()?.positionKeeper ?? null;
   const stackRef = useRef<HTMLDivElement>(null);
   const lastStackHeightRef = useRef(0);
   const [stackHeight, setStackHeight] = useState(0);
@@ -691,10 +688,11 @@ function FollowUpPromptBoxWithComposer({
       const measured = borderBoxSize?.blockSize ?? entry.contentRect.height;
       if (lastStackHeightRef.current === measured) return;
       flushSync(() => applyStackHeight(measured));
+      positionKeeper?.remeasure();
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [applyStackHeight]);
+  }, [applyStackHeight, positionKeeper]);
   const elasticTextareaMinHeight =
     stack === null
       ? FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT

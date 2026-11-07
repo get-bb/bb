@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import { MAX_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import { Button } from "@/components/ui/button";
@@ -337,6 +338,11 @@ export function SignInView({
   );
 }
 
+export const DECISION_ROW_CLASS = "mt-3.5 flex items-start gap-2";
+
+export const DECISION_PRIMARY_CLASS =
+  "h-auto min-h-9 min-w-0 flex-1 justify-center whitespace-normal text-center [overflow-wrap:anywhere]";
+
 export function ClaimField({
   serverUrlTemplate,
   initial = "",
@@ -345,6 +351,7 @@ export function ClaimField({
   buildSubmitLabel,
   onClaim,
   onCancel,
+  secondaryAction,
   layout,
 }: {
   serverUrlTemplate: string;
@@ -354,6 +361,7 @@ export function ClaimField({
   buildSubmitLabel: (label: string) => string;
   onClaim: (label: string) => Promise<string | null>;
   onCancel?: () => void;
+  secondaryAction?: React.ReactNode;
   layout: "card" | "dialog";
 }) {
   const [value, setValue] = useState(initial);
@@ -400,7 +408,11 @@ export function ClaimField({
       disabled={!canSubmit}
       onClick={() => void submit()}
       className={
-        layout === "card" ? "w-full justify-center py-[11px]" : undefined
+        layout === "dialog"
+          ? undefined
+          : secondaryAction === undefined
+            ? "w-full justify-center py-[11px]"
+            : DECISION_PRIMARY_CLASS
       }
     >
       {busy ? "Claiming…" : buildSubmitLabel(label)}
@@ -433,7 +445,14 @@ export function ClaimField({
       </p>
       {error && <ErrorBox>{error}</ErrorBox>}
       {layout === "card" ? (
-        <div className="mt-3.5">{submitButton}</div>
+        secondaryAction === undefined ? (
+          <div className="mt-3.5">{submitButton}</div>
+        ) : (
+          <div className={DECISION_ROW_CLASS}>
+            {submitButton}
+            {secondaryAction}
+          </div>
+        )
       ) : (
         <div className="mt-3.5 flex justify-end gap-2">
           {onCancel && (
@@ -443,6 +462,86 @@ export function ClaimField({
           )}
           {submitButton}
         </div>
+      )}
+    </div>
+  );
+}
+
+export function Overlay({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-[430px] max-w-full rounded-xl border border-border bg-card p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function RowMenu({
+  items,
+}: {
+  items: { label: string; danger?: boolean; onSelect: () => void }[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative justify-self-center">
+      <button
+        className={cn(
+          "flex h-[26px] w-[26px] items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground",
+          open && "bg-state-hover text-foreground",
+        )}
+        aria-label="More"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
+      </button>
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
+          <div className="absolute right-0 top-8 z-20 min-w-[210px] rounded-[10px] border border-border bg-popover p-1 text-left shadow-lg">
+            {items.map((item, i) => (
+              <button
+                key={i}
+                className={cn(
+                  "block w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-state-hover",
+                  item.danger &&
+                    "text-destructive-text hover:bg-surface-destructive",
+                )}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOpen(false);
+                  item.onSelect();
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

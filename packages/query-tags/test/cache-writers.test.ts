@@ -1,13 +1,15 @@
+// @vitest-environment jsdom
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  CORE_TAG_SCOPE,
   optimisticQueryUpdate,
-  runTaggedMutation,
   runTaggedRead,
   taggedQueryOptions,
   type TaggedMutationOutcome,
 } from "../src/index.js";
+import { mutateOnce } from "./mutate-once.js";
+
+const TEST_SCOPE = "test";
 
 type Row = { id: string; pinnedAt: number | null; status: string };
 const queryKey = ["row"];
@@ -24,7 +26,7 @@ async function setup(row: Row) {
   const observer = new QueryObserver<Row>(client, {
     queryKey,
     ...taggedQueryOptions(client, queryKey, {
-      scope: CORE_TAG_SCOPE,
+      scope: TEST_SCOPE,
       tagsOf: () => ["row"],
     }),
     queryFn: () =>
@@ -48,13 +50,15 @@ async function setup(row: Row) {
 function pin(client: QueryClient, pinnedAt: number) {
   let fail!: (error: Error) => void;
   let accept!: () => void;
-  const write = runTaggedMutation(
+  const outcome = new Promise<TaggedMutationOutcome<undefined>>(
+    (resolve, reject) => {
+      fail = reject;
+      accept = () => resolve({ result: undefined, invalidated: [] });
+    },
+  );
+  const write = mutateOnce(
     async () => {},
-    () =>
-      new Promise<TaggedMutationOutcome<undefined>>((resolve, reject) => {
-        fail = reject;
-        accept = () => resolve({ result: undefined, invalidated: [] });
-      }),
+    () => outcome,
     {
       client,
       optimistic: [

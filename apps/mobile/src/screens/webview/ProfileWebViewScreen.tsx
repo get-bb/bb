@@ -28,13 +28,16 @@ import { revealApp, useProfiles } from "@/app-shell";
 import { nativeSessionCache } from "@/lib/native";
 import {
   allowsSubframeLoad,
+  bridgeServersForProfiles,
   buildShellUrl,
+  canSwitchToProfile,
   isExternallyOpenable,
   isShellNavigation,
   resolveOpenWindowAction,
   resolveShellLoadPath,
   resolveShellScreenState,
   revealsShellFailure,
+  SHELL_ORIGIN_WHITELIST,
   shellPathFromUrl,
   shouldReloadForSession,
   subscribeToShellCommands,
@@ -42,7 +45,8 @@ import {
 } from "@/lib/shell";
 import { firstParam, settingsSectionHref } from "@/screens/shell/hrefs";
 import { useTheme } from "@/theme";
-import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
+import { Button, EmptyStatePanel, Spinner, Text, toast } from "@/ui";
+import { describeError } from "@/lib/describe-error";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
 import {
@@ -149,7 +153,29 @@ export function ProfileWebViewScreen() {
     onOpenNative: (screen) => {
       if (screen === "device-settings") openDeviceSettings();
     },
+    onSwitchServer: (id) => {
+      if (!canSwitchToProfile(profiles, activeProfile?.id ?? null, id)) return;
+      router.setParams({ profileId: undefined, path: undefined });
+      setActiveProfile(id).catch((error: unknown) => {
+        toast.error("Could not switch server", {
+          description: describeError(error),
+        });
+      });
+    },
   });
+
+  const servers = useMemo(
+    () => bridgeServersForProfiles(profiles, activeProfile?.id ?? null),
+    [activeProfile?.id, profiles],
+  );
+  const hasSentServers = useRef(false);
+  useEffect(() => {
+    if (!hasSentServers.current) {
+      hasSentServers.current = true;
+      return;
+    }
+    bridge.send({ type: "servers", servers });
+  }, [bridge, servers]);
 
   const connectProfileId = profile?.mode === "connect" ? profile.id : null;
   useEffect(
@@ -330,6 +356,7 @@ export function ProfileWebViewScreen() {
         ref={webViewRef}
         initialUrl={sourceUrl}
         style={{ backgroundColor: tokens.background }}
+        originWhitelist={SHELL_ORIGIN_WHITELIST}
         sharedCookiesEnabled
         javaScriptEnabled
         domStorageEnabled
@@ -345,6 +372,7 @@ export function ProfileWebViewScreen() {
         webviewDebuggingEnabled={__DEV__}
         injectedJavaScriptBeforeContentLoaded={buildBridgeInjectionScript(
           handshake,
+          servers,
         )}
         onMessage={(event) => {
           canGoBack.current = event.nativeEvent.canGoBack;

@@ -66,6 +66,7 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
               children: threads.map((thread) => ({
                 name: thread.id,
                 sizeBytes: 1000,
+                empty: false,
               })),
             },
           ],
@@ -222,6 +223,7 @@ it.each([
                 children: threads.map((thread) => ({
                   name: thread.id,
                   sizeBytes: 10,
+                  empty: false,
                 })),
               },
             ],
@@ -566,11 +568,53 @@ it.each([false, true])(
   },
 );
 
-it("builds every machine's report from one thread listing", async () => {
+it("reads only the threads a report needs: non-empty storage entries by id and threads in retired worktrees", async () => {
+  type Environment = Awaited<
+    ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
+  >[number];
   const root = await directory();
+  const worktrees = await directory();
   await fs.mkdir(path.join(root, "thr_kept"));
+  await fs.writeFile(path.join(root, "thr_kept", "notes.md"), "kept");
+  for (const name of ["thr_cleared", "thr_ghost"])
+    await fs.mkdir(path.join(root, name));
+  for (const name of ["busy", "free"])
+    await fs.mkdir(path.join(worktrees, name));
+  const retired = (id: string, name: string): Environment => ({
+    id,
+    name: null,
+    projectId: "proj_work",
+    hostId: "host_test",
+    path: path.join(worktrees, name),
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: name,
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: "main",
+    status: "ready",
+    environmentProviderId: "bb--environment-git-worktree",
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: { phase: "retiring", retireAt: 1, teardown: null },
+    hostLifecycle: "active",
+    managed: true,
+    workspaceProvisionType: "managed-worktree",
+    createdAt: 0,
+    updatedAt: 0,
+  });
+  const threads = [
+    makeThreadResponse({ id: "thr_kept" }),
+    makeThreadResponse({ id: "thr_cleared", archivedAt: 1 }),
+    makeThreadResponse({ id: "thr_busy", environmentId: "env_busy" }),
+    makeThreadResponse({
+      id: "thr_done",
+      environmentId: "env_free",
+      archivedAt: 1,
+    }),
+  ];
+  const requestedThreadIds = new Set<string>();
   const worker = experimental_createHostEntryHarness(hostEntry);
-  const machineIds = ["host_a", "host_b", "host_c"];
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
@@ -586,21 +630,44 @@ it("builds every machine's report from one thread listing", async () => {
           "capacity",
           hostStorageContract.capacity.input.parse(call.input),
         );
+      if (call.method === "listGitWorktrees")
+        return { repositories: [], failures: [] };
       throw new Error("Unexpected host method");
     },
     sdk: {
       projects: { list: async () => [] },
       hosts: {
-        list: async () =>
-          machineIds.map((id) => makeHostResponse({ id, status: "connected" })),
-        get: async ({ hostId }) => ({
-          ...makeHostResponse({ id: hostId, status: "connected" }),
+        list: async () => [
+          makeHostResponse({ id: "host_test", status: "connected" }),
+        ],
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
           threadStorageRootPath: root,
         }),
       },
-      environments: { list: async () => [] },
+      environments: {
+        list: async () => [
+          retired("env_busy", "busy"),
+          retired("env_free", "free"),
+        ],
+      },
       threads: {
-        list: async () => [makeThreadResponse({ id: "thr_kept" })],
+        list: async (input) => {
+          if (
+            input?.threadIds === undefined &&
+            input?.environmentId === undefined
+          )
+            throw new Error("Unfiltered thread listing");
+          for (const threadId of input.threadIds ?? [])
+            requestedThreadIds.add(threadId);
+          return threads.filter(
+            (thread) =>
+              (input.threadIds === undefined ||
+                input.threadIds.includes(thread.id)) &&
+              (input.environmentId === undefined ||
+                thread.environmentId === input.environmentId),
+          );
+        },
       },
     },
   });
@@ -608,19 +675,105 @@ it("builds every machine's report from one thread listing", async () => {
     plugin(host.bb);
     await host.harness.callRpc("scanAll", null);
     await expect
-      .poll(
-        async () =>
-          hostStorageListResponseSchema
-            .parse(await host.harness.callRpc("hosts", null))
-            .hosts.filter((machine) => machine.report !== null).length,
-      )
-      .toBe(machineIds.length);
-    const listed = host.harness.sdk.callsTo("threads.list").length;
-    await host.harness.callRpc("hosts", null);
-    expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(listed + 1);
+      .poll(async () => {
+        const report = hostStorageListResponseSchema.parse(
+          await host.harness.callRpc("hosts", null),
+        ).hosts[0]?.report;
+        return (
+          report && {
+            threadsWithStorageCount: report.threadsWithStorageCount,
+            archivedThreadCount: report.archivedThreadCount,
+            orphanCount: report.orphanCount,
+            leftoverWorktrees: report.leftoverWorktrees.map(
+              (worktree) => worktree.environmentId,
+            ),
+          }
+        );
+      })
+      .toEqual({
+        threadsWithStorageCount: 1,
+        archivedThreadCount: 0,
+        orphanCount: 0,
+        leftoverWorktrees: ["env_free"],
+      });
+    expect([...requestedThreadIds]).toEqual(["thr_kept"]);
   } finally {
     await host.harness.dispose();
     await worker.experimental_dispose();
+  }
+});
+
+it("rescans only the machine that reconnected when development cleanup is on", async () => {
+  const fakeHome = await directory();
+  const machineIds = ["host_a", "host_b", "host_c"];
+  const scannedHostIds: string[] = [];
+  const subscriptions = new Set<
+    Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+  >();
+  const options = {
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call: {
+      hostId: string;
+      method: string;
+    }) => {
+      if (call.method === "homeDirectory") return fakeHome;
+      if (call.method === "capacity") {
+        scannedHostIds.push(call.hostId);
+        return { totalBytes: 10000, freeBytes: 5000 };
+      }
+      if (call.method === "measure") return [];
+      if (call.method === "inspectDeveloperEntries") return [];
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      subscribe: (
+        subscription: Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
+      ) => {
+        subscriptions.add(subscription);
+        return () => subscriptions.delete(subscription);
+      },
+      projects: { list: async () => [] },
+      environments: { list: async () => [] },
+      threads: { list: async () => [] },
+      hosts: {
+        list: async () =>
+          machineIds.map((id) => makeHostResponse({ id, status: "connected" })),
+        get: async ({ hostId }: { hostId: string }) => ({
+          ...makeHostResponse({ id: hostId, status: "connected" }),
+          threadStorageRootPath: path.join(fakeHome, "storage"),
+        }),
+      },
+    },
+  } satisfies Parameters<typeof createFakePluginHost>[0];
+  let host = createFakePluginHost(options);
+  try {
+    plugin(host.bb);
+    const saved = await host.harness.behavior.runCli([
+      "retention",
+      "--delete-dev-data-on-checkout-removal",
+      "true",
+      "--save",
+      "--yes",
+    ]);
+    expect(saved.exitCode).toBe(0);
+    host = await host.harness.lifecycle.reload(plugin);
+    host.harness.behavior.runService("development-storage-recovery");
+    await expect.poll(() => [...scannedHostIds].sort()).toEqual(machineIds);
+    scannedHostIds.length = 0;
+
+    for (const subscription of subscriptions)
+      if (subscription.event === "host:changed")
+        subscription.callback({
+          type: "changed",
+          entity: "host",
+          id: "host_b",
+          changes: ["host-connected"],
+        });
+
+    await expect.poll(() => scannedHostIds).toEqual(["host_b"]);
+  } finally {
+    await host.harness.dispose();
   }
 });
 
@@ -972,6 +1125,7 @@ it("keeps cleanup available during a scan and leaves cleared storage out of its 
               children: threads.map((thread) => ({
                 name: thread.id,
                 sizeBytes: 1000,
+                empty: false,
               })),
             },
           ],
@@ -1326,19 +1480,50 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
   const worker = experimental_createHostEntryHarness(hostEntry);
   let removalGate: Promise<void> | null = null;
   let releaseRemoval = () => {};
+  let removalCompleted = (_paths: string[]) => {};
+  let scanMeasured = () => {};
+  const hostListedPaths: string[] = [];
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
       if (call.method === "homeDirectory") return "/missing-home";
-      if (call.method === "removeGitWorktrees") await removalGate;
-      for (const method of [
-        "measure",
-        "capacity",
-        "listGitWorktrees",
-        "inspectGitWorktree",
-        "removeGitWorktrees",
-      ] as const)
+      if (call.method === "measure") {
+        const input = hostStorageContract.measure.input.parse(call.input);
+        const result = await worker.experimental_call("measure", input);
+        if (
+          input.targets.some(
+            (target) => target.path === "/missing-home/.bb-dev",
+          )
+        )
+          scanMeasured();
+        return result;
+      }
+      if (call.method === "removeGitWorktrees") {
+        await removalGate;
+        const input = hostStorageContract.removeGitWorktrees.input.parse(
+          call.input,
+        );
+        const result = await worker.experimental_call(
+          "removeGitWorktrees",
+          input,
+        );
+        removalCompleted(input.paths);
+        return result;
+      }
+      if (call.method === "listGitWorktrees") {
+        const result = await worker.experimental_call(
+          "listGitWorktrees",
+          hostStorageContract.listGitWorktrees.input.parse(call.input),
+        );
+        hostListedPaths.push(
+          ...result.repositories.flatMap((repository) =>
+            repository.worktrees.map((entry) => entry.path),
+          ),
+        );
+        return result;
+      }
+      for (const method of ["capacity", "inspectGitWorktree"] as const)
         if (call.method === method)
           return worker.experimental_call(
             method,
@@ -1441,6 +1626,9 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
       ]),
     );
     expect(scanned.externalWorktrees).toHaveLength(4);
+    expect(hostListedPaths.sort()).toEqual(
+      [clean, detached, dirty, locked].sort(),
+    );
     expect(
       scanned.externalWorktrees.find((entry) => entry.path === clean)!
         .sizeBytes,
@@ -1522,7 +1710,18 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
         await host.harness.callRpc("host", { hostId: "host_test" }),
       ).maintenance,
     ).toEqual({ state: "queued", kind: "externalWorktrees" });
+    const bulkRemoval = new Promise<void>((resolve) => {
+      removalCompleted = (paths) => {
+        if (
+          paths.length === 2 &&
+          paths.includes(detached) &&
+          paths.includes(locked)
+        )
+          resolve();
+      };
+    });
     releaseRemoval();
+    await bulkRemoval;
     await expect
       .poll(removals)
       .toEqual([
@@ -1549,7 +1748,11 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     expect((await report())!.externalWorktrees).toEqual([]);
     const queuedClean = worktree("queued-clean", "-b", "queued-clean");
     const queuedDirty = worktree("queued-dirty", "-b", "queued-dirty");
+    const rescanned = new Promise<void>((resolve) => {
+      scanMeasured = resolve;
+    });
     await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await rescanned;
     await expect
       .poll(async () => (await report())?.externalWorktrees.length)
       .toBe(2);
@@ -1584,7 +1787,13 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
       path.join(queuedDirty, "new-work.txt"),
       "keep this work created while queued",
     );
+    const queuedDirtyRemoval = new Promise<void>((resolve) => {
+      removalCompleted = (paths) => {
+        if (paths.length === 1 && paths[0] === queuedDirty) resolve();
+      };
+    });
     releaseRemoval();
+    await queuedDirtyRemoval;
     await expect
       .poll(async () =>
         (await removals()).filter((entry) =>
@@ -2077,6 +2286,11 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "measure")
+        return worker.experimental_call(
+          "measure",
+          hostStorageContract.measure.input.parse(call.input),
+        );
       if (call.method !== "discard") throw new Error("Unexpected host method");
       return worker.experimental_call(
         "discard",
@@ -2153,6 +2367,18 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
       retryClock.mockRestore();
     }
     expect(await fs.readdir(path.join(root, "thr_wait"))).toEqual([]);
+    expect(
+      host.harness.inspection.logEntries.filter((entry) =>
+        entry.message.startsWith("Cleared archived storage"),
+      ),
+    ).toEqual([
+      {
+        level: "info",
+        message: expect.stringMatching(
+          /^Cleared archived storage for thread thr_wait \(archived_at 1970-01-01T00:00:00\.001Z\): removed [1-9]\d* bytes$/,
+        ),
+      },
+    ]);
     for (const id of ids.filter((id) => id !== "thr_wait"))
       expect(await fs.readdir(path.join(root, id))).toEqual(["artifact.txt"]);
     const recent = threads.get("thr_recent")!;
@@ -2206,6 +2432,11 @@ it("waits for storage inventory for detached archives and persists backoff for f
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "measure")
+        return {
+          targets: [{ outcome: "missing", path: "/storage/thr_detached" }],
+          largeFiles: [],
+        };
       if (call.method === "discard") return discard();
       throw new Error("Unexpected host method");
     },
@@ -2466,6 +2697,9 @@ it("never clears thread storage that holds a workspace an environment still uses
       `contains the workspace ${path.join(root, "thr_owner", "repair")}`,
     );
 
+    await expect
+      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+      .toBe(0);
     await host.harness.callRpc("scanAll", null);
     await expect
       .poll(
@@ -2478,11 +2712,13 @@ it("never clears thread storage that holds a workspace an environment still uses
     const report = hostStorageResponseSchema.parse(
       await host.harness.callRpc("host", { hostId: "host_test" }),
     ).report!;
-    expect(report.archivedFiles.threadCount).toBe(1);
+    expect(report.archivedFiles.threadCount).toBe(0);
     expect(report.orphanCount).toBe(1);
     expect(report.archivedLargeFiles.threadCount).toBe(0);
 
-    await host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" });
+    await expect(
+      host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" }),
+    ).resolves.toMatchObject({ clearedThreads: 0 });
     await host.harness.callRpc("clearLargeFiles", { hostId: "host_test" });
     await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
     expect(await ownerFiles()).toEqual(expectedOwnerFiles);
@@ -2498,6 +2734,54 @@ it("never clears thread storage that holds a workspace an environment still uses
       .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
       .toBe(0);
     await worker.experimental_dispose();
+  }
+});
+
+it("refreshes the storage page only for host changes it shows", async () => {
+  const subscriptions = new Set<
+    Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+  >();
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    sdk: {
+      subscribe: (subscription) => {
+        subscriptions.add(subscription);
+        return () => subscriptions.delete(subscription);
+      },
+    },
+  });
+  try {
+    plugin(host.bb);
+    host.harness.behavior.runService("development-storage-recovery");
+    const emit = (
+      changes: Parameters<
+        Extract<
+          Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
+          { event: "host:changed" }
+        >["callback"]
+      >[0]["changes"],
+    ) => {
+      for (const subscription of subscriptions)
+        if (subscription.event === "host:changed")
+          subscription.callback({
+            type: "changed",
+            entity: "host",
+            id: "host_test",
+            changes,
+          });
+    };
+    const refreshes = () =>
+      host.harness.inspection.realtimeSignals.filter(
+        (signal) => signal.channel === "changed",
+      ).length;
+    emit(["provider-model-catalog-changed", "provider-commands-changed"]);
+    expect(refreshes()).toBe(0);
+    emit(["host-connected"]);
+    expect(refreshes()).toBe(1);
+    emit(["host-disconnected"]);
+    expect(refreshes()).toBe(2);
+  } finally {
+    await host.harness.lifecycle.dispose();
   }
 });
 
@@ -2712,5 +2996,129 @@ it("automatically removes missing-checkout data only when enabled and online, re
   } finally {
     await host.harness.lifecycle.dispose();
     await worker.experimental_dispose();
+  }
+});
+
+it.each([
+  [["C:/Work/Repo"], "c:\\work\\repo\\"],
+  [["//SERVER/SHARE/Repo"], "\\\\server\\share\\repo"],
+  [["relative/repo", "C:/Work/Repo"], "c:\\work\\repo"],
+])(
+  "protects a checkout acquired after scanning: %s",
+  async (ownedPaths, scannedPath) => {
+    const remove = vi.fn(async () => {
+      throw new Error("Must not remove a live checkout");
+    });
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      experimental_hostEntry: true,
+      experimental_callHostRpc: remove,
+      sdk: {
+        hosts: {
+          get: async () =>
+            makeHostResponse({
+              id: "host_test",
+              type: "persistent",
+              status: "connected",
+            }),
+        },
+        environments: { list: async () => [] },
+        projects: {
+          list: async () => [
+            {
+              sources: ownedPaths.map((path) => ({
+                hostId: "host_test",
+                path,
+              })),
+            },
+          ],
+        },
+      },
+    });
+    plugin(host.bb);
+    try {
+      host.bb.storage
+        .database()
+        .prepare("INSERT INTO scans (host_id, result_json) VALUES (?, ?)")
+        .run(
+          "host_test",
+          JSON.stringify({
+            scannedAt: Date.now(),
+            entries: [],
+            worktrees: [],
+            externalWorktrees: [
+              {
+                projectId: "project",
+                repositoryPath: "C:\\repo",
+                path: scannedPath,
+                branch: "feature",
+                locked: false,
+                lastActivityAt: null,
+                sizeBytes: 1,
+              },
+            ],
+          }),
+        );
+      expect(
+        await host.harness.callRpc("startRemoveExternalWorktree", {
+          hostId: "host_test",
+          path: scannedPath,
+          force: true,
+        }),
+      ).toEqual({ state: "skipped", reasons: ["inUseByBb"] });
+      expect(remove).not.toHaveBeenCalled();
+    } finally {
+      await host.harness.lifecycle.dispose();
+    }
+  },
+);
+
+it("refuses to clear storage containing a live Windows workspace with different casing", async () => {
+  const worker = vi.fn(async () => {
+    throw new Error("Must not discard a live workspace");
+  });
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: worker,
+    sdk: {
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({
+            id: "host_test",
+            type: "persistent",
+            status: "connected",
+          }),
+          threadStorageRootPath: "C:\\Storage",
+        }),
+      },
+      threads: {
+        get: async () =>
+          makeThreadResponse({
+            id: "thr_owner",
+            status: "idle",
+            environmentId: "env_live",
+          }),
+        storageLocation: async () => ({ hostId: "host_test" }),
+      },
+      environments: {
+        list: async () => [
+          {
+            path: "c:/storage/THR_OWNER/repo",
+            status: "ready",
+            lifecycle: { teardown: null },
+          },
+        ],
+      },
+    },
+  });
+  plugin(host.bb);
+  try {
+    await expect(
+      host.harness.callRpc("clearThread", { threadId: "thr_owner" }),
+    ).rejects.toThrow("contains the workspace");
+    expect(worker).not.toHaveBeenCalled();
+  } finally {
+    await host.harness.lifecycle.dispose();
   }
 });

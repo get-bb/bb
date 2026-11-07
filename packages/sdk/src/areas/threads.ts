@@ -513,7 +513,11 @@ export class ThreadWaitTimeoutError extends Error {
   readonly target: ThreadWaitTarget;
   readonly threadId: string;
 
-  constructor(args: { target: ThreadWaitTarget; threadId: string }) {
+  constructor(args: {
+    pendingRetry: ThreadQueuedMessage | null;
+    target: ThreadWaitTarget;
+    threadId: string;
+  }) {
     super(formatThreadWaitTimeoutMessage(args));
     this.name = "ThreadWaitTimeoutError";
     this.target = args.target;
@@ -671,6 +675,16 @@ export interface ThreadsArea {
   experimental_listCascade(
     args: ThreadCascadeListArgs,
   ): Promise<ThreadCascadeListResult>;
+  /**
+   * Generate a new title from the thread's first task message, its latest user
+   * messages, and the agent's latest replies, in the task's language. The
+   * current title is kept when it still fits, when no title service is
+   * available, or when generation fails, and the call rejects with the reason
+   * on failure. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_regenerateTitle(
+    args: ThreadActionArgs,
+  ): Promise<ThreadMutationResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -964,13 +978,33 @@ function validateThreadWaitArgs(args: ThreadWaitArgs): {
 }
 
 function formatThreadWaitTimeoutMessage(args: {
+  pendingRetry: ThreadQueuedMessage | null;
   target: ThreadWaitTarget;
   threadId: string;
 }): string {
-  if (args.target.kind === "status") {
-    return `Timed out waiting for thread ${args.threadId} to reach status ${args.target.status}.`;
+  if (args.target.kind !== "status") {
+    return `Timed out waiting for thread ${args.threadId} event ${args.target.eventType}.`;
   }
-  return `Timed out waiting for thread ${args.threadId} event ${args.target.eventType}.`;
+  const timedOut = `Timed out waiting for thread ${args.threadId} to reach status ${args.target.status}.`;
+  if (args.pendingRetry === null) return timedOut;
+  const retryAt =
+    args.pendingRetry.sendAt === null
+      ? "a retry is waiting to send"
+      : `a retry is scheduled for ${new Date(args.pendingRetry.sendAt).toISOString()}`;
+  return `${timedOut} It failed and ${retryAt}; wait again to follow it.`;
+}
+
+function findPendingRetry(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): ThreadQueuedMessage | null {
+  return (
+    queuedMessages.find(
+      (row) =>
+        row.payload.kind === "retry" &&
+        row.state !== "failed_exhausted" &&
+        row.waitingOn?.kind !== "superseded",
+    ) ?? null
+  );
 }
 
 function isThreadWaitTargetUnreachable(
@@ -1366,6 +1400,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ),
       );
     },
+    async experimental_regenerateTitle(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].title.regenerate.$post({
+          param: { id: input.threadId },
+        }),
+      );
+    },
     async experimental_listPluginMetadata(input) {
       return transport.readJson(
         transport.api.v1.threads["plugin-metadata"].$post(
@@ -1705,7 +1746,19 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               threadId: input.threadId,
             };
           }
-          if (isThreadWaitTargetUnreachable(thread.status, target)) {
+          const unreachable = isThreadWaitTargetUnreachable(
+            thread.status,
+            target,
+          );
+          const pendingRetry = unreachable
+            ? findPendingRetry(
+                await queuedMessages.list({
+                  signal: input.signal,
+                  threadId: input.threadId,
+                }),
+              )
+            : null;
+          if (unreachable && pendingRetry === null) {
             throw new ThreadWaitUnreachableError({
               currentStatus: thread.status,
               target,
@@ -1714,6 +1767,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           }
           if (Date.now() >= deadline) {
             throw new ThreadWaitTimeoutError({
+              pendingRetry,
               target,
               threadId: input.threadId,
             });
@@ -1740,6 +1794,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         }
         if (Date.now() >= deadline) {
           throw new ThreadWaitTimeoutError({
+            pendingRetry: null,
             target,
             threadId: input.threadId,
           });

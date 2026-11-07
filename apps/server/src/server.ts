@@ -18,6 +18,10 @@ import {
   INSTALL_MACHINE_WINDOWS_SCRIPT_PATH,
 } from "./install-machine-asset.js";
 import { createNodeWebSocket } from "@hono/node-ws";
+import {
+  declineWebSocketCompression,
+  WEB_SOCKET_COMPRESSION,
+} from "./ws/compression.js";
 import { createGateKeyStore } from "./services/connect-next/gate-keys.js";
 import {
   createTunnelIngressManager,
@@ -55,6 +59,7 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
+import { setPathPluginPreserver } from "./services/plugins/path-plugin-preservation.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
   setEnvironmentProviderRecheckHandler,
@@ -82,11 +87,12 @@ import {
 } from "./internal/auth.js";
 import {
   captureTrustedRemoteAddress,
+  resolveRequestAccessRoute,
   resolveRequestAppSurface,
 } from "./request-context.js";
 import { runEventLoopWork } from "./services/system/event-loop-work.js";
 import { setTurnTelemetryDeps } from "./services/system/turn-telemetry.js";
-import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
+import { runWithTelemetryRequest } from "./services/system/telemetry.js";
 import {
   onClientSocketClose,
   onClientSocketMessage,
@@ -476,6 +482,7 @@ export function createApp(
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
     app,
   });
+  wss.options.perMessageDeflate = WEB_SOCKET_COMPRESSION;
   const tunnelIngressNow = options?.tunnelIngressNow ?? Date.now;
   const tunnelIngress = createTunnelIngressManager({
     app,
@@ -525,7 +532,13 @@ export function createApp(
   });
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    return runWithTelemetryAppSurface(resolveRequestAppSurface(context), next);
+    return runWithTelemetryRequest(
+      {
+        appSurface: resolveRequestAppSurface(context),
+        accessRoute: resolveRequestAccessRoute(context),
+      },
+      next,
+    );
   });
   app.use("*", async (context, next) => {
     const path = context.req.path;
@@ -832,6 +845,9 @@ export function createApp(
   });
   setTurnTelemetryDeps(deps);
   setPluginThreadEventEmitter(pluginService.events);
+  setPathPluginPreserver(deps.db, (directory) =>
+    pluginService.preservePathPluginsInside(directory),
+  );
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
@@ -917,7 +933,7 @@ export function createApp(
   registerDesktopBrowserRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps, pluginService);
-  registerThreadRoutes(publicApi, deps);
+  registerThreadRoutes(publicApi, deps, pluginService);
   registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerUiPreferenceRoutes(publicApi, deps);
@@ -1001,7 +1017,11 @@ export function createApp(
     "/ws/terminals/:terminalId",
     upgradeWebSocket((context) => {
       assertBrowserWebSocketAllowed(context);
+      declineWebSocketCompression(context);
       const terminalId = context.req.param("terminalId");
+      if (terminalId === undefined) {
+        throw new ApiError(404, "terminal_not_found", "missing terminal id");
+      }
       const query = terminalWebSocketQuerySchema.safeParse({
         outputAcks: context.req.query("outputAcks"),
         sinceSeq: context.req.query("sinceSeq"),
@@ -1039,6 +1059,7 @@ export function createApp(
   app.get(
     "/internal/ws",
     upgradeWebSocket(async (context) => {
+      declineWebSocketCompression(context);
       const websocketContext = await validateDaemonWebSocket(deps, {
         authorizationHeader: context.req.header("authorization"),
         protocolHeader: context.req.header("sec-websocket-protocol"),

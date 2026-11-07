@@ -1,12 +1,12 @@
 {
   "name": "bb-plugin-connect",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.6"
+    "bbPluginSdk": ">=0.6.131"
   },
   "bb": {
     "name": "bb connect",
@@ -27,29 +27,30 @@
   },
   "dependencies": {
     "@bb/connect-client": "workspace:*",
+    "@bb/domain": "workspace:*",
     "@bb/shared-ui": "workspace:*",
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
+    "bb-plugin-bb-account": "workspace:*",
     "qrcode": "^1.5.4",
-    "ws": "^8.18.0",
-    "zod": "^4.3.6"
+    "ws": "^8.22.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "@testing-library/react": "^16.3.2",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "@types/qrcode": "^1.5.5",
-    "@types/react": "^19.0.0",
-    "@types/ws": "^8.18.1",
-    "bb-plugin-bb-account": "workspace:*",
-    "better-sqlite3": "12.10.0",
-    "jsdom": "^29.0.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "better-sqlite3": "12.11.1",
+    "jsdom": "^29.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   }
 }

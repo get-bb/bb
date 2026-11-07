@@ -26,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@bb/shared-ui/dropdown-menu";
+import { ActionMenuItem } from "@bb/shared-ui/action-menu-items";
 import {
   Select,
   SelectContent,
@@ -230,6 +231,44 @@ describe("responsive Popover", () => {
 });
 
 describe("responsive DropdownMenu", () => {
+  it.each([true, false])(
+    "renders an action link as the menu item and closes on selection (compact: %s)",
+    (isCompactViewport) => {
+      vi.useFakeTimers();
+      mockPointerCoarse(isCompactViewport);
+      const onSelect = vi.fn();
+      const onOpenChange = vi.fn();
+      render(
+        <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
+          <DropdownMenu defaultOpen onOpenChange={onOpenChange}>
+            <DropdownMenuContent>
+              <ActionMenuItem
+                surface="dropdown"
+                icon="Settings"
+                href="#project-settings"
+                onSelect={onSelect}
+              >
+                Project settings
+              </ActionMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </CompactViewportOverrideProvider>,
+      );
+      act(() => vi.advanceTimersByTime(120));
+
+      const item = screen.getByRole("menuitem", { name: "Project settings" });
+      expect(item.tagName).toBe("A");
+      expect(item.getAttribute("href")).toBe("#project-settings");
+      expect(item.closest("button")).toBeNull();
+      expect(item.querySelector('[data-icon="Settings"]')?.parentElement).toBe(
+        item,
+      );
+      fireEvent.click(item);
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    },
+  );
+
   it("keeps its compact width reset when the caller passes an inline style", () => {
     vi.useFakeTimers();
     mockPointerCoarse(true);

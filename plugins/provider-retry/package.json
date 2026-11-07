@@ -6,7 +6,7 @@
   "description": "Retry turns after transient provider errors and when subscription limits reset.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.102"
+    "bbPluginSdk": ">=0.6.107"
   },
   "bb": {
     "name": "Provider retry",
@@ -28,16 +28,16 @@
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "better-sqlite3": "12.10.0",
-    "cron-parser": "^5.5.0",
-    "hono": "4.11.9",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.5",
+    "better-sqlite3": "12.11.1",
+    "cron-parser": "^5.10.3",
+    "hono": "4.13.16",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   },
   "dependencies": {
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   }
 }

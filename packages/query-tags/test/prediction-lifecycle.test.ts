@@ -1,14 +1,16 @@
+// @vitest-environment jsdom
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, expect, it } from "vitest";
 import {
-  CORE_TAG_SCOPE,
   optimisticQueryUpdate,
-  runTaggedMutation,
   runTaggedRead,
   taggedQueryOptions,
   type TaggedMutationOutcome,
   type TaggedOptimisticUpdate,
 } from "../src/index.js";
+import { mutateOnce } from "./mutate-once.js";
+
+const TEST_SCOPE = "test";
 
 type Row = { id: string; pinnedAt: number | null; status: string };
 const disposers: (() => void)[] = [];
@@ -26,14 +28,18 @@ function client() {
 
 function write(client: QueryClient, optimistic: TaggedOptimisticUpdate[]) {
   let settle!: (outcome: TaggedMutationOutcome<number> | Error) => void;
-  const done = runTaggedMutation(
+  const outcome = new Promise<TaggedMutationOutcome<number>>(
+    (resolve, reject) => {
+      settle = (next) => (next instanceof Error ? reject(next) : resolve(next));
+    },
+  );
+  const done = mutateOnce(
     async () => {},
-    () =>
-      new Promise<TaggedMutationOutcome<number>>((resolve, reject) => {
-        settle = (outcome) =>
-          outcome instanceof Error ? reject(outcome) : resolve(outcome);
-      }),
-    { client, optimistic },
+    () => outcome,
+    {
+      client,
+      optimistic,
+    },
   ).catch(() => {});
   return {
     accept: async (pinnedAt: number) => {
@@ -57,7 +63,7 @@ function observe(client: QueryClient, queryKey: string[], row: () => Row) {
   const observer = new QueryObserver<Row>(client, {
     queryKey,
     ...taggedQueryOptions(client, queryKey, {
-      scope: CORE_TAG_SCOPE,
+      scope: TEST_SCOPE,
       tagsOf: () => [],
     }),
     queryFn: () =>
@@ -112,7 +118,7 @@ it("leaves predictions alone when an observer selects from the query", async () 
   const selected = new QueryObserver<Row, Error, string>(cache, {
     queryKey,
     ...taggedQueryOptions(cache, queryKey, {
-      scope: CORE_TAG_SCOPE,
+      scope: TEST_SCOPE,
       tagsOf: () => [],
     }),
     enabled: false,
@@ -139,7 +145,7 @@ it("lets a write after acknowledgement replace the acknowledged value", async ()
   const observer = new QueryObserver<Row>(cache, {
     queryKey,
     ...taggedQueryOptions(cache, queryKey, {
-      scope: CORE_TAG_SCOPE,
+      scope: TEST_SCOPE,
       tagsOf: () => [],
     }),
     queryFn: () => runTaggedRead(cache, queryKey, () => read),

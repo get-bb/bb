@@ -10,6 +10,10 @@ import {
 } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { useAtomValue } from "jotai";
+import type {
+  PluginThreadActionEntry,
+  PluginThreadActionTarget,
+} from "@get-bb/plugin-sdk";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { SplitButton } from "@/components/ui/split-button.js";
@@ -18,7 +22,6 @@ import {
   HEADER_ICON_BUTTON_CLASS,
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
-import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
   getBbDesktopInfo,
   MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
@@ -34,16 +37,16 @@ import {
 import { useSidebarRename } from "@/components/sidebar/SidebarInlineRename";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
-import { useDefaultRequestRename } from "@/lib/thread-actions/thread-action-registry";
+import { useThreadHeaderActionEntries } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
+  RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
   RIGHT_PANEL_TOGGLE_ICON_NAME,
   RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS,
 } from "@/components/secondary-panel/panelToggleControlState";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
@@ -51,7 +54,6 @@ import {
 } from "@bb/shared-ui/context-selection";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
-import type { ThreadHeaderGitAction } from "./useThreadGitActions";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
@@ -61,19 +63,19 @@ const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 
 export interface ThreadDetailHeaderActionsMenuArgs {
   includeResponsiveActions: boolean;
+  headerActions: readonly PluginThreadActionEntry[];
   requestRename: (threadId: string) => void;
   onCloseAutoFocus: (event: Event) => void;
 }
 
 interface ThreadDetailHeaderProps {
   actionsMenu: ((args: ThreadDetailHeaderActionsMenuArgs) => ReactNode) | null;
+  contextCardButton?: ReactNode;
   isSecondaryPanelOpen: boolean;
   onClosePane?: () => void;
-  onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
   pluginActions?: ReactNode;
-  threadHeaderGitActions: ThreadHeaderGitAction[];
-  threadId: string;
+  thread: PluginThreadActionTarget;
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
 }
@@ -82,45 +84,36 @@ export function ThreadDetailHeader({
   actionsMenu,
   isSecondaryPanelOpen,
   onClosePane,
-  onOpenThreadGitAction,
   onToggleSecondaryPanel,
   pluginActions,
-  threadHeaderGitActions,
-  threadId,
+  thread,
   threadTitle,
   workspaceOpenButton,
+  contextCardButton,
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
-  const isPointerCoarse = usePointerCoarse();
-  const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
+  const threadId = thread.id;
+  const headerActions = useThreadHeaderActionEntries(thread);
+  const [primaryAction, ...secondaryActions] = headerActions;
   const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
     (nextTitle: string) => renameThreadAsync(threadId, nextTitle),
     [renameThreadAsync, threadId],
   );
-  const { editor, isEditing, startEditing } = useSidebarRename({
+  const {
+    editor,
+    isEditing,
+    startEditing,
+    startEditingFromDoubleClick,
+    startEditingFromMenu,
+    onCloseAutoFocus,
+  } = useSidebarRename({
     kind: "thread",
     id: threadId,
     name: threadTitle,
     label: "Thread name",
     onSave: handleRename,
   });
-  const requestRenameDialog = useDefaultRequestRename();
-  const pendingMenuRename = useRef(false);
-  const requestRename = (id: string) => {
-    if (isCompactViewport || isPointerCoarse) requestRenameDialog(id);
-    else startEditing();
-  };
-  const requestRenameFromMenu = (id: string) => {
-    if (isCompactViewport || isPointerCoarse) requestRenameDialog(id);
-    else pendingMenuRename.current = true;
-  };
-  const handleActionsMenuCloseAutoFocus = (event: Event) => {
-    if (!pendingMenuRename.current) return;
-    pendingMenuRename.current = false;
-    event.preventDefault();
-    startEditing();
-  };
   const [desktopInfo] = useState(getBbDesktopInfo);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
@@ -137,7 +130,7 @@ export function ThreadDetailHeader({
   } = usePaneContext();
   useAppCommandHandler("thread.rename", () => {
     if (!isFocused) return false;
-    requestRename(threadId);
+    startEditing();
     return true;
   });
   const isWindowPanelOpen =
@@ -177,18 +170,16 @@ export function ThreadDetailHeader({
     beginPaneDrag(event, threadTitle);
   };
   const handleTitleDoubleClick = () => {
-    if (isEditing) {
-      return;
-    }
-    if (isPointerCoarse) requestRenameDialog(threadId);
-    else startEditing();
+    if (!isEditing) startEditingFromDoubleClick();
   };
-  const rightPanelLabel = isSecondaryPanelOpen
-    ? "Hide right panel"
-    : "Show right panel";
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
+  const mountRightPanelToggle = secondaryPanelHost === null;
   const showRightPanelToggle =
-    secondaryPanelHost === null && (!isSecondaryPanelOpen || isCompactViewport);
+    mountRightPanelToggle && (!isSecondaryPanelOpen || isCompactViewport);
+  const rightPanelLabel =
+    isSecondaryPanelOpen && showRightPanelToggle
+      ? "Hide right panel"
+      : "Show right panel";
 
   const center = (
     <>
@@ -228,8 +219,9 @@ export function ThreadDetailHeader({
         >
           {actionsMenu({
             includeResponsiveActions: usesResponsiveActionOverflow,
-            requestRename: requestRenameFromMenu,
-            onCloseAutoFocus: handleActionsMenuCloseAutoFocus,
+            headerActions,
+            requestRename: startEditingFromMenu,
+            onCloseAutoFocus,
           })}
         </span>
       )}
@@ -254,12 +246,15 @@ export function ThreadDetailHeader({
               <SplitButton
                 className={THREAD_HEADER_ACTION_BUTTON_CLASS}
                 primaryAction={{
-                  label: primaryAction.label,
-                  onSelect: () => onOpenThreadGitAction(primaryAction.target),
+                  disabled: primaryAction.action.disabled,
+                  label: primaryAction.action.label,
+                  onSelect: () => void primaryAction.action.run(),
                 }}
-                secondaryActions={secondaryActions.map((action) => ({
+                secondaryActions={secondaryActions.map(({ key, action }) => ({
+                  id: key,
+                  disabled: action.disabled,
                   label: action.label,
-                  onSelect: () => onOpenThreadGitAction(action.target),
+                  onSelect: () => void action.run(),
                 }))}
               />
             ) : (
@@ -268,9 +263,10 @@ export function ThreadDetailHeader({
                 variant="outline"
                 size="sm"
                 className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-                onClick={() => onOpenThreadGitAction(primaryAction.target)}
+                disabled={primaryAction.action.disabled}
+                onClick={() => void primaryAction.action.run()}
               >
-                {primaryAction.label}
+                {primaryAction.action.label}
               </Button>
             )}
           </span>
@@ -296,20 +292,22 @@ export function ThreadDetailHeader({
             <Icon name="CloseThreadPane" />
           </Button>
         ) : null}
-        {showRightPanelToggle ? (
+        {contextCardButton}
+        {mountRightPanelToggle ? (
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className={cn(
-              HEADER_ICON_BUTTON_CLASS,
-              CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+              RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
               "relative",
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
               isTopRow &&
                 isSidebarFramed &&
                 MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
+              !showRightPanelToggle && "hidden",
             )}
+            inert={!showRightPanelToggle}
             aria-label={
               panelShortcut
                 ? `${rightPanelLabel} (${panelShortcut.label})`

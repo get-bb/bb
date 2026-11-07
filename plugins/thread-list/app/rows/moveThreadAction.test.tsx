@@ -41,6 +41,7 @@ function makeTarget(
     id: "thr_move",
     projectId: "proj_test",
     parentThreadId: null,
+    parentNotifications: "auto",
     archivedAt: null,
     pinnedAt: null,
     sectionId: "sec_a",

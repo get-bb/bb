@@ -16,19 +16,21 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import type { ThreadTimelineLocalFileLinkHandler } from "@/components/thread/timeline/types";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 beforeAll(() => LazyPluginThreadChat.preload());
 
 const mocks = vi.hoisted(() => ({
-  embeddedChatProps: [] as Array<Record<string, unknown>>,
-  timelinePanelProps: [] as Array<Record<string, unknown>>,
+  threadScreenProps: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: { get: vi.fn() },
     environments: { get: vi.fn() },
+    hosts: { list: vi.fn(async () => []) },
     providers: { list: vi.fn(async () => []) },
   },
   BbHttpError: class BbHttpError extends Error {
@@ -53,18 +55,22 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ isLocalDaemonHost: () => true }),
 }));
 
-vi.mock("@/components/thread/embedded-chat", () => ({
-  EmbeddedThreadChat: (props: Record<string, unknown>) => {
-    mocks.embeddedChatProps.push(props);
-    return <div data-testid="embedded-thread-chat" />;
-  },
-}));
+vi.mock("@/views/thread-detail/ThreadScreen", async () => {
+  const { useThreadTimelineNavigation } =
+    await import("@/components/thread/timeline/ThreadTimelineNavigationContext");
+  return {
+    ThreadScreen: function ThreadScreen(props: Record<string, unknown>) {
+      mocks.threadScreenProps.push({
+        ...props,
+        navigation: useThreadTimelineNavigation(),
+      });
+      return <div data-testid="thread-screen" />;
+    },
+  };
+});
 
 vi.mock("@/components/thread/timeline", () => ({
-  ThreadTimelinePanelContent: (props: Record<string, unknown>) => {
-    mocks.timelinePanelProps.push(props);
-    return <div data-testid="timeline-panel-content" />;
-  },
+  useThreadTimelineController: () => ({ timelineRows: [] }),
 }));
 
 const THREAD_FIXTURE = {
@@ -113,8 +119,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  mocks.embeddedChatProps = [];
-  mocks.timelinePanelProps = [];
+  mocks.threadScreenProps = [];
   vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_FIXTURE as never);
 });
 
@@ -132,25 +137,26 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
     expect(sdk.threads.get).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: "thr_demo" }),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
+    const props = mocks.threadScreenProps.at(-1)!;
     expect(props.projectId).toBe("proj_demo");
-    expect(props.providerId).toBe("provider_demo");
-    expect(props.variant).toBe("compact");
-    expect(props.measure).toBe("panel");
-    expect(props.surfaceTone).toBe("sidebar");
+    expect(props.thread).toEqual(
+      expect.objectContaining({ id: "thr_demo", providerId: "provider_demo" }),
+    );
+    expect(props.presentation).toEqual({
+      kind: "panel",
+      layout: "contained",
+      measure: "panel",
+      tone: "sidebar",
+    });
     expect(props.composer).toEqual(
       expect.objectContaining({
+        contextEnvironmentId: null,
         permissionPolicy: "snapshot",
-        draftScope: {
-          kind: "thread",
-          projectId: "proj_demo",
-          threadId: "thr_demo",
-        },
       }),
     );
   });
@@ -167,16 +173,15 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    expect(mocks.embeddedChatProps.at(-1)!.composer).toEqual(
+    expect(mocks.threadScreenProps.at(-1)!.composer).toEqual(
       expect.objectContaining({ permissionPolicy: "editable" }),
     );
   });
 
   it("uses the surrounding thread detail navigation for timeline links", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
-    const onOpenLink = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
     const workspaceMentionHandler = vi.fn();
     const resolveMentionLink = vi.fn(() => workspaceMentionHandler);
@@ -186,7 +191,7 @@ describe("PluginThreadChat", () => {
         <MemoryRouter>
           <ThreadTimelineNavigationProvider
             environmentId={null}
-            onOpenLink={onOpenLink}
+            hostId={null}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={resolveMentionLink}
             workspaceRootPath="/workspace"
@@ -198,15 +203,11 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
-    expect(props).toEqual(
-      expect.objectContaining({
-        onOpenLink,
-        onOpenLocalFileLink,
-        workspaceRootPath: "/workspace",
-      }),
+    const props = mocks.threadScreenProps.at(-1)!;
+    expect(props.navigation).toEqual(
+      expect.objectContaining({ workspaceRootPath: "/workspace" }),
     );
 
     const embeddedResolveMentionLink = props.resolveMentionLink as (resource: {
@@ -229,6 +230,90 @@ describe("PluginThreadChat", () => {
     expect(resolveMentionLink).toHaveBeenCalledWith(workspaceMention);
   });
 
+  it("opens file links through app navigation outside the thread detail view", async () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    vi.mocked(sdk.threads.get).mockResolvedValue({
+      ...THREAD_FIXTURE,
+      environmentId: "env_demo",
+    } as never);
+    vi.mocked(sdk.environments.get).mockResolvedValue({
+      id: "env_demo",
+      hostId: "host_demo",
+      path: "/workspace",
+      updatedAt: 1,
+    } as never);
+    const openFilePreview = vi.fn(() => true);
+
+    render(
+      <Wrapper>
+        <MemoryRouter>
+          <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+            <DemoPluginPage threadId="thr_demo" />
+          </AppNavigationHostProvider>
+        </MemoryRouter>
+      </Wrapper>,
+    );
+
+    await waitFor(() =>
+      expect(mocks.threadScreenProps.at(-1)?.navigation).toEqual(
+        expect.objectContaining({ workspaceRootPath: "/workspace" }),
+      ),
+    );
+    const timelineHost = mocks.threadScreenProps.at(-1)!.navigation as {
+      onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
+    };
+    const lineRange = { startLineNumber: 3, endLineNumber: 5 };
+
+    timelineHost.onOpenLocalFileLink({
+      lineRange,
+      openTargetId: null,
+      path: "/workspace/docs/erd.mmd",
+    });
+    timelineHost.onOpenLocalFileLink({
+      lineRange: null,
+      openTargetId: null,
+      path: "/workspace-sibling/notes.md",
+    });
+    timelineHost.onOpenLocalFileLink({
+      lineRange: null,
+      openTargetId: "cursor",
+      path: "/workspace/src/index.ts",
+    });
+
+    expect(openFilePreview.mock.calls).toEqual([
+      [
+        {
+          target: {
+            kind: "workspace",
+            environmentId: "env_demo",
+            path: "docs/erd.mmd",
+          },
+          location: { kind: "range", startLine: 3, endLine: 5 },
+        },
+      ],
+      [
+        {
+          target: {
+            kind: "host",
+            hostId: "host_demo",
+            path: "/workspace-sibling/notes.md",
+          },
+          location: null,
+        },
+      ],
+      [
+        {
+          target: {
+            kind: "workspace",
+            environmentId: "env_demo",
+            path: "src/index.ts",
+          },
+          location: null,
+        },
+      ],
+    ]);
+  });
+
   it("maps variant timeline to a composer-less transcript", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const ThreadChat = pluginSdkAppImplementation.ThreadChat;
@@ -241,12 +326,14 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("timeline-panel-content")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    expect(mocks.embeddedChatProps).toHaveLength(0);
-    expect(mocks.timelinePanelProps.at(-1)).toEqual(
-      expect.objectContaining({ threadId: "thr_demo" }),
-    );
+    const props = mocks.threadScreenProps.at(-1)!;
+    expect(props.composer).toBeNull();
+    expect(props.presentation).toEqual({
+      kind: "transcript",
+      layout: "contained",
+    });
   });
 
   it("forwards leadingContent and maps messageActions to consumer actions", async () => {
@@ -263,11 +350,15 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
-    expect(props.leadingContent).toBeTruthy();
-    const actions = props.consumerMessageActions as Array<
+    const timelineHost = mocks.threadScreenProps.at(-1)!.timelineHost as Record<
+      string,
+      unknown
+    >;
+    expect(timelineHost.leadingContent).toBeTruthy();
+    expect(timelineHost.includePluginMessageActions).toBe(false);
+    const actions = timelineHost.consumerMessageActions as Array<
       Record<string, unknown>
     >;
     expect(actions).toHaveLength(1);
@@ -295,13 +386,17 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
-    expect(props.measure).toBe("page");
-    expect(props.layout).toBe("document");
+    const props = mocks.threadScreenProps.at(-1)!;
+    expect(props.presentation).toEqual({
+      kind: "panel",
+      layout: "document",
+      measure: "page",
+      tone: "background",
+    });
     expect(props.composer).toEqual(
-      expect.objectContaining({ focusRequestKey: 3 }),
+      expect.objectContaining({ focusRequest: 3 }),
     );
   });
 });

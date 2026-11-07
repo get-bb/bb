@@ -3,7 +3,6 @@ import type {
   ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
-import type { ThreadTimelineGoal } from "@bb/domain";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { makeThread } from "../../../.ladle/story-fixtures";
@@ -59,18 +58,7 @@ function storyTimeline(
   threadId: string,
   userMessage: string,
   assistantMessages: readonly string[],
-  goalObjective: string,
 ): ThreadTimelineResponse {
-  const goal: ThreadTimelineGoal = {
-    sourceSeq: assistantMessages.length + 2,
-    updatedAt: 1,
-    objective: goalObjective,
-    status: "active",
-    tokenBudget: null,
-    tokensUsed: 1_240,
-    timeUsedSeconds: 185,
-  };
-
   return makeThreadTimelineResponse({
     rows: [
       conversationRow({
@@ -92,8 +80,7 @@ function storyTimeline(
         }),
       ),
     ],
-    goal,
-    maxSeq: goal.sourceSeq,
+    maxSeq: assistantMessages.length + 2,
     timelinePage: {
       returnedSegmentCount: 1,
       olderCursor: null,
@@ -115,7 +102,6 @@ const idleTimeline = storyTimeline(
     "Type checking and the thread drag tests both pass with the fix applied.",
     "A subtle, non-interactive pane scrim marks this split as inactive without blocking it.",
   ],
-  "Keep the inactive pane readable while a single light scrim marks it as idle.",
 );
 
 const activeTimeline = storyTimeline(
@@ -130,7 +116,6 @@ const activeTimeline = storyTimeline(
     "Its native scroll container and hit area remain intact, so wheel, trackpad, touch, and keyboard scrolling behave exactly as before.",
     "This story intentionally overflows both panes so the transient scrollbar behavior can be checked alongside the divider and focus states.",
   ],
-  "Refine split focus with a restrained inactive scrim and reversible pane states.",
 );
 
 const splitLayout: SplitLayout = {

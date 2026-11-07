@@ -18,8 +18,7 @@ import { type IconName } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { AUTOMATION_DETAIL_ROUTE_PATH } from "@/lib/route-paths";
-import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
-import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
+import { useMessageLinkRouting } from "./ThreadTimelineNavigationContext";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
@@ -34,13 +33,10 @@ import {
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
-import type {
-  ThreadTimelineLinkHandler,
-  ThreadTimelineLocalFileLinkHandler,
-} from "./types.js";
+import type {} from "./types.js";
 import { turnRequestLabel } from "@bb/client-core";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
-import { formatShortMessageTime } from "./MessageActionBar.js";
+import { formatShortMessageTime, MessageTime } from "./message-time.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
@@ -60,8 +56,6 @@ interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
   automationLink: AutomationLink | null;
   mentions: readonly PromptTextMention[];
-  onOpenLink?: ThreadTimelineLinkHandler;
-  onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
@@ -76,7 +70,6 @@ interface GeneratedConversationMessageProps {
   threadId?: string;
   timestamp: number;
   turnRequest: TimelineUserConversationRow["turnRequest"];
-  workspaceRootPath?: string;
 }
 
 type GeneratedConversationSourceKind =
@@ -230,7 +223,7 @@ function threadSubjectTitleSegments(
   ];
 }
 
-function systemMessageTitleSegments(
+export function systemMessageTitleSegments(
   systemMessageKind: SystemMessageKind,
   subject: SystemMessageSubject | null,
 ): TimelineTitleSegment[] {
@@ -239,6 +232,10 @@ function systemMessageTitleSegments(
       return threadSubjectTitleSegments(subject, "assigned to you");
     case "ownership-removed":
       return threadSubjectTitleSegments(subject, "unassigned");
+    case "ownership-batch":
+      return subject !== null && subject.kind === "thread-batch"
+        ? [verbSegment(`Ownership changed for ${subject.count} threads`)]
+        : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
     case "child-needs-attention":
       return threadSubjectTitleSegments(subject, "needs attention");
     case "child-completed":
@@ -333,12 +330,16 @@ function generatedConversationEmptyText(
   }
 }
 
-function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
+export function systemMessageIconName(
+  systemMessageKind: SystemMessageKind,
+): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
       return "ChildThread";
     case "ownership-removed":
       return "UserRound";
+    case "ownership-batch":
+      return "ChildThread";
     case "child-needs-attention":
       return "AlertTriangle";
     case "child-completed":
@@ -446,14 +447,16 @@ function GeneratedAutomationTitle({
   requestLabel,
   timestamp,
 }: GeneratedAutomationTitleProps) {
-  const sentAt = new Date(timestamp);
   return (
     <span className="inline-flex min-w-0 max-w-full items-center gap-1 whitespace-nowrap text-sm leading-5">
       {automationLink === null ? (
         <span className="shrink-0">Automation</span>
       ) : (
         <RouteAnchor
-          href={generatePath(AUTOMATION_DETAIL_ROUTE_PATH, automationLink)}
+          href={generatePath(AUTOMATION_DETAIL_ROUTE_PATH, {
+            automationId: automationLink.automationId,
+            projectId: automationLink.projectId,
+          })}
           className="shrink-0 underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
           onClick={stopRowToggle}
           onKeyDown={stopRowToggleKey}
@@ -464,16 +467,11 @@ function GeneratedAutomationTitle({
       <span aria-hidden="true" className="shrink-0 text-subtle-foreground">
         ·
       </span>
-      <time
+      <MessageTime
+        timestamp={timestamp}
+        label={formatShortMessageTime(timestamp, new Date())}
         className="shrink-0 text-subtle-foreground"
-        dateTime={sentAt.toISOString()}
-        title={sentAt.toLocaleString(undefined, {
-          dateStyle: "full",
-          timeStyle: "long",
-        })}
-      >
-        {formatShortMessageTime(timestamp, new Date())}
-      </time>
+      />
       {requestLabel === null ? null : (
         <span className="shrink-0">{requestLabel}</span>
       )}
@@ -510,8 +508,6 @@ export const GeneratedConversationMessage = memo(
     attachmentItems,
     automationLink,
     mentions,
-    onOpenLink,
-    onOpenLocalFileLink,
     projectId,
     resolveMentionLink,
     onTitleAction,
@@ -526,7 +522,6 @@ export const GeneratedConversationMessage = memo(
     threadId,
     timestamp,
     turnRequest,
-    workspaceRootPath,
   }: GeneratedConversationMessageProps) {
     const trimStartLength = text.length - text.trimStart().length;
     const messageText = text.trim();
@@ -545,16 +540,7 @@ export const GeneratedConversationMessage = memo(
         ? requestLabel
         : null;
     const bodyRequestLabel = titleRequestLabel === null ? requestLabel : null;
-    const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
-      () =>
-        buildMarkdownMessageLinkRouting({
-          onOpenLink,
-          onOpenLocalFileLink,
-          threadId,
-          workspaceRootPath,
-        }),
-      [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
-    );
+    const linkRouting = useMessageLinkRouting(threadId);
     const title = useMemo(
       () =>
         generatedConversationTitle({
@@ -709,7 +695,6 @@ export const GeneratedConversationMessage = memo(
               filePaths={attachmentItems.filePaths}
               fileDetails={attachmentItems.fileDetails}
               imageItems={attachmentItems.imageItems}
-              onOpenLocalFileLink={onOpenLocalFileLink}
               projectId={projectId}
             />
             {bodyRequestLabel ? (
@@ -727,7 +712,6 @@ export const GeneratedConversationMessage = memo(
         linkRouting,
         messageText,
         messageMentions,
-        onOpenLocalFileLink,
         projectId,
         resolveMentionLink,
         sourceKind,

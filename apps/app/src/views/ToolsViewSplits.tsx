@@ -1,6 +1,6 @@
 import { defineSplit } from "@/lib/define-split";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
-import { SecondaryPanelContentSkeleton } from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import { SecondaryPanelContentSkeleton } from "@/components/secondary-panel/SecondaryPanelContentSkeleton";
 
 export const LazyPluginsView = defineSplit<{ detailKey?: string }>({
   id: "plugins-view",

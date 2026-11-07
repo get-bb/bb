@@ -11,22 +11,21 @@
   },
   "dependencies": {
     "@bb/connect-db": "workspace:*",
+    "@bb/connect-db-pg": "workspace:*",
     "@bb/text-utils": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
-    "drizzle-orm": "^0.38.0"
+    "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@better-auth/drizzle-adapter": "^1.6.23",
-    "@cloudflare/workers-types": "^4.20260610.0",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "better-sqlite3": "12.10.0",
-    "better-auth": "^1.6.23",
-    "esbuild": "^0.28.1",
-    "miniflare": "^4.20260701.0",
+    "@better-auth/drizzle-adapter": "^1.7.18",
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "@types/node": "^22.20.5",
+    "better-auth": "^1.7.18",
+    "esbuild": "^0.28.2",
+    "miniflare": "^4.20260730.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "wrangler": "^4.100.0"
+    "wrangler": "^4.158.0"
   }
 }

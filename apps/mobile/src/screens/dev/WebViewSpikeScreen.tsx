@@ -138,6 +138,7 @@ export function WebViewSpikeScreen() {
         const credential = await redeemMachineCredential({
           apexUrl: APEX_URL,
           code: machineCode.trim(),
+          kind: "mobile",
         });
         record("native", {
           kind: "enroll",

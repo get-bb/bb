@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -23,6 +23,8 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BbHttpError } from "@bb/sdk/browser";
+import { sdk } from "@/lib/sdk";
 import type {
   ExperimentalComposerSelection,
   NewThreadRequest,
@@ -62,13 +64,17 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
 import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
-import { PluginDetailPanelContext } from "./plugin-detail-navigation";
+import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 function PanedRootComposeView() {
   return (
-    <DefaultPaneContextProvider onRequestClose={null} navigateInPane={() => {}}>
+    <DefaultPaneContextProvider
+      paneId="main"
+      onRequestClose={null}
+      navigateInPane={() => {}}
+    >
       <RootComposeView />
     </DefaultPaneContextProvider>
   );
@@ -86,6 +92,7 @@ function render(element: ReactNode) {
 }
 
 const mocks = vi.hoisted(() => ({
+  unknownReasoning: false,
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
   uploadAttachment: vi.fn(),
@@ -102,6 +109,7 @@ const mocks = vi.hoisted(() => ({
   modelsLoading: false,
   permissionCeiling: undefined as "accept-edits" | "auto" | "full" | undefined,
   modelSessionOptions: undefined as ThreadSessionOption[] | undefined,
+  openCreateDialogThen: vi.fn(),
 }));
 
 vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
@@ -110,10 +118,15 @@ vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
   }: {
     onClose: () => boolean;
   }) => {
-    const details = useContext(PluginDetailPanelContext);
+    const { secondary } = useFixedPanelTabsState("root-compose", null);
+    const active = secondary.tabs.find(
+      (tab) => tab.id === secondary.activeTabId,
+    );
     return (
       <button
-        data-active-detail={details?.activePluginId ?? ""}
+        data-active-detail={
+          active?.kind === "plugin-detail" ? active.detailKey : ""
+        }
         onClick={onClose}
       >
         Close panel command
@@ -332,21 +345,27 @@ vi.mock("@/hooks/queries/system-queries", () => ({
                 displayName: "GPT-5.6",
                 isDefault: true,
                 sessionOptions: mocks.modelSessionOptions,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "low" },
-                  { reasoningEffort: "medium" },
-                  { reasoningEffort: "high" },
-                ],
+                reasoningDiscovery: "known" as const,
+                supportedReasoningEfforts: mocks.unknownReasoning
+                  ? []
+                  : [
+                      { reasoningEffort: "low" },
+                      { reasoningEffort: "medium" },
+                      { reasoningEffort: "high" },
+                    ],
               },
               {
                 model: "gpt-5.6-sol",
                 displayName: "GPT-5.6 Sol",
                 isDefault: false,
                 sessionOptions: mocks.modelSessionOptions,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "medium" },
-                  { reasoningEffort: "high" },
-                ],
+                reasoningDiscovery: "known" as const,
+                supportedReasoningEfforts: mocks.unknownReasoning
+                  ? []
+                  : [
+                      { reasoningEffort: "medium" },
+                      { reasoningEffort: "high" },
+                    ],
               },
             ],
             selectedOnlyModels: [],
@@ -431,6 +450,7 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
     isAvailable: false,
     isCreating: false,
     openCreateDialog: vi.fn(),
+    openCreateDialogThen: mocks.openCreateDialogThen,
     platform: null,
     projectPathDialog: {
       isOpen: false,
@@ -686,6 +706,7 @@ describe("PluginNewThreadComposer seeding", () => {
     resetFixedPanelTabsStateForTest();
     mocks.closeTerminal.mockClear();
     mocks.modelSessionOptions = undefined;
+    mocks.unknownReasoning = false;
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -699,6 +720,7 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.machineProviders = [];
     mocks.modelsLoading = false;
     mocks.permissionCeiling = undefined;
+    mocks.openCreateDialogThen.mockReset();
     mocks.environmentProviders = [
       CHECKOUT_PROVIDER,
       MANAGED_WORKTREE_SUGAR_PROVIDER,
@@ -929,6 +951,27 @@ describe("PluginNewThreadComposer seeding", () => {
     );
   });
 
+  it("preserves the seeded reasoning preference when the model's levels are unknown", async () => {
+    mocks.unknownReasoning = true;
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "unknown-reasoning",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.reasoningLevel).toBe(STORED_REQUEST.reasoningLevel);
+    expect(submitted[0]?.executionInputSources?.reasoningLevel).toBe(
+      STORED_REQUEST.executionInputSources?.reasoningLevel,
+    );
+  });
+
   it("round-trips a stored request submitted untouched", async () => {
     const submitted: NewThreadRequest[] = [];
     renderComposer(
@@ -949,6 +992,35 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe("");
     });
+  });
+
+  it("reports a failed first send with a fixed failure reason", async () => {
+    const recordEvent = vi.mocked(sdk.system.experimental_recordTelemetryEvent);
+    recordEvent.mockClear();
+    renderComposer(
+      STORED_REQUEST,
+      () => {
+        throw new BbHttpError({
+          body: null,
+          code: "host_unavailable",
+          message: "Host /Users/me is not connected",
+          status: 502,
+        });
+      },
+      "failed-submit",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(recordEvent.mock.calls.map(([event]) => event)).toEqual([
+      { name: "new_thread_submit", properties: { outcome: "started" } },
+      {
+        name: "new_thread_submit",
+        properties: { outcome: "failed", failure_reason: "host_unavailable" },
+      },
+    ]);
   });
 
   it("submits an initial thread token with its resolved mention range", async () => {
@@ -1259,6 +1331,55 @@ describe("PluginNewThreadComposer seeding", () => {
         inputs: null,
       },
     });
+  });
+
+  it("offers New project in the picker and selects the created project in this composer", async () => {
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "create-project",
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    const createProject = latestPromptBoxProps().project.createProject;
+    expect(createProject).toMatchObject({ disabled: true, isCreating: false });
+
+    act(() => {
+      createProject.onCreate();
+    });
+    expect(mocks.openCreateDialogThen).toHaveBeenCalledOnce();
+
+    mocks.extraProjects = [
+      {
+        ...PROJECT,
+        id: "proj_created",
+        name: "Created",
+        sources: [
+          {
+            ...PROJECT.sources[0],
+            id: "src_created",
+            projectId: "proj_created",
+          },
+        ],
+      },
+    ];
+    const selectCreatedProject = mocks.openCreateDialogThen.mock.calls[0]?.[0];
+    act(() => {
+      selectCreatedProject("proj_created");
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_created");
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.projectId).toBe("proj_created");
   });
 
   it("re-seeds every selection when the seed props change, even after a user pick", async () => {

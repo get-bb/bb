@@ -39,6 +39,7 @@ function Selection() {
           id: "b",
           projectId: "proj_test",
           parentThreadId: null,
+          parentNotifications: "auto",
           archivedAt: null,
           pinnedAt: null,
           sectionId: null,
@@ -83,7 +84,6 @@ function renderSelection() {
     { component: Harness },
     {},
     {
-      experiments: ["sidebarMultiSelect"],
       sidebarThreads: {
         threads: [
           makeSidebarThread({ id: "a" }),

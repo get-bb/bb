@@ -450,7 +450,7 @@ describe("buildProjectThreadGroups", () => {
     ]);
   });
 
-  it("rolls collapsed child activity up from all descendants", () => {
+  it("hands a collapsed parent every descendant to roll up", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
         id: "parent",
@@ -472,45 +472,18 @@ describe("buildProjectThreadGroups", () => {
       }),
     ]);
 
-    expect(findNode(rootItems, "parent")?.stats).toEqual({
-      childActivity: {
-        threadIds: expect.arrayContaining([
-          "quiet-child",
-          "busy-grandchild",
-          "pending-grandchild",
-        ]),
-        pending: true,
-        working: true,
-        runtimeWorking: true,
-        workflow: false,
-        backgroundAgent: false,
-        backgroundCommand: false,
-        planMode: false,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      },
-      childCount: 3,
-    });
-    expect(findNode(rootItems, "quiet-child")?.stats).toEqual({
-      childActivity: {
-        threadIds: expect.arrayContaining([
-          "busy-grandchild",
-          "pending-grandchild",
-        ]),
-        pending: true,
-        working: true,
-        runtimeWorking: true,
-        workflow: false,
-        backgroundAgent: false,
-        backgroundCommand: false,
-        planMode: false,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      },
-      childCount: 2,
-    });
+    const hiddenIds = (id: string) =>
+      findNode(rootItems, id)?.stats.hiddenThreads.map((thread) => thread.id);
+    expect(hiddenIds("parent")?.sort()).toEqual([
+      "busy-grandchild",
+      "pending-grandchild",
+      "quiet-child",
+    ]);
+    expect(hiddenIds("quiet-child")?.sort()).toEqual([
+      "busy-grandchild",
+      "pending-grandchild",
+    ]);
+    expect(findNode(rootItems, "parent")?.stats.childCount).toBe(3);
   });
 
   it("orders roots by literal createdAt when given the created comparator", () => {
@@ -818,7 +791,7 @@ describe("section bucketing", () => {
     ]);
   });
 
-  it("rolls descendant count + activity up onto the section group", () => {
+  it("hands the section group its descendant count and threads", () => {
     const items = buildSectionThreadList(
       [
         createThread({
@@ -839,7 +812,10 @@ describe("section bucketing", () => {
       throw new Error("expected a section item");
     }
     expect(section.group.threadCount).toBe(2);
-    expect(section.group.activity.pending).toBe(true);
+    expect(section.group.hiddenThreads.map((thread) => thread.id)).toEqual([
+      "busy",
+      "quiet",
+    ]);
   });
 
   it("combines threads from different projects that share the same section id", () => {

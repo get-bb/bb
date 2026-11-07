@@ -3,23 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Git status, changed files and diffs for each environment",
+  "description": "Git status, changed files and the Diff tab for each environment",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.84"
+    "bbPluginSdk": ">=0.6.90"
   },
   "bb": {
     "name": "Git",
-    "description": "Git status, changed files and diffs for each environment",
+    "description": "Git status, changed files and the Diff tab for each environment",
     "branding": {
       "icon": "GitBranch"
     },
     "server": "./server.ts",
-    "host": "./host.ts"
+    "host": "./host.ts",
+    "app": "./app.tsx"
   },
   "exports": {
     "./contract": "./contract.ts",
     "./rpc-contract": "./rpc-contract.ts",
+    "./status-state": "./status-state.ts",
     "./testing": "./testing.ts"
   },
   "keywords": [
@@ -35,17 +37,32 @@
     "@bb/async-cache": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/shared-ui": "workspace:*",
+    "@bb/thread-view": "workspace:*",
+    "@tanstack/react-virtual": "3.14.20",
     "bb-environment-provider-host": "workspace:*",
-    "zod": "^4.3.6"
+    "mime-types": "^3.0.2",
+    "picomatch": "^4.0.7",
+    "usehooks-ts": "^3.1.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/plugin-build": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "@types/node": "^22.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/mime-types": "^3.0.1",
+    "@types/node": "^22.20.5",
+    "@types/picomatch": "^4.0.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^29.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sonner": "^1.7.4",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   }
 }

@@ -227,7 +227,7 @@ describe("chunkBody", () => {
       total.set(chunk.data, offset);
       offset += chunk.data.length;
     }
-    expect(Buffer.compare(Buffer.from(total), Buffer.from(data))).toBe(0);
+    expect(total.every((byte, index) => byte === data[index])).toBe(true);
   });
 
   it("yields nothing for an empty body", () => {

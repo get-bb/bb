@@ -1,5 +1,7 @@
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute } from "node:path";
 import {
+  experimental_resolveHostPath as resolveHostPath,
+  experimental_getHostPathBasename as getHostPathBasename,
   PluginCliError,
   cliCommand,
   defineCli,
@@ -23,6 +25,7 @@ import type {
   PermissionMode,
   ReasoningLevel,
   ResolvedCreateAutomationInput,
+  ScriptExecutionUpdate,
   UpdateAutomationInput,
 } from "./rpc-types.js";
 import {
@@ -45,15 +48,7 @@ import { interpreterForPath } from "./script-files.js";
 
 const DURATION_PATTERN =
   /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
-const hostListSchema = z.array(
-  z
-    .object({
-      id: z.string().optional(),
-      status: z.string().optional(),
-      connected: z.boolean().optional(),
-    })
-    .passthrough(),
-);
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
 const DESCRIPTION = `Automations run agent prompts or server-side scripts on a schedule.
 
@@ -155,7 +150,7 @@ const AGENT_OPTIONS = {
     type: "string",
     placeholder: "id-or-path",
     description:
-      "Existing environment id, or a workspace path to run in on a connected host",
+      "Existing environment id, or a workspace path on the calling thread's machine, else the primary host",
   },
   "new-environment": {
     type: "enum",
@@ -191,7 +186,7 @@ const SCRIPT_OPTIONS = {
     type: "enum",
     values: automationScriptInterpreterSchema.options,
     description:
-      "Interpreter for the script; inferred from a --script-file extension when omitted",
+      "Interpreter for the script; a new script infers it from the --script-file extension when omitted, and an update keeps the current one",
   },
   timeout: {
     type: "duration",
@@ -301,6 +296,12 @@ function requireOptionValue(name: string, value: string): string {
 }
 
 function parseRunAt(value: string): number {
+  if (DATE_ONLY_PATTERN.test(value.trim())) {
+    throw cliError(
+      "--at needs a time of day, such as 2026-08-25T09:00; a date alone is ambiguous about its time zone.",
+      "invalid_value",
+    );
+  }
   const runAt = Date.parse(value);
   if (!Number.isFinite(runAt)) {
     throw cliError(
@@ -443,26 +444,35 @@ function parseScriptEnv(
 }
 
 function looksLikePath(value: string): boolean {
-  return value.includes("/") || value.startsWith(".") || value.startsWith("~");
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:/u.test(value) ||
+    value.startsWith(".") ||
+    value.startsWith("~")
+  );
 }
 
-async function resolveConnectedHostId(
+async function resolveAgentHostId(
   bb: Pick<BbPluginApi, "sdk">,
+  ctx: Pick<PluginCliContext, "threadId">,
 ): Promise<string> {
-  const hosts = hostListSchema.parse(await bb.sdk.hosts.list());
-  const host =
-    hosts.find((candidate) => candidate.connected === true) ??
-    hosts.find((candidate) => candidate.status === "connected") ??
-    hosts[0];
-  if (!host?.id) {
-    throw cliError("No connected host is available.", "no_connected_host");
+  const threadHostId =
+    ctx.threadId === undefined
+      ? null
+      : await readThreadHostId(bb, ctx.threadId);
+  if (threadHostId !== null) return threadHostId;
+  const { primaryHostId } = await bb.sdk.system.config();
+  if (primaryHostId === null) {
+    throw cliError("No primary host is available.", "no_connected_host");
   }
-  return host.id;
+  return primaryHostId;
 }
 
 async function buildAgentEnvironment(
   bb: Pick<BbPluginApi, "sdk">,
   options: AgentOptionValues,
+  ctx: Pick<PluginCliContext, "threadId">,
 ): Promise<AgentEnvironment> {
   const environment = options.environment?.trim();
   const newEnvironment = options["new-environment"];
@@ -476,7 +486,7 @@ async function buildAgentEnvironment(
   if (newEnvironment) {
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveAgentHostId(bb, ctx),
       workspace: {
         type: "managed-worktree",
         baseBranch: baseBranch
@@ -489,7 +499,7 @@ async function buildAgentEnvironment(
   if (looksLikePath(environment)) {
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveAgentHostId(bb, ctx),
       workspace: { type: "unmanaged", path: environment },
     };
   }
@@ -508,6 +518,16 @@ const threadEnvironmentHostSchema = z
       .optional(),
   })
   .passthrough();
+
+async function readThreadHostId(
+  bb: Pick<BbPluginApi, "sdk">,
+  threadId: string,
+): Promise<string | null> {
+  const thread = threadEnvironmentHostSchema.parse(
+    await bb.sdk.threads.get({ threadId, include: "environment" }),
+  );
+  return thread.environment?.hostId ?? null;
+}
 
 async function resolveScriptFileHostId(
   bb: Pick<BbPluginApi, "sdk">,
@@ -540,23 +560,19 @@ async function resolveScriptFileHostId(
     );
   }
   if (ctx.threadId === undefined) return undefined;
-  const thread = threadEnvironmentHostSchema.parse(
-    await bb.sdk.threads.get({
-      threadId: ctx.threadId,
-      include: "environment",
-    }),
-  );
-  if (!thread.environment) {
+  const hostId = await readThreadHostId(bb, ctx.threadId);
+  if (hostId === null) {
     throw cliError(
       `Thread ${ctx.threadId} has no environment, so the --script-file host cannot be resolved; pass --host <name-or-id>.`,
       "invalid_value",
     );
   }
-  return thread.environment.hostId;
+  return hostId;
 }
 
 type ScriptFileSource = {
   path: string;
+  fileName: string;
   hostId: string | undefined;
   content: string;
 };
@@ -574,17 +590,16 @@ async function loadScriptFileSource(
     }
     return undefined;
   }
-  let path: string;
-  if (isAbsolute(scriptFile)) {
-    path = scriptFile;
-  } else {
-    if (ctx.cwd === undefined || !isAbsolute(ctx.cwd)) {
-      throw cliError(
-        "Relative --script-file paths need the invoking CLI cwd; pass an absolute path.",
-        "invalid_value",
-      );
-    }
-    path = resolve(ctx.cwd, scriptFile);
+  const path = resolveHostPath({ rootPath: ctx.cwd ?? "", path: scriptFile });
+  if (path === null) {
+    throw cliError(
+      "Invalid --script-file path; relative paths need the invoking CLI cwd.",
+      "invalid_value",
+    );
+  }
+  const fileName = getHostPathBasename(path);
+  if (!fileName) {
+    throw cliError(`--script-file must name a file: ${path}`, "invalid_value");
   }
   const hostId = await resolveScriptFileHostId(bb, ctx, hostOverride);
   const file = await bb.sdk.files.read({
@@ -594,7 +609,7 @@ async function loadScriptFileSource(
   if (file.contentEncoding !== "utf8") {
     throw cliError(`--script-file is not UTF-8 text: ${path}`, "invalid_value");
   }
-  return { path, hostId, content: file.content };
+  return { path, fileName, hostId, content: file.content };
 }
 
 type BuiltExecution = {
@@ -646,7 +661,7 @@ async function buildExecution(
       );
     }
     validateAgentTargetOptions(options);
-    const environment = await buildAgentEnvironment(bb, options);
+    const environment = await buildAgentEnvironment(bb, options, ctx);
     const serviceTier = options["service-tier"];
     return {
       execution: {
@@ -709,7 +724,7 @@ async function buildExecution(
     execution: {
       mode: "script",
       script: content,
-      ...(scriptSource ? { scriptFile: scriptSource.path } : {}),
+      ...(scriptSource ? { scriptFile: scriptSource.fileName } : {}),
       ...(interpreter ? { interpreter } : {}),
       ...(workingDirectory ? { workingDirectory } : {}),
       timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
@@ -719,19 +734,18 @@ async function buildExecution(
   };
 }
 
-const COMPLETE_EXECUTION_OPTION_NAMES = [
+const SCRIPT_UPDATE_OPTION_NAMES = [
   "script",
   "script-file",
+  "host",
   "interpreter",
   "timeout",
   "env-json",
+  "working-directory",
 ] as const;
 
-async function buildAgentExecutionUpdate(
-  bb: Pick<BbPluginApi, "sdk">,
-  options: AgentOptionValues,
-): Promise<AgentExecutionUpdate | undefined> {
-  const agentOptionNames = [
+function hasAgentOptions(options: AgentOptionValues): boolean {
+  return [
     options.prompt,
     options.provider,
     options.model,
@@ -743,8 +757,52 @@ async function buildAgentExecutionUpdate(
     options.environment,
     options["new-environment"],
     options["base-branch"],
-  ];
-  if (!agentOptionNames.some((value) => value !== undefined)) return undefined;
+  ].some((value) => value !== undefined);
+}
+
+async function buildScriptExecutionUpdate(
+  bb: Pick<BbPluginApi, "sdk">,
+  options: ScriptOptionValues,
+  ctx: Pick<PluginCliContext, "cwd" | "threadId">,
+): Promise<{ update: ScriptExecutionUpdate; scriptSource?: ScriptFileSource }> {
+  if (options.script !== undefined && options["script-file"] !== undefined) {
+    throw cliError(
+      "Provide exactly one of --script or --script-file.",
+      "unexpected_argument",
+    );
+  }
+  const env = parseScriptEnv(options["env-json"]);
+  const workingDirectoryOption = options["working-directory"];
+  const scriptSource = await loadScriptFileSource(bb, options, ctx);
+  const update: ScriptExecutionUpdate = {};
+  if (scriptSource !== undefined) {
+    update.script = scriptSource.content;
+    update.scriptFile = scriptSource.fileName;
+  } else if (options.script !== undefined) {
+    update.script = options.script;
+  }
+  if (update.script === "") {
+    throw cliError("Missing script content.", "invalid_value");
+  }
+  if (options.interpreter !== undefined) {
+    update.interpreter = options.interpreter;
+  }
+  if (options.timeout !== undefined) update.timeoutMs = options.timeout;
+  if (env !== undefined) update.env = env;
+  if (workingDirectoryOption !== undefined) {
+    update.workingDirectory = parseScriptWorkingDirectory(
+      workingDirectoryOption,
+    );
+  }
+  return { update, ...(scriptSource ? { scriptSource } : {}) };
+}
+
+async function buildAgentExecutionUpdate(
+  bb: Pick<BbPluginApi, "sdk">,
+  options: AgentOptionValues,
+  ctx: Pick<PluginCliContext, "threadId">,
+): Promise<AgentExecutionUpdate | undefined> {
+  if (!hasAgentOptions(options)) return undefined;
 
   validateAgentTargetOptions(options);
   const update: AgentExecutionUpdate = {};
@@ -780,7 +838,7 @@ async function buildAgentExecutionUpdate(
   ) {
     update.target = {
       type: "environment",
-      environment: await buildAgentEnvironment(bb, options),
+      environment: await buildAgentEnvironment(bb, options, ctx),
     };
   }
   return update;
@@ -788,6 +846,7 @@ async function buildAgentExecutionUpdate(
 
 async function buildUpdateRequest(
   bb: Pick<BbPluginApi, "sdk">,
+  service: Pick<AutomationService, "get">,
   options: UpdateOptionValues,
   automationId: string,
   ctx: Pick<PluginCliContext, "cwd" | "projectId" | "threadId">,
@@ -811,34 +870,34 @@ async function buildUpdateRequest(
     options.prompt !== undefined &&
     options.provider !== undefined &&
     options.model !== undefined;
-  if (
-    replacesAgentExecution ||
-    COMPLETE_EXECUTION_OPTION_NAMES.some((name) => options[name] !== undefined)
-  ) {
+  const hasScriptOptions = SCRIPT_UPDATE_OPTION_NAMES.some(
+    (name) => options[name] !== undefined,
+  );
+  if (replacesAgentExecution) {
     const built = await buildExecution(bb, options, ctx);
     request.execution = built.execution;
-    scriptSource = built.scriptSource;
+  } else if (hasScriptOptions) {
+    if (hasAgentOptions(options)) {
+      throw cliError(
+        "Cannot combine agent execution flags with script flags.",
+        "unexpected_argument",
+      );
+    }
+    const current = await service.get({ projectId, automationId });
+    if ("execution" in current && current.execution.mode === "agent") {
+      const built = await buildExecution(bb, options, ctx);
+      request.execution = built.execution;
+      scriptSource = built.scriptSource;
+    } else {
+      const built = await buildScriptExecutionUpdate(bb, options, ctx);
+      request.script = built.update;
+      scriptSource = built.scriptSource;
+    }
   } else {
-    const agentUpdate = await buildAgentExecutionUpdate(bb, options);
+    const agentUpdate = await buildAgentExecutionUpdate(bb, options, ctx);
     if (agentUpdate !== undefined) {
       request.agent = agentUpdate;
     }
-  }
-  const workingDirectoryOption = options["working-directory"];
-  if (request.agent !== undefined && workingDirectoryOption !== undefined) {
-    throw cliError(
-      "Cannot combine agent execution flags with --working-directory.",
-      "unexpected_argument",
-    );
-  }
-  if (
-    request.execution === undefined &&
-    request.agent === undefined &&
-    workingDirectoryOption !== undefined
-  ) {
-    request.script = {
-      workingDirectory: parseScriptWorkingDirectory(workingDirectoryOption),
-    };
   }
   if (
     request.name === undefined &&
@@ -922,7 +981,6 @@ function refreshScriptFileCommand(
   automation: AutomationDetailResponse,
   source: ScriptFileSource,
 ): string {
-  if (automation.execution.mode !== "script") return "";
   const argv = [
     "bb",
     "automation",
@@ -934,20 +992,6 @@ function refreshScriptFileCommand(
     source.path,
   ];
   if (source.hostId !== undefined) argv.push("--host", source.hostId);
-  if (automation.execution.interpreter !== undefined) {
-    argv.push("--interpreter", automation.execution.interpreter);
-  }
-  const workingDirectory = automation.execution.workingDirectory;
-  argv.push(
-    "--working-directory",
-    workingDirectory.type === "path"
-      ? workingDirectory.path
-      : workingDirectory.type,
-  );
-  argv.push("--timeout", String(automation.execution.timeoutMs));
-  if (automation.execution.env !== undefined) {
-    argv.push("--env-json", JSON.stringify(automation.execution.env));
-  }
   return argv.map(shellQuote).join(" ");
 }
 
@@ -1187,7 +1231,7 @@ export function registerAutomationCli(args: {
         update: cliCommand({
           summary: "Update automation configuration",
           description:
-            "Replace the execution with a complete agent (--prompt --provider --model) or script (--script/--script-file), or patch an existing agent with any subset of its flags.",
+            "Patch an existing agent or script with any subset of its flags; omitted settings keep their values. --prompt --provider --model together replace the execution with a new agent, and script flags on an agent automation replace it with a script (--script/--script-file required).",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: {
             project: PROJECT_OPTION,
@@ -1210,6 +1254,7 @@ export function registerAutomationCli(args: {
             attempt(async () => {
               const { request, scriptSource } = await buildUpdateRequest(
                 bb,
+                service,
                 input.options,
                 input.positionals.automationId,
                 ctx,

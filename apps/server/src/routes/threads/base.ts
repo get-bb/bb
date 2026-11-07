@@ -53,12 +53,11 @@ import {
 } from "../../services/lib/validation.js";
 import {
   getNonDestroyedHostWithStatus,
-  requireEnvironment,
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
 import { listRunningThreadsWithIntendedHosts } from "../../services/threads/dispatch-attempt.js";
-import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
+import { syncThreadTitleToProvider } from "../../services/threads/thread-commands.js";
 import { requestThreadStorageDeletion } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
 import { createThreadForkFromRequest } from "../../services/threads/thread-fork.js";
@@ -499,23 +498,8 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
 
-    if (
-      payload.title &&
-      payload.title !== thread.title &&
-      updated.environmentId
-    ) {
-      const environment = requireEnvironment(deps.db, updated.environmentId);
-      if (environment.status === "ready" && environment.path) {
-        dispatchThreadRenameCommand(deps, {
-          environment: {
-            id: environment.id,
-            hostId: environment.hostId,
-          },
-          providerId: updated.providerId,
-          threadId: updated.id,
-          title: payload.title,
-        });
-      }
+    if (payload.title && payload.title !== thread.title) {
+      syncThreadTitleToProvider(deps, updated);
     }
 
     if (

@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { runInNewContext } from "node:vm";
+import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -288,6 +289,11 @@ it("surfaces a failed run's error when queued work continues the same settlement
       kind: "provider.error",
       message: "Provider error",
       detail: "failure-original",
+      errorInfo: {
+        category: "unknown",
+        httpStatusCode: null,
+        providerCode: null,
+      },
     },
   ]);
   expect(deltas.filter((delta) => delta.kind === "turn.boundary")).toEqual([
@@ -352,7 +358,7 @@ it("ignores duplicate authoritative settlement without duplicate delivery", asyn
 it.each(["bb-first", "bb-last"])(
   "real Pi 0.84 starts B inside an async settlement handler before A stdout (%s)",
   async (order) => {
-    expect(VERSION).toBe("0.84.0");
+    expect(VERSION).toBe("0.84.4");
     const h = harness();
     const dir = mkdtempSync(join(tmpdir(), "bb-pi-real-settlement-"));
     const settingsManager = SettingsManager.inMemory({
@@ -362,33 +368,35 @@ it.each(["bb-first", "bb-last"])(
     const sessionManager = SessionManager.inMemory(dir);
     const wireOrder: string[] = [];
     const source = BB_PI_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace(
-      "export default function bbExtension",
-      "function bbExtension",
+      "export default async function bbExtension",
+      "async function bbExtension",
     );
+    class ChannelSocket extends EventEmitter {
+      readonly writable = true;
+      write(line: string): boolean {
+        if (line.startsWith("{")) {
+          const message: Record<string, unknown> = JSON.parse(line);
+          h.control.handleChannelMessage(message);
+        }
+        return true;
+      }
+      unref(): void {}
+    }
     const bbFactory: ExtensionFactory = runInNewContext(
       `${source}; bbExtension`,
       {
         PiRuntime: { VERSION, SessionManager },
-        Buffer,
         StringDecoder,
-        process: { env: {} },
-        Socket: class {
-          on() {
-            return this;
-          }
-          unref() {}
+        process: {
+          env: {
+            BB_PI_BRIDGE_CHANNEL: "settlement",
+            BB_PI_BRIDGE_CHANNEL_TOKEN: "token",
+          },
         },
-        writeSync: (
-          _fd: number,
-          buffer: Buffer,
-          offset: number,
-          length: number,
-        ) => {
-          const message: Record<string, unknown> = JSON.parse(
-            buffer.subarray(offset, offset + length).toString(),
-          );
-          h.control.handleChannelMessage(message);
-          return length;
+        connect: () => {
+          const socket = new ChannelSocket();
+          setImmediate(() => socket.emit("connect"));
+          return socket;
         },
       },
     );

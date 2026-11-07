@@ -4,14 +4,14 @@ bb connect next is an opt-in second way in to a bb server, next to the Cloudflar
 A server with the `connect-next` plugin enabled answers at `https://<label>.next.getbb.app` as well as
 `https://<label>.getbb.app` (staging: `https://<label>.next.vibecodethis.site`; the plugin derives the
 domain from its bb account, see Plugin). Accounts, servers, machines, credentials and OAuth grants stay in the
-Cloudflare D1 database `bb-connect-prod`; only the data plane moves to Fly.
+connect Postgres database (PlanetScale, reached through Hyperdrive); only the data plane moves to Fly.
 
 ## Pieces
 
 | Piece          | Where                                                                       | Owns                                                                                                                                                                                                                       |
 | -------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Contract       | `packages/tunnel-contract/src/next.ts` (`@bb/tunnel-contract/next`)         | Names, wire types, gate assertion signing and verification                                                                                                                                                                 |
-| Account API    | `apps/connect` (Worker `bb-connect`, D1)                                    | `POST https://connect.getbb.app/api/gate/resolve[/batch]` and `/api/gate/presence[/batch]` (staging `connect.vibecodethis.site`), all behind `Authorization: Bearer <GATE_SECRET>` (Worker secret); var `NEXT_BASE_DOMAIN` |
+| Account API    | `apps/connect` (Worker `bb-connect`, Postgres)                              | `POST https://connect.getbb.app/api/gate/resolve[/batch]` and `/api/gate/presence[/batch]` (staging `connect.vibecodethis.site`), all behind `Authorization: Bearer <GATE_SECRET>` (Worker secret); var `NEXT_BASE_DOMAIN` |
 | Gate keys      | `apps/web` (getbb.app apex)                                                 | `GET https://getbb.app/.well-known/bb-connect-gate-keys.json` from the `GATE_PUBLIC_KEYS` var (404 while unset; see Gate keys below), `cache-control: public, max-age=300`; var `NEXT_BASE_DOMAIN` for MCP OAuth           |
 | Gate           | `apps/connect-next` (Fly app `bb-connect-next`)                             | TLS-terminated HTTP gate on 8080 plus `frps`; every rule of `apps/connect/src/worker.ts`                                                                                                                                   |
 | Server ingress | `apps/server/src/services/connect-next`                                     | `bb.server.internal_DO_NOT_USE_openTunnelIngress`: a loopback listener that only accepts requests with a valid gate assertion                                                                                              |
@@ -111,7 +111,7 @@ tunnel is connected or `next_tunnel_gate` is set and `next_tunnel_at` is younger
 `POST /api/gate/resolve/batch` takes a `GateResolveBatchRequest`, `{ "requests": [GateResolveRequest, …] }`
 with 1 to `GATE_RESOLVE_BATCH_MAX` (50) entries, and answers `200 { "answers": [...] }` in the same
 order, each exactly what `/api/gate/resolve` answers for that entry, or `null` when that entry could
-not be checked (a D1 error; the gate treats it as an outage for that entry only). It reads every
+not be checked (a database error; the gate treats it as an outage for that entry only). It reads every
 label of the batch fresh with one query for servers and one for machines (which also refills the
 15 s label cache), so a batch of 50 `Login` checks costs two label queries. The gate sends every
 lookup this way.
@@ -121,7 +121,7 @@ lookup this way.
 label twice, and answers `200 { "results": [...] }` in the same order, each `"recorded"`,
 `"unchanged"` (known label, nothing to write under the rules above) or `"unknown_label"`. A duplicate
 label or an `at` more than 60 s ahead on any entry makes the whole call `400`. The whole batch is one
-D1 batch of five statements over `json_each` (known labels; `connected` and `disconnected` updates for
+Postgres transaction of five statements over `jsonb_to_recordset` (known labels; `connected` and `disconnected` updates for
 servers and for machines), with the same write rules as `/api/gate/presence`, which now runs the same
 statements for a single entry. The gate sends all presence this way. Deploy the Worker before a gate
 that uses the batch routes.
@@ -326,9 +326,8 @@ failing account API with backoff for up to 7 s (`HOOK_RESOLVE_DEADLINE_MS`, insi
 wait), so a short outage or a mass reconnect delays logins instead of refusing them.
 Install paths (`GATE_PUBLIC_PATHS`) are forwarded with a `public` assertion (`sub: ""`) and no `x-bb-gate-auth`. An
 assertion the server refuses (`401 {code:"gate_assertion_invalid"}`) is logged as
-`assertion_refused` and answered with the gate's `502`. Deadlines: 30 s to the response head (90 s for
-`POST /api/v1/system/voice-transcription`), including the wait of up to 15 s for a tunnel that dropped;
-then `504`. Answers from the account API are cached (see Answer cache). Assets are cached in memory per label and encoding (immutable
+`assertion_refused` and answered with the gate's `502`. Deadlines: 30 s without progress, then `504`
+naming the stage (see Request deadlines). Answers from the account API are cached (see Answer cache). Assets are cached in memory per label and encoding (immutable
 `max-age ≥ 300`, shells revalidated with their `etag`; `CACHE_MAX_BYTES`, default 256 MiB), and
 compressible bodies the origin left unencoded are sent as `br` or `gzip`: brotli quality 5 for
 bodies the asset cache stores and for dynamic bodies under 16 KiB, quality 4 for larger or
@@ -358,7 +357,7 @@ Environment (`fly.toml` sets the non-secret ones):
 | `OPEN_FILES_LIMIT`                                  | `65536` (image)        | Open-file limit set before the gate starts                                                                         |
 | `ASSETLINKS_SHA256_FINGERPRINTS`                    | empty                  | Android app links, as on the Cloudflare gate                                                                       |
 
-Secrets (`fly secrets set` on `bb-connect-next`; the gate holds no D1 or better-auth secret):
+Secrets (`fly secrets set` on `bb-connect-next`; the gate holds no database or better-auth secret):
 
 - `GATE_SECRET`: equal to the `GATE_SECRET` Worker secret of `bb-connect`; sent as the account API
   bearer.
@@ -405,6 +404,16 @@ apps/connect-next/dist/gate.mjs`, and point frpc at `ws://tunnel.next.localhost:
 A visitor `Host` may carry a port in such a local run (`<label>.next.localhost:8080`): the gate
 routes on the host without it and keeps the port on the upstream `Host`, so the server ingress still
 sees `Origin` equal to `http://<Host>`.
+
+### Request deadlines
+
+The gate times out a request body after 30 seconds without another chunk. Once the body has been
+forwarded, the response head gets a fresh 30 seconds. If headers are still pending and the directory
+still locates that tunnel, the gate checks again every 30 seconds, up to 10 minutes from arrival.
+That cap also bounds progressing uploads. A stalled upload still gets `504` with stage `request-body`;
+a response-head timeout gets stage `response-head`. Voice transcription uses the same rule, matching
+the healthy-tunnel wait policy of the Cloudflare gate. Routing, including the wait of up to 15 s
+for a tunnel that dropped, and WebSocket handshakes keep a 30-second deadline from arrival.
 
 ### Answer cache
 
@@ -473,15 +482,18 @@ machine.
 prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results also in
 `<work dir>/results.json`, service logs in `<work dir>/logs/`). It needs frp 0.71.0 in
 `~/.cache/bb-frp/0.71.0` (the gate's tests download it) and a built app
-(`pnpm exec turbo run build --filter=@bb/app`). It clears inherited `BB_*`, `CLOUDFLARE_*` and
-`FLY_*` variables, then:
+(`pnpm exec turbo run build --filter=@bb/app`), and a local Postgres whose role may create
+databases (`BB_E2E_DATABASE_URL`, default `postgresql://bb:bb@localhost:5432/bb_connect`; see
+[debugging-and-qa.md](debugging-and-qa.md#local-cloud)). It clears inherited `BB_*`, `CLOUDFLARE_*`
+and `FLY_*` variables except `BB_E2E_*`, then:
 
 1. Generates a gate key pair with `generateGateKeyPair` and a random `GATE_SECRET`, and starts
-   `pnpm cloud:dev` (Connect worker and bb-web under Miniflare, migrations applied to a fresh local
-   D1 in `<work dir>/cloud`) with `BB_CLOUD_DEV_GATE_SECRET`, `BB_CLOUD_DEV_GATE_PUBLIC_KEYS` and
-   `BB_CLOUD_DEV_STATE_DIR`. Local Cloud uses this worktree's dev ports (`bb.localhost:<cloudPort>`).
+   `pnpm cloud:dev` (Connect worker and bb-web under Miniflare, migrations applied to a fresh
+   `bb_connect_next_e2e` database on that Postgres, Durable Object state in `<work dir>/cloud`) with
+   `BB_CLOUD_DEV_GATE_SECRET`, `BB_CLOUD_DEV_GATE_PUBLIC_KEYS`, `BB_CLOUD_DEV_STATE_DIR` and
+   `BB_CLOUD_DEV_DATABASE_URL`. Local Cloud uses this worktree's dev ports (`bb.localhost:<cloudPort>`).
 2. Signs up two users through bb-web's local email/password auth, and seeds the owner's handle
-   `cne2e`, its server row and a `server-pair` code in local D1.
+   `cne2e`, its server row and a `server-pair` code in local Postgres.
 3. Builds and starts the gate with real `frps` (`PUBLIC_SCHEME=http`, `BASE_DOMAIN=next.bb.localhost`,
    `ACCOUNT_API_URL` = the local worker), on a free port bound to `::`.
 4. Starts a bb server from source in development mode on a data dir in the work dir, signs it in
@@ -496,7 +508,7 @@ prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results a
    answers and `/ws`; another user gets 403; no cookie gets the sign-in page (HTML) or 401 (API);
    visitor-sent `x-bb-gate-assertion` (even one genuinely signed) and `x-bb-gate-auth` change nothing;
    the ingress port without an assertion answers 401 and a valid assertion replayed on another path
-   too; install files download without a cookie; D1 presence goes online, then offline after
+   too; install files download without a cookie; Postgres presence goes online, then offline after
    `bb connect-next off` (address 503) and again after `bb plugin disable bb--connect-next`. The
    status `url` is the address derived from the account (`http://cne2e.next.bb.localhost:<cloudPort>`).
    Shares: starts a Vite-like dev server on loopback (refuses any `Host` but `127.0.0.1:<port>`, and
@@ -509,7 +521,7 @@ prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results a
    `bb connect unexpose` makes the address 503 within 10 s while the main address keeps answering
    200 (polled every 200 ms), and exposing again brings it back.
    Machines (it builds `@bb/cli` first, which a source daemon injects): seeds a bb connect machine
-   row and credential in local D1, takes a join code from `POST /api/v1/hosts/join-codes`, and
+   row and credential in local Postgres, takes a join code from `POST /api/v1/hosts/join-codes`, and
    starts a second host daemon from source (its own `BB_DATA_DIR`, local API port and
    `BB_CONNECT_MACHINE_CREDENTIAL`) with `BB_SERVER_URL` at the next address. It checks that the
    machine enrolls and connects through the gate, that the server recorded its `connect_machine_id`
@@ -525,14 +537,14 @@ prints one `PASS`/`FAIL` line per check (exit status 1 on any failure; results a
    next-joined machine's frpc once it has had no server session for 30 s, and `on` brings it back.
    Then it turns bb connect on against local Cloud and starts a third daemon through the bb connect
    address: its share answers on both addresses, the gate reports the machine label's presence in
-   D1, `bb connect-next off` stops its frpc within seconds while its bb connect share stays up, and
+   Postgres, `bb connect-next off` stops its frpc within seconds while its bb connect share stays up, and
    `on` starts it again. With `BB_E2E_OLD_DAEMON_REPO` (a checkout and install of a protocol-246
    commit, such as `9fad6b6255`) it also starts that old daemon through the bb connect address and
    checks that it opens a session, that its Cloudflare share answers, and that it reports no next
    tunnel; without it that check is listed as skipped.
-6. Session refresh: signs the owner in again, moves that session's `expires_at` in D1 to two days
+6. Session refresh: signs the owner in again, moves that session's `expires_at` in Postgres to two days
    ahead, and checks that an app-shell visit returns a renewed `better-auth.session_token` cookie with
-   `Domain=.bb.localhost`, that D1 now holds a seven-day expiry, that the renewed cookie works, and that
+   `Domain=.bb.localhost`, that Postgres now holds a seven-day expiry, that the renewed cookie works, and that
    the gates called `get-session` exactly once (`session_refresh` events in their logs). Desktop
    session: mints a `bb-connect.desktop_session` cookie with a day left (signed with local Cloud's
    fixed `BETTER_AUTH_SECRET`, granted by the owner's session) and checks the API and the cached shell

@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { build } from "esbuild";
+import { workerNodeBuiltinsPlugin } from "@bb/connect-db-pg/testing";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
@@ -35,6 +36,7 @@ async function bundleFixture(): Promise<string> {
     format: "esm",
     target: "esnext",
     conditions: ["workerd", "worker", "browser"],
+    plugins: [workerNodeBuiltinsPlugin],
     write: false,
   });
   return result.outputFiles[0].text;
@@ -145,7 +147,6 @@ beforeAll(async () => {
     compatibilityDate: "2026-06-11",
     compatibilityFlags: ["nodejs_compat"],
     durableObjects: { TUNNEL_DO: "TunnelDO" },
-    d1Databases: { DB: "fixture-db" },
     bindings: {
       BASE_DOMAIN: "relay.test",
       BETTER_AUTH_SECRET: "fixture-secret",

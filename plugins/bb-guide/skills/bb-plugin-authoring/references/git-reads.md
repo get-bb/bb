@@ -17,6 +17,11 @@ the environment's machine and never wake a sleeping one.
   a full diff, the changed-file list with each file's revision, and branch
   options. `target` is `{ type: "uncommitted" }`, `{ type: "branch_committed"
   | "all", mergeBaseBranch }` or `{ type: "commit", sha }`.
+- `viewed({ environmentId, target, paths? })` lists the files marked Viewed
+  as `{ path, revision }`; `markViewed({ environmentId, target, path,
+  revision })` and `clearViewed({ environmentId, target, path? })` change
+  them. A file counts as Viewed while its stored revision equals the one
+  `files` returns.
 
 ```tsx
 import { defineRpcContract } from "@get-bb/plugin-sdk";
@@ -55,7 +60,7 @@ function useChangedFileCount(environmentId: string) {
 Server code calls the same methods with `bb.sdk.plugins.callRpc({ pluginId:
 "bb--git", method, input, outputSchema })`.
 
-## Migrating from `environments.status`, `diff`, `diffFiles`, `diffPatch`, `diffFile` and `diffBranches`
+## Migrating from `environments.status`, `diff`, `diffFiles`, `diffPatch`, `diffFile`, `diffBranches` and the Viewed methods
 
 These `bb.sdk.environments` methods were removed from the SDK typings. Plugins
 that still call them keep working: bb serves them through the Git plugin with
@@ -63,4 +68,7 @@ their old results, and the plugin build prints a warning naming the
 replacement. They fail when the Git plugin is disabled. Replace `status` with
 `workspaceStatus`, `diff` with `diff`, `diffFiles` with `files`, `diffPatch`
 with the keyed `patches` read (keys come from `files`), `diffFile` with
-`fileSide`, and `diffBranches` with `branches`.
+`fileSide`, `diffBranches` with `branches`, and `experimental_diffViewed`,
+`experimental_markDiffViewed` and `experimental_clearDiffViewed` with
+`viewed`, `markViewed` and `clearViewed`, which take the same `target` shape
+as `files`.

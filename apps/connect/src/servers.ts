@@ -1,16 +1,18 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
+  SERVER_CREDENTIAL_CACHE_TTL_MS,
   SERVER_OFFLINE_AFTER_MS,
+  ServerCredentialCache,
   isLive,
   nextTunnelConnected,
-  schema,
   server,
   sha256Hex,
   tunnelConnectedLookup,
   type ConnectDb,
   type TunnelConnectedLookup,
+  first,
 } from "@bb/connect-db";
+import { openGateDb } from "./connect-db.js";
 import {
   parseCookie,
   verifyMachineCredential,
@@ -19,6 +21,7 @@ import {
 import {
   invalidateDesktopSessionGrant,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   type DesktopSessionAccount,
 } from "./desktop-session.js";
 import { resolveConnectRuntime } from "./cloud-dev.js";
@@ -26,34 +29,15 @@ import { jsonResponse, methodNotAllowed } from "./json-response.js";
 import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
 import type { Env } from "./tunnel-do.js";
 
-const serverCredentialCache = new Map<
-  string,
-  { value: string | null; expires: number }
->();
-const SERVER_CRED_TTL_MS = 20_000;
+const serverCredentials = new ServerCredentialCache(
+  SERVER_CREDENTIAL_CACHE_TTL_MS,
+);
 
 export async function verifyServerCredential(
   credential: string,
   db: ConnectDb,
 ): Promise<string | null> {
-  if (!credential) return null;
-  const now = Date.now();
-  const cached = serverCredentialCache.get(credential);
-  if (cached && cached.expires > now) return cached.value;
-  if (cached) serverCredentialCache.delete(credential);
-
-  const hash = await sha256Hex(credential);
-  const row = await db
-    .select({ userId: server.userId })
-    .from(server)
-    .where(and(eq(server.credentialHash, hash), isNull(server.revokedAt)))
-    .get();
-  const userId = row?.userId ?? null;
-  serverCredentialCache.set(credential, {
-    value: userId,
-    expires: now + SERVER_CRED_TTL_MS,
-  });
-  return userId;
+  return (await serverCredentials.resolve(db, credential))?.userId ?? null;
 }
 
 export async function revokeServerCredential(
@@ -64,15 +48,19 @@ export async function revokeServerCredential(
   if (!presented) return null;
 
   const credentialHash = await sha256Hex(presented);
-  const revoked = await db
-    .update(server)
-    .set({ credentialHash: null, revokedAt: new Date() })
-    .where(
-      and(eq(server.credentialHash, credentialHash), isNull(server.revokedAt)),
-    )
-    .returning({ subdomain: server.subdomain })
-    .get();
-  serverCredentialCache.delete(presented);
+  const revoked = await first(
+    db
+      .update(server)
+      .set({ credentialHash: null, revokedAt: new Date() })
+      .where(
+        and(
+          eq(server.credentialHash, credentialHash),
+          isNull(server.revokedAt),
+        ),
+      )
+      .returning({ subdomain: server.subdomain }),
+  );
+  serverCredentials.forget(presented);
   invalidateDesktopSessionGrant({ kind: "server", credentialHash });
   return revoked ?? null;
 }
@@ -135,8 +123,7 @@ export async function listAccountServers(
       nextTunnelAt: server.nextTunnelAt,
     })
     .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+    .where(eq(server.userId, userId));
 
   return Promise.all(
     rows.map(async (row) => {
@@ -160,7 +147,7 @@ export async function listAccountServers(
 }
 
 async function resolveRequestAccount(request: Request, env: Env) {
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env);
   const runtime = resolveConnectRuntime(env);
   const account = await resolveAccount(
     request,
@@ -201,7 +188,7 @@ export async function handleDisconnectServer(
     return methodNotAllowed("POST");
   }
 
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env);
   const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   const revoked = await revokeServerCredential(credential, db);
   if (!revoked) {
@@ -222,10 +209,11 @@ export async function handleCreateDesktopSession(
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
-  const { account, runtime } = await resolveRequestAccount(request, env);
+  const { account, db, runtime } = await resolveRequestAccount(request, env);
   if (!account) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
+  await recordDesktopSessionUse(account.grant, db);
   const cookie = await issueDesktopSessionCookie(account, {
     baseDomain: env.BASE_DOMAIN,
     name: runtime.desktopSessionCookieName,

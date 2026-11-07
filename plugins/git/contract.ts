@@ -102,11 +102,15 @@ export type WorkspaceCommitSummary = z.infer<
   typeof workspaceCommitSummarySchema
 >;
 
-const workspaceChangeStatsSchema = z.object({
+const workspaceChangeTotalsSchema = z.object({
   insertions: z.number(),
   deletions: z.number(),
   lineStatsComplete: z.boolean(),
   fileCount: z.number().int().nonnegative(),
+});
+export type WorkspaceChangeTotals = z.infer<typeof workspaceChangeTotalsSchema>;
+
+const workspaceChangeStatsSchema = workspaceChangeTotalsSchema.extend({
   files: z.array(workspaceFileStatusSchema),
 });
 
@@ -139,10 +143,13 @@ export const workspaceStatusSchema = z.object({
   checkout: gitCheckoutRefSchema,
   branch: workspaceBranchSchema,
   mergeBase: workspaceMergeBaseSchema.nullable(),
+  allChanges: workspaceChangeTotalsSchema,
 });
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 
 export const GIT_DIFF_TAB_ID = "diff";
+export const GIT_SHOW_CHANGES_SETTING = "showGitChanges";
+export const GIT_SHOW_COMMIT_BUTTON_SETTING = "showCommitButton";
 export const GIT_STATUS_MAX_KEYS = 200;
 export const GIT_PATCHES_MAX_KEYS = 50;
 export const GIT_VIEWED_MAX_PATHS = 500;
@@ -164,6 +171,14 @@ export function gitRefsTag(environmentId: string): string {
 export function gitViewedTag(environmentId: string): string {
   return `viewed:${environmentId}`;
 }
+
+export const gitViewedFileSchema = z
+  .object({
+    path: z.string().min(1),
+    revision: z.string().min(1),
+  })
+  .strict();
+export type GitViewedFile = z.infer<typeof gitViewedFileSchema>;
 
 const notApplicableSchema = z
   .object({
@@ -429,5 +444,9 @@ export const gitHostContract = defineRpcContract({
       })
       .strict(),
     output: gitBranchOptionsSchema,
+  },
+  fetchRemoteBranches: {
+    input: hostPathSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
   },
 });

@@ -646,7 +646,7 @@ describe("machine suspension", () => {
       await started.promise;
       try {
         archiveThread(harness.db, harness.hub, thread.id);
-        await sweepMachineLifecycles(harness.deps, { background: true });
+        await sweepMachineLifecycles(harness.deps);
         expect(getHost(harness.db, target.host.id)?.phase).toBe("removing");
       } finally {
         release.resolve();

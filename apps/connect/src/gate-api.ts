@@ -1,11 +1,11 @@
-import { drizzle } from "drizzle-orm/d1";
 import {
   NEXT_TUNNEL_WRITE_INTERVAL_MS,
   mcpResourceForOrigin,
-  schema,
   sha256Hex,
   type ConnectDb,
+  executedRows,
 } from "@bb/connect-db";
+import { type SQL, sql } from "drizzle-orm";
 import {
   GATE_PRESENCE_BATCH_MAX,
   GATE_RESOLVE_BATCH_MAX,
@@ -29,12 +29,14 @@ import {
 import {
   desktopSessionSetCookie,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   verifyDesktopSessionCookie,
 } from "./desktop-session.js";
 import { authorizeMcpToken } from "./mcp-gate.js";
 import { resolveConnectRuntime } from "./cloud-dev.js";
 import { jsonResponse, methodNotAllowed } from "./json-response.js";
 import type { Env } from "./tunnel-do.js";
+import { openGateDb } from "./connect-db.js";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_RESOLVE_BATCH_BODY_BYTES = 256 * 1024;
@@ -264,6 +266,7 @@ async function resolveDesktopSession(
   resolved: ResolvedLabel | null,
   env: Env,
   db: ConnectDb,
+  ctx: ExecutionContext,
 ): Promise<GateResolveResponse["desktopSession"]> {
   const verified = await verifyDesktopSessionCookie(
     cookie,
@@ -271,6 +274,9 @@ async function resolveDesktopSession(
     db,
   );
   if (verified === null) return null;
+  if (verified.unrecordedUse) {
+    ctx.waitUntil(recordDesktopSessionUse(verified.unrecordedUse, db));
+  }
   if (
     verified.refreshGrant === null ||
     resolved === null ||
@@ -377,7 +383,7 @@ async function resolveOne(
     resolved !== null &&
     verifiedMachine.userId === resolved.userId
   ) {
-    ctx.waitUntil(markMachineSeen(verifiedMachine.machineId, db));
+    ctx.waitUntil(markMachineSeen(verifiedMachine, db));
   }
 
   return {
@@ -392,12 +398,24 @@ async function resolveOne(
     desktopSession:
       parsed.desktopSession === null
         ? null
-        : await resolveDesktopSession(parsed.desktopSession, resolved, env, db),
+        : await resolveDesktopSession(
+            parsed.desktopSession,
+            resolved,
+            env,
+            db,
+            ctx,
+          ),
     credential:
       parsed.credential === null
         ? null
         : await linkCredentialMatches(resolved, parsed.credential),
-    machine: verifiedMachine,
+    machine:
+      verifiedMachine === null
+        ? null
+        : {
+            machineId: verifiedMachine.machineId,
+            userId: verifiedMachine.userId,
+          },
     oauth:
       parsed.oauth === null
         ? null
@@ -421,7 +439,7 @@ export async function handleGateResolve(
   if (request.method !== "POST") return methodNotAllowed("POST");
   const parsed = parseGateResolveRequest(await readJsonBody(request));
   if (parsed === null) return invalidRequest();
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env);
   return jsonResponse(await resolveOne(parsed, env, db, ctx), 200, NO_STORE);
 }
 
@@ -439,7 +457,7 @@ export async function handleGateResolveBatch(
     parseGateResolveRequest,
   );
   if (requests === null) return invalidRequest();
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env);
   const labels = await resolveLabels(
     requests.map((parsed) => parsed.label),
     db,
@@ -460,78 +478,98 @@ export async function handleGateResolveBatch(
   return jsonResponse(body, 200, NO_STORE);
 }
 
-const PRESENCE_ROWS = `SELECT json_extract(value, '$.label') AS label,
-  json_extract(value, '$.state') AS state,
-  json_extract(value, '$.region') AS region,
-  json_extract(value, '$.gateMachineId') AS gate,
-  json_extract(value, '$.at') AS at
-  FROM json_each(?1)`;
-
-const MACHINE_HOLDS_LABEL = `machine.revoked_at IS NULL
+const MACHINE_HOLDS_LABEL = sql.raw(`machine.revoked_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM server WHERE server.subdomain = machine.subdomain)
   AND EXISTS (SELECT 1 FROM label_claim WHERE label_claim.label = machine.subdomain
     AND label_claim.kind = 'machine' AND label_claim.owner_id = machine.id)
-  AND EXISTS (SELECT 1 FROM profile WHERE profile.user_id = machine.user_id)`;
+  AND EXISTS (SELECT 1 FROM profile WHERE profile.user_id = machine.user_id)`);
 
-function connectedUpdate(table: "server" | "machine"): string {
-  return `UPDATE ${table} SET next_tunnel_gate = p.gate, next_tunnel_region = p.region,
-  next_tunnel_at = p.at, last_seen_at = min(p.at, ?2)
-  FROM (${PRESENCE_ROWS}) AS p
+interface PresenceValues {
+  reports: string;
+  now: number;
+  interval: number;
+}
+
+function presenceRows(values: PresenceValues): SQL {
+  return sql`SELECT label, state, region, "gateMachineId" AS gate, at
+  FROM jsonb_to_recordset(${values.reports}::jsonb)
+  AS x(label text, state text, region text, "gateMachineId" text, at bigint)`;
+}
+
+function connectedUpdate(
+  name: "server" | "machine",
+  values: PresenceValues,
+): SQL {
+  const table = sql.raw(name);
+  return sql`UPDATE ${table} SET next_tunnel_gate = p.gate, next_tunnel_region = p.region,
+  next_tunnel_at = p.at, last_seen_at = LEAST(p.at, ${values.now}::bigint)
+  FROM (${presenceRows(values)}) AS p
   WHERE p.state = 'connected' AND ${table}.subdomain = p.label
-  ${table === "machine" ? `AND ${MACHINE_HOLDS_LABEL}` : ""}
+  ${name === "machine" ? sql`AND ${MACHINE_HOLDS_LABEL}` : sql``}
   AND (${table}.next_tunnel_at IS NULL OR ${table}.next_tunnel_at < p.at)
   AND (${table}.next_tunnel_gate IS NULL OR ${table}.next_tunnel_at IS NULL
     OR ${table}.next_tunnel_gate <> p.gate OR ${table}.next_tunnel_region <> p.region
-    OR ${table}.next_tunnel_at <= p.at - ?3)
+    OR ${table}.next_tunnel_at <= p.at - ${values.interval}::bigint)
   RETURNING ${table}.subdomain AS label`;
 }
 
-function disconnectedUpdate(table: "server" | "machine"): string {
-  return `UPDATE ${table} SET next_tunnel_gate = NULL, next_tunnel_region = NULL,
-  next_tunnel_at = p.at, last_seen_at = min(p.at, ?2)
-  FROM (${PRESENCE_ROWS}) AS p
+function disconnectedUpdate(
+  name: "server" | "machine",
+  values: PresenceValues,
+): SQL {
+  const table = sql.raw(name);
+  return sql`UPDATE ${table} SET next_tunnel_gate = NULL, next_tunnel_region = NULL,
+  next_tunnel_at = p.at, last_seen_at = LEAST(p.at, ${values.now}::bigint)
+  FROM (${presenceRows(values)}) AS p
   WHERE p.state = 'disconnected' AND ${table}.subdomain = p.label
-  ${table === "machine" ? `AND ${MACHINE_HOLDS_LABEL}` : ""}
+  ${name === "machine" ? sql`AND ${MACHINE_HOLDS_LABEL}` : sql``}
   AND ${table}.next_tunnel_gate = p.gate AND ${table}.next_tunnel_at <= p.at
   RETURNING ${table}.subdomain AS label`;
 }
 
-const KNOWN_LABELS = `SELECT p.label AS label FROM (${PRESENCE_ROWS}) AS p
+function knownLabels(values: PresenceValues): SQL {
+  return sql`SELECT p.label AS label FROM (${presenceRows(values)}) AS p
   WHERE EXISTS (SELECT 1 FROM server WHERE server.subdomain = p.label)
   OR EXISTS (SELECT 1 FROM machine
     JOIN profile ON profile.user_id = machine.user_id
     JOIN label_claim ON label_claim.label = machine.subdomain
       AND label_claim.kind = 'machine' AND label_claim.owner_id = machine.id
     WHERE machine.subdomain = p.label)`;
+}
 
-const PRESENCE_STATEMENTS: [string, number][] = [
-  [KNOWN_LABELS, 1],
-  [connectedUpdate("server"), 3],
-  [disconnectedUpdate("server"), 2],
-  [connectedUpdate("machine"), 3],
-  [disconnectedUpdate("machine"), 2],
-];
+function presenceStatements(values: PresenceValues): SQL[] {
+  return [
+    knownLabels(values),
+    connectedUpdate("server", values),
+    disconnectedUpdate("server", values),
+    connectedUpdate("machine", values),
+    disconnectedUpdate("machine", values),
+  ];
+}
 
 export async function recordNextTunnelPresence(
-  d1: D1Database,
+  db: ConnectDb,
   reports: readonly GatePresenceRequest[],
   now: number,
 ): Promise<GatePresenceResult[]> {
-  const rows = JSON.stringify(reports);
-  const values = [rows, now, NEXT_TUNNEL_WRITE_INTERVAL_MS];
-  const results = await d1.batch<{ label: string }>(
-    PRESENCE_STATEMENTS.map(([statement, count]) =>
-      d1.prepare(statement).bind(...values.slice(0, count)),
-    ),
-  );
-  const [known, ...writes] = results;
-  const knownLabels = new Set(known?.results.map((row) => row.label) ?? []);
-  const recorded = new Set(
-    writes.flatMap((write) => write.results.map((row) => row.label)),
-  );
+  const values: PresenceValues = {
+    reports: JSON.stringify(reports),
+    now,
+    interval: NEXT_TUNNEL_WRITE_INTERVAL_MS,
+  };
+  const [known, ...writes] = await db.transaction(async (tx) => {
+    const labels: string[][] = [];
+    for (const statement of presenceStatements(values)) {
+      const rows = executedRows(await tx.execute(statement));
+      labels.push(rows.map((row) => String(row.label)));
+    }
+    return labels;
+  });
+  const knownLabelSet = new Set(known ?? []);
+  const recorded = new Set(writes.flat());
   return reports.map((report) => {
     if (recorded.has(report.label)) return "recorded";
-    return knownLabels.has(report.label) ? "unchanged" : "unknown_label";
+    return knownLabelSet.has(report.label) ? "unchanged" : "unknown_label";
   });
 }
 
@@ -545,7 +583,11 @@ export async function handleGatePresence(
   if (parsed === null) return invalidRequest();
   const now = Date.now();
   if (parsed.at > now + PRESENCE_MAX_FUTURE_MS) return invalidRequest();
-  const [result] = await recordNextTunnelPresence(env.DB, [parsed], now);
+  const [result] = await recordNextTunnelPresence(
+    openGateDb(env).db,
+    [parsed],
+    now,
+  );
   if (result === "unknown_label") {
     return jsonResponse({ error: "unknown_label" }, 404, NO_STORE);
   }
@@ -575,7 +617,7 @@ export async function handleGatePresenceBatch(
     return invalidRequest();
   }
   const body: GatePresenceBatchResponse = {
-    results: await recordNextTunnelPresence(env.DB, reports, now),
+    results: await recordNextTunnelPresence(openGateDb(env).db, reports, now),
   };
   return jsonResponse(body, 200, NO_STORE);
 }

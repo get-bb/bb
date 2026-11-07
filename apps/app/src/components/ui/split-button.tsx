@@ -43,15 +43,20 @@ function OptionalTooltip({
 
 interface SplitButtonAction {
   ariaKeyshortcuts?: string;
+  disabled?: boolean;
   groupLabel?: string;
   label: string;
   onSelect: () => void;
   content?: ReactNode;
 }
 
+interface SplitButtonMenuAction extends SplitButtonAction {
+  id: string;
+}
+
 interface SplitButtonProps {
   primaryAction: SplitButtonAction;
-  secondaryActions: SplitButtonAction[];
+  secondaryActions: SplitButtonMenuAction[];
   disabled?: boolean;
   className?: string;
   triggerLabel?: string;
@@ -82,7 +87,7 @@ function SplitButton({
   const primaryButton = (
     <button
       type="button"
-      disabled={disabled}
+      disabled={disabled || primaryAction.disabled === true}
       className={cn(base, "rounded-r-none border-r-0 pr-1 focus-visible:z-10")}
       aria-label={primaryAction.label}
       aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
@@ -129,7 +134,7 @@ function SplitButton({
               action.groupLabel !== previousAction?.groupLabel;
 
             return (
-              <Fragment key={action.label}>
+              <Fragment key={action.id}>
                 {showGroupLabel ? (
                   <>
                     {index > 0 ? <DropdownMenuSeparator /> : null}
@@ -137,6 +142,7 @@ function SplitButton({
                   </>
                 ) : null}
                 <DropdownMenuItem
+                  disabled={action.disabled}
                   onSelect={action.onSelect}
                   textValue={action.label}
                 >
@@ -152,4 +158,4 @@ function SplitButton({
 }
 
 export { SplitButton };
-export type { SplitButtonAction };
+export type { SplitButtonAction, SplitButtonMenuAction };

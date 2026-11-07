@@ -9,7 +9,7 @@ import { CODEX_ASYNC_QUESTION_RENDERER_ID } from "./async-question-form.js";
 
 const THREAD_ID = "thr_async";
 
-function questionRow(seq: number) {
+function questionRow(seq: number, title = "Choose a, b, or c.") {
   return {
     id: `event-${seq}`,
     threadId: THREAD_ID,
@@ -21,7 +21,7 @@ function questionRow(seq: number) {
       kind: "provider-codex/async-question",
       payload: {
         itemId: `call-${seq}`,
-        questions: [{ title: "Choose a, b, or c.", options: ["a", "b", "c"] }],
+        questions: [{ title, options: ["a", "b", "c"] }],
       },
     },
   };
@@ -99,6 +99,23 @@ describe("Codex async questions", () => {
     expect(host.harness.pendingInteractions).toHaveLength(0);
     expect(await pending.describeSubmission?.({ answers: {} })).toEqual({
       title: "Answered",
+    });
+  });
+
+  it("shortens a question title too long for the card heading and keeps the full question (#4264)", async () => {
+    const title = `${"Which of these should I pick? ".repeat(8)}Choose a, b, or c.`;
+    const host = createHost([questionRow(5, title)]);
+
+    await notify(host);
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    const pending = host.harness.pendingInteractions[0]!;
+    expect(pending.title.length).toBeLessThanOrEqual(160);
+    expect(pending.title.endsWith("…")).toBe(true);
+    expect(title.startsWith(pending.title.slice(0, -1))).toBe(true);
+    expect(pending.payload).toEqual({
+      questions: [{ title, options: ["a", "b", "c"] }],
     });
   });
 

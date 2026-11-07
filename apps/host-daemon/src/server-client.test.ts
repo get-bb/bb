@@ -73,6 +73,7 @@ describe("createServerClient", () => {
       instanceId: "instance-1",
       localApiPort: null,
       activeThreads: [],
+      openThreadWork: [],
       undeliveredEventThreadIds: [],
       loadedEnvironments: [],
     });
@@ -146,6 +147,7 @@ describe("createServerClient", () => {
           instanceId: "instance-1",
           localApiPort: null,
           activeThreads: [],
+          openThreadWork: [],
           undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         }),
@@ -180,6 +182,7 @@ describe("createServerClient", () => {
             agentCpuPriority: false,
             heartbeatIntervalMs: 5_000,
             leaseTimeoutMs: 30_000,
+            endedInteractiveRequests: [],
           },
           { status: 201 },
         );
@@ -200,6 +203,7 @@ describe("createServerClient", () => {
         instanceId: "instance-1",
         localApiPort: 38_888,
         activeThreads: [],
+        openThreadWork: [],
         undeliveredEventThreadIds: [],
         loadedEnvironments: [],
       });

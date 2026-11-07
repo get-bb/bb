@@ -20,7 +20,7 @@ export const PULL_REQUEST_STATE_DISPLAY: Record<
   open: {
     label: "Open",
     icon: "GitPullRequestArrow",
-    className: "text-success",
+    className: "text-success-foreground",
     dotClass: "bg-success",
   },
   draft: {
@@ -38,7 +38,7 @@ export const PULL_REQUEST_STATE_DISPLAY: Record<
   closed: {
     label: "Closed",
     icon: "GitPullRequestClosed",
-    className: "text-destructive",
+    className: "text-destructive-text",
     dotClass: "bg-destructive",
   },
 };
@@ -56,8 +56,8 @@ export const PULL_REQUEST_NEXT_STEP_TONE_CLASS: Record<
   PullRequestNextStepTone,
   string
 > = {
-  action: "text-destructive",
-  ready: "text-success",
+  action: "text-destructive-text",
+  ready: "text-success-foreground",
   waiting: "text-muted-foreground",
 };
 
@@ -91,8 +91,6 @@ function blockedStep(pullRequest: PullRequest): PullRequestNextStep {
   switch (pullRequest.mergeability.mergeStateStatus) {
     case "BEHIND":
       return action(`Behind ${pullRequest.baseRefName}`);
-    case "HAS_HOOKS":
-      return action("Blocked by hooks");
     default:
       return action("Blocked by rules");
   }

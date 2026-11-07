@@ -42,13 +42,16 @@ the most-parsed commands ends with the same shape.
     [{id, projectId, environmentId, providerId, title, status, parentThreadId, sectionId, visibility, archivedAt, pinnedAt, createdAt, updatedAt, activity}]    (bare array; title can be null)
 
   bb thread show <id> --json
-    {thread: {id, status, title, projectId, environmentId, parentThreadId, ...}, environment: {id, hostId, path, branchName, ...} | null, pendingTodos}    (thread fields are under .thread)
+    {thread: {id, status, archivedAt, title, projectId, environmentId, parentThreadId, ...}, environment: {id, hostId, path, branchName, ...} | null, pendingTodos}    (thread fields are under .thread; status is the run state, archivedAt is null unless the thread is archived)
 
   bb thread log <id> --json
     [{id, seq, type, createdAt, threadId, scope, data}]    (bare array of raw events, oldest first; page with --after-seq <seq>); with --message: {message, before, after} of conversation rows
 
   bb thread output <id> --json
     {output}
+
+  bb thread archive <id> --json
+    {ok, threadId, alreadyArchived, archivedAt, archivedThreadIds}    (archivedThreadIds lists only threads this call archived)
 
   bb thread spawn ... --json
     the created thread: {id, status, title, projectId, environmentId, ...}
@@ -101,8 +104,11 @@ the most-parsed commands ends with the same shape.
   bb terminal output <terminalId> --json
     {chunks: [{seq, dataBase64}], nextSeq, truncated, status, exitCode, closeReason}    (chunk data is base64; status is "exited" once the command has finished)
 
+  bb terminal run --machine <id-or-name> --cwd <path> ... --json
+    {terminalId, hostId, environmentId, cwd, status, observation, exitCode, closeReason, output, truncated, nextSeq}    (observation is "exited", "matched", or "timed-out"; output is plain text with terminal escapes removed, or null once the machine no longer keeps it)
+
   bb terminal wait <terminalId> ... --json
-    {terminalId, matched, nextSeq, exitCode}
+    {terminalId, hostId, environmentId, cwd, status, observation, exitCode, closeReason, output, truncated, nextSeq}    (same shape as terminal run)
 
   bb plugin list --json
     {plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)

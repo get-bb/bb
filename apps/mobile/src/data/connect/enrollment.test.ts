@@ -28,7 +28,11 @@ describe("redeemEnrollment", () => {
       "https://getbb.app/api/connect/redeem-machine",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ code: "ABCD-EFGH", deviceName: "Pixel 9 Pro" }),
+        body: JSON.stringify({
+          code: "ABCD-EFGH",
+          deviceName: "Pixel 9 Pro",
+          kind: "mobile",
+        }),
       }),
     );
     expect(result.profile).toEqual({
@@ -62,7 +66,10 @@ describe("redeemEnrollment", () => {
       limit,
     ).catch((error: unknown) => describeEnrollmentError(error));
     expect(failure).toMatchObject({ code: "machine_limit" });
-    expect(failure).toHaveProperty("message", expect.stringContaining("20"));
+    expect(failure).toHaveProperty(
+      "message",
+      expect.stringContaining("getbb.app dashboard"),
+    );
 
     for (const [status, wire, code] of [
       [404, "invalid-code", "invalid_code"],

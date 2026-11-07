@@ -26,3 +26,6 @@ export const BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL =
 export const BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL =
   "bb-desktop:server-choices-changed";
 export const BB_DESKTOP_SELECT_SERVER_CHANNEL = "bb-desktop:select-server";
+
+export const BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL =
+  "bb-desktop:set-attention-threads";

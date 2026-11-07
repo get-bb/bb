@@ -4,6 +4,7 @@ import type {
   ExperimentalTabRegistration,
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
+  InternalDoNotUseSetupGuideSectionRegistration,
   ExperimentalCodeFenceRendererRegistration,
   ExperimentalSidebarFooter,
   ExperimentalSidebarFooterActionRegistration,
@@ -21,6 +22,7 @@ import type {
   PluginCommandRegistration,
   ExperimentalComposerCommandRegistration,
   PluginMessageActionRegistration,
+  ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
@@ -31,9 +33,11 @@ import type {
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
   ExperimentalThreadContextSegmentRegistration,
-  PluginThreadHeaderActionRegistration,
   ExperimentalThreadInfoRowRegistration,
+  ExperimentalThreadRowMetadataRegistration,
   ExperimentalThreadInfoSectionRegistration,
+  ExperimentalThreadContextCardRowRegistration,
+  ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   ExperimentalSidebarHeaderProps,
@@ -168,6 +172,18 @@ export interface LegacyThreadPanelActionRegistration {
   ): void | Promise<void>;
 }
 
+export interface LegacyThreadHeaderActionProps {
+  threadId: string;
+  projectId: string;
+  isCompactViewport: boolean;
+}
+
+export interface LegacyThreadHeaderActionRegistration {
+  id: string;
+  title: string;
+  component: ComponentType<LegacyThreadHeaderActionProps>;
+}
+
 export type LegacyNavPanelRegistration = PluginNavPanelRegistration & {
   fixedTabs?: readonly PluginNavPanelFixedTabRegistration[];
 };
@@ -292,6 +308,7 @@ export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
+  setupGuideSections: InternalDoNotUseSetupGuideSectionRegistration[];
   navPanels: LegacyNavPanelRegistration[];
   tabs: ExperimentalTabRegistration[];
   threadPanelActions: LegacyThreadPanelActionRegistration[];
@@ -302,10 +319,13 @@ export interface CollectedPluginAppRegistrations {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
-  threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadHeaderActions: LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
+  threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
+  threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
+  threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -315,6 +335,7 @@ export interface CollectedPluginAppRegistrations {
   messageDirectives: PluginMessageDirectiveRegistration[];
   codeFenceRenderers: ExperimentalCodeFenceRendererRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  messageMetadata: ExperimentalMessageMetadataRegistration[];
   commandPaletteActions: CollectedPluginCommandRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
   icons: ExperimentalIconRegistration[];
@@ -422,6 +443,7 @@ export function collectPluginAppRegistrations(
     homepageSections: [],
     settingsSections: [],
     appOverlays: [],
+    setupGuideSections: [],
     navPanels: [],
     tabs: [],
     get threadPanelActions() {
@@ -444,7 +466,10 @@ export function collectPluginAppRegistrations(
     threadHeaderActions: [],
     threadContextSegments: [],
     threadInfoRows: [],
+    threadRowMetadata: [],
     threadInfoSections: [],
+    threadContextCardRows: [],
+    threadContextCardSections: [],
     threadActions: [],
     browserToolbarActions: [],
     fileOpeners: [],
@@ -454,6 +479,7 @@ export function collectPluginAppRegistrations(
     messageDirectives: [],
     codeFenceRenderers: [],
     messageActions: [],
+    messageMetadata: [],
     commandPaletteActions: [],
     providerIcons: [],
     icons: [],
@@ -467,6 +493,7 @@ export function collectPluginAppRegistrations(
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
     appOverlay: new Set<string>(),
+    setupGuideSection: new Set<string>(),
     navPanel: new Set<string>(),
     tab: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
@@ -480,7 +507,10 @@ export function collectPluginAppRegistrations(
     threadHeaderAction: new Set<string>(),
     threadContextSegment: new Set<string>(),
     threadInfoRow: new Set<string>(),
+    threadRowMetadata: new Set<string>(),
     threadInfoSection: new Set<string>(),
+    threadContextCardRow: new Set<string>(),
+    threadContextCardSection: new Set<string>(),
     threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -491,6 +521,7 @@ export function collectPluginAppRegistrations(
     codeFenceRenderer: new Set<string>(),
     codeFenceLanguage: new Set<string>(),
     messageAction: new Set<string>(),
+    messageMetadata: new Set<string>(),
     command: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
@@ -642,6 +673,19 @@ export function collectPluginAppRegistrations(
       }
     },
 
+    experimental_threadHeaderAction(
+      registration: LegacyThreadHeaderActionRegistration,
+    ) {
+      const kind = "slots.experimental_threadHeaderAction";
+      const id = requireSlotId(kind, registration?.id);
+      requireUniqueId(kind, seenIds.threadHeaderAction, id);
+      collected.threadHeaderActions.push({
+        id,
+        title: requireNonEmptyString(kind, "title", registration.title),
+        component: requireComponent(kind, registration.component),
+      });
+    },
+
     experimental_sidebarHeader(registration: LegacySidebarHeaderRegistration) {
       legacySidebarHeaders.push(
         collectTitledComponent(
@@ -694,6 +738,15 @@ export function collectPluginAppRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.appOverlay, id);
         collected.appOverlays.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      internal_DO_NOT_USE_setupGuideSection(registration) {
+        const kind = "slots.internal_DO_NOT_USE_setupGuideSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.setupGuideSection, id);
+        collected.setupGuideSections.push({
           id,
           component: requireComponent(kind, registration.component),
         });
@@ -885,16 +938,6 @@ export function collectPluginAppRegistrations(
           ...(headerComponent !== undefined ? { headerComponent } : {}),
         });
       },
-      experimental_threadHeaderAction(registration) {
-        const kind = "slots.experimental_threadHeaderAction";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.threadHeaderAction, id);
-        collected.threadHeaderActions.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          component: requireComponent(kind, registration.component),
-        });
-      },
       experimental_threadContextSegment(registration) {
         const kind = "slots.experimental_threadContextSegment";
         const id = requireSlotId(kind, registration?.id);
@@ -933,6 +976,24 @@ export function collectPluginAppRegistrations(
             : {}),
         });
       },
+      experimental_threadRowMetadata(registration) {
+        const kind = "slots.experimental_threadRowMetadata";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadRowMetadata, id);
+        if (
+          registration.useData !== undefined &&
+          typeof registration.useData !== "function"
+        )
+          throw new Error(`${kind}: "useData" must be a function`);
+        collected.threadRowMetadata.push({
+          id,
+          ...requireOptionalOrder(kind, registration.order),
+          ...(registration.useData !== undefined
+            ? { useData: registration.useData }
+            : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       experimental_threadInfoRow(registration) {
         const kind = "slots.experimental_threadInfoRow";
         const id = requireSlotId(kind, registration?.id);
@@ -950,6 +1011,29 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.threadInfoSection, id);
         collected.threadInfoSections.push({
           id,
+          group: requireNonEmptyString(kind, "group", registration.group),
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadContextCardRow(registration) {
+        const kind = "slots.experimental_threadContextCardRow";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadContextCardRow, id);
+        collected.threadContextCardRows.push({
+          id,
+          group: requireNonEmptyString(kind, "group", registration.group),
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadContextCardSection(registration) {
+        const kind = "slots.experimental_threadContextCardSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadContextCardSection, id);
+        collected.threadContextCardSections.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
           component: requireComponent(kind, registration.component),
@@ -976,12 +1060,22 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_bulkItem" must be a function`,
           );
         }
+        if (
+          registration.placement !== undefined &&
+          registration.placement !== "menu" &&
+          registration.placement !== "header"
+        ) {
+          throw new Error(`${kind}: "placement" must be "menu" or "header"`);
+        }
         collected.threadActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
+          ...(registration.placement !== undefined
+            ? { placement: registration.placement }
+            : {}),
           ...(registration.useData !== undefined
             ? { useData: registration.useData }
             : {}),
@@ -1008,9 +1102,9 @@ export function collectPluginAppRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.fileOpener, id);
         const rawExtensions = registration?.extensions;
-        if (!Array.isArray(rawExtensions) || rawExtensions.length === 0) {
+        if (!Array.isArray(rawExtensions)) {
           throw new Error(
-            `${kind}: "extensions" must be a non-empty array of lowercase extensions without the dot`,
+            `${kind}: "extensions" must be an array of lowercase extensions without the dot`,
           );
         }
         const extensions = rawExtensions.map((extension) => {
@@ -1114,6 +1208,22 @@ export function collectPluginAppRegistrations(
               }
             : {}),
           run: registration.run,
+        });
+      },
+      experimental_messageMetadata(registration) {
+        const kind = "slots.experimental_messageMetadata";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.messageMetadata, id);
+        const placement = registration.placement ?? "above";
+        if (placement !== "above" && placement !== "actionRow") {
+          throw new Error(
+            `${kind}: "placement" must be "above" or "actionRow"`,
+          );
+        }
+        collected.messageMetadata.push({
+          id,
+          placement,
+          component: requireComponent(kind, registration.component),
         });
       },
       commandPaletteAction(registration) {

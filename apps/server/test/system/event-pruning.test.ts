@@ -1,4 +1,5 @@
-import { getThread, listEvents } from "@bb/db";
+import { getThread, listEvents, threadPruningCursors } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
@@ -401,6 +402,13 @@ describe("thread event pruning", () => {
 
       expect(response.status).toBe(200);
       expect(getThread(harness.db, thread.id)?.archivedAt).toBeTypeOf("number");
+      expect(
+        harness.db
+          .select()
+          .from(threadPruningCursors)
+          .where(eq(threadPruningCursors.scope, thread.id))
+          .all(),
+      ).toEqual([]);
       drainLivePruning(harness.deps, { threadId: thread.id, mode: "archived" });
       expect(
         listEventSequencesForType(harness, {

@@ -13,6 +13,7 @@ import {
   promptInputSchema,
   resolvedThreadExecutionOptionsSchema,
   clientTurnRequestIdSchema,
+  threadTurnInitiatorSchema,
 } from "@bb/domain";
 
 const reuseIntentSchema = z.object({
@@ -47,6 +48,7 @@ export const threadProvisionCommonPayloadSchema = z.object({
   inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
   titleProvided: z.boolean(),
   seedWithoutRun: z.boolean().default(false),
+  initiator: threadTurnInitiatorSchema.default("user"),
 });
 
 export type ThreadForkDescriptor = z.infer<typeof threadForkDescriptorSchema>;

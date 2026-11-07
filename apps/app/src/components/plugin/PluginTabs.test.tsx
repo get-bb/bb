@@ -161,6 +161,7 @@ function Host({ context }: { context: PluginTabContext }) {
           {isThreadTab(entry.slot) ? (
             <entry.slot.component
               threadId={context.kind === "thread" ? context.threadId : ""}
+              environment={context.kind === "thread" ? context.environment : null}
             />
           ) : isNavTab(entry.slot) ? (
             <entry.slot.component
@@ -250,7 +251,7 @@ it.each(cases)(
     register("Details");
     const context: PluginTabContext =
       kind === "thread"
-        ? { kind, threadId: "thr_one" }
+        ? { kind, threadId: "thr_one", environment: null }
         : { kind, pluginId: "example", panelId: "board", subPath: "item/one" };
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

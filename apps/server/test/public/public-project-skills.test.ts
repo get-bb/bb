@@ -1449,6 +1449,7 @@ describe("public project skills route", () => {
 
         const skill = matches[0];
         if (skill === undefined) throw new Error("Expected plugin skill");
+        const requestsBeforeRead = stub.requests.length;
         const query = new URLSearchParams({
           skillId: skill.id,
           environmentId: "",
@@ -1461,11 +1462,7 @@ describe("public project skills route", () => {
         expect(
           skillContentResponseSchema.parse(await readJson(contentResponse)),
         ).toMatchObject({ content: "# Plugin reference\n" });
-        expect(
-          stub.requests.some(
-            (request) => request.command.type === "host.read_file",
-          ),
-        ).toBe(false);
+        expect(stub.requests.slice(requestsBeforeRead)).toEqual([]);
       });
     } finally {
       await rm(workDir, { recursive: true, force: true });
@@ -1699,7 +1696,7 @@ describe("public project skills route", () => {
 
       for (const [hiddenPath, status] of [
         [".env", 404],
-        ["references/../../secrets.md", 404],
+        ["references/../../secrets.md", 400],
         ["/etc/passwd", 400],
       ] as const) {
         query.set("path", hiddenPath);

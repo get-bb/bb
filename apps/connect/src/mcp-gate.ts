@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import {
   MCP_LOCAL_PATH,
   MCP_SCOPES,
@@ -9,6 +9,7 @@ import {
   oauthGrant,
   parseMcpScopes,
   verifyMcpAccessToken,
+  first,
 } from "@bb/connect-db";
 import { SettledLookupCache } from "./session.js";
 
@@ -129,16 +130,18 @@ async function lookupGrant(
   grantId: string,
   db: ConnectDb,
 ): Promise<CachedGrant | null> {
-  const row = await db
-    .select({
-      userId: oauthGrant.userId,
-      serverId: oauthGrant.serverId,
-      revokedAt: oauthGrant.revokedAt,
-      lastUsedAt: oauthGrant.lastUsedAt,
-    })
-    .from(oauthGrant)
-    .where(eq(oauthGrant.id, grantId))
-    .get();
+  const row = await first(
+    db
+      .select({
+        userId: oauthGrant.userId,
+        serverId: oauthGrant.serverId,
+        revokedAt: oauthGrant.revokedAt,
+        lastUsedAt: oauthGrant.lastUsedAt,
+      })
+      .from(oauthGrant)
+      .where(eq(oauthGrant.id, grantId))
+      .limit(1),
+  );
   if (!row) return null;
   return {
     userId: row.userId,
@@ -148,7 +151,9 @@ async function lookupGrant(
   };
 }
 
-async function writeGrantFirstUse(
+export const MCP_GRANT_USE_WRITE_INTERVAL_MS = 60 * 60 * 1000;
+
+async function writeGrantUse(
   grantId: string,
   db: ConnectDb,
   now: number,
@@ -156,8 +161,18 @@ async function writeGrantFirstUse(
   await db
     .update(oauthGrant)
     .set({ lastUsedAt: new Date(now) })
-    .where(and(eq(oauthGrant.id, grantId), isNull(oauthGrant.lastUsedAt)))
-    .run();
+    .where(
+      and(
+        eq(oauthGrant.id, grantId),
+        or(
+          isNull(oauthGrant.lastUsedAt),
+          lt(
+            oauthGrant.lastUsedAt,
+            new Date(now - MCP_GRANT_USE_WRITE_INTERVAL_MS),
+          ),
+        ),
+      ),
+    );
 }
 
 interface McpAuthorization {
@@ -195,9 +210,12 @@ export async function authorizeMcpToken(
     return null;
   }
   let recordUse: McpAuthorization["recordUse"] = null;
-  if (grant.lastUsedAt === null) {
+  if (
+    grant.lastUsedAt === null ||
+    now - grant.lastUsedAt >= MCP_GRANT_USE_WRITE_INTERVAL_MS
+  ) {
     grant.lastUsedAt = now;
-    recordUse = () => writeGrantFirstUse(claims.grantId, options.db, now);
+    recordUse = () => writeGrantUse(claims.grantId, options.db, now);
   }
   return {
     forward: {

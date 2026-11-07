@@ -107,7 +107,6 @@ function shimArgs(args: {
   installDependencies?: () => Promise<void>;
   output?: ShimOutput;
   prepareRuntime?: () => Promise<void>;
-  readHead?: () => Promise<string>;
   spawnLauncher: (mode: LauncherUpdateMode) => LauncherRun;
 }) {
   return {
@@ -118,7 +117,6 @@ function shimArgs(args: {
     installDependencies: args.installDependencies ?? (async () => undefined),
     output: args.output ?? output(),
     prepareRuntime: args.prepareRuntime ?? (async () => undefined),
-    readHead: args.readHead ?? (() => git(args.checkout, "rev-parse", "HEAD")),
     repoRoot: args.checkout,
     runner: runCommand,
     spawnLauncher: args.spawnLauncher,
@@ -226,6 +224,39 @@ describe("runSourceShim", { timeout: 30_000 }, () => {
     });
   });
 
+  it("rebuilds when the checkout was already pulled to the target before the restart", async () => {
+    const setup = await setUpIncomingCommit();
+    const calls: string[] = [];
+    const launcher = scriptedLauncher(setup.checkout, [
+      async () => {
+        await mutateAppUpdateState(setup.dataDir, (state) => ({
+          ...state,
+          pending: setup.pending,
+        }));
+        await git(setup.checkout, "merge", "-q", "--ff-only", setup.to);
+        return { code: APP_UPDATE_RESTART_EXIT_CODE, signal: null };
+      },
+      async () => ({ code: 0, signal: null }),
+    ]);
+
+    await runSourceShim(
+      shimArgs({
+        checkout: setup.checkout,
+        dataDir: setup.dataDir,
+        installDependencies: async () => {
+          calls.push("install");
+        },
+        prepareRuntime: async () => {
+          calls.push("build");
+        },
+        spawnLauncher: launcher.spawnLauncher,
+      }),
+    );
+
+    expect(launcher.launchedHeads).toEqual([setup.from, setup.to]);
+    expect(calls).toEqual(["install", "build"]);
+  });
+
   it("leaves a pending update found at startup to the launcher", async () => {
     const setup = await setUpIncomingCommit();
     await mutateAppUpdateState(setup.dataDir, (state) => ({
@@ -273,25 +304,5 @@ describe("runSourceShim", { timeout: 30_000 }, () => {
     expect((await readAppUpdateState(setup.dataDir)).pending?.id).toBe(
       "update-1",
     );
-  });
-
-  it("does not need git when nothing is pending", async () => {
-    const setup = await setUpIncomingCommit();
-    const launcher = scriptedLauncher(setup.checkout, [
-      async () => ({ code: 3, signal: null }),
-    ]);
-
-    const code = await runSourceShim(
-      shimArgs({
-        checkout: setup.checkout,
-        dataDir: setup.dataDir,
-        readHead: async () => {
-          throw new Error("not a git repository");
-        },
-        spawnLauncher: launcher.spawnLauncher,
-      }),
-    );
-
-    expect(code).toBe(3);
   });
 });

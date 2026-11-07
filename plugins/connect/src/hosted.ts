@@ -9,8 +9,8 @@ import {
   AccountUnavailableError,
   type AccountClient,
   type AccountFetchRequest,
-  type AccountFetchResult,
-} from "./account-client.js";
+} from "bb-plugin-bb-account/src/client.js";
+import type { AccountFetchResult } from "bb-plugin-bb-account/src/contract.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 
 export class NotSignedInError extends Error {
@@ -148,27 +148,11 @@ export class HostedConnectApi {
   }
 
   async createMachineCode(signal?: AbortSignal): Promise<MachineCode> {
-    let result: AccountFetchResult;
-    try {
-      result = await this.send(
-        {
-          target: "api",
-          method: "POST",
-          path: "/api/connect/machine-code",
-          body: null,
-        },
-        signal,
-      );
-    } catch (error) {
-      signal?.throwIfAborted();
-      if (
-        error instanceof NotSignedInError ||
-        error instanceof AccountUnavailableError
-      ) {
-        throw new MachineCodeError("not_paired");
-      }
-      throw new MachineCodeError("network");
-    }
+    const result = await this.sendMachineCodeRequest(
+      "/api/connect/machine-code",
+      null,
+      signal,
+    );
     if (result.status === 409) throw new MachineCodeError("machine_limit");
     if (result.status === 401) throw new MachineCodeError("not_paired");
     if (result.status < 200 || result.status >= 300) {
@@ -187,19 +171,18 @@ export class HostedConnectApi {
     code: string,
     signal?: AbortSignal,
   ): Promise<{ consumed: boolean; machineId: string | null }> {
-    const result = await this.send(
-      {
-        target: "api",
-        method: "POST",
-        path: "/api/connect/machine-code-lookup",
-        body: { code },
-      },
+    const result = await this.sendMachineCodeRequest(
+      "/api/connect/machine-code-lookup",
+      { code },
       signal,
     );
+    if (result.status === 401) throw new MachineCodeError("not_paired");
     if (result.status < 200 || result.status >= 300) {
-      throw new Error(`Machine code lookup failed (${result.status})`);
+      throw new MachineCodeError("network");
     }
-    return machineCodeLookupSchema.parse(result.body);
+    const parsed = machineCodeLookupSchema.safeParse(result.body);
+    if (!parsed.success) throw new MachineCodeError("network");
+    return parsed.data;
   }
 
   async revokeMachine(machineId: string, signal?: AbortSignal): Promise<void> {
@@ -216,6 +199,28 @@ export class HostedConnectApi {
       throw new Error(`machine revoke failed (${result.status})`);
     }
     revokeMachineResponseSchema.parse(result.body);
+  }
+
+  private async sendMachineCodeRequest(
+    path: string,
+    body: AccountFetchRequest["body"],
+    signal?: AbortSignal,
+  ): Promise<AccountFetchResult> {
+    try {
+      return await this.send(
+        { target: "api", method: "POST", path, body },
+        signal,
+      );
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (
+        error instanceof NotSignedInError ||
+        error instanceof AccountUnavailableError
+      ) {
+        throw new MachineCodeError("not_paired");
+      }
+      throw new MachineCodeError("network");
+    }
   }
 
   private async sendListing(

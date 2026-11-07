@@ -1,7 +1,8 @@
-import type { NativeShellHandshake } from "./handshake.js";
+import type { BridgeServer, NativeShellHandshake } from "./handshake.js";
 import { NATIVE_BRIDGE_GLOBAL } from "./version.js";
 
 export interface NativeShellApi extends NativeShellHandshake {
+  servers?: readonly BridgeServer[];
   post(message: unknown): void;
   request(kind: string, payload: unknown): Promise<unknown>;
   copyTextAndImage?(text: string, imageUrl: string): Promise<unknown>;
@@ -18,16 +19,19 @@ function encodeForScript(value: unknown): string {
 
 export function buildBridgeInjectionScript(
   handshake: NativeShellHandshake,
+  servers?: readonly BridgeServer[],
 ): string {
+  const injected =
+    servers === undefined ? handshake : { ...handshake, servers };
   return `
 (function () {
   try {
     var root = window.${NATIVE_BRIDGE_GLOBAL} = window.${NATIVE_BRIDGE_GLOBAL} || {};
     if (root.native && root.native.__installed) {
-      root.native.__apply(${encodeForScript(handshake)});
+      root.native.__apply(${encodeForScript(injected)});
       return;
     }
-    var handshake = ${encodeForScript(handshake)};
+    var handshake = ${encodeForScript(injected)};
     var listeners = [];
     var pending = {};
     var nextId = 0;
@@ -117,6 +121,9 @@ export function buildBridgeInjectionScript(
         }
         if (event && event.type === "safe-area" && event.safeArea) {
           native.safeArea = event.safeArea;
+        }
+        if (event && event.type === "servers" && event.servers) {
+          native.servers = event.servers;
         }
         for (var i = 0; i < listeners.length; i += 1) {
           try {

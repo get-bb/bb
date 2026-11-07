@@ -1,10 +1,9 @@
 import { startStallWindowCollector } from "./stall-windows.js";
 import { Worker } from "node:worker_threads";
-import {
-  monitorEventLoopDelay,
-  performance,
-  PerformanceObserver,
-} from "node:perf_hooks";
+import { setImmediate } from "node:timers/promises";
+import { performance, PerformanceObserver } from "node:perf_hooks";
+import { createEventLoopDelayHistogram } from "./event-loop-delay.js";
+import { observeEventLoopGaps } from "./event-loop-gaps.js";
 import { profileWorkerSource } from "./generated/profile-worker.js";
 
 export async function startPerformanceDiagnostics(options: {
@@ -14,7 +13,8 @@ export async function startPerformanceDiagnostics(options: {
     warn(fields: object, message: string): void;
   };
 }): Promise<{ stop: () => Promise<void> }> {
-  const histogram = monitorEventLoopDelay({ resolution: 10 });
+  const histogram = createEventLoopDelayHistogram();
+  const gaps = observeEventLoopGaps(histogram.record);
   let gcDurationMs = 0;
   let gcCount = 0;
   let gcMaxDurationMs = 0;
@@ -26,7 +26,6 @@ export async function startPerformanceDiagnostics(options: {
     }
   });
   observer.observe({ entryTypes: ["gc"] });
-  histogram.enable();
   let previousCpu = process.cpuUsage();
   let previousThreadCpu = process.threadCpuUsage();
   let previousTime = performance.now();
@@ -36,6 +35,8 @@ export async function startPerformanceDiagnostics(options: {
     const cpu = process.cpuUsage();
     const threadCpu = process.threadCpuUsage();
     const utilization = performance.eventLoopUtilization();
+    gaps.flush();
+    const delay = histogram.take();
     options.logger.info(
       {
         pid: process.pid,
@@ -53,8 +54,9 @@ export async function startPerformanceDiagnostics(options: {
           utilization,
           previousUtilization,
         ).utilization,
-        maxDelayMs: histogram.max / 1e6,
-        p99DelayMs: histogram.percentile(99) / 1e6,
+        maxDelayMs: delay.maxDelayMs,
+        p99DelayMs: delay.p99DelayMs,
+        delayResolutionMs: delay.resolutionMs,
         gcDurationMs,
         gcCount,
         gcMaxDurationMs,
@@ -69,7 +71,6 @@ export async function startPerformanceDiagnostics(options: {
     gcDurationMs = 0;
     gcCount = 0;
     gcMaxDurationMs = 0;
-    histogram.reset();
   }, 5_000);
   summaryTimer.unref();
 
@@ -77,6 +78,9 @@ export async function startPerformanceDiagnostics(options: {
     eval: true,
     workerData: options.dataDir,
   });
+  const exited = new Promise<void>((resolve) =>
+    worker.once("exit", () => resolve()),
+  );
   const stallWindows = startStallWindowCollector();
   let failed = false;
   let terminating = false;
@@ -96,9 +100,15 @@ export async function startPerformanceDiagnostics(options: {
   };
   worker.on("error", fail);
   worker.on("exit", (code) => {
-    if (!terminating) fail(new Error(`CPU profiling worker exited (${code})`));
+    if (!terminating || pending !== undefined)
+      fail(new Error(`CPU profiling worker exited (${code})`));
   });
-  worker.on("message", (value: unknown) => {
+  worker.on("message", async (value: unknown) => {
+    if (value === "disconnected") {
+      await setImmediate();
+      worker.postMessage("drained");
+      return;
+    }
     if (
       typeof value !== "object" ||
       value === null ||
@@ -150,14 +160,15 @@ export async function startPerformanceDiagnostics(options: {
       stopPromise ??= (async () => {
         clearInterval(profileTimer);
         clearInterval(summaryTimer);
-        histogram.disable();
+        gaps.stop();
         observer.disconnect();
         worker.ref();
         await rotation;
         stallWindows.stop();
-        await request("stop");
         terminating = true;
-        await worker.terminate();
+        await request("stop");
+        if (failed) await worker.terminate();
+        await exited;
       })();
       return stopPromise;
     },

@@ -4,6 +4,7 @@ import {
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
 import {
+  HOST_NAME_LOOKUP_TIMEOUT_MS,
   createServerAccessRecheck,
   registerServerAccess,
   type ServerAccessCloud,
@@ -87,11 +88,18 @@ async function setup(
   options: {
     status?: () => { paired: boolean; enabled: boolean; url: string | null };
     beforeInit?: (host: FakePluginHost) => Promise<void>;
+    getHost?: () => Promise<{ connectMachineId: null; name: string }>;
   } = {},
 ) {
   const host = createFakePluginHost({
     pluginId: "connect",
-    sdk: { hosts: { get: async () => ({ connectMachineId: null }) } },
+    sdk: {
+      hosts: {
+        get:
+          options.getHost ??
+          (async () => ({ connectMachineId: null, name: " build-box " })),
+      },
+    },
   });
   hosts.push(host);
   await options.beforeInit?.(host);
@@ -169,6 +177,9 @@ describe("Connect server-owned machine access", () => {
     expect(await provider(restarted).acquire(request)).toEqual(grant);
     expect(api.cloud.createMachineCode).toHaveBeenCalledTimes(1);
     expect(api.cloud.redeemMachineCode).toHaveBeenCalledTimes(1);
+    expect(api.cloud.redeemMachineCode).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceName: "build-box" }),
+    );
     await provider(restarted).release({
       key: request.key,
       hostId: request.hostId,
@@ -177,6 +188,24 @@ describe("Connect server-owned machine access", () => {
     expect(api.active.size).toBe(0);
     expect(api.cloud.revokeMachine).toHaveBeenCalledWith("cloud-id");
     expect(await restarted.bb.storage.kv.get(key)).toBeUndefined();
+  });
+
+  it("pairs without a name when the host lookup hangs", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const api = fakeCloud();
+      const host = await setup(api.cloud, {
+        getHost: () => new Promise(() => {}),
+      });
+      const acquiring = provider(host).acquire(request);
+      await vi.advanceTimersByTimeAsync(HOST_NAME_LOOKUP_TIMEOUT_MS);
+      await expect(acquiring).resolves.toMatchObject({ id: request.hostId });
+      expect(api.cloud.redeemMachineCode).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceName: null }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reacquires fresh access for the same host after release", async () => {

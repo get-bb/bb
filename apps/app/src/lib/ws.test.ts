@@ -320,6 +320,25 @@ describe("WebSocketManager thread timeline tags", () => {
       },
     ]);
   });
+
+  it("does not keep the tag of a push that lands after the last subscriber left", async () => {
+    const { manager, socket } = createConnectedManager();
+    manager.subscribe(timelineTarget);
+    manager.unsubscribe(timelineTarget);
+    await Promise.resolve();
+    manager.handleIncomingMessage(timelineSignal("in-flight"));
+    socket.sentMessages.length = 0;
+
+    manager.subscribe(timelineTarget);
+
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: timelineTarget,
+        timelineTags: { [timelineKey]: null },
+      },
+    ]);
+  });
 });
 
 describe("WebSocketManager thread-open signals", () => {
@@ -375,8 +394,10 @@ describe("WebSocketManager thread-open signals", () => {
     const { manager } = createConnectedManager();
     const changed = vi.fn();
     const threadOpen = vi.fn();
+    const pluginSignals = vi.fn();
     manager.onChanged(changed);
     manager.onThreadOpen(threadOpen);
+    manager.onPluginSignal(pluginSignals);
 
     dispatchRaw({
       type: "changed",
@@ -387,6 +408,7 @@ describe("WebSocketManager thread-open signals", () => {
 
     expect(changed).toHaveBeenCalledTimes(1);
     expect(threadOpen).not.toHaveBeenCalled();
+    expect(pluginSignals).not.toHaveBeenCalled();
   });
 
   it("routes typed thread-pane actions separately", () => {

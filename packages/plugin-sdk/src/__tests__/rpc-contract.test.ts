@@ -146,6 +146,14 @@ function assertFrontendInference(
       keyTags: () => [],
     },
   });
+  defineRpcContract({
+    retired: {
+      input: z.null(),
+      output: z.null(),
+      // @ts-expect-error invalidates is retired from the public contract type.
+      invalidates: () => ["item"],
+    },
+  });
 
   // @ts-expect-error unknown methods are rejected from the shared contract.
   void client.call("missing", null);
@@ -166,6 +174,7 @@ describe("schema-driven rpc contract", () => {
     expect(
       contextHandlers.ping(null, {
         experimental_caller: { kind: "plugin", pluginId: "other" },
+        experimental_signal: new AbortController().signal,
       }),
     ).toEqual({ ok: true });
   });

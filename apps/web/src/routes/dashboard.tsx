@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
 import ArrowUpRight01Icon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
-import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import { MAX_PER_ACCOUNT } from "@bb/connect-db";
 import appCss from "../styles.css?url";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   ClaimField,
+  Overlay,
+  RowMenu,
   Shell,
   SignInView,
   Spinner,
@@ -20,16 +22,18 @@ import {
   claimHandleFn,
   createCodeFn,
   createServerRowFn,
+  deleteAccountFn,
   disconnectFn,
   removeServerFn,
   revokeMachineFn,
+  revokeUnusedDevicesFn,
   listConnectedAppsFn,
   revokeOAuthGrantFn,
   getDashboard,
 } from "@/server/fns";
 import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
 import type { OAuthGrantView } from "@/server/oauth";
-import { ConnectedApps } from "@/components/connected-apps";
+import { AppList, DeviceList } from "@/components/dashboard-devices";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 import {
   dashboardRefreshIntervalMs,
@@ -125,28 +129,6 @@ function BigCode({ code, disabled }: { code: string; disabled?: boolean }) {
         {code}
       </code>
       <CopyButton text={code} disabled={disabled} />
-    </div>
-  );
-}
-
-function Overlay({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-[430px] max-w-full rounded-xl border border-border bg-card p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
     </div>
   );
 }
@@ -377,64 +359,6 @@ function ConfirmServerAction({
   );
 }
 
-function RowMenu({
-  items,
-}: {
-  items: { label: string; danger?: boolean; onSelect: () => void }[];
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative justify-self-center">
-      <button
-        className={cn(
-          "flex h-[26px] w-[26px] items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground",
-          open && "bg-state-hover text-foreground",
-        )}
-        aria-label="More"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-      >
-        <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
-      </button>
-      {open && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setOpen(false);
-            }}
-          />
-          <div className="absolute right-0 top-8 z-20 min-w-[210px] rounded-[10px] border border-border bg-popover p-1 text-left shadow-lg">
-            {items.map((item, i) => (
-              <button
-                key={i}
-                className={cn(
-                  "block w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-state-hover",
-                  item.danger &&
-                    "text-destructive-text hover:bg-surface-destructive",
-                )}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setOpen(false);
-                  item.onSelect();
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 function ServerRow({
   server,
   autoPair,
@@ -660,37 +584,159 @@ function ConnectAnotherDialog({
   );
 }
 
-function AccountFooter({ state }: { state: ServerState }) {
-  const gh = state.githubLogin
-    ? `https://github.com/${state.githubLogin}`
-    : undefined;
-  const cap =
-    state.servers.length >= 2
-      ? ` · ${state.servers.length} of ${state.maxServers} bbs`
-      : "";
+function DeleteAccountDialog({
+  state,
+  appCount,
+  onClose,
+}: {
+  state: ServerState;
+  appCount: number;
+  onClose: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const handle = state.handle ?? "";
+  const matches = typed.trim().toLowerCase() === handle;
+  const bbs = state.servers.length;
+  const devices = state.machines.length;
+  const removals = [
+    ...(devices > 0
+      ? [`${devices} paired ${devices === 1 ? "device" : "devices"}`]
+      : []),
+    ...(appCount > 0
+      ? [`${appCount} connected ${appCount === 1 ? "app" : "apps"}`]
+      : []),
+  ];
+
+  async function confirm() {
+    setBusy(true);
+    setFailed(false);
+    const result = await deleteAccountFn({
+      data: { confirmHandle: typed },
+    }).catch(() => null);
+    if (result !== null && "ok" in result) {
+      window.location.href = "/";
+      return;
+    }
+    setBusy(false);
+    setFailed(true);
+  }
+
   return (
-    <div className="mt-3.5 flex items-center justify-between text-xs">
-      <button
-        className="text-subtle-foreground hover:text-foreground"
-        onClick={() => void signOut()}
-      >
-        Sign out
-      </button>
-      {gh ? (
-        <a
-          className="text-subtle-foreground hover:text-foreground"
-          href={gh}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {state.handle} · GitHub{cap}
-        </a>
-      ) : (
-        <span className="text-subtle-foreground">
-          {state.handle} · GitHub{cap}
-        </span>
+    <Overlay onClose={busy ? () => {} : onClose}>
+      <h4 className="mb-1.5 text-base font-semibold">
+        Delete your bb account?
+      </h4>
+      <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>
+          {bbs === 1
+            ? "Disconnects your bb. It keeps running on your machine"
+            : `Disconnects all ${bbs} of your bbs. They keep running on your machines`}{" "}
+          but can&rsquo;t be reached through getbb.app.
+        </li>
+        {removals.length > 0 && <li>Removes {removals.join(" and ")}.</li>}
+        <li>
+          Releases <span className="font-mono text-foreground">{handle}</span>
+          {bbs === 1
+            ? " so anyone can claim it."
+            : " and your other addresses so anyone can claim them."}
+        </li>
+      </ul>
+      <p className="mb-4 text-sm text-muted-foreground">
+        This can&rsquo;t be undone.
+      </p>
+      <label className="mb-1.5 block text-xs text-muted-foreground">
+        Type your account name,{" "}
+        <span className="font-mono text-foreground">{handle}</span>, to confirm
+      </label>
+      <Input
+        autoFocus
+        autoComplete="off"
+        spellCheck={false}
+        value={typed}
+        disabled={busy}
+        onChange={(e) => setTyped(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && matches && !busy) void confirm();
+        }}
+      />
+      {failed && (
+        <p className="mt-2 text-xs text-destructive-text">
+          Couldn&rsquo;t delete your account. Try again.
+        </p>
       )}
-    </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={!matches || busy}
+          onClick={() => void confirm()}
+        >
+          {busy ? "Deleting…" : "Delete account"}
+        </Button>
+      </div>
+    </Overlay>
+  );
+}
+
+function AccountSection({
+  state,
+  appCount,
+}: {
+  state: ServerState;
+  appCount: number;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  return (
+    <>
+      <div className="mt-3 rounded-xl border border-border bg-card p-2 shadow-sm">
+        <div className="flex items-center gap-3 px-3 py-1.5">
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-semibold tracking-tight">
+              Account
+            </span>
+            <span className="mt-px block truncate text-xs text-muted-foreground">
+              <span className="font-mono">{state.handle}</span>
+              {state.githubLogin ? (
+                <>
+                  {" · "}
+                  <a
+                    className="hover:text-foreground"
+                    href={`https://github.com/${state.githubLogin}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    GitHub @{state.githubLogin}
+                  </a>
+                </>
+              ) : null}
+              {` · ${state.servers.length} of ${state.maxServers} bbs`}
+            </span>
+          </span>
+          <Button variant="outline" size="sm" onClick={() => void signOut()}>
+            Sign out
+          </Button>
+        </div>
+        <div className="px-3 pb-1.5">
+          <button
+            className="text-xs text-subtle-foreground hover:text-destructive-text"
+            onClick={() => setDeleting(true)}
+          >
+            Delete account…
+          </button>
+        </div>
+      </div>
+      {deleting && (
+        <DeleteAccountDialog
+          state={state}
+          appCount={appCount}
+          onClose={() => setDeleting(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -698,7 +744,6 @@ function AccountDashboard({ state }: { state: ServerState }) {
   const router = useRouter();
   const [connectOpen, setConnectOpen] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
   const [connectedApps, setConnectedApps] = useState<OAuthGrantView[]>([]);
 
   useEffect(() => {
@@ -743,32 +788,27 @@ function AccountDashboard({ state }: { state: ServerState }) {
       onServerCreated={(id) => setPendingId(id)}
     />
   );
-  const manageServer =
-    state.servers.find((server: ServerSummary) => server.online) ??
-    state.servers[0] ??
-    null;
 
-  async function revoke(machine: MachineSummary) {
-    await revokeMachineFn({ data: machine.id });
+  async function removeDevice(device: MachineSummary) {
+    await revokeMachineFn({ data: device.id });
     await router.invalidate();
   }
 
-  async function revokeGrant(grant: OAuthGrantView) {
-    setRevokingGrantId(grant.id);
-    try {
-      await revokeOAuthGrantFn({ data: grant.id });
-      setConnectedApps(await listConnectedAppsFn());
-    } finally {
-      setRevokingGrantId(null);
-    }
+  async function revokeApp(grant: OAuthGrantView) {
+    await revokeOAuthGrantFn({ data: grant.id });
+    setConnectedApps(await listConnectedAppsFn());
+  }
+
+  async function removeUnused() {
+    await revokeUnusedDevicesFn();
+    await router.invalidate();
   }
 
   return (
-    <Shell top width="md" footer={<AccountFooter state={state} />}>
-      {}
+    <Shell top width="md">
       <div className="rounded-xl border border-border bg-card p-2 shadow-sm">
         <div className="flex items-center px-1.5 pb-1.5 pl-3 pt-1.5">
-          <h3 className="flex-1 text-[17px] font-semibold tracking-tight">
+          <h3 className="flex-1 text-base font-semibold tracking-tight">
             Your bbs
           </h3>
           <button
@@ -783,88 +823,14 @@ function AccountDashboard({ state }: { state: ServerState }) {
           <ServerRow key={s.id} server={s} autoPair={single} />
         ))}
       </div>
-      <div className="mt-3 rounded-xl border border-border bg-card p-2 shadow-sm">
-        <div className="flex items-center px-3 pb-1.5 pt-1.5">
-          <h3 className="flex-1 text-[15px] font-semibold tracking-tight">
-            Machines
-          </h3>
-          {manageServer !== null ? (
-            <a
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
-              href={`${manageServer.serverUrl}/settings/machines`}
-            >
-              Manage machines in bb
-              <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-3" />
-            </a>
-          ) : null}
-        </div>
-        {state.machines.length === 0 ? (
-          <p className="px-3 pb-2 text-xs text-subtle-foreground">
-            Add machines from bb Settings → Machines.
-          </p>
-        ) : (
-          state.machines.map((machine: MachineSummary) => {
-            const machineName =
-              machine.name ?? `Machine ${machine.id.slice(0, 8)}`;
-            return (
-              <div
-                key={machine.id}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5"
-              >
-                <StatusDot
-                  state={
-                    machine.lastSeenAt === null
-                      ? "new"
-                      : machine.online
-                        ? "online"
-                        : "offline"
-                  }
-                />
-                <span className="min-w-0 flex-1">
-                  {machine.subdomain !== null ? (
-                    <span className="block truncate font-mono text-sm font-medium leading-tight">
-                      {state.serverUrlTemplate
-                        .replace("{label}", machine.subdomain)
-                        .replace(/^https?:\/\//u, "")}
-                    </span>
-                  ) : (
-                    <span className="block truncate text-sm font-medium leading-tight">
-                      {machineName}
-                    </span>
-                  )}
-                  <span className="mt-px block truncate text-xs text-muted-foreground">
-                    {machine.online ? (
-                      "Online"
-                    ) : machine.lastSeenAt !== null ? (
-                      <>
-                        <span className="text-warning-text">Offline</span>
-                        {` · last seen ${relativeTime(machine.lastSeenAt)}`}
-                      </>
-                    ) : (
-                      "Never connected"
-                    )}
-                    {machine.subdomain !== null && machine.name !== null
-                      ? ` · ${machine.name}`
-                      : ""}
-                  </span>
-                </span>
-                <button
-                  className="text-xs text-destructive-text hover:underline"
-                  onClick={() => void revoke(machine)}
-                >
-                  Revoke
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
-      <ConnectedApps
-        grants={connectedApps}
-        revokingId={revokingGrantId}
-        relativeTime={relativeTime}
-        onRevoke={(grant) => void revokeGrant(grant)}
+      <DeviceList
+        machines={state.machines}
+        serverUrlTemplate={state.serverUrlTemplate}
+        onRemove={removeDevice}
+        onRemoveUnused={removeUnused}
       />
+      <AppList grants={connectedApps} onRevoke={revokeApp} />
+      <AccountSection state={state} appCount={connectedApps.length} />
       {dialog}
     </Shell>
   );

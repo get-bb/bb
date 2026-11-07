@@ -108,8 +108,8 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   as the Worktree provider does.
 - `experimental_useBranches({ hostId, projectId, query? })` — returns
   `{ branches, remoteBranches, isLoading, refresh }` for the same project-source
-  query as the host picker. `refresh()` performs a blocking refresh from the
-  enrolled machine. Use this when the plugin owns the menu or selection model.
+  query as the host picker. `refresh()` performs a blocking fetch of `origin` (or
+  the only remote when there is no `origin`) on the enrolled machine. Use this when the plugin owns the menu or selection model.
 - `experimental_useCheckoutState({ hostId, projectId })` — returns
   `{ isGit, unborn, detached, dirty, currentBranch, operation }`. Combine it
   with `experimental_useBranches` for checkout-specific controls. The Project
@@ -121,6 +121,16 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   drives language detection, `overflow` is `"scroll"` (default) or `"wrap"`,
   and `highlightedLines` is a 1-based inclusive `{ start, end }` (default
   null). bb owns syntax highlighting, gutters, and the live code theme.
+- `experimental_FilePreview` — bb's side-panel preview of one live file:
+  its header (path, Preview/Raw, open in browser, Open in editor, download,
+  file menu with refresh) and its loading, empty, missing and error states.
+  Props (`ExperimentalFilePreviewProps`): `{ target, renderPreview }` — `target` is an
+  `ExperimentalLiveFileTarget`; `renderPreview({ content, url })` (an
+  `ExperimentalFilePreviewFile`) draws the
+  Preview body of an HTML, Markdown or CSV file instead of bb's, with `url`
+  the absolute raw-file URL for sibling assets. Raw mode and other file types
+  stay bb's. A malformed target renders nothing. Reference: the Inline
+  visualizations `page` file opener (`plugins/inline-vis/app.tsx`).
 - `experimental_Diff` — bb's diff viewer. Props:
   `{ patch, path, view?, overflow?, showLineNumbers?, experimental_fullFileContents?,
 className? }` —
@@ -160,6 +170,17 @@ className? }` —
   Usage is in frontend-registration.md. Experimental: see
   `docs/api_to_audit.md`.
 
+- `experimental_ThreadContextCardRow` — the thread context card's row, the one
+  bb's own rows use: `{ icon?, leading?, label, trailing?, title?, disabled?,
+onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
+  `leading` draws any node in its place (an app or site icon), `trailing`
+  draws at the row's end (a count or `+4 −1`), `onClick` makes the label a
+  button, and `action` is a second control, such as a `…` that opens a menu,
+  shown in place of `trailing` while the row is hovered or focused (always on
+  touch screens). Usage is in
+  frontend-thread-context-card.md. Experimental: see
+  `docs/api_to_audit.md`.
+
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews
@@ -192,7 +213,10 @@ className? }` —
   effects use
   `useBbNavigate().experimental_openFilePreview({ target, location })` or
   `.experimental_openFileExternally({ target, location })`; the boolean means
-  host acceptance, not completed I/O.
+  host acceptance, not completed I/O. `experimental_openFilePreview` also
+  takes `opener`, the id of one of your `fileOpener` registrations, to show
+  that file with it for this open; an unregistered id falls back to BB's
+  preview.
   The `experimental_useCanOpenFileExternally(target)` hook is true when the
   target resolves on its host and this client has an external file target
   for it; it is false while loading and re-renders the component when it
@@ -201,6 +225,9 @@ className? }` —
   harness records both calls in `navigateCalls` and gates them with the
   `openFilePreview` / `openFileExternally` behavior options; its
   `canOpenFileExternally` option answers the hook.
+- `experimental_PanelTabIcon` — `{ tabKey }`; the icon bb's tab strip draws
+  for an open side panel tab, from `experimental_usePanelTabs()`; see
+  frontend-panel-tabs.md.
 - `experimental_useAppPanel` — returns the current surface's
   `ExperimentalPanelController`; see
   [Panel controller](frontend-hooks-and-ui.md#panel-controller). Targeted
@@ -228,7 +255,10 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   seeds the draft only while it is still empty; `layout` is `"contained"`
   (default) or `"document"` like `ThreadChat`; `focusRequest` is a
   change-detected nonce that focuses the editor; `draftKey` picks where the
-  draft persists (default: a key scoped to your plugin).
+  draft persists (default: a key scoped to your plugin). The project selector
+  offers the same "New project" entry as bb's main new-thread view; the
+  project it creates becomes this composer's selection without navigating
+  away.
 
   This component has no plugin composer-host binding. Composer customizations
   and `useComposer()` writes do not reach this composer instance.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { hostDaemonServerWsMessageSchema } from "@bb/host-daemon-contract";
 import { readAgentCpuPriority } from "@bb/process-utils";
 import { withTestHarness } from "../helpers/test-app.js";
 import { seedHostSession } from "../helpers/seed.js";
@@ -23,13 +24,16 @@ describe("agent CPU priority experiment", () => {
           },
         );
         expect(response.status).toBe(200);
-        expect(
-          socket.messages
-            .map((message) => JSON.parse(message))
-            .findLast(
-              (message) => message.type === "provider-session-policy.replace",
-            ),
-        ).toMatchObject({ agentCpuPriority });
+        const policies = socket.messages
+          .map((message) =>
+            hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
+          )
+          .filter(
+            (message) => message.type === "provider-session-policy.replace",
+          );
+        expect(policies[policies.length - 1]).toMatchObject({
+          agentCpuPriority,
+        });
         expect(readAgentCpuPriority(dataDir)).toBe(agentCpuPriority);
       }
     });

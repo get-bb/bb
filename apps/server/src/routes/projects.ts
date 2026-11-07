@@ -42,6 +42,7 @@ import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
+import { readMultipartFormData } from "./multipart-form-data.js";
 import {
   copyProjectAttachments,
   createAttachmentContentResponse,
@@ -934,7 +935,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.uploadAttachment, async (context) => {
     requirePublicProject(deps.db, context.req.param("id"));
-    const formData = await context.req.formData();
+    const formData = await readMultipartFormData(context.req);
     const fields = [...formData.keys()];
     if (fields.length === 0) {
       throw new ApiError(400, "invalid_request", "Attachment file is required");

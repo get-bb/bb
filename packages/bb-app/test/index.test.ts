@@ -1,6 +1,5 @@
-import { promisify } from "node:util";
-import { nodeNetworkArgs } from "@bb/config/node-network";
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execHostFile, nodeNetworkArgs } from "@bb/process-utils";
+import { execFileSync, spawn } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -879,6 +878,40 @@ describe("bb-app launcher", () => {
     expect(readFileSync(outputPath, "utf8")).toBe(
       join("/tmp/bb-app-test/server/dist", "assets", "install-machine.sh"),
     );
+  });
+
+  it("runs the bundled CLI when a BB_CLI launcher re-enters the bb entry", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-reentry-"));
+    const daemonBundleDir = join(dataDir, "host-daemon");
+    mkdirSync(daemonBundleDir);
+    writeFileSync(
+      join(daemonBundleDir, "bb"),
+      "require('node:fs').writeFileSync(process.argv[2], 'bundled')",
+    );
+    const context = { ...createTestStartContext(), dataDir, daemonBundleDir };
+    const launcherEnvPath = join(dataDir, "launcher-env.json");
+
+    expect(
+      await runBundledCliCommand({
+        args: [
+          "-e",
+          "require('node:fs').writeFileSync(process.argv[1], JSON.stringify(process.env))",
+          launcherEnvPath,
+        ],
+        context,
+        env: { BB_CLI: process.execPath },
+      }),
+    ).toBe(0);
+
+    const outputPath = join(dataDir, "reentry.txt");
+    const reentryExitCode = await runBundledCliCommand({
+      args: [outputPath],
+      context,
+      env: JSON.parse(readFileSync(launcherEnvPath, "utf8")),
+    });
+
+    expect(reentryExitCode).toBe(0);
+    expect(readFileSync(outputPath, "utf8")).toBe("bundled");
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
@@ -2205,7 +2238,7 @@ it("preserves machine identity and access headers through real config set and un
 
 describe("managed process networking", () => {
   it.each(["server", "daemon"] as const)(
-    "%s uses the environment proxy and bypasses it for NO_PROXY",
+    "%s uses the environment proxy and keeps loopback direct",
     async (kind) => {
       if (!process.allowedNodeEnvironmentFlags.has("--use-env-proxy")) return;
       const proxy = createServer();
@@ -2236,7 +2269,6 @@ describe("managed process networking", () => {
       };
       const env = {
         HTTP_PROXY: `http://127.0.0.1:${port(proxy)}`,
-        NO_PROXY: "127.0.0.1",
       };
       const context = createTestStartContext();
       const launchEnv =
@@ -2253,7 +2285,7 @@ describe("managed process networking", () => {
               serverUrl: "http://127.0.0.1:38886",
             });
       try {
-        const result = await promisify(execFile)(
+        const result = await execHostFile(
           process.execPath,
           [
             ...nodeNetworkArgs(launchEnv),

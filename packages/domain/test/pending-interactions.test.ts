@@ -7,6 +7,7 @@ import {
   USER_QUESTION_MAX_OPTIONS,
   USER_QUESTION_MAX_QUESTIONS,
   USER_QUESTION_MAX_SELECTED,
+  userQuestionPendingInteractionPayloadSchema,
 } from "../src/index.js";
 
 describe("pending interaction schemas", () => {
@@ -185,6 +186,26 @@ describe("pending interaction schemas", () => {
         },
       },
     });
+  });
+
+  it("treats a user question without a required flag as required and keeps an explicit optional one", () => {
+    const parsed = userQuestionPendingInteractionPayloadSchema.parse({
+      kind: "user_question",
+      questions: [
+        { id: "q1", prompt: "Name?", multiSelect: false, allowFreeText: true },
+        {
+          id: "q2",
+          prompt: "Notes?",
+          multiSelect: false,
+          allowFreeText: true,
+          required: false,
+        },
+      ],
+    });
+    expect(parsed.questions.map((question) => question.required)).toEqual([
+      true,
+      false,
+    ]);
   });
 
   it("rejects expired pending interaction status", () => {

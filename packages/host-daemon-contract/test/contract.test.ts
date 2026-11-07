@@ -284,6 +284,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       { name: "bb-cli", path: "/home/user/.agents/skills/bb-cli" },
     ],
   },
+  "host.inspect_git_checkout": {
+    checkout: {
+      kind: "branch",
+      branchName: "main",
+      headSha: "abc123",
+    },
+  },
   "host.inspect_git_source": {
     checkout: {
       kind: "branch",
@@ -339,6 +346,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         displayName: "GPT-5",
         routeProviderId: "openai-codex",
         description: "Test model",
+        reasoningDiscovery: "known",
         supportedReasoningEfforts: [
           {
             reasoningEffort: "medium",
@@ -399,6 +407,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     truncated: false,
+    unreadableCount: 0,
   },
   "provider.installation.status": {
     executableName: "codex",
@@ -721,6 +730,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start.fork names a checkpoint only when the clone should stop at an earlier source turn; absent means clone the session tip.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
+  "hostDaemonOnlineRpcCommandSchema.selectedModel":
+    "A selected model requests its reasoning choices without probing the whole catalog.",
+  "hostDaemonCommandSchema.options.reasoningLevel":
+    "Absent when the cached model catalog lists the model without this level; preserve the agent setting.",
   "hostDaemonCommandSchema.options.promptMode":
     "thread runtime options carry a prompt mode only when the prompt entered one through the provider's declared composer action.",
   "hostDaemonCommandSchema.options.sessionOptions":
@@ -1055,11 +1068,11 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(257);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(265);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
-  it("accepts only daemons that report skill canonical paths and content identities", () => {
+  it("accepts only daemons that preserve optional user questions", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(245)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(246)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(247)).toBe(false);
@@ -1072,7 +1085,15 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(256)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(258)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(259)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(260)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(263)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(264)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(265)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -2797,6 +2818,20 @@ describe("host-daemon session schemas", () => {
             threadId: "thr_123",
           },
         ],
+        openThreadWork: [
+          {
+            threadId: "thr_123",
+            backgroundItemIds: ["item_1"],
+            interactiveRequests: [
+              {
+                threadId: "thr_123",
+                providerId: "claude-code",
+                providerThreadId: "provider_thr_123",
+                providerRequestId: "request_1",
+              },
+            ],
+          },
+        ],
       }),
     ).toMatchObject({
       hostId: "host_123",
@@ -2815,6 +2850,7 @@ describe("host-daemon session schemas", () => {
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
+        openThreadWork: [],
         loadedEnvironments: [
           {
             environmentId: "env_123",
@@ -2844,6 +2880,7 @@ describe("host-daemon session schemas", () => {
             threadId: "",
           },
         ],
+        openThreadWork: [],
       }),
     ).toThrow();
 
@@ -2858,6 +2895,7 @@ describe("host-daemon session schemas", () => {
         localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
         activeThreads: [],
+        openThreadWork: [],
       }),
     ).toMatchObject({
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
@@ -2874,6 +2912,7 @@ describe("host-daemon session schemas", () => {
         localApiPort: 38_887,
         protocolVersion: 0,
         activeThreads: [],
+        openThreadWork: [],
       }),
     ).toThrow();
 
@@ -2889,6 +2928,7 @@ describe("host-daemon session schemas", () => {
           generation: 2,
           ports: [3000, 8080],
         },
+        endedInteractiveRequests: [],
       }),
     ).toMatchObject({
       sessionId: "session_123",
@@ -2912,6 +2952,7 @@ describe("host-daemon session schemas", () => {
         agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        endedInteractiveRequests: [],
       }).connectShares,
     ).toEqual({ generation: 0, ports: [] });
 
@@ -2923,6 +2964,7 @@ describe("host-daemon session schemas", () => {
         agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        endedInteractiveRequests: [],
       }).connectNext,
     ).toEqual({ generation: 0, config: null });
 
@@ -3134,15 +3176,33 @@ describe("host-daemon session schemas", () => {
 
     expect(
       hostDaemonDaemonWsMessageSchema.parse({
+        type: "thread-storage-change",
+        threadId: "thr_123",
+      }),
+    ).toEqual({
+      type: "thread-storage-change",
+      threadId: "thr_123",
+    });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
         type: "environment-change",
         environmentId: "env_123",
-        change: "thread-storage-changed",
+        change: "git-branches-changed",
       }),
     ).toEqual({
       type: "environment-change",
       environmentId: "env_123",
-      change: "thread-storage-changed",
+      change: "git-branches-changed",
     });
+
+    expect(() =>
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "environment-change",
+        environmentId: "env_123",
+        change: "thread-storage-changed",
+      }),
+    ).toThrow();
 
     expect(
       hostDaemonDaemonWsMessageSchema.parse({
@@ -3319,14 +3379,10 @@ describe("host-daemon session schemas", () => {
             workspaceContext: {
               workspacePath: "/tmp/env-123",
             },
+            mergeBaseBranch: "origin/feature/base",
           },
         ],
-        threadStorageTargets: [
-          {
-            environmentId: "env_123",
-            threadId: "thr_123",
-          },
-        ],
+        threadStorageTargets: [{ threadId: "thr_123" }],
       }),
     ).toMatchObject({
       type: "watch-set.replace",
@@ -3334,6 +3390,7 @@ describe("host-daemon session schemas", () => {
       workspaceTargets: [
         {
           environmentId: "env_123",
+          mergeBaseBranch: "origin/feature/base",
         },
       ],
       threadStorageTargets: [
@@ -3342,6 +3399,20 @@ describe("host-daemon session schemas", () => {
         },
       ],
     });
+
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "watch-set.replace",
+        generation: 2,
+        workspaceTargets: [
+          {
+            environmentId: "env_123",
+            workspaceContext: { workspacePath: "/tmp/env-123" },
+          },
+        ],
+        threadStorageTargets: [],
+      }).success,
+    ).toBe(false);
 
     expect(
       hostDaemonServerWsMessageSchema.parse({

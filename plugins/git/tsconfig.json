@@ -9,7 +9,20 @@
     "esModuleInterop": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
+      ],
+      "@/*": ["../../packages/shared-ui/src/*"]
+    }
   },
-  "include": ["*.ts", "*.tsx", "host/**/*.ts", "test/**/*.ts"]
+  "include": [
+    "*.ts",
+    "*.tsx",
+    "host/**/*.ts",
+    "test/**/*.ts",
+    "ui/**/*.ts",
+    "ui/**/*.tsx"
+  ]
 }

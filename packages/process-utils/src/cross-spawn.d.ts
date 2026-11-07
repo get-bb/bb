@@ -8,5 +8,6 @@ declare module "cross-spawn/lib/parse.js" {
     command: string;
     args: string[];
     options: SpawnOptions;
+    file?: string;
   };
 }

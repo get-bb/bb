@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { Metafile } from "esbuild";
 
 const GIT_READS_REPLACEMENT: Readonly<Record<string, string>> = {
@@ -14,9 +14,41 @@ const GIT_READS_REPLACEMENT: Readonly<Record<string, string>> = {
     'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "fileSide", input: { environmentId, query } })',
   diffBranches:
     'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "branches", input: { environmentId, query, limit } })',
+  experimental_diffViewed:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "viewed", input: { environmentId, target, paths } })',
+  experimental_markDiffViewed:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "markViewed", input: { environmentId, target, path, revision } })',
+  experimental_clearDiffViewed:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "clearViewed", input: { environmentId, target, path } })',
 };
 
-const RETIRED_NAMES = "status|diff|diffFiles|diffPatch|diffFile|diffBranches";
+const PULL_REQUEST_REPLACEMENT: Readonly<Record<string, string>> = {
+  pullRequest:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--github-pr-status", method: "pullRequests", input: { keys: [environmentId] } }), then read the row at [environmentId]',
+  markPullRequestReady:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--github-pr-status", method: "markReady", input: { environmentId } })',
+  markPullRequestDraft:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--github-pr-status", method: "markDraft", input: { environmentId } })',
+  mergePullRequest:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--github-pr-status", method: "merge", input: { environmentId, method } })',
+};
+
+const RETIRED_ENVIRONMENT_ADVICE: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    Object.entries(GIT_READS_REPLACEMENT).map(([name, call]) => [
+      name,
+      `Use the Git plugin instead: ${call}. See bb-plugin-authoring, git-reads.md.`,
+    ]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(PULL_REQUEST_REPLACEMENT).map(([name, call]) => [
+      name,
+      `Use the GitHub PR Status plugin instead: ${call}. See the github-pr-status skill.`,
+    ]),
+  ),
+};
+
+const RETIRED_NAMES = Object.keys(RETIRED_ENVIRONMENT_ADVICE).join("|");
 
 const RETIRED_MEMBER_ACCESS = new RegExp(
   `\\benvironments\\s*\\??\\.\\s*(${RETIRED_NAMES})\\b`,
@@ -64,6 +96,17 @@ function retiredPanelMemberWarnings(source: string): string[] {
   );
 }
 
+const RETIRED_RPC_INVALIDATES =
+  /(?:^|[{,\s])["']?invalidates["']?\s*(?::|\([^()]*\)\s*(?::[^{};]*)?\{)/u;
+
+export function retiredRpcInvalidatesWarnings(source: string): string[] {
+  return RETIRED_RPC_INVALIDATES.test(source)
+    ? [
+        "invalidates on RPC contract methods is retired from the bb SDK typings and keeps working only for existing plugins. Delete it and call bb.rpc.experimental_invalidate(tags) in the server code that changes the data, so writes from RPC, the CLI, agent tools and background work each refresh matching reads once. See bb-plugin-authoring, frontend-hooks-and-ui.md#tags-and-invalidation.",
+      ]
+    : [];
+}
+
 export function retiredSdkMemberWarnings(source: string): string[] {
   const found = new Set<string>();
   for (const pattern of [RETIRED_MEMBER_ACCESS, RETIRED_BRACKET_ACCESS]) {
@@ -80,7 +123,7 @@ export function retiredSdkMemberWarnings(source: string): string[] {
   return [
     ...[...found].map(
       (name) =>
-        `environments.${name} is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: ${GIT_READS_REPLACEMENT[name]}. See bb-plugin-authoring, git-reads.md.`,
+        `environments.${name} is retired from the bb SDK typings and keeps working only for existing plugins. ${RETIRED_ENVIRONMENT_ADVICE[name]}`,
     ),
     ...retiredPanelMemberWarnings(source),
   ];
@@ -89,6 +132,7 @@ export function retiredSdkMemberWarnings(source: string): string[] {
 export async function retiredSdkMemberWarningsForInputs(
   metafile: Metafile,
   absWorkingDir: string,
+  pluginRoot: string,
 ): Promise<string[]> {
   const warnings: string[] = [];
   for (const input of Object.keys(metafile.inputs)) {
@@ -101,7 +145,12 @@ export async function retiredSdkMemberWarningsForInputs(
     } catch {
       continue;
     }
-    for (const warning of retiredSdkMemberWarnings(source)) {
+    const fromRoot = relative(pluginRoot, path);
+    const ownSource = !fromRoot.startsWith("..") && !isAbsolute(fromRoot);
+    for (const warning of [
+      ...retiredSdkMemberWarnings(source),
+      ...(ownSource ? retiredRpcInvalidatesWarnings(source) : []),
+    ]) {
       warnings.push(`${input}: ${warning}`);
     }
   }

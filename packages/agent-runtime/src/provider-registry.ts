@@ -1,4 +1,4 @@
-import { inheritedNodeNetworkArgs } from "@bb/config/node-network";
+import { inheritedNodeNetworkArgs } from "@bb/process-utils";
 import {
   createBridgeProtocolAdapter,
   type BridgeProtocolAdapter,

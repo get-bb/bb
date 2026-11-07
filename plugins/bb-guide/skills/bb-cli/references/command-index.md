@@ -76,6 +76,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb provider disable`
 - `bb provider models`
 
+Use `--selected-model <model-id>` to discover its reasoning choices and include selected-only entries.
+
 ## machine
 
 - `bb machine`
@@ -121,6 +123,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb updates app`
 - `bb updates app status`
 - `bb updates app apply`
+- `bb updates app cancel`
+- `bb updates app auto`
 - `bb updates app dismiss`
 
 ## terminal
@@ -129,6 +133,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb terminal list`
 - `bb terminal create`
 - `bb terminal start`
+- `bb terminal run`
 - `bb terminal show`
 - `bb terminal attach`
 - `bb terminal send`
@@ -188,6 +193,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb thread restore-environment`
 - `bb thread pin`
 - `bb thread unpin`
+- `bb thread regenerate-title`
 - `bb thread delete`
 - `bb thread edit-message`
 - `bb thread tell`

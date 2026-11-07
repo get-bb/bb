@@ -1073,22 +1073,6 @@
       }
     },
     {
-      "command": "diff.toggle",
-      "desktopOnly": false,
-      "shortcut": {
-        "key": "d",
-        "mod": true,
-        "meta": false,
-        "control": false,
-        "alt": false,
-        "shift": false
-      },
-      "when": {
-        "all": ["mainSurface"],
-        "none": ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"]
-      }
-    },
-    {
       "command": "terminal.open",
       "desktopOnly": false,
       "shortcut": {
@@ -2719,22 +2703,6 @@
       "when": {
         "all": ["mainSurface"],
         "none": ["modalOpen"]
-      }
-    },
-    {
-      "command": "diff.toggle",
-      "desktopOnly": false,
-      "shortcut": {
-        "key": "d",
-        "mod": true,
-        "meta": false,
-        "control": false,
-        "alt": false,
-        "shift": false
-      },
-      "when": {
-        "all": ["mainSurface"],
-        "none": ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"]
       }
     },
     {

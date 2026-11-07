@@ -102,13 +102,15 @@ export function Default() {
         maxWidthClassName="max-w-3xl"
         contentClassName="gap-2 pt-4"
         scrollOverlay={
-          <ThreadTableOfContents
-            contextBoundarySeq={null}
-            threadId="thr_toc_story"
-            timelineRows={timelineRows}
-            hasOlderTimelineRows={false}
-            loadOlderTimelineRows={() => {}}
-          />
+          <div className="pointer-events-auto my-auto">
+            <ThreadTableOfContents
+              contextBoundarySeq={null}
+              threadId="thr_toc_story"
+              timelineRows={timelineRows}
+              hasOlderTimelineRows={false}
+              loadOlderTimelineRows={() => {}}
+            />
+          </div>
         }
       >
         <ThreadTimelineSurface
@@ -120,7 +122,6 @@ export function Default() {
           timelineRows={timelineRows}
           threadId="thr_toc_story"
           threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
         />
       </BottomAnchoredScrollBody>
     </div>

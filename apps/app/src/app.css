@@ -1,5 +1,6 @@
 @import "@fontsource-variable/inter";
 @import "@/components/ui/theme.css";
+@import "@bb/plugin-build/host-tailwind.css";
 
 @layer base {
   /*
@@ -192,8 +193,8 @@
 
   /*
    * Light up the `ultracode` keyword in the prompt editor with animated purple
-   * sparkles (mirrors Claude Code). The wrapping span is added as a ProseMirror
-   * inline decoration (see prompt-ultracode-highlight-extension.ts); it stays
+   * sparkles (mirrors Claude Code). The wrapping span is added by the host's
+   * composer decoration source (see composer-decorations.ts); it stays
    * editable text, so this is paint-only. `background-clip: text` shimmers a
    * purple gradient through the glyphs, and two pseudo-element glints twinkle at
    * opposite corners. `prefers-reduced-motion` keeps the purple, drops motion.

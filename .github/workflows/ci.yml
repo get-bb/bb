@@ -149,7 +149,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -201,7 +201,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -286,7 +286,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -338,7 +338,7 @@ jobs:
     name: Windows tests (${{ matrix.shard }}, Node 22.x)
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection)['windows-tests'].include[0] != null }}
-    runs-on: blacksmith-4vcpu-windows-2025
+    runs-on: ${{ (startsWith(matrix.shard, 'app-') || matrix.shard == 'plugins-2' || matrix.shard == 'packages-other') && 'blacksmith-8vcpu-windows-2025' || 'blacksmith-4vcpu-windows-2025' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -361,7 +361,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -398,6 +398,7 @@ jobs:
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
           SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
           PLUGIN_SHARD: ${{ matrix.shard == 'plugins-2' }}
+          OTHER_PACKAGES_SHARD: ${{ matrix.shard == 'packages-other' }}
           TEST_FILTERS: ${{ matrix.filter }}
           MOBILE_TESTS: ${{ matrix.mobile }}
         run: |
@@ -406,12 +407,22 @@ jobs:
             filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
           elif [[ "$SERVER_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
-          elif [[ "$PLUGIN_SHARD" == "true" ]]; then
+          elif [[ "$PLUGIN_SHARD" == "true" || "$OTHER_PACKAGES_SHARD" == "true" ]]; then
             read -r -a selected_filters <<< "$TEST_FILTERS"
             selection=$(pnpm list "${selected_filters[@]}" --depth -1 --json)
-            packages=$(node -e 'for (const pkg of JSON.parse(process.argv[1])) console.log(pkg.name)' "$selection")
+            packages=$(node -e '
+              const fs = require("node:fs");
+              for (const pkg of JSON.parse(process.argv[1])) {
+                if (process.env.OTHER_PACKAGES_SHARD === "true" && !JSON.parse(fs.readFileSync(`${pkg.path}/package.json`, "utf8")).scripts?.test) continue;
+                console.log(pkg.name);
+              }
+            ' "$selection")
             filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+            if [[ "$OTHER_PACKAGES_SHARD" == "true" ]]; then
+              filters+=(--filter '@bb/server...' --filter '@bb/cli...' --filter 'bb-plugin-provider-*...')
+            fi
             while IFS= read -r package; do
+              [[ -z "$package" ]] && continue
               filters+=(--filter "$package...")
             done <<< "$packages"
           elif [[ "$MOBILE_TESTS" != "true" ]]; then
@@ -426,10 +437,17 @@ jobs:
         with:
           version: "1.3.14"
 
+      - name: Prepare plugin SDK runtime
+        if: ${{ matrix.shard == 'plugins-2' && contains(matrix.filter, '--filter=bb-plugin-*') }}
+        shell: cmd
+        run: |
+          if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
+          pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="%TURBO_CACHE_DIR%" --output-logs=new-only --summarize --concurrency=2
+
       - name: Test on Windows
         shell: cmd
         env:
-          VITEST_MAX_WORKERS: ${{ startsWith(matrix.shard, 'app-') && '4' || '' }}
+          VITEST_MAX_WORKERS: ${{ startsWith(matrix.shard, 'app-') && '8' || '' }}
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
@@ -482,7 +500,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -541,7 +559,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -643,7 +661,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -759,7 +777,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -833,7 +851,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -918,18 +936,26 @@ jobs:
           turbo-cache-max-size-mb: ${{ runner.os == 'macOS' && '256' || '1024' }}
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
         uses: ./.github/actions/cache-pnpm
 
-      - name: Install dependencies
-        timeout-minutes: 5
-        env:
-          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
+      - parallel:
+          - name: Install dependencies
+            timeout-minutes: 5
+            env:
+              TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+              PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+            run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
+
+          - name: Install AppImage FUSE runtime
+            if: ${{ runner.os == 'Linux' }}
+            uses: ./.github/actions/install-appimage-fuse
+            timeout-minutes: 5
+            with:
+              package: libfuse2t64
 
       - name: Smoke bb-app tarball
         if: ${{ runner.os != 'Linux' }}
@@ -938,13 +964,6 @@ jobs:
       - name: Package Linux artifacts and smoke bb-app tarball
         if: ${{ runner.os == 'Linux' }}
         run: pnpm exec turbo run 'bb-app#smoke:tarball' '@bb/desktop#desktop:build:linux' --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 --continue=dependencies-successful
-
-      - name: Install AppImage FUSE runtime
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/install-appimage-fuse
-        timeout-minutes: 5
-        with:
-          package: libfuse2t64
 
       - name: Smoke Linux AppImage mount lifecycle
         if: ${{ runner.os == 'Linux' }}
@@ -997,7 +1016,7 @@ jobs:
           turbo-cache-max-size-mb: ${{ runner.os == 'macOS' && '256' || '1024' }}
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true

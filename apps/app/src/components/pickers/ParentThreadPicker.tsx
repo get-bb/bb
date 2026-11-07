@@ -1,5 +1,5 @@
-import { ListLoadingPlaceholder } from "@/components/ui/ListLoadingPlaceholder";
-import { PICKER_MOBILE_CLASS_NAME } from "./picker-layout";
+import { ListLoadingPlaceholder } from "@bb/shared-ui/list-loading-placeholder";
+import { PICKER_MOBILE_CLASS_NAME } from "@bb/shared-ui/picker-layout";
 import { useCallback, useMemo, useState } from "react";
 import {
   Command,
@@ -19,8 +19,10 @@ import {
   ThreadTitle,
   useResolveThreadTitle,
 } from "@/components/thread/ThreadTitleMentions";
-import { searchPickerOptions } from "./picker-search";
-import { useResetPickerScroll } from "./useResetPickerScroll";
+import { searchPickerOptions } from "@bb/shared-ui/picker-search";
+import {
+  useResetPickerScroll,
+} from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 
 export interface ParentThreadPickerOption {
   label: string;

@@ -24,7 +24,6 @@ const localBranch = "bb/review-github-issue-1235-thr_test";
 const forkRemote = "review-fork";
 const upstreamBranch = "per-turn-permission-escalation";
 const forkRemoteUrl = "git@github.com:fork-owner/bb.git";
-const qualifiedUpstream = `fork-owner:${upstreamBranch}`;
 
 function pullRequestJson(): string {
   return JSON.stringify({
@@ -46,6 +45,9 @@ function pullRequestJson(): string {
 }
 
 let repositoryTemplate: string;
+let trackedForkRepositoryTemplate: string;
+let managedBaseRepositoryTemplate: string;
+let untrackedRepositoryTemplate: string;
 
 beforeAll(async () => {
   repositoryTemplate = await fs.mkdtemp(path.join(tmpdir(), "bb-pr-template-"));
@@ -61,30 +63,18 @@ beforeAll(async () => {
   await runGit(["remote", "add", "origin", "git@github.com:acme/bb.git"], {
     cwd: workspacePath,
   });
-});
-
-afterAll(async () => {
-  if (repositoryTemplate) {
-    await fs.rm(repositoryTemplate, { recursive: true, force: true });
-  }
-});
-
-async function createRepository(prefix: string): Promise<string> {
-  const workspacePath = await makeTempDir(prefix);
-  await fs.cp(repositoryTemplate, workspacePath, { recursive: true });
-  return workspacePath;
-}
-
-async function createTrackedForkWorkspace(
-  remoteUrl = forkRemoteUrl,
-): Promise<string> {
-  const workspacePath = await createRepository("bb-pr-upstream-workspace-");
-  await runGit(["remote", "add", forkRemote, remoteUrl], {
-    cwd: workspacePath,
+  trackedForkRepositoryTemplate = await fs.mkdtemp(
+    path.join(tmpdir(), "bb-pr-fork-template-"),
+  );
+  await fs.cp(repositoryTemplate, trackedForkRepositoryTemplate, {
+    recursive: true,
+  });
+  await runGit(["remote", "add", forkRemote, forkRemoteUrl], {
+    cwd: trackedForkRepositoryTemplate,
   });
   await runGit(
     ["update-ref", `refs/remotes/${forkRemote}/${upstreamBranch}`, "HEAD"],
-    { cwd: workspacePath },
+    { cwd: trackedForkRepositoryTemplate },
   );
   await runGit(
     [
@@ -93,22 +83,71 @@ async function createTrackedForkWorkspace(
       `${forkRemote}/${upstreamBranch}`,
       localBranch,
     ],
-    { cwd: workspacePath },
+    { cwd: trackedForkRepositoryTemplate },
   );
+  managedBaseRepositoryTemplate = await fs.mkdtemp(
+    path.join(tmpdir(), "bb-pr-base-template-"),
+  );
+  await fs.cp(repositoryTemplate, managedBaseRepositoryTemplate, {
+    recursive: true,
+  });
+  await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
+    cwd: managedBaseRepositoryTemplate,
+  });
+  await runGit(["branch", "--set-upstream-to", "origin/main", localBranch], {
+    cwd: managedBaseRepositoryTemplate,
+  });
+  untrackedRepositoryTemplate = await fs.mkdtemp(
+    path.join(tmpdir(), "bb-pr-untracked-template-"),
+  );
+  await fs.cp(managedBaseRepositoryTemplate, untrackedRepositoryTemplate, {
+    recursive: true,
+  });
+  await runGit(["branch", "--unset-upstream"], {
+    cwd: untrackedRepositoryTemplate,
+  });
+});
+
+afterAll(async () => {
+  for (const template of [
+    repositoryTemplate,
+    trackedForkRepositoryTemplate,
+    managedBaseRepositoryTemplate,
+    untrackedRepositoryTemplate,
+  ]) {
+    if (template) await fs.rm(template, { recursive: true, force: true });
+  }
+});
+
+async function createRepository(
+  prefix: string,
+  template = repositoryTemplate,
+): Promise<string> {
+  const workspacePath = await makeTempDir(prefix);
+  await fs.cp(template, workspacePath, { recursive: true });
+  return workspacePath;
+}
+
+async function createTrackedForkWorkspace(
+  remoteUrl = forkRemoteUrl,
+): Promise<string> {
+  const workspacePath = await createRepository(
+    "bb-pr-upstream-workspace-",
+    trackedForkRepositoryTemplate,
+  );
+  if (remoteUrl !== forkRemoteUrl) {
+    await runGit(["remote", "set-url", forkRemote, remoteUrl], {
+      cwd: workspacePath,
+    });
+  }
   return workspacePath;
 }
 
 async function createManagedBaseTrackedWorkspace(): Promise<string> {
-  const workspacePath = await createRepository(
+  return createRepository(
     "bb-pr-base-upstream-workspace-",
+    managedBaseRepositoryTemplate,
   );
-  await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
-    cwd: workspacePath,
-  });
-  await runGit(["branch", "--set-upstream-to", "origin/main", localBranch], {
-    cwd: workspacePath,
-  });
-  return workspacePath;
 }
 
 function branchLookup(
@@ -160,39 +199,67 @@ afterEach(() => {
 
 const harness = experimental_createHostEntryHarness(hostEntry);
 
+async function view(read: { path: string; refresh: boolean }) {
+  const [result] = await harness.experimental_call("views", {
+    reads: [{ ...read, known: null }],
+  });
+  return result?.lookup;
+}
+
 describe("pull request lookup for differently named upstream branches", () => {
   it.each(["origin-base", "none"])(
     "uses the managed local branch with %s upstream",
     async (upstream) => {
-      const workspacePath = await createManagedBaseTrackedWorkspace();
-      if (upstream === "none") {
-        await runGit(["branch", "--unset-upstream"], { cwd: workspacePath });
-      }
+      const workspacePath =
+        upstream === "none"
+          ? await createRepository(
+              "bb-pr-no-upstream-workspace-",
+              untrackedRepositoryTemplate,
+            )
+          : await createManagedBaseTrackedWorkspace();
       const gh = await installFakeGh(sameRepository);
 
       await expect(
-        harness.experimental_call("view", {
+        view({
           path: workspacePath,
-          url: null,
           refresh: false,
         }),
       ).resolves.toMatchObject({
         outcome: "found",
         pullRequest: { number: 1236 },
       });
-      await harness.experimental_call("act", {
-        path: workspacePath,
-        action: { operation: "ready" },
-      });
 
-      const calls = await gh.readCalls();
-      expect(calls).toHaveLength(2);
+      expect(await gh.readCalls()).toHaveLength(1);
       expect((await gh.readQueries())[0]).toContain(
         `headRefName: "${localBranch}"`,
       );
-      expect(calls[1]).toEqual(["pr", "ready"]);
     },
   );
+
+  it("reads a known PR by URL only on the branch it was found on, and returns the branch and upstream", async () => {
+    const workspacePath = await createManagedBaseTrackedWorkspace();
+    const gh = await installFakeGh(sameRepository);
+    const url = "https://github.com/acme/bb/pull/1236";
+    const read = async (branchName: string) =>
+      (
+        await harness.experimental_call("views", {
+          reads: [
+            { path: workspacePath, known: { url, branchName }, refresh: true },
+          ],
+        })
+      )[0]?.refs;
+    const head = await runGit(["rev-parse", "HEAD"], { cwd: workspacePath });
+    const refs = { oid: head.stdout.trim(), branchName: localBranch };
+
+    await expect(read(localBranch)).resolves.toEqual(refs);
+    await expect(read("bb/previous-branch")).resolves.toEqual(refs);
+
+    const queries = await gh.readQueries();
+    expect(queries).toHaveLength(2);
+    expect(queries[0]).toContain(`resource(url: ${JSON.stringify(url)})`);
+    expect(queries[1]).not.toContain("resource(url:");
+    expect(queries[1]).toContain(`headRefName: "${localBranch}"`);
+  });
 
   it("uses the local branch when a differently named remote aliases origin", async () => {
     const workspacePath = await createTrackedForkWorkspace(
@@ -201,9 +268,8 @@ describe("pull request lookup for differently named upstream branches", () => {
     const gh = await installFakeGh(sameRepository);
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
-        url: null,
         refresh: false,
       }),
     ).resolves.toMatchObject({
@@ -223,9 +289,8 @@ describe("pull request lookup for differently named upstream branches", () => {
     const gh = await installFakeGh(found);
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
-        url: null,
         refresh: false,
       }),
     ).resolves.toMatchObject({
@@ -263,9 +328,8 @@ describe("pull request lookup for differently named upstream branches", () => {
     );
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
-        url: null,
         refresh: true,
       }),
     ).resolves.toEqual({ outcome: "none" });
@@ -289,9 +353,8 @@ describe("pull request lookup for differently named upstream branches", () => {
     const gh = await installFakeGh(found);
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
-        url: null,
         refresh: true,
       }),
     ).resolves.toMatchObject({
@@ -310,9 +373,8 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
     const gh = await installFakeGh(sameRepository);
 
-    await harness.experimental_call("view", {
+    await view({
       path: workspacePath,
-      url: null,
       refresh: true,
     });
     expect((await gh.readQueries())[0]).toContain(
@@ -328,9 +390,8 @@ describe("pull request lookup for differently named upstream branches", () => {
     vi.stubEnv("GH_ENTERPRISE_TOKEN", "dummy-enterprise-token");
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
-        url: null,
         refresh: false,
       }),
     ).resolves.toEqual({
@@ -345,18 +406,16 @@ describe("pull request lookup for differently named upstream branches", () => {
     const workspacePath = await createTrackedForkWorkspace();
     const gh = await installFakeGh(found);
 
-    const first = await harness.experimental_call("view", {
+    const first = await view({
       path: workspacePath,
-      url: null,
       refresh: false,
     });
     await runGit(
       ["remote", "set-url", forkRemote, "git@github.com:other-owner/bb.git"],
       { cwd: workspacePath },
     );
-    const second = await harness.experimental_call("view", {
+    const second = await view({
       path: workspacePath,
-      url: null,
       refresh: false,
     });
     expect(first).toMatchObject({
@@ -370,26 +429,29 @@ describe("pull request lookup for differently named upstream branches", () => {
     expect(await gh.readCalls()).toHaveLength(2);
   });
 
-  it("uses the qualified upstream target for ready, draft, and merge actions", async () => {
-    const workspacePath = await createTrackedForkWorkspace();
-    const gh = await installFakeGh({});
-
-    for (const action of [
-      { operation: "ready" },
-      { operation: "draft" },
+  it.each([
+    ["ready", { operation: "ready" }, ["pr", "ready"], []],
+    ["draft", { operation: "draft" }, ["pr", "ready"], ["--undo"]],
+    [
+      "merge",
       { operation: "merge", method: "squash" },
-    ] as const) {
-      await expect(
-        harness.experimental_call("act", { path: workspacePath, action }),
-      ).resolves.toEqual({ ok: true });
-    }
+      ["pr", "merge"],
+      ["--squash"],
+    ],
+  ] as const)(
+    "runs %s against the checked pull request URL",
+    async (_label, action, command, flags) => {
+      const workspacePath = await createTrackedForkWorkspace();
+      const gh = await installFakeGh({});
+      const url = "https://github.com/upstream-owner/bb/pull/1236";
 
-    expect(await gh.readCalls()).toEqual([
-      ["pr", "ready", qualifiedUpstream],
-      ["pr", "ready", qualifiedUpstream, "--undo"],
-      ["pr", "merge", qualifiedUpstream, "--squash"],
-    ]);
-  });
+      await expect(
+        harness.experimental_call("act", { path: workspacePath, url, action }),
+      ).resolves.toEqual({ ok: true });
+
+      expect(await gh.readCalls()).toEqual([[...command, url, ...flags]]);
+    },
+  );
 
   it("returns none when gh genuinely finds no PR for the qualified upstream", async () => {
     const workspacePath = await createTrackedForkWorkspace();
@@ -402,9 +464,8 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
-        url: null,
         refresh: false,
       }),
     ).resolves.toEqual({ outcome: "none" });
@@ -436,9 +497,8 @@ describe("pull request lookup for differently named upstream branches", () => {
       });
     try {
       await expect(
-        harness.experimental_call("view", {
+        view({
           path: workspacePath,
-          url: null,
           refresh: false,
         }),
       ).resolves.toEqual({
@@ -470,9 +530,8 @@ describe("workspace state", () => {
   it("reports a missing workspace path as unavailable", async () => {
     const missing = path.join(await makeTempDir("bb-pr-missing-"), "gone");
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: missing,
-        url: null,
         refresh: false,
       }),
     ).resolves.toEqual({
@@ -481,24 +540,14 @@ describe("workspace state", () => {
     });
   });
 
-  it("refuses actions from a detached workspace", async () => {
+  it("finds no pull request from a detached workspace", async () => {
     const workspacePath = await createRepository("bb-pr-detached-");
     await runGit(["checkout", "--detach"], { cwd: workspacePath });
     const gh = await installFakeGh({});
 
     await expect(
-      harness.experimental_call("act", {
+      view({
         path: workspacePath,
-        action: { operation: "ready" },
-      }),
-    ).resolves.toEqual({
-      ok: false,
-      message: "Cannot update pull request from a detached workspace",
-    });
-    await expect(
-      harness.experimental_call("view", {
-        path: workspacePath,
-        url: null,
         refresh: false,
       }),
     ).resolves.toEqual({ outcome: "none" });

@@ -1,4 +1,4 @@
-import type { ContractTagDeclarations } from "@bb/domain";
+import type { ContractTagDeclarations } from "./rpc-tags.js";
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -173,7 +173,7 @@ const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 /** Status labels ride on every tool-call event and share one timeline row. */
 export const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
 const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
-const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
+export const PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 32_768;
 const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
 
 // Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
@@ -281,7 +281,10 @@ export function registerSettingDescriptors(
         `invalid setting key "${key}" — use letters, digits, "-" and "_"`,
       );
     }
-    if (key in target) {
+    if (key === "__proto__") {
+      throw new Error(`setting key "${key}" is reserved`);
+    }
+    if (Object.hasOwn(target, key)) {
       throw new Error(`setting "${key}" is already defined`);
     }
     const parsed = settingDescriptorSchema.safeParse(raw);
@@ -361,7 +364,12 @@ export function validateSettingsUpdate(
 ): string[] {
   const errors: string[] = [];
   for (const [key, value] of Object.entries(values)) {
-    const descriptor: PluginSettingDescriptor | undefined = descriptors[key];
+    const descriptor: PluginSettingDescriptor | undefined = Object.hasOwn(
+      descriptors,
+      key,
+    )
+      ? descriptors[key]
+      : undefined;
     if (!descriptor) {
       errors.push(`unknown setting "${key}"`);
       continue;
@@ -1269,10 +1277,12 @@ export type NormalizedPluginProviderDeclaration = Omit<
   | "experimental_nativeSkillRoots"
   | "experimental_nativeCommandRoots"
   | "experimental_resolvesNativeRoots"
+  | "internal_DO_NOT_USE_guidedSignIn"
 > & {
   readonly experimental_nativeSkillRoots?: ProviderNativeRoots;
   readonly experimental_nativeCommandRoots?: ProviderNativeRoots;
   readonly experimental_resolvesNativeRoots: boolean;
+  readonly internal_DO_NOT_USE_guidedSignIn: boolean;
   readonly completedTurnDisplay: PluginProviderCompletedTurnDisplay;
   readonly maintenance: {
     readonly health: boolean;
@@ -1601,6 +1611,12 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" experimental_resolvesNativeRoots must be a boolean`,
     );
   }
+  const guidedSignIn = declaration.internal_DO_NOT_USE_guidedSignIn;
+  if (guidedSignIn !== undefined && typeof guidedSignIn !== "boolean") {
+    throw new Error(
+      `provider "${id}" internal_DO_NOT_USE_guidedSignIn must be a boolean`,
+    );
+  }
   const deriveProviderOptions = declaration.deriveProviderOptions;
   if (
     deriveProviderOptions !== undefined &&
@@ -1643,6 +1659,7 @@ export function validatePluginProviderDeclaration(
       ? {}
       : { experimental_nativeCommandRoots: nativeCommandRoots }),
     experimental_resolvesNativeRoots: resolvesNativeRoots ?? false,
+    internal_DO_NOT_USE_guidedSignIn: guidedSignIn ?? false,
     ...(deriveProviderOptions === undefined
       ? {}
       : { deriveProviderOptions: deriveProviderOptions }),
@@ -2825,9 +2842,10 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<[], { id: number; statement_hash: string | null }>(
-      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-    )
+    .prepare<
+      [],
+      { id: number; statement_hash: string | null }
+    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -3612,10 +3630,7 @@ export function normalizePluginAgentConfiguration(args: {
   const instructions =
     typeof output.instructions === "string" &&
     output.instructions.trim().length > 0
-      ? output.instructions.slice(
-          0,
-          PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
-        )
+      ? output.instructions.slice(0, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS)
       : null;
   const toolSelections = normalizePluginAgentToolSelections({
     knownIds: args.knownToolIds,

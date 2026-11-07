@@ -28,6 +28,7 @@ export interface AsyncQuestionFormQuestion {
   shortLabel: string;
   multiSelect: false;
   allowFreeText: true;
+  required: true;
   options: { value: string; label: string }[];
 }
 
@@ -40,6 +41,7 @@ export function buildAsyncQuestionFormQuestions(
     shortLabel: `Question ${questionIndex + 1}`,
     multiSelect: false,
     allowFreeText: true,
+    required: true,
     options: (question.options ?? []).map((label, optionIndex) => ({
       value: `option-${optionIndex + 1}`,
       label,

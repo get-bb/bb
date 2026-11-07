@@ -16,7 +16,8 @@ import {
   useState,
 } from "react";
 
-import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
+import { trackLandingEvent, useInitAnalytics } from "../landing/analytics.js";
+import { classifyArrivalSource } from "../landing/arrival-source.js";
 import { CommandButton } from "../landing/command-button.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
 import {
@@ -847,8 +848,8 @@ function useMarketplacePageAnalytics(
   state: MarketplaceIndexState,
   author?: string,
 ): void {
+  useInitAnalytics();
   useEffect(() => {
-    initAnalytics();
     trackLandingEvent({
       name: "marketplace_page_viewed",
       properties: {
@@ -961,6 +962,14 @@ function MoreInCategory({
   );
 }
 
+let hasTrackedDetailViewInPageLoad = false;
+
+function isInitialDocumentPath(): boolean {
+  const [navigation] = performance.getEntriesByType("navigation");
+  if (navigation === undefined) return true;
+  return new URL(navigation.name).pathname === window.location.pathname;
+}
+
 export function PublicMarketplaceDetailPage({
   manifest,
   entry,
@@ -970,12 +979,23 @@ export function PublicMarketplaceDetailPage({
   entry: MarketplaceV2Entry;
   stats: MarketplaceStats | null;
 }) {
+  useInitAnalytics();
   useEffect(() => {
-    initAnalytics();
     trackLandingEvent({
       name: "marketplace_plugin_detail_viewed",
-      properties: { plugin_id: entry.id },
+      properties: {
+        plugin_id: entry.id,
+        entry_id: entry.id,
+        arrival_source: classifyArrivalSource({
+          searchParams: new URLSearchParams(window.location.search),
+          referrer: document.referrer,
+          siteOrigin: window.location.origin,
+          isFirstViewInPageLoad:
+            !hasTrackedDetailViewInPageLoad && isInitialDocumentPath(),
+        }),
+      },
     });
+    hasTrackedDetailViewInPageLoad = true;
   }, [entry.id]);
   const categoryDefinition = resolveMarketplaceCategory(manifest, entry);
   const category = categoryDefinition?.displayName ?? "More plugins";
@@ -1054,7 +1074,7 @@ export function PublicMarketplaceDetailPage({
                     if (!copied) return;
                     trackLandingEvent({
                       name: "marketplace_install_command_copied",
-                      properties: { plugin_id: entry.id },
+                      properties: { plugin_id: entry.id, entry_id: entry.id },
                     });
                   }}
                 />

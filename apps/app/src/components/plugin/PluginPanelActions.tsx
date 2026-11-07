@@ -1,4 +1,5 @@
 import { PluginTabScope } from "./PluginTabs";
+import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
 import { useMemo, type ReactNode } from "react";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
@@ -157,6 +158,7 @@ export function runPluginPanelAction({
     if (isThreadTab(action) && context.kind === "thread") {
       const runContext = {
         threadId: context.threadId,
+        environment: context.environment,
         experimental_panel,
         openPanel,
       };
@@ -205,10 +207,12 @@ function runPluginNewThreadPanelAction({
 export function usePluginPanelActions({
   panel,
   threadId,
+  environmentId,
   actions,
 }: {
   panel: AppPanelController;
   threadId: string | null | undefined;
+  environmentId: string | null;
   actions: readonly Extract<
     PluginTabSlot,
     { context: { kind: "thread" }; availability: "action" }
@@ -228,10 +232,14 @@ export function usePluginPanelActions({
         runPluginPanelAction({
           action,
           panel,
-          context: { kind: "thread", threadId },
+          context: {
+            kind: "thread",
+            threadId,
+            environment: environmentId === null ? null : { id: environmentId },
+          },
         }),
     }));
-  }, [panel, threadId, actions]);
+  }, [panel, threadId, environmentId, actions]);
 }
 
 export function usePluginNewThreadPanelActions({
@@ -261,7 +269,11 @@ export function usePluginNewThreadPanelActions({
 }
 
 type PluginPanelSurfaceContext =
-  | { kind: "thread"; threadId: string }
+  | {
+      kind: "thread";
+      threadId: string;
+      environment: ExperimentalThreadEnvironment | null;
+    }
   | { kind: "new-thread"; projectId: string | null }
   | { kind: "nav-panel"; pluginId: string; panelId: string; subPath: string };
 
@@ -370,7 +382,11 @@ function RegisteredActionTabContent({
         instanceId={`${context.kind}/${context.kind === "thread" ? context.threadId : `${context.panelId}/${context.subPath}`}/${tab.id}`}
       >
         {isThreadTab(action) && context.kind === "thread" ? (
-          <action.component threadId={context.threadId} params={params} />
+          <action.component
+            threadId={context.threadId}
+            environment={context.environment}
+            params={params}
+          />
         ) : isNavTab(action) && context.kind === "nav-panel" ? (
           <action.component subPath={context.subPath} params={params} />
         ) : null}

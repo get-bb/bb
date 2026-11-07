@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
-import { QueryObserver } from "@tanstack/react-query";
+import { defineRpcContract } from "@get-bb/plugin-sdk";
+import { createRpcQueryHooks } from "@get-bb/plugin-sdk/internal/rpc-query-host";
+import { MutationObserver, QueryObserver } from "@tanstack/react-query";
+import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+
+const toastMocks = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock("@/components/ui/app-toast", () => ({ appToast: toastMocks }));
+
 import {
   createAppQueryClient,
   installAppQueryClientBrowserEvents,
@@ -350,5 +358,36 @@ describe("createAppQueryClient", () => {
     queryClient.unmount();
     queryClient.clear();
     Reflect.deleteProperty(document, "visibilityState");
+  });
+
+  it("leaves failed plugin RPC mutations to the plugin's own error handling", async () => {
+    const queryClient = createAppQueryClient();
+    const hooks = createRpcQueryHooks(() => ({
+      pluginId: "demo",
+      queryClient,
+      subscribe: () => () => {},
+      call: () => Promise.reject(new Error("pull request is not mergeable")),
+    }));
+    const contract = defineRpcContract({
+      merge: { input: z.object({}), output: z.object({}) },
+    });
+    const probe = renderHook(() =>
+      hooks.experimental_useRpcMutation({ contract, method: "merge" }),
+    );
+
+    await expect(probe.result.current.mutate({})).rejects.toThrow(
+      "pull request is not mergeable",
+    );
+    expect(toastMocks.error).not.toHaveBeenCalled();
+
+    await expect(
+      new MutationObserver(queryClient, {
+        mutationFn: () => Promise.reject(new Error("core request failed")),
+      }).mutate(),
+    ).rejects.toThrow("core request failed");
+    expect(toastMocks.error).toHaveBeenCalledOnce();
+
+    probe.unmount();
+    queryClient.clear();
   });
 });

@@ -1367,7 +1367,7 @@ describe("ComposerBox controlled value sync", () => {
     try {
       render(<PromptBoxFocusOnMountHarness />);
 
-      await waitForPromptFocus();
+      expect(document.activeElement).toBe(getPromptEditorElement());
     } finally {
       restoreMatchMedia();
     }
@@ -1684,13 +1684,11 @@ describe("ComposerBox programmatic submit", () => {
     send = vi.fn(),
     running = true,
     text = "Ship it",
-    sendsOnEnter = true,
   }: {
     swapSubmitActions: boolean;
     send?: () => void | Promise<void>;
     running?: boolean;
     text?: string;
-    sendsOnEnter?: boolean;
   }) {
     const steer = vi.fn();
     const submitted: string[] = [];
@@ -1748,7 +1746,7 @@ describe("ComposerBox programmatic submit", () => {
       subscribeDraft: () => () => {},
       setDraft: vi.fn(),
       focus: vi.fn(),
-      sendsOnEnter,
+      sendsOnEnter: true,
     };
     render(
       <PluginComposerHostProvider value={host}>
@@ -1817,22 +1815,6 @@ describe("ComposerBox programmatic submit", () => {
       sendAt: COMBINED_SEND_AT,
       pluginSubmission: { pluginId: "submitter", data: { kind: "note" } },
     });
-  });
-
-  it("rejects on a composer whose Enter does not send", async () => {
-    const { send, steer, rejected } = renderThreadComposerWithSubmitter({
-      swapSubmitActions: false,
-      sendsOnEnter: false,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Plugin submit" }));
-    await waitFor(() =>
-      expect(rejected).toEqual([
-        "This composer cannot submit programmatically.",
-      ]),
-    );
-    expect(send).not.toHaveBeenCalled();
-    expect(steer).not.toHaveBeenCalled();
   });
 
   it("rejects an empty draft where Enter would steer the next queued message", async () => {
@@ -2627,14 +2609,14 @@ describe("ComposerBox size controls", () => {
   it.each([
     [
       "thread",
-      "min(calc(50dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+      "min(calc(var(--bb-shell-height) * 0.5 - 3rem), var(--composer-editor-available-height, 100dvh))",
     ],
     [
       "new-thread",
-      "min(calc(70dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+      "min(calc(var(--bb-shell-height) * 0.7 - 3rem), var(--composer-editor-available-height, 100dvh))",
     ],
   ] as const)(
-    "caps the %s editor at its intended viewport height or the host's available space",
+    "caps the %s editor at its share of the visible shell height or the host's available space",
     (surface, maxHeight) => {
       render(<ComposerBox {...createPromptBoxProps({ surface })} />);
 
@@ -4311,6 +4293,7 @@ describe("ComposerBox compact layout", () => {
   });
 
   it("does not delay transcript insertion while the document is hidden", async () => {
+    vi.useFakeTimers();
     const originalVisibilityState = Object.getOwnPropertyDescriptor(
       document,
       "visibilityState",
@@ -4330,10 +4313,18 @@ describe("ComposerBox compact layout", () => {
         />,
       );
 
-      await expect(
-        promptBoxRef.current?.voice?.playCompletionTransition(),
-      ).resolves.toBeUndefined();
+      let transitionFinished = false;
+      act(() => {
+        void promptBoxRef.current?.voice
+          ?.playCompletionTransition()
+          ?.then(() => {
+            transitionFinished = true;
+          });
+      });
+      await act(async () => {});
+      expect(transitionFinished).toBe(true);
     } finally {
+      vi.useRealTimers();
       if (originalVisibilityState) {
         Object.defineProperty(
           document,
@@ -4347,6 +4338,7 @@ describe("ComposerBox compact layout", () => {
   });
 
   it("does not delay transcript insertion for reduced motion", async () => {
+    vi.useFakeTimers();
     const originalMatchMedia = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === "(prefers-reduced-motion: reduce)",
@@ -4369,25 +4361,20 @@ describe("ComposerBox compact layout", () => {
         />,
       );
 
-      await expect(
-        promptBoxRef.current?.voice?.playCompletionTransition(),
-      ).resolves.toBeUndefined();
+      let transitionFinished = false;
+      act(() => {
+        void promptBoxRef.current?.voice
+          ?.playCompletionTransition()
+          ?.then(() => {
+            transitionFinished = true;
+          });
+      });
+      await act(async () => {});
+      expect(transitionFinished).toBe(true);
     } finally {
+      vi.useRealTimers();
       window.matchMedia = originalMatchMedia;
     }
-  });
-
-  it("keeps prompt actions in the full mobile layout", () => {
-    render(
-      <ComposerBox
-        {...createPromptBoxProps({
-          attachments: { onAttachFiles: vi.fn() },
-          promptActions,
-        })}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
   });
 });
 
@@ -4423,6 +4410,206 @@ describe("ComposerBox mention triggers", () => {
     );
     expect(latestChange(changes)?.mentions).toHaveLength(1);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("ends an unmatched multiword mention occurrence without changing prose", async () => {
+    const text = "Notes @unlisted topic";
+    const { changes, onMentionQueryChange, promptBoxRef } =
+      renderPromptBox(text);
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+    expect(screen.queryByText("No matching mentions")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Close suggestions" }),
+    ).toBeNull();
+    expect(getPromptEditorElement().textContent).toBe(text);
+
+    onMentionQueryChange.mockClear();
+    await act(async () =>
+      promptBoxRef.current?.voice?.deliverTranscript("continues", "insert"),
+    );
+
+    await waitFor(() => expect(latestValue(changes)).toBe(`${text} continues`));
+    expect(
+      onMentionQueryChange.mock.calls.every(([query]) => query === null),
+    ).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "Close suggestions" }),
+    ).toBeNull();
+    expect(latestChange(changes)?.mentions).toEqual([]);
+  });
+
+  it("keeps unmatched single-word mention queries open", async () => {
+    const { onMentionQueryChange, promptBoxRef } =
+      renderPromptBox("Notes @unlisted");
+
+    await focusPromptEnd(promptBoxRef);
+
+    expect(await screen.findByText("No matching mentions")).not.toBeNull();
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith("unlisted", "@");
+  });
+
+  it.each(["loading", "refreshing", "error"] as const)(
+    "does not end a multiword mention while search is %s",
+    async (initialState) => {
+      const mentionModule = await import("@/hooks/usePromptMentions");
+      const originalSearch = mentionModule.usePromptMentions;
+      let settled = false;
+      const search = vi
+        .spyOn(mentionModule, "usePromptMentions")
+        .mockImplementation((...args) => ({
+          ...originalSearch(...args),
+          isLoading: !settled && initialState === "loading",
+          isRefreshing: !settled && initialState === "refreshing",
+          isError: !settled && initialState === "error",
+        }));
+      onTestFinished(() => search.mockRestore());
+      const { onMentionQueryChange, promptBoxRef } =
+        renderPromptBox("Notes @fix login");
+
+      await focusPromptEnd(promptBoxRef);
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith("fix login", "@");
+      expect(
+        document.querySelector("[data-promptbox-typeahead-menu]"),
+      ).not.toBeNull();
+
+      settled = true;
+      setComposerSearchResults({ mentionSuggestions: [githubIssueSuggestion] });
+      await act(async () =>
+        promptBoxRef.current?.voice?.deliverTranscript("bug", "insert"),
+      );
+
+      expect(
+        await screen.findByRole("button", { name: /Fix login bug/u }),
+      ).not.toBeNull();
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(
+        "fix login bug",
+        "@",
+      );
+    },
+  );
+
+  it("keeps a multiword attachment match when remote mention results are empty", async () => {
+    const { promptBoxRef } = renderPromptBox("Read @Design notes", {
+      upload: async (files) => uploadedAs(files),
+      initialAttachments: [
+        {
+          type: "localFile",
+          path: "uploads/Design notes.txt",
+          name: "Design notes.txt",
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+
+    expect(
+      await screen.findByTitle("Attachment: Design notes.txt"),
+    ).not.toBeNull();
+  });
+
+  async function mockFixLoginPrefixSearch() {
+    const mentionModule = await import("@/hooks/usePromptMentions");
+    const { orderPromptMentionSuggestions } =
+      await import("@/hooks/promptMentionCandidates");
+    const originalSearch = mentionModule.usePromptMentions;
+    const searchState = { pending: false };
+    const search = vi
+      .spyOn(mentionModule, "usePromptMentions")
+      .mockImplementation((source, mention) => {
+        const result = originalSearch(source, mention);
+        const query = mention?.text.trim().toLowerCase() ?? "";
+        if (!searchState.pending && "fix login bug".startsWith(query))
+          return result;
+        return {
+          ...result,
+          results: orderPromptMentionSuggestions({ query, suggestions: [] }),
+          isLoading: searchState.pending,
+        };
+      });
+    onTestFinished(() => search.mockRestore());
+    return searchState;
+  }
+
+  function deleteBeforeCaret(count: number) {
+    const editor = (getPromptEditorElement() as TiptapEditorHTMLElement).editor;
+    if (!editor) throw new Error("Composer editor is missing");
+    const caret = editor.state.selection.from;
+    act(() => {
+      editor.commands.deleteRange({ from: caret - count, to: caret });
+    });
+  }
+
+  function typeaheadMenu() {
+    return document.querySelector("[data-promptbox-typeahead-menu]");
+  }
+
+  it("reopens an unmatched multiword mention when deleting back to a match", async () => {
+    await mockFixLoginPrefixSearch();
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "Notes @fix login now",
+      { mentionSuggestions: [githubIssueSuggestion] },
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+    expect(typeaheadMenu()).toBeNull();
+
+    deleteBeforeCaret(4);
+
+    expect(
+      await screen.findByRole("button", { name: /Fix login bug/u }),
+    ).not.toBeNull();
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith("fix login", "@");
+  });
+
+  it("keeps a reopened mention hidden while its search is pending or empty", async () => {
+    const searchState = await mockFixLoginPrefixSearch();
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "Notes @fix login now please",
+      { mentionSuggestions: [githubIssueSuggestion] },
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+
+    searchState.pending = true;
+    deleteBeforeCaret(1);
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith(
+      "fix login now pleas",
+      "@",
+    );
+    expect(typeaheadMenu()).toBeNull();
+
+    searchState.pending = false;
+    deleteBeforeCaret(1);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+    expect(typeaheadMenu()).toBeNull();
+    expect(screen.queryByText("No matching mentions")).toBeNull();
+  });
+
+  it("keeps an escaped mention closed when deleting back through its query", async () => {
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "Notes @fix login",
+      { mentionSuggestions: [githubIssueSuggestion] },
+    );
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByRole("button", { name: /Fix login bug/u });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    deleteBeforeCaret(3);
+
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null);
+    expect(typeaheadMenu()).toBeNull();
   });
 
   it("offers the draft's file attachments on a bare @ and mentions the picked one", async () => {
@@ -4720,18 +4907,6 @@ describe("ComposerBox mention triggers", () => {
     );
   });
 
-  it("reports hash mention queries with the active trigger", async () => {
-    const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#42", {
-      mentionTriggers: ["@", "#"],
-    });
-
-    await focusPromptEnd(promptBoxRef);
-
-    await waitFor(() =>
-      expect(onMentionQueryChange).toHaveBeenCalledWith("42", "#"),
-    );
-  });
-
   it("does not open the menu for a bare non-at mention trigger", async () => {
     const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#", {
       mentionTriggers: ["@", "#"],
@@ -4762,12 +4937,18 @@ describe("ComposerBox mention triggers", () => {
         ],
       ]),
     );
-    const { changes, promptBoxRef } = renderPromptBox("#42", {
-      mentionTriggers: ["@", "#"],
-      mentionSuggestions: [githubIssueSuggestion],
-    });
+    const { changes, onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "#42",
+      {
+        mentionTriggers: ["@", "#"],
+        mentionSuggestions: [githubIssueSuggestion],
+      },
+    );
 
     await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenCalledWith("42", "#"),
+    );
     const suggestion = await screen.findByRole("button", {
       name: /#42 Fix login bug/u,
     });
@@ -4791,7 +4972,9 @@ describe("ComposerBox mention triggers", () => {
     ]);
     const promptEditor = getPromptEditorElement();
     expect(promptEditor.querySelector('[data-icon="Zap"]')).toBeTruthy();
-    expect(promptEditor.querySelector("img")).toBeNull();
+    expect(
+      promptEditor.querySelector("img:not(.ProseMirror-separator)"),
+    ).toBeNull();
   });
 
   it("labels thread mention rows with their relation to the current thread", async () => {
@@ -6339,4 +6522,54 @@ describe("thread URL clipboard paste", () => {
       }
     },
   );
+});
+
+describe("ComposerBox pill word boundaries", () => {
+  const restoredText = "I am lost. /poteto-mode";
+  const skillMention: PromptTextMention = {
+    start: "I am lost. ".length,
+    end: restoredText.length,
+    resource: {
+      kind: "command",
+      trigger: "/",
+      name: "poteto-mode",
+      source: "skill",
+      origin: "user",
+      label: "poteto-mode",
+      argumentHint: null,
+    },
+  };
+
+  it("separates text typed right after a restored trailing pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox(restoredText, {
+      initialMentionRanges: [skillMention],
+    });
+    await focusPromptEnd(promptBoxRef);
+    const editor = (getPromptEditorElement() as TiptapEditorHTMLElement).editor;
+    if (!editor) throw new Error("Composer editor is missing");
+
+    await act(async () => {
+      editor.view.dispatch(editor.state.tr.insertText("Also testing"));
+    });
+
+    expect(changes.at(-1)).toEqual({
+      value: "I am lost. /poteto-mode Also testing",
+      mentions: [skillMention],
+    });
+  });
+
+  it("separates a voice transcript inserted after a trailing pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox(restoredText, {
+      initialMentionRanges: [skillMention],
+    });
+    await focusPromptEnd(promptBoxRef);
+
+    await act(async () =>
+      promptBoxRef.current?.voice?.deliverTranscript("Also testing", "insert"),
+    );
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("I am lost. /poteto-mode Also testing"),
+    );
+  });
 });

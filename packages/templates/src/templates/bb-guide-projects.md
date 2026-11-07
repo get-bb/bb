@@ -42,6 +42,8 @@ Global prompt history:
   Lists accepted prompts across projects and threads newest first. Pass the
   returned cursor to continue from the next page.
 
+  Prompt history omits prompts larger than 256 KiB.
+
 Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source
@@ -82,7 +84,7 @@ Attachments:
   its relative `path` to thread --file/--image input. Thread --file and --image
   upload absolute paths and file: URLs from the CLI machine automatically;
   relative values remain existing server attachment paths.
-  image/* uploads are limited to 10MB; other files are limited to 25MB.
+  Uploads are limited to 35MB per file.
   image/heic and image/heif uploads are rejected because no renderer or
   provider can decode them; convert them to JPEG or PNG first. There is no
   command to list or remove project attachments.

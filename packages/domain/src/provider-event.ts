@@ -374,6 +374,7 @@ export const threadEventBackgroundTaskItemSchema = z.object({
   summary: z.string().optional(),
   error: z.string().optional(),
   outputFile: z.string().optional(),
+  ownerStopped: z.literal(true).optional(),
   ...itemPresentationField,
   parentToolCallId: z.string().optional(),
 });
@@ -403,6 +404,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     id: z.string(),
     command: z.string(),
     cwd: z.string(),
+    description: z.string().optional(),
     status: threadEventItemStatusSchema,
     approvalStatus: threadEventItemApprovalStatusSchema,
     aggregatedOutput: z.string().optional(),

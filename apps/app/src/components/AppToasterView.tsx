@@ -1,8 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { toast, Toaster, type ToasterProps } from "sonner";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import { attachSonnerToast } from "./ui/app-toast-runtime";
+import {
+  attachSonnerToast,
+  getToasterCompactPlacement,
+  subscribeToasterCompactPlacement,
+} from "./ui/app-toast-runtime";
 import { APP_OVERLAY_LAYER } from "./ui/app-overlay-layers";
 
 const COMPACT_TOAST_OFFSET: NonNullable<ToasterProps["offset"]> = {
@@ -14,7 +18,12 @@ const COMPACT_TOAST_SWIPE_DIRECTIONS: NonNullable<
 
 export function AppToasterView() {
   const theme = usePreferredTheme();
-  const isCompactViewport = useIsCompactViewport();
+  const compactPlacement = useSyncExternalStore(
+    subscribeToasterCompactPlacement,
+    getToasterCompactPlacement,
+  );
+  const isCompactViewportWidth = useIsCompactViewport();
+  const isCompactViewport = compactPlacement ?? isCompactViewportWidth;
   useEffect(() => {
     attachSonnerToast(toast);
   }, []);

@@ -28,3 +28,14 @@ export type {
 } from "@bb/sdk";
 
 export type * from "./machine-bootstrap.js";
+
+export {
+  normalizeHostPath as experimental_normalizeHostPath,
+  resolveHostPath as experimental_resolveHostPath,
+  isHostPathWithin as experimental_isHostPathWithin,
+  joinHostPath as experimental_joinHostPath,
+  getHostPathDirname as experimental_getHostPathDirname,
+  getHostPathBasename as experimental_getHostPathBasename,
+  getRelativeHostPath as experimental_getRelativeHostPath,
+  getHostPathComparisonKey as experimental_getHostPathComparisonKey,
+} from "@bb/domain";

@@ -565,6 +565,53 @@ describe("FollowUpPromptBox", () => {
     expect(screen.queryByTestId("inactive-plugin-banner")).toBeNull();
   });
 
+  it("does not mount plugin banners when the thread has no composer", () => {
+    setPluginSlotRegistrations(
+      "hidden-composer-banner",
+      makePluginRegistrationSet({
+        composerCustomizations: [
+          {
+            id: "hidden-composer",
+            banners: [
+              {
+                id: "banner",
+                component: () => (
+                  <div data-testid="hidden-composer-plugin-banner">
+                    Plugin banner
+                  </div>
+                ),
+              },
+            ],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+    const draft = { text: "", mentions: [], attachments: [] };
+
+    render(
+      <FollowUpPromptBox
+        {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        composer={null}
+        stack={<div data-testid="archived-notice">Thread is archived</div>}
+        pluginComposerHost={{
+          scope: { kind: "thread", threadId: "thr_test" },
+          textEffectKey: "thread:thr_test",
+          getCurrent: () => draft,
+          subscribeDraft: () => () => {},
+          setDraft: vi.fn(),
+          focus: vi.fn(),
+        }}
+        pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+      />,
+    );
+
+    expect(screen.getByTestId("archived-notice")).toBeTruthy();
+    expect(screen.queryByTestId("hidden-composer-plugin-banner")).toBeNull();
+  });
+
   it("keeps the bottom composer mounted when its stack changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 
@@ -1557,19 +1604,5 @@ describe("FollowUpPromptBox", () => {
     rerender(<FollowUpPromptBox {...props} focusEndKey="mobile" />);
 
     expect(screen.getByTestId("prompt-box")).toBe(initialPromptBox);
-  });
-
-  it("uses the caller-specific compact placeholder", () => {
-    mocks.isCompactViewport = true;
-    mocks.isPointerCoarse = true;
-    const props = createFollowUpPromptBoxProps({
-      kind: "queue-while-stopping",
-    });
-    if (props.composer === null) throw new Error("Missing composer");
-    props.composer.compactPromptPlaceholder = "Stopping side chat...";
-    props.composer.promptPlaceholder = "Stopping side chat...";
-    render(<FollowUpPromptBox {...props} />);
-
-    expect(screen.getByText("Stopping side chat...")).toBeTruthy();
   });
 });

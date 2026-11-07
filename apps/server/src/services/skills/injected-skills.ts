@@ -107,6 +107,7 @@ export type SharedInjectedSkillSource = Extract<
 >;
 
 export interface SkillTreeFile extends HostDaemonSkillTreeFile {
+  hashReusable: boolean;
   sourcePath: string;
   statKey: string;
 }
@@ -118,19 +119,28 @@ export interface SkillTreeManifest {
 }
 
 interface HashedFile {
+  hashReusable: boolean;
   sha256: string;
   statKey: string;
 }
 
 const MAX_REGISTERED_SKILL_TREES = 4_096;
 const MAX_FILE_HASH_ATTEMPTS = 3;
+const HASH_REUSE_SETTLE_NS = 2_000_000_000n;
 
 export class SkillTreeRegistry {
   readonly #manifestsByHash = new Map<string, SkillTreeManifest>();
   readonly #hashByRoot = new Map<string, string>();
 
   async readTree(rootPath: string): Promise<SkillTreeManifest> {
-    const files = await this.#collectFiles(rootPath, rootPath);
+    const previousHash = this.#hashByRoot.get(rootPath);
+    const previousFiles = new Map(
+      (previousHash === undefined
+        ? []
+        : (this.#manifestsByHash.get(previousHash)?.files ?? [])
+      ).map((file) => [file.sourcePath, file]),
+    );
+    const files = await this.#collectFiles(rootPath, rootPath, previousFiles);
     const manifest: SkillTreeManifest = {
       files,
       rootPath,
@@ -173,6 +183,7 @@ export class SkillTreeRegistry {
   async #collectFiles(
     rootPath: string,
     currentPath: string,
+    previousFiles: ReadonlyMap<string, SkillTreeFile>,
   ): Promise<SkillTreeFile[]> {
     const files: SkillTreeFile[] = [];
     for (const entry of (
@@ -196,16 +207,27 @@ export class SkillTreeRegistry {
         ? await fsPromises.stat(entryPath, { bigint: true })
         : await fsPromises.lstat(entryPath, { bigint: true });
       if (stat.isDirectory()) {
-        files.push(...(await this.#collectFiles(rootPath, entryPath)));
+        files.push(
+          ...(await this.#collectFiles(rootPath, entryPath, previousFiles)),
+        );
         continue;
       }
       if (!stat.isFile()) {
         throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
       }
-      const { hashed, stat: hashedStat } = await this.#hashFile(
-        entryPath,
-        stat,
-      );
+      const previous = previousFiles.get(entryPath);
+      const { hashed, stat: hashedStat } =
+        previous?.hashReusable === true &&
+        previous.statKey === fileStatKey(stat)
+          ? {
+              hashed: {
+                hashReusable: true,
+                sha256: previous.sha256,
+                statKey: previous.statKey,
+              },
+              stat,
+            }
+          : await this.#hashFile(entryPath, stat);
       files.push({
         ...hashed,
         mode: Number(hashedStat.mode & 0o777n),
@@ -224,10 +246,18 @@ export class SkillTreeRegistry {
     let stat = initialStat;
     for (let attempt = 1; ; attempt += 1) {
       const statKey = fileStatKey(stat);
+      const hashStartedNs = BigInt(Date.now()) * 1_000_000n;
       const sha256 = await sha256File(filePath);
       const after = await fsPromises.stat(filePath, { bigint: true });
       if (fileStatKey(after) === statKey) {
-        return { hashed: { sha256, statKey }, stat: after };
+        return {
+          hashed: {
+            hashReusable: after.ctimeNs + HASH_REUSE_SETTLE_NS < hashStartedNs,
+            sha256,
+            statKey,
+          },
+          stat: after,
+        };
       }
       if (attempt >= MAX_FILE_HASH_ATTEMPTS) {
         throw new Error(

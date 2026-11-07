@@ -221,7 +221,7 @@ function createFakeRuntime(): AgentRuntime {
     resumeThread: vi.fn(async () => ({
       providerThreadId: "provider-thread",
     })),
-    runTurn: vi.fn(async () => undefined),
+    runTurn: vi.fn(async () => ({ status: "started" as const })),
     steerTurn: vi.fn(async () => steerTurnResult),
     stopThread: vi.fn(async () => ({ providerCheckpointId: null })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
@@ -246,6 +246,7 @@ function createFakeRuntime(): AgentRuntime {
     hasThread: vi.fn(() => false),
     getLiveThreadIds: vi.fn(() => []),
     hasOpenBackgroundWork: vi.fn(() => false),
+    listOpenBackgroundWork: vi.fn(() => []),
     shutdown: vi.fn(async () => undefined),
   };
 }
@@ -255,6 +256,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
     path,
     isGitRepo: true,
     isWorktree: false,
+    gitCommonDir: `${path}/.git`,
     getCurrentBranch: vi.fn(async () => "main"),
     getHeadSha: vi.fn(async () => "commit-1"),
     getLocalStateSnapshot: vi.fn(async () => ({
@@ -262,8 +264,9 @@ function createFakeWorkspace(path: string): HostWorkspace {
       branchName: "main",
     })),
     getSharedGitRefsSnapshot: vi.fn(async () => ({
-      fingerprint: "refs-1",
       defaultBranch: "main",
+      branchNamesFingerprint: "names-1",
+      fingerprintFor: () => "refs-1",
     })),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     getDefaultBranch: vi.fn(async () => "main"),

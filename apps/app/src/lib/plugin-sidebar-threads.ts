@@ -1,10 +1,10 @@
 import type { ThreadListEntry } from "@bb/domain";
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
-import {
-  getThreadListIndicatorLabel,
-  resolveThreadListIndicator,
-  threadListIndicatorStateForThread,
-} from "@bb/client-core";
+import type {
+  PluginSidebarThread,
+  PluginSidebarThreadActivity,
+  PluginThreadStatusThread,
+} from "@get-bb/plugin-sdk";
+import { experimental_resolveThreadStatus } from "@get-bb/plugin-sdk/internal/thread-status";
 import { isThreadRead } from "@bb/client-core";
 import {
   EMPTY_TITLE_MENTION_RESOURCES,
@@ -14,16 +14,45 @@ import {
 import { getThreadDisplayTitle } from "./thread-title";
 import { getThreadRoutePath } from "./route-paths";
 
+type PluginSidebarThreadActivityWithRetiredGoals =
+  PluginSidebarThreadActivity & { goals: 0 };
+
+export function toThreadStatusThread(
+  entry: ThreadListEntry,
+): PluginThreadStatusThread {
+  const activity: PluginSidebarThreadActivityWithRetiredGoals = {
+    workflows: entry.activity.activeWorkflowCount,
+    backgroundAgents: entry.activity.activeBackgroundAgentCount,
+    backgroundCommands: entry.activity.activeBackgroundCommandCount,
+    planMode: entry.activity.activePlanModeCount,
+    goals: 0,
+  };
+  return {
+    status: entry.status,
+    runtimeStatus: entry.runtime.displayStatus,
+    queuedWork: entry.queuedWork,
+    hasPendingInteraction: entry.hasPendingInteraction,
+    activity,
+    isUnread: !isThreadRead(entry),
+    parentThreadId: entry.parentThreadId,
+  };
+}
+
 export function toPluginSidebarThread(
   entry: ThreadListEntry,
   hostNamesById: ReadonlyMap<string, string> = new Map(),
   titleResources: ThreadTitleMentionResources = EMPTY_TITLE_MENTION_RESOURCES,
 ): PluginSidebarThread {
-  const indicator = resolveThreadListIndicator(
-    threadListIndicatorStateForThread(entry, false),
-  );
+  const statusThread = toThreadStatusThread(entry);
+  const { indicator, label } = experimental_resolveThreadStatus({
+    thread: statusThread,
+    hiddenThreads: [],
+    hasUnsubmittedDraft: false,
+    rowStatus: null,
+  });
 
   return {
+    ...statusThread,
     id: entry.id,
     projectId: entry.projectId,
     title: entry.title,
@@ -32,27 +61,15 @@ export function toPluginSidebarThread(
       getThreadDisplayTitle(entry),
       titleResources,
     ),
-    parentThreadId: entry.parentThreadId,
+    parentNotifications: entry.parentNotifications,
     lifecycleOwnerThreadId: entry.lifecycleOwnerThreadId,
     sourceThreadId: entry.sourceThreadId,
     sectionId: entry.sectionId,
     originKind: entry.originKind,
     originPluginId: entry.originPluginId,
     providerId: entry.providerId,
-    status: entry.status,
-    runtimeStatus: entry.runtime.displayStatus,
-    queuedWork: entry.queuedWork,
-    hasPendingInteraction: entry.hasPendingInteraction,
-    activity: {
-      workflows: entry.activity.activeWorkflowCount,
-      backgroundAgents: entry.activity.activeBackgroundAgentCount,
-      backgroundCommands: entry.activity.activeBackgroundCommandCount,
-      planMode: entry.activity.activePlanModeCount,
-      goals: entry.activity.activeGoalCount,
-    },
     indicator,
-    indicatorLabel: getThreadListIndicatorLabel(indicator),
-    isUnread: !isThreadRead(entry),
+    indicatorLabel: label,
     isPinned: entry.pinnedAt !== null,
     pinnedAt: entry.pinnedAt,
     pinSortKey: entry.pinSortKey,

@@ -1,9 +1,10 @@
 import { and, eq, isNotNull, isNull, ne } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   CONNECT_CODE_TTL_MS,
+  MACHINE_UNUSED_AFTER_MS,
   MAX_PER_ACCOUNT,
   SERVER_OFFLINE_AFTER_MS,
+  auditLog,
   checkLabelAvailability,
   connectCode,
   isLive,
@@ -16,15 +17,15 @@ import {
   rowsChanged,
   server,
   sha256Hex,
-  tunnelConnectedLookup,
   user,
+  first,
 } from "@bb/connect-db";
 import type {
   ConnectDb,
   LabelAvailability,
+  MachineKind,
   TunnelConnectedLookup,
 } from "@bb/connect-db";
-import type { Env } from "./env.js";
 import { generateConnectCode, generateToken } from "./tokens.js";
 
 export interface Deps {
@@ -69,32 +70,15 @@ export function tunnelUrlForServerUrl(serverUrl: string): string {
   return `${serverUrl.replace(/^http/u, "ws")}/__tunnel`;
 }
 
-export function depsFromEnv(env: Env): Deps {
-  return {
-    db: drizzle(env.DB),
-    appUrl: env.APP_URL,
-    serverUrlTemplate: resolveServerUrlTemplate(
-      env.CONNECT_SERVER_URL_TEMPLATE,
-      env.BASE_DOMAIN,
-    ),
-    closeTunnel: async (routingKey) => {
-      const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
-      const response = await stub.fetch("https://tunnel/__control/close");
-      if (!response.ok) {
-        throw new Error(`tunnel close failed (${response.status})`);
-      }
-    },
-    tunnelConnected: tunnelConnectedLookup(env, env.TUNNEL_DO),
-  };
-}
-
 type ProfileRow = typeof profile.$inferSelect;
 
 export async function findProfile(
   db: ConnectDb,
   userId: string,
 ): Promise<ProfileRow | undefined> {
-  return db.select().from(profile).where(eq(profile.userId, userId)).get();
+  return first(
+    db.select().from(profile).where(eq(profile.userId, userId)).limit(1),
+  );
 }
 
 async function findServerByCredential(
@@ -121,17 +105,14 @@ async function insertConnectCode(
 ): Promise<string> {
   const code = generateConnectCode();
   const now = new Date();
-  await db
-    .insert(connectCode)
-    .values({
-      code,
-      userId,
-      serverId,
-      purpose,
-      expiresAt: new Date(now.getTime() + CONNECT_CODE_TTL_MS),
-      createdAt: now,
-    })
-    .run();
+  await db.insert(connectCode).values({
+    code,
+    userId,
+    serverId,
+    purpose,
+    expiresAt: new Date(now.getTime() + CONNECT_CODE_TTL_MS),
+    createdAt: now,
+  });
   return code;
 }
 
@@ -142,8 +123,7 @@ async function hasMachineCapacity(
   const active = await db
     .select({ id: machine.id })
     .from(machine)
-    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
-    .all();
+    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)));
   return active.length < MAX_PER_ACCOUNT;
 }
 
@@ -154,8 +134,7 @@ async function consumeConnectCode(
   const consumed = await db
     .update(connectCode)
     .set({ consumedAt: new Date() })
-    .where(and(eq(connectCode.code, code), isNull(connectCode.consumedAt)))
-    .run();
+    .where(and(eq(connectCode.code, code), isNull(connectCode.consumedAt)));
   return rowsChanged(consumed) > 0;
 }
 
@@ -197,9 +176,11 @@ export interface AccountState {
 export interface MachineSummary {
   id: string;
   name: string | null;
+  kind: MachineKind | null;
   subdomain: string | null;
   online: boolean;
   lastSeenAt: number | null;
+  unused: boolean;
   createdAt: number;
 }
 
@@ -271,25 +252,25 @@ async function resolveServer(
   serverId: string | undefined,
 ): Promise<ServerRow | undefined> {
   if (serverId) {
-    return db
-      .select()
-      .from(server)
-      .where(and(eq(server.id, serverId), eq(server.userId, userId)))
-      .get();
+    return first(
+      db
+        .select()
+        .from(server)
+        .where(and(eq(server.id, serverId), eq(server.userId, userId)))
+        .limit(1),
+    );
   }
   const prof = await findProfile(db, userId);
   if (!prof) return undefined;
-  const primary = await db
-    .select()
-    .from(server)
-    .where(and(eq(server.userId, userId), eq(server.subdomain, prof.handle)))
-    .get();
+  const primary = await first(
+    db
+      .select()
+      .from(server)
+      .where(and(eq(server.userId, userId), eq(server.subdomain, prof.handle)))
+      .limit(1),
+  );
   if (primary) return primary;
-  const all = await db
-    .select()
-    .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+  const all = await db.select().from(server).where(eq(server.userId, userId));
   return [...all].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
   )[0];
@@ -302,11 +283,13 @@ export async function getAccountState(
   const { db, serverUrlTemplate } = deps;
   await retryPendingMachineRevocations(deps, userId);
   const prof = await findProfile(db, userId);
-  const userRow = await db
-    .select({ githubLogin: user.githubLogin })
-    .from(user)
-    .where(eq(user.id, userId))
-    .get();
+  const userRow = await first(
+    db
+      .select({ githubLogin: user.githubLogin })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1),
+  );
 
   const now = Date.now();
   const base = {
@@ -316,10 +299,41 @@ export async function getAccountState(
     maxServers: MAX_PER_ACCOUNT,
   };
 
-  const machineRows = await db
+  const machines = await listMachineSummaries(deps, userId, now);
+  const abandoned = machines.filter(isAbandonedPairing);
+  for (const row of abandoned) {
+    await revokeMachine(deps, userId, row.id);
+  }
+  const activeMachines = machines.filter((row) => !isAbandonedPairing(row));
+
+  if (!prof) {
+    return { handle: null, machines: activeMachines, servers: [], ...base };
+  }
+
+  const serverRows = await db
+    .select()
+    .from(server)
+    .where(eq(server.userId, userId));
+
+  const servers = await listServerSummaries(deps, serverRows, prof.handle, now);
+
+  return { handle: prof.handle, machines: activeMachines, servers, ...base };
+}
+
+function isAbandonedPairing(row: MachineSummary): boolean {
+  return row.kind !== null && row.lastSeenAt === null && row.unused;
+}
+
+async function listMachineSummaries(
+  deps: Pick<Deps, "db" | "tunnelConnected">,
+  userId: string,
+  now: number,
+): Promise<MachineSummary[]> {
+  const machineRows = await deps.db
     .select({
       id: machine.id,
       name: machine.name,
+      kind: machine.kind,
       subdomain: machine.subdomain,
       lastSeenAt: machine.lastSeenAt,
       nextTunnelGate: machine.nextTunnelGate,
@@ -327,45 +341,92 @@ export async function getAccountState(
       createdAt: machine.createdAt,
     })
     .from(machine)
-    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
-    .all();
+    .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)));
   const machineTunnels = await machineTunnelsConnected(deps, userId);
-  const machines = machineRows
+  return machineRows
     .map((row) => {
       const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
+      const createdMs = row.createdAt.getTime();
+      const online =
+        machineTunnels.get(row.id) === true ||
+        nextTunnelConnected(row, now) ||
+        isLive({
+          lastSeenMs,
+          now,
+          offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+          tunnelConnected: null,
+        });
       return {
         id: row.id,
         name: row.name,
+        kind: row.kind,
         subdomain: row.subdomain,
-        online:
-          machineTunnels.get(row.id) === true ||
-          nextTunnelConnected(row, now) ||
-          isLive({
-            lastSeenMs,
-            now,
-            offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
-            tunnelConnected: null,
-          }),
+        online,
         lastSeenAt: lastSeenMs,
-        createdAt: row.createdAt.getTime(),
+        unused:
+          !online && now - (lastSeenMs ?? createdMs) > MACHINE_UNUSED_AFTER_MS,
+        createdAt: createdMs,
       };
     })
     .sort((left, right) => left.createdAt - right.createdAt);
+}
 
-  if (!prof) {
-    return { handle: null, machines, servers: [], ...base };
+export async function revokeUnusedDevices(
+  deps: Pick<Deps, "db" | "closeTunnel" | "tunnelConnected">,
+  userId: string,
+): Promise<{ ok: true; revoked: number }> {
+  const unused = (await listMachineSummaries(deps, userId, Date.now())).filter(
+    (row) => row.unused,
+  );
+  for (const row of unused) {
+    await revokeMachine(deps, userId, row.id);
+  }
+  return { ok: true, revoked: unused.length };
+}
+
+export async function deleteAccount(
+  deps: Pick<Deps, "db" | "closeTunnel">,
+  userId: string,
+  confirmHandle: string,
+): Promise<{ ok: true } | { error: "no-handle" | "handle-mismatch" }> {
+  const { db } = deps;
+  const prof = await findProfile(db, userId);
+  if (!prof) return { error: "no-handle" };
+  if (prof.handle !== confirmHandle.trim().toLowerCase()) {
+    return { error: "handle-mismatch" };
   }
 
-  const serverRows = await db
-    .select()
+  const servers = await db
+    .select({ subdomain: server.subdomain })
     .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+    .where(eq(server.userId, userId));
+  const machineClaims = await db
+    .select({ label: labelClaim.label, generation: labelClaim.generation })
+    .from(labelClaim)
+    .where(and(eq(labelClaim.userId, userId), eq(labelClaim.kind, "machine")));
 
-  const servers = await listServerSummaries(deps, serverRows, prof.handle, now);
+  await db.insert(auditLog).values({
+    id: crypto.randomUUID(),
+    userId,
+    action: ACCOUNT_DELETE_AUDIT_ACTION,
+    detail: JSON.stringify({
+      handle: prof.handle,
+      servers: servers.length,
+    }),
+    createdAt: new Date(),
+  });
+  await db.delete(user).where(eq(user.id, userId));
 
-  return { handle: prof.handle, machines, servers, ...base };
+  await Promise.allSettled([
+    ...servers.map((row) => deps.closeTunnel(row.subdomain)),
+    ...machineClaims.map((claim) =>
+      deps.closeTunnel(machineRoutingKey(claim.label, claim.generation)),
+    ),
+  ]);
+  return { ok: true };
 }
+
+export const ACCOUNT_DELETE_AUDIT_ACTION = "account.delete";
 
 async function machineTunnelsConnected(
   deps: Pick<Deps, "db" | "tunnelConnected">,
@@ -380,8 +441,7 @@ async function machineTunnelsConnected(
       generation: labelClaim.generation,
     })
     .from(labelClaim)
-    .where(and(eq(labelClaim.userId, userId), eq(labelClaim.kind, "machine")))
-    .all();
+    .where(and(eq(labelClaim.userId, userId), eq(labelClaim.kind, "machine")));
   return new Map(
     await Promise.all(
       claims.map(
@@ -400,11 +460,13 @@ export async function revokeMachine(
   userId: string,
   machineId: string,
 ): Promise<{ ok: true } | { error: "not-found" | "tunnel-close-failed" }> {
-  const existing = await deps.db
-    .select({ id: machine.id, revokedAt: machine.revokedAt })
-    .from(machine)
-    .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
-    .get();
+  const existing = await first(
+    deps.db
+      .select({ id: machine.id, revokedAt: machine.revokedAt })
+      .from(machine)
+      .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
+      .limit(1),
+  );
   if (!existing) return { error: "not-found" };
 
   await deps.db
@@ -416,16 +478,17 @@ export async function revokeMachine(
         eq(machine.userId, userId),
         isNull(machine.revokedAt),
       ),
-    )
-    .run();
+    );
 
-  const claim = await deps.db
-    .select()
-    .from(labelClaim)
-    .where(
-      and(eq(labelClaim.kind, "machine"), eq(labelClaim.ownerId, machineId)),
-    )
-    .get();
+  const claim = await first(
+    deps.db
+      .select()
+      .from(labelClaim)
+      .where(
+        and(eq(labelClaim.kind, "machine"), eq(labelClaim.ownerId, machineId)),
+      )
+      .limit(1),
+  );
 
   if (claim) {
     try {
@@ -438,8 +501,7 @@ export async function revokeMachine(
   await deps.db
     .update(machine)
     .set({ subdomain: null })
-    .where(and(eq(machine.id, machineId), eq(machine.userId, userId)))
-    .run();
+    .where(and(eq(machine.id, machineId), eq(machine.userId, userId)));
   return { ok: true };
 }
 
@@ -456,8 +518,7 @@ async function retryPendingMachineRevocations(
         isNotNull(machine.revokedAt),
         isNotNull(machine.subdomain),
       ),
-    )
-    .all();
+    );
   for (const row of pending) {
     await revokeMachine(deps, userId, row.id);
   }
@@ -495,26 +556,22 @@ export async function claimHandle(
 
   const now = new Date();
   try {
-    await db.insert(profile).values({ userId, handle, createdAt: now }).run();
+    await db.insert(profile).values({ userId, handle, createdAt: now });
   } catch {
     return { error: "taken" };
   }
   try {
-    await db
-      .insert(server)
-      .values({
-        id: crypto.randomUUID(),
-        userId,
-        name: "default",
-        subdomain: handle,
-        createdAt: now,
-      })
-      .run();
+    await db.insert(server).values({
+      id: crypto.randomUUID(),
+      userId,
+      name: "default",
+      subdomain: handle,
+      createdAt: now,
+    });
   } catch {
     await db
       .delete(profile)
-      .where(and(eq(profile.userId, userId), eq(profile.handle, handle)))
-      .run();
+      .where(and(eq(profile.userId, userId), eq(profile.handle, handle)));
     return { error: "taken" };
   }
   return { ok: true, handle };
@@ -535,11 +592,7 @@ export async function createServer(
   const prof = await findProfile(db, userId);
   if (!prof) return { error: "no-handle" };
 
-  const owned = await db
-    .select()
-    .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+  const owned = await db.select().from(server).where(eq(server.userId, userId));
   if (owned.length >= MAX_PER_ACCOUNT) return { error: "server-limit" };
 
   const avail = await checkLabelAvailability(db, rawLabel);
@@ -553,21 +606,21 @@ export async function createServer(
   try {
     await db
       .insert(server)
-      .values({ id, userId, name: label, subdomain: label, createdAt: now })
-      .run();
+      .values({ id, userId, name: label, subdomain: label, createdAt: now });
   } catch {
     return { error: "taken" };
   }
   const afterCount = await db
     .select()
     .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+    .where(eq(server.userId, userId));
   if (afterCount.length > MAX_PER_ACCOUNT) {
-    await db.delete(server).where(eq(server.id, id)).run();
+    await db.delete(server).where(eq(server.id, id));
     return { error: "server-limit" };
   }
-  const created = await db.select().from(server).where(eq(server.id, id)).get();
+  const created = await first(
+    db.select().from(server).where(eq(server.id, id)).limit(1),
+  );
   if (!created) {
     return { error: "taken" };
   }
@@ -611,8 +664,7 @@ export async function createConnectCode(
           eq(connectCode.purpose, "server-pair"),
           isNull(connectCode.consumedAt),
         ),
-      )
-      .all();
+      );
     const valid = open
       .filter((c) => c.expiresAt.getTime() > now)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
@@ -722,8 +774,7 @@ export async function denyOutstandingLinkApprovals(
         isNull(connectCode.deniedAt),
         ...(exceptCode === null ? [] : [ne(connectCode.code, exceptCode)]),
       ),
-    )
-    .run();
+    );
 }
 
 export async function disconnectServer(
@@ -732,19 +783,20 @@ export async function disconnectServer(
   serverId: string,
 ): Promise<{ ok: true } | { error: string }> {
   const { db } = deps;
-  const srv = await db
-    .select()
-    .from(server)
-    .where(and(eq(server.id, serverId), eq(server.userId, userId)))
-    .get();
+  const srv = await first(
+    db
+      .select()
+      .from(server)
+      .where(and(eq(server.id, serverId), eq(server.userId, userId)))
+      .limit(1),
+  );
   if (!srv) return { error: "not-found" };
 
   const now = new Date();
   await db
     .update(server)
     .set({ credentialHash: null, revokedAt: now })
-    .where(eq(server.id, srv.id))
-    .run();
+    .where(eq(server.id, srv.id));
   await denyOutstandingLinkApprovals(db, srv.id, now, null);
   try {
     await deps.closeTunnel(srv.subdomain);
@@ -759,18 +811,20 @@ export async function removeServer(
 ): Promise<{ ok: true } | { error: string }> {
   const { db } = deps;
   const prof = await findProfile(db, userId);
-  const srv = await db
-    .select()
-    .from(server)
-    .where(and(eq(server.id, serverId), eq(server.userId, userId)))
-    .get();
+  const srv = await first(
+    db
+      .select()
+      .from(server)
+      .where(and(eq(server.id, serverId), eq(server.userId, userId)))
+      .limit(1),
+  );
   if (!srv) return { error: "not-found" };
   if (prof && srv.subdomain === prof.handle) return { error: "is-primary" };
   if (srv.credentialHash != null && srv.revokedAt == null) {
     return { error: "connected" };
   }
 
-  await db.delete(server).where(eq(server.id, srv.id)).run();
+  await db.delete(server).where(eq(server.id, srv.id));
   return { ok: true };
 }
 
@@ -790,11 +844,13 @@ export async function redeemConnectCode(
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
-  const row = await db
-    .select()
-    .from(connectCode)
-    .where(eq(connectCode.code, normalized))
-    .get();
+  const row = await first(
+    db
+      .select()
+      .from(connectCode)
+      .where(eq(connectCode.code, normalized))
+      .limit(1),
+  );
   if (!row || row.serverId == null || row.purpose !== "server-pair")
     return { error: "invalid-code", status: 404 };
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
@@ -825,14 +881,11 @@ async function mintServerCredential(
   await db
     .update(server)
     .set({ credentialHash: await sha256Hex(credential), revokedAt: null })
-    .where(eq(server.id, serverId))
-    .run();
+    .where(eq(server.id, serverId));
   await denyOutstandingLinkApprovals(db, serverId, new Date(), null);
-  const minted = await db
-    .select()
-    .from(server)
-    .where(eq(server.id, serverId))
-    .get();
+  const minted = await first(
+    db.select().from(server).where(eq(server.id, serverId)).limit(1),
+  );
   return { credential, server: minted };
 }
 
@@ -851,37 +904,41 @@ export async function lookupMachineCodeForServerCredential(
 > {
   const srv = await findServerByCredential(deps.db, credential);
   if (!srv) return { error: "unauthorized", status: 401 };
-  const row = await deps.db
-    .select()
-    .from(connectCode)
-    .where(
-      and(
-        eq(connectCode.code, code.trim().toUpperCase()),
-        eq(connectCode.serverId, srv.id),
-        eq(connectCode.userId, srv.userId),
-        eq(connectCode.purpose, "machine-pair"),
-      ),
-    )
-    .get();
+  const row = await first(
+    deps.db
+      .select()
+      .from(connectCode)
+      .where(
+        and(
+          eq(connectCode.code, code.trim().toUpperCase()),
+          eq(connectCode.serverId, srv.id),
+          eq(connectCode.userId, srv.userId),
+          eq(connectCode.purpose, "machine-pair"),
+        ),
+      )
+      .limit(1),
+  );
   if (!row || row.userId === null)
     return { error: "invalid-code", status: 404 };
-  const device = await deps.db
-    .select({ id: machine.id })
-    .from(machine)
-    .where(
-      and(
-        eq(machine.id, await machineIdForCode(row.userId, row.code)),
-        eq(machine.userId, srv.userId),
-      ),
-    )
-    .get();
+  const device = await first(
+    deps.db
+      .select({ id: machine.id })
+      .from(machine)
+      .where(
+        and(
+          eq(machine.id, await machineIdForCode(row.userId, row.code)),
+          eq(machine.userId, srv.userId),
+        ),
+      )
+      .limit(1),
+  );
   return { consumed: row.consumedAt !== null, machineId: device?.id ?? null };
 }
 
 export async function redeemMachineCode(
   deps: Pick<Deps, "db" | "serverUrlTemplate">,
   code: string,
-  deviceName: string | null,
+  device: { name: string | null; kind: MachineKind | null },
 ): Promise<
   | {
       credential: string;
@@ -895,11 +952,13 @@ export async function redeemMachineCode(
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
-  const row = await db
-    .select()
-    .from(connectCode)
-    .where(eq(connectCode.code, normalized))
-    .get();
+  const row = await first(
+    db
+      .select()
+      .from(connectCode)
+      .where(eq(connectCode.code, normalized))
+      .limit(1),
+  );
   if (!row || row.purpose !== "machine-pair" || row.userId === null)
     return { error: "invalid-code", status: 404 };
   const ownerId = row.userId;
@@ -916,22 +975,22 @@ export async function redeemMachineCode(
 
   const credential = generateToken("bbcm_");
   const machineId = await machineIdForCode(ownerId, normalized);
-  await db
-    .insert(machine)
-    .values({
-      id: machineId,
-      name: deviceName,
-      userId: ownerId,
-      credentialHash: await sha256Hex(credential),
-      createdAt: new Date(),
-    })
-    .run();
+  await db.insert(machine).values({
+    id: machineId,
+    name: device.name,
+    kind: device.kind,
+    userId: ownerId,
+    credentialHash: await sha256Hex(credential),
+    createdAt: new Date(),
+  });
 
   const prof = await findProfile(db, ownerId);
   const targetServer =
     row.serverId == null
       ? null
-      : await db.select().from(server).where(eq(server.id, row.serverId)).get();
+      : await first(
+          db.select().from(server).where(eq(server.id, row.serverId)).limit(1),
+        );
   const label = targetServer?.subdomain ?? prof?.handle ?? null;
   return {
     credential,

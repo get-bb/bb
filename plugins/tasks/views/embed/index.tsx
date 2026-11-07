@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import type {
   PluginMessageDirectiveProps,
   ExperimentalThreadActionTabProps,
 } from "@get-bb/plugin-sdk";
 import {
   experimental_useAppPanel,
+  experimental_useRpcQuery,
   useBbNavigate,
-  useRealtime,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Task } from "../../shared/contract.js";
-import { useTasksRpc } from "../../shell/data.js";
-import { TasksRefreshProvider } from "../../shell/refresh.js";
+import { tasksRpcContract, type Task } from "../../shared/contract.js";
 import { PANEL_PATH, tasksRouteToSubPath } from "../../shell/routes.js";
 import { DetailView } from "../detail/index.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
@@ -31,51 +29,25 @@ function useTaskEmbed(taskKey: string): {
   state: TaskEmbedState;
   retry: () => void;
 } {
-  const rpc = useTasksRpc();
-  const [state, setState] = useState<TaskEmbedState>({ kind: "loading" });
-  const seqRef = useRef(0);
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  const refresh = useCallback(() => {
-    if (taskKey === "") return;
-    const seq = ++seqRef.current;
-    rpc.call("getTaskByKey", { taskKey }).then(
-      ({ task }) => {
-        if (seq !== seqRef.current) return;
-        setState(task ? { kind: "found", task } : { kind: "not_found" });
-      },
-      () => {
-        if (seq !== seqRef.current) return;
-        setState({ kind: "error" });
-      },
-    );
-  }, [rpc, taskKey]);
-
-  useEffect(() => {
-    setState({ kind: "loading" });
-    refresh();
-  }, [refresh]);
-
-  const onEvent = useCallback(
-    (matches: (task: Task) => boolean) => {
-      const current = stateRef.current;
-      if (current.kind !== "found" || matches(current.task)) refresh();
-    },
-    [refresh],
-  );
-  useRealtime("tasks:changed", (payload) => {
-    const taskId = isRecord(payload) ? payload.taskId : undefined;
-    onEvent((task) => typeof taskId !== "string" || taskId === task.id);
+  const query = experimental_useRpcQuery({
+    contract: tasksRpcContract,
+    method: "getTaskByKey",
+    input: { taskKey },
+    enabled: taskKey !== "",
   });
-  useRealtime("projects:changed", (payload) => {
-    const projectId = isRecord(payload) ? payload.projectId : undefined;
-    onEvent(
-      (task) => typeof projectId !== "string" || projectId === task.projectId,
-    );
-  });
-
-  return { state, retry: refresh };
+  const { refetch } = query;
+  const retry = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+  const state: TaskEmbedState =
+    query.error !== null
+      ? { kind: "error" }
+      : query.data === undefined
+        ? { kind: "loading" }
+        : query.data.task
+          ? { kind: "found", task: query.data.task }
+          : { kind: "not_found" };
+  return { state, retry };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -308,9 +280,5 @@ function TaskEmbedPanelContent({ params }: ExperimentalThreadActionTabProps) {
 }
 
 export function TaskEmbedPanel(props: ExperimentalThreadActionTabProps) {
-  return (
-    <TasksRefreshProvider>
-      <TaskEmbedPanelContent {...props} />
-    </TasksRefreshProvider>
-  );
+  return <TaskEmbedPanelContent {...props} />;
 }

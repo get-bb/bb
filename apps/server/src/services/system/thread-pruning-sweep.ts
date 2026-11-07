@@ -2,11 +2,11 @@ import { performance } from "node:perf_hooks";
 import {
   advanceThreadPruning,
   getNextThreadPruningPolicy,
-  getDatabaseMaintenanceActivity,
-  isDatabaseMaintenanceIdle,
-  THREAD_PRUNING_POLICIES,
+  pickThreadPruningThread,
+  type THREAD_PRUNING_POLICIES,
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
+import { defineScanSweep, type ItemSweep } from "./item-sweep.js";
 
 export interface ThreadPruningSweepLimits {
   elapsedBudgetMs: number;
@@ -18,77 +18,80 @@ export const THREAD_PRUNING_SWEEP_LIMITS: ThreadPruningSweepLimits = {
   maxAdvances: 64,
 };
 
-export async function runThreadPruningSweep(
+interface ThreadPruningItem {
+  policy: (typeof THREAD_PRUNING_POLICIES)[number];
+  threadId: string;
+}
+
+function pruningItemKey(item: ThreadPruningItem): string {
+  return `${item.policy}:${item.threadId}`;
+}
+
+export function threadPruningSweep(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
   limits: ThreadPruningSweepLimits,
-): Promise<void> {
+): ItemSweep {
   const startedAt = performance.now();
-  const completed = new Set<string>();
-  const compactedThreadIds = new Set<string>();
   let advances = 0;
-  let removed = 0;
-  let scanned = 0;
-  let removedBytes = 0;
-  let maxAdvanceMs = 0;
-  let reason = "budget";
-  try {
-    while (
-      advances < limits.maxAdvances &&
-      performance.now() - startedAt < limits.elapsedBudgetMs &&
-      completed.size < THREAD_PRUNING_POLICIES.length
-    ) {
-      const activity = getDatabaseMaintenanceActivity(deps.db);
-      if (!isDatabaseMaintenanceIdle(activity)) {
-        reason = "busy";
-        deps.logger.debug(
-          { activity, advances },
-          "Thread pruning skipped while app work is active",
+  const withinBudget = () =>
+    advances < limits.maxAdvances &&
+    performance.now() - startedAt < limits.elapsedBudgetMs;
+  const finishedPolicies = new Set<string>();
+  return defineScanSweep<ThreadPruningItem>({
+    name: "thread-event-pruning",
+    concurrency: 1,
+    list: ({ excludedKeys }) => {
+      const items: ThreadPruningItem[] = [];
+      if (!withinBudget()) return items;
+      const visited = new Set<string>(finishedPolicies);
+      for (
+        let policy = getNextThreadPruningPolicy(deps.db, visited);
+        policy !== null;
+        policy = getNextThreadPruningPolicy(deps.db, visited)
+      ) {
+        visited.add(policy);
+        const prefix = `${policy}:`;
+        const excludedThreadIds = new Set(
+          [...excludedKeys]
+            .filter((itemKey) => itemKey.startsWith(prefix))
+            .map((itemKey) => itemKey.slice(prefix.length)),
         );
-        break;
+        const threadId = pickThreadPruningThread(deps.db, {
+          excludedThreadIds,
+          policy,
+        });
+        if (threadId === null) finishedPolicies.add(policy);
+        else items.push({ policy, threadId });
       }
-      const policy = getNextThreadPruningPolicy(deps.db, completed);
-      if (policy === null) break;
-      const advanceStartedAt = performance.now();
-      const result = advanceThreadPruning(deps.db, policy);
-      const advanceElapsedMs = performance.now() - advanceStartedAt;
-      maxAdvanceMs = Math.max(maxAdvanceMs, advanceElapsedMs);
-      if (advanceElapsedMs >= 50)
-        deps.logger.warn(
-          { ...result, advanceElapsedMs },
-          "Slow thread pruning advance",
-        );
-      advances += 1;
-      scanned += result.scanned;
-      removed += result.removed;
-      removedBytes += result.removedBytes;
-      if (result.removed > 0 && result.threadId !== null)
-        compactedThreadIds.add(result.threadId);
-      deps.logger.debug(
-        { ...result, advanceElapsedMs },
-        "Thread pruning policy advanced",
-      );
-      if (result.action === "cycle-complete") completed.add(policy);
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    if (completed.size === THREAD_PRUNING_POLICIES.length)
-      reason = "cycle-complete";
-  } catch (error) {
-    reason = "failed";
-    throw error;
-  } finally {
-    for (const threadId of compactedThreadIds)
-      deps.hub.notifyThread(threadId, ["history-compacted"]);
-    deps.logger.debug(
-      {
-        advances,
-        removed,
-        scanned,
-        removedBytes,
-        maxAdvanceMs,
-        reason,
-        elapsedMs: performance.now() - startedAt,
-      },
-      "Thread pruning sweep finished",
-    );
-  }
+      return items;
+    },
+    key: pruningItemKey,
+    process: async (item) => {
+      let removed = 0;
+      try {
+        while (withinBudget()) {
+          const advanceStartedAt = performance.now();
+          const result = advanceThreadPruning(deps.db, item.policy);
+          const advanceElapsedMs = performance.now() - advanceStartedAt;
+          advances += 1;
+          removed += result.removed;
+          if (advanceElapsedMs >= 50)
+            deps.logger.warn(
+              { ...result, advanceElapsedMs },
+              "Slow thread pruning advance",
+            );
+          deps.logger.debug(
+            { ...result, advanceElapsedMs },
+            "Thread pruning policy advanced",
+          );
+          if (result.threadId !== item.threadId || result.action !== "advanced")
+            return;
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+      } finally {
+        if (removed > 0)
+          deps.hub.notifyThread(item.threadId, ["history-compacted"]);
+      }
+    },
+  });
 }

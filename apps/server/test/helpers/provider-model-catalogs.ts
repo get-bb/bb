@@ -105,3 +105,19 @@ export function captureLogLines(harness: TestAppHarness) {
 export function settleTimers(ms = 20): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+export async function seedModelCatalog(
+  harness: TestAppHarness,
+  args: { hostId: string; providerId: string; models: AvailableModel[] },
+): Promise<void> {
+  await harness.deps.lifecycleDedupers.providerModelCatalogs.remember(
+    harness.deps,
+    {
+      hostId: args.hostId,
+      provider: requireRegistration(harness, args.providerId).info,
+      cwd: null,
+      models: args.models,
+      selectedOnlyModels: [],
+    },
+  );
+}

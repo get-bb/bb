@@ -7,11 +7,7 @@ import {
   type LimitWindow,
   type LimitWindowSlot,
 } from "./contracts.js";
-import {
-  codexAccessTokenExpiresAt,
-  importCodexCredentials,
-  type ImportedCodexCredentials,
-} from "./credentials.js";
+import { codexAccessTokenExpiresAt } from "./credentials.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import {
   fetchOAuthRefresh,
@@ -138,14 +134,7 @@ function orderedWindows(
 function withoutClaudeSlots(previous: AccountQuota): AccountQuota {
   return {
     ...previous,
-    fiveHourUtilization: null,
-    fiveHourResetAt: null,
-    fiveHourStatus: null,
-    sevenDayUtilization: null,
-    sevenDayResetAt: null,
-    sevenDayStatus: null,
     representativeClaim: null,
-
     familyWeekly: EMPTY_FAMILY_WEEKLY,
   };
 }
@@ -386,30 +375,10 @@ export function codexQuotaFromUsage(
 export function createCodexAdapter(options: {
   refreshUrl: string;
   usageUrl: string;
-  importCredentials?: () => Promise<ImportedCodexCredentials>;
 }): ProviderAdapter {
   return {
     provider: "codex",
     upstreamName: "ChatGPT",
-    async importAccount() {
-      const imported = await (
-        options.importCredentials ?? importCodexCredentials
-      )();
-      return {
-        label: imported.email ?? "Codex account",
-        email: imported.email,
-        codexAccountId: imported.accountId,
-        subscriptionType: null,
-        rateLimitTier: null,
-        secret: {
-          kind: "oauth",
-          accessToken: imported.accessToken,
-          refreshToken: imported.refreshToken,
-          expiresAt: imported.expiresAt,
-          ...(imported.idToken === null ? {} : { idToken: imported.idToken }),
-        },
-      };
-    },
     parseRequest(body, headers) {
       const parsed = parseCodexRequestBody(body, headers);
       return {

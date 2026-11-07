@@ -302,6 +302,29 @@ describe("assemblePullRequest", () => {
     });
   });
 
+  it("treats a PR with only pre-receive hooks as ready to merge", () => {
+    expect(
+      assemblePullRequest(
+        rawPullRequest({
+          mergeStateStatus: "HAS_HOOKS",
+          mergeable: "UNKNOWN",
+          checks: [
+            {
+              name: "test",
+              status: "completed",
+              conclusion: "success",
+              url: null,
+              startedAt: "2026-06-16T12:20:00Z",
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({
+      mergeability: { state: "mergeable", mergeStateStatus: "HAS_HOOKS" },
+      attention: "ready_to_merge",
+    });
+  });
+
   it("marks passing mergeable PRs as ready to merge", () => {
     expect(
       assemblePullRequest(

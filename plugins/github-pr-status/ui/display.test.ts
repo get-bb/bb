@@ -60,7 +60,6 @@ describe("pull request signals", () => {
 
   it.each([
     ["BEHIND", "Behind main"],
-    ["HAS_HOOKS", "Blocked by hooks"],
     ["BLOCKED", "Blocked by rules"],
   ] as const)("explains a %s block", (mergeStateStatus, label) => {
     const pr = pullRequest();

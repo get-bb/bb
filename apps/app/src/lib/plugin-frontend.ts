@@ -23,7 +23,7 @@ import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
-import type { QueryClient } from "@tanstack/react-query";
+import { isCancelledError, type QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import { createPluginToast } from "@/lib/notifications/plugin-toast";
@@ -61,6 +61,7 @@ import {
 } from "./plugin-sdk-app-impl";
 import {
   beginPluginSlotBatch,
+  flushPluginSlotChanges,
   removePluginSlotRegistrations,
   setBuiltinPluginIds,
   setPluginSlotRegistrations,
@@ -210,6 +211,7 @@ interface BbPluginRuntime {
   vaul: unknown;
   pierreDiffs?: unknown;
   pierreDiffsReact?: unknown;
+  zod?: unknown;
   clsx: unknown;
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
@@ -262,19 +264,36 @@ const lazyRuntimeGroups = [
       return pierreRuntimeSlots;
     }),
   },
+  {
+    slots: ["zod"],
+    load: createRetryingModuleLoader(async () => {
+      const { zodRuntimeSlots } = await import("./plugin-zod-runtime");
+      return zodRuntimeSlots;
+    }),
+  },
 ] satisfies {
   slots: (keyof BbPluginRuntime)[];
   load: () => Promise<Partial<BbPluginRuntime>>;
 }[];
+
+async function fetchEnabledPluginList(queryClient: QueryClient) {
+  for (;;) {
+    try {
+      return await queryClient.fetchQuery(
+        pluginListQueryOptions({ enabled: true }),
+      );
+    } catch (error) {
+      if (!isCancelledError(error)) throw error;
+    }
+  }
+}
 
 export async function fetchFrontendCandidates(
   queryClient: QueryClient = appQueryClient,
 ): Promise<PluginFrontendCandidate[]> {
   let plugins;
   try {
-    plugins = await queryClient.fetchQuery(
-      pluginListQueryOptions({ enabled: true }),
-    );
+    plugins = await fetchEnabledPluginList(queryClient);
   } catch (error) {
     setServerPluginsStarting(false);
     if (
@@ -410,9 +429,11 @@ export interface PluginFrontendReconcileDeps {
   ) => void;
   removeRegistrations: (pluginId: string) => void;
   beginSlotBatch: () => () => void;
+  flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
   mountTimeoutMs?: number;
+  cssReadyTimeoutMs?: number;
   diagnosticsChanged?: () => void;
 }
 
@@ -432,6 +453,7 @@ interface ActivePluginFrontendGeneration {
 }
 
 const DEFAULT_CONTENT_SCRIPT_MOUNT_TIMEOUT_MS = 10_000;
+const DEFAULT_CSS_READY_TIMEOUT_MS = 15_000;
 
 class ContentScriptMountError extends Error {
   constructor(
@@ -610,6 +632,33 @@ async function mountWithTimeout(
         })
         .catch(() => {});
     }
+  }
+}
+
+async function applyCssBeforePublish(
+  pluginId: string,
+  url: string | null,
+  deps: PluginFrontendReconcileDeps,
+): Promise<void> {
+  const applied = Promise.resolve(deps.applyCss(pluginId, url));
+  if (url === null) {
+    await applied;
+    return;
+  }
+  const timeoutMs = deps.cssReadyTimeoutMs ?? DEFAULT_CSS_READY_TIMEOUT_MS;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<void>((resolve) => {
+    timeoutId = setTimeout(() => {
+      deps.warn(
+        `[plugin:${pluginId}] stylesheet ${url} did not load within ${timeoutMs}ms; publishing the frontend without it`,
+      );
+      resolve();
+    }, timeoutMs);
+  });
+  try {
+    await Promise.race([applied, timedOut]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
@@ -869,7 +918,8 @@ async function reconcileCandidate(
 
   const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
   state.generationByPluginId.set(pluginId, generation);
-  await deps.applyCss(pluginId, candidate.bundle.cssUrl);
+  await applyCssBeforePublish(pluginId, candidate.bundle.cssUrl, deps);
+  const replacesActiveGeneration = state.activeGenerations.has(pluginId);
   const cssRelease =
     collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
   const disposeFailures = await deactivateCommittedGeneration(
@@ -924,6 +974,7 @@ async function reconcileCandidate(
 
   state.activeGenerations.set(pluginId, activationResult.activation);
   deps.setRegistrations(pluginId, collected);
+  if (replacesActiveGeneration) deps.flushSlotBatch();
   state.records.set(pluginId, record);
   state.appliedHashes.set(pluginId, candidate.bundle.hash);
   publishDiagnostic(state, deps, {
@@ -1012,11 +1063,15 @@ let browserDiagnosticsSnapshot: ReadonlyMap<string, PluginFrontendDiagnostic> =
   new Map();
 const browserDiagnosticsListeners = new Set<() => void>();
 
-function publishBrowserDiagnostics(): void {
-  browserDiagnosticsSnapshot = new Map(state.diagnostics);
+function publishLoadFailed(): void {
   setPluginFrontendLoadFailed(
     [...state.records.values()].some((record) => record.status !== "loaded"),
   );
+}
+
+function publishBrowserDiagnostics(): void {
+  browserDiagnosticsSnapshot = new Map(state.diagnostics);
+  publishLoadFailed();
   for (const listener of browserDiagnosticsListeners) listener();
 }
 
@@ -1038,6 +1093,7 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   removeRegistrations: removePluginSlotRegistrations,
   beginSlotBatch: () =>
     beginPluginSlotBatch({ maxHoldMs: PLUGIN_SLOT_BATCH_MAX_HOLD_MS }),
+  flushSlotBatch: flushPluginSlotChanges,
   warn: (message) => console.warn(message),
   diagnosticsChanged: publishBrowserDiagnostics,
 };
@@ -1102,7 +1158,9 @@ export function bootPluginFrontends(): Promise<void> {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
     await reconcilePluginFrontends(state, browserReconcileDeps);
+    publishLoadFailed();
   })().catch((error: unknown) => {
+    setPluginFrontendLoadFailed(true);
     console.warn(
       `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -1124,6 +1182,7 @@ async function runLiveReconcile(): Promise<void> {
     await reconcilePluginFrontends(state, browserReconcileDeps, () =>
       setPluginFrontendReconcilePending(true),
     );
+    publishLoadFailed();
   } catch (error) {
     console.warn(
       `plugin frontend reconcile failed: ${error instanceof Error ? error.message : String(error)}`,

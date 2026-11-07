@@ -459,6 +459,7 @@ describe("acp configOptions model catalog", () => {
         options: [],
       }),
     ).toEqual({
+      reasoningDiscovery: "known",
       supportedReasoningEfforts: [],
       defaultReasoningEffort: "medium",
     });
@@ -479,6 +480,7 @@ describe("acp configOptions model catalog", () => {
     };
 
     expect(buildAcpNativeReasoningSupport(thoughtLevel)).toEqual({
+      reasoningDiscovery: "known",
       supportedReasoningEfforts: [
         {
           reasoningEffort: "fast",

@@ -182,6 +182,19 @@ function sameKeys(left: ReadonlySet<string>, right: ReadonlySet<string>) {
   return true;
 }
 
+function knownHeights(
+  itemKeys: readonly string[],
+  measurements: ReadonlyMap<string, number>,
+  rendered: ReadonlyMap<string, number>,
+): Map<string, number> {
+  const heights = new Map<string, number>();
+  for (const key of itemKeys) {
+    const height = measurements.get(key) ?? rendered.get(key);
+    if (height !== undefined) heights.set(key, height);
+  }
+  return heights;
+}
+
 function spacerHeight(model: LayoutModel, first: number, last: number) {
   const top = model.offsets[first] ?? 0;
   const bottom = (model.offsets[last] ?? 0) + (model.heights[last] ?? 0);
@@ -428,6 +441,16 @@ export function TimelineWindowedItems({
       if (scrollRoot !== null) {
         const usable = scrollRoot.clientHeight > 0;
         if (usable !== live.scrollRootUsable) {
+          if (usable && live.scrollRootUsable === false) {
+            setWindowState((current) => ({
+              keys: current.keys,
+              heights: knownHeights(
+                live.itemKeys,
+                measurements,
+                current.heights,
+              ),
+            }));
+          }
           live.scrollRootUsable = usable;
           setScrollRootUsable(usable);
         }
@@ -473,12 +496,11 @@ export function TimelineWindowedItems({
       const heldKey = heldKeyOf(positionKeeper);
       if (heldKey !== null && live.indexByKey.has(heldKey)) keys.add(heldKey);
       if (sameKeys(keys, live.windowKeys) || !takeFrameUpdate()) return;
-      const heights = new Map<string, number>();
-      for (const key of live.itemKeys) {
-        const height =
-          measurements.get(key) ?? live.renderedHeights.get(key);
-        if (height !== undefined) heights.set(key, height);
-      }
+      const heights = knownHeights(
+        live.itemKeys,
+        measurements,
+        live.renderedHeights,
+      );
       const apply = () => setWindowState({ keys, heights });
       if (urgent && uncovered) {
         flushSync(apply);

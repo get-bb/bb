@@ -20,6 +20,7 @@ import {
 import type { Readable, Writable } from "node:stream";
 import crossSpawn from "cross-spawn";
 import { hostToolchain } from "./host-toolchain.js";
+import { prepareNodeNetworkLaunch } from "./node-network.js";
 
 function observe(child: ChildProcess): ChildProcess {
   child.once("error", (error) => hostToolchain.invalidateFailure(error));
@@ -65,14 +66,25 @@ export function spawnHostProcess(
   const launch = options.shell
     ? { command, args: [...args], env: hostToolchain.environment(options.env) }
     : hostToolchain.command(command, args, options);
+  const spawnOptions = {
+    ...options,
+    env: launch.env,
+    windowsHide: options.windowsHide ?? true,
+  };
+  if (
+    process.platform === "win32" &&
+    !options.shell &&
+    /[\\/]/u.test(command)
+  ) {
+    const parsed = parse(launch.command, launch.args, spawnOptions);
+    return observe(
+      parsed.file
+        ? nodeSpawn(parsed.command, parsed.args, parsed.options)
+        : nodeSpawn(launch.command, launch.args, spawnOptions),
+    );
+  }
   const spawn = options.shell ? nodeSpawn : crossSpawn;
-  return observe(
-    spawn(launch.command, launch.args, {
-      ...options,
-      env: launch.env,
-      windowsHide: options.windowsHide ?? true,
-    }),
-  );
+  return observe(spawn(launch.command, launch.args, spawnOptions));
 }
 
 export function forkHostProcess(
@@ -80,12 +92,17 @@ export function forkHostProcess(
   args: readonly string[] = [],
   options: ForkOptions = {},
 ): ChildProcess {
-  const env = hostToolchain.environment(options.env);
+  const { nodeArgs: execArgv, env } = prepareNodeNetworkLaunch(
+    options.execArgv ?? process.execArgv,
+    hostToolchain.environment(options.env),
+  );
   const execPath =
     options.execPath === undefined || options.execPath === process.execPath
       ? hostToolchain.node({ env, cwd: options.cwd })
       : options.execPath;
-  return observe(nodeFork(modulePath, args, { ...options, env, execPath }));
+  return observe(
+    nodeFork(modulePath, args, { ...options, env, execArgv, execPath }),
+  );
 }
 
 function prepareExecFile(

@@ -1,7 +1,16 @@
-import { findProviderEnvironmentContainingPath } from "@bb/db";
+import {
+  findProviderEnvironmentContainingPath,
+  listPathInstalledPluginSources,
+} from "@bb/db";
+import { isHostPathWithin } from "@bb/domain";
 import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
-import { isBbManagedWorkspacePath } from "../threads/workspace-paths.js";
+import { cp, rename, rm, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { isFsErrorWithCode } from "../lib/fs-errors.js";
+import {
+  isBbManagedWorkspacePath,
+  isThreadStoragePath,
+} from "../threads/workspace-paths.js";
 import {
   getInstalledPlugin,
   getInstalledPluginRegistration,
@@ -26,6 +35,7 @@ import { BUNDLED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
   type InstalledPlugin,
+  ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginRuntimeStatus,
   type PluginSourceSelection,
 } from "@bb/server-contract";
@@ -58,16 +68,32 @@ import {
   type PluginResolvedUpdateVersion,
 } from "./update-resolver.js";
 
+const PRESERVED_SOURCE_DIRECTORY_NAME = "preserved-source";
+
+export function isPublicPluginProvenance(
+  kind: PluginProvenance["kind"],
+  marketplace: string | null,
+): boolean {
+  return (
+    kind === "builtin" ||
+    (kind === "catalog" &&
+      (marketplace === CURATED_PLUGIN_MARKETPLACE_NAME ||
+        marketplace === BUNDLED_MARKETPLACE_NAME))
+  );
+}
+
 export function pluginInstalledTelemetryEvent(
   pluginId: string,
   provenance: PluginProvenance,
   sourceIntent: PluginSourceIntent,
+  isFreshInstall: boolean,
 ): Extract<TelemetryEvent, { name: "plugin_installed" }> {
-  const isPublic =
-    provenance.kind === "builtin" ||
-    (provenance.kind === "catalog" &&
-      (provenance.marketplace === CURATED_PLUGIN_MARKETPLACE_NAME ||
-        provenance.marketplace === BUNDLED_MARKETPLACE_NAME));
+  const isPublic = isPublicPluginProvenance(
+    provenance.kind,
+    provenance.kind === "catalog" ? provenance.marketplace : null,
+  );
+  const publicCatalogEntryId =
+    isPublic && provenance.kind === "catalog" ? provenance.entryId : null;
   return {
     name: "plugin_installed",
     properties: {
@@ -78,6 +104,8 @@ export function pluginInstalledTelemetryEvent(
           ? provenance.marketplace
           : null,
       source_kind: sourceIntent.kind,
+      is_fresh_install: isFreshInstall,
+      entry_id: publicCatalogEntryId,
     },
   };
 }
@@ -424,6 +452,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         manifest.id,
         args.provenance,
         args.sourceIntent,
+        isFreshInstall,
       ),
     );
     return entry;
@@ -447,17 +476,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
             pluginRootDir(checkoutDir, subdirectory),
             "plugin subdirectory",
           );
-    if (
-      isBbManagedWorkspacePath({ dataDir: deps.dataDir, path: rootDir }) ||
-      findProviderEnvironmentContainingPath(deps.db, rootDir) !== null
-    ) {
-      logger.warn(
-        `plugin "${rootDir}" is installed from inside a bb-managed workspace; ` +
-          "its source will be deleted when that environment is destroyed (e.g. when the owning thread is archived). " +
-          "Reinstall from a stable path outside the managed workspace to avoid losing it.",
-      );
-    }
-    return registerInstalled({
+    const installed = await registerInstalled({
       rootDir,
       source: `path:${rootDir}`,
       provenance: { kind: "direct" },
@@ -466,6 +485,82 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       refuseEngineMismatch: false,
       validated: false,
     });
+    if (installed.sourceNotice !== null) {
+      logger.warn(`plugin ${installed.id}: ${installed.sourceNotice}`);
+    }
+    return installed;
+  }
+
+  function preservedSourcePath(pluginId: string): string {
+    return join(
+      deps.dataDir,
+      "plugins",
+      pluginId,
+      PRESERVED_SOURCE_DIRECTORY_NAME,
+    );
+  }
+
+  function pathSourceNotice(plugin: {
+    id: string;
+    rootDir: string;
+  }): string | null {
+    const copy = preservedSourcePath(plugin.id);
+    if (isThreadStoragePath({ dataDir: deps.dataDir, path: plugin.rootDir })) {
+      return `Installed from a thread's storage folder. When bb deletes that thread, it copies this plugin to ${copy} and runs it from there.`;
+    }
+    if (
+      findProviderEnvironmentContainingPath(deps.db, plugin.rootDir) !== null
+    ) {
+      return `Installed from a bb-managed workspace. When bb removes that workspace, it copies this plugin to ${copy} and runs it from there.`;
+    }
+    if (
+      isBbManagedWorkspacePath({ dataDir: deps.dataDir, path: plugin.rootDir })
+    ) {
+      return `Installed from inside bb's data folder, where bb can delete it. Reinstall it from a folder outside ${deps.dataDir} to keep it.`;
+    }
+    return null;
+  }
+
+  async function preservePathPluginsInside(directory: string): Promise<void> {
+    for (const plugin of listPathInstalledPluginSources(deps.db)) {
+      if (
+        !isHostPathWithin({
+          rootPath: directory,
+          candidatePath: plugin.sourcePath,
+        })
+      ) {
+        continue;
+      }
+      const exists = await stat(plugin.sourcePath).then(
+        () => true,
+        (error: unknown) => {
+          if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+            return false;
+          }
+          throw error;
+        },
+      );
+      if (!exists) continue;
+      const preservedPath = preservedSourcePath(plugin.id);
+      const stagingPath = `${preservedPath}.partial`;
+      await rm(stagingPath, { recursive: true, force: true });
+      await cp(plugin.sourcePath, stagingPath, {
+        recursive: true,
+        verbatimSymlinks: true,
+      });
+      await rm(preservedPath, { recursive: true, force: true });
+      await rename(stagingPath, preservedPath);
+      try {
+        await installPathSource(preservedPath, ROOT_PLUGIN_SOURCE_SELECTION);
+        logger.info(
+          `plugin ${plugin.id} was installed from ${plugin.sourcePath}, which bb is deleting; it now runs from a copy at ${preservedPath}`,
+        );
+      } catch (error) {
+        logger.warn(
+          `plugin ${plugin.id} was installed from ${plugin.sourcePath}, which bb is deleting; its files were copied to ${preservedPath}, but moving the plugin there failed: ${error instanceof Error ? error.message : String(error)}. Run \`bb plugin install ${preservedPath}\` to run it from the copy.`,
+        );
+      }
+    }
   }
 
   function npmIntentForRow(
@@ -516,6 +611,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       }
       return {
         version: row.npmResolvedVersion,
+        label: row.npmResolvedVersion,
         display: `${row.sourceNpmPackage}@${row.npmResolvedVersion}`,
       };
     }
@@ -531,10 +627,11 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       return gitResolvedVersion({
         url: row.sourceGitUrl,
         ref,
+        tagPrefix: row.sourceGitTagPrefix ?? "",
         commit: row.gitResolvedCommit,
       });
     }
-    return { version: row.version, display: row.source };
+    return { version: row.version, label: row.version, display: row.source };
   }
 
   function catalogMarketplaceOf(row: InstalledPluginRow): string {
@@ -809,6 +906,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     installPathSource,
     installedUpdateVersion,
     npmIntentForRow,
+    pathSourceNotice,
+    preservePathPluginsInside,
     provenanceForRow,
     reconcileBundled,
     registerInstalled,

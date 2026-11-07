@@ -17,6 +17,7 @@ import {
 import { createAppQueryClient } from "../src/lib/query-client";
 import { applyAppFrameGeometry } from "../src/lib/bb-desktop";
 import { ModelPickerStoryQueryProvider } from "./model-picker-query-provider";
+import "./plugin-runtime";
 import "./ladle.css";
 
 applyAppFrameGeometry(document.documentElement, null);

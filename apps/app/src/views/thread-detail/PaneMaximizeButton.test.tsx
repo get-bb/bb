@@ -15,10 +15,7 @@ import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { focusWithKeyboard } from "@/test/keyboard-focus";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
-import {
-  PaneMaximizeButton,
-  resolvePaneArrangementLabel,
-} from "./PaneMaximizeButton";
+import { PaneMaximizeButton } from "./PaneMaximizeButton";
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandShortcut: () => ({
@@ -208,6 +205,12 @@ describe("PaneMaximizeButton", () => {
       screen.getByRole("menuitem", { name: /Full Screen/ }),
     ).not.toBeNull();
     expect(menu.textContent).not.toContain("Maximize pane");
+
+    cleanup();
+    renderButton(true);
+    expect(
+      screen.getByRole("button", { name: "Exit Full Screen (⌘⇧E)" }),
+    ).not.toBeNull();
   });
 
   it("hides the native desktop browser while the arrangement menu can cover it", () => {
@@ -274,20 +277,4 @@ describe("PaneMaximizeButton", () => {
     );
     expect(screen.queryByRole("button")).toBeNull();
   });
-});
-
-describe("resolvePaneArrangementLabel", () => {
-  it.each([
-    [false, false, "Maximize pane"],
-    [false, true, "Restore split"],
-    [true, false, "Full Screen"],
-    [true, true, "Exit Full Screen"],
-  ] as const)(
-    "resolves desktop=%s fullScreen=%s as %s",
-    (isDesktopApp, isFullScreen, expected) => {
-      expect(resolvePaneArrangementLabel({ isDesktopApp, isFullScreen })).toBe(
-        expected,
-      );
-    },
-  );
 });

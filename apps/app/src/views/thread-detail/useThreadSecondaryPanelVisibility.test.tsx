@@ -18,10 +18,6 @@ function createArgs(overrides: Partial<VisibilityArgs> = {}): VisibilityArgs {
     closePersistedPanel: vi.fn(),
     isCompactViewport: true,
     isPersistedOpen: true,
-    openPersistedCommitDiff: vi.fn(),
-    openPersistedDiffFile: vi.fn(),
-    openPersistedDiffPanel: vi.fn(),
-    openPersistedHostFile: vi.fn(),
     openPersistedPanel: vi.fn(),
     openPersistedStorageFile: vi.fn(),
     openPersistedWorkspaceFile: vi.fn(),
@@ -78,15 +74,15 @@ describe("useThreadSecondaryPanelVisibility", () => {
     });
 
     act(() => {
-      result.current.openHostFile({
+      result.current.openStorageFile({
         lineRange: null,
-        path: "/tmp/log.txt",
+        path: "log.txt",
       });
     });
 
-    expect(args.openPersistedHostFile).toHaveBeenCalledWith({
+    expect(args.openPersistedStorageFile).toHaveBeenCalledWith({
       lineRange: null,
-      path: "/tmp/log.txt",
+      path: "log.txt",
     });
     expect(result.current.isOpen).toBe(true);
   });

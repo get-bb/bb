@@ -7,7 +7,10 @@ description: "Retrieve relevant durable BB memories or save verified knowledge u
 
 This plugin is provider-independent. When diagnosing duplicate or conflicting
 memories, check whether provider-native memory is also enabled; recommend
-turning it off under Settings → Providers.
+turning it off with the `memoryEnabled` setting of each provider plugin:
+Settings → Plugins → Claude Code provider and Codex provider, or
+`bb plugin config provider-claude-code set memoryEnabled false` and
+`bb plugin config provider-codex set memoryEnabled false`.
 
 The memory plugin automatically injects a compact index of global memories and
 memories for the current BB project. The index contains summaries only.

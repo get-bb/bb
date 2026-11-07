@@ -15,7 +15,7 @@ Lifecycle:
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread clear [id]                     Clear model context for an idle or failed thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
-  bb thread clear-goal [id]                Clear the provider's active Goal
+  bb thread clear-goal [id]                Clear the provider's Goal
     --self                                 Target current thread
 
   cancel-plan and clear-goal wait for the provider to confirm.
@@ -48,10 +48,40 @@ Lifecycle:
   failed (`no_failed_turn`) or a turn that already has a retry queued
   (`retry_already_queued`). Without --send-at the retry
   is attempted now, and may still queue behind a busy thread or a plugin.
+  With --send-at, an accepted turn on a thread that already has a retry
+  waiting joins that retry instead of queuing another nudge: the waiting row
+  moves to the new time and the response names it.
+  A newer message sent to the thread overtakes a queued retry: a retry that
+  would continue an accepted turn is dropped, and one carrying input the
+  provider never accepted stays queued as Not sent (`waitingOn.kind`
+  `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
+
+  With the `resumeThreadsAfterRestart` experiment, a
+  turn cut off because a machine's daemon came back as a new process (bb quit,
+  crashed, updated, or the machine restarted) gets a retry with reason "bb
+  restarted", sent a few seconds later. So does an idle thread whose
+  background work, such as a background command it was waiting on, the
+  restart stopped. Its queue row reads "Resume after bb restarted". The retry
+  tells the agent what the restart cut: the
+  command it was running and the background work it stopped, and that the
+  restart, not the user, interrupted them. Turns stopped by the user, threads waiting on a question or
+  approval, and archived threads are left in error. After three of these in a
+  row, bb stops retrying the turn. The parent of a child that resumes hears
+  about it when the child finishes, not when it was cut off. The experiment
+  also puts every queued retry, including `bb thread retry` and provider-retry
+  ones, at the front of the thread's queue: the thread's other queued rows wait
+  behind it (as `thread-busy`) until it sends or is dropped, so messages queued
+  or steered during a restart go out after the resume. A message you send
+  directly, or Send now, still overtakes it.
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
+
+  Archiving an already-archived thread keeps its original archive time and
+  prints when it was archived; `--json` reports `alreadyArchived` and
+  `archivedAt`. The server logs each archive and unarchive with the thread IDs
+  and the caller (app, CLI with the calling BB_THREAD_ID, plugin, or API).
 
   Archive is not a hard stop: for 30 seconds a running turn and the thread's
   terminals keep going, and unarchiving within that window leaves everything in

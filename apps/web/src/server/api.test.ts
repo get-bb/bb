@@ -1,22 +1,24 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  auditLog,
   connectCode,
   labelClaim,
   machine,
   MAX_PER_ACCOUNT,
   NEXT_TUNNEL_STALE_MS,
-  schema,
+  type ConnectDb,
   server,
   sha256Hex,
   user,
+  first,
 } from "@bb/connect-db";
 import {
+  ACCOUNT_DELETE_AUDIT_ACTION,
   type Deps,
   checkAvailability,
   claimHandle,
@@ -24,6 +26,7 @@ import {
   createMachineCodeForServerCredential,
   lookupMachineCodeForServerCredential,
   createServer,
+  deleteAccount,
   disconnectServer,
   removeServer,
   getAccountState,
@@ -32,25 +35,17 @@ import {
   resolveServerUrlTemplate,
   revokeMachineForServerCredential,
   revokeMachine,
+  revokeUnusedDevices,
 } from "./api.js";
 
-const MIGRATIONS_DIR = fileURLToPath(
-  new URL("../../../../packages/connect-db/migrations", import.meta.url),
-);
-
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let database: TestConnectDb;
+let db: ConnectDb;
 let closeTunnel: ReturnType<typeof vi.fn<(subdomain: string) => Promise<void>>>;
 let deps: Deps;
 
-beforeEach(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
-    if (file.endsWith(".sql"))
-      sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-  }
-  db = drizzle(sqlite, { schema });
+beforeEach(async () => {
+  database = await createTestConnectDb();
+  db = database.db;
   closeTunnel = vi.fn<(subdomain: string) => Promise<void>>(async () => {});
   deps = {
     db,
@@ -81,40 +76,38 @@ describe("resolveServerUrlTemplate", () => {
   });
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
 });
 
-function seedUser(id: string, githubLogin?: string): void {
+async function seedUser(id: string, githubLogin?: string): Promise<void> {
   const now = new Date();
-  db.insert(user)
-    .values({
-      id,
-      name: "Test",
-      email: `${id}@example.com`,
-      emailVerified: true,
-      githubLogin: githubLogin ?? null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  await db.insert(user).values({
+    id,
+    name: "Test",
+    email: `${id}@example.com`,
+    emailVerified: true,
+    githubLogin: githubLogin ?? null,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 describe("claimHandle", () => {
   it("creates the profile and the primary server (subdomain = handle)", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     const r = await claimHandle(deps, "u1", "Sawyer");
     expect(r).toEqual({ ok: true, handle: "sawyer" });
 
-    const rows = db.select().from(server).where(eq(server.userId, "u1")).all();
+    const rows = await db.select().from(server).where(eq(server.userId, "u1"));
     expect(rows).toHaveLength(1);
     expect(rows[0].subdomain).toBe("sawyer");
     expect(rows[0].name).toBe("default");
   });
 
   it("rejects reserved, malformed, and already-taken labels", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     expect(await claimHandle(deps, "u1", "admin")).toEqual({
       error: "reserved",
     });
@@ -128,7 +121,7 @@ describe("claimHandle", () => {
   });
 
   it("refuses a second claim for the same account", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     expect(await claimHandle(deps, "u1", "sawyer2")).toEqual({
       error: "already-claimed",
@@ -138,7 +131,7 @@ describe("claimHandle", () => {
 
 describe("checkAvailability", () => {
   it("reports free, invalid, and taken labels distinctly", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     expect(await checkAvailability(deps, "sawyer-desktop")).toEqual({
       available: true,
@@ -159,7 +152,7 @@ describe("checkAvailability", () => {
 
 describe("createServer (connect another bb)", () => {
   it("claims a new label and holds it as an offline row", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const r = await createServer(deps, "u1", "sawyer-desktop");
     expect("ok" in r && r.ok).toBe(true);
@@ -172,15 +165,23 @@ describe("createServer (connect another bb)", () => {
   });
 
   it("enforces the per-account server cap", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    for (let i = 1; i < MAX_PER_ACCOUNT; i++) {
-      expect("ok" in (await createServer(deps, "u1", `sawyer-${i}`))).toBe(
-        true,
-      );
-    }
+    const createdAt = new Date();
+    await db.insert(server).values(
+      Array.from({ length: MAX_PER_ACCOUNT - 2 }, (_, index) => ({
+        id: `seeded-${index + 1}`,
+        userId: "u1",
+        name: `sawyer-${index + 1}`,
+        subdomain: `sawyer-${index + 1}`,
+        createdAt,
+      })),
+    );
     expect(
-      db.select().from(server).where(eq(server.userId, "u1")).all(),
+      "ok" in (await createServer(deps, "u1", `sawyer-${MAX_PER_ACCOUNT - 1}`)),
+    ).toBe(true);
+    expect(
+      await db.select().from(server).where(eq(server.userId, "u1")),
     ).toHaveLength(MAX_PER_ACCOUNT);
     expect(await createServer(deps, "u1", "sawyer-over")).toEqual({
       error: "server-limit",
@@ -188,7 +189,7 @@ describe("createServer (connect another bb)", () => {
   });
 
   it("rejects a label already taken by another server", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     await createServer(deps, "u1", "sawyer-desktop");
     expect(await createServer(deps, "u1", "sawyer-desktop")).toEqual({
@@ -199,16 +200,15 @@ describe("createServer (connect another bb)", () => {
 
 describe("createConnectCode (per-server minting + reuse)", () => {
   async function primaryId(userId: string): Promise<string> {
-    const rows = db
+    const rows = await db
       .select()
       .from(server)
-      .where(eq(server.userId, userId))
-      .all();
+      .where(eq(server.userId, userId));
     return rows[0].id;
   }
 
   it("mints a server-pair code bound to the requested server", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const desktop = await createServer(deps, "u1", "sawyer-desktop");
     if (!("ok" in desktop)) throw new Error("setup");
@@ -220,17 +220,19 @@ describe("createConnectCode (per-server minting + reuse)", () => {
     expect(r.serverUrl).toBe("https://sawyer-desktop.getbb.app");
     expect(r.serverId).toBe(desktop.server.id);
 
-    const row = db
-      .select()
-      .from(connectCode)
-      .where(eq(connectCode.code, r.code))
-      .get();
+    const row = await first(
+      db
+        .select()
+        .from(connectCode)
+        .where(eq(connectCode.code, r.code))
+        .limit(1),
+    );
     expect(row?.serverId).toBe(desktop.server.id);
     expect(row?.purpose).toBe("server-pair");
   });
 
   it("reuses an unexpired code instead of re-minting when reuse=true", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const id = await primaryId("u1");
 
@@ -244,33 +246,31 @@ describe("createConnectCode (per-server minting + reuse)", () => {
     });
     if ("error" in first || "error" in second) throw new Error("mint failed");
     expect(second.code).toBe(first.code);
-    expect(db.select().from(connectCode).all()).toHaveLength(1);
+    expect(await db.select().from(connectCode)).toHaveLength(1);
   });
 
   it("mints a fresh code when reuse is not requested", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const id = await primaryId("u1");
     const first = await createConnectCode(deps, "u1", { serverId: id });
     const second = await createConnectCode(deps, "u1", { serverId: id });
     if ("error" in first || "error" in second) throw new Error("mint failed");
     expect(second.code).not.toBe(first.code);
-    expect(db.select().from(connectCode).all()).toHaveLength(2);
+    expect(await db.select().from(connectCode)).toHaveLength(2);
   });
 });
 
 describe("redeemConnectCode (multi-server routing label)", () => {
   it("returns the redeemed server's subdomain, not the account handle", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const desktop = await createServer(deps, "u1", "sawyer-desktop");
     if (!("ok" in desktop)) throw new Error("setup");
 
-    const primary = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "sawyer"))
-      .get();
+    const primary = await first(
+      db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+    );
     expect(primary?.credentialHash).toBeNull();
 
     const minted = await createConnectCode(deps, "u1", {
@@ -287,30 +287,24 @@ describe("redeemConnectCode (multi-server routing label)", () => {
     expect(result.tunnelUrl).toBe("wss://sawyer-desktop.getbb.app/__tunnel");
     expect(result.credential.startsWith("bbcred_")).toBe(true);
 
-    const second = db
-      .select()
-      .from(server)
-      .where(eq(server.id, desktop.server.id))
-      .get();
+    const second = await first(
+      db.select().from(server).where(eq(server.id, desktop.server.id)).limit(1),
+    );
     expect(second?.credentialHash).toBe(await sha256Hex(result.credential));
     expect(second?.revokedAt).toBeNull();
 
-    const primaryAfter = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "sawyer"))
-      .get();
+    const primaryAfter = await first(
+      db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+    );
     expect(primaryAfter?.credentialHash).toBeNull();
   });
 
   it("returns the primary handle when redeeming a primary-server code", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "sawyer"))
-      .get();
+    const primary = await first(
+      db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+    );
     const minted = await createConnectCode(deps, "u1", {
       serverId: primary!.id,
     });
@@ -326,13 +320,11 @@ describe("redeemConnectCode (multi-server routing label)", () => {
 
   it("returns a ws tunnel URL for local Cloud", async () => {
     deps.serverUrlTemplate = "http://{label}.bb.localhost:42745";
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "sawyer"))
-      .get();
+    const primary = await first(
+      db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+    );
     const minted = await createConnectCode(deps, "u1", {
       serverId: primary!.id,
     });
@@ -346,45 +338,39 @@ describe("redeemConnectCode (multi-server routing label)", () => {
 
 describe("disconnectServer (server-scoped)", () => {
   it("clears only the target server's credential and closes only its tunnel", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const desktop = await createServer(deps, "u1", "sawyer-desktop");
     if (!("ok" in desktop)) throw new Error("setup");
 
-    db.update(server).set({ credentialHash: "hash", revokedAt: null }).run();
+    await db.update(server).set({ credentialHash: "hash", revokedAt: null });
 
     const r = await disconnectServer(deps, "u1", desktop.server.id);
     expect(r).toEqual({ ok: true });
     expect(closeTunnel).toHaveBeenCalledTimes(1);
     expect(closeTunnel).toHaveBeenCalledWith("sawyer-desktop");
 
-    const target = db
-      .select()
-      .from(server)
-      .where(eq(server.id, desktop.server.id))
-      .get();
+    const target = await first(
+      db.select().from(server).where(eq(server.id, desktop.server.id)).limit(1),
+    );
     expect(target?.credentialHash).toBeNull();
     expect(target?.revokedAt).not.toBeNull();
 
-    const primary = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "sawyer"))
-      .get();
+    const primary = await first(
+      db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+    );
     expect(primary?.credentialHash).toBe("hash");
     expect(primary?.revokedAt).toBeNull();
   });
 
   it("refuses a server the caller does not own", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     await claimHandle(deps, "u1", "sawyer");
     await claimHandle(deps, "u2", "other");
-    const victim = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "other"))
-      .get();
+    const victim = await first(
+      db.select().from(server).where(eq(server.subdomain, "other")).limit(1),
+    );
     expect(await disconnectServer(deps, "u1", victim!.id)).toEqual({
       error: "not-found",
     });
@@ -394,7 +380,7 @@ describe("disconnectServer (server-scoped)", () => {
 
 describe("removeServer (delete a never-paired row)", () => {
   it("deletes a never-paired secondary and frees its subdomain for re-claim", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const desktop = await createServer(deps, "u1", "sawyer-desktop");
     if (!("ok" in desktop)) throw new Error("setup");
@@ -403,61 +389,73 @@ describe("removeServer (delete a never-paired row)", () => {
       ok: true,
     });
     expect(
-      db.select().from(server).where(eq(server.id, desktop.server.id)).get(),
+      await first(
+        db
+          .select()
+          .from(server)
+          .where(eq(server.id, desktop.server.id))
+          .limit(1),
+      ),
     ).toBeUndefined();
 
     const avail = await checkAvailability(deps, "sawyer-desktop");
     expect(avail.available).toBe(true);
 
     expect(
-      db.select().from(server).where(eq(server.subdomain, "sawyer")).get(),
+      await first(
+        db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+      ),
     ).toBeDefined();
   });
 
   it("refuses to remove the primary (account handle) row", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "sawyer"))
-      .get();
+    const primary = await first(
+      db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+    );
     expect(await removeServer(deps, "u1", primary!.id)).toEqual({
       error: "is-primary",
     });
     expect(
-      db.select().from(server).where(eq(server.id, primary!.id)).get(),
+      await first(
+        db.select().from(server).where(eq(server.id, primary!.id)).limit(1),
+      ),
     ).toBeDefined();
   });
 
   it("refuses to remove a still-connected secondary (disconnect first)", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const desktop = await createServer(deps, "u1", "sawyer-desktop");
     if (!("ok" in desktop)) throw new Error("setup");
-    db.update(server)
+    await db
+      .update(server)
       .set({ credentialHash: "hash", revokedAt: null })
-      .where(eq(server.id, desktop.server.id))
-      .run();
+      .where(eq(server.id, desktop.server.id));
 
     expect(await removeServer(deps, "u1", desktop.server.id)).toEqual({
       error: "connected",
     });
     expect(
-      db.select().from(server).where(eq(server.id, desktop.server.id)).get(),
+      await first(
+        db
+          .select()
+          .from(server)
+          .where(eq(server.id, desktop.server.id))
+          .limit(1),
+      ),
     ).toBeDefined();
   });
 
   it("refuses a server the caller does not own", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     await claimHandle(deps, "u1", "sawyer");
     await claimHandle(deps, "u2", "other");
-    const victim = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "other"))
-      .get();
+    const victim = await first(
+      db.select().from(server).where(eq(server.subdomain, "other")).limit(1),
+    );
     expect(await removeServer(deps, "u1", victim!.id)).toEqual({
       error: "not-found",
     });
@@ -466,7 +464,7 @@ describe("removeServer (delete a never-paired row)", () => {
 
 describe("getAccountState (adaptive single / multi)", () => {
   it("returns an empty account before a handle is claimed", async () => {
-    seedUser("u1", "sawyerhood");
+    await seedUser("u1", "sawyerhood");
     const state = await getAccountState(deps, "u1");
     expect(state.handle).toBeNull();
     expect(state.servers).toHaveLength(0);
@@ -475,7 +473,7 @@ describe("getAccountState (adaptive single / multi)", () => {
   });
 
   it("returns one server, flagged primary, after a claim", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const state = await getAccountState(deps, "u1");
     expect(state.servers).toHaveLength(1);
@@ -489,7 +487,7 @@ describe("getAccountState (adaptive single / multi)", () => {
   });
 
   it("lists multiple servers with the primary first", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     await createServer(deps, "u1", "sawyer-desktop");
     await createServer(deps, "u1", "sawyer-studio");
@@ -505,18 +503,18 @@ describe("getAccountState (adaptive single / multi)", () => {
   });
 
   it("marks a server online only when credentialed and freshly seen", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    db.update(server)
-      .set({ credentialHash: "hash", revokedAt: null, lastSeenAt: new Date() })
-      .run();
+    await db
+      .update(server)
+      .set({ credentialHash: "hash", revokedAt: null, lastSeenAt: new Date() });
     const online = (await getAccountState(deps, "u1")).servers[0];
     expect(online.connected).toBe(true);
     expect(online.online).toBe(true);
 
-    db.update(server)
-      .set({ lastSeenAt: new Date(Date.now() - 10 * 60 * 1000) })
-      .run();
+    await db
+      .update(server)
+      .set({ lastSeenAt: new Date(Date.now() - 10 * 60 * 1000) });
     const stale = (await getAccountState(deps, "u1")).servers[0];
     expect(stale.connected).toBe(true);
     expect(stale.online).toBe(false);
@@ -525,54 +523,49 @@ describe("getAccountState (adaptive single / multi)", () => {
 
 describe("getAccountState with tunnel objects as the liveness source", () => {
   it("reports servers and labelled machines online from their tunnel objects, not from last_seen_at", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     await createServer(deps, "u1", "sawyer-desktop");
     await createServer(deps, "u1", "sawyer-unpaired");
     const stale = new Date(Date.now() - 60 * 60 * 1000);
     const fresh = new Date();
-    db.update(server)
+    await db
+      .update(server)
       .set({ credentialHash: "hash", revokedAt: null, lastSeenAt: stale })
-      .where(eq(server.subdomain, "sawyer"))
-      .run();
-    db.update(server)
+      .where(eq(server.subdomain, "sawyer"));
+    await db
+      .update(server)
       .set({ credentialHash: "hash-2", revokedAt: null, lastSeenAt: fresh })
-      .where(eq(server.subdomain, "sawyer-desktop"))
-      .run();
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-tunnel",
-          userId: "u1",
-          subdomain: "air",
-          credentialHash: "hash-air",
-          lastSeenAt: stale,
-          createdAt: new Date(1),
-        },
-        {
-          id: "machine-requests",
-          userId: "u1",
-          credentialHash: "hash-requests",
-          lastSeenAt: fresh,
-          createdAt: new Date(2),
-        },
-        {
-          id: "machine-gone",
-          userId: "u1",
-          subdomain: "gone",
-          credentialHash: "hash-gone",
-          lastSeenAt: stale,
-          createdAt: new Date(3),
-        },
-      ])
-      .run();
+      .where(eq(server.subdomain, "sawyer-desktop"));
+    await db.insert(machine).values([
+      {
+        id: "machine-tunnel",
+        userId: "u1",
+        subdomain: "air",
+        credentialHash: "hash-air",
+        lastSeenAt: stale,
+        createdAt: new Date(1),
+      },
+      {
+        id: "machine-requests",
+        userId: "u1",
+        credentialHash: "hash-requests",
+        lastSeenAt: fresh,
+        createdAt: new Date(2),
+      },
+      {
+        id: "machine-gone",
+        userId: "u1",
+        subdomain: "gone",
+        credentialHash: "hash-gone",
+        lastSeenAt: stale,
+        createdAt: new Date(3),
+      },
+    ]);
     const machineRoutingKeys = Object.fromEntries(
-      db
-        .select()
-        .from(labelClaim)
-        .where(eq(labelClaim.kind, "machine"))
-        .all()
-        .map((claim) => [claim.label, `${claim.label}:${claim.generation}`]),
+      (
+        await db.select().from(labelClaim).where(eq(labelClaim.kind, "machine"))
+      ).map((claim) => [claim.label, `${claim.label}:${claim.generation}`]),
     );
     const airKey = machineRoutingKeys.air;
     const goneKey = machineRoutingKeys.gone;
@@ -620,7 +613,7 @@ describe("getAccountState with tunnel objects as the liveness source", () => {
 
 describe("getAccountState with a bb connect next tunnel", () => {
   it("shows servers and machines online while next holds a fresh tunnel, whatever the tunnel object says", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     await createServer(deps, "u1", "sawyer-next");
     await createServer(deps, "u1", "sawyer-stale");
@@ -640,7 +633,8 @@ describe("getAccountState with a bb connect next tunnel", () => {
       },
     } as const;
     for (const [subdomain, next] of Object.entries(nextRows)) {
-      db.update(server)
+      await db
+        .update(server)
         .set({
           credentialHash: `hash-${subdomain}`,
           revokedAt: subdomain === "sawyer-revoked" ? new Date(now) : null,
@@ -649,32 +643,29 @@ describe("getAccountState with a bb connect next tunnel", () => {
           nextTunnelRegion: next.nextTunnelGate === null ? null : "iad",
           nextTunnelAt: next.nextTunnelAt,
         })
-        .where(eq(server.subdomain, subdomain))
-        .run();
+        .where(eq(server.subdomain, subdomain));
     }
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-next",
-          userId: "u1",
-          subdomain: "air",
-          credentialHash: "hash-air",
-          lastSeenAt: stale,
-          nextTunnelGate: "fly-b",
-          nextTunnelRegion: "ams",
-          nextTunnelAt: new Date(now),
-          createdAt: new Date(1),
-        },
-        {
-          id: "machine-off",
-          userId: "u1",
-          subdomain: "off",
-          credentialHash: "hash-off",
-          lastSeenAt: stale,
-          createdAt: new Date(2),
-        },
-      ])
-      .run();
+    await db.insert(machine).values([
+      {
+        id: "machine-next",
+        userId: "u1",
+        subdomain: "air",
+        credentialHash: "hash-air",
+        lastSeenAt: stale,
+        nextTunnelGate: "fly-b",
+        nextTunnelRegion: "ams",
+        nextTunnelAt: new Date(now),
+        createdAt: new Date(1),
+      },
+      {
+        id: "machine-off",
+        userId: "u1",
+        subdomain: "off",
+        credentialHash: "hash-off",
+        lastSeenAt: stale,
+        createdAt: new Date(2),
+      },
+    ]);
 
     const state = await getAccountState(
       { ...deps, tunnelConnected: async () => false },
@@ -697,7 +688,7 @@ describe("getAccountState with a bb connect next tunnel", () => {
 
 describe("pairing code purposes", () => {
   it("refuses a machine code at the server redeem endpoint and leaves it usable for the machine", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const pair = await createConnectCode(deps, "u1", {});
     if ("error" in pair) throw new Error(pair.error);
@@ -714,14 +705,15 @@ describe("pairing code purposes", () => {
       error: "invalid-code",
       status: 404,
     });
-    const row = db
-      .select()
-      .from(server)
-      .where(eq(server.subdomain, "sawyer"))
-      .get();
+    const row = await first(
+      db.select().from(server).where(eq(server.subdomain, "sawyer")).limit(1),
+    );
     expect(row?.credentialHash).toBe(await sha256Hex(paired.credential));
 
-    const redeemed = await redeemMachineCode(deps, machineCode.code, null);
+    const redeemed = await redeemMachineCode(deps, machineCode.code, {
+      name: null,
+      kind: null,
+    });
     expect("error" in redeemed).toBe(false);
   });
 });
@@ -730,18 +722,18 @@ describe("server-authenticated machine-code round trip", () => {
   it.each(["Pixel 9 Pro", null])(
     "mints for the exact server and redeems a device named %s",
     async (deviceName) => {
-      seedUser("u1");
+      await seedUser("u1");
       await claimHandle(deps, "u1", "sawyer");
       const target = await createServer(deps, "u1", "sawyer-desktop");
       if (!("ok" in target)) throw new Error("server setup failed");
       const serverCredential = "bbcred_server_owned";
-      db.update(server)
+      await db
+        .update(server)
         .set({
           credentialHash: await sha256Hex(serverCredential),
           revokedAt: null,
         })
-        .where(eq(server.id, target.server.id))
-        .run();
+        .where(eq(server.id, target.server.id));
 
       const minted = await createMachineCodeForServerCredential(
         deps,
@@ -757,7 +749,10 @@ describe("server-authenticated machine-code round trip", () => {
           minted.code,
         ),
       ).toEqual({ consumed: false, machineId: null });
-      const redeemed = await redeemMachineCode(deps, minted.code, deviceName);
+      const redeemed = await redeemMachineCode(deps, minted.code, {
+        name: deviceName,
+        kind: "mobile",
+      });
       if ("error" in redeemed) throw new Error(redeemed.error);
       expect(
         await lookupMachineCodeForServerCredential(
@@ -771,10 +766,10 @@ describe("server-authenticated machine-code round trip", () => {
       ).toMatchObject({ status: 401 });
       const other = await createServer(deps, "u1", "sawyer-other");
       if (!("ok" in other)) throw new Error("server setup failed");
-      db.update(server)
+      await db
+        .update(server)
         .set({ credentialHash: await sha256Hex("bbcred_other") })
-        .where(eq(server.id, other.server.id))
-        .run();
+        .where(eq(server.id, other.server.id));
       expect(
         await lookupMachineCodeForServerCredential(
           deps,
@@ -784,9 +779,14 @@ describe("server-authenticated machine-code round trip", () => {
       ).toMatchObject({ status: 404 });
       expect(redeemed.credential.startsWith("bbcm_")).toBe(true);
       expect(redeemed.serverUrl).toBe("https://sawyer-desktop.getbb.app");
-      expect(db.select().from(machine).all()).toHaveLength(1);
+      expect(await db.select().from(machine)).toHaveLength(1);
       expect((await getAccountState(deps, "u1")).machines).toEqual([
-        expect.objectContaining({ id: redeemed.machineId, name: deviceName }),
+        expect.objectContaining({
+          id: redeemed.machineId,
+          name: deviceName,
+          kind: "mobile",
+          unused: false,
+        }),
       ]);
       await expect(
         revokeMachineForServerCredential(
@@ -796,32 +796,37 @@ describe("server-authenticated machine-code round trip", () => {
         ),
       ).resolves.toEqual({ ok: true });
       expect(
-        db
-          .select()
-          .from(machine)
-          .where(eq(machine.id, redeemed.machineId))
-          .get()?.revokedAt,
+        (
+          await first(
+            db
+              .select()
+              .from(machine)
+              .where(eq(machine.id, redeemed.machineId))
+              .limit(1),
+          )
+        )?.revokedAt,
       ).not.toBeNull();
-      const revokedAt = db.select().from(machine).get()?.revokedAt;
+      const revokedAt = (await first(db.select().from(machine).limit(1)))
+        ?.revokedAt;
       for (const token of [serverCredential, "bbcred_other"]) {
         await expect(
           revokeMachineForServerCredential(deps, token, redeemed.machineId),
         ).resolves.toEqual({ ok: true });
       }
-      expect(db.select().from(machine).get()?.revokedAt).toEqual(revokedAt);
+      expect(
+        (await first(db.select().from(machine).limit(1)))?.revokedAt,
+      ).toEqual(revokedAt);
       await expect(
         revokeMachineForServerCredential(deps, serverCredential, "missing"),
       ).resolves.toEqual({ error: "not-found", status: 404 });
-      seedUser("foreign");
-      db.insert(machine)
-        .values({
-          id: "foreign-device",
-          userId: "foreign",
-          credentialHash: "foreign-hash",
-          createdAt: new Date(),
-          revokedAt: new Date(),
-        })
-        .run();
+      await seedUser("foreign");
+      await db.insert(machine).values({
+        id: "foreign-device",
+        userId: "foreign",
+        credentialHash: "foreign-hash",
+        createdAt: new Date(),
+        revokedAt: new Date(),
+      });
       await expect(
         revokeMachineForServerCredential(
           deps,
@@ -834,10 +839,10 @@ describe("server-authenticated machine-code round trip", () => {
           revokeMachineForServerCredential(deps, token, redeemed.machineId),
         ).resolves.toEqual({ error: "unauthorized", status: 401 });
       }
-      db.update(server)
+      await db
+        .update(server)
         .set({ revokedAt: new Date() })
-        .where(eq(server.id, target.server.id))
-        .run();
+        .where(eq(server.id, target.server.id));
       await expect(
         revokeMachineForServerCredential(
           deps,
@@ -846,7 +851,7 @@ describe("server-authenticated machine-code round trip", () => {
         ),
       ).resolves.toEqual({ error: "unauthorized", status: 401 });
       await expect(
-        redeemMachineCode(deps, minted.code, null),
+        redeemMachineCode(deps, minted.code, { name: null, kind: null }),
       ).resolves.toMatchObject({
         error: "already-used",
         status: 409,
@@ -855,7 +860,7 @@ describe("server-authenticated machine-code round trip", () => {
   );
 
   it("rejects a bogus server credential", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     await expect(
       createMachineCodeForServerCredential(deps, "bbcred_bogus"),
@@ -865,40 +870,40 @@ describe("server-authenticated machine-code round trip", () => {
 
 describe("dashboard machine recovery", () => {
   it("lists active machines and revokes only the owner's selected credential", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     const now = new Date();
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-owner",
-          userId: "u1",
-          name: "lost laptop",
-          subdomain: "lost-laptop",
-          credentialHash: "hash-owner",
-          lastSeenAt: now,
-          createdAt: now,
-        },
-        {
-          id: "machine-other",
-          userId: "u2",
-          credentialHash: "hash-other",
-          createdAt: now,
-        },
-      ])
-      .run();
-    db.update(labelClaim)
+    await db.insert(machine).values([
+      {
+        id: "machine-owner",
+        userId: "u1",
+        name: "lost laptop",
+        subdomain: "lost-laptop",
+        credentialHash: "hash-owner",
+        lastSeenAt: now,
+        createdAt: now,
+      },
+      {
+        id: "machine-other",
+        userId: "u2",
+        credentialHash: "hash-other",
+        createdAt: now,
+      },
+    ]);
+    await db
+      .update(labelClaim)
       .set({ generation: "lost-generation" })
-      .where(eq(labelClaim.label, "lost-laptop"))
-      .run();
+      .where(eq(labelClaim.label, "lost-laptop"));
 
     expect((await getAccountState(deps, "u1")).machines).toEqual([
       {
         id: "machine-owner",
         name: "lost laptop",
+        kind: null,
         subdomain: "lost-laptop",
         online: true,
         lastSeenAt: now.getTime(),
+        unused: false,
         createdAt: now.getTime(),
       },
     ]);
@@ -916,45 +921,57 @@ describe("dashboard machine recovery", () => {
     });
     expect(closeTunnel).toHaveBeenCalledTimes(1);
     expect(
-      db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
-        ?.subdomain,
+      (
+        await first(
+          db
+            .select()
+            .from(machine)
+            .where(eq(machine.id, "machine-owner"))
+            .limit(1),
+        )
+      )?.subdomain,
     ).toBeNull();
     expect(
-      db.select().from(machine).where(eq(machine.id, "machine-other")).get()
-        ?.revokedAt,
+      (
+        await first(
+          db
+            .select()
+            .from(machine)
+            .where(eq(machine.id, "machine-other"))
+            .limit(1),
+        )
+      )?.revokedAt,
     ).toBeNull();
   });
 
   it("marks a machine online only when freshly seen, offline when stale", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     const now = new Date();
     const stale = new Date(now.getTime() - 10 * 60_000);
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-fresh",
-          userId: "u1",
-          subdomain: "fresh-machine",
-          credentialHash: "hash-fresh",
-          lastSeenAt: now,
-          createdAt: new Date(now.getTime() - 2000),
-        },
-        {
-          id: "machine-stale",
-          userId: "u1",
-          subdomain: "stale-machine",
-          credentialHash: "hash-stale",
-          lastSeenAt: stale,
-          createdAt: new Date(now.getTime() - 1000),
-        },
-        {
-          id: "machine-unlabeled",
-          userId: "u1",
-          credentialHash: "hash-unlabeled",
-          createdAt: now,
-        },
-      ])
-      .run();
+    await db.insert(machine).values([
+      {
+        id: "machine-fresh",
+        userId: "u1",
+        subdomain: "fresh-machine",
+        credentialHash: "hash-fresh",
+        lastSeenAt: now,
+        createdAt: new Date(now.getTime() - 2000),
+      },
+      {
+        id: "machine-stale",
+        userId: "u1",
+        subdomain: "stale-machine",
+        credentialHash: "hash-stale",
+        lastSeenAt: stale,
+        createdAt: new Date(now.getTime() - 1000),
+      },
+      {
+        id: "machine-unlabeled",
+        userId: "u1",
+        credentialHash: "hash-unlabeled",
+        createdAt: now,
+      },
+    ]);
 
     const machines = (await getAccountState(deps, "u1")).machines;
     expect(machines.map((m) => [m.id, m.subdomain, m.online])).toEqual([
@@ -965,73 +982,73 @@ describe("dashboard machine recovery", () => {
   });
 
   it("keeps a revoked label pinned when tunnel close fails", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     const now = new Date();
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-a",
-          userId: "u1",
-          subdomain: "shared-machine",
-          credentialHash: "hash-a",
-          createdAt: now,
-        },
-        {
-          id: "machine-b",
-          userId: "u2",
-          credentialHash: "hash-b",
-          createdAt: now,
-        },
-      ])
-      .run();
-    db.update(labelClaim)
+    await db.insert(machine).values([
+      {
+        id: "machine-a",
+        userId: "u1",
+        subdomain: "shared-machine",
+        credentialHash: "hash-a",
+        createdAt: now,
+      },
+      {
+        id: "machine-b",
+        userId: "u2",
+        credentialHash: "hash-b",
+        createdAt: now,
+      },
+    ]);
+    await db
+      .update(labelClaim)
       .set({ generation: "generation-a" })
-      .where(eq(labelClaim.label, "shared-machine"))
-      .run();
+      .where(eq(labelClaim.label, "shared-machine"));
     closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
 
     await expect(revokeMachine(deps, "u1", "machine-a")).resolves.toEqual({
       error: "tunnel-close-failed",
     });
     expect(
-      db.select().from(machine).where(eq(machine.id, "machine-a")).get()
-        ?.subdomain,
+      (
+        await first(
+          db.select().from(machine).where(eq(machine.id, "machine-a")).limit(1),
+        )
+      )?.subdomain,
     ).toBe("shared-machine");
-    expect(() =>
+    await expect(
       db
         .update(machine)
         .set({ subdomain: "shared-machine" })
-        .where(eq(machine.id, "machine-b"))
-        .run(),
-    ).toThrow(/unique constraint/iu);
+        .where(eq(machine.id, "machine-b")),
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
   });
 
   it("retries a failed machine close during the reachable account-state sweep", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     const now = new Date();
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-retry",
-          userId: "u1",
-          subdomain: "retry-machine",
-          credentialHash: "hash-a",
-          createdAt: now,
-        },
-        {
-          id: "machine-new",
-          userId: "u2",
-          credentialHash: "hash-b",
-          createdAt: now,
-        },
-      ])
-      .run();
-    db.update(labelClaim)
+    await db.insert(machine).values([
+      {
+        id: "machine-retry",
+        userId: "u1",
+        subdomain: "retry-machine",
+        credentialHash: "hash-a",
+        createdAt: now,
+      },
+      {
+        id: "machine-new",
+        userId: "u2",
+        credentialHash: "hash-b",
+        createdAt: now,
+      },
+    ]);
+    await db
+      .update(labelClaim)
       .set({ generation: "generation-a" })
-      .where(eq(labelClaim.label, "retry-machine"))
-      .run();
+      .where(eq(labelClaim.label, "retry-machine"));
     closeTunnel.mockRejectedValueOnce(new Error("close unavailable"));
 
     await expect(revokeMachine(deps, "u1", "machine-retry")).resolves.toEqual({
@@ -1041,46 +1058,43 @@ describe("dashboard machine recovery", () => {
     await getAccountState(deps, "u1");
     expect(closeTunnel).toHaveBeenCalledTimes(2);
     expect(
-      db
-        .select()
-        .from(labelClaim)
-        .where(eq(labelClaim.label, "retry-machine"))
-        .get(),
+      await first(
+        db
+          .select()
+          .from(labelClaim)
+          .where(eq(labelClaim.label, "retry-machine"))
+          .limit(1),
+      ),
     ).toBeUndefined();
-    expect(() =>
-      db
-        .update(machine)
-        .set({ subdomain: "retry-machine" })
-        .where(eq(machine.id, "machine-new"))
-        .run(),
-    ).not.toThrow();
+    await db
+      .update(machine)
+      .set({ subdomain: "retry-machine" })
+      .where(eq(machine.id, "machine-new"));
   });
 
   it("does not release a label until delayed close confirms, then gives the new owner a new generation", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     const now = new Date();
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-a",
-          userId: "u1",
-          subdomain: "shared-machine",
-          credentialHash: "hash-a",
-          createdAt: now,
-        },
-        {
-          id: "machine-b",
-          userId: "u2",
-          credentialHash: "hash-b",
-          createdAt: now,
-        },
-      ])
-      .run();
-    db.update(labelClaim)
+    await db.insert(machine).values([
+      {
+        id: "machine-a",
+        userId: "u1",
+        subdomain: "shared-machine",
+        credentialHash: "hash-a",
+        createdAt: now,
+      },
+      {
+        id: "machine-b",
+        userId: "u2",
+        credentialHash: "hash-b",
+        createdAt: now,
+      },
+    ]);
+    await db
+      .update(labelClaim)
       .set({ generation: "generation-a" })
-      .where(eq(labelClaim.label, "shared-machine"))
-      .run();
+      .where(eq(labelClaim.label, "shared-machine"));
     let confirmClose: (() => void) | undefined;
     closeTunnel.mockImplementationOnce(
       () =>
@@ -1091,26 +1105,219 @@ describe("dashboard machine recovery", () => {
 
     const revocation = revokeMachine(deps, "u1", "machine-a");
     await vi.waitFor(() => expect(closeTunnel).toHaveBeenCalledTimes(1));
-    expect(() =>
+    await expect(
       db
         .update(machine)
         .set({ subdomain: "shared-machine" })
-        .where(eq(machine.id, "machine-b"))
-        .run(),
-    ).toThrow(/unique constraint/iu);
+        .where(eq(machine.id, "machine-b")),
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
 
     confirmClose?.();
     await expect(revocation).resolves.toEqual({ ok: true });
-    expect(() =>
-      db
-        .update(machine)
-        .set({ subdomain: "shared-machine" })
-        .where(eq(machine.id, "machine-b"))
-        .run(),
-    ).not.toThrow();
-    expect(db.select().from(labelClaim).get()).toMatchObject({
+    await db
+      .update(machine)
+      .set({ subdomain: "shared-machine" })
+      .where(eq(machine.id, "machine-b"));
+    expect(await first(db.select().from(labelClaim).limit(1))).toMatchObject({
       ownerId: "machine-b",
       generation: expect.stringMatching(/^[a-f0-9]{32}$/u),
     });
+  });
+});
+
+describe("device cleanup", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function seedMachines(now: number) {
+    await seedUser("u1");
+    await db.insert(machine).values([
+      {
+        id: "abandoned-phone",
+        userId: "u1",
+        kind: "mobile",
+        credentialHash: "h1",
+        createdAt: new Date(now - 20 * DAY),
+      },
+      {
+        id: "legacy-never-seen",
+        userId: "u1",
+        credentialHash: "h2",
+        createdAt: new Date(now - 20 * DAY),
+      },
+      {
+        id: "idle-desktop",
+        userId: "u1",
+        kind: "desktop",
+        credentialHash: "h3",
+        lastSeenAt: new Date(now - 20 * DAY),
+        createdAt: new Date(now - 40 * DAY),
+      },
+      {
+        id: "recent-phone",
+        userId: "u1",
+        kind: "mobile",
+        credentialHash: "h4",
+        lastSeenAt: new Date(now - DAY),
+        createdAt: new Date(now - 40 * DAY),
+      },
+      {
+        id: "fresh-pairing",
+        userId: "u1",
+        kind: "mobile",
+        credentialHash: "h5",
+        createdAt: new Date(now - DAY),
+      },
+    ]);
+  }
+
+  async function activeIds(): Promise<string[]> {
+    return (
+      await db
+        .select({ id: machine.id })
+        .from(machine)
+        .where(isNull(machine.revokedAt))
+    )
+      .map((row) => row.id)
+      .sort();
+  }
+
+  it("auto-revokes only current-client pairings never used in 14 days", async () => {
+    await seedMachines(Date.now());
+
+    const machines = (await getAccountState(deps, "u1")).machines;
+
+    expect(Object.fromEntries(machines.map((m) => [m.id, m.unused]))).toEqual({
+      "idle-desktop": true,
+      "legacy-never-seen": true,
+      "recent-phone": false,
+      "fresh-pairing": false,
+    });
+    expect(await activeIds()).toEqual([
+      "fresh-pairing",
+      "idle-desktop",
+      "legacy-never-seen",
+      "recent-phone",
+    ]);
+  });
+
+  it("removes every unused device on request and keeps the rest", async () => {
+    await seedMachines(Date.now());
+
+    await expect(revokeUnusedDevices(deps, "u1")).resolves.toEqual({
+      ok: true,
+      revoked: 3,
+    });
+    expect(await activeIds()).toEqual(["fresh-pairing", "recent-phone"]);
+  });
+
+  it("never marks a device with a live tunnel unused", async () => {
+    await seedUser("u1");
+    await db.insert(machine).values({
+      id: "tunnelled-host",
+      userId: "u1",
+      kind: "host",
+      subdomain: "build-box",
+      credentialHash: "h1",
+      lastSeenAt: new Date(Date.now() - 30 * DAY),
+      createdAt: new Date(Date.now() - 60 * DAY),
+    });
+    const live = { ...deps, tunnelConnected: async () => true };
+
+    expect((await getAccountState(live, "u1")).machines).toEqual([
+      expect.objectContaining({
+        id: "tunnelled-host",
+        online: true,
+        unused: false,
+      }),
+    ]);
+    await expect(revokeUnusedDevices(live, "u1")).resolves.toEqual({
+      ok: true,
+      revoked: 0,
+    });
+  });
+});
+
+describe("deleteAccount", () => {
+  async function seedAccount() {
+    await seedUser("u1", "sawyer-gh");
+    await seedUser("u2");
+    await claimHandle(deps, "u1", "sawyer");
+    await claimHandle(deps, "u2", "other");
+    const desktop = await createServer(deps, "u1", "sawyer-desktop");
+    if (!("ok" in desktop)) throw new Error("setup");
+    await db
+      .update(server)
+      .set({ credentialHash: "server-hash", revokedAt: null })
+      .where(eq(server.id, desktop.server.id));
+    await db.insert(machine).values({
+      id: "host",
+      userId: "u1",
+      kind: "host",
+      subdomain: "sawyer-box",
+      credentialHash: "machine-hash",
+      createdAt: new Date(),
+    });
+    await db
+      .update(labelClaim)
+      .set({ generation: "box-generation" })
+      .where(eq(labelClaim.label, "sawyer-box"));
+  }
+
+  it("refuses when the typed handle does not match", async () => {
+    await seedAccount();
+
+    await expect(deleteAccount(deps, "u1", "sawyre")).resolves.toEqual({
+      error: "handle-mismatch",
+    });
+    expect(
+      await first(db.select().from(user).where(eq(user.id, "u1")).limit(1)),
+    ).toBeDefined();
+    expect(closeTunnel).not.toHaveBeenCalled();
+  });
+
+  it("refuses an account that has no handle to confirm with", async () => {
+    await seedUser("u1", "sawyer-gh");
+
+    await expect(deleteAccount(deps, "u1", "")).resolves.toEqual({
+      error: "no-handle",
+    });
+    expect(
+      await first(db.select().from(user).where(eq(user.id, "u1")).limit(1)),
+    ).toBeDefined();
+  });
+
+  it("deletes the account, frees its addresses, and closes its tunnels", async () => {
+    await seedAccount();
+
+    await expect(deleteAccount(deps, "u1", " Sawyer ")).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(
+      await first(db.select().from(user).where(eq(user.id, "u1")).limit(1)),
+    ).toBeUndefined();
+    expect(
+      await db.select().from(server).where(eq(server.userId, "u1")),
+    ).toEqual([]);
+    expect(
+      await db.select().from(machine).where(eq(machine.userId, "u1")),
+    ).toEqual([]);
+    for (const label of ["sawyer", "sawyer-desktop", "sawyer-box"]) {
+      expect((await checkAvailability(deps, label)).available).toBe(true);
+    }
+    expect((await checkAvailability(deps, "other")).available).toBe(false);
+    expect(closeTunnel.mock.calls.map(([key]) => key).sort()).toEqual([
+      "sawyer",
+      "sawyer-box:box-generation",
+      "sawyer-desktop",
+    ]);
+    expect(
+      await db
+        .select({ userId: auditLog.userId, action: auditLog.action })
+        .from(auditLog)
+        .where(eq(auditLog.action, ACCOUNT_DELETE_AUDIT_ACTION)),
+    ).toEqual([{ userId: null, action: ACCOUNT_DELETE_AUDIT_ACTION }]);
   });
 });

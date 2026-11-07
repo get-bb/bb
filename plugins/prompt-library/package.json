@@ -6,7 +6,7 @@
   "description": "Search previous prompts, star favorites, and insert them into the composer.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.15"
+    "bbPluginSdk": ">=0.6.109"
   },
   "bb": {
     "name": "Prompt Library",
@@ -28,25 +28,25 @@
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "better-sqlite3": "12.10.0",
-    "cron-parser": "^5.5.0",
-    "hono": "4.11.9",
-    "jsdom": "^29.0.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "better-sqlite3": "12.11.1",
+    "cron-parser": "^5.10.3",
+    "hono": "4.13.16",
+    "jsdom": "^29.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   }
 }

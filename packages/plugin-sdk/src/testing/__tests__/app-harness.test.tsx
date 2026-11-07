@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { makePanelController } from "../fixtures.js";
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -568,6 +569,40 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.experimental_appOverlay: duplicate id "office"');
+  });
+
+  it("captures and validates setup guide section registrations", async () => {
+    function Section() {
+      return <li>section</li>;
+    }
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.internal_DO_NOT_USE_setupGuideSection({
+          id: "connect",
+          component: Section,
+        });
+      }),
+    );
+
+    expect(captured.setupGuideSections).toEqual([
+      { id: "connect", component: Section },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.internal_DO_NOT_USE_setupGuideSection({
+            id: "connect",
+            component: Section,
+          });
+          builder.slots.internal_DO_NOT_USE_setupGuideSection({
+            id: "connect",
+            component: Section,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.internal_DO_NOT_USE_setupGuideSection: duplicate id "connect"',
+    );
   });
 
   it("captures and validates New thread panel action registrations", async () => {
@@ -1341,6 +1376,51 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
   });
 
+  it("validates message metadata components and placement", async () => {
+    const component = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_messageMetadata({
+          id: "timestamp",
+          placement: "above",
+          component,
+        });
+      }),
+    );
+    expect(captured.messageMetadata[0]?.placement).toBe("above");
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad-placement",
+            placement: "outside" as never,
+            component,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"placement" must be "above" or "actionRow"');
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad",
+            component: undefined as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"component" must be a React component');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_messageMetadata: duplicate id "dup"');
+  });
+
   it("collects separate provider kinds and the legacy all-kinds registration", async () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
@@ -1432,11 +1512,11 @@ describe("loadPluginApp", () => {
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", () => {
-    const experimental_panel = {
+    const experimental_panel = makePanelController({
       openTab: () => true,
       toggleTab: () => true,
       close: () => true,
-    };
+    });
     app.messageActions[0]!.run({
       threadId: "thr_main",
       message: {
@@ -2143,6 +2223,7 @@ describe("thread actions menu fake", () => {
     id: "thr_menu",
     projectId: "proj_menu",
     parentThreadId: null,
+    parentNotifications: "auto" as const,
     archivedAt: null,
     pinnedAt: null,
     sectionId: null,

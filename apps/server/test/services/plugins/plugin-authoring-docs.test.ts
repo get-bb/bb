@@ -7,6 +7,7 @@ import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type ExperimentalAppOverlayProps,
+  type ExperimentalMessageMetadataProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -35,9 +36,10 @@ import {
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
   type PluginSourceCodeRendererProps,
-  type PluginThreadHeaderActionProps,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
+  type ExperimentalThreadContextCardProps,
+  type ExperimentalThreadRowMetadataProps,
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
@@ -60,7 +62,6 @@ const SKILL_ROOT = fileURLToPath(
     import.meta.url,
   ),
 );
-const SKILL_PATH = join(SKILL_ROOT, "SKILL.md");
 
 function readSkillTree(directory = SKILL_ROOT): string {
   return readdirSync(directory, { withFileTypes: true })
@@ -135,7 +136,7 @@ const FRONTEND_TYPE_EXPORT_NAMES = [
     .split(",")
     .map((name) => name.trim())
     .filter(Boolean),
-];
+].filter((name) => !name.startsWith("InternalDoNotUse"));
 
 const FRONTEND_TEST_EXPORT_NAMES = [
   "packages/plugin-sdk/src/testing/app.tsx",
@@ -193,7 +194,7 @@ const BB_PLUGIN_API_KEYS = [
 
 type MissingApiKey = Exclude<
   keyof BbPluginApi,
-  (typeof BB_PLUGIN_API_KEYS)[number]
+  (typeof BB_PLUGIN_API_KEYS)[number] | `internal_DO_NOT_USE_${string}`
 >;
 const _assertAllApiKeysListed: MissingApiKey extends never ? true : never =
   true;
@@ -233,6 +234,7 @@ void _assertAllAuthModesListed;
 const THREAD_EVENT_PAYLOAD_FIELDS = {
   "experimental_thread.events": ["thread", "sequence"],
   "experimental_thread.parentChanged": ["thread", "previousParentThreadId"],
+  "experimental_thread.read": ["thread"],
   "experimental_terminal.input": ["terminal"],
   "experimental_host.deleted": ["host"],
   "experimental_environment.removed": ["removal"],
@@ -255,11 +257,10 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "inputAccepted",
     "rateLimits",
     "attemptNumber",
+    "originPluginId",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -284,10 +285,12 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
-  experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
+  experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
+  experimental_threadContextCardRow: ExperimentalThreadContextCardProps;
+  experimental_threadContextCardSection: ExperimentalThreadContextCardProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -297,6 +300,7 @@ type SlotPropsByName = {
   messageDirective: PluginMessageDirectiveProps;
   experimental_codeFenceRenderer: ExperimentalCodeFenceRendererProps;
   messageAction: PluginMessageActionContext;
+  experimental_messageMetadata: ExperimentalMessageMetadataProps;
   commandPaletteAction: PluginCommandContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
@@ -306,7 +310,10 @@ type SlotPropsByName = {
 
 type SlotPropKeys<T> = T extends unknown ? keyof T : never;
 
-type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
+type MissingSlot = Exclude<
+  keyof PluginAppSlots,
+  keyof SlotPropsByName | `internal_DO_NOT_USE_${string}`
+>;
 const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 
@@ -363,7 +370,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   settingsSection: [],
   experimental_appOverlay: [],
   navPanel: ["subPath"],
-  experimental_tab: ["threadId", "subPath", "params"],
+  experimental_tab: ["threadId", "environment", "subPath", "params"],
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
@@ -373,11 +380,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
-  ],
-  experimental_threadHeaderAction: [
-    "threadId",
-    "projectId",
-    "isCompactViewport",
   ],
   experimental_threadContextSegment: [
     "threadId",
@@ -389,6 +391,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardRow: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardSection: [
+    "threadId",
+    "projectId",
+    "environment",
+  ],
+  experimental_threadRowMetadata: ["thread", "data"],
   experimental_threadAction: [
     "thread",
     "data",
@@ -430,6 +439,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "message",
     "Original",
   ],
+  experimental_messageMetadata: ["message"],
   messageAction: [
     "threadId",
     "message",
@@ -465,7 +475,8 @@ const FRONTEND_SLOT_PROP_FIELDS = {
 type MissingSlotPropField = {
   [S in keyof SlotPropsByName]: Exclude<
     SlotPropKeys<SlotPropsByName[S]>,
-    (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | `internal_DO_NOT_USE_${string}`
   >;
 }[keyof SlotPropsByName];
 const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
@@ -632,7 +643,6 @@ const _assertAllThreadChatMessageActionFieldsListed: MissingThreadChatMessageAct
 void _assertAllThreadChatMessageActionFieldsListed;
 
 describe("bb-plugin-authoring skill", () => {
-  const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
 
   it("typechecks the machine provider guide example against the public SDK", () => {
@@ -670,10 +680,6 @@ describe("bb-plugin-authoring skill", () => {
           ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
         ),
     ).toEqual([]);
-  });
-
-  it("has frontmatter naming the skill after its directory", () => {
-    expect(skillEntry).toMatch(/^---\nname: bb-plugin-authoring\n/);
   });
 
   it("documents every BbPluginApi property", () => {

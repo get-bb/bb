@@ -19,6 +19,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { whichCommandSync } from "which-command";
+import { prepareNodeNetworkCommand } from "./node-network.js";
 
 const NETWORK_KEYS = [
   "HTTP_PROXY",
@@ -484,7 +485,8 @@ export class HostToolchain {
     if (/(?:^|[\\/])(?:npm|npx)-cli\.js$/u.test(args[0] ?? "")) {
       env.PATH = mergePath(dirname(file), env.PATH);
     }
-    return { command: file, args: [...args], env };
+    const network = prepareNodeNetworkCommand(args, env);
+    return { command: file, args: network.args, env: network.env };
   }
 }
 

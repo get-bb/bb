@@ -858,6 +858,8 @@ describe("plugin service", () => {
           provenance: "direct",
           marketplace: null,
           source_kind: "path",
+          is_fresh_install: true,
+          entry_id: null,
         },
       },
     ]);
@@ -870,6 +872,25 @@ describe("plugin service", () => {
     );
     expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
     expect(captured).toHaveLength(1);
+    await tracked.stop();
+  });
+
+  it("marks a reinstall of an installed plugin as not fresh", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-reinstalled",
+      serverSource: "export default function plugin() {}",
+    });
+    await tracked.installPath(rootDir);
+    await tracked.installPath(rootDir);
+    expect(
+      captured.map((event) =>
+        event.name === "plugin_installed"
+          ? event.properties.is_fresh_install
+          : undefined,
+      ),
+    ).toEqual([true, false]);
     await tracked.stop();
   });
 
@@ -907,27 +928,35 @@ describe("plugin service", () => {
         subdirectory: null,
         selector: { kind: "ref", ref: "main", refKind: "branch" },
       },
+      true,
     ).properties;
     expect(properties).toEqual({
       plugin_id: null,
       provenance: "catalog",
       marketplace: null,
       source_kind: "git",
+      is_fresh_install: true,
+      entry_id: null,
     });
-    expect(
-      pluginInstalledTelemetryEvent(
-        "tasks",
-        { kind: "builtin" },
-        { kind: "builtin", name: "tasks" },
-      ).properties.plugin_id,
-    ).toBe("tasks");
+    const builtin = pluginInstalledTelemetryEvent(
+      "tasks",
+      { kind: "builtin" },
+      { kind: "builtin", name: "tasks" },
+      true,
+    ).properties;
+    expect(builtin.plugin_id).toBe("tasks");
+    expect(builtin.entry_id).toBeNull();
   });
 
   it("names public plugins in the install event so PostHog can rank them", () => {
     expect(
       pluginInstalledTelemetryEvent(
         "tasks",
-        { kind: "catalog", marketplace: "bb-community", entryId: "tasks" },
+        {
+          kind: "catalog",
+          marketplace: "bb-community",
+          entryId: "tasks-entry",
+        },
         {
           kind: "npm",
           packageName: "@get-bb/tasks",
@@ -935,12 +964,15 @@ describe("plugin service", () => {
           requestedSpec: "^1",
           specKind: "range",
         },
+        true,
       ).properties,
     ).toEqual({
       plugin_id: "tasks",
       provenance: "catalog",
       marketplace: "bb-community",
       source_kind: "npm",
+      is_fresh_install: true,
+      entry_id: "tasks-entry",
     });
   });
 
@@ -1390,6 +1422,82 @@ describe("plugin service", () => {
     });
   });
 
+  it("copies a path plugin out of a directory bb is deleting and keeps running it from the copy", async () => {
+    const storage = join(workDir, "data", "thread-storage", "thr_kept");
+    const inside = await writePlugin(storage, {
+      name: "bb-plugin-kept",
+      serverSource: `
+        export default function plugin(bb) {
+          bb.settings.define({
+            token: { type: "string", label: "Token", secret: true },
+          });
+        }`,
+    });
+    await mkdir(join(inside, "lib"), { recursive: true });
+    await writeFile(join(inside, "lib", "helper.js"), "export {};\n");
+    const outside = await writePlugin(join(workDir, "elsewhere"), {
+      name: "bb-plugin-elsewhere",
+      serverSource: `export default function plugin() {}`,
+    });
+    const preserved = join(
+      workDir,
+      "data",
+      "plugins",
+      "kept",
+      "preserved-source",
+    );
+    expect((await service.installPath(inside)).sourceNotice).toBe(
+      `Installed from a thread's storage folder. When bb deletes that thread, it copies this plugin to ${preserved} and runs it from there.`,
+    );
+    expect((await service.installPath(outside)).sourceNotice).toBeNull();
+    await service.updateSettings("kept", { token: "s3cret" });
+
+    await service.preservePathPluginsInside(storage);
+    await rm(storage, { recursive: true, force: true });
+    await service.reload("kept");
+
+    expect(service.list().find((p) => p.id === "kept")).toMatchObject({
+      source: `path:${preserved}`,
+      status: "running",
+      sourceNotice: null,
+    });
+    expect(await readFile(join(preserved, "lib", "helper.js"), "utf8")).toBe(
+      "export {};\n",
+    );
+    expect((await service.getSettings("kept"))?.values).toEqual({
+      token: { set: true },
+    });
+    expect(getInstalledPlugin(db, "elsewhere")?.sourcePath).toBe(outside);
+  });
+
+  it("keeps the copied files when the plugin cannot move to them", async () => {
+    const storage = join(workDir, "data", "thread-storage", "thr_brittle");
+    const inside = await writePlugin(storage, {
+      name: "bb-plugin-brittle-copy",
+      serverSource: `
+        export default function plugin() {
+          if (!import.meta.url.includes("thread-storage")) {
+            throw new Error("boom outside storage");
+          }
+        }`,
+    });
+    await service.installPath(inside);
+
+    await service.preservePathPluginsInside(storage);
+
+    const preserved = join(
+      workDir,
+      "data",
+      "plugins",
+      "brittle-copy",
+      "preserved-source",
+    );
+    expect(getInstalledPlugin(db, "brittle-copy")?.sourcePath).toBe(inside);
+    expect(await readFile(join(preserved, "server.ts"), "utf8")).toContain(
+      "boom outside storage",
+    );
+  });
+
   it("keeps a moved path plugin disabled instead of starting it", async () => {
     const serverSource = (marker: string) => `
       export default function plugin() {
@@ -1481,8 +1589,7 @@ describe("plugin service", () => {
     });
   });
 
-  it("warns when a path plugin is installed from inside a managed workspace", async () => {
-    const warnSpy = vi.spyOn(logger, "warn");
+  it("tells the user to reinstall a path plugin installed from bb's data folder", async () => {
     const managedRoot = join(
       workDir,
       "data",
@@ -1497,15 +1604,12 @@ describe("plugin service", () => {
     await mkdir(dirname(managedRoot), { recursive: true });
     await rename(written, managedRoot);
 
-    await service.installPath(managedRoot);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("bb-managed workspace"),
+    expect((await service.installPath(managedRoot)).sourceNotice).toBe(
+      `Installed from inside bb's data folder, where bb can delete it. Reinstall it from a folder outside ${join(workDir, "data")} to keep it.`,
     );
   });
 
-  it("does not warn for a plugin installed from a directory a provider only attached to", async () => {
-    const warnSpy = vi.spyOn(logger, "warn");
-    warnSpy.mockClear();
+  it("adds no notice for a plugin installed from a directory a provider only attached to", async () => {
     const checkoutRoot = await writePlugin(join(workDir, "checkout"), {
       name: "bb-plugin-attached",
       serverSource: `export default function plugin() {}`,
@@ -1516,10 +1620,7 @@ describe("plugin service", () => {
       providerOwnsPath: false,
     });
 
-    await service.installPath(checkoutRoot);
-    expect(warnSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("bb-managed workspace"),
-    );
+    expect((await service.installPath(checkoutRoot)).sourceNotice).toBeNull();
   });
 
   it("warns for a plugin installed inside a directory a provider owns", async () => {

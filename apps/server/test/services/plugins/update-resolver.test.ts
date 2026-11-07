@@ -74,7 +74,11 @@ describe("npm update candidate selection", () => {
   it("selects an older compatible range candidate and reports the newer block", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("^1.0.0", "range"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.5.0",
       run: createNpmResolverRun({
         fetch: packumentFetch({
@@ -99,7 +103,11 @@ describe("npm update candidate selection", () => {
   it("enforces SDK compatibility and returns incompatible when none match", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("", "default"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.5.0",
       run: createNpmResolverRun({
         fetch: packumentFetch({
@@ -129,7 +137,11 @@ describe("npm update candidate selection", () => {
     });
     const stable = await resolveNpmUpdate({
       intent: npmIntent("", "default"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run: createNpmResolverRun({ fetch }),
     });
@@ -137,6 +149,7 @@ describe("npm update candidate selection", () => {
       intent: npmIntent(">=1.0.0-beta.1 <1.0.0", "range"),
       current: {
         version: "1.0.0-alpha.1",
+        label: "1.0.0-alpha.1",
         display: "bb-plugin-matrix@1.0.0-alpha.1",
       },
       appVersion: "1.0.0",
@@ -156,7 +169,11 @@ describe("npm update candidate selection", () => {
   it("labels dev mode, ignores engines.bb for selection, and still enforces SDK", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("", "default"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "0.0.0",
       run: createNpmResolverRun({
         fetch: packumentFetch({
@@ -182,13 +199,21 @@ describe("npm update candidate selection", () => {
     });
     const tagged = await resolveNpmUpdate({
       intent: npmIntent("next", "tag"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run,
     });
     const exact = await resolveNpmUpdate({
       intent: npmIntent("1.0.0", "exact"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run,
     });
@@ -198,14 +223,22 @@ describe("npm update candidate selection", () => {
     });
     expect(exact).toEqual({
       outcome: "pinned",
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
     });
   });
 
   it("binds a registry version when the registry omits integrity", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("next", "tag"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run: createNpmResolverRun({
         fetch: async () =>

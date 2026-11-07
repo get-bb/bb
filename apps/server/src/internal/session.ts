@@ -210,8 +210,9 @@ export function registerInternalSessionRoutes(
       hasMachineCredential: payload.hasMachineCredential,
     });
 
-    await handleHostSessionOpened(deps, {
+    const { endedInteractiveRequests } = await handleHostSessionOpened(deps, {
       activeThreads: payload.activeThreads,
+      openThreadWork: payload.openThreadWork,
       hostId: daemon.hostId,
       undeliveredEventThreadIds: payload.undeliveredEventThreadIds,
       openedSession: session,
@@ -247,6 +248,7 @@ export function registerInternalSessionRoutes(
           : {}),
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
+        endedInteractiveRequests,
         machineEnvironment: await machineEnvironment.snapshot(daemon.hostId),
         idleProviderSessionTimeoutMinutes: getAppSettings(deps.db)
           .idleProviderSessionTimeoutMinutes,

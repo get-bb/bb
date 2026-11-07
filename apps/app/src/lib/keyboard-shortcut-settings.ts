@@ -1,5 +1,6 @@
 import { shortcutsConflict } from "./plugin-command-keybindings";
 import {
+  QUESTION_ACTION_APP_COMMAND_IDS,
   QUESTION_SELECT_APP_COMMAND_IDS,
   isAppKeybindingAvailableForClient,
   keyboardPlatform,
@@ -15,9 +16,10 @@ import {
 } from "@bb/domain";
 
 const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "OS", "Shift"]);
-const QUESTION_COMMANDS = new Set<KeyboardCommandId>(
-  QUESTION_SELECT_APP_COMMAND_IDS,
-);
+const QUESTION_COMMANDS = new Set<KeyboardCommandId>([
+  ...QUESTION_SELECT_APP_COMMAND_IDS,
+  ...QUESTION_ACTION_APP_COMMAND_IDS,
+]);
 
 export function appShortcutFromInput(
   input: AppShortcutInput,

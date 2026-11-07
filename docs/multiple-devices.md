@@ -95,8 +95,9 @@ Phones and tablets need no helper; editor-launch actions are simply unavailable.
 
 The bb mobile app is a client for a bb server; it runs nothing itself. Over
 bb connect it pairs the same way the desktop app does: the phone enrolls as a
-connect machine with its own credential, which the getbb.app dashboard lists
-and can revoke.
+connect machine with its own credential, which works for every bb on the
+account. The getbb.app dashboard lists the phone under Devices, where you
+can remove it.
 
 1. Sign the bb server in to your bb account first (Settings → bb account, `bb account login`, or `bb connect --code …`).
 2. Mint a pairing code for the phone: Settings → Mobile → **Add mobile device** (QR code plus the code as text, with a countdown), or run
@@ -107,14 +108,18 @@ and can revoke.
 
 The phone keeps its credential in the device keychain and mints sessions from
 it; it never holds the server's pairing secret. A session lasts seven days and
-renews while the phone is in use. To cut a phone off, revoke it in the
-getbb.app dashboard machine list; its session stops working within about 20
-seconds. Every phone takes one of
-the account's machine slots, so a machine-limit error means an unused device
-should be revoked first. On a trusted network the app can also use a direct
-server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
-caveats as a browser. What the phone cannot do is listed in
+renews while the phone is in use. To cut a phone off, remove it from the
+getbb.app dashboard; its session stops working within about 20 seconds.
+Every phone
+takes one of the account's machine slots, so a machine-limit error means an
+unused device should be removed first. On a trusted network the app can also
+use a direct server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with
+the same caveats as a browser. What the phone cannot do is listed in
 [platform-support.md](platform-support.md#mobile-app).
+
+The dashboard folds devices that have not been used for 14 days under "Show N
+unused"; expanding the fold offers **Remove N unused**. A device paired by a current
+bb app that is never used within 14 days of pairing is removed automatically.
 
 ### Push notifications on a self-hosted server
 
@@ -136,8 +141,9 @@ To reach bb connect without a local server, the app enrolls itself once as a
 connect machine. That step needs the local server, so the first switch to a
 remote server still starts it. The app keeps its own credential, encrypted with
 the OS keychain, and never holds the server's pairing secret. The app appears in
-the getbb.app dashboard machine list, where you can revoke it. After a revoke,
-the app drops the credential and asks the local server again.
+the getbb.app dashboard under Devices, named after the computer, where
+you can remove it. After a removal, the app drops the
+credential and asks the local server again.
 
 A remote server has no realtime link for keybindings and theme. The app re-reads
 them when it starts, when it becomes active, and every five minutes.
@@ -212,7 +218,7 @@ After it connects:
 
 Machine names are conveniences and may be duplicated; CLI targeting by name
 requires an unambiguous match. IDs are always accepted. Removing a machine from
-Settings stops bb from dispatching new work to it; revoke a lost machine's bb
+Settings stops bb from dispatching new work to it; remove a lost machine's bb
 connect access from the getbb.app dashboard as well.
 
 Browser access and execution remain independent: opening bb on a laptop does

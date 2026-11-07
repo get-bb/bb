@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { threadEventRowSchema, turnScope } from "@bb/domain";
+import { parseSentThreadMessage } from "@bb/thread-view";
 import {
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   events,
@@ -936,6 +937,120 @@ describe("GET /threads/:id/timeline retained output details", () => {
 });
 
 describe("GET /threads/:id/timeline delegated rows", () => {
+  it("preserves successful message commands through deferred timeline reads", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const recipient = "thr_abcdefghjk";
+      const message = "A message for the receiving thread. ".repeat(40);
+      const quoted = `bb thread tell ${recipient} '${message}'`;
+      const heredoc = `bb thread tell ${recipient} --message-file - <<'MESSAGE'\n${message}\nMESSAGE`;
+      const cases = [
+        { command: quoted, exitCode: 0, output: "sent", message },
+        { command: heredoc, exitCode: 0, output: "sent", message },
+        {
+          command: `bb thread tell ${recipient} 'short'`,
+          exitCode: 0,
+          output: "acknowledgement".repeat(100),
+          message: "short",
+        },
+        {
+          command: `bb thread tell ${recipient} '${"brief ".repeat(60)}'`,
+          exitCode: 0,
+          output: "sent",
+          message: "brief ".repeat(60),
+        },
+        { command: quoted, exitCode: 1, output: "failed", message: null },
+        {
+          command: `${quoted} && printf done`,
+          exitCode: 0,
+          output: "done",
+          message: null,
+        },
+        {
+          command: `bb thread tell ${recipient} --message-file /tmp/message.txt`,
+          exitCode: 0,
+          output: "acknowledgement".repeat(100),
+          message: null,
+        },
+      ];
+      const turn = {
+        environmentId: environment.id,
+        providerThreadId: "provider-message-deferral",
+        scope: turnScope("turn-message-deferral"),
+        threadId: thread.id,
+      } as const;
+      seedEvent(harness.deps, {
+        ...turn,
+        data: {},
+        sequence: 1,
+        type: "turn/started",
+      });
+      for (const [index, entry] of cases.entries()) {
+        seedEvent(harness.deps, {
+          ...turn,
+          data: {
+            item: {
+              aggregatedOutput: entry.output,
+              approvalStatus: null,
+              command: entry.command,
+              cwd: "/tmp",
+              exitCode: entry.exitCode,
+              id: `message-command-${index}`,
+              status: "completed",
+              type: "commandExecution",
+            },
+          },
+          sequence: index + 2,
+          type: "item/completed",
+        });
+      }
+      seedEvent(harness.deps, {
+        ...turn,
+        data: { status: "completed" },
+        sequence: cases.length + 2,
+        type: "turn/completed",
+      });
+
+      for (const deferContent of [false, true]) {
+        const timeline = await getTimeline(
+          harness,
+          thread.id,
+          `?includeNestedRows=true&deferContent=${deferContent}`,
+        );
+        const rows = timeline.rows.flatMap((row) =>
+          row.kind === "turn" ? (row.children ?? []) : [row],
+        );
+        for (const [index, entry] of cases.entries()) {
+          const row = rows.find(
+            (candidate) =>
+              candidate.kind === "work" &&
+              candidate.workKind === "command" &&
+              candidate.callId === `message-command-${index}`,
+          );
+          if (row?.kind !== "work" || row.workKind !== "command") {
+            throw new Error(`Missing message command ${index}`);
+          }
+          if (entry.message !== null) {
+            expect(timeline.rows).toContain(row);
+            expect.soft(row.command.length).toBe(entry.command.length);
+            expect.soft(parseSentThreadMessage(row)).toEqual({
+              threadId: recipient,
+              message: entry.message,
+            });
+          } else if (deferContent) {
+            expect(row).toMatchObject({
+              command: entry.command.slice(0, 300),
+              contentDeferred: true,
+              output: "",
+            });
+          } else {
+            expect(parseSentThreadMessage(row)).toBeNull();
+          }
+        }
+      }
+    });
+  });
+
   it("defers settled row content when asked and loads each row by item", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness, {

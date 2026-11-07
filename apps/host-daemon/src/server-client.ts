@@ -13,6 +13,7 @@ import {
   type HostDaemonInteractiveInterruptResponse,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonActiveThread,
+  type HostDaemonOpenThreadWork,
   type HostDaemonEventBatchRequest,
   type HostDaemonEventEnvelope,
   groupHostDaemonEvents,
@@ -193,6 +194,7 @@ interface OpenSessionArgs {
   instanceId: string;
   localApiPort: number | null;
   activeThreads: HostDaemonActiveThread[] | Promise<HostDaemonActiveThread[]>;
+  openThreadWork: HostDaemonOpenThreadWork[];
   undeliveredEventThreadIds: string[];
   loadedEnvironments:
     | HostDaemonLoadedEnvironment[]
@@ -378,6 +380,7 @@ export function createServerClient(
         localApiPort: args.localApiPort,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: await args.activeThreads,
+        openThreadWork: args.openThreadWork,
         undeliveredEventThreadIds: args.undeliveredEventThreadIds,
         loadedEnvironments: await args.loadedEnvironments,
       };

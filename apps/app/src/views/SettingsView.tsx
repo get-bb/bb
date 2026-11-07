@@ -1,3 +1,4 @@
+import { ApplicationLinkApprovalsSettings } from "@/components/settings/ApplicationLinkApprovalsSettings";
 import { MobileAppSection } from "@/components/settings/MobileAppSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
@@ -169,8 +170,6 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
-  showGitChanges: boolean;
-  onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   keepHistoryAfterContextClear: boolean;
@@ -860,8 +859,6 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
-  showGitChanges,
-  onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   keepHistoryAfterContextClear,
@@ -898,18 +895,6 @@ export function GeneralSettingsSection({
               checked={navigateToThreadAfterCreate}
               onCheckedChange={onNavigateToThreadAfterCreateChange}
               aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-            />
-          </SettingsWithControl>
-
-          <SettingsWithControl
-            label="Show Git changes and Commit button"
-            description="Show Git and PR controls above the composer, and Commit in the header."
-          >
-            <Switch
-              checked={showGitChanges}
-              disabled={generalSettingsDisabled}
-              onCheckedChange={onShowGitChangesChange}
-              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 
@@ -1018,41 +1003,40 @@ export function GeneralSettingsSection({
           </SettingsWithControl>
         </div>
       </SettingsSection>
-      {desktopBrowserAvailable || localhostRewriteDescription !== null ? (
-        <SettingsSection title="Links">
-          <div className="space-y-5">
-            {desktopBrowserAvailable ? (
-              <SettingsWithControl
-                label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-                description="Open web links inside bb."
-              >
-                <Switch
-                  checked={openLinksInAppBrowser}
-                  onCheckedChange={onOpenLinksInAppBrowserChange}
-                  aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-                />
-              </SettingsWithControl>
-            ) : null}
+      <SettingsSection title="Links">
+        <div className="space-y-5">
+          {desktopBrowserAvailable ? (
+            <SettingsWithControl
+              label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+              description="Open web links inside bb."
+            >
+              <Switch
+                checked={openLinksInAppBrowser}
+                onCheckedChange={onOpenLinksInAppBrowserChange}
+                aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+              />
+            </SettingsWithControl>
+          ) : null}
 
-            {localhostRewriteDescription !== null ? (
-              <SettingsWithControl
-                label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-                description={
-                  <span className="break-words [overflow-wrap:anywhere]">
-                    {localhostRewriteDescription}
-                  </span>
-                }
-              >
-                <Switch
-                  checked={rewriteLocalhostLinks}
-                  onCheckedChange={onRewriteLocalhostLinksChange}
-                  aria-label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-                />
-              </SettingsWithControl>
-            ) : null}
-          </div>
-        </SettingsSection>
-      ) : null}
+          {localhostRewriteDescription !== null ? (
+            <SettingsWithControl
+              label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
+              description={
+                <span className="break-words [overflow-wrap:anywhere]">
+                  {localhostRewriteDescription}
+                </span>
+              }
+            >
+              <Switch
+                checked={rewriteLocalhostLinks}
+                onCheckedChange={onRewriteLocalhostLinksChange}
+                aria-label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
+              />
+            </SettingsWithControl>
+          ) : null}
+          <ApplicationLinkApprovalsSettings />
+        </div>
+      </SettingsSection>
       <SettingsSection title="Terminals">
         <SettingsWithControl
           label="Copy on select"
@@ -1140,40 +1124,60 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Keep bb responsive when agents saturate the CPU. Agent processes, setup and teardown scripts, and the builds and tests they launch run at a lower CPU priority; on macOS the bb server and machine daemon also get app-level scheduling. Terminals keep normal priority. Takes full effect after restarting bb. Turning it off applies to agents started afterwards; processes already lowered stay lowered until they exit.",
   },
-  changelogPreview: {
-    label: "Changelog preview",
-    description:
-      "Show the latest release notes as a compact preview on the Updates page.",
-  },
   compactExpiredCache: {
     label: "Compact before resuming expired sessions",
     description:
       "When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
+  },
+  dismissReadNotifications: {
+    label: "Clear notifications once a thread is read",
+    description:
+      "When you read a thread on any device, remove its notifications from your phones and tablets and from open bb windows and tabs. Phones need an app version that supports it.",
+  },
+  narrowPluginCss: {
+    label: "Faster plugin styles",
+    description:
+      "Load each plugin's stylesheet so it only matches that plugin's own UI, which makes style updates cheaper on pages with many plugins. Plugins built with an old portal-scope helper keep the slower stylesheet. Applies after a reload.",
   },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
     description:
       "Collect CPU profiles and detailed performance logs while the server was launched with --perf-diagnostics. Turning this off stops collection; saved profiles remain.",
   },
+  pluginUpdates: {
+    label: "Plugin updates",
+    description:
+      "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
+  },
+  resumeThreadsAfterRestart: {
+    label: "Resume interrupted threads after a restart",
+    description:
+      "When an update, crash or restart cuts off a running thread or stops a background command a thread is waiting on, bb resumes the thread a few seconds after it comes back and tells the agent what was cut off. Messages you queued meanwhile send after it.",
+  },
   serverMove: {
     label: "Server move",
     description:
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
   },
-  sidebarMultiSelect: {
-    label: "Select multiple sidebar threads",
+  skipFocusedThreadNotifications: {
+    label: "Skip notifications for the thread you're viewing",
     description:
-      "In the built-in thread list sidebar, Cmd/Ctrl+Shift-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
+      "Don't show a system notification for a thread that is open in a visible, focused bb window or tab. Other threads, and the same thread in a window you're not using, still notify.",
   },
-  timelinePush: {
-    label: "Pushed timeline updates",
+  threadContextCard: {
+    label: "Thread context card",
     description:
-      "Send an open thread's timeline changes over the live connection instead of reloading the latest window after each update.",
+      "Show a thread's changes, pull request, and parent and child threads in a card at the upper-right of each thread pane instead of above the composer. A header button opens or pins it; wide panes keep it beside the transcript.",
   },
-  unreadDividerAtAnswer: {
-    label: "NEW divider before final assistant message",
+  threadRowMetadata: {
+    label: "Thread row metadata",
     description:
-      "When you open a thread whose turn finished while you were away, place the NEW divider before the turn's final assistant message, or the error that ended it, instead of before its first tool call. The turn's work stays above the divider.",
+      "Add Metadata to the built-in thread list's Organize → Rows menu. When it is checked, plugins can show details such as a thread's pull request on a second line under its title.",
+  },
+  updateWhenIdle: {
+    label: "Update when idle",
+    description:
+      "Adds a Restart and update bb automatically switch to the Updates page. While it is on, bb checks for updates every hour and restarts into a new version once no thread is running, waiting again if a thread starts before it restarts. Skip this version keeps a version from installing until a newer one appears. bb updates app apply --when-idle waits for threads once from the CLI.",
   },
 };
 export function visibleExperimentKeys(
@@ -1405,11 +1409,7 @@ export function SettingsView() {
   } else if (activeSection === "environment-variables") {
     content = <MachineEnvironmentSettings />;
   } else if (activeSection === "updates") {
-    content = (
-      <UpdatesSettingsSection
-        showChangelogPreview={experiments.changelogPreview}
-      />
-    );
+    content = <UpdatesSettingsSection />;
   } else if (activeSection === "mobile") {
     content = <MobileAppSection />;
   } else if (activeSection === "experiments") {
@@ -1439,12 +1439,6 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
-          showGitChanges={generalSettings.showGitChanges}
-          onShowGitChangesChange={(enabled) =>
-            updateGeneralSettingsMutation.mutate({
-              showGitChanges: enabled,
-            })
-          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({

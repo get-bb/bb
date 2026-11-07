@@ -20,8 +20,10 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   } = usePluginSlots();
   const { accessState } = useLocalHostDaemonAccess();
   const cliCommandSupported = useCliCommandStatus().data?.supported ?? false;
+  const systemConfig = useSystemConfig().data;
   const performanceDiagnosticsAvailable =
-    useSystemConfig().data?.performanceDiagnosticsAvailable ?? false;
+    systemConfig?.performanceDiagnosticsAvailable ?? false;
+  const pluginUpdatesEnabled = systemConfig?.experiments.pluginUpdates ?? false;
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
   const [rewritesLocalhostLinks] = useState(
     () =>
@@ -49,6 +51,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
       ["filePreferences", hasFilePreferences],
       ["localhostLinkRewrite", rewritesLocalhostLinks],
       ["performanceDiagnostics", performanceDiagnosticsAvailable],
+      ["pluginUpdates", pluginUpdatesEnabled],
       ["sidebarNavigations", hasSidebarNavigations],
       ["sourceCodeRenderers", hasSourceCodeRenderers],
       ["threadLists", hasThreadLists],
@@ -67,6 +70,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     hasSourceCodeRenderers,
     hasThreadLists,
     performanceDiagnosticsAvailable,
+    pluginUpdatesEnabled,
     rewritesLocalhostLinks,
   ]);
 }

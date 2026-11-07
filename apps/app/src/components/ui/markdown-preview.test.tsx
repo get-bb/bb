@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
+import { ApplicationUrlDialog } from "@/components/ApplicationUrlDialog";
+import { resolveApplicationUrlConfirmation } from "@/lib/application-url";
 import { LazyMarkdownHtml } from "./lazy-markdown-html";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import {
+  LOCAL_FILE_TEST_HOST_ID,
+  createMarkdownLocalFileHostTestWrapper,
+} from "@/test/fixtures/markdown-local-file-host";
 
 import {
   act,
@@ -25,6 +32,7 @@ const workspaceLinkRouting = {
     absoluteLinks: {
       kind: "trusted-host",
     },
+    hostId: null,
     relativeLinks: {
       baseDir: "/workspace",
       rootPath: "/workspace",
@@ -33,9 +41,17 @@ const workspaceLinkRouting = {
   },
 } satisfies MarkdownLinkRouting;
 
+const inlineCodeLinkRouting = {
+  localFile: {
+    ...workspaceLinkRouting.localFile,
+    hostId: LOCAL_FILE_TEST_HOST_ID,
+  },
+} satisfies MarkdownLinkRouting;
+
 beforeAll(() => LazyMarkdownHtml.preload());
 
 afterEach(() => {
+  resolveApplicationUrlConfirmation("cancel");
   cleanup();
   window.localStorage.clear();
   vi.unstubAllGlobals();
@@ -363,15 +379,17 @@ describe("MarkdownPreview", () => {
     ["C:\\repo\\src\\app.ts:12:3", "C:\\repo\\src\\app.ts", 12],
   ])(
     "opens inline-code file reference %s at its line",
-    (reference, path, line) => {
+    async (reference, path, line) => {
+      const { wrapper } = createMarkdownLocalFileHostTestWrapper(() => true);
       render(
         <MarkdownPreview
           content={`Read \`${reference}\`.`}
-          linkRouting={workspaceLinkRouting}
+          linkRouting={inlineCodeLinkRouting}
         />,
+        { wrapper },
       );
 
-      const link = screen.getByRole("link", { name: reference });
+      const link = await screen.findByRole("link", { name: reference });
       expect(link.getAttribute("href")).toBe(
         `${path.startsWith("C:") ? "file:///C:/repo/src/app.ts" : `file://${path}`}${line === null ? "" : `#L${line}`}`,
       );
@@ -401,15 +419,62 @@ describe("MarkdownPreview", () => {
     "../outside.ts:4",
     "src/app.ts?raw",
   ])("keeps non-file inline code %s literal", (reference) => {
+    const { pathsExist, wrapper } = createMarkdownLocalFileHostTestWrapper(
+      () => true,
+    );
     render(
       <MarkdownPreview
         content={`Read \`${reference}\`.`}
-        linkRouting={workspaceLinkRouting}
+        linkRouting={inlineCodeLinkRouting}
       />,
+      { wrapper },
     );
 
     expect(screen.queryByRole("link", { name: reference })).toBeNull();
     expect(screen.getByText(reference).tagName).toBe("CODE");
+    expect(pathsExist).not.toHaveBeenCalled();
+  });
+
+  it("links only inline-code file references that exist on the host, checked in one batch", async () => {
+    const { pathsExist, wrapper } = createMarkdownLocalFileHostTestWrapper(
+      (path) => path === "/workspace/src/app.ts",
+    );
+    render(
+      <MarkdownPreview
+        content="Edit `src/app.ts:4`, `scheduler.py`, `thread.idle`, and `bb.app`."
+        linkRouting={inlineCodeLinkRouting}
+      />,
+      { wrapper },
+    );
+
+    expect(
+      (await screen.findByRole("link", { name: "src/app.ts:4" })).getAttribute(
+        "href",
+      ),
+    ).toBe("file:///workspace/src/app.ts#L4");
+    for (const reference of ["scheduler.py", "thread.idle", "bb.app"]) {
+      expect(screen.queryByRole("link", { name: reference })).toBeNull();
+      expect(screen.getByText(reference).tagName).toBe("CODE");
+    }
+    expect(pathsExist).toHaveBeenCalledOnce();
+    expect([...pathsExist.mock.calls[0]![0].paths].sort()).toEqual([
+      "/workspace/bb.app",
+      "/workspace/scheduler.py",
+      "/workspace/src/app.ts",
+      "/workspace/thread.idle",
+    ]);
+  });
+
+  it("keeps inline-code file references as code without a host to check them on", () => {
+    render(
+      <MarkdownPreview
+        content="Read `README.md`."
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("README.md").tagName).toBe("CODE");
   });
 
   it("preserves inline commands ending in Markdown paths as code", () => {
@@ -482,6 +547,7 @@ describe("MarkdownPreview", () => {
           content="See [notes](/workspace/notes/todo.md) and [app](/workspace/src/app.ts)."
           linkRouting={{
             localFile: {
+              hostId: null,
               absoluteLinks: { kind: "trusted-host" },
               onOpenLink: vi.fn(() => true),
             },
@@ -669,6 +735,93 @@ describe("MarkdownPreview", () => {
     ).toBe(href);
   });
 
+  it("scrolls in-page fragment links to their target inside the same preview", () => {
+    const onOpenLink = vi.fn(() => true);
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(
+      function (this: Element) {
+        scrolled.push(this.id);
+      },
+    );
+    render(
+      <>
+        <MarkdownPreview
+          content="## Plain heading"
+          linkRouting={{ headingAnchors: true }}
+        />
+        <MarkdownPreview
+          allowHtml
+          content={
+            '[Heading](#plain-heading) [Anchor](#block-1) [Missing](#nowhere)\n\n## Plain heading\n\n## Plain heading\n\n<a id="block-1"></a>'
+          }
+          linkRouting={{ headingAnchors: true, onOpenLink }}
+        />
+      </>,
+    );
+
+    for (const name of ["Heading", "Anchor", "Missing"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link.getAttribute("target")).toBeNull();
+      expect(fireEvent.click(link)).toBe(false);
+    }
+
+    expect(scrolled).toEqual([
+      "user-content-plain-heading",
+      "user-content-block-1",
+    ]);
+    expect(
+      document.querySelectorAll('[id="user-content-plain-heading-1"]'),
+    ).toHaveLength(1);
+    expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
+  it("shows in-page fragment links as text outside file previews", () => {
+    const onOpenLink = vi.fn(() => true);
+    const { container } = render(
+      <MarkdownPreview
+        content={"[Details](#details)\n\n## Details"}
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "Details" })).toBeNull();
+    expect(container.querySelector("[id]")).toBeNull();
+  });
+
+  it("leaves modified clicks on web links to the platform", () => {
+    const onOpenLink = vi.fn(() => true);
+    render(
+      <MarkdownPreview
+        content="[docs](https://example.com/docs)"
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "docs" });
+
+    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+    expect(onOpenLink).not.toHaveBeenCalled();
+
+    expect(fireEvent.click(link)).toBe(false);
+    expect(onOpenLink).toHaveBeenCalledWith({
+      href: "https://example.com/docs",
+    });
+  });
+
+  it("opens web links through the app navigation host when the surface has no link handler", () => {
+    const openUrl = vi.fn(() => true);
+    render(
+      <AppNavigationHostProvider capabilities={{ openUrl }}>
+        <MarkdownPreview content="[docs](https://example.com/docs)" />
+      </AppNavigationHostProvider>,
+    );
+
+    expect(fireEvent.click(screen.getByRole("link", { name: "docs" }))).toBe(
+      false,
+    );
+    expect(openUrl).toHaveBeenCalledWith({ url: "https://example.com/docs" });
+  });
+
   it("routes editor file links to the local file handler with their editor", () => {
     const onOpenLink = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
@@ -678,6 +831,7 @@ describe("MarkdownPreview", () => {
         content="Open [review](devin://file/Users/me/.bb/artifacts/thr_1/review.diff) or [cursor](Cursor://file/workspace/My%20App.ts:12:3)."
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -732,6 +886,7 @@ describe("MarkdownPreview", () => {
           content="[review](devin://file/tmp/review.diff:3) [app](vscode://file/tmp/app.ts) [plain](/tmp/notes.md)"
           linkRouting={{
             localFile: {
+              hostId: null,
               absoluteLinks: { kind: "trusted-host" },
               onOpenLink: () => true,
             },
@@ -763,6 +918,7 @@ describe("MarkdownPreview", () => {
         }
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -793,10 +949,11 @@ describe("MarkdownPreview", () => {
     const { container } = render(
       <MarkdownPreview
         content={
-          "[script](javascript:alert(1)) [data](data:text/html,hi) [unknown](ms-msdt:/id) [install](devin://chat-plugin/install?source=https://example.invalid/plugin) [command](vscode://command/workbench.action.terminal.new) [query](vscode://file/tmp/a.ts?windowId=_blank) [zed](zed://file/tmp/a.ts) [empty]()"
+          "[script](javascript:alert(1)) [data](data:text/html,hi) [unknown](ms-msdt:/id) [install](devin://chat-plugin/install?source=https://example.invalid/plugin) [command](vscode://command/workbench.action.terminal.new) [query](vscode://file/tmp/a.ts?windowId=_blank) [empty]()"
         }
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -813,7 +970,6 @@ describe("MarkdownPreview", () => {
       "install",
       "command",
       "query",
-      "zed",
       "empty",
     ]) {
       fireEvent.click(screen.getByText(name));
@@ -849,6 +1005,63 @@ describe("MarkdownPreview", () => {
     expect(screen.getByRole("link", { name: "preview" })).toBe(link);
   });
 
+  it.each([false, true])(
+    "keeps links and inline code mounted when link routing and thread mentions change identity (incrementalBlocks=%s)",
+    (incrementalBlocks) => {
+      const content =
+        "See [docs](https://example.com/docs) and `inline_code` here.";
+      const routing = (): MarkdownLinkRouting => ({
+        onOpenLink: () => true,
+        localImage: {
+          absolutePaths: { kind: "trusted-host" },
+          resolveSrc: ({ path }) => `/files${path}`,
+        },
+      });
+      const { container, rerender } = render(
+        <MarkdownPreview
+          content={content}
+          incrementalBlocks={incrementalBlocks}
+          linkRouting={routing()}
+          threadMentions={{ mentions: [], preserveSoftBreaks: false }}
+        />,
+      );
+      const link = screen.getByRole("link", { name: "docs" });
+      const code = container.querySelector("code");
+
+      rerender(
+        <MarkdownPreview
+          content={content}
+          incrementalBlocks={incrementalBlocks}
+          linkRouting={routing()}
+          threadMentions={{ mentions: [], preserveSoftBreaks: false }}
+        />,
+      );
+
+      expect(screen.getByRole("link", { name: "docs" })).toBe(link);
+      expect(container.querySelector("code")).toBe(code);
+    },
+  );
+
+  it("routes a link through the latest handler after routing changes", () => {
+    const content = "See [docs](https://example.com/docs).";
+    const first = vi.fn(() => true);
+    const second = vi.fn(() => true);
+    const { rerender } = render(
+      <MarkdownPreview content={content} linkRouting={{ onOpenLink: first }} />,
+    );
+
+    rerender(
+      <MarkdownPreview
+        content={content}
+        linkRouting={{ onOpenLink: second }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "docs" }));
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it("renders inline LaTeX math with KaTeX", async () => {
     const { container } = render(
       <MarkdownPreview content={"Mass-energy is $$E = mc^2$$ exactly."} />,
@@ -869,6 +1082,20 @@ describe("MarkdownPreview", () => {
       expect(container.querySelectorAll(".katex")).toHaveLength(3),
     );
     expect(container.querySelector(".katex-display")).toBeNull();
+  });
+
+  it.each([
+    ["Half is $1/2$ here.", "1/2"],
+    ["Grows as $2^n$ steps.", "2^n"],
+    ["Rate $0.5x$ overall.", "0.5x"],
+    ["Exactly $0.25$ of it.", "0.25"],
+  ])("renders digit-led math in %j", async (content, tex) => {
+    const { container } = render(<MarkdownPreview content={content} />);
+
+    await waitFor(() =>
+      expect(container.querySelectorAll(".katex")).toHaveLength(1),
+    );
+    expect(container.querySelector("annotation")?.textContent).toBe(tex);
   });
 
   it("keeps a dollar amount literal beside single-dollar math", async () => {
@@ -898,7 +1125,10 @@ describe("MarkdownPreview", () => {
       );
 
       expect(
-        Array.from(container.querySelectorAll("code"), (node) => node.textContent),
+        Array.from(
+          container.querySelectorAll("code"),
+          (node) => node.textContent,
+        ),
       ).toEqual([
         "$",
         "singleDollarTextMath: false",
@@ -934,6 +1164,12 @@ describe("MarkdownPreview", () => {
     ["Pay $5, then $10.", "$5, then $10"],
     ["Between $20,000 and $30,000 a year.", "$20,000 and $30,000"],
     ["A $5/$10 split.", "$5/$10"],
+    [
+      "About $0.04 of calls, at 327,000 of 500,000 µ$ today.",
+      "$0.04 of calls, at 327,000 of 500,000 µ$ today",
+    ],
+    ["Costs $5; limit is 10 µ$ today.", "$5; limit is 10 µ$"],
+    ["Up to $1,200.50! Then x$ more.", "$1,200.50! Then x$"],
     ["Spaced $ x $ stays literal.", "$ x $"],
     ["Inline `$x$` code stays literal.", "$x$"],
   ])("leaves %j as literal text", (content, literal) => {
@@ -1010,5 +1246,57 @@ describe("MarkdownPreview", () => {
     expect(
       container.querySelector('a[href="https://example.com"]')?.textContent,
     ).toBe("This should remain a link");
+  });
+});
+
+describe("application links", () => {
+  it.each([false, true])(
+    "preserves explicit links without launching during rendering (HTML: %s)",
+    async (allowHtml) => {
+      const openApplicationUrl = vi.fn(async () => {});
+      vi.stubGlobal("bbDesktop", { openApplicationUrl });
+      const url = "reflect://note/Project%20X?tag=a%2Fb";
+      render(
+        <MarkdownPreview
+          allowHtml={allowHtml}
+          content={`[Review note](${url}) <kbd>Enter</kbd> [Linear](linear://issue/ABC-123) [Things](things:///show?id=123) ![image](linear://issue/image)`}
+        />,
+      );
+      const link = await screen.findByRole("link", { name: "Review note" });
+      expect(link.getAttribute("href")).toBe(url);
+      expect(openApplicationUrl).not.toHaveBeenCalled();
+      fireEvent.click(link);
+      resolveApplicationUrlConfirmation("open");
+      await waitFor(() => expect(openApplicationUrl).toHaveBeenCalledWith(url));
+      fireEvent(
+        screen.getByRole("link", { name: "Linear" }),
+        new MouseEvent("auxclick", { bubbles: true, button: 1 }),
+      );
+      resolveApplicationUrlConfirmation("open");
+      await waitFor(() =>
+        expect(openApplicationUrl).toHaveBeenCalledWith(
+          "linear://issue/ABC-123",
+        ),
+      );
+      expect(document.querySelector('img[src^="linear:"]')).toBeNull();
+    },
+  );
+
+  it("asks on every click in the browser and cancels without launching", async () => {
+    render(
+      <>
+        <MarkdownPreview content="[Review note](reflect://note/Project%20X)" />
+        <ApplicationUrlDialog />
+      </>,
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "Review note" }));
+    await screen.findByRole("dialog");
+    expect(screen.getByText("reflect://note/Project%20X")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("link", { name: "Review note" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   });
 });

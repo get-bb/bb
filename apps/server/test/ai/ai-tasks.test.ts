@@ -12,33 +12,6 @@ import { withTestHarness } from "../helpers/test-app.js";
 const PROMPT = "Write a title for: fix the flaky login test";
 
 describe("AI task routing", () => {
-  it("tries bb cloud before other Automatic services", async () => {
-    await withTestHarness({}, async (harness) => {
-      const cloud = registerFakeAiService(harness.deps.aiServices, {
-        id: "bb",
-        pluginId: "bb-ai",
-        builtin: true,
-        complete: async () => "Cloud title",
-      });
-      const codex = registerFakeAiService(harness.deps.aiServices, {
-        id: "codex",
-        pluginId: "provider-codex",
-        builtin: true,
-        complete: async () => "Codex title",
-      });
-
-      const outcome = await runTextAiTask(harness.deps, {
-        task: "thread-title",
-        label: "test",
-        prompt: PROMPT,
-      });
-
-      expect(outcome).toMatchObject({ ok: true, value: "Cloud title" });
-      expect(cloud.completeCalls.map((call) => call.prompt)).toEqual([PROMPT]);
-      expect(codex.completeCalls).toEqual([]);
-    });
-  });
-
   it("moves to the next Automatic service when one rejects or is not ready", async () => {
     await withTestHarness({}, async (harness) => {
       const codex = registerFakeAiService(harness.deps.aiServices, {

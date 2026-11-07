@@ -78,6 +78,7 @@ describe("callPluginRpc", () => {
     ["not_found", 404],
     ["conflict", 409],
     ["invalid", 422],
+    ["invalid_input", 400],
   ])(
     "preserves refusal %s and HTTP %s for useRpc and query hooks",
     async (code, status) => {
@@ -132,29 +133,6 @@ describe("callPluginRpc", () => {
     expect(error).toMatchObject({
       code: "transport_error",
       message: "Failed to fetch",
-    });
-  });
-
-  it("surfaces structured wire failures with stable code and issues", async () => {
-    const fetchImpl = vi.fn<FetchLike>(async () =>
-      jsonResponse(
-        {
-          ok: false,
-          error: {
-            code: "invalid_input",
-            message: "rpc input validation failed",
-            issues: [{ path: ["id"], message: "Required" }],
-          },
-        },
-        false,
-        400,
-      ),
-    );
-    const promise = callPluginRpc(fetchImpl, "demo", "lookup", {});
-    await expect(promise).rejects.toMatchObject({
-      code: "invalid_input",
-      message: "rpc input validation failed",
-      issues: [{ path: ["id"], message: "Required" }],
     });
   });
 

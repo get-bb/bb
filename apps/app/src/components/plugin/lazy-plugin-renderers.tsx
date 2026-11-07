@@ -8,10 +8,8 @@ import type {
   SourceCodeProps,
 } from "@get-bb/plugin-sdk";
 import { defineSplit } from "@/lib/define-split";
-import {
-  DiffLoadingSkeleton,
-  SourceLoadingSkeleton,
-} from "@/components/code/code-loading-skeletons";
+import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { DiffLoadingSkeleton } from "@bb/shared-ui/diff-loading-skeleton";
 
 export const LazyPluginMarkdown = defineSplit<MarkdownProps>({
   id: "plugin-markdown",

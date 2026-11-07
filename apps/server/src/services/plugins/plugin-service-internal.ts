@@ -48,10 +48,15 @@ export interface ServiceRuntime {
 }
 
 export interface LoadedPlugin {
+  pluginId: string;
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
   moduleRootUrls: Set<string>;
+  hostArtifact: PluginHostArtifactSnapshot | null;
+  stopping: AbortController;
+  released: AbortController;
+  invocations: Set<Promise<void>>;
 }
 
 export interface PluginHostArtifactSnapshot {
@@ -110,6 +115,7 @@ export interface PluginServiceDeps {
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
     | "requestPluginInteraction"
     | "interruptPluginInteractions"
+    | "interruptOwnedPluginInteractions"
     | "setPluginDirectory"
   >;
   getAppUrl?: () => string | null;
@@ -240,6 +246,7 @@ export interface PluginThreadEventEmitter {
     previousParentThreadId: string | null,
   ): void;
   emitThreadDeleted(thread: Thread): void;
+  emitThreadRead(threadId: string): void;
   emitInteractionPending(thread: Thread, interaction: PendingInteraction): void;
   /**
    * Queue lifecycle. The row is already in its new state when these fire; the
@@ -265,7 +272,7 @@ export type PluginWireLookup<T> =
       detail: string | null;
     }
   | { outcome: "not-found" }
-  | { outcome: "found"; value: T };
+  | { outcome: "found"; value: T; owner: LoadedPlugin };
 
 export type PluginApplyUpdateOutcome =
   | { ok: true; result: PluginApplyUpdateResult }

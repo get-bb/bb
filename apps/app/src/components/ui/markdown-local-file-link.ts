@@ -1,7 +1,8 @@
+import { isWindowsHostPath, isWindowsUncHostPath } from "@bb/domain";
 import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
-} from "@/lib/absolute-file-path";
+} from "@bb/shared-ui/lib/absolute-file-path";
 import {
   createFilePreviewLineRange,
   type FilePreviewLineRange,
@@ -209,11 +210,10 @@ function parseLineSuffix(value: string): LocalFileHrefParts | null {
   };
 }
 
-const WINDOWS_DRIVE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
-const FILE_URL_WINDOWS_DRIVE_PATHNAME_PATTERN = /^\/[A-Za-z]:\//u;
-
 export function isWindowsDriveLocalFilePath(path: string): boolean {
-  return WINDOWS_DRIVE_PATH_PATTERN.test(path);
+  return (
+    path.length > 2 && isWindowsHostPath(path) && !isWindowsUncHostPath(path)
+  );
 }
 
 function isAbsoluteLocalFilePathStart(path: string): boolean {
@@ -380,7 +380,7 @@ function parseLocalFileUrl(href: string): LocalFileUrlParts | null {
   if (url.search.length > 0) {
     return null;
   }
-  const pathname = FILE_URL_WINDOWS_DRIVE_PATHNAME_PATTERN.test(url.pathname)
+  const pathname = isWindowsDriveLocalFilePath(url.pathname.slice(1))
     ? url.pathname.slice(1)
     : url.pathname;
   if (url.protocol === "file:") {

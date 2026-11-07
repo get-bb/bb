@@ -15,6 +15,7 @@ export const gruvboxThemeCss = `
   --warning-text: #af3a03;
   --attention: #b57614;
   --success: #79740e;
+  --success-foreground: #736e00;
   --diff-added: #79740e;
   --diff-removed: #9d0006;
   --pr-merged: #8f3f71;
@@ -65,6 +66,7 @@ export const gruvboxThemeCss = `
   --warning-text: #fe8019;
   --attention: #fabd2f;
   --success: #b8bb26;
+  --success-foreground: #b8bb26;
   --diff-added: #b8bb26;
   --diff-removed: #fb4934;
   --pr-merged: #d3869b;

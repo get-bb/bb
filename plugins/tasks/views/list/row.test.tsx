@@ -8,7 +8,12 @@ import type {
   Task,
   TaskMutationResult,
 } from "../../shared/contract.js";
-import { makeTask, rpcInput } from "../../test-fixtures.js";
+import {
+  makeTask,
+  rpcInput,
+  labelsByProject,
+  matchingTasks,
+} from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
   matches: query === COMPACT_VIEWPORT_QUERY,
@@ -78,7 +83,9 @@ function renderList(tasks: Task[], options: Options = {}) {
         listPresets: () => ({ presets: [] }),
         sidebarSummary: () => ({ projects: [] }),
         listLabels: () => ({ labels: [label] }),
-        listTasks: () => ({ tasks }),
+        labelsByProject: labelsByProject([label]),
+        listAllTasks: (raw: unknown) => ({ tasks: matchingTasks(tasks, raw) }),
+        listTaskCardMeta: () => ({ cards: [] }),
         listTaskThreads: () => ({ taskThreads: [] }),
         listComments: () => ({ comments: [] }),
         listAttachments: () => ({ attachments: [] }),
@@ -106,7 +113,9 @@ async function rowFor(slot: ReturnType<typeof renderList>, key: string) {
 
 describe("inline row editing", () => {
   it("opens a windowed row using its task key", async () => {
-    const slot = renderList([task({ id: "01HZT1", number: 1 })]);
+    const slot = renderList([
+      task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 }),
+    ]);
     const row = await rowFor(slot, "TSK-1");
     fireEvent.click(
       within(row).getByRole("button", { name: "Open TSK-1: Task 1" }),
@@ -119,7 +128,7 @@ describe("inline row editing", () => {
   });
 
   it("moves a windowed row through its project context menu", async () => {
-    const current = task({ id: "01HZT1", number: 1 });
+    const current = task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 });
     const target = {
       ...project,
       id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
@@ -148,7 +157,9 @@ describe("inline row editing", () => {
   });
 
   it("optimistically applies a status change and persists it", async () => {
-    const slot = renderList([task({ id: "01HZT1", number: 1 })]);
+    const slot = renderList([
+      task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 }),
+    ]);
     const row = await rowFor(slot, "TSK-1");
 
     fireEvent.click(
@@ -180,7 +191,9 @@ describe("inline row editing", () => {
   });
 
   it("optimistically applies a priority change", async () => {
-    const slot = renderList([task({ id: "01HZT1", number: 1 })]);
+    const slot = renderList([
+      task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 }),
+    ]);
     const row = await rowFor(slot, "TSK-1");
 
     fireEvent.click(
@@ -212,12 +225,15 @@ describe("inline row editing", () => {
   });
 
   it("rolls back and surfaces an error when the mutation fails", async () => {
-    const slot = renderList([task({ id: "01HZT1", number: 1 })], {
-      updateTask: () => ({
-        ok: false,
-        error: { code: "task_parent_invalid", message: "Server rejected it" },
-      }),
-    });
+    const slot = renderList(
+      [task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 })],
+      {
+        updateTask: () => ({
+          ok: false,
+          error: { code: "task_parent_invalid", message: "Server rejected it" },
+        }),
+      },
+    );
     const row = await rowFor(slot, "TSK-1");
 
     fireEvent.click(
@@ -242,7 +258,7 @@ describe("inline row editing", () => {
 
   it("only issues a mutation when the value actually changes", async () => {
     const slot = renderList([
-      task({ id: "01HZT1", number: 1, status: "todo" }),
+      task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1, status: "todo" }),
     ]);
     const row = await rowFor(slot, "TSK-1");
 

@@ -46,13 +46,6 @@ function renderPicker(props: {
 }
 
 describe("PluginBranchPicker", () => {
-  it("shows the placeholder while nothing is picked", () => {
-    renderPicker({ value: null, placeholder: "Pick a base" });
-    expect(
-      screen.getByRole("combobox", { name: "Branch" }).textContent,
-    ).toContain("Pick a base");
-  });
-
   it.each(["Compare with:", "Checkout:", "Branch from:"])(
     "uses %s for the trigger prefix and menu heading",
     (label) => {

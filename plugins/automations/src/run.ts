@@ -6,7 +6,6 @@ import {
   getAutomation,
   listRunningAutomationRuns,
   listRunningAutomationRunsByThread,
-  markAutomationThread,
   setAutomationEnabled,
   setAutomationRunThread,
   type AutomationRow,
@@ -14,7 +13,11 @@ import {
   type Db,
 } from "./data.js";
 import { publishAutomationChange } from "./realtime.js";
-import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
+import {
+  executeStoredScript,
+  mapScriptResultToRun,
+  type ScriptRunScope,
+} from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
 import type {
   ProjectsSdk,
@@ -95,9 +98,8 @@ function unusableThreadReason(thread: SdkThread): string | null {
   switch (thread.status) {
     case "idle":
     case "active":
-      return null;
     case "error":
-      return "is in an error state";
+      return null;
     case "pending":
     case "starting":
     case "stopping":
@@ -144,12 +146,6 @@ export async function executeAgentRun(
       }),
     );
     setAutomationRunThread(db, { runId: args.run.id, threadId: thread.id });
-    markAutomationThread(db, {
-      automationId: args.automation.id,
-      runId: args.run.id,
-      threadId: thread.id,
-      now: Date.now(),
-    });
   } catch (error) {
     settleDispatchFailure(bb, db, args, error);
   } finally {
@@ -221,12 +217,6 @@ async function reuseTargetThreadForRun(
     runId: args.run.id,
     threadId: args.targetThreadId,
   });
-  markAutomationThread(db, {
-    automationId: args.automation.id,
-    runId: args.run.id,
-    threadId: args.targetThreadId,
-    now: Date.now(),
-  });
   await bb.sdk.threads.send({
     threadId: args.targetThreadId,
     mode: "steer-if-active",
@@ -265,18 +255,29 @@ function closeRunForUnusableTargetThread(
   bb.log.error(`Automation ${args.automation.id} paused: ${error}`);
 }
 
-export async function executeScriptRun(
+interface ScriptRunArgs {
+  pluginDataDir: string;
+  automation: AutomationRow;
+  run: AutomationRunRow;
+  execution: Extract<AutomationExecution, { mode: "script" }>;
+  onFailure: RunFailureHandler;
+  serverUrl: string;
+  resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
+  scriptRuns: ScriptRunScope;
+}
+
+export function executeScriptRun(
   bb: ScriptRunApi,
   db: Db,
-  args: {
-    pluginDataDir: string;
-    automation: AutomationRow;
-    run: AutomationRunRow;
-    execution: Extract<AutomationExecution, { mode: "script" }>;
-    onFailure: RunFailureHandler;
-    serverUrl: string;
-    resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
-  },
+  args: ScriptRunArgs,
+): Promise<void> {
+  return args.scriptRuns.track(runScript(bb, db, args));
+}
+
+async function runScript(
+  bb: ScriptRunApi,
+  db: Db,
+  args: ScriptRunArgs,
 ): Promise<void> {
   try {
     const scriptFile = args.execution.scriptFile;
@@ -309,6 +310,7 @@ export async function executeScriptRun(
       env: args.execution.env,
       serverUrl: args.serverUrl,
       workingDir,
+      signal: args.scriptRuns.signal,
     });
     const mapped = mapScriptResultToRun(result);
     closeAutomationRun(db, {

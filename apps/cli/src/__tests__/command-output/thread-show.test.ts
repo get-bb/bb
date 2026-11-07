@@ -9,6 +9,7 @@ import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
   createClientMock,
+  getHelpOutput,
   runCommand,
   stubServerApi,
   type CommandRegistrar,
@@ -93,49 +94,60 @@ describe("bb thread show command output", () => {
     };
   }
 
-  it.each([
-    {
-      flag: "archived",
-      stamp: { archivedAt: 1_700_000_000_000 },
-      label: "Archived:",
-    },
-    {
-      flag: "pinned",
-      stamp: { pinnedAt: 1_700_000_000_000 },
-      label: "Pinned:",
-    },
-  ])(
-    "bb thread show prints $flag timestamp for $flag threads",
-    async ({ flag, stamp, label }) => {
-      const thread: domain.Thread = fixtures.makeThread({
-        id: `thread-${flag}-1`,
-        projectId: "proj-1",
-        providerId: "codex",
-        status: "idle",
-        createdAt: 1,
-        updatedAt: 2,
-        ...stamp,
-      });
-      const get = vi.fn(async () => thread);
-      const timelineGet = fixtures.makeEmptyTimelineGetMock();
-      stubServerApi({
-        "v1.threads.:id.$get": get,
-        "v1.threads.:id.timeline.$get": timelineGet,
-      });
+  it("bb thread show puts the archive time on the status line", async () => {
+    const archivedAt = 1_700_000_000_000;
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () =>
+        fixtures.makeThread({
+          id: "thread-archived-1",
+          projectId: "proj-1",
+          providerId: "codex",
+          status: "idle",
+          archivedAt,
+        }),
+      ),
+      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
+    });
 
-      await runCommand(["thread", "show", `thread-${flag}-1`], register);
+    await runCommand(["thread", "show", "thread-archived-1"], register);
 
-      expect(get).toHaveBeenCalledWith({
-        param: { id: `thread-${flag}-1` },
-      });
-      expect(timelineGet).toHaveBeenCalledWith({
-        param: { id: `thread-${flag}-1` },
-        query: { summaryOnly: "true" },
-      });
-      const lines = collectLogLines(vi.mocked(console.log));
-      expect(lines.some((line) => line.includes(label))).toBe(true);
-    },
-  );
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain(
+      `  Status: idle (archived ${new Date(archivedAt).toLocaleString()})`,
+    );
+    expect(lines.some((line) => line.includes("Archived:"))).toBe(false);
+  });
+
+  it("bb thread show prints the pinned timestamp for pinned threads", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-pinned-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "idle",
+      createdAt: 1,
+      updatedAt: 2,
+      pinnedAt: 1_700_000_000_000,
+    });
+    const get = vi.fn(async () => thread);
+    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    stubServerApi({
+      "v1.threads.:id.$get": get,
+      "v1.threads.:id.timeline.$get": timelineGet,
+    });
+
+    await runCommand(["thread", "show", "thread-pinned-1"], register);
+
+    expect(get).toHaveBeenCalledWith({
+      param: { id: "thread-pinned-1" },
+    });
+    expect(timelineGet).toHaveBeenCalledWith({
+      param: { id: "thread-pinned-1" },
+      query: { summaryOnly: "true" },
+    });
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("  Status: idle");
+    expect(lines.some((line) => line.includes("Pinned:"))).toBe(true);
+  });
 
   it("bb thread show --self resolves from BB_THREAD_ID", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-show-self");
@@ -208,6 +220,24 @@ describe("bb thread show command output", () => {
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Work status: Workspace is not a Git repository.",
     );
+    expect(collectLogLines(vi.mocked(console.error))).toEqual([
+      "bb thread show --work-status is deprecated and will be removed. Use:\n  bb git status env-work-status --merge-base-branch main",
+    ]);
+  });
+
+  it("bb thread show hides the deprecated git flags from help", async () => {
+    const help = await getHelpOutput(["thread", "show"], register);
+
+    expect(help).toContain("--json");
+    for (const flag of [
+      "--work-status",
+      "--git-diff",
+      "--diff-target",
+      "--diff-sha",
+      "--diff-merge-base",
+    ]) {
+      expect(help).not.toContain(flag);
+    }
   });
 
   it("bb thread show rejects combining a thread id with --self", async () => {
@@ -271,6 +301,67 @@ describe("bb thread show command output", () => {
         target: { type: "all", mergeBaseBranch: "release" },
       },
     ]);
+    expect(collectLogLines(vi.mocked(console.error))).toEqual([
+      "bb thread show --git-diff is deprecated and will be removed. Use:\n  bb git diff env-diff-base --target all --merge-base-branch release",
+    ]);
+  });
+
+  it("bb thread show names the bb git commands for every deprecated git flag", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-show-deprecated",
+      projectId: "proj-1",
+      providerId: "codex",
+      environmentId: "env-deprecated",
+      status: "idle",
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const environment = fixtures.makeEnvironment({
+      id: "env-deprecated",
+      projectId: "proj-1",
+      hostId: "host-1",
+      mergeBaseBranch: "develop",
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    stubGitRpc({
+      outcome: "not_applicable",
+      reason: "non_git_environment",
+      message: "Workspace is not a Git repository.",
+    });
+    stubServerApi({
+      "v1.environments.:id.$get": vi.fn(async () => environment),
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "show",
+        "thread-show-deprecated",
+        "--work-status",
+        "--git-diff",
+        "--diff-target",
+        "commit",
+        "--diff-sha",
+        "abc1234",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.error))).toEqual([
+      [
+        "bb thread show --work-status, --git-diff, --diff-target, --diff-sha are deprecated and will be removed. Use:",
+        "  bb git status env-deprecated --merge-base-branch develop --json",
+        "  bb git diff env-deprecated --target commit --sha abc1234 --json",
+      ].join("\n"),
+    ]);
+    const payload: unknown = JSON.parse(
+      String(vi.mocked(console.log).mock.calls[0]?.[0]),
+    );
+    expect(payload).toMatchObject({ workStatus: null, gitDiff: null });
   });
 
   it("bb thread show --git-diff renders an available uncommitted diff response", async () => {

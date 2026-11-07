@@ -163,7 +163,10 @@ describe("legacy thread event conversion", () => {
         providerId: "codex",
         providerRequestId: "req_2",
       },
-      payload,
+      payload: {
+        ...payload,
+        questions: [{ ...payload.questions[0], required: true }],
+      },
       resolution: null,
     });
   });

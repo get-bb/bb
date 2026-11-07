@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -133,6 +140,8 @@ describe("ensureCachedNodeArtifact", () => {
     expect(fetchArtifact).toHaveBeenCalledOnce();
 
     await writeFile(artifactPath, Buffer.from(ARTIFACT).fill(0x20, 0, 6));
+    const modifiedAt = new Date(Date.now() - 5_000);
+    await utimes(artifactPath, modifiedAt, modifiedAt);
     await expect(test.ensure(fetchArtifact)).resolves.toBe(artifactPath);
     expect(hashFile).toHaveBeenCalledTimes(3);
     expect(fetchArtifact).toHaveBeenCalledTimes(2);

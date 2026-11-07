@@ -345,6 +345,7 @@ describe("public host management", () => {
           },
           body: JSON.stringify({
             activeThreads: [],
+            openThreadWork: [],
             dataDir: "/tmp/remote-bb",
             hasMachineCredential: true,
             hostId: issued.hostId,
@@ -863,9 +864,17 @@ describe("public host management", () => {
         outputSchema: z.object({ ok: z.literal(true) }),
         handler: revokeHandler,
       };
+      const live = harness.pluginService.getRpcHandler(
+        connectPlugin.id,
+        "revokeMachine",
+      );
+      if (live.outcome !== "found") {
+        throw new Error("connect plugin registers no revokeMachine handler");
+      }
       vi.spyOn(harness.pluginService, "getRpcHandler").mockReturnValue({
         outcome: "found",
         value: revokeRecord,
+        owner: live.owner,
       });
       const invoke = vi
         .spyOn(harness.pluginService, "invokeRpcHandler")
@@ -879,11 +888,12 @@ describe("public host management", () => {
       });
       expect(response.status).toBe(200);
       expect(invoke).toHaveBeenCalledWith(
-        connectPlugin.id,
+        live.owner,
         "revokeMachine",
         revokeRecord,
         { machineId: "machine-cloud-remove" },
         { kind: "client" },
+        null,
       );
     });
   }, 30_000);

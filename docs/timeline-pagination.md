@@ -213,15 +213,20 @@ client keeps optimistic rows after the server's rows, so ranges still address
 the base window. `sdk.threads.timeline` returns a full window unless it is
 given `afterTag`.
 
-With the `timelinePush` experiment, the server pushes a full window or a delta
+While a thread view is open, the server pushes a full window or a delta
 over the WebSocket after events are appended. A `subscribe` message tells the
 server which window the client holds: `timelineTags` maps each
 `thread-timeline` target key to the tag the client holds, or to `null` before
 its first read returns. The tag is not part of the target, so updating it does
-not start a new watch. The app subscribes with `null`, reads the window over
-HTTP, then sends the response's tag; it resends its current tag whenever a read
-changes it, and with every subscription after a reconnect. The server tracks
-the tag per socket and moves it to each window it pushes there.
+not start a new watch. Each `subscribe` carries the tag of the window in the
+app's query cache, or `null` when the cache holds none. On a first open the app
+subscribes with `null`, reads the window over HTTP, then sends the response's
+tag; it resends its current tag whenever a read changes it. Returning to a
+thread whose window is still cached, or resubscribing after a reconnect, sends
+the cached window's tag, because the app may not read again: a cached window
+newer than the query's stale time is not refetched on mount, and appended
+events do not invalidate a pushed timeline. The server tracks the tag per
+socket and moves it to each window it pushes there.
 
 - A subscriber holding a tag gets a delta built against that tag's window, and
   receiving a tag schedules a push, so anything that changed after the client's
@@ -247,6 +252,47 @@ pushed delta as unusable and refetches. That older client sends
 `afterSequence`, which servers no longer read, so it receives full windows. A
 client reading from a server from before tags treats untagged responses and
 pushes as unusable and reads full windows.
+
+## Latest window selection and projection on push
+
+The server keeps the latest window's event selection between reads (16
+windows, of which at most 4 belong to threads that are not active) and extends
+it with appended events whenever a fresh selection would be the previous one
+plus those events. That covers streaming output, tool calls without children,
+children of parents that have no tool-call rows, turn starts, acceptances and
+completions, background task starts and completions, and new requests. Each
+case is checked against the rows a fresh selection would add: earlier rows of a
+newly fetched turn, children of a newly visible tool call, rows of a newly seen
+parent, a request outside the selection, or background task rows that a
+completion would drop. Any of those, and any other event that changes the
+selection (rejections, interruptions, background task progress, delegations,
+plans, goals, extension state), selects afresh.
+
+When appended events move the window start, the server reruns the selection
+over the kept rows plus the appended events instead of the database, since the
+new window is a part of the old one. It falls back to the database whenever a
+query would need a row the kept selection does not hold. The ordering context
+behind turn grouping keeps its rows and reads only rows after the last read, so
+a turn boundary no longer rescans the thread.
+
+The appended events themselves are not read back: the server remembers each
+committed event row per thread (64 threads, 128 rows each) and the extension
+takes those rows after an id-only query confirms they are exactly the rows in
+the appended range. A row longer than the inline output limit, or a range with
+background task progress or diagnostic events, which the SQL window filters
+decide, is still read from the database. The other queries a push runs are
+prepared once per connection, and app settings and experiments are parsed only
+when their stored rows change.
+
+While a thread is active, the server also keeps the projection of that
+selection: its fold over the events, before the step that finishes pending
+work. A read that only extends the selection folds just the appended events
+into the kept state and finishes a copy, so the kept state is never consumed.
+Any read that selects afresh, adds a request, acceptance or turn start, or
+reads a thread that is no longer active projects the whole selection again,
+exactly as a first read does, and keeps that projection for the next read. A
+history rewrite, a compaction or a write from another connection drops the
+kept selection and projection. Dropping either only costs a fresh read.
 
 ## Conversation outline caching
 
@@ -298,18 +344,39 @@ anchor. The position changes only when:
 - the view sits at the end while detached (see below).
 
 A scroll counts as the reader's during an input session: a wheel, a scroll key,
-a touch or pointer drag that scrolled, and the momentum that follows (up to
-three seconds after the finger lifts, on every platform). A touch ends on the
+Tab (focus moving to an offscreen control), a touch or pointer drag that
+scrolled, and the momentum that follows (up to three seconds after the finger
+lifts, on every platform). A touch ends on the
 last touch pointer's `pointerup`, caught on the window in the capture phase,
 or on `touchend`, whichever comes first. This means a tap on a control that
 removes itself, such as the send button, still ends the touch. A drag counts
 as scrolled only by the distance the reader moved. When the app scrolls to the
 end, as a send does, the input session ends and the touch baseline is reset,
 so the app's own jump is never counted as the reader's gesture. Any other
-scroll that comes with a change in the scroll extent is layout, such as a clamp
-after content briefly shrank, and the owner reconciles it back to the position.
-A scroll without input or size change, such as find in page or focus moving to
-an offscreen control, is navigation, and the position follows it.
+scroll that comes with a change in the scroll extent, or in the content's
+height since the last ResizeObserver delivery, is layout, and the owner
+reconciles it back to the position. A scroll without input or size change
+never moves a view attached to the bottom, and never cancels a restore or
+landing that is waiting for its row: the owner reconciles it back, the same as
+layout. iOS WebKit moves the scroll position on its own, for example when
+inline elements are re-inserted, and these scrolls cannot be told apart from
+intended ones. A detached view follows such a scroll as navigation, such as
+find in page. While the desktop window find bar is open, from the
+`bb:window-find-open` event until the window regains focus, an attached view
+follows it too, so find works from the bottom. Browser find on the web gets no
+such signal, so from the bottom it is pulled back.
+
+The thread timeline holds a floor under its scroll extent. The first child of
+its scroll content is a spacer whose height equals the content's height at the
+last ResizeObserver delivery, cancelled by an equal negative bottom margin, so
+it takes no space but keeps the scroll extent from dropping below that height.
+Content that collapses and regrows within one task, such as the composer
+footer or a row remounting while something forces a layout, therefore never
+lowers the extent, and the browser has nothing to clamp. Without the floor that
+clamp arrives as a scroll with no input and no size change once the content has
+regrown, which a detached reader near the end would follow as navigation. A
+shrink that lasts reaches the ResizeObserver, which lowers the floor before
+reconciling. Tool output boxes have no floor.
 
 Attachment follows one rule: a detached view within 4 px of the end attaches,
 whatever put it there, unless a restore or landing is still waiting for its row.
@@ -334,11 +401,15 @@ Every layout change is reconciled before paint. Triggers are ResizeObservers on
 the root, its content, and every mounted row, plus each windowed list's layout
 effect after a commit. Within one reconciliation:
 
-1. A scroll the owner did not make is folded into the position as the reader's
-   movement, before the layout is read. Changes that landed in the same forced
-   layout are therefore not mistaken for scrolling. They are reconciled against
-   the moved position first. Only then, if the anchor has left the viewport,
-   the owner picks a new anchor where the reader now is.
+1. A scroll the owner did not make is folded into the position before the
+   layout is read, even when its scroll event has not arrived yet. During an
+   input session it is the reader's movement: changes that landed in the same
+   forced layout are reconciled against the moved position, and only if the
+   anchor has left the viewport does the owner pick a new anchor where the
+   reader now is. Outside one, a view that follows navigation (see above)
+   takes its position from where the scroll left it, so a re-render between
+   find in page and its scroll event does not undo the jump. A clamp onto the
+   end of shrunken content is layout, not navigation.
 2. Windowed lists render the rows around a row key, never around a raw
    `scrollTop`. A prepend keeps the same rows mounted, and the owner's anchor
    row is always mounted.
@@ -360,7 +431,8 @@ mount, the owner takes its position from them.
 Lists of 20 or more items are windowed everywhere except iOS WebKit (Safari and
 the mobile app's WKWebView), where every row stays mounted. Every row also
 mounts while the scroll root has no height, for example in a hidden pane, and
-windowing resumes once it has one. Rows stay in normal flow between spacers whose
+windowing resumes once it has one, with spacers sized from the heights measured
+meanwhile, so the scroll extent stays exact. Rows stay in normal flow between spacers whose
 heights come from the measurements the thread retains, so rows never overlap
 and a row resize needs no positioning pass. The thread retains the 2,000 most
 recent measurements; a spacer keeps the height it last rendered for a row whose

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { defaultExperiments } from "@bb/domain";
 import {
   computeThreadTimelineDelta,
   type ThreadTimelineResponse,
@@ -14,9 +13,7 @@ import {
   makeThreadResponse,
   makeThreadTimelineResponse,
 } from "@/test/fixtures/thread-responses";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
-  systemConfigQueryKey,
   threadDetailBootstrapQueryKey,
   threadQueryKey,
   threadTimelineQueryKey,
@@ -28,7 +25,8 @@ import {
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { ThreadTimelinePanelContent } from "./ThreadTimelinePanelContent";
+import { ThreadTimelineSurface } from "./ThreadTimelineSurface";
+import { useThreadTimelineController } from "./useThreadTimelineController";
 
 export default {
   title: "thread/timeline/Scrollback",
@@ -219,15 +217,6 @@ function createScrollbackStory(delivery: TimelineDelivery): {
     canSpawnChild: false,
   });
   const timelineKey = threadTimelineQueryKey(THREAD_ID);
-  queryClient.setQueryData(
-    systemConfigQueryKey(),
-    makeSystemConfig({
-      experiments: {
-        ...defaultExperiments,
-        timelinePush: delivery === "push",
-      },
-    }),
-  );
   queryClient.setQueryData(threadDetailBootstrapQueryKey(THREAD_ID), thread);
   queryClient.setQueryData(threadQueryKey(THREAD_ID), thread);
   queryClient.setQueryData(timelineKey, server.latest());
@@ -338,10 +327,7 @@ function ScrollbackStory({
                   contentClassName="!px-2 !pb-3 !pt-4"
                   scrollAnchorThreadId={THREAD_ID}
                 >
-                  <ThreadTimelinePanelContent
-                    projectId={PROJECT_ID}
-                    threadId={THREAD_ID}
-                  />
+                  <ScrollbackTimeline />
                 </BottomAnchoredScrollBody>
               </div>
             </div>
@@ -349,6 +335,29 @@ function ScrollbackStory({
         </ThreadActionsProvider>
       </JotaiProvider>
     </QueryClientProvider>
+  );
+}
+
+function ScrollbackTimeline() {
+  const timeline = useThreadTimelineController({ threadId: THREAD_ID });
+  return (
+    <ThreadTimelineSurface
+      activeThinking={timeline.activeThinking}
+      contextBoundarySeq={timeline.contextBoundarySeq}
+      hasOlderTimelineRows={timeline.hasOlderTimelineRows}
+      isCatchingUpTimeline={timeline.isCatchingUpTimeline}
+      isLoadingOlderTimelineRows={timeline.isLoadingOlderTimelineRows}
+      isThreadTimelinePending={
+        timeline.timelineLoading && timeline.timelineRows.length === 0
+      }
+      timelineError={Boolean(timeline.timelineError)}
+      onLoadOlderRows={timeline.loadOlderTimelineRows}
+      projectId={PROJECT_ID}
+      showOngoingIndicator={false}
+      timelineRows={timeline.timelineRows}
+      threadId={THREAD_ID}
+      threadRuntimeDisplayStatus="idle"
+    />
   );
 }
 

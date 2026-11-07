@@ -31,7 +31,7 @@ runs:
         cache-prefix: ${{ inputs.cache-prefix }}
         turbo-cache: ${{ inputs.turbo-cache }}
     - name: Restore pnpm cache
-      if: runner.os == 'macOS'
+      if: runner.os != 'Windows'
       id: pnpm-cache
       continue-on-error: true
       uses: ./.github/actions/cache-pnpm

@@ -20,7 +20,7 @@ import {
   type PaneContent,
   type SplitLayout,
 } from "./split-layout";
-import { splitLayoutAtom } from "./split-layout/atoms";
+import { multiPaneSplitLayoutAtom } from "./split-layout/atoms";
 
 export function toPluginSidebarSplitLayout(
   layout: SplitLayout | null,
@@ -47,7 +47,7 @@ export function toPluginSidebarSplitLayout(
 
 export function useSidebarSplitLayout(): PluginSidebarSplitLayout | null {
   const isCompact = useIsCompactViewport();
-  const layout = useAtomValue(splitLayoutAtom);
+  const layout = useAtomValue(multiPaneSplitLayoutAtom);
   return useMemo(
     () => (isCompact ? null : toPluginSidebarSplitLayout(layout)),
     [isCompact, layout],

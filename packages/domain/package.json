@@ -49,6 +49,11 @@
       "types": "./src/update-state.ts",
       "default": "./src/update-state.ts"
     },
+    "./mobile-app": {
+      "source": "./src/mobile-app.ts",
+      "types": "./src/mobile-app.ts",
+      "default": "./src/mobile-app.ts"
+    },
     "./plugin-cli": {
       "source": "./src/plugin-cli.ts",
       "types": "./src/plugin-cli.ts",
@@ -88,6 +93,16 @@
       "source": "./src/prompt-attachment-limits.ts",
       "types": "./src/prompt-attachment-limits.ts",
       "default": "./src/prompt-attachment-limits.ts"
+    },
+    "./application-url": {
+      "source": "./src/application-url.ts",
+      "types": "./src/application-url.ts",
+      "default": "./src/application-url.ts"
+    },
+    "./application-link-approvals": {
+      "source": "./src/application-link-approvals.ts",
+      "types": "./src/application-link-approvals.ts",
+      "default": "./src/application-link-approvals.ts"
     }
   },
   "types": "./src/index.ts",
@@ -97,11 +112,11 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.20.5",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }

@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import type {
   TimelineConversationAttachments,
@@ -30,8 +31,6 @@ import {
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {
   ThreadTimelineAddToChatHandler,
-  ThreadTimelineLinkHandler,
-  ThreadTimelineLocalFileLinkHandler,
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 import {
@@ -78,19 +77,21 @@ import {
 } from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
-import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
+import {
+  useMessageLinkRouting,
+  useThreadTimelineNavigation,
+} from "./ThreadTimelineNavigationContext";
 import { markStreamTrace } from "@/lib/stream-trace";
 
 interface ConversationMessageContentBaseProps {
+  actionMetadata?: ReactNode;
   attachments: TimelineConversationAttachments | null;
   onCopyLink?: () => void;
-  onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
   timestamp: number;
-  workspaceRootPath?: string;
 }
 
 interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
@@ -101,7 +102,6 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onEdit?: () => void;
   resolveMentionLink?: PromptMentionLinkResolver;
-  onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadProjectId?: string;
@@ -137,7 +137,6 @@ const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
 interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
-  onOpenLink?: ThreadTimelineLinkHandler;
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
   forkDisabled?: boolean;
@@ -145,7 +144,6 @@ interface ConversationMessageContentAssistantProps
   showActions: boolean;
   mobileActionDisplay: "inline" | "overflow";
   streaming: boolean;
-  workspaceRootPath?: string;
 }
 
 type ConversationMessageContentProps =
@@ -153,6 +151,7 @@ type ConversationMessageContentProps =
   | ConversationMessageContentAssistantProps;
 
 interface UserConversationMessageProps {
+  actionMetadata?: ReactNode;
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
@@ -162,8 +161,6 @@ interface UserConversationMessageProps {
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onCopyLink?: () => void;
   onEdit?: () => void;
-  onOpenLink?: ThreadTimelineLinkHandler;
-  onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
@@ -177,10 +174,10 @@ interface UserConversationMessageProps {
   timestamp: number;
   threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
-  workspaceRootPath?: string;
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
+  actionMetadata?: ReactNode;
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
@@ -189,15 +186,12 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onFork?: () => void;
   forkDisabled?: boolean;
   onSelectProse?: (selection: MessageProseSelection | null) => void;
-  onOpenLink?: ThreadTimelineLinkHandler;
-  onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   showActions: boolean;
   mobileActionDisplay: "inline" | "overflow";
   streaming: boolean;
   text: string;
   timestamp: number;
-  workspaceRootPath?: string;
 }
 
 interface CollapsibleMessageTextProps {
@@ -337,6 +331,7 @@ function buildAddToChatAttachments(
 }
 
 function UserConversationMessage({
+  actionMetadata,
   addToChatAttachments,
   attachmentItems,
   initiator,
@@ -345,8 +340,6 @@ function UserConversationMessage({
   onAddToChat,
   onCopyLink,
   onEdit,
-  onOpenLink,
-  onOpenLocalFileLink,
   pluginActions = [],
   projectId,
   resolveMentionLink,
@@ -361,18 +354,8 @@ function UserConversationMessage({
   timestamp,
   threadId,
   turnRequest,
-  workspaceRootPath,
 }: UserConversationMessageProps) {
-  const linkRouting = useMemo(
-    () =>
-      buildMarkdownMessageLinkRouting({
-        onOpenLink,
-        onOpenLocalFileLink,
-        threadId,
-        workspaceRootPath,
-      }),
-    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
-  );
+  const linkRouting = useMessageLinkRouting(threadId);
   const automationDue =
     initiator === "user" ? parseAutomationDueMessage(text) : null;
   const generatedSource =
@@ -426,8 +409,6 @@ function UserConversationMessage({
             : { projectId, automationId: automationDue.automationId }
         }
         mentions={bodyMentions}
-        onOpenLink={onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
         onTitleAction={onTitleAction}
@@ -437,7 +418,6 @@ function UserConversationMessage({
         threadId={threadId}
         timestamp={timestamp}
         turnRequest={turnRequest}
-        workspaceRootPath={workspaceRootPath}
       />
     );
   }
@@ -475,7 +455,6 @@ function UserConversationMessage({
               filePaths={attachmentItems.filePaths}
               fileDetails={attachmentItems.fileDetails}
               imageItems={attachmentItems.imageItems}
-              onOpenLocalFileLink={onOpenLocalFileLink}
               projectId={projectId}
             />
           </div>
@@ -494,6 +473,7 @@ function UserConversationMessage({
             onCopyLink={onCopyLink}
             onEdit={onEdit}
             pluginActions={pluginActions}
+            metadata={actionMetadata}
           />
         </div>
       </div>
@@ -502,6 +482,7 @@ function UserConversationMessage({
 }
 
 function AssistantConversationMessage({
+  actionMetadata,
   addToChatAttachments,
   attachmentItems,
   id,
@@ -510,8 +491,6 @@ function AssistantConversationMessage({
   onFork,
   forkDisabled,
   onSelectProse,
-  onOpenLink,
-  onOpenLocalFileLink,
   pluginActions,
   projectId,
   showActions,
@@ -521,7 +500,6 @@ function AssistantConversationMessage({
   timestamp,
   threadId,
   turnId,
-  workspaceRootPath,
 }: AssistantConversationMessageProps) {
   useLayoutEffect(() => {
     if (streaming) {
@@ -536,16 +514,10 @@ function AssistantConversationMessage({
     () => resolveStreamingMarkdown(text, streaming),
     [streaming, text],
   );
-  const linkRouting = useMemo(
-    () =>
-      buildMarkdownMessageLinkRouting({
-        onOpenLink,
-        onOpenLocalFileLink,
-        threadId,
-        workspaceRootPath,
-      }),
-    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
-  );
+  const linkRouting = useMessageLinkRouting(threadId);
+  const navigation = useThreadTimelineNavigation();
+  const onOpenLocalFileLink = navigation?.onOpenLocalFileLink;
+  const workspaceRootPath = navigation?.workspaceRootPath;
 
   const messageDirectiveRegistry = useMessageDirectiveRegistry();
   const openDirectiveWorkspaceFile = useMemo<
@@ -661,7 +633,6 @@ function AssistantConversationMessage({
         filePaths={attachmentItems.filePaths}
         fileDetails={attachmentItems.fileDetails}
         imageItems={attachmentItems.imageItems}
-        onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
       />
       {showActions ? (
@@ -681,6 +652,7 @@ function AssistantConversationMessage({
           onFork={onFork}
           disabled={forkDisabled}
           pluginActions={pluginActions}
+          metadata={actionMetadata}
         />
       ) : null}
     </div>
@@ -690,13 +662,7 @@ function AssistantConversationMessage({
 export function ConversationMessageContent(
   props: ConversationMessageContentProps,
 ) {
-  const {
-    attachments,
-    onOpenLocalFileLink,
-    projectId,
-    resolveUserAttachmentImageSrc,
-    text,
-  } = props;
+  const { attachments, projectId, resolveUserAttachmentImageSrc, text } = props;
   const attachmentItems = useMemo(
     () =>
       buildAttachmentItems({
@@ -714,6 +680,7 @@ export function ConversationMessageContent(
   if (props.role === "user") {
     return (
       <UserConversationMessage
+        actionMetadata={props.actionMetadata}
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
         pluginActions={props.pluginActions}
@@ -723,8 +690,6 @@ export function ConversationMessageContent(
         onAddToChat={props.onAddToChat}
         onCopyLink={props.onCopyLink}
         onEdit={props.onEdit}
-        onOpenLink={props.onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
         onTitleAction={props.onTitleAction}
@@ -738,13 +703,13 @@ export function ConversationMessageContent(
         timestamp={props.timestamp}
         threadId={props.threadId}
         turnRequest={props.turnRequest}
-        workspaceRootPath={props.workspaceRootPath}
       />
     );
   }
 
   return (
     <AssistantConversationMessage
+      actionMetadata={props.actionMetadata}
       addToChatAttachments={addToChatAttachments}
       attachmentItems={attachmentItems}
       id={props.id}
@@ -754,8 +719,6 @@ export function ConversationMessageContent(
       onFork={props.onFork}
       forkDisabled={props.forkDisabled}
       onSelectProse={props.onSelectProse}
-      onOpenLink={props.onOpenLink}
-      onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
       showActions={props.showActions}
       mobileActionDisplay={props.mobileActionDisplay}
@@ -764,7 +727,6 @@ export function ConversationMessageContent(
       timestamp={props.timestamp}
       threadId={props.threadId}
       turnId={props.turnId}
-      workspaceRootPath={props.workspaceRootPath}
     />
   );
 }

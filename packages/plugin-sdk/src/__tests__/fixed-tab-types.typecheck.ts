@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type {
   ExperimentalPanelController,
   ExperimentalTabReference,
+  ExperimentalThreadTabProps,
   JsonValue,
   PluginAppSlots,
 } from "../app.js";
@@ -25,7 +26,7 @@ const actionTab = {
 } satisfies ExperimentalTabReference;
 
 declare const panel: ExperimentalPanelController;
-declare const Component: ComponentType<{ threadId: string }>;
+declare const Component: ComponentType<ExperimentalThreadTabProps>;
 declare const slots: PluginAppSlots;
 if (false) {
   panel.openTab({ tab: fixedNavTab, target: { recordId: "issue-42" } });

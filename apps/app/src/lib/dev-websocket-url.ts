@@ -32,7 +32,7 @@ function resolveDevWebSocketBaseUrl(): string | undefined {
   return undefined;
 }
 
-export function buildDevWebSocketUrl(
+function buildDevWebSocketUrl(
   args: BuildDevWebSocketUrlArgs,
 ): string | undefined {
   const baseUrl = resolveDevWebSocketBaseUrl();

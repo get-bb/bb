@@ -42,6 +42,29 @@ export type HostDaemonActiveThread = z.infer<
   typeof hostDaemonActiveThreadSchema
 >;
 
+export const hostDaemonInteractiveRequestKeySchema = z
+  .object({
+    threadId: z.string().min(1),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+    providerRequestId: z.string().min(1),
+  })
+  .strict();
+export type HostDaemonInteractiveRequestKey = z.infer<
+  typeof hostDaemonInteractiveRequestKeySchema
+>;
+
+export const hostDaemonOpenThreadWorkSchema = z
+  .object({
+    threadId: z.string().min(1),
+    backgroundItemIds: z.array(z.string().min(1)),
+    interactiveRequests: z.array(hostDaemonInteractiveRequestKeySchema),
+  })
+  .strict();
+export type HostDaemonOpenThreadWork = z.infer<
+  typeof hostDaemonOpenThreadWorkSchema
+>;
+
 const hostDaemonLoadedEnvironmentSchema = z.object({
   environmentId: z.string().min(1),
 });
@@ -53,6 +76,7 @@ const hostDaemonWatchSetWorkspaceTargetSchema = z
   .object({
     environmentId: z.string().min(1),
     workspaceContext: workspaceContextSchema,
+    mergeBaseBranch: z.string().min(1).nullable(),
   })
   .strict();
 export type HostDaemonWatchSetWorkspaceTarget = z.infer<
@@ -61,7 +85,6 @@ export type HostDaemonWatchSetWorkspaceTarget = z.infer<
 
 const hostDaemonWatchSetThreadStorageTargetSchema = z
   .object({
-    environmentId: z.string().min(1),
     threadId: z.string().min(1),
   })
   .strict();
@@ -166,6 +189,7 @@ export const hostDaemonSessionOpenRequestSchema = z
     localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
     protocolVersion: z.number().int().positive(),
     activeThreads: z.array(hostDaemonActiveThreadSchema),
+    openThreadWork: z.array(hostDaemonOpenThreadWorkSchema),
     undeliveredEventThreadIds: z.array(z.string().min(1)).default([]),
     loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
   })
@@ -244,6 +268,7 @@ export const hostDaemonSessionOpenResponseSchema = z
       .array(hostDaemonPluginHostGenerationSchema)
       .default([]),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
+    endedInteractiveRequests: z.array(hostDaemonInteractiveRequestKeySchema),
   })
   .strict();
 export type HostDaemonSessionOpenResponse = z.infer<
@@ -360,11 +385,7 @@ export type HostDaemonEventBatchResponse = z.infer<
 
 const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
-  .extract([
-    "work-status-changed",
-    "git-refs-changed",
-    "thread-storage-changed",
-  ]);
+  .extract(["work-status-changed", "git-refs-changed", "git-branches-changed"]);
 export type HostDaemonEnvironmentChange = z.infer<
   typeof hostDaemonEnvironmentChangeSchema
 >;
@@ -522,6 +543,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.global_skills_status"),
     onlineRpcResponseSuccessSchemaFor("host.list_branch_options"),
     onlineRpcResponseSuccessSchemaFor("host.inspect_git_source"),
+    onlineRpcResponseSuccessSchemaFor("host.inspect_git_checkout"),
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_chunk"),
     onlineRpcResponseSuccessSchemaFor("host.write_file"),
@@ -716,6 +738,13 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
       type: z.literal("machine.shutdown"),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("interactive-requests.end"),
+      requests: z.array(hostDaemonInteractiveRequestKeySchema).min(1),
+      reason: z.string().min(1),
+    })
+    .strict(),
   serverMovedMessageSchema,
   z
     .object({
@@ -763,6 +792,13 @@ const hostDaemonEnvironmentChangeMessageSchema =
       type: z.literal("environment-change"),
     })
     .strict();
+
+const hostDaemonThreadStorageChangeMessageSchema = z
+  .object({
+    type: z.literal("thread-storage-change"),
+    threadId: z.string().min(1),
+  })
+  .strict();
 
 const hostDaemonEnvironmentMetadataChangeMessageSchema =
   hostDaemonEnvironmentMetadataChangePayloadSchema
@@ -880,6 +916,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonMachineShutdownAckMessageSchema,
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
+  hostDaemonThreadStorageChangeMessageSchema,
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
   hostDaemonConnectNextStatusMessageSchema,

@@ -12,7 +12,6 @@ import {
   RETAINED_EVENT_OUTPUT_TARGETS,
   retainedEventOutputs,
   threads,
-  threadPruningCursors,
 } from "@bb/db";
 import { threadScope } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
@@ -48,6 +47,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../helpers/test-app.js";
+import { defineSingleItemSweep } from "../../src/services/system/item-sweep.js";
 
 type ReleaseCallback = () => void;
 
@@ -449,7 +449,7 @@ describe("runPeriodicSweeps", () => {
 
       const logger = {
         ...testLogger,
-        error: vi.fn(),
+        warn: vi.fn(),
       };
       const deps = {
         ...harness.deps,
@@ -474,12 +474,12 @@ describe("runPeriodicSweeps", () => {
         .where(eq(hostDaemonSessions.id, session.id))
         .get();
       expect(sessionAfterSweep).toBeUndefined();
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
-          sweepJob: "machine-auth-prune",
-          sweepJobCategory: "retention",
+          attempts: 1,
+          sweep: "machine-auth-prune",
         }),
-        "Periodic sweep job failed",
+        "Sweep item failed; retrying later",
       );
     });
   });
@@ -557,7 +557,7 @@ describe("runPeriodicSweeps", () => {
     });
   });
 
-  it("retries pruning on the next tick after a busy skip and continues without an hourly delay", async () => {
+  it("retries a busy thread's pruning on the next tick and continues without an hourly delay", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness);
       const deps = {
@@ -592,9 +592,13 @@ describe("runPeriodicSweeps", () => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(now);
       try {
         await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
-        expect(harness.db.select().from(threadPruningCursors).all()).toEqual(
-          [],
-        );
+        expect(
+          harness.db
+            .select({ sequence: events.sequence })
+            .from(events)
+            .where(eq(events.threadId, thread.id))
+            .all(),
+        ).toEqual([{ sequence: 1 }, { sequence: 2 }]);
         harness.db
           .update(threads)
           .set({ status: "idle" })
@@ -650,15 +654,20 @@ describe("runPeriodicSweeps", () => {
           cadenceMs: 0,
           category: "maintenance",
           name: "test-overlap-sweep",
-          async run() {
-            runCount += 1;
-            if (resolveJobStarted) {
-              resolveJobStarted();
-            }
-            await new Promise<void>((resolveRunningJob) => {
-              releaseJob = resolveRunningJob;
-            });
-          },
+          background: false,
+          sweep: () =>
+            defineSingleItemSweep({
+              name: "test-overlap-sweep",
+              async process() {
+                runCount += 1;
+                if (resolveJobStarted) {
+                  resolveJobStarted();
+                }
+                await new Promise<void>((resolveRunningJob) => {
+                  releaseJob = resolveRunningJob;
+                });
+              },
+            }),
         },
       ];
 
@@ -686,9 +695,14 @@ describe("runPeriodicSweeps", () => {
           cadenceMs: 1_000,
           category: "maintenance",
           name: "test-cadence-sweep",
-          run() {
-            runCount += 1;
-          },
+          background: false,
+          sweep: () =>
+            defineSingleItemSweep({
+              name: "test-cadence-sweep",
+              process() {
+                runCount += 1;
+              },
+            }),
         },
       ];
 

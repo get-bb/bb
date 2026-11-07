@@ -13,6 +13,7 @@ import {
 import type { AppFixedTabReference } from "@/lib/app-navigation-host";
 import { isThreadTab, type PluginThreadFixedTabSlot } from "@/lib/plugin-slots";
 import { PluginTabScope, usePluginTabs } from "./PluginTabs";
+import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
 
 export interface ThreadFixedTabEntry {
   slot: PluginThreadFixedTabSlot;
@@ -30,6 +31,7 @@ export function getThreadFixedTabTargetKey(
 export function createThreadFixedTabDescriptor(
   entry: ThreadFixedTabEntry,
   threadId: string,
+  environment: ExperimentalThreadEnvironment | null,
   open: (reference: AppFixedTabReference) => void,
 ) {
   const tooltip = entry.slot.tooltip ?? entry.slot.title;
@@ -51,17 +53,32 @@ export function createThreadFixedTabDescriptor(
           tabId={entry.reference.tabId}
           targetKey={getThreadFixedTabTargetKey(threadId, entry.reference)}
         >
-          <Component threadId={threadId} />
+          <Component threadId={threadId} environment={environment} />
         </FixedTabTargetScope>
       </PluginTabScope>
     ),
   } satisfies SecondaryPanelFixedTab;
 }
 
-export function useThreadFixedTabs({ threadId }: { threadId: string | null }) {
-  const { slots, observers, isReady } = usePluginTabs(
-    hasThreadId(threadId) ? { kind: "thread", threadId } : null,
+export function useThreadFixedTabs({
+  threadId,
+  environmentId,
+}: {
+  threadId: string | null;
+  environmentId: string | null;
+}) {
+  const context = useMemo(
+    () =>
+      hasThreadId(threadId)
+        ? {
+            kind: "thread" as const,
+            threadId,
+            environment: environmentId === null ? null : { id: environmentId },
+          }
+        : null,
+    [threadId, environmentId],
   );
+  const { slots, observers, isReady } = usePluginTabs(context);
   const entries = useMemo<readonly ThreadFixedTabEntry[]>(
     () =>
       slots

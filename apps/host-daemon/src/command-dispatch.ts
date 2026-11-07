@@ -32,6 +32,7 @@ import {
   provisionEnvironment,
 } from "./command-handlers/environment.js";
 import {
+  inspectHostGitCheckout,
   inspectHostGitSource,
   listHostBranchOptions,
 } from "./command-handlers/host-branches.js";
@@ -607,6 +608,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.install_global_skills": installGlobalSkills,
   "host.global_skills_status": async (command) =>
     readGlobalSkillsStatus(command, {}),
+  "host.inspect_git_checkout": inspectHostGitCheckout,
   "host.inspect_git_source": inspectHostGitSource,
   "host.list_branch_options": listHostBranchOptions,
   "host.read_file": readHostFile,
@@ -614,7 +616,13 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.write_file": writeHostFile,
   "provider.list_models": (command, options) =>
     withResolvedBridgeLaunch(command, options, (args) =>
-      options.listModels({ ...args, contributedEnv: command.contributedEnv }),
+      options.listModels({
+        ...args,
+        contributedEnv: command.contributedEnv,
+        ...(command.selectedModel === undefined
+          ? {}
+          : { selectedModel: command.selectedModel }),
+      }),
     ),
   "provider.list_commands": async (command, options) => {
     const cwd =

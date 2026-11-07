@@ -1,37 +1,40 @@
-import { atomWithStorage } from "jotai/utils";
 import { z } from "zod";
-import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
+import { getLocalStorage } from "@/lib/browser-storage";
 
-const pluginWorkspaceSchema = z.object({
+export const PLUGINS_BROWSE_PANEL_STATE_ID = "plugins-browse";
+
+const LEGACY_PLUGIN_WORKSPACE_STORAGE_KEY = "bb.plugins.workspace.tabs";
+
+const legacyPluginWorkspaceSchema = z.object({
   tabs: z.array(z.string().min(1)).max(100),
   activePluginId: z.string().nullable(),
 });
 
-export type PluginWorkspaceState = z.infer<typeof pluginWorkspaceSchema>;
+export interface LegacyPluginWorkspaceTabs {
+  detailKeys: readonly string[];
+  activeDetailKey: string | null;
+}
 
-const storage = createLocalStorageSyncStorage<PluginWorkspaceState>({
-  parse: (storedValue, initialValue) => {
-    if (storedValue === null) return initialValue;
-    try {
-      const parsed = pluginWorkspaceSchema.safeParse(JSON.parse(storedValue));
-      if (!parsed.success) return initialValue;
-      const tabs = [...new Set(parsed.data.tabs)];
-      return {
-        tabs,
-        activePluginId: tabs.includes(parsed.data.activePluginId ?? "")
-          ? parsed.data.activePluginId
-          : null,
-      };
-    } catch {
-      return initialValue;
-    }
-  },
-  serialize: JSON.stringify,
-});
-
-export const pluginWorkspaceAtom = atomWithStorage<PluginWorkspaceState>(
-  "bb.plugins.workspace.tabs",
-  { tabs: [], activePluginId: null },
-  storage,
-  { getOnInit: true },
-);
+export function takeLegacyPluginWorkspaceTabs(): LegacyPluginWorkspaceTabs | null {
+  const storage = getLocalStorage();
+  const stored = storage?.getItem(LEGACY_PLUGIN_WORKSPACE_STORAGE_KEY) ?? null;
+  if (storage === null || stored === null) return null;
+  storage.removeItem(LEGACY_PLUGIN_WORKSPACE_STORAGE_KEY);
+  let value: unknown;
+  try {
+    value = JSON.parse(stored);
+  } catch {
+    return null;
+  }
+  const parsed = legacyPluginWorkspaceSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const detailKeys = [...new Set(parsed.data.tabs)];
+  const activeDetailKey = parsed.data.activePluginId;
+  return {
+    detailKeys,
+    activeDetailKey:
+      activeDetailKey !== null && detailKeys.includes(activeDetailKey)
+        ? activeDetailKey
+        : null,
+  };
+}

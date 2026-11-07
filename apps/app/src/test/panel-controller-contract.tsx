@@ -4,14 +4,20 @@ import { describe, expect, it } from "vitest";
 import type {
   ExperimentalOpenTabOptions,
   ExperimentalPanelController,
+  ExperimentalPanelTabs,
   ExperimentalTabReference,
   JsonValue,
 } from "@get-bb/plugin-sdk";
 import {
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
+  experimental_usePanelTabs,
 } from "@/lib/plugin-sdk-hooks";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
+import {
+  TabVisibleContext,
+  useTabVisible,
+} from "@/components/secondary-panel/tab-visibility";
 import {
   createPluginPanelFixedPanelTab,
   type FixedPanelTabsState,
@@ -33,16 +39,17 @@ interface ContractTab {
 
 export interface PanelContractSurface {
   panel: () => ExperimentalPanelController;
+  tabs: () => ExperimentalPanelTabs;
   snapshot: () => PanelContractSnapshot;
   renderedTarget: () => string | null;
-  command: (id: "panel.toggle" | "diff.toggle") => boolean;
+  renderedTabVisible: () => string | null;
+  command: (id: "panel.toggle") => boolean;
   action: {
     tab: ExperimentalTabReference;
     panelTabId: (params: JsonValue | undefined) => string;
   };
   fixed: { targeted: ContractTab; untargeted: ContractTab } | null;
   foreignTab: ExperimentalTabReference;
-  diff: { panelTabId: string } | null;
   toggleRestoresActiveTab: boolean;
 }
 
@@ -70,8 +77,10 @@ export function ContractTargetedFixedTab({
     ...tab,
     experimental_target: contractTarget,
   });
+  const visible = useTabVisible();
   return (
     <div data-testid="contract-fixed-tab">
+      <output data-testid="contract-tab-visible">{String(visible)}</output>
       {target === null ? null : (
         <output data-testid="contract-target">
           {JSON.stringify(target.target)}
@@ -87,6 +96,7 @@ export function ContractActionTab({ params }: { params: JsonValue | null }) {
 
 export interface ContractPanelRef {
   current: ExperimentalPanelController | null;
+  tabs?: ExperimentalPanelTabs;
 }
 
 export function readContractPanel(ref: ContractPanelRef) {
@@ -94,8 +104,14 @@ export function readContractPanel(ref: ContractPanelRef) {
   return ref.current;
 }
 
+export function readContractTabs(ref: ContractPanelRef) {
+  if (ref.tabs === undefined) throw new Error("panel probe has not rendered");
+  return ref.tabs;
+}
+
 export function ContractPanelProbe({ probe }: { probe: ContractPanelRef }) {
   probe.current = experimental_useAppPanel();
+  probe.tabs = experimental_usePanelTabs();
   return null;
 }
 
@@ -127,7 +143,6 @@ function actionOptions(
 
 export interface PanelContractSupport {
   fixedTabs: boolean;
-  diffToggle: boolean;
 }
 
 function required<T>(value: T | null): T {
@@ -153,6 +168,20 @@ export function describePanelControllerContract(
           isOpen: true,
           activeTabId: fixed.untargeted.panelTabId,
         });
+      },
+    );
+
+    it.runIf(supports.fixedTabs)(
+      "reports the shown tab visible only while the side panel is open",
+      async () => {
+        const surface = await mount();
+        const { targeted } = required(surface.fixed);
+        expect(
+          call(() => surface.panel().openTab({ tab: fixedTab(targeted) })),
+        ).toBe(true);
+        expect(surface.renderedTabVisible()).toBe("true");
+        expect(call(() => surface.panel().close())).toBe(true);
+        expect(surface.renderedTabVisible()).not.toBe("true");
       },
     );
 
@@ -300,6 +329,79 @@ export function describePanelControllerContract(
       expect(surface.snapshot()).toEqual(before);
     });
 
+    it("lists open tabs and selects or closes them by key, as the tab strip does", async () => {
+      const surface = await mount();
+      call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+      call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
+      const first = surface.action.panelTabId({ n: 1 });
+      const second = surface.action.panelTabId({ n: 2 });
+      expect(surface.tabs().selectedKey).toBe(second);
+      expect(surface.panel().getTabs()).toEqual(surface.tabs());
+      expect(
+        surface.tabs().tabs.find((tab) => tab.key === first),
+      ).toMatchObject({
+        closable: true,
+        detail: {
+          kind: "plugin",
+          pluginId: CONTRACT_PLUGIN_ID,
+          tab: { ...surface.action.tab, availability: "action" },
+          params: { n: 1 },
+        },
+      });
+
+      expect(call(() => surface.panel().selectTab(first))).toBe(true);
+      expect(surface.snapshot().activeTabId).toBe(first);
+      expect(surface.tabs().selectedKey).toBe(first);
+      expect(call(() => surface.panel().closeTab(first))).toBe(true);
+      expect(surface.snapshot().tabIds).not.toContain(first);
+      expect(surface.tabs().tabs.map((tab) => tab.key)).not.toContain(first);
+      expect(call(() => surface.panel().selectTab("missing"))).toBe(false);
+      expect(call(() => surface.panel().closeTab("missing"))).toBe(false);
+
+      call(() => surface.panel().close());
+      expect(surface.snapshot().isOpen).toBe(false);
+      expect(call(() => surface.panel().selectTab(second))).toBe(true);
+      expect(surface.snapshot()).toMatchObject({
+        isOpen: true,
+        activeTabId: second,
+      });
+      expect(surface.tabs()).toMatchObject({ open: true, selectedKey: second });
+    });
+
+    it.runIf(supports.fixedTabs)(
+      "lists fixed tabs as selectable but not closable",
+      async () => {
+        const surface = await mount();
+        const { untargeted } = required(surface.fixed);
+        call(() => surface.panel().close());
+        const listed = surface
+          .tabs()
+          .tabs.find((tab) => tab.key === untargeted.panelTabId);
+        expect(listed).toMatchObject({
+          closable: false,
+          detail: {
+            kind: "plugin",
+            pluginId: CONTRACT_PLUGIN_ID,
+            tab: fixedTab(untargeted),
+          },
+        });
+        expect(
+          call(() => surface.panel().closeTab(untargeted.panelTabId)),
+        ).toBe(false);
+        expect(
+          call(() => surface.panel().selectTab(untargeted.panelTabId)),
+        ).toBe(true);
+        expect(surface.snapshot()).toMatchObject({
+          isOpen: true,
+          activeTabId: untargeted.panelTabId,
+        });
+        expect(surface.tabs()).toMatchObject({
+          open: true,
+          selectedKey: untargeted.panelTabId,
+        });
+      },
+    );
+
     it("routes the panel.toggle command through the controller", async () => {
       const surface = await mount();
       call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
@@ -311,21 +413,6 @@ export function describePanelControllerContract(
       if (surface.toggleRestoresActiveTab)
         expect(surface.snapshot().activeTabId).toBe(active);
     });
-
-    it.runIf(supports.diffToggle)(
-      "toggles the core Diff tab with diff.toggle",
-      async () => {
-        const surface = await mount();
-        const diff = required(surface.diff);
-        expect(call(() => surface.command("diff.toggle"))).toBe(true);
-        expect(surface.snapshot()).toMatchObject({
-          isOpen: true,
-          activeTabId: diff.panelTabId,
-        });
-        expect(call(() => surface.command("diff.toggle"))).toBe(true);
-        expect(surface.snapshot().isOpen).toBe(false);
-      },
-    );
   });
 }
 
@@ -353,7 +440,13 @@ export function ContractSecondaryPanel({
   const active = [...fixedTabs, ...tabs].find(
     (tab) => tab.tab.id === activeTab?.id,
   );
-  return <aside>{active?.renderContent?.(pane)}</aside>;
+  return (
+    <aside>
+      <TabVisibleContext.Provider value={isOpen}>
+        {active?.renderContent?.(pane)}
+      </TabVisibleContext.Provider>
+    </aside>
+  );
 }
 
 export interface ContractStateSink {

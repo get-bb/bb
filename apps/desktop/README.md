@@ -143,9 +143,10 @@ that the collector never selected. The explicit file set enters both ASAR's
 file index and its unpacked resources before signing.
 
 Packaging runs an offline npm smoke check in `afterPack`, before signing or
-publishing. This requires a native target host (macOS arm64 or Linux x64).
-`smoke:packaged` repeats it against the resulting artifact. To run only npm
-verification without opening a desktop window:
+publishing. This requires a native target host (macOS arm64, Linux x64, or
+Windows x64). `smoke:packaged` then verifies the resulting app opens and its
+desktop preload bridge works. To rerun npm verification independently without
+opening a desktop window:
 
 ```bash
 pnpm exec turbo run smoke:packaged-npm --filter=@bb/desktop
@@ -289,7 +290,9 @@ The desktop release tag uses the locked version: `desktop-v<version>` for
 immutable releases and `desktop-latest` for the moving pointer.
 
 `build-desktop.yml` builds macOS, Linux, and Windows in parallel jobs, then
-publishes all three from one job. The moving release resets all of its assets
+publishes all three from one job. `publish-bb-app.yml` calls it for both the
+stable release and the nightly channel; dispatching it directly builds
+artifacts without publishing. The moving release resets all of its assets
 on each publish, so a single publisher is what keeps one platform from deleting
 another's binaries. Each platform has its own update feed file inside the same release
 tag:

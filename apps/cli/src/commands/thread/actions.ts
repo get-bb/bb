@@ -77,6 +77,11 @@ interface ThreadPinCommandOptions {
   json?: boolean;
 }
 
+interface ThreadRegenerateTitleCommandOptions {
+  self?: boolean;
+  json?: boolean;
+}
+
 interface ThreadDeleteCommandOptions {
   confirmChildThreads?: boolean;
   yes?: boolean;
@@ -295,34 +300,43 @@ export function registerActionsCommands(
         async (id: string | undefined, opts: ThreadArchiveCommandOptions) => {
           const threadId = requireThreadIdOrSelf(id, opts);
           const sdk = createCliBbSdk(getUrl());
-          let archivedThreadIds: string[] = [threadId];
+          let archivedThreadIds: string[];
           try {
-            const result = await sdk.threads.archive({ threadId });
-            archivedThreadIds = result.archivedThreadIds;
+            archivedThreadIds = (await sdk.threads.archive({ threadId }))
+              .archivedThreadIds;
           } catch (err: unknown) {
             throw prependErrorContext(
               `Failed to archive thread ${threadId}`,
               err,
             );
           }
+          const alreadyArchived = !archivedThreadIds.includes(threadId);
+          const { archivedAt } = await sdk.threads.get({ threadId });
           if (
             outputJson(opts, {
               ok: true,
               threadId,
+              alreadyArchived,
+              archivedAt,
               archivedThreadIds,
             })
           ) {
             return;
           }
+          const headline = !alreadyArchived
+            ? `Thread ${threadId} archived`
+            : archivedAt === null
+              ? `Thread ${threadId} was already archived`
+              : `Thread ${threadId} was already archived at ${new Date(archivedAt).toLocaleString()}`;
           const cascadedCount = archivedThreadIds.filter(
             (archivedId) => archivedId !== threadId,
           ).length;
           if (cascadedCount === 0) {
-            console.log(`Thread ${threadId} archived`);
+            console.log(headline);
             return;
           }
           console.log(
-            `Thread ${threadId} archived (${cascadedCount} related thread${cascadedCount === 1 ? "" : "s"} also archived)`,
+            `${headline} (${cascadedCount} related thread${cascadedCount === 1 ? "" : "s"} ${alreadyArchived ? "" : "also "}archived)`,
           );
         },
       ),
@@ -398,6 +412,38 @@ export function registerActionsCommands(
         ),
       );
   }
+
+  parent
+    .command("regenerate-title [id]")
+    .description(
+      "Replace a thread's title with one generated from its task and latest messages",
+    )
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: ThreadRegenerateTitleCommandOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          let thread;
+          try {
+            thread = await sdk.threads.experimental_regenerateTitle({
+              threadId,
+            });
+          } catch (err: unknown) {
+            throw prependErrorContext(
+              `Failed to regenerate the title of thread ${threadId}`,
+              err,
+            );
+          }
+          if (outputJson(opts, thread)) return;
+          console.log(`Thread ${thread.id} titled "${thread.title}"`);
+        },
+      ),
+    );
 
   parent
     .command("delete <id>")
@@ -636,7 +682,7 @@ export function registerActionsCommands(
     },
     {
       name: "clear-goal",
-      description: "Ask the provider to clear the active Goal",
+      description: "Ask the provider to clear the thread's Goal",
       method: "clearGoal",
       done: "cleared its Goal",
     },
@@ -772,8 +818,12 @@ export function describeQueueWait(row: {
       return `waiting for ${waitingOn.hostName} to reconnect`;
     case "interaction":
       return "waiting for a pending interaction";
+    case "app-update":
+      return "sending after bb restarts to update";
     case "plugin":
       return `${waitingOn.pluginId}: ${waitingOn.reason}`;
+    case "superseded":
+      return "not sent: a newer message was sent after it";
   }
 }
 

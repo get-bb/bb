@@ -336,6 +336,41 @@ describe("plugin settings + storage", () => {
       ).toBeUndefined();
     });
 
+    it("treats inherited object keys as unknown settings and stores nothing for them", async () => {
+      await installConfigurable();
+      for (const name of ["constructor", "toString", "hasOwnProperty"]) {
+        await expect(
+          service.updateSettings("configurable", { [name]: "x" }),
+        ).rejects.toThrow(`unknown setting "${name}"`);
+      }
+      await expect(
+        service.updateSettings(
+          "configurable",
+          JSON.parse('{"__proto__": "x"}') as Record<string, unknown>,
+        ),
+      ).rejects.toThrow('unknown setting "__proto__"');
+      expect(getPluginSettingsValues(db, "configurable")).toEqual({});
+
+      const app = new Hono();
+      registerPluginRoutes(
+        app,
+        { config: { serverPort: 3334 }, db },
+        service,
+        createPluginInstallJobs({ notifyChanged: () => {} }),
+        createPluginUpdateJobs({ notifyChanged: () => {} }),
+      );
+      const put = await app.request("/plugins/configurable/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ values: { constructor: "x", note: "kept?" } }),
+      });
+      expect(put.status).toBe(400);
+      expect(((await put.json()) as { error: string }).error).toContain(
+        'unknown setting "constructor"',
+      );
+      expect(getPluginSettingsValues(db, "configurable")).toEqual({});
+    });
+
     it("remove clears settings rows and secret files", async () => {
       await installConfigurable();
       await service.updateSettings("configurable", {
@@ -473,11 +508,16 @@ describe("plugin settings + storage", () => {
           "INSERT INTO items (name) VALUES ('seed')",
         ]);
         const g = globalThis as any;
-        g.__sqler = { db, journalMode: db.pragma("journal_mode", { simple: true }) };
+        g.__sqler = {
+          autoVacuum: db.pragma("auto_vacuum", { simple: true }),
+          db,
+          journalMode: db.pragma("journal_mode", { simple: true }),
+        };
       }
     `;
 
     function sqler(): {
+      autoVacuum: number;
       db: {
         prepare(sql: string): { get(): { count: number } };
       };
@@ -486,7 +526,7 @@ describe("plugin settings + storage", () => {
       return (globalThis as Record<string, unknown>).__sqler as never;
     }
 
-    it("vends a WAL handle, applies migrations once, and closes handles on reload", async () => {
+    it("vends an incremental WAL handle, applies migrations once, and closes handles on reload", async () => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-sqler",
         serverSource: sqlerSource,
@@ -494,6 +534,7 @@ describe("plugin settings + storage", () => {
       await service.installPath(rootDir);
 
       expect(sqler().journalMode).toBe("wal");
+      expect(sqler().autoVacuum).toBe(2);
       const countRow = sqler()
         .db.prepare("SELECT COUNT(*) AS count FROM items")
         .get();
@@ -587,7 +628,6 @@ describe("plugin settings + storage", () => {
               db.prepare("SELECT 1").get();
               g.__chatty.handles.push(db);
             }
-            // A plugin that closes the handle itself gets a fresh one next.
             for (let i = 0; i < 3; i++) {
               const db = bb.storage.database();
               db.close();

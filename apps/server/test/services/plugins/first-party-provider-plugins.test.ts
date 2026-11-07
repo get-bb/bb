@@ -147,7 +147,7 @@ async function installFirstPartyProviderPlugins(
 }
 
 describe("first-party provider plugins", () => {
-  it("are the sole source of the built-in providers", async () => {
+  it("registers the built-in providers with their client fields and restores their position after re-enabling", async () => {
     await withTestHarness(
       { seedFirstPartyProviders: false },
       async (harness) => {
@@ -211,15 +211,7 @@ describe("first-party provider plugins", () => {
             (plugin) => plugin.visibility === "always",
           ).map((plugin) => [plugin.providerId, plugin.fork !== "none"]),
         );
-      },
-    );
-  }, 60_000);
 
-  it("pins the client-read ProviderInfo fields of the four core providers", async () => {
-    await withTestHarness(
-      { seedFirstPartyProviders: false },
-      async (harness) => {
-        await installFirstPartyProviderPlugins(harness);
         const clientFields = (providerId: string) => {
           const info = harness.deps.providerRegistry.get(providerId)?.info;
           if (info === undefined) throw new Error(`${providerId} missing`);
@@ -353,16 +345,7 @@ describe("first-party provider plugins", () => {
             .get("codex")
             ?.info.serviceTiers?.map((tier) => tier.id),
         ).toEqual(["default", "fast", "ultrafast"]);
-      },
-    );
-  }, 60_000);
 
-  it("disabling a provider plugin removes its provider, and re-enabling restores its position", async () => {
-    await withTestHarness(
-      { seedFirstPartyProviders: false },
-      async (harness) => {
-        const registry = harness.deps.providerRegistry;
-        await installFirstPartyProviderPlugins(harness);
         expect(registry.get("pi")?.pluginId).toBe("provider-pi");
 
         await harness.pluginService.setEnabled("provider-pi", false);
@@ -381,8 +364,8 @@ describe("first-party provider plugins", () => {
           "acp-grok",
           "acp-hermes-agent",
         ]);
-        const infos = await listSystemProviderInfos(harness.deps, {});
-        expect(infos.find((info) => info.id === "pi")).toBeUndefined();
+        const remainingInfos = await listSystemProviderInfos(harness.deps, {});
+        expect(remainingInfos.find((info) => info.id === "pi")).toBeUndefined();
 
         await harness.pluginService.setEnabled("provider-pi", true);
         expect(registry.get("pi")?.pluginId).toBe("provider-pi");

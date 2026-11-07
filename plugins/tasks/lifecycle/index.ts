@@ -1,7 +1,11 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { publishCommentsChanged, type TasksApiStore } from "../api";
+import {
+  invalidateComments,
+  invalidateThreads,
+  type TasksApiStore,
+} from "../api";
 import type { TaskThread, TaskThreadLiveStatus } from "../db";
-import { createSystemComment, publishThreadsChanged } from "../delegate";
+import { createSystemComment } from "../delegate";
 import { errorMessage } from "../shared/errors";
 
 const TERMINAL_LIVE_STATUSES = new Set<TaskThreadLiveStatus>(["completed"]);
@@ -75,8 +79,8 @@ function transitionThread(
     }
   });
 
-  publishThreadsChanged(bb, thread.taskId);
-  publishCommentsChanged(bb, thread.taskId);
+  invalidateThreads(bb, thread.taskId);
+  invalidateComments(bb, thread.taskId);
 }
 
 function transitionTrackedThread(

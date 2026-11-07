@@ -145,6 +145,8 @@ Each bundled plugin documents its commands and behavior in its own skill.
   hosts while bb runs; closing the lid still sleeps.
   `bb keep-awake status|enable|disable [--json]`, `bb keep-awake hosts all`,
   or `bb keep-awake hosts <host-id>...`.
+- GitHub Star (builtin): asks once for a GitHub star after more than five
+  prompts. `bb plugin disable bb--github-star` stops it from asking.
 - Concurrency limit (builtin): caps running threads overall and per host.
   `bb concurrency-limit status|global|host`; see the `concurrency-limit`
   skill.
@@ -270,10 +272,15 @@ list. To publish a marketplace, see the bb-plugin-authoring skill.
 
 Updates and pinning
 
-Updates are manual: `bb plugin outdated` checks tracking sources and
-`bb plugin update` applies compatible candidates. Reinstalling an installed
-managed plugin is refused; use `bb plugin update`. A failed activation restores
-the previous version and leaves the failure visible.
+bb checks tracking sources every six hours. With the `pluginUpdates`
+experiment on (`bb settings experiment pluginUpdates true`, on for early
+adopters), Settings → Updates checks again when it opens, lists each compatible
+update with an Update button and Update all, shows candidates blocked by
+engines.bb or engines.bbPluginSdk with the reason, and the sidebar updates
+badge counts plugin updates. Updates are never applied automatically: `bb plugin outdated` checks on
+demand and `bb plugin update` applies compatible candidates. Reinstalling an
+installed managed plugin is refused; use `bb plugin update`. A failed
+activation restores the previous version and leaves the failure visible.
 
 Exact npm versions, Git tags and commits, path sources, and bundled official
 plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs
@@ -281,7 +288,13 @@ plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs
 updates. Change a pinned git:/npm: source with `bb plugin remove` (which
 deletes settings, secrets, and schedules) and a fresh install. Edit a local
 path plugin in place and `bb plugin reload <id>`, or move it with
-`bb plugin install path:<new dir>`; both keep its configuration.
+`bb plugin install path:<new dir>`; both keep its configuration. Before bb
+deletes a thread's storage folder or removes a bb-managed workspace (such as
+a worktree), it copies any path plugin installed from inside it to
+<dataDir>/plugins/<id>/preserved-source and moves the plugin there, keeping
+its configuration. Such a plugin carries a `sourceNotice` that says so;
+`bb plugin install` and `bb plugin list` print it as `note:`, and the app shows
+it in the install toast and on Plugin details.
 
 Managed git:/npm: installs refuse engines.bb and engines.bbPluginSdk
 mismatches, manifest and artifact identity mismatches, and ids reserved by
@@ -322,7 +335,10 @@ Authoring a plugin
   bb plugin build [path]         Compile the plugin into dist/; no server
                                  required
   bb plugin types [path] [--check]  Sync the plugin's SDK and shimmed-package
-                                 type pins to this bb; --check only reports
+                                 type pins to this bb; keep the SDK in
+                                 dependencies when an entry needs its own
+                                 SDK install; --check reports stale pins
+                                 and the wrong dependency field
   bb plugin migrate [path] [--yes]  Move a plugin that vendors types/ to the
                                  @get-bb/plugin-sdk npm package
 

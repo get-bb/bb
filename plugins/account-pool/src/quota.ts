@@ -2,14 +2,22 @@ import type {
   Account,
   AccountQuota,
   AccountSummary,
-  FamilyQuota,
   LimitWindow,
+  LimitWindowSlot,
   ModelFamily,
 } from "./contracts.js";
 
 const PREFIX = "anthropic-ratelimit-unified-";
 const SCOPED_HEADER =
   /^anthropic-ratelimit-unified-7d_(.+)-(utilization|reset|status)$/u;
+
+export const CLAUDE_WINDOWS = {
+  primary: { minutes: 300, header: "5h" },
+  secondary: { minutes: 10_080, header: "7d" },
+} as const satisfies Record<
+  LimitWindowSlot,
+  { minutes: number; header: string }
+>;
 
 interface ScopedHeaderValues {
   utilization: number | null;
@@ -70,6 +78,33 @@ function scopedHeaderValues(headers: Headers): ScopedHeaderValues | null {
   return [...buckets.values()][0] ?? null;
 }
 
+function windowFromHeaders(
+  headers: Headers,
+  slot: LimitWindowSlot,
+  previous: AccountQuota,
+  now: number,
+): LimitWindow | null {
+  const { minutes, header } = CLAUDE_WINDOWS[slot];
+  const utilization = parseNumber(
+    headers.get(`${PREFIX}${header}-utilization`),
+  );
+  const resetAt = parseReset(headers.get(`${PREFIX}${header}-reset`));
+  const status = headers.get(`${PREFIX}${header}-status`);
+  const prior =
+    previous.limitWindows.find((window) => window.slot === slot) ?? null;
+  if (utilization === null && resetAt === null && status === null)
+    return prior;
+  return {
+    slot,
+    windowMinutes: minutes,
+    utilization: utilization ?? prior?.utilization ?? null,
+    resetAt: resetAt ?? prior?.resetAt ?? null,
+    status: status ?? prior?.status ?? null,
+    observedAt: now,
+    source: "header",
+  };
+}
+
 export function quotaFromHeaders(
   accountId: string,
   headers: Headers,
@@ -77,16 +112,11 @@ export function quotaFromHeaders(
   family: ModelFamily,
   now: number,
 ): AccountQuota {
-  const fiveHourUtilization = parseNumber(
-    headers.get(`${PREFIX}5h-utilization`),
+  const primary = windowFromHeaders(headers, "primary", previous, now);
+  const secondary = windowFromHeaders(headers, "secondary", previous, now);
+  const limitWindows = [primary, secondary].filter(
+    (window): window is LimitWindow => window !== null,
   );
-  const fiveHourResetAt = parseReset(headers.get(`${PREFIX}5h-reset`));
-  const fiveHourStatus = headers.get(`${PREFIX}5h-status`);
-  const sevenDayUtilization = parseNumber(
-    headers.get(`${PREFIX}7d-utilization`),
-  );
-  const sevenDayResetAt = parseReset(headers.get(`${PREFIX}7d-reset`));
-  const sevenDayStatus = headers.get(`${PREFIX}7d-status`);
   const representativeClaim = headers.get(`${PREFIX}representative-claim`);
   const overageStatus = headers.get(`${PREFIX}overage-status`);
   const extraUsage: AccountQuota["extraUsage"] =
@@ -115,12 +145,7 @@ export function quotaFromHeaders(
           },
         };
   const observed =
-    fiveHourUtilization !== null ||
-    fiveHourResetAt !== null ||
-    fiveHourStatus !== null ||
-    sevenDayUtilization !== null ||
-    sevenDayResetAt !== null ||
-    sevenDayStatus !== null ||
+    limitWindows.some((window) => !previous.limitWindows.includes(window)) ||
     representativeClaim !== null ||
     extraUsage !== previous.extraUsage ||
     scoped !== null;
@@ -128,141 +153,88 @@ export function quotaFromHeaders(
     accountId,
     usageRestriction: previous.usageRestriction,
     extraUsage,
-    fiveHourUtilization: fiveHourUtilization ?? previous.fiveHourUtilization,
-    fiveHourResetAt: fiveHourResetAt ?? previous.fiveHourResetAt,
-    fiveHourStatus: fiveHourStatus ?? previous.fiveHourStatus,
-    sevenDayUtilization: sevenDayUtilization ?? previous.sevenDayUtilization,
-    sevenDayResetAt: sevenDayResetAt ?? previous.sevenDayResetAt,
-    sevenDayStatus: sevenDayStatus ?? previous.sevenDayStatus,
     representativeClaim: representativeClaim ?? previous.representativeClaim,
     familyWeekly,
-    limitWindows: previous.limitWindows,
+    limitWindows,
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,
   };
 }
 
-function activeWindow(
-  utilization: number | null,
-  status: string | null,
-  resetAt: number | null,
-  threshold: number,
-  now: number,
-): boolean {
-  if (resetAt !== null && resetAt <= now) return false;
-  return (
-    status?.toLowerCase() === "rejected" ||
-    (utilization !== null && utilization >= threshold)
-  );
+interface QuotaWindow {
+  utilization: number | null;
+  status: string | null;
+  resetAt: number | null;
 }
 
-function activeFamilyWindow(
-  quota: FamilyQuota | null,
+function quotaWindows(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+): QuotaWindow[] {
+  const familyQuota = family === null ? null : quota.familyWeekly[family];
+  return [
+    ...quota.limitWindows,
+    ...(familyQuota === null ? [] : [familyQuota]),
+  ];
+}
+
+function isRefusedWindow(window: QuotaWindow, now: number): boolean {
+  if (window.resetAt !== null && window.resetAt <= now) return false;
+  if (window.status !== null) return window.status.toLowerCase() === "rejected";
+  return window.utilization !== null && window.utilization >= 1;
+}
+
+function isWindowPastThreshold(
+  window: QuotaWindow,
   threshold: number,
   now: number,
 ): boolean {
+  if (window.resetAt !== null && window.resetAt <= now) return false;
   return (
-    quota !== null &&
-    activeWindow(quota.utilization, quota.status, quota.resetAt, threshold, now)
+    isRefusedWindow(window, now) ||
+    (window.utilization !== null && window.utilization >= threshold)
   );
 }
 
 export function blockingResetAt(
   quota: AccountQuota | AccountSummary,
   family: ModelFamily | null,
-  threshold: number,
   now: number,
 ): number | null {
   if (isUsageRestricted(quota, now))
     return quota.usageRestriction?.resetAt ?? null;
   let latest: number | null = null;
-  let unknown = false;
-  const include = (
-    utilization: number | null,
-    status: string | null,
-    resetAt: number | null,
-  ) => {
-    if (!activeWindow(utilization, status, resetAt, threshold, now)) return;
-    if (resetAt === null) unknown = true;
-    else latest = Math.max(latest ?? resetAt, resetAt);
-  };
-  include(
-    quota.fiveHourUtilization,
-    quota.fiveHourStatus,
-    quota.fiveHourResetAt,
-  );
-  include(
-    quota.sevenDayUtilization,
-    quota.sevenDayStatus,
-    quota.sevenDayResetAt,
-  );
-  for (const window of quota.limitWindows)
-    include(window.utilization, window.status, window.resetAt);
-  if (family !== null) {
-    const familyQuota = quota.familyWeekly[family];
-    if (familyQuota !== null)
-      include(familyQuota.utilization, familyQuota.status, familyQuota.resetAt);
+  for (const window of quotaWindows(quota, family)) {
+    if (!isRefusedWindow(window, now)) continue;
+    if (window.resetAt === null) return null;
+    latest = Math.max(latest ?? window.resetAt, window.resetAt);
   }
-  return unknown ? null : latest;
-}
-
-export function isSharedQuotaExhausted(
-  quota: AccountQuota,
-  threshold: number,
-  now: number,
-): boolean {
-  return (
-    activeWindow(
-      quota.fiveHourUtilization,
-      quota.fiveHourStatus,
-      quota.fiveHourResetAt,
-      threshold,
-      now,
-    ) ||
-    activeWindow(
-      quota.sevenDayUtilization,
-      quota.sevenDayStatus,
-      quota.sevenDayResetAt,
-      threshold,
-      now,
-    ) ||
-    quota.limitWindows.some((window) =>
-      activeWindow(
-        window.utilization,
-        window.status,
-        window.resetAt,
-        threshold,
-        now,
-      ),
-    )
-  );
-}
-
-export function longestLimitWindow(
-  windows: readonly LimitWindow[],
-): LimitWindow | null {
-  let longest: LimitWindow | null = null;
-  for (const window of windows) {
-    if (
-      longest === null ||
-      (window.windowMinutes ?? 0) > (longest.windowMinutes ?? 0)
-    )
-      longest = window;
-  }
-  return longest;
+  return latest;
 }
 
 export function isQuotaExhausted(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+  now: number,
+): boolean {
+  return (
+    isUsageRestricted(quota, now) ||
+    quotaWindows(quota, family).some((window) => isRefusedWindow(window, now))
+  );
+}
+
+export function isPastThreshold(
   quota: AccountQuota,
-  family: ModelFamily,
+  family: ModelFamily | null,
   threshold: number,
   now: number,
 ): boolean {
   return (
     isUsageRestricted(quota, now) ||
-    isSharedQuotaExhausted(quota, threshold, now) ||
-    activeFamilyWindow(quota.familyWeekly[family], threshold, now)
+    quotaWindows(quota, family).some((window) =>
+      isWindowPastThreshold(window, threshold, now),
+    )
   );
 }
 
@@ -297,29 +269,16 @@ export function isQuotaRejection(headers: Headers): boolean {
   return false;
 }
 
-export function governingWeeklyResetAt(
-  quota: AccountQuota,
-  family: ModelFamily,
-): number | null {
-  return (
-    quota.familyWeekly[family]?.resetAt ??
-    quota.sevenDayResetAt ??
-    longestLimitWindow(quota.limitWindows)?.resetAt ??
-    null
-  );
-}
-
 export function accountStatus(
   account: Account,
   quota: AccountQuota,
-  threshold: number,
   now: number,
 ): AccountSummary["status"] {
   if (!account.enabled) return "disabled";
   if (quota.error !== null) return "error";
   if (quota.heldUntil !== null && quota.heldUntil > now) return "held";
   if (isUsageRestricted(quota, now)) return "exhausted";
-  if (isSharedQuotaExhausted(quota, threshold, now) && !hasExtraUsage(quota))
+  if (isQuotaExhausted(quota, null, now) && !hasExtraUsage(quota))
     return "exhausted";
   return "ready";
 }

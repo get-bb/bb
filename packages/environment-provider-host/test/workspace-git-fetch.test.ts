@@ -35,7 +35,7 @@ describe("background Git authentication", () => {
     });
 
     await expect(
-      fetchRemoteBranches(repo, { interactive: false, timeoutMs: 2_000 }),
+      fetchRemoteBranches(repo, { interactive: false }),
     ).resolves.toEqual({ status: "fetched" });
     await expect(
       runGit(["rev-parse", "origin/main"], { cwd: repo }),
@@ -125,4 +125,77 @@ describe("background Git authentication", () => {
       await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
     },
   );
+});
+
+describe("remote branch refresh", () => {
+  async function repoWithRemotes(names: string[]) {
+    const repo = await initRepo(await makeTempDir("bb-git-fetch-remotes-"));
+    for (const name of names) {
+      const remote = await makeTempDir(`bb-git-fetch-${name}-`);
+      await runGit(["init", "--bare", "-q"], { cwd: remote });
+      await runGit(["remote", "add", name, remote], { cwd: repo });
+      await runGit(["push", "-q", name, "main", "main:stale"], { cwd: repo });
+      await runGit(["fetch", "-q", name], { cwd: repo });
+      await runGit(["push", "-q", remote, "main:fresh", ":stale"], {
+        cwd: repo,
+      });
+    }
+    return repo;
+  }
+
+  async function remoteBranches(repo: string): Promise<string[]> {
+    const result = await runGit(
+      ["for-each-ref", "--format=%(refname:lstrip=2)", "refs/remotes"],
+      { cwd: repo },
+    );
+    return result.stdout
+      .split("\n")
+      .filter((ref) => ref.length > 0 && !ref.endsWith("/HEAD"))
+      .sort();
+  }
+
+  it.each([true, false])(
+    "fetches and prunes only origin when other remotes exist (interactive: %s)",
+    async (interactive) => {
+      const repo = await repoWithRemotes(["alpha", "origin", "zeta"]);
+
+      const result = await fetchRemoteBranches(repo, { interactive });
+
+      expect(result.status).toBe("fetched");
+      expect(await remoteBranches(repo)).toEqual([
+        "alpha/main",
+        "alpha/stale",
+        "origin/fresh",
+        "origin/main",
+        "zeta/main",
+        "zeta/stale",
+      ]);
+    },
+  );
+
+  it("fetches the only remote when it is not named origin", async () => {
+    const repo = await repoWithRemotes(["upstream"]);
+
+    const result = await fetchRemoteBranches(repo, { interactive: false });
+
+    expect(result.status).toBe("fetched");
+    expect(await remoteBranches(repo)).toEqual([
+      "upstream/fresh",
+      "upstream/main",
+    ]);
+  });
+
+  it("skips repositories with several remotes and none named origin", async () => {
+    const repo = await repoWithRemotes(["alpha", "zeta"]);
+
+    const result = await fetchRemoteBranches(repo, { interactive: false });
+
+    expect(result.status).toBe("skipped");
+    expect(await remoteBranches(repo)).toEqual([
+      "alpha/main",
+      "alpha/stale",
+      "zeta/main",
+      "zeta/stale",
+    ]);
+  });
 });

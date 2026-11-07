@@ -37,10 +37,16 @@ import type {
   QueuedMessagesListProps,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
+import { QueuedMessageSendTimeDialog } from "@/components/promptbox/banner/QueuedMessageSendTimeDialog";
 import {
   getQueuedMessagesDrawerHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
+  useWindowHeight,
 } from "@/components/promptbox/banner/queued-messages-layout";
+import {
+  systemMessageIconName,
+  systemMessageTitleSegments,
+} from "@/components/thread/timeline/GeneratedConversationMessage";
 import {
   DndContext,
   KeyboardSensor,
@@ -67,7 +73,9 @@ import type { Transform } from "@dnd-kit/utilities";
 import type {
   PromptInput,
   PromptTextMention,
+  QueuedMessageSystemNotice,
   ThreadQueuedMessage,
+  ThreadStatus,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -106,7 +114,8 @@ import {
   shiftMentionsToTextRange,
 } from "@/components/thread/timeline/ConversationMessageMentions";
 import {
-  buildPromptMentionComponent,
+  PromptMentionElement,
+  PromptMentionsContext,
   remarkPromptMentions,
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
@@ -136,9 +145,11 @@ interface QueuedMessageRowProps {
   onExpandMobileActions: (id: string) => void;
   onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onChangeSendTime: (id: string) => void;
   onDelete: (id: string) => void;
   compact: boolean;
   isGroupBoundary: boolean;
+  threadStatus: ThreadStatus;
 }
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
@@ -234,6 +245,7 @@ const QUEUED_MARKDOWN_COMPONENTS: Components = {
   thead: ({ children }) => <span>{children}</span>,
   tr: ({ children }) => <span>{children} </span>,
   ul: ({ children }) => <span>{children}</span>,
+  "bb-prompt-mention": PromptMentionElement,
 };
 
 function CompactQueuedMarkdownPreview({
@@ -254,25 +266,24 @@ function CompactQueuedMarkdownPreview({
       normalizePromptBlockquoteBoundaries(promptMentionSubstitution.content),
     [promptMentionSubstitution.content],
   );
-  const components = useMemo<Components>(
+  const promptMentions = useMemo(
     () => ({
-      ...QUEUED_MARKDOWN_COMPONENTS,
-      "bb-prompt-mention": buildPromptMentionComponent({
-        mentions: promptMentionSubstitution.mentions,
-        resolveMentionLink,
-      }),
+      mentions: promptMentionSubstitution.mentions,
+      resolveMentionLink,
     }),
     [promptMentionSubstitution.mentions, resolveMentionLink],
   );
 
   return (
     <span className={queuedMarkdownPreviewClass(compact)}>
-      <ReactMarkdown
-        components={components}
-        remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
-      >
-        {markdownContent}
-      </ReactMarkdown>
+      <PromptMentionsContext.Provider value={promptMentions}>
+        <ReactMarkdown
+          components={QUEUED_MARKDOWN_COMPONENTS}
+          remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
+        >
+          {markdownContent}
+        </ReactMarkdown>
+      </PromptMentionsContext.Provider>
     </span>
   );
 }
@@ -477,7 +488,6 @@ function queuedMessageSenderLabel(
   senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>,
 ): string | null {
   if (queuedMessage.payload.kind === "retry") return null;
-  if (queuedMessage.initiator === "system") return "System";
   if (queuedMessage.initiator !== "agent") return null;
   return (
     senderThreadMetadataById.get(queuedMessage.senderThreadId ?? "")?.title ??
@@ -572,6 +582,36 @@ function QueuedMessageFallbackTitle({
   );
 }
 
+function systemNoticeTitle(notice: QueuedMessageSystemNotice): string {
+  return systemMessageTitleSegments(notice.kind, notice.subject)
+    .map((segment) => segment.plainText ?? segment.text)
+    .join(" ");
+}
+
+function SystemNoticePreview({
+  compact,
+  notice,
+}: {
+  compact: boolean;
+  notice: QueuedMessageSystemNotice;
+}) {
+  const title = systemNoticeTitle(notice);
+  return (
+    <div
+      data-queued-message-system-notice=""
+      className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-foreground"
+      title={title}
+    >
+      <Icon
+        name={systemMessageIconName(notice.kind)}
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+      <span className={queuedMarkdownPreviewClass(compact)}>{title}</span>
+    </div>
+  );
+}
+
 function QueuedMessagePreview({
   compact,
   queuedMessage,
@@ -592,6 +632,15 @@ function QueuedMessagePreview({
     () => buildQueuedMessagePreviewText(queuedMessage.content),
     [queuedMessage.content],
   );
+
+  if (queuedMessage.systemNotice !== null) {
+    return (
+      <SystemNoticePreview
+        compact={compact}
+        notice={queuedMessage.systemNotice}
+      />
+    );
+  }
 
   if (queuedMessage.payload.kind === "retry") {
     return (
@@ -625,9 +674,11 @@ function QueuedMessagePreview({
 function QueuedMessageWaitLine({
   pluginDisplayName,
   queuedMessage,
+  threadStatus,
 }: {
   pluginDisplayName: string;
   queuedMessage: ThreadQueuedMessage;
+  threadStatus: ThreadStatus;
 }) {
   const now = useSecondTick();
   const label = describeQueuedMessageWait({
@@ -636,6 +687,7 @@ function QueuedMessageWaitLine({
     payload: queuedMessage.payload,
     pluginDisplayName,
     sendAt: queuedMessage.sendAt,
+    threadStatus,
     waitingOn: queuedMessage.waitingOn,
   });
   if (label === null) return null;
@@ -675,14 +727,21 @@ function QueuedMessageWaitLine({
 
 function QueuedMessagesHeaderWait({
   queuedMessages,
+  threadStatus,
 }: {
   queuedMessages: readonly ThreadQueuedMessage[];
+  threadStatus: ThreadStatus;
 }) {
   const newestFirst = [...queuedMessages].sort(
     (first, second) => second.createdAt - first.createdAt,
   );
   const attentionMessage =
     newestFirst.find((queuedMessage) => queuedMessage.failureReason !== null) ??
+    newestFirst.find(
+      (queuedMessage) =>
+        queuedMessage.systemNotice === null &&
+        queuedMessageHasWaitLine(queuedMessage),
+    ) ??
     newestFirst.find(queuedMessageHasWaitLine);
   const pluginDisplayName = usePluginDisplayName(
     attentionMessage?.waitingOn?.kind === "plugin"
@@ -694,6 +753,7 @@ function QueuedMessagesHeaderWait({
     <QueuedMessageWaitLine
       pluginDisplayName={pluginDisplayName}
       queuedMessage={attentionMessage}
+      threadStatus={threadStatus}
     />
   );
 }
@@ -758,9 +818,11 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onExpandMobileActions,
   onSend,
   onEdit,
+  onChangeSendTime,
   onDelete,
   compact,
   isGroupBoundary,
+  threadStatus,
 }: QueuedMessageRowProps) {
   const actionsRef = useRef<HTMLDivElement>(null);
   const focusActionsOnExpandRef = useRef(false);
@@ -922,6 +984,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 <QueuedMessageWaitLine
                   pluginDisplayName={pluginDisplayName}
                   queuedMessage={queuedMessage}
+                  threadStatus={threadStatus}
                 />
               ) : null}
             </div>
@@ -991,6 +1054,30 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     </TooltipTrigger>
                     <TooltipContent className="max-md:hidden">
                       Edit
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
+                {queuedMessage.state === "scheduled" &&
+                queuedMessage.systemNotice === null ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled}
+                        onClick={() => onChangeSendTime(queuedMessage.id)}
+                        aria-label={`Change when queued message ${index + 1} sends`}
+                      >
+                        <Icon name="Calendar" className="size-4" aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-md:hidden">
+                      Change send time
                     </TooltipContent>
                   </Tooltip>
                 ) : null}
@@ -1190,9 +1277,11 @@ export function QueuedMessagesList({
   onReorder,
   onSetGroupBoundary,
   onEdit,
+  onChangeSendTime,
   onDelete,
   expanded,
   onExpandedChange,
+  threadStatus,
 }: QueuedMessagesListProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const processingLabel =
@@ -1501,6 +1590,25 @@ export function QueuedMessagesList({
     },
     [onEdit, openWorkspace],
   );
+  const [sendTimeQueuedMessageId, setSendTimeQueuedMessageId] = useState<
+    string | null
+  >(null);
+  const sendTimeQueuedMessage =
+    sendTimeQueuedMessageId === null
+      ? null
+      : (queuedMessages.find(
+          (queuedMessage) =>
+            queuedMessage.id === sendTimeQueuedMessageId &&
+            queuedMessage.state === "scheduled",
+        ) ?? null);
+  const handleOpenSendTime = useCallback((id: string) => {
+    setExpandedMobileActionsId(null);
+    setSendTimeQueuedMessageId(id);
+  }, []);
+  const windowHeight = useWindowHeight();
+  const systemNoticeCount = queuedMessages.filter(
+    (queuedMessage) => queuedMessage.systemNotice !== null,
+  ).length;
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
@@ -1510,6 +1618,7 @@ export function QueuedMessagesList({
         ? getQueuedMessagesDrawerHeight({
             queuedMessages,
             processingMessageId,
+            windowHeight,
           })
         : QUEUED_MESSAGES_COLLAPSED_HEIGHT;
   const surfaceHeight =
@@ -1569,7 +1678,11 @@ export function QueuedMessagesList({
           index={messageIndex}
           isProcessing={processingMessageId === queuedMessage.id}
           processingLabel={processingLabel}
-          dragDisabled={sortingDisabled || inlineEditor !== undefined}
+          dragDisabled={
+            sortingDisabled ||
+            inlineEditor !== undefined ||
+            queuedMessage.systemNotice !== null
+          }
           sendAction={sendAction}
           sendDisabled={sendDisabled}
           actionDisabled={actionDisabled}
@@ -1577,8 +1690,10 @@ export function QueuedMessagesList({
           onExpandMobileActions={setExpandedMobileActionsId}
           compact={mode !== "workspace"}
           isGroupBoundary={messageIndex === groupBoundaryIndex}
+          threadStatus={threadStatus}
           onSend={onSend}
           onEdit={handleEdit}
+          onChangeSendTime={handleOpenSendTime}
           onDelete={onDelete}
         />,
       );
@@ -1624,8 +1739,19 @@ export function QueuedMessagesList({
           )}
         >
           <span className="font-normal">Queue</span>
+          {isExpanded || systemNoticeCount === 0 ? null : (
+            <span
+              data-queued-messages-system-count=""
+              className="shrink-0 text-2xs text-subtle-foreground"
+            >
+              · {systemNoticeCount} from bb
+            </span>
+          )}
           {isExpanded ? null : (
-            <QueuedMessagesHeaderWait queuedMessages={queuedMessages} />
+            <QueuedMessagesHeaderWait
+              queuedMessages={queuedMessages}
+              threadStatus={threadStatus}
+            />
           )}
           <QueuedMessagesCountPill
             arrivals={arrivals}
@@ -1692,6 +1818,13 @@ export function QueuedMessagesList({
           />
         </div>
       ) : null}
+      <QueuedMessageSendTimeDialog
+        queuedMessage={sendTimeQueuedMessage}
+        onOpenChange={(open) => {
+          if (!open) setSendTimeQueuedMessageId(null);
+        }}
+        onChangeSendTime={onChangeSendTime}
+      />
     </PromptStackCard>
   );
 }

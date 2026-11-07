@@ -109,7 +109,6 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       save: {
         input: z.number(),
         output: z.number(),
-        invalidates: () => ["row:a"],
       },
     });
     let release!: () => void;
@@ -118,11 +117,6 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
     });
     let server = 1;
     let offline = false;
-    let holdReads = false;
-    let releaseReads!: () => void;
-    const reads = new Promise<void>((resolve) => {
-      releaseReads = resolve;
-    });
     const seen: number[] = [];
     function Reader({ name }: { name: string }) {
       const detail = experimental_useRpcQuery({
@@ -189,12 +183,10 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
         experimental_rpcContract: contract,
         rpc: {
           detail: async () => {
-            if (holdReads) await reads;
             if (offline) throw new Error("read offline");
             return server;
           },
           rows: async ({ keys }) => {
-            if (holdReads) await reads;
             if (offline) throw new Error("read offline");
             return Object.fromEntries(keys.map((key) => [key, server]));
           },
@@ -207,7 +199,6 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
                 message: "Changed elsewhere",
               });
             server = 3;
-            holdReads = outcome === "success";
             offline = outcome === "read-failure";
             return server;
           },
@@ -221,19 +212,14 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
     expect(slot.getByText("two:2/2")).toBeTruthy();
     await slot.experimental_invalidateRpc(["row:a"]);
     expect(slot.getByText("one:2/2")).toBeTruthy();
-    if (outcome === "read-failure") vi.useFakeTimers();
     await act(async () => {
       release();
-      if (outcome === "read-failure") await vi.advanceTimersByTimeAsync(10_000);
     });
-    vi.useRealTimers();
     if (outcome === "success") {
       await slot.findByText("acknowledged:idle:0");
       expect(slot.getByText("one:2/2")).toBeTruthy();
       expect(slot.getByText("two:2/2")).toBeTruthy();
-      await act(async () => {
-        releaseReads();
-      });
+      await slot.experimental_invalidateRpc(["row:a"]);
       await slot.findByText("one:3/3");
       expect(seen.every((value) => value === 2 || value === 3)).toBe(true);
       expect(slot.getByText("two:3/3")).toBeTruthy();
@@ -248,6 +234,8 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       expect(slot.getByText("one:1/1")).toBeTruthy();
       expect(slot.getByText("two:1/1")).toBeTruthy();
     } else {
+      await slot.findByText("acknowledged:idle:0");
+      await slot.experimental_invalidateRpc(["row:a"]);
       await slot.findByText("read offline", {}, { timeout: 10_000 });
       expect(slot.getByText("one:2/2")).toBeTruthy();
       expect(slot.getByText("two:2/2")).toBeTruthy();
@@ -394,6 +382,199 @@ it("retains plain and keyed watched reads until their consumers disable them", a
     expect(probe.result.current.data).toEqual({ ready: true });
     probe.rerender({ enabled: false });
     for (const release of releases) expect(release).toHaveBeenCalledOnce();
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});
+
+it("watches each keyed row once while held, releasing only keys that leave", async () => {
+  const client = new QueryClient();
+  const active = new Map<string, number>();
+  const watch = vi.fn(
+    (_plugin: string, _method: string, read: { key: string } | object) => {
+      const key = "key" in read ? read.key : "";
+      active.set(key, (active.get(key) ?? 0) + 1);
+      return () => {
+        active.set(key, (active.get(key) ?? 0) - 1);
+      };
+    },
+  );
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    watch,
+    call: async (_plugin: string, _method: string, input: unknown) =>
+      Object.fromEntries(
+        (input as { keys: string[] }).keys.map((key) => [key, 1]),
+      ),
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(
+    ({ keys }) =>
+      hooks.experimental_useRpcKeyedQuery({ contract, method: "rows", keys }),
+    { initialProps: { keys: ["a", "b", "c"] } },
+  );
+  try {
+    await waitFor(() => expect(watch).toHaveBeenCalledTimes(3));
+    probe.rerender({ keys: ["b", "c", "d"] });
+    probe.rerender({ keys: ["c", "d", "e"] });
+    expect(
+      watch.mock.calls.map(([, , read]) => ("key" in read ? read.key : null)),
+    ).toEqual(["a", "b", "c", "d", "e"]);
+    expect(Object.fromEntries(active)).toEqual({
+      a: 0,
+      b: 0,
+      c: 1,
+      d: 1,
+      e: 1,
+    });
+    probe.unmount();
+    expect(Object.fromEntries(active)).toEqual({
+      a: 0,
+      b: 0,
+      c: 0,
+      d: 0,
+      e: 0,
+    });
+  } finally {
+    client.clear();
+  }
+});
+
+it("refetches only the calling hook's keys, batching hooks that refetch together", async () => {
+  const client = new QueryClient();
+  const reads: string[][] = [];
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call: async (_plugin: string, _method: string, input: unknown) => {
+      const { keys } = input as { keys: string[] };
+      reads.push([...keys].sort());
+      return Object.fromEntries(keys.map((key) => [key, 1]));
+    },
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(() => ({
+    rows: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["a", "b", "c", "d"],
+    }),
+    first: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["a"],
+    }),
+    second: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["c"],
+    }),
+  }));
+  try {
+    await waitFor(() => expect(reads).toEqual([["a", "b", "c", "d"]]));
+    await act(async () => {
+      await Promise.all([
+        probe.result.current.first.refetch(),
+        probe.result.current.second.refetch(),
+      ]);
+    });
+    expect(reads).toEqual([
+      ["a", "b", "c", "d"],
+      ["a", "c"],
+    ]);
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});
+
+it("keeps a keyed hook's refetch stable while its keys change", async () => {
+  const client = new QueryClient();
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call: async (_plugin: string, _method: string, input: unknown) =>
+      Object.fromEntries(
+        (input as { keys: string[] }).keys.map((key) => [key, 1]),
+      ),
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(
+    ({ keys }) =>
+      hooks.experimental_useRpcKeyedQuery({ contract, method: "rows", keys }),
+    { initialProps: { keys: ["a"] } },
+  );
+  try {
+    const first = probe.result.current.refetch;
+    probe.rerender({ keys: ["a", "b"] });
+    expect(probe.result.current.refetch).toBe(first);
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});
+
+it("keeps cached rows on screen while a keyed hook is disabled and re-enables without a re-read", async () => {
+  const client = new QueryClient();
+  const reads: string[][] = [];
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call: async (_plugin: string, _method: string, input: unknown) => {
+      const { keys } = input as { keys: string[] };
+      reads.push(keys);
+      return Object.fromEntries(keys.map((key) => [key, 1]));
+    },
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(
+    ({ enabled }) =>
+      hooks.experimental_useRpcKeyedQuery({
+        contract,
+        method: "rows",
+        keys: ["a"],
+        enabled,
+      }),
+    { initialProps: { enabled: true } },
+  );
+  try {
+    await waitFor(() => expect(probe.result.current.data).toEqual({ a: 1 }));
+    probe.rerender({ enabled: false });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(probe.result.current.data).toEqual({ a: 1 });
+    probe.rerender({ enabled: true });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(reads).toEqual([["a"]]);
   } finally {
     probe.unmount();
     client.clear();

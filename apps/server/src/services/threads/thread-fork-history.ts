@@ -27,6 +27,10 @@ function forkPointUnavailable(message: string): never {
   throw new ApiError(400, "fork_source_session_unavailable", message);
 }
 
+function forkPointTurnIncomplete(message: string): never {
+  throw new ApiError(400, "fork_source_turn_incomplete", message);
+}
+
 interface StoredTurnCompletion {
   event: Extract<ThreadEvent, { type: "turn/completed" }>;
   sequence: number;
@@ -104,7 +108,7 @@ function resolveAnchoredForkPoint(
     turnId: anchor.turnId,
   });
   if (completion === null) {
-    forkPointUnavailable(
+    forkPointTurnIncomplete(
       `Cannot fork at sequence ${args.sourceSeqEnd}: the turn containing it has not completed`,
     );
   }

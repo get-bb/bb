@@ -10,7 +10,6 @@ import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import {
-  createGitDiffFixedPanelTab,
   createPluginFixedPanelTab,
   createThreadInfoFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
@@ -33,6 +32,7 @@ import {
   contractTarget,
   describePanelControllerContract,
   readContractPanel,
+  readContractTabs,
   snapshotFromState,
   type ContractStateSink,
 } from "@/test/panel-controller-contract";
@@ -78,14 +78,14 @@ vi.mock("./ThreadDetailSecondaryContent", async () => {
     await import("@/test/panel-controller-contract");
   return {
     ThreadDetailSecondaryContent: ({
-      footer,
+      main,
       secondaryPanel,
     }: {
-      footer: ReactNode;
+      main: ReactNode;
       secondaryPanel: Parameters<typeof ContractSecondaryPanel>[0];
     }) => (
       <>
-        {footer}
+        {main}
         <ContractSecondaryPanel {...secondaryPanel} />
       </>
     ),
@@ -127,12 +127,11 @@ vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
     isError: false,
     refetch: vi.fn(),
   }),
-  useEnvironmentWorkStatus: () => ({ data: undefined, error: null }),
 }));
 
 describePanelControllerContract(
   "thread view",
-  { fixedTabs: true, diffToggle: true },
+  { fixedTabs: true },
   async () => {
     const probe = fixtures.probe;
     probe.current = null;
@@ -143,6 +142,7 @@ describePanelControllerContract(
           path: "/",
           element: (
             <DefaultPaneContextProvider
+              paneId="main"
               onRequestClose={null}
               navigateInPane={() => {}}
             >
@@ -178,7 +178,6 @@ describePanelControllerContract(
       expect(snapshotFromState(sink).tabIds).toEqual(
         expect.arrayContaining([
           createThreadInfoFixedPanelTab().id,
-          createGitDiffFixedPanelTab().id,
           pluginFixedTabId("summary"),
         ]),
       ),
@@ -186,6 +185,9 @@ describePanelControllerContract(
     return {
       panel: () => readContractPanel(probe),
       snapshot: () => snapshotFromState(sink),
+      tabs: () => readContractTabs(probe),
+      renderedTabVisible: () =>
+        screen.queryByTestId("contract-tab-visible")?.textContent ?? null,
       renderedTarget: () =>
         screen.queryByTestId("contract-target")?.textContent ?? null,
       command: (id) => appCommandHandlers.get(id)?.() !== false,
@@ -202,7 +204,6 @@ describePanelControllerContract(
         context: { kind: "nav-panel", panelId: "board" },
         availability: "action",
       },
-      diff: { panelTabId: createGitDiffFixedPanelTab().id },
       toggleRestoresActiveTab: true,
     };
   },

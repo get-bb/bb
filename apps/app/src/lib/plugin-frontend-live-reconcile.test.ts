@@ -38,6 +38,7 @@ function deps(
     setRegistrations: () => {},
     removeRegistrations: () => {},
     beginSlotBatch: () => () => {},
+    flushSlotBatch: () => {},
     warn: () => {},
     priorityPluginIds: () => [],
   };

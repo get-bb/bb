@@ -12,6 +12,7 @@ const singleSelect: Question = {
   shortLabel: "Branch",
   multiSelect: false,
   allowFreeText: true,
+  required: true,
   options: [
     { value: "main", label: "main" },
     { value: "release", label: "release" },
@@ -24,6 +25,7 @@ const multiSelect: Question = {
   shortLabel: "Areas",
   multiSelect: true,
   allowFreeText: true,
+  required: true,
   options: [
     { value: "app", label: "App" },
     { value: "cli", label: "CLI" },
@@ -37,6 +39,7 @@ const freeTextOnly: Question = {
   options: [],
   multiSelect: false,
   allowFreeText: true,
+  required: true,
 };
 
 describe("buildQuestionAnswers", () => {

@@ -217,15 +217,14 @@ describe("split layout operations", () => {
     const low = resizeSplit(two, [], 0, -10);
     const high = resizeSplit(low, [], 0, 10);
 
-    if (low.root.type === "split") {
-      expect(low.root.sizes[0]).toBeCloseTo(0.15, 12);
-      expect(low.root.sizes[1]).toBeCloseTo(0.85, 12);
+    if (low.root.type !== "split" || high.root.type !== "split") {
+      throw new Error("Expected split roots");
     }
-    if (high.root.type === "split") {
-      expect(high.root.sizes[0]).toBeCloseTo(0.85, 12);
-      expect(high.root.sizes[1]).toBeCloseTo(0.15, 12);
-      expect(high.root.sizes.reduce((sum, size) => sum + size, 0)).toBe(1);
-    }
+    expect(low.root.sizes[0]).toBeCloseTo(0.15, 12);
+    expect(low.root.sizes[1]).toBeCloseTo(0.85, 12);
+    expect(high.root.sizes[0]).toBeCloseTo(0.85, 12);
+    expect(high.root.sizes[1]).toBeCloseTo(0.15, 12);
+    expect(high.root.sizes.reduce((sum, size) => sum + size, 0)).toBe(1);
     expect(resizeSplit(high, [], 1, 0.5)).toBe(high);
     expect(resizeSplit(high, [0], 0, 0.5)).toBe(high);
   });

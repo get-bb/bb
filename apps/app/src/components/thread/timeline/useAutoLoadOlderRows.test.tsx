@@ -15,6 +15,7 @@ function createBottomAnchor(
     bottomThresholdPx: 4,
     deferWritesWhileScrolling: false,
     getContentElement: () => null,
+    getFloorElement: () => null,
     getFooterElement: () => null,
     getScrollElement: () => scrollElement,
     getTopLevelRows: () => [],

@@ -185,7 +185,6 @@ function observeSidebarDerivedThreadList(
   const selection = observe(
     queryClient,
     sidebarNavigationThreadSelectionQueryOptions(
-      queryClient,
       (navigation: SidebarBootstrapResponse) =>
         selectThreads(listSidebarNavigationThreads(navigation)),
     ),
@@ -216,11 +215,7 @@ function observeChildThreads(queryClient: QueryClient, parentThreadId: string) {
     queryClient,
     (threads) => selectChildThreads(threads, parentThreadId),
     (shouldFetch) =>
-      childThreadsFallbackQueryOptions({
-        parentThreadId,
-        queryClient,
-        shouldFetch,
-      }),
+      childThreadsFallbackQueryOptions({ parentThreadId, shouldFetch }),
   );
 }
 
@@ -454,13 +449,11 @@ describe("useArchivedThreads", () => {
       .mockResolvedValueOnce([]);
     const observer = new InfiniteQueryObserver(
       queryClient,
-      archivedThreadsQueryOptions(queryClient, {}, { enabled: false }),
+      archivedThreadsQueryOptions({}, { enabled: false }),
     );
     unsubscribes.push(observer.subscribe(() => {}));
     expect(sdk.threads.list).not.toHaveBeenCalled();
-    observer.setOptions(
-      archivedThreadsQueryOptions(queryClient, {}, { enabled: true }),
-    );
+    observer.setOptions(archivedThreadsQueryOptions({}, { enabled: true }));
     await vi.waitFor(() =>
       expect(observer.getCurrentResult().hasNextPage).toBe(true),
     );
@@ -471,9 +464,7 @@ describe("useArchivedThreads", () => {
     await vi.waitFor(() =>
       expect(observer.getCurrentResult().hasNextPage).toBe(false),
     );
-    observer.setOptions(
-      archivedThreadsQueryOptions(queryClient, {}, { enabled: false }),
-    );
+    observer.setOptions(archivedThreadsQueryOptions({}, { enabled: false }));
     await queryClient.invalidateQueries();
     expect(sdk.threads.list).toHaveBeenCalledTimes(2);
   });
@@ -484,7 +475,7 @@ describe("useArchivedThreads", () => {
     unsubscribes.push(
       new InfiniteQueryObserver(
         queryClient,
-        archivedThreadsQueryOptions(queryClient, {}),
+        archivedThreadsQueryOptions({}),
       ).subscribe(() => {}),
     );
 
@@ -505,7 +496,7 @@ describe("useArchivedThreads", () => {
     unsubscribes.push(
       new InfiniteQueryObserver(
         queryClient,
-        archivedThreadsQueryOptions(queryClient, { kind: "child" }),
+        archivedThreadsQueryOptions({ kind: "child" }),
       ).subscribe(() => {}),
     );
 
@@ -527,7 +518,7 @@ describe("useArchivedThreads", () => {
     unsubscribes.push(
       new InfiniteQueryObserver(
         queryClient,
-        archivedThreadsQueryOptions(queryClient, { projectId: "proj_1" }),
+        archivedThreadsQueryOptions({ projectId: "proj_1" }),
       ).subscribe(() => {}),
     );
 
@@ -1168,29 +1159,18 @@ describe("thread open cache retention", () => {
 });
 
 describe("palette lifecycle queries", () => {
-  it("loads bounded archived recents only while selected before typing", async () => {
+  it("requests a bounded archived list only when enabled", async () => {
     const { queryClient } = createQueryClientTestHarness();
     const archived = makeThreadListEntry({ id: "archived", archivedAt: 1 });
     vi.mocked(sdk.threads.list).mockResolvedValue([archived]);
-    const options = ({
-      recent,
-      selected,
-    }: {
-      recent: boolean;
-      selected: boolean;
-    }) =>
-      paletteRecentArchivedThreadsQueryOptions({
-        enabled: recent && selected,
-        queryClient,
-      });
     const observer = observe(
       queryClient,
-      options({ recent: true, selected: false }),
+      paletteRecentArchivedThreadsQueryOptions({ enabled: false }),
     );
     expect(sdk.threads.list).not.toHaveBeenCalled();
-    observer.setOptions(options({ recent: false, selected: true }));
-    expect(sdk.threads.list).not.toHaveBeenCalled();
-    observer.setOptions(options({ recent: true, selected: true }));
+    observer.setOptions(
+      paletteRecentArchivedThreadsQueryOptions({ enabled: true }),
+    );
     await vi.waitFor(() =>
       expect(observer.getCurrentResult().data).toEqual([archived]),
     );

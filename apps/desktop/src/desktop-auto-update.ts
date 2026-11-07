@@ -222,6 +222,7 @@ export function createDesktopAutoUpdateService(
 ): DesktopAutoUpdateService {
   const now = args.now ?? (() => Date.now());
   let downloadInFlight: Promise<Array<string>> | null = null;
+  let downloadVersion: string | null = null;
   const scheduler = createDesktopUpdateScheduler({
     enabled: args.enabled,
     initialInfo: createBaseInfo(args.currentVersion, args.platform),
@@ -231,7 +232,7 @@ export function createDesktopAutoUpdateService(
   });
 
   function shouldSkipCheck(): boolean {
-    return scheduler.getInfo().updateDownloaded;
+    return downloadInFlight !== null;
   }
 
   function applyUpdateAvailable(applyArgs: ApplyUpdateAvailableArgs): void {
@@ -258,6 +259,13 @@ export function createDesktopAutoUpdateService(
   function applyUpdateNotAvailable(
     applyArgs: ApplyUpdateNotAvailableArgs,
   ): void {
+    if (scheduler.getInfo().updateDownloaded) {
+      scheduler.updateInfo({
+        ...scheduler.getInfo(),
+        lastCheckedAt: applyArgs.checkedAt,
+      });
+      return;
+    }
     scheduler.updateInfo({
       ...scheduler.getInfo(),
       downloadState: "idle",
@@ -269,17 +277,21 @@ export function createDesktopAutoUpdateService(
     });
   }
 
-  function startDownload(): void {
+  function startDownload(version: string): void {
     if (downloadInFlight !== null) {
       return;
     }
+    downloadVersion = version;
     scheduler.updateInfo({
       ...scheduler.getInfo(),
       downloadState: "downloading",
+      pendingVersion: null,
+      updateDownloaded: false,
     });
     try {
       downloadInFlight = args.updater.downloadUpdate();
     } catch (error: unknown) {
+      downloadVersion = null;
       scheduler.updateInfo({
         ...scheduler.getInfo(),
         downloadState: "failed",
@@ -293,6 +305,7 @@ export function createDesktopAutoUpdateService(
     }
     void downloadInFlight
       .catch((error: unknown) => {
+        downloadVersion = null;
         scheduler.updateInfo({
           ...scheduler.getInfo(),
           downloadState: "failed",
@@ -348,14 +361,17 @@ export function createDesktopAutoUpdateService(
     args.updater.setAutoInstallOnAppQuit(true);
     args.updater.setForceDevUpdateConfig(args.forceDevUpdateConfig);
     args.updater.onUpdateAvailable((info) => {
-      args.logger.info(
-        `Desktop auto-update available: ${info.version}; downloading in background.`,
-      );
       applyUpdateAvailable({
         checkedAt: formatCheckedAt(now),
         version: info.version,
       });
-      startDownload();
+      if (info.version === downloadVersion) {
+        return;
+      }
+      args.logger.info(
+        `Desktop auto-update available: ${info.version}; downloading in background.`,
+      );
+      startDownload(info.version);
     });
     args.updater.onUpdateDownloaded((event) => {
       args.logger.info(
@@ -381,6 +397,7 @@ export function createDesktopAutoUpdateService(
         )}`,
       );
       if (scheduler.getInfo().downloadState === "downloading") {
+        downloadVersion = null;
         scheduler.updateInfo({
           ...scheduler.getInfo(),
           downloadState: "failed",

@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, notInArray } from "drizzle-orm";
 import {
   acquireProjectAttachmentOwnership,
   claimProjectAttachments,
@@ -14,6 +14,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
+import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import {
   inventoryAttachmentReference,
   walkProjectAttachmentFiles,
@@ -59,103 +60,120 @@ export const PROJECT_ATTACHMENT_BACKFILL_LIMITS: ProjectAttachmentBackfillLimits
     maxSteps: 32,
   };
 
-export async function runProjectAttachmentBackfill(
+export function projectAttachmentBackfillSweep(
   deps: MaintenanceDeps,
   limits: ProjectAttachmentBackfillLimits,
-  now = Date.now(),
-): Promise<void> {
+  now: number,
+): ItemSweep {
   const maintenance = getMaintenanceState(deps.db);
-  if (maintenance.backfillRunning) return;
-  maintenance.backfillRunning = true;
-  let projectId: string | null = null;
-  try {
-    projectId =
-      maintenance.inventoryWalkers.keys().next().value ??
-      nextProjectAttachmentBackfill(deps.db, now);
-    if (projectId === null) return;
-    let state = ensureProjectAttachmentBackfill(deps.db, projectId);
-    state = { ...state, attemptedAt: now, error: null };
-    updateAttachmentBackfill(deps.db, state);
-    const started = performance.now();
-    for (
-      let count = 0;
-      count < limits.maxSteps &&
-      performance.now() - started < limits.elapsedBudgetMs;
-      count += 1
-    ) {
-      if (state.phase === "files") {
-        const walkers = maintenance.inventoryWalkers;
-        let walker = walkers.get(projectId);
-        if (!walker) {
-          walker = walkProjectAttachmentFiles(deps.config.dataDir, projectId);
-          walkers.set(projectId, walker);
-        }
-        const entry = await walker.next();
-        if (entry.done) {
-          walkers.delete(projectId);
-          state = startAttachmentBackfillPhase(state, "events");
-        } else if (!getProjectAttachment(deps.db, projectId, entry.value)) {
-          await inventoryAttachmentReference(
-            deps.db,
-            deps.config.dataDir,
-            projectId,
-            entry.value,
-          );
-        }
-        updateAttachmentBackfill(deps.db, state);
-      } else if (state.phase !== "done") {
-        const step = readAttachmentBackfillInput(deps.db, state);
-        if (step.paths.length > 0)
-          await inventoryAttachmentReferences(
-            deps.db,
-            deps.config.dataDir,
-            projectId,
-            step.paths,
-          );
-        deps.db.transaction(
-          (tx) => {
-            if (
-              step.threadId &&
-              tx
-                .select({ id: threads.id })
-                .from(threads)
-                .where(eq(threads.id, step.threadId))
-                .get()
-            )
-              acquireProjectAttachmentOwnership(
-                tx,
-                step.threadId,
-                step.paths,
-                "best-effort",
-              );
-            updateAttachmentBackfill(tx, step.next);
-          },
-          { behavior: "immediate" },
+  return defineItemSweep({
+    name: "project-attachment-backfill",
+    concurrency: 1,
+    list: ({ excludedKeys }) => {
+      if (maintenance.backfillRunning) return [];
+      const walking = [...maintenance.inventoryWalkers.keys()].find(
+        (projectId) => !excludedKeys.has(projectId),
+      );
+      const projectId =
+        walking ??
+        nextProjectAttachmentBackfill(deps.db, {
+          excludedProjectIds: excludedKeys,
+        });
+      return projectId === null ? [] : [projectId];
+    },
+    key: (projectId) => projectId,
+    process: async (projectId) => {
+      maintenance.backfillRunning = true;
+      try {
+        await advanceProjectAttachmentBackfill(deps, {
+          limits,
+          now,
+          projectId,
+        });
+      } catch (error) {
+        const walker = maintenance.inventoryWalkers.get(projectId);
+        maintenance.inventoryWalkers.delete(projectId);
+        await walker?.return(undefined);
+        throw error;
+      } finally {
+        maintenance.backfillRunning = false;
+      }
+    },
+  });
+}
+
+async function advanceProjectAttachmentBackfill(
+  deps: MaintenanceDeps,
+  args: {
+    limits: ProjectAttachmentBackfillLimits;
+    now: number;
+    projectId: string;
+  },
+): Promise<void> {
+  const { limits, projectId } = args;
+  const maintenance = getMaintenanceState(deps.db);
+  let state = ensureProjectAttachmentBackfill(deps.db, projectId);
+  state = { ...state, attemptedAt: args.now };
+  updateAttachmentBackfill(deps.db, state);
+  const started = performance.now();
+  for (
+    let count = 0;
+    count < limits.maxSteps &&
+    performance.now() - started < limits.elapsedBudgetMs;
+    count += 1
+  ) {
+    if (state.phase === "files") {
+      const walkers = maintenance.inventoryWalkers;
+      let walker = walkers.get(projectId);
+      if (!walker) {
+        walker = walkProjectAttachmentFiles(deps.config.dataDir, projectId);
+        walkers.set(projectId, walker);
+      }
+      const entry = await walker.next();
+      if (entry.done) {
+        walkers.delete(projectId);
+        state = startAttachmentBackfillPhase(state, "events");
+      } else if (!getProjectAttachment(deps.db, projectId, entry.value)) {
+        await inventoryAttachmentReference(
+          deps.db,
+          deps.config.dataDir,
+          projectId,
+          entry.value,
         );
-        state = step.next;
-      } else break;
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-  } catch (error) {
-    if (projectId !== null) {
-      const walker = maintenance.inventoryWalkers.get(projectId);
-      maintenance.inventoryWalkers.delete(projectId);
-      await walker?.return(undefined);
-      deps.db
-        .update(projectAttachmentBackfills)
-        .set({
-          error: error instanceof Error ? error.message : String(error),
-          attemptedAt: now,
-        })
-        .where(eq(projectAttachmentBackfills.projectId, projectId))
-        .run();
-    }
-    deps.logger.warn(
-      { err: error, projectId },
-      "Attachment backfill paused; cleanup remains disabled",
-    );
-  } finally {
-    maintenance.backfillRunning = false;
+      }
+      updateAttachmentBackfill(deps.db, state);
+    } else if (state.phase !== "done") {
+      const step = readAttachmentBackfillInput(deps.db, state);
+      if (step.paths.length > 0)
+        await inventoryAttachmentReferences(
+          deps.db,
+          deps.config.dataDir,
+          projectId,
+          step.paths,
+        );
+      deps.db.transaction(
+        (tx) => {
+          if (
+            step.threadId &&
+            tx
+              .select({ id: threads.id })
+              .from(threads)
+              .where(eq(threads.id, step.threadId))
+              .get()
+          )
+            acquireProjectAttachmentOwnership(
+              tx,
+              step.threadId,
+              step.paths,
+              "best-effort",
+            );
+          updateAttachmentBackfill(tx, step.next);
+        },
+        { behavior: "immediate" },
+      );
+      state = step.next;
+    } else break;
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -224,23 +242,38 @@ export async function pruneProjectAttachments(
   }
 }
 
-export async function runProjectAttachmentPrune(
+export function projectAttachmentPruneSweep(
   deps: MaintenanceDeps,
   now: number,
-): Promise<void> {
+): ItemSweep {
   const maintenance = getMaintenanceState(deps.db);
-  const row = deps.db
-    .select({ id: projectAttachmentBackfills.projectId })
-    .from(projectAttachmentBackfills)
-    .where(
-      and(
-        eq(projectAttachmentBackfills.phase, "done"),
-        gt(projectAttachmentBackfills.projectId, maintenance.pruneCursor),
-      ),
-    )
-    .orderBy(asc(projectAttachmentBackfills.projectId))
-    .limit(1)
-    .get();
-  maintenance.pruneCursor = row?.id ?? "";
-  if (row) await pruneProjectAttachments(deps, row.id, now);
+  return defineItemSweep({
+    name: "project-attachment-orphan-prune",
+    concurrency: 1,
+    list: ({ excludedKeys }) => {
+      const row = deps.db
+        .select({ id: projectAttachmentBackfills.projectId })
+        .from(projectAttachmentBackfills)
+        .where(
+          and(
+            eq(projectAttachmentBackfills.phase, "done"),
+            gt(projectAttachmentBackfills.projectId, maintenance.pruneCursor),
+            excludedKeys.size === 0
+              ? undefined
+              : notInArray(projectAttachmentBackfills.projectId, [
+                  ...excludedKeys,
+                ]),
+          ),
+        )
+        .orderBy(asc(projectAttachmentBackfills.projectId))
+        .limit(1)
+        .get();
+      maintenance.pruneCursor = row?.id ?? "";
+      return row === undefined ? [] : [row.id];
+    },
+    key: (projectId) => projectId,
+    process: async (projectId) => {
+      await pruneProjectAttachments(deps, projectId, now);
+    },
+  });
 }

@@ -4,15 +4,28 @@ import type {
   ServerAccessStatus,
   SystemProviderState,
 } from "@bb/server-contract";
+import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
+  agentContinueDisabled,
+  agentRowSetup,
+  agentSignInView,
   connectAccessUrl,
+  devicesShowMachines,
+  connectFlowFailed,
   defaultSelectedRepoPaths,
+  skippedStepIds,
   hasReadyAgent,
+  operationFailureReason,
   parseSignInOutput,
+  projectsPrimaryAction,
   resolveAgentSetupState,
+  setupGuidePlanHealth,
   resolveSignInCommand,
+  signInBrowserIsOnMachine,
   shortRemoteName,
+  signInSiteName,
+  terminalConnectFlow,
 } from "./onboarding-model";
 
 function health(
@@ -31,6 +44,8 @@ function health(
     canUpdate: true,
     loginCommand: "claude auth login",
     localLoginCommand: null,
+    internal_DO_NOT_USE_guidedSignIn: false,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
     ...overrides,
   };
 }
@@ -66,21 +81,44 @@ const idle = {
   signingIn: false,
   signInFailed: false,
   installInfoPending: false,
+  whileInstallInfoPending: "checking" as const,
 };
 
 describe("resolveAgentSetupState", () => {
+  it("shows Codex's plan only in the new guide; today's guide shows main's line", () => {
+    const codex = health({
+      providerId: "codex",
+      accountEmail: "a@b.dev",
+      internal_DO_NOT_USE_setupGuidePlanLabel: "Plus",
+    });
+    expect(
+      resolveAgentSetupState({ ...idle, health: codex, cliStatus: undefined }),
+    ).toEqual({ status: "ready", detail: "a@b.dev" });
+    expect(
+      resolveAgentSetupState({
+        ...idle,
+        health: setupGuidePlanHealth(codex),
+        cliStatus: undefined,
+      }),
+    ).toEqual({ status: "ready", detail: "a@b.dev · Plus" });
+    expect(
+      setupGuidePlanHealth(health({ planLabel: "Max (20x)" })).planLabel,
+    ).toBe("Max (20x)");
+  });
+
   it("shows the account and plan for a ready agent, even while a stale install job lingers", () => {
     expect(
       resolveAgentSetupState({
-        health: health({ accountEmail: "a@b.dev", planLabel: "Max (20x)" }),
+        health: health({ accountEmail: "a@b.dev", planLabel: "Ultra" }),
         cliStatus: cliStatus(),
         installing: true,
         installFailure: "old failure",
         signingIn: true,
         signInFailed: true,
         installInfoPending: true,
+        whileInstallInfoPending: "checking",
       }),
-    ).toEqual({ status: "ready", detail: "a@b.dev · Max (20x)" });
+    ).toEqual({ status: "ready", detail: "a@b.dev · Ultra" });
     expect(
       resolveAgentSetupState({
         health: health(),
@@ -133,6 +171,41 @@ describe("resolveAgentSetupState", () => {
     ).toEqual({ status: "signIn", reason: "signedOut", canSignIn: true });
   });
 
+  it("offers Install or Update in the new guide while install info is still loading", () => {
+    const pending = {
+      ...idle,
+      cliStatus: undefined,
+      installInfoPending: true,
+      whileInstallInfoPending: "offerInstall" as const,
+    };
+    expect(
+      resolveAgentSetupState({
+        ...pending,
+        health: health({ status: "not_installed" }),
+      }),
+    ).toEqual({ status: "install", canInstall: true });
+    expect(
+      resolveAgentSetupState({
+        ...pending,
+        health: health({
+          status: "unsupported_version",
+          minimumSupportedVersion: "2.0.0",
+        }),
+      }),
+    ).toEqual({
+      status: "update",
+      detail: "Needs version 2.0.0 or newer",
+      canInstall: true,
+    });
+    expect(
+      resolveAgentSetupState({
+        ...pending,
+        installInfoPending: false,
+        health: health({ status: "not_installed" }),
+      }),
+    ).toEqual({ status: "install", canInstall: false });
+  });
+
   it("reports a running install before a previous failure, and a failure before the health state", () => {
     const base = {
       health: health({ status: "not_installed" }),
@@ -140,6 +213,7 @@ describe("resolveAgentSetupState", () => {
       signingIn: false,
       signInFailed: false,
       installInfoPending: false,
+      whileInstallInfoPending: "checking" as const,
     };
     expect(
       resolveAgentSetupState({
@@ -147,7 +221,7 @@ describe("resolveAgentSetupState", () => {
         installing: true,
         installFailure: "Install failed.",
       }),
-    ).toEqual({ status: "installing" });
+    ).toEqual({ status: "installing", update: false });
     expect(
       resolveAgentSetupState({
         ...base,
@@ -435,7 +509,7 @@ describe("parseSignInOutput", () => {
       "On a remote or headless machine? Use `codex login --device-auth` instead.\r\n",
     ].join("");
 
-    expect(parseSignInOutput(output)).toEqual({
+    expect(parseSignInOutput(output, "last")).toEqual({
       url: "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&state=L0qZB807yNu-ZBqrvo6vcNcN_URyZ",
       userCode: null,
       acceptsPastedCode: false,
@@ -449,7 +523,7 @@ describe("parseSignInOutput", () => {
       "Paste code here if prompted > ",
     ].join("");
 
-    expect(parseSignInOutput(output)).toEqual({
+    expect(parseSignInOutput(output, "last")).toEqual({
       url: CLAUDE_URL,
       userCode: null,
       acceptsPastedCode: true,
@@ -468,7 +542,7 @@ describe("parseSignInOutput", () => {
       "Continue only if you started this login in Codex.\r\n",
     ].join("");
 
-    expect(parseSignInOutput(output)).toEqual({
+    expect(parseSignInOutput(output, "last")).toEqual({
       url: "https://auth.openai.com/codex/device",
       userCode: "JWMS-GLRCB",
       acceptsPastedCode: false,
@@ -479,13 +553,14 @@ describe("parseSignInOutput", () => {
     const wrapped = `${CLAUDE_URL.slice(0, 60)}\r\n${CLAUDE_URL.slice(60)}`;
     const output = `visit: ${ESC}]8;;${CLAUDE_URL}${BEL}${wrapped}${ESC}]8;;${BEL}\r\nPaste code here if prompted > `;
 
-    expect(parseSignInOutput(output).url).toBe(CLAUDE_URL);
+    expect(parseSignInOutput(output, "last").url).toBe(CLAUDE_URL);
   });
 
   it("does not mistake part of a link for a one-time code", () => {
     expect(
       parseSignInOutput(
         "Visit https://example.com/auth?state=ABCD-EFGH&x=WXYZ-12345 to sign in\n",
+        "last",
       ),
     ).toEqual({
       url: "https://example.com/auth?state=ABCD-EFGH&x=WXYZ-12345",
@@ -495,17 +570,327 @@ describe("parseSignInOutput", () => {
   });
 
   it("reports nothing to act on before the command has printed a link", () => {
-    expect(parseSignInOutput("")).toEqual({
+    expect(parseSignInOutput("", "last")).toEqual({
       url: null,
       userCode: null,
       acceptsPastedCode: false,
     });
     expect(
-      parseSignInOutput(`${ESC}[2J${ESC}[HChoose a text style\r\n`),
+      parseSignInOutput(`${ESC}[2J${ESC}[HChoose a text style\r\n`, "last"),
     ).toEqual({
       url: null,
       userCode: null,
       acceptsPastedCode: false,
     });
   });
+});
+
+describe("operationFailureReason", () => {
+  it.each([
+    ["host_unavailable", 502, "host_unavailable"],
+    ["command_timeout", 502, "timed_out"],
+    [null, 504, "timed_out"],
+    ["project_not_found", 404, "not_found"],
+    ["unauthorized", 401, "permission"],
+    ["forbidden", 403, "permission"],
+    ["project_not_found", 502, "other"],
+    [null, 500, "other"],
+  ] as const)(
+    "maps the %s error code with status %s to %s",
+    (code, status, reason) => {
+      expect(
+        operationFailureReason(
+          new BbHttpError({ body: null, code, message: "failed", status }),
+        ),
+      ).toBe(reason);
+    },
+  );
+
+  it("reports a request that ran out of time as timed out", () => {
+    expect(operationFailureReason(new BbRequestTimeoutError(30_000))).toBe(
+      "timed_out",
+    );
+  });
+
+  it("reports errors without an HTTP status as other", () => {
+    expect(operationFailureReason(new TypeError("Failed to fetch"))).toBe(
+      "other",
+    );
+  });
+});
+
+const PI_AUTH_URL =
+  "https://claude.ai/oauth/authorize?code=true&client_id=9d1c250a&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=MXdVe-PfEWSN";
+const PI_CHANGELOG_URL = "https://pi.dev/changelog";
+const PI_LOGIN_OUTPUT = [
+  `${ESC}[90mNew version 1.6.0 is available. Changelog: ${ESC}]8;;${PI_CHANGELOG_URL}${BEL}${PI_CHANGELOG_URL}${ESC}]8;;${BEL}\r\n`,
+  `${ESC}[2K Login to Anthropic\r\n`,
+  `${ESC}[2K ${ESC}[38;5;6m${ESC}]8;;${PI_AUTH_URL}${BEL}${PI_AUTH_URL.slice(0, 88)}${ESC}]8;;${BEL}\r\n`,
+  `${ESC}[2K ${ESC}]8;;${PI_AUTH_URL}${BEL}${PI_AUTH_URL.slice(88)}${ESC}]8;;${BEL}${ESC}[39m\r\n`,
+  `${ESC}[2K ${ESC}[2m${ESC}]8;;${PI_AUTH_URL}${BEL}Ctrl+click to open${ESC}]8;;${BEL}${ESC}[22m • ctrl+x to copy\r\n`,
+  `${ESC}[2K Paste the code Anthropic shows after you sign in:\r\n`,
+  `${ESC}[2K > `,
+].join("");
+const PI_LOGIN_FAILED_OUTPUT = `${PI_LOGIN_OUTPUT}\r\n${ESC}[7;1H${ESC}[2K${ESC}[0m${ESC}]8;;${BEL}${ESC}[8;1H${ESC}[2K ${ESC}[38;5;1mError: Failed to login to Anthropic: OAuth state mismatch${ESC}[39m     `;
+
+describe("Pi's sign-in", () => {
+  it("takes the sign-in link Pi shows last, not an earlier link", () => {
+    expect(parseSignInOutput(PI_LOGIN_OUTPUT, "last")).toEqual({
+      url: PI_AUTH_URL,
+      userCode: null,
+      acceptsPastedCode: true,
+    });
+  });
+
+  it("keeps today's guide on the first terminal link, as on main", () => {
+    expect(parseSignInOutput(PI_LOGIN_OUTPUT, "first").url).toBe(
+      PI_CHANGELOG_URL,
+    );
+    expect(
+      agentSignInView({
+        parsed: true,
+        connect: false,
+        outputText: PI_LOGIN_OUTPUT,
+        fallbackDue: false,
+        terminalChoice: null,
+        signInLink: "first",
+      }).guide?.url,
+    ).toBe(PI_CHANGELOG_URL);
+  });
+
+  it("shows Pi's row like every other agent's until its sign-in terminal exists", () => {
+    expect(agentRowSetup({ connect: true, awaitingSession: true })).toBe(
+      "signIn",
+    );
+    expect(agentRowSetup({ connect: true, awaitingSession: false })).toBe(
+      "connect",
+    );
+    expect(agentRowSetup({ connect: false, awaitingSession: false })).toBe(
+      "signIn",
+    );
+  });
+
+  it("sees a failed sign-in although Pi keeps running at its prompt", () => {
+    const flow = terminalConnectFlow("pi");
+    if (flow === null) throw new Error("Pi has no connect flow");
+
+    expect(connectFlowFailed(flow, PI_LOGIN_OUTPUT)).toBe(false);
+    expect(connectFlowFailed(flow, PI_LOGIN_FAILED_OUTPUT)).toBe(true);
+  });
+});
+
+describe("skippedStepIds", () => {
+  it("marks only the steps whose last forward move was a skip", () => {
+    expect(
+      [
+        ...skippedStepIds(
+          new Map([
+            ["agent", "skipped"],
+            ["projects", "completed"],
+            ["plugins", "skipped"],
+          ] as const),
+        ),
+      ].sort(),
+    ).toEqual(["agent", "plugins"]);
+  });
+});
+
+describe("projectsPrimaryAction", () => {
+  const atOpen = new Set(["prj_existing"]);
+
+  it("imports the selection", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 2,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("import");
+  });
+
+  it("completes the step when a folder was added during the guide", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing", "prj_added_folder"],
+      }),
+    ).toBe("completed");
+  });
+
+  it("skips the step when nothing was selected or added, counting earlier projects as not added", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: null,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
+  });
+});
+
+describe("agentContinueDisabled", () => {
+  it("holds Continue in the redesign only while agent states load", () => {
+    expect(
+      agentContinueDisabled({
+        redesign: true,
+        agentReady: false,
+        statesLoading: true,
+      }),
+    ).toBe(true);
+    expect(
+      agentContinueDisabled({
+        redesign: true,
+        agentReady: false,
+        statesLoading: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps today's guide blocked until an agent is ready", () => {
+    expect(
+      agentContinueDisabled({
+        redesign: false,
+        agentReady: false,
+        statesLoading: false,
+      }),
+    ).toBe(true);
+    expect(
+      agentContinueDisabled({
+        redesign: false,
+        agentReady: true,
+        statesLoading: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("devicesShowMachines", () => {
+  it("offers other machines only once bb connect is on", () => {
+    expect(devicesShowMachines({ status: "on", url: "https://x" })).toBe(true);
+    expect(devicesShowMachines({ status: "off" })).toBe(false);
+    expect(devicesShowMachines({ status: "unavailable" })).toBe(false);
+  });
+});
+
+describe("signInSiteName", () => {
+  it("returns null when the URL has no usable host", () => {
+    expect(signInSiteName("not a url")).toBeNull();
+    expect(signInSiteName("file:///tmp/sign-in")).toBeNull();
+  });
+});
+
+describe("agentSignInView", () => {
+  const DEVICE_OUTPUT =
+    "Open https://auth.example.com/device and enter code ABCD-1234\r\n";
+
+  it("opens the terminal without a parsed link for other agents once it prints", () => {
+    const base = {
+      parsed: false,
+      connect: false,
+      fallbackDue: false,
+      terminalChoice: null,
+      signInLink: "last" as const,
+    };
+    expect(agentSignInView({ ...base, outputText: null })).toEqual({
+      guide: null,
+      terminalVisible: true,
+      started: false,
+    });
+    expect(agentSignInView({ ...base, outputText: "" }).started).toBe(false);
+    expect(agentSignInView({ ...base, outputText: DEVICE_OUTPUT })).toEqual({
+      guide: null,
+      terminalVisible: true,
+      started: true,
+    });
+    expect(
+      agentSignInView({
+        ...base,
+        outputText: DEVICE_OUTPUT,
+        terminalChoice: false,
+      }).terminalVisible,
+    ).toBe(false);
+  });
+
+  it("keeps Pi's terminal panel open from the start", () => {
+    expect(
+      agentSignInView({
+        parsed: false,
+        connect: true,
+        outputText: null,
+        fallbackDue: false,
+        terminalChoice: null,
+        signInLink: "last",
+      }),
+    ).toEqual({ guide: null, terminalVisible: true, started: true });
+  });
+
+  it("lifts the link and code out of a parsed agent's output with the terminal hidden", () => {
+    expect(
+      agentSignInView({
+        parsed: true,
+        connect: false,
+        outputText: DEVICE_OUTPUT,
+        fallbackDue: false,
+        terminalChoice: null,
+        signInLink: "last",
+      }),
+    ).toEqual({
+      guide: parseSignInOutput(DEVICE_OUTPUT, "last"),
+      terminalVisible: false,
+      started: true,
+    });
+    expect(parseSignInOutput(DEVICE_OUTPUT, "last").url).not.toBeNull();
+  });
+});
+
+describe("signInBrowserIsOnMachine", () => {
+  it.each([
+    {
+      viewer: "the desktop app",
+      hostname: "brsbl.getbb.app",
+      isDesktop: true,
+      agentOnLocalDaemonHost: true,
+      browser: true,
+    },
+    {
+      viewer: "a loopback browser",
+      hostname: "localhost",
+      isDesktop: false,
+      agentOnLocalDaemonHost: true,
+      browser: true,
+    },
+    {
+      viewer: "a getbb.app share",
+      hostname: "brsbl-bbox--41201.getbb.app",
+      isDesktop: false,
+      agentOnLocalDaemonHost: true,
+      browser: false,
+    },
+    {
+      viewer: "the desktop app with the agent on another machine",
+      hostname: "localhost",
+      isDesktop: true,
+      agentOnLocalDaemonHost: false,
+      browser: false,
+    },
+  ])(
+    "signs in with a browser link from $viewer only when browser is $browser",
+    ({ hostname, isDesktop, agentOnLocalDaemonHost, browser }) => {
+      expect(
+        signInBrowserIsOnMachine({
+          agentOnLocalDaemonHost,
+          hostname,
+          isDesktop,
+        }),
+      ).toBe(browser);
+    },
+  );
 });

@@ -44,10 +44,16 @@ import type { CompactBeforeSendOffer } from "@/components/promptbox/CompactBefor
 import {
   formatWorkspaceCheckoutDisplay,
   type WorkspaceCheckoutDisplay,
-} from "@/lib/workspace-checkout-display";
+} from "@bb/shared-ui/lib/workspace-checkout-display";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
+import {
+  selectWorkspaceChangedFilesSection,
+} from "../../../../../plugins/git/ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import {
+  GitSegmentFixtureProvider,
+  gitSegmentFixtureMergeBase,
+} from "@/test/fixtures/git-segment-plugin";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import {
   makeEnvironment,
@@ -63,8 +69,11 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { promptDraftToInput, type PromptDraftState } from "@bb/client-core";
-import { queuedInputToDraft } from "@bb/client-core";
+import {
+  promptDraftToInput,
+  type PromptDraftState,
+  queuedInputToDraft,
+} from "@bb/client-core";
 import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 export default {
@@ -72,6 +81,7 @@ export default {
 };
 
 const noop = () => {};
+const noopAsync = async () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 const baseExecution = makeExecutionControlsProps({
@@ -411,12 +421,24 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     headSha: null,
   },
   mergeBase: null,
+  allChanges: {
+    insertions: 128,
+    deletions: 24,
+    lineStatsComplete: true,
+    fileCount: 3,
+  },
 };
 
 const dirtyContextBannerSection =
   selectWorkspaceChangedFilesSection(dirtyWorkspaceStatus);
 
 const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
+  <GitSegmentFixtureProvider
+    value={{
+      section: dirtyContextBannerSection,
+      mergeBase: gitSegmentFixtureMergeBase(),
+    }}
+  >
   <ThreadPromptContextBanner
     input={{
       threadId: "thr_story",
@@ -424,16 +446,6 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
       environment: null,
     }}
     core={{
-      git: {
-        changedFiles: dirtyContextBannerSection,
-        mergeBase: {
-          branch: "main",
-          options: ["main", "develop", "release/2026-05"],
-          onChange: noop,
-        },
-        onPromptBannerFileClick: noop,
-      },
-      gitPending: false,
       parentThread: null,
     }}
     archivedSection={null}
@@ -441,6 +453,7 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
     expandedSegment={null}
     onToggleSegment={noop}
   />
+  </GitSegmentFixtureProvider>
 ) : null;
 
 const archivedContextBannerElement: ReactNode = (
@@ -451,8 +464,6 @@ const archivedContextBannerElement: ReactNode = (
       environment: null,
     }}
     core={{
-      git: null,
-      gitPending: false,
       parentThread: null,
     }}
     archivedSection={{ archivedAt: 1_731_456_000_000 }}
@@ -470,8 +481,6 @@ const environmentGoneContextBannerElement: ReactNode = (
       environment: null,
     }}
     core={{
-      git: null,
-      gitPending: false,
       parentThread: null,
     }}
     archivedSection={null}
@@ -733,6 +742,7 @@ function Row({
         queuedMessages={storyQueuedMessages}
         inlineEditor={inlineEditor}
         sendAction="send-now"
+        threadStatus="active"
         sendDisabled={false}
         actionDisabled={false}
         processingMessageId={null}
@@ -745,6 +755,7 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
+        onChangeSendTime={noopAsync}
         expanded={queueExpanded}
         onExpandedChange={setQueueExpanded}
         onDelete={(id) =>

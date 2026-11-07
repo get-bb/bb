@@ -145,7 +145,10 @@ export function useHorizontalDismissDrag(options: Options) {
       if (session === null) return;
       const point = trackedPoint(event, session);
       if (point === null) return;
-      if (!session.dragging && hasTextSelectionWithin(session.boundary)) {
+      if (
+        !session.dragging &&
+        (event.defaultPrevented || hasTextSelectionWithin(session.boundary))
+      ) {
         clearSession();
         return;
       }

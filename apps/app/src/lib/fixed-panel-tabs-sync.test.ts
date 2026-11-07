@@ -25,6 +25,10 @@ import {
   useUpdateFixedPanelTabsState,
 } from "./fixed-panel-tabs";
 import { BbHttpError } from "./sdk";
+import {
+  getCachedThreadTabs,
+  invalidateCachedThreadTabs,
+} from "@/hooks/cache-owners/thread-tabs-cache-owner";
 import { syncTerminalTabsInFixedPanelState } from "@/components/secondary-panel/terminalPanelTabs";
 import { useThreadSecondaryPanelDrawerVisibility } from "@/views/thread-detail/useThreadSecondaryPanelVisibility";
 
@@ -79,9 +83,9 @@ describe("fixed panel tab server sync", () => {
     const tabs = [
       terminal,
       {
-        id: "plugin-fixed:core:diff",
+        id: "plugin-fixed:bb--git:diff",
         kind: "plugin-fixed",
-        pluginId: "core",
+        pluginId: "bb--git",
         tabId: "diff",
       },
       {
@@ -283,6 +287,80 @@ describe("fixed panel tab server sync", () => {
       }));
     });
     expect(apiMocks.updateThreadTabs).not.toHaveBeenCalled();
+  });
+
+  it("keeps a newer saved tab list when an older tab fetch lands last", async () => {
+    const threadId = "sync-stale-fetch";
+    const info = createThreadInfoFixedPanelTab();
+    const closedTerminal = createTerminalFixedPanelTab({ terminalId: "old" });
+    const newTerminal = createTerminalFixedPanelTab({ terminalId: "new" });
+    let resolveStaleFetch: (response: unknown) => void = () => {};
+    apiMocks.getThreadTabs
+      .mockResolvedValueOnce({ revision: 1, tabs: [info, closedTerminal] })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveStaleFetch = resolve;
+        }),
+      );
+    apiMocks.updateThreadTabs
+      .mockResolvedValueOnce({ revision: 2, tabs: [info] })
+      .mockResolvedValueOnce({ revision: 3, tabs: [info, newTerminal] });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        state: useFixedPanelTabsState(threadId, threadId),
+        update: useUpdateFixedPanelTabsState(threadId, threadId),
+      }),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+    await waitFor(() => {
+      expect(result.current.state.secondary.tabs).toEqual([
+        info,
+        closedTerminal,
+      ]);
+    });
+
+    act(() => {
+      result.current.update((current) => ({
+        ...current,
+        secondary: {
+          activeTabId: info.id,
+          isOpen: true,
+          tabs: [info],
+        },
+      }));
+    });
+    await waitFor(() =>
+      expect(getCachedThreadTabs(queryClient, threadId)?.revision).toBe(2),
+    );
+    act(() => invalidateCachedThreadTabs(queryClient, threadId));
+    await waitFor(() =>
+      expect(apiMocks.getThreadTabs).toHaveBeenCalledTimes(2),
+    );
+
+    act(() => {
+      result.current.update((current) => ({
+        ...current,
+        secondary: {
+          activeTabId: newTerminal.id,
+          isOpen: true,
+          tabs: [info, newTerminal],
+        },
+      }));
+    });
+    await waitFor(() =>
+      expect(getCachedThreadTabs(queryClient, threadId)?.revision).toBe(3),
+    );
+
+    act(() => resolveStaleFetch({ revision: 2, tabs: [info] }));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    expect(getCachedThreadTabs(queryClient, threadId)).toEqual({
+      revision: 3,
+      tabs: [info, newTerminal],
+    });
+    expect(result.current.state.secondary.tabs).toEqual([info, newTerminal]);
+    expect(result.current.state.secondary.activeTabId).toBe(newTerminal.id);
   });
 
   it.each([1, 2])(

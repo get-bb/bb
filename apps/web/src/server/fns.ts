@@ -12,14 +12,16 @@ import {
   claimHandle,
   createConnectCode,
   createServer,
-  depsFromEnv,
+  deleteAccount,
   disconnectServer,
   removeServer,
   revokeMachine,
+  revokeUnusedDevices,
   getAccountState,
   type AccountState,
   type Deps,
 } from "./api.js";
+import { depsFromEnv } from "./deps.js";
 import { getEnv } from "./env.js";
 import { getSessionUserId } from "./current-user.server.js";
 import { resolveDevEmailPasswordEnabled } from "./local-auth.js";
@@ -118,6 +120,22 @@ export const revokeMachineFn = createServerFn({ method: "POST" })
       if (!machineId) return { error: "not-found" as const };
       return revokeMachine(deps, userId, machineId);
     }),
+  );
+
+export const revokeUnusedDevicesFn = createServerFn({
+  method: "POST",
+}).handler(async () =>
+  withSessionUser((userId, deps) => revokeUnusedDevices(deps, userId)),
+);
+
+export const deleteAccountFn = createServerFn({ method: "POST" })
+  .validator((input: { confirmHandle: string }) => ({
+    confirmHandle: String(input.confirmHandle),
+  }))
+  .handler(async ({ data }) =>
+    withSessionUser((userId, deps) =>
+      deleteAccount(deps, userId, data.confirmHandle),
+    ),
   );
 
 type LinkPageState =

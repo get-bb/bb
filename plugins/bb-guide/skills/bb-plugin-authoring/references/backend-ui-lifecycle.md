@@ -70,12 +70,21 @@ waits at most 30 seconds for handlers. In tests,
 `bb.onDispose(hook)` registers cleanup; hooks run **LIFO**. On reload the
 host first runs the factory against a candidate registration set; if it
 throws, the complete previous set stays live. Once the candidate succeeds, the
-old generation is torn down in order: its host workers stop, pending plugin
-input is interrupted, services are aborted and get up to five seconds each (a
-hung service marks the plugin degraded until it stops), dispose hooks run in
-LIFO order (one failed hook does not stop later cleanup), in-flight HTTP,
-RPC, and event handlers get five seconds to finish, and then database handles
-close and the old `bb` object is invalidated. Disable and shutdown use the
-same sequence without a replacement. A
-captured `bb` from a previous load throws `PluginContextStaleError` on use
-— never stash the API object in module-level state that outlives a load.
+old generation is torn down in order: its WebSockets close with code 1012, the
+CLI `ctx.signal` and RPC `experimental_signal` of its in-flight calls abort,
+its host workers stop, input it requested is interrupted (forms the new
+generation raised while loading stay pending), services are aborted and get up
+to five seconds each (a hung service marks the plugin degraded until it
+stops), WebSocket `onClose` handlers run, dispose hooks run in LIFO order (one
+failed hook does not stop later cleanup), and in-flight HTTP, RPC, CLI and
+event handlers get five seconds to finish. Callers still waiting after that
+get an error saying the plugin was reloaded or disabled; the handler itself
+keeps running until it stops on its signal. Then database handles close and
+the old `bb` object is invalidated. Requests that arrive during this teardown
+are still served by the old generation. Disable, removal and shutdown use the
+same sequence without a replacement, and also interrupt every pending input
+the plugin owns. A captured `bb` from a previous load throws
+`PluginContextStaleError` on use — never stash the API object in
+module-level state that outlives a load. bb logs that error, and any other
+uncaught exception thrown from plugin code, against the plugin and keeps
+running.

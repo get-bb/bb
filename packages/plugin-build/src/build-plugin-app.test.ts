@@ -13,12 +13,20 @@ import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
 import {
   buildPluginApp,
+  hostProvidesPackageVersion,
   sharedUiRuntimeModuleFor,
   runtimeShimPlugin,
   RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
-import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
+import {
+  RUNTIME_EXPORT_MANIFEST,
+  RUNTIME_PACKAGE_VERSIONS,
+} from "./generated/runtime-export-manifest.generated.js";
 import { buildPluginServer } from "./build-plugin-server.js";
+import {
+  dropAnonymousPluginRootScope,
+  dropHostProvidedTailwind,
+} from "./scope-plugin-utilities.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 function testToolchain() {
@@ -99,7 +107,7 @@ describe("plugin app runtime shim", () => {
         pluginName: "bb-plugin-runtime-shims",
         location: expect.objectContaining({ line: 4 }),
         text: expect.stringMatching(
-          /^experimental_useSidebarThreadPullRequest is retired from @get-bb\/plugin-sdk\/app\. Existing plugins remain supported\. Read pull requests from the GitHub PR Status plugin instead: experimental_useRpcKeyedQuery\(\{ pluginId: "bb--github-pr-status"/,
+          /^experimental_useSidebarThreadPullRequest is retired from @get-bb\/plugin-sdk\/app\. Existing plugins remain supported\. Render <experimental_ThreadRowMetadata thread=\{thread\} \/> in the row to draw bb's pull request badge, or read pull requests from the GitHub PR Status plugin: experimental_useRpcKeyedQuery\(\{ pluginId: "bb--github-pr-status"/,
         ),
       },
     ]);
@@ -329,6 +337,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.css"),
       ".bb71-authored-decoration { text-decoration: underline; }\n" +
+        "[data-bb-plugin-root] .bb71-authored-portal { opacity: 0.75; }\n" +
         "@keyframes bb71-authored-pulse { to { opacity: 0.5; } }\n",
     );
 
@@ -371,6 +380,63 @@ describe("plugin app runtime shim", () => {
       css.lastIndexOf("@layer utilities{"),
     );
     expect(css).toContain("@keyframes bb71-authored-pulse");
+
+    const ownedCss = dropAnonymousPluginRootScope(css);
+    expect(ownedCss).not.toContain(
+      "[data-bb-plugin-root]:not([data-bb-plugin])",
+    );
+    expect(ownedCss).toContain(
+      String.raw`:where([data-bb-plugin=css-fixture]) .flex-col`,
+    );
+    expect(ownedCss).toContain(
+      "[data-bb-plugin-root] .bb71-authored-portal{opacity:.75}",
+    );
+  });
+
+  it("warns when the built app renders plugin roots without a plugin id", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-roots-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-roots",
+        version: "0.0.0",
+        bb: {
+          name: "Roots fixture",
+          description: "Verifies plugin root warnings.",
+          branding: { icon: "Paintbrush" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    const build = async (source: string) => {
+      await writeFile(join(dir, "app.ts"), source);
+      return (await buildPluginApp(dir, "0.9.0-test", await testToolchain()))
+        .migrationWarnings;
+    };
+    const current =
+      "declare const __BB_PLUGIN_ID__: string | undefined;\n" +
+      "export function usePortalScopeProps() {\n" +
+      '  const pluginId = typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined;\n' +
+      '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", ...(pluginId !== undefined ? { "data-bb-plugin": pluginId } : {}) };\n' +
+      "}\n";
+    const preStamp =
+      "export function usePortalScopeProps() {\n" +
+      '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "" };\n' +
+      "}\n";
+    expect(await build("export const value = 1;\n")).toEqual([]);
+    expect(await build(current)).toEqual([]);
+    const warnings = await build(preStamp);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(
+      "sets data-bb-plugin-root without data-bb-plugin 1 time(s)",
+    );
+    expect(warnings[0]).toContain('data-bb-plugin="roots"');
   });
 
   it("builds retired tab registrations alongside retired hooks and returns migration warnings", async () => {
@@ -400,6 +466,7 @@ describe("plugin app runtime shim", () => {
       const component = () => experimental_useSidebarThreadPullRequest("thread").pullRequest;
       export default definePluginApp((app) => {
         app.slots.threadPanelAction({ id: "legacy", title: "Legacy", component });
+        app.slots.experimental_threadHeaderAction({ id: "chip", title: "Chip", component });
         app.slots.navPanel({ id: "board", title: "Board", icon: "Info", path: "board", component, fixedTabs: [{ id: "fixed", title: "Fixed", icon: "Info", component }] });
       });`,
     );
@@ -407,16 +474,20 @@ describe("plugin app runtime shim", () => {
       dir,
       "0.9.0-test",
       await testToolchain(),
-      { minify: true },
+      { minify: true, hostProvidedZod: false },
     );
     const warnings = result.migrationWarnings;
     expect(await readFile(result.jsPath, "utf8")).toContain(
       "threadPanelAction",
     );
-    expect(warnings).toHaveLength(3);
+    expect(await readFile(result.jsPath, "utf8")).toContain(
+      "experimental_threadHeaderAction",
+    );
+    expect(warnings).toHaveLength(4);
     expect(warnings.join("\n")).toContain(
       "experimental_useSidebarThreadPullRequest",
     );
+    expect(warnings.join("\n")).toContain('placement: "header"');
     expect(warnings.join("\n")).toContain("experimental_useRpcKeyedQuery");
     expect(warnings.join("\n")).toContain('availability: "action"');
     expect(warnings.join("\n")).toContain('availability: "fixed"');
@@ -465,14 +536,132 @@ describe("plugin app runtime shim", () => {
 
     expect(app.migrationWarnings).toEqual([
       expect.stringContaining(
-        'environments.diffFiles is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files"',
+        'environments.diffFiles is retired from the bb SDK typings and keeps working only for existing plugins. Use the Git plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files"',
       ),
     ]);
     expect(server.migrationWarnings).toEqual([
       expect.stringContaining(
-        'server.ts: environments.status is retired from the bb SDK typings',
+        "server.ts: environments.status is retired from the bb SDK typings",
       ),
     ]);
+  });
+
+  it("builds a server whose RPC contract still declares invalidates and warns only for the plugin's own files", async () => {
+    const shared = await mkdtemp(join(tmpdir(), "bb-plugin-shared-routes-"));
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-retired-invalidates-"));
+    tempDirs.push(shared, dir);
+    await writeFile(
+      join(shared, "routes.ts"),
+      `export const route = { invalidates: () => ["core"] };\n`,
+    );
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-retired-invalidates-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Retired invalidates",
+          description: "Published API compatibility",
+          branding: { icon: "Info" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "tags.ts"),
+      `export const TAGS = {
+        save: { invalidates: ({ id }: { id: string }) => ["item:" + id] },
+        clear: {
+          invalidates(input: { id: string }): string[] {
+            return ["item:" + input.id];
+          },
+        },
+      };\n`,
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      `import { TAGS } from "./tags";
+      import { route } from ${JSON.stringify(join(shared, "routes.ts"))};
+      export default function plugin(bb: any) {
+        bb.log.info(JSON.stringify(Object.keys(TAGS)), route);
+      }\n`,
+    );
+    const server = await buildPluginServer(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+
+    expect(await readFile(server.jsPath, "utf8")).toContain("invalidates");
+    expect(server.migrationWarnings).toEqual([
+      expect.stringMatching(
+        /\/tags\.ts: invalidates on RPC contract methods is retired .*bb\.rpc\.experimental_invalidate\(tags\)/u,
+      ),
+    ]);
+  });
+
+  it("uses a versioned slot only when the host has the plugin's major and is not older", () => {
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.5")).toBe(true);
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.1")).toBe(true);
+    expect(hostProvidesPackageVersion("4.6.5", "4.2.9")).toBe(true);
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.6")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "4.7.0")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "3.25.0")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "5.0.0")).toBe(false);
+    expect(hostProvidesPackageVersion("4.6.5", "4.6.5-beta.1")).toBe(false);
+  });
+
+  it("shims zod only in host builds, and only for an installed zod the host provides", async () => {
+    const hostZod = RUNTIME_PACKAGE_VERSIONS.zod;
+    if (hostZod === undefined) throw new Error("no host zod version");
+    const [major] = hostZod.split(".");
+    const bundleWithZod = async (version: string, hostProvidedZod = true) => {
+      const dir = await mkdtemp(join(tmpdir(), "bb-plugin-zod-"));
+      tempDirs.push(dir);
+      const zodDir = join(dir, "node_modules", "zod");
+      await mkdir(zodDir, { recursive: true });
+      await writeFile(
+        join(zodDir, "package.json"),
+        JSON.stringify({
+          name: "zod",
+          version,
+          type: "module",
+          main: "index.js",
+        }),
+      );
+      await writeFile(
+        join(zodDir, "index.js"),
+        'export const z = "plugin-installed-zod";\n',
+      );
+      const result = await build({
+        stdin: {
+          contents: 'import { z } from "zod";\nexport { z };\n',
+          loader: "js",
+          resolveDir: dir,
+        },
+        bundle: true,
+        format: "esm",
+        platform: "browser",
+        write: false,
+        logLevel: "silent",
+        plugins: [runtimeShimPlugin(undefined, { hostProvidedZod })],
+      });
+      return result.outputFiles[0]?.text ?? "";
+    };
+
+    const shared = await bundleWithZod(hostZod);
+    expect(shared).toMatch(/runtime\d*\.zod\b/);
+    expect(shared).not.toContain("plugin-installed-zod");
+
+    const published = await bundleWithZod(hostZod, false);
+    expect(published).toContain("plugin-installed-zod");
+    expect(published).not.toMatch(/runtime\d*\.zod\b/);
+
+    for (const version of [`${Number(major) + 1}.0.0`, `${major}.999.0`]) {
+      const bundled = await bundleWithZod(version);
+      expect(bundled, version).toContain("plugin-installed-zod");
+      expect(bundled, version).not.toMatch(/runtime\d*\.zod\b/);
+    }
   });
 
   it("records in app.meta.json the runtime slots the bundle imports", async () => {
@@ -503,7 +692,7 @@ describe("plugin app runtime shim", () => {
         'import { FileDiff } from "@pierre/diffs/react";',
         'import clsx from "clsx";',
         "export default function App() {",
-        "  return <FileDiff fileDiff={parsePatchFiles(\"\")[0]} className={clsx(\"a\")} />;",
+        '  return <FileDiff fileDiff={parsePatchFiles("")[0]} className={clsx("a")} />;',
         "}",
         "",
       ].join("\n"),
@@ -520,6 +709,51 @@ describe("plugin app runtime shim", () => {
       "pierreDiffs",
       "pierreDiffsReact",
     ]);
+  });
+
+  it("emits Tailwind rules the host provides, which dropHostProvidedTailwind removes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-properties-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-properties-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Properties fixture",
+          description:
+            "Verifies plugin CSS leaves property registration to the host.",
+          branding: { icon: "Paintbrush" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "app.ts"),
+      'export const classes = "shadow-md ring-2 blur-sm translate-x-1 bg-linear-to-r from-red-500 animate-in fade-in-0 zoom-in-95 animate-spin";\n',
+    );
+
+    const result = await buildPluginApp(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+    const built = await readFile(result.cssPath, "utf8");
+    expect(built).toContain("@property --tw-enter-opacity");
+    expect(built).toContain(":root,:host{");
+
+    const css = dropHostProvidedTailwind(built);
+    expect(css).toContain("--tw-enter-opacity:0");
+    expect(css).toContain("@keyframes enter");
+    expect(css).toContain("@keyframes spin");
+    expect(css).not.toContain("@property");
+    expect(css).not.toContain("@supports (((-webkit-hyphens");
+    expect(css).not.toContain(":root");
   });
 
   it("minifies app.js and app.css unless the caller asks for readable output", async () => {
@@ -574,6 +808,7 @@ describe("plugin app runtime shim", () => {
 
     const readable = await buildPluginApp(dir, "0.9.0-test", toolchain, {
       minify: false,
+      hostProvidedZod: false,
     });
     const readableJs = await readFile(readable.jsPath, "utf8");
     const readableCss = await readFile(readable.cssPath, "utf8");

@@ -40,7 +40,6 @@ function renderPanel() {
       <TooltipProvider>
         <ThreadSecondaryPanel
           activeTab={activeTab}
-          canUseGitUi={false}
           fixedTabs={[
             {
               ariaLabel: "Show thread info panel",

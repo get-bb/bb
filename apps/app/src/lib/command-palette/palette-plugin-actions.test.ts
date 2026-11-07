@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { UNAVAILABLE_APP_PANEL_CONTROLLER } from "@/lib/app-fixed-tab-navigation";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
 import {
   resetPluginLogoStoreForTest,
@@ -93,6 +94,7 @@ describe("buildPluginPaletteActions", () => {
 
   it("routes experimental_panel and the retired openPanel to the focused surface's controller, or declines without one", () => {
     const panel: AppPanelController = {
+      ...UNAVAILABLE_APP_PANEL_CONTROLLER,
       openTab: vi.fn(() => true),
       toggleTab: vi.fn(() => true),
       close: vi.fn(() => true),

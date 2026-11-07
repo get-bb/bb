@@ -1,3 +1,5 @@
+import { HOST_TAILWIND_CSS } from "./generated/plugin-theme.generated.js";
+
 const NESTED_STYLE_RULE_AT_RULES = new Set([
   "media",
   "supports",
@@ -29,6 +31,159 @@ export function scopePluginUtilities(css: string, scopeRoots: string): string {
       return `${statement.prelude}{${statement.body}}`;
     })
     .join("");
+}
+
+const PLUGIN_ROOT_MARKER = /data-bb-plugin-root/g;
+const PLUGIN_NAME_MARKER = /data-bb-plugin(?![-\w])/g;
+const PLUGIN_NAME_SEARCH_RADIUS = 120;
+
+export function findUnnamedPluginRoots(js: string): number[] {
+  const names = [...js.matchAll(PLUGIN_NAME_MARKER)].map(
+    (match) => match.index,
+  );
+  const claimed = new Set<number>();
+  return [...js.matchAll(PLUGIN_ROOT_MARKER)]
+    .map((match) => match.index)
+    .filter((root) => {
+      let nearest: number | undefined;
+      for (const name of names) {
+        const distance = Math.abs(name - root);
+        if (
+          distance <= PLUGIN_NAME_SEARCH_RADIUS &&
+          !claimed.has(name) &&
+          (nearest === undefined || distance < Math.abs(nearest - root))
+        ) {
+          nearest = name;
+        }
+      }
+      if (nearest === undefined) return true;
+      claimed.add(nearest);
+      return false;
+    });
+}
+
+const ANONYMOUS_PLUGIN_ROOT_ARM =
+  /,\s*\[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)/g;
+
+export function dropAnonymousPluginRootScope(css: string): string {
+  return splitStatements(css)
+    .map((statement) => {
+      if (statement.body === null) return statement.prelude;
+      const body = isUtilitiesLayer(statement.prelude)
+        ? statement.body.replace(ANONYMOUS_PLUGIN_ROOT_ARM, "")
+        : statement.body;
+      return `${statement.prelude}{${body}}`;
+    })
+    .join("");
+}
+
+interface HostProvidedTailwind {
+  source: string;
+  registrations: Set<string>;
+  themeDeclarations: Set<string>;
+}
+
+let hostProvided: HostProvidedTailwind | null = null;
+
+function hostProvidedTailwind(hostCss: string): HostProvidedTailwind {
+  if (hostProvided?.source === hostCss) return hostProvided;
+  const statements = splitStatements(hostCss);
+  hostProvided = {
+    source: hostCss,
+    registrations: new Set(
+      statements.flatMap((statement) => {
+        const registration = propertyRegistration(statement);
+        return registration === null ? [] : [registration.key];
+      }),
+    ),
+    themeDeclarations: new Set(
+      statements
+        .filter((statement) => isLayer(statement, "theme"))
+        .flatMap((statement) => declarationsIn(statement.body ?? "")),
+    ),
+  };
+  return hostProvided;
+}
+
+export function dropHostProvidedTailwind(
+  css: string,
+  hostCss: string = HOST_TAILWIND_CSS,
+): string {
+  const {
+    registrations: hostRegistrations,
+    themeDeclarations: hostThemeDeclarations,
+  } = hostProvidedTailwind(hostCss);
+  const dropped = new Set<string>();
+  const kept = splitStatements(css).filter((statement) => {
+    const registration = propertyRegistration(statement);
+    if (registration === null || !hostRegistrations.has(registration.key))
+      return true;
+    dropped.add(registration.name);
+    return false;
+  });
+  return kept
+    .map((statement) => {
+      if (statement.body === null) return statement.prelude;
+      const body = isLayer(statement, "properties")
+        ? dropDeclarations(statement.body, (declaration) =>
+            dropped.has(declaration.slice(0, declaration.indexOf(":"))),
+          )
+        : isLayer(statement, "theme")
+          ? dropDeclarations(statement.body, (declaration) =>
+              hostThemeDeclarations.has(declaration),
+            )
+          : statement.body;
+      return body === null ? "" : `${statement.prelude}{${body}}`;
+    })
+    .join("");
+}
+
+function isLayer(statement: Statement, name: string): boolean {
+  return (
+    statement.body !== null &&
+    statement.prelude.trim().replace(/\s+/g, " ") === `@layer ${name}`
+  );
+}
+
+function propertyRegistration(
+  statement: Statement,
+): { name: string; key: string } | null {
+  if (statement.body === null) return null;
+  const name = /^@property\s+(--[\w-]+)$/.exec(statement.prelude.trim())?.[1];
+  if (name === undefined) return null;
+  return { name, key: `${name}{${declarationsIn(statement.body).join(";")}}` };
+}
+
+function normalizeDeclaration(declaration: string): string | null {
+  const text = declaration.replace(/\s+/g, " ").trim().replace(/;$/, "");
+  const colon = text.indexOf(":");
+  if (colon <= 0) return null;
+  return `${text.slice(0, colon).trim()}:${text.slice(colon + 1).trim()}`;
+}
+
+function declarationsIn(css: string): string[] {
+  return splitStatements(css).flatMap((statement) => {
+    if (statement.body !== null) return declarationsIn(statement.body);
+    const declaration = normalizeDeclaration(statement.prelude);
+    return declaration === null ? [] : [declaration];
+  });
+}
+
+function dropDeclarations(
+  css: string,
+  drop: (declaration: string) => boolean,
+): string | null {
+  const kept = splitStatements(css).flatMap((statement) => {
+    if (statement.body === null) {
+      const declaration = normalizeDeclaration(statement.prelude);
+      return declaration !== null && drop(declaration)
+        ? []
+        : [statement.prelude];
+    }
+    const body = dropDeclarations(statement.body, drop);
+    return body === null ? [] : [`${statement.prelude}{${body}}`];
+  });
+  return kept.length === 0 ? null : kept.join("");
 }
 
 function assertNoUnscopedClassRule(statement: Statement): void {

@@ -101,6 +101,7 @@ function commandRow(): TimelineCommandWorkRow {
     callId: "call-1",
     command: "pnpm exec turbo run test --filter=@bb/app",
     cwd: null,
+    description: null,
     source: null,
     output: "",
     exitCode: 0,
@@ -1035,6 +1036,7 @@ describe("buildTimelineRowTitle", () => {
       status: "completed" as const,
       callId: "cmd-call-1",
       command: "ls",
+      description: null,
       cwd: null,
       source: null,
       output: "",
@@ -1677,6 +1679,70 @@ describe("buildTimelineRowTitle", () => {
     }
   });
 
+  it("titles a described command with only its description outside approval states", () => {
+    const presentation = {
+      label: { pending: "Running command", completed: "Ran command" },
+      icon: { glyph: "Terminal" },
+      title: "pnpm exec turbo run test --filter=@bb/app",
+    };
+    const describedRow = (
+      overrides: Partial<TimelineCommandWorkRow>,
+    ): TimelineCommandWorkRow => ({
+      ...commandRow(),
+      startedAt: 100,
+      description: "Run the app tests",
+      presentation,
+      ...overrides,
+    });
+
+    const cases: [Partial<TimelineCommandWorkRow>, string][] = [
+      [{}, "Run the app tests (2s)"],
+      [
+        { status: "pending", completedAt: null, exitCode: null },
+        "Run the app tests",
+      ],
+      [{ status: "error", exitCode: 127 }, "Run the app tests (2s, error)"],
+      [
+        { status: "interrupted", exitCode: null },
+        "Run the app tests (2s, interrupted)",
+      ],
+      [
+        {
+          status: "pending",
+          approvalStatus: "waiting_for_approval",
+          completedAt: null,
+          exitCode: null,
+        },
+        "Waiting for approval to run pnpm exec turbo run test --filter=@bb/app",
+      ],
+      [
+        { status: "interrupted", approvalStatus: "denied", exitCode: null },
+        "Permission denied: pnpm exec turbo run test --filter=@bb/app (2s)",
+      ],
+      [
+        { description: null },
+        "Ran pnpm exec turbo run test --filter=@bb/app (2s)",
+      ],
+      [
+        { activityIntents: [searchIntent("TODO", "src")] },
+        "Searched for TODO in src",
+      ],
+    ];
+    for (const [overrides, expected] of cases) {
+      expect(
+        buildTimelineRowTitle(describedRow(overrides), DEFAULT_OPTIONS).plain,
+      ).toBe(expected);
+    }
+    expect(
+      buildTimelineRowTitle(
+        describedRow({ status: "pending", completedAt: null, exitCode: null }),
+        DEFAULT_OPTIONS,
+      ).segments,
+    ).toEqual([
+      expect.objectContaining({ text: "Run the app tests", shimmer: true }),
+    ]);
+  });
+
   it("appends an (interrupted) decoration to compact exploration intents on interrupted rows", () => {
     const row = {
       ...commandRow(),
@@ -1728,6 +1794,7 @@ const branchQuestion = {
   shortLabel: "Branch",
   multiSelect: false,
   allowFreeText: true,
+  required: true,
   options: [
     { value: "main", label: "main" },
     { value: "release", label: "release/1.0" },
@@ -1740,6 +1807,7 @@ const testsQuestion = {
   shortLabel: "Tests",
   multiSelect: false,
   allowFreeText: true,
+  required: true,
   options: [
     { value: "yes", label: "Yes" },
     { value: "no", label: "No" },

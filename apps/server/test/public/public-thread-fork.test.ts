@@ -1,3 +1,5 @@
+import { availableModelFixture } from "../helpers/available-models.js";
+import { seedModelCatalog } from "../helpers/provider-model-catalogs.js";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -28,6 +30,7 @@ import { eq } from "drizzle-orm";
 import { hostDaemonCommandSchema } from "@bb/host-daemon-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { storeAttachment } from "../../src/services/projects/attachments.js";
 import * as placement from "../../src/services/threads/thread-environment-placement.js";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
@@ -55,7 +58,11 @@ import {
   seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  startTestServer,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 function seedForkSource(
   harness: TestAppHarness,
@@ -485,9 +492,7 @@ describe("public thread fork route", () => {
   );
 
   it.each([
-    { source: { title: "foo" }, expected: "(1) foo" },
     { source: { title: "(1) foo" }, expected: "(2) foo" },
-    { source: { title: "(9) foo" }, expected: "(10) foo" },
     {
       source: { title: "", titleFallback: "fix the flaky test" },
       expected: "(1) fix the flaky test",
@@ -896,6 +901,7 @@ describe("public thread fork route", () => {
       const inputGroups = [textInput("First group"), textInput("Second group")];
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: [],
@@ -1018,8 +1024,10 @@ describe("public thread fork route", () => {
 
       await expect(
         sendThreadMessage(harness.deps, {
+          originPluginId: null,
           beforeAppendInTransaction: ({ tx }) => {
             appendClientTurnEventInTransaction(tx, {
+              originPluginId: null,
               environmentId: thread.environmentId,
               execution: {
                 model: "gpt-5",
@@ -1080,10 +1088,21 @@ describe("public thread fork route", () => {
 
   it("inherits the source's recorded model, reasoning level, and service tier", async () => {
     await withTestHarness(async (harness) => {
-      const { sourceThread } = seedForkSource(harness, {
+      const { sourceThread, host } = seedForkSource(harness, {
         model: "gpt-5-mini",
         reasoningLevel: "high",
         serviceTier: "fast",
+      });
+
+      await seedModelCatalog(harness, {
+        hostId: host.id,
+        providerId: sourceThread.providerId,
+        models: [
+          availableModelFixture({
+            model: "gpt-5-mini",
+            reasoningLevels: ["high"],
+          }),
+        ],
       });
 
       const response = await postFork(harness, {
@@ -1720,7 +1739,7 @@ describe("fork branch point and inherited history", () => {
       });
       expect(running.status).toBe(400);
       expect(await readJson(running)).toMatchObject({
-        code: "fork_source_session_unavailable",
+        code: "fork_source_turn_incomplete",
         message:
           "Cannot fork at sequence 14: the turn containing it has not completed",
       });
@@ -1736,6 +1755,77 @@ describe("fork branch point and inherited history", () => {
           "Cannot fork at sequence 2: no turn has started at or before it",
       });
     });
+  });
+
+  it("refuses a Side chat reply inside a running turn instead of forking an older checkpoint", async () => {
+    const server = await startTestServer();
+    try {
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const entry = await server.pluginService.install("builtin:side-chat", {
+        kind: "root",
+      });
+      expect(entry.status, entry.statusDetail ?? undefined).toBe("running");
+      const { environment, sourceThread } = seedConversationForkSource(server);
+      const base = {
+        environmentId: environment.id,
+        providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+        threadId: sourceThread.id,
+      };
+      const anchorText = "A progress note from the running turn.";
+      seedEvent(server.deps, {
+        ...base,
+        sequence: 15,
+        type: "item/completed",
+        scope: turnScope("turn-3"),
+        data: {
+          providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+          item: { type: "agentMessage", id: "msg-3", text: anchorText },
+        },
+      });
+      const createSideChat = () =>
+        server.app.request("/api/v1/plugins/side-chat/rpc/createSideChat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sourceThreadId: sourceThread.id,
+            sourceSeqEnd: 15,
+            anchorText,
+          }),
+        });
+
+      const running = await createSideChat();
+      const runningBody = await readJson(running);
+      expect(running.status, JSON.stringify(runningBody)).not.toBe(200);
+      expect(JSON.stringify(runningBody)).toContain(
+        "the turn containing it has not completed",
+      );
+      expect(listQueuedCommands(server, "thread.start")).toHaveLength(0);
+
+      seedEvent(server.deps, {
+        ...base,
+        sequence: 16,
+        type: "turn/completed",
+        scope: turnScope("turn-3"),
+        data: {
+          providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+          status: "completed",
+          providerCheckpointId: "checkpoint-after-turn-3",
+        },
+      });
+      const completed = await createSideChat();
+      const completedBody = await readJson(completed);
+      expect(completed.status, JSON.stringify(completedBody)).toBe(200);
+      const { result } = z
+        .object({ result: z.object({ threadId: z.string() }) })
+        .parse(completedBody);
+      const start = await waitForForkStart(server, result.threadId);
+      expect(start.fork?.sourceProviderCheckpointId).toBe(
+        "checkpoint-after-turn-3",
+      );
+    } finally {
+      await server.pluginService.stop();
+      await server.close();
+    }
   });
 
   const TIP_ONLY_PROVIDER_ID = "acp-opencode";

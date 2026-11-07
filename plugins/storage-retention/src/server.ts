@@ -26,7 +26,14 @@ export default function plugin(bb: BbPluginApi) {
         event: "host:changed",
         callback: (event) => {
           if (event.changes.includes("host-connected"))
-            void storage.reconcileDevelopmentStorage();
+            void (event.id === undefined
+              ? storage.reconcileDevelopmentStorage()
+              : storage.reconcileHostDevelopmentStorage(event.id));
+          if (
+            event.changes.includes("host-connected") ||
+            event.changes.includes("host-disconnected")
+          )
+            bb.realtime.publish("changed", null);
         },
       });
       const unsubscribeConnection = bb.sdk.subscribe({

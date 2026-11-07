@@ -6,15 +6,10 @@ import type {
   UiPreferenceKey,
   UiPreferenceValue,
 } from "@bb/domain";
-import {
-  updateUiPreferenceRoute,
-  UI_PREFERENCES_TAG,
-  type UiPreferencesResponse,
-} from "@bb/server-contract";
-import { CORE_TAG_SCOPE, invalidateTags } from "@bb/query-tags";
+import type { UiPreferencesResponse } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
+import { invalidateUiPreferences } from "@/hooks/cache-owners/system-cache-effects";
 import { uiPreferencesQueryOptions } from "@/hooks/queries/system-queries";
-import { runRouteMutation } from "@/hooks/queries/route-tags";
 import { BbHttpError, sdk } from "../sdk";
 
 type JotaiStore = ReturnType<typeof getDefaultStore>;
@@ -67,7 +62,7 @@ function getSyncState<Key extends UiPreferenceKey>(
 function getCachedUiPreferences(
   client: QueryClient,
 ): UiPreferencesResponse | undefined {
-  return client.getQueryData(uiPreferencesQueryOptions(client).queryKey);
+  return client.getQueryData(uiPreferencesQueryOptions().queryKey);
 }
 
 function latestEntry<Key extends UiPreferenceKey>(
@@ -185,7 +180,7 @@ function refetchUiPreferences(
   queryClient: QueryClient,
 ): Promise<UiPreferencesResponse> {
   return queryClient.fetchQuery({
-    ...uiPreferencesQueryOptions(queryClient),
+    ...uiPreferencesQueryOptions(),
     staleTime: 0,
   });
 }
@@ -211,13 +206,11 @@ async function writeUiPreference<Key extends UiPreferenceKey>(
       return;
     }
     try {
-      const request = { expectedRevision: base.revision, value };
-      const response = await runRouteMutation(
-        queryClient,
-        updateUiPreferenceRoute,
-        { params: { key }, input: request },
-        () => sdk.system.uiPreferences.set({ ...request, key }),
-      );
+      const response = await sdk.system.uiPreferences.set({
+        expectedRevision: base.revision,
+        key,
+        value,
+      });
       state.saved = { revision: response.revision, value: response.value };
       return;
     } catch (error) {
@@ -258,9 +251,7 @@ async function flushUiPreference<Key extends UiPreferenceKey>(
     .catch((error: unknown) => {
       failed = true;
       notifySyncFailure(error);
-      void invalidateTags(activeContext.queryClient, CORE_TAG_SCOPE, [
-        UI_PREFERENCES_TAG,
-      ]);
+      invalidateUiPreferences({ queryClient: activeContext.queryClient });
     })
     .finally(() => {
       state.inFlight = null;

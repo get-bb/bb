@@ -24,7 +24,7 @@ export interface PluginEnvironmentProviderBridge {
     id: string,
   ): PluginEnvironmentProviderRecord | undefined;
   invokeProvider<T>(
-    pluginId: string,
+    record: PluginEnvironmentProviderRecord,
     label: string,
     run: () => Promise<T>,
   ): Promise<PluginHookInvocation<T>>;
@@ -59,7 +59,7 @@ export async function invokeEnvironmentProvider<T>(
   label: string,
   run: () => Promise<T>,
 ): Promise<PluginHookInvocation<T>> {
-  return invokeBridgedProvider(bridge, record.pluginId, label, run);
+  return invokeBridgedProvider(bridge, record, label, run);
 }
 
 export function environmentProviderDecisionTimeoutMs(): number {

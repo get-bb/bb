@@ -58,9 +58,13 @@ export const SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER =
  *    the boot budget (apps/app/bundle-budget.json) intact. zod does not —
  *    the app uses a fraction of its exports and slotting the namespace
  *    added +193 KB raw / +33 KB brotli to the payload every phone downloads
- *    before first paint — so zod stays bundled per plugin.
+ *    before first paint — so zod is in VERSIONED_RUNTIME_SLOT_BY_SPECIFIER
+ *    instead: the host loads a separate zod copy only when a plugin needs
+ *    it. Only host-side builds (`hostProvidedZod`) use that slot, and only
+ *    when the plugin's resolved zod has the host's major and is not newer
+ *    than the host's, so published artifacts still run on older hosts.
  *
- * Everything else (non-portal radix, lucide-react, zod, form/calendar/chart
+ * Everything else (non-portal radix, lucide-react, zod/mini, form/calendar/chart
  * libs, hugeicons imported directly) bundles from the plugin's own
  * node_modules. Adding a slot here requires the matching host slot in
  * apps/app/src/lib/plugin-frontend.ts (installPluginRuntime); the export
@@ -94,6 +98,10 @@ export const RUNTIME_SLOT_BY_SPECIFIER = Object.freeze({
   [SHARED_UI_ICON_SPECIFIER]: "sharedUiIcon",
   [SHARED_UI_QUESTION_FORM_HOST_SPECIFIER]: "questionFormHost",
   [SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER]: "voiceInputTextarea",
+});
+
+export const VERSIONED_RUNTIME_SLOT_BY_SPECIFIER = Object.freeze({
+  zod: "zod",
 });
 
 /** The npm package owning a specifier: `react/jsx-runtime` → `react`. */

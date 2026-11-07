@@ -10,6 +10,7 @@ import {
   listLiveThreadsInEnvironment,
   listLifecycleThreadDependents,
   archiveThread,
+  deleteThreadScopedPruningCursors,
   getEnvironment,
   listNonDeletedChildThreads,
   listNonDeletedHiddenSourceThreads,
@@ -79,6 +80,7 @@ function archiveThreadWithLifecycleEffects(
     mode: "archived",
     threadId: archivedThread.id,
   });
+  deleteThreadScopedPruningCursors(deps.db, archivedThread.id);
   void cancelProviderEnvironmentCreation(deps, archivedThread.id).catch(
     (error) =>
       deps.logger.warn({ error }, "Environment launch cancellation failed"),

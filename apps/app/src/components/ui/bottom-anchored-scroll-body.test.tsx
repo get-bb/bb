@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { useContext, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ import {
   type BottomAnchorContextValue,
 } from "@/components/ui/bottom-anchored-scroll-body";
 import { TimelineWindowedItems } from "@/components/thread/timeline/TimelineWindowedItems";
+import { scrollPageToTop } from "@/lib/page-scroll-to-top";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
 import { installFakeFlowLayout } from "@/test/fake-flow-layout";
 
@@ -124,7 +125,15 @@ function setup(threadId: string, keys: string[]) {
         top: row.getBoundingClientRect().top,
       }))
       .find((row) => row.top >= 0)?.key ?? "";
-  return { layout, topOf, firstVisible, view };
+  const scrollElement = document.querySelector<HTMLElement>(
+    "[data-page-scroll-viewport]",
+  );
+  if (scrollElement === null) throw new Error("no scroll element");
+  return { layout, topOf, firstVisible, view, scrollElement };
+}
+
+function savedAnchor(threadId: string) {
+  return getDefaultStore().get(threadTimelineScrollAnchorAtomFamily(threadId));
 }
 
 describe("BottomAnchoredScrollBody", () => {
@@ -172,6 +181,45 @@ describe("BottomAnchoredScrollBody", () => {
     expect(handles.bottomAnchor?.isAtBottom).toBe(false);
   });
 
+  it("keeps an explicit jump to the end when the saved row it was waiting for arrives afterwards", () => {
+    const keysA = rowKeys("thread-a", 120);
+    const first = setup("thread-a", keysA);
+    act(() => first.layout.userScrollTo(400));
+    first.view.unmount();
+
+    const second = setup("thread-a", keysA.slice(60));
+    expect(second.layout.scrollTop).toBe(second.layout.maxScrollTop());
+    act(() => handles.bottomAnchor?.scrollToBottom());
+    act(() => second.view.rerender(<Shell threadId="thread-a" keys={keysA} />));
+    act(() => second.layout.flushResizeObservers());
+
+    expect(second.layout.scrollTop).toBe(second.layout.maxScrollTop());
+    expect(handles.bottomAnchor?.isAtBottom).toBe(true);
+  });
+
+  it("stays at the end and keeps following new content when the saved row never loads", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
+      rowId: "thread-a:row-gone",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+    const { layout, view } = setup("thread-a", rowKeys("thread-a", 60));
+    expect(layout.scrollTop).toBe(layout.maxScrollTop());
+
+    act(() => vi.advanceTimersByTime(1_500));
+    act(() => layout.flushResizeObservers());
+    act(() =>
+      view.rerender(
+        <Shell threadId="thread-a" keys={rowKeys("thread-a", 64)} />,
+      ),
+    );
+    act(() => layout.flushResizeObservers());
+
+    expect(layout.scrollTop).toBe(layout.maxScrollTop());
+    expect(handles.bottomAnchor?.isAtBottom).toBe(true);
+  });
+
   it("saves the end when the timeline unmounts during a transient off-bottom layout", () => {
     const keysA = rowKeys("thread-a", 60);
     const first = setup("thread-a", keysA);
@@ -182,29 +230,26 @@ describe("BottomAnchoredScrollBody", () => {
 
     first.view.unmount();
 
-    expect(
-      getDefaultStore().get(threadTimelineScrollAnchorAtomFamily("thread-a")),
-    ).toEqual({ rowId: "", offsetWithinRow: 0, atBottom: true });
+    expect(savedAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
   });
 
   it("saves the row the reader scrolled to when the timeline unmounts before the scroll event lands", () => {
     const keysA = rowKeys("thread-a", 120);
     const first = setup("thread-a", keysA);
-    const scrollElement = document.querySelector<HTMLElement>(
-      "[data-page-scroll-viewport]",
-    );
-    if (scrollElement === null) throw new Error("no scroll element");
     const target = first.layout.maxScrollTop() - 2_000;
-    scrollElement.dispatchEvent(new WheelEvent("wheel", { deltaY: -2_000 }));
+    first.scrollElement.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -2_000 }),
+    );
     first.layout.bounceTo(target);
     const reader = first.firstVisible();
     const before = first.topOf(reader);
 
     first.view.unmount();
-    const saved = getDefaultStore().get(
-      threadTimelineScrollAnchorAtomFamily("thread-a"),
-    );
-    expect(saved?.atBottom).toBe(false);
+    expect(savedAnchor("thread-a")?.atBottom).toBe(false);
     const second = setup("thread-a", keysA);
 
     expect(second.topOf(reader)).toBe(before);
@@ -222,25 +267,110 @@ describe("BottomAnchoredScrollBody", () => {
     expect(handles.bottomAnchor?.isAtBottom).toBe(true);
   });
 
-  it("follows a scroll made without input when nothing changed size, such as find in page", () => {
-    vi.useFakeTimers({
-      toFake: ["setTimeout", "clearTimeout", "performance"],
-    });
-    const { layout, topOf, firstVisible } = setup(
-      "thread-a",
-      rowKeys("thread-a", 60),
-    );
-    act(() => layout.userScrollTo(layout.maxScrollTop() - 1_500));
-    act(() => vi.advanceTimersByTime(500));
+  it("keeps following new content when the reader wheels back to the end and keeps wheeling there", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const keys = rowKeys("thread-a", 60);
+    const { layout, view, scrollElement } = setup("thread-a", keys);
+    const end = layout.maxScrollTop();
+    act(() => layout.userScrollTo(end - 500));
+    act(() => layout.userScrollTo(end));
+    expect(handles.bottomAnchor?.isAtBottom).toBe(true);
 
-    act(() => layout.layoutScrollTo(layout.scrollTop - 300));
-    const reader = firstVisible();
-    const before = topOf(reader);
+    act(() => {
+      scrollElement.dispatchEvent(new WheelEvent("wheel", { deltaY: 200 }));
+    });
+    const grown = rowKeys("thread-a", 61);
+    act(() => view.rerender(<Shell threadId="thread-a" keys={grown} />));
+    act(() => {
+      scrollElement.dispatchEvent(new Event("scroll"));
+    });
     act(() => layout.flushResizeObservers());
 
-    expect(layout.scrollTop).toBe(layout.maxScrollTop() - 1_800);
-    expect(topOf(reader)).toBe(before);
+    expect(layout.maxScrollTop()).toBe(end + 8 + heightOf(grown.at(-1) ?? ""));
+    expect(layout.scrollTop).toBe(layout.maxScrollTop());
+    expect(handles.bottomAnchor?.isAtBottom).toBe(true);
+    view.unmount();
+    expect(savedAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
   });
+
+  it("detaches from new content when a header tap scrolls the timeline to the top", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const keys = rowKeys("thread-a", 60);
+    const { layout, view, topOf, scrollElement } = setup("thread-a", keys);
+    const header = document.createElement("header");
+    scrollElement.parentElement?.prepend(header);
+    scrollElement.getClientRects = () =>
+      [new DOMRect(0, 0, 400, VIEWPORT_HEIGHT)] as unknown as DOMRectList;
+    const nativeScrollTo = vi.fn();
+    scrollElement.scrollTo = nativeScrollTo;
+    expect(handles.bottomAnchor?.isAtBottom).toBe(true);
+
+    act(() => scrollPageToTop(header));
+    expect(nativeScrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+    for (const top of [layout.maxScrollTop() - 300, 800, 0]) {
+      act(() => layout.layoutScrollTo(top));
+    }
+    expect(handles.bottomAnchor?.isAtBottom).toBe(false);
+
+    act(() =>
+      view.rerender(
+        <Shell threadId="thread-a" keys={rowKeys("thread-a", 62)} />,
+      ),
+    );
+    act(() => layout.flushResizeObservers());
+    expect(layout.scrollTop).toBe(0);
+    expect(topOf(keys[0] ?? "")).toBe(0);
+    view.unmount();
+    expect(savedAnchor("thread-a")).toEqual({
+      rowId: keys[0],
+      offsetWithinRow: 0,
+      atBottom: false,
+    });
+  });
+
+  it.each([
+    { delivery: "its scroll event arrives first", reRendersFirst: false },
+    {
+      delivery: "the timeline re-renders before its scroll event",
+      reRendersFirst: true,
+    },
+  ])(
+    "follows a scroll made without input when nothing changed size, such as find in page, when $delivery",
+    ({ reRendersFirst }) => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "performance"],
+      });
+      const keys = rowKeys("thread-a", 60);
+      const { layout, topOf, firstVisible, view, scrollElement } = setup(
+        "thread-a",
+        keys,
+      );
+      act(() => layout.userScrollTo(layout.maxScrollTop() - 1_500));
+      act(() => vi.advanceTimersByTime(500));
+      const fromEnd = layout.maxScrollTop() - layout.scrollTop + 300;
+
+      layout.bounceTo(layout.scrollTop - 300);
+      const reader = firstVisible();
+      const before = topOf(reader);
+      if (reRendersFirst) {
+        act(() =>
+          view.rerender(<Shell threadId="thread-a" keys={[...keys]} />),
+        );
+      }
+      act(() => {
+        scrollElement.dispatchEvent(new Event("scroll"));
+      });
+      act(() => layout.flushResizeObservers());
+
+      expect(layout.maxScrollTop() - layout.scrollTop).toBe(fromEnd);
+      expect(topOf(reader)).toBe(before);
+      expect(handles.bottomAnchor?.isAtBottom).toBe(false);
+    },
+  );
 
   it("treats a scroll without input that comes with a size change as layout, so it neither detaches nor moves the reader", () => {
     vi.useFakeTimers({
@@ -295,6 +425,12 @@ describe("BottomAnchoredScrollBody", () => {
     expect(topOf(last)).toBe(lastBefore);
     expect(topOf(toggled)).toBe(toggledBefore - growth);
     expect(handles.bottomAnchor?.isAtBottom).toBe(true);
+  });
+
+  it("renders the composer inside the timeline's scroll area, so wheel and gutter scrolling over it scroll the timeline", () => {
+    const { scrollElement } = setup("thread-a", rowKeys("thread-a", 5));
+
+    expect(scrollElement.contains(screen.getByText("composer"))).toBe(true);
   });
 
   it("holds a collapsing row's bottom edge when the reader holds it", () => {

@@ -11,7 +11,6 @@ import type {
   Environment,
   PromptHistoryEntry,
   ResolvedThreadExecutionOptions,
-  ThreadListEntry,
   ThreadQueuedMessage,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -79,8 +78,6 @@ interface ThreadIdCacheArgs {
 interface PrefetchThreadQueuedMessagesArgs extends ThreadIdCacheArgs {
   load: (signal: AbortSignal) => Promise<ThreadQueuedMessageListResponse>;
 }
-
-type ThreadBannerActivityKind = "goal" | "plan";
 
 interface BeginCreateThreadTransactionArgs {
   queryClient: QueryClient;
@@ -401,6 +398,7 @@ function buildOptimisticQueuedMessage({
     waitingOn: scheduledSendAt === null ? null : { kind: "time" },
     failureReason: null,
     payload: { kind: "inline" },
+    systemNotice: null,
     editable: true,
     createdAt,
     updatedAt: createdAt,
@@ -734,21 +732,10 @@ function predictStopRequest({
   });
 }
 
-function clearThreadBannerActivity(
-  activity: ThreadListEntry["activity"],
-  kind: ThreadBannerActivityKind,
-): ThreadListEntry["activity"] {
-  return {
-    ...activity,
-    ...(kind === "plan" ? { activePlanModeCount: 0 } : { activeGoalCount: 0 }),
-  };
-}
-
-function applyAuthoritativeThreadBannerCancellation({
-  kind,
+export function applyThreadPlanCancellationResult({
   queryClient,
   threadId,
-}: ThreadIdCacheArgs & { kind: ThreadBannerActivityKind }): void {
+}: ThreadIdCacheArgs): void {
   for (const [
     queryKey,
     timeline,
@@ -760,25 +747,15 @@ function applyAuthoritativeThreadBannerCancellation({
     }
     queryClient.setQueryData<ThreadTimelineResponse>(queryKey, {
       ...timeline,
-      ...(kind === "plan" ? { activePromptMode: null } : { goal: null }),
+      activePromptMode: null,
     });
   }
 
   const activity = getThreadEntity(queryClient, threadId)?.list?.activity;
   if (activity !== undefined)
     patchThreadEntity(queryClient, threadId, {
-      activity: clearThreadBannerActivity(activity, kind),
+      activity: { ...activity, activePlanModeCount: 0 },
     });
-}
-
-export function applyThreadPlanCancellationResult(
-  args: ThreadIdCacheArgs,
-): void {
-  applyAuthoritativeThreadBannerCancellation({ ...args, kind: "plan" });
-}
-
-export function applyThreadGoalClearResult(args: ThreadIdCacheArgs): void {
-  applyAuthoritativeThreadBannerCancellation({ ...args, kind: "goal" });
 }
 
 export async function beginCreateThreadTransaction({
@@ -1041,7 +1018,13 @@ export async function beginUpdateQueuedMessageTransaction({
         queuedMessage.id === request.queuedMessageId
           ? {
               ...queuedMessage,
-              content: request.input,
+              content: request.input ?? queuedMessage.content,
+              model: request.model ?? queuedMessage.model,
+              permissionMode:
+                request.permissionMode ?? queuedMessage.permissionMode,
+              reasoningLevel:
+                request.reasoningLevel ?? queuedMessage.reasoningLevel,
+              serviceTier: request.serviceTier ?? queuedMessage.serviceTier,
               updatedAt: optimisticUpdatedAt ?? queuedMessage.updatedAt,
             }
           : queuedMessage,
@@ -1071,6 +1054,10 @@ export function rollbackUpdateQueuedMessageTransaction({
             ? {
                 ...queuedMessage,
                 content: previousQueuedMessage.content,
+                model: previousQueuedMessage.model,
+                permissionMode: previousQueuedMessage.permissionMode,
+                reasoningLevel: previousQueuedMessage.reasoningLevel,
+                serviceTier: previousQueuedMessage.serviceTier,
                 updatedAt: previousQueuedMessage.updatedAt,
               }
             : queuedMessage,

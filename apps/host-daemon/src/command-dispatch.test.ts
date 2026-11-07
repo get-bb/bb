@@ -111,6 +111,7 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     path: workspacePath,
     isGitRepo: false,
     isWorktree: false,
+    gitCommonDir: null,
     getDefaultBranch: unexpectedWorkspaceCall,
     getCurrentBranch: unexpectedWorkspaceCall,
     getHeadSha: unexpectedWorkspaceCall,
@@ -143,7 +144,7 @@ function createRuntime(): FakeDispatchRuntime {
       hostedThreadIds.add(args.threadId);
       return { providerThreadId: "provider-thread-1" };
     }),
-    runTurn: vi.fn(async () => undefined),
+    runTurn: vi.fn(async () => ({ status: "started" as const })),
     steerTurn: vi.fn(async () => ({ status: "steered" as const })),
     stopThread: vi.fn(async (args: { threadId: string }) => {
       activeTurnsByThreadId.delete(args.threadId);
@@ -180,6 +181,7 @@ function createRuntime(): FakeDispatchRuntime {
     hasThread: (threadId) => hostedThreadIds.has(threadId),
     getLiveThreadIds: vi.fn(() => [...activeTurnsByThreadId.keys()]),
     hasOpenBackgroundWork: () => false,
+    listOpenBackgroundWork: () => [],
     shutdown: vi.fn(async () => undefined),
     setActiveTurn: (threadId, turnId) => {
       hostedThreadIds.add(threadId);

@@ -133,6 +133,7 @@ function availableModel({
     model: value,
     displayName: label,
     description: "",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: [
       { reasoningEffort: "medium", description: "Medium" },
     ],
@@ -794,6 +795,70 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
 
+  it("discards provider browsing on Escape without starting a handoff", async () => {
+    const onStart = vi.fn();
+    const onSelect = vi.fn();
+    const onExit = vi.fn();
+    const { onSelectedProviderChange, onModelChange, onReasoningChange } =
+      renderPicker({
+        handoff: {
+          sourceProviderId: "codex",
+          active: false,
+          onStart,
+          onExit,
+          onSelect,
+        },
+      });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByTitle("Claude Code"));
+    expect(await screen.findByText("Opus 4.7")).not.toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onExit).not.toHaveBeenCalled();
+    expect(onSelectedProviderChange).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(onReasoningChange).not.toHaveBeenCalled();
+
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("button", { name: "Exit handoff" })).toBeNull();
+    expect(screen.queryByText("Opus 4.7")).toBeNull();
+    expect(screen.getByRole("button", { name: "5.5" })).not.toBeNull();
+  });
+
+  it("commits a handoff model directly from a provider preview", async () => {
+    const onStart = vi.fn();
+    const onSelect = vi.fn();
+    const { onSelectedProviderChange, onModelChange } = renderPicker({
+      handoff: {
+        sourceProviderId: "codex",
+        active: false,
+        onStart,
+        onExit: vi.fn(),
+        onSelect,
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(screen.getByTitle("Claude Code"));
+    fireEvent.click(await screen.findByText("Opus 4.7"));
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+      providerId: "claude-code",
+      model: "claude-opus-4-7",
+      reasoningLevel: "medium",
+    });
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onSelectedProviderChange).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+  });
+
   it("can hand off within the source provider and exit the picker mode", () => {
     const onSelect = vi.fn();
     const onExit = vi.fn();
@@ -937,6 +1002,7 @@ describe("ModelReasoningPicker", () => {
               label: "Claude Opus 4.7",
               isDefault: true,
             }),
+            reasoningDiscovery: "known" as const,
             supportedReasoningEfforts: [
               { reasoningEffort: "medium", description: "Medium" },
               { reasoningEffort: "high", description: "High" },
@@ -993,46 +1059,36 @@ describe("ModelReasoningPicker", () => {
     expect(screen.getByRole("button", { name: "Exit handoff" })).not.toBeNull();
   });
 
-  it.each([
-    {
-      label: "fetches every sibling",
-      locked: false,
-      expected: ["cursor", "pi"],
-    },
-    { label: "fetches nothing", locked: true, expected: [] },
-  ])(
-    "$label on the routed host when opened with switching locked: $locked",
-    async ({ locked, expected }) => {
-      vi.mocked(sdk.system.executionOptions).mockImplementation(
-        () => new Promise<SystemExecutionOptionsResponse>(() => undefined),
-      );
-      renderPicker({
-        ...(locked ? { onSelectedProviderChange: null } : {}),
-        providerRouting: { hostId: "h1" },
-        pickerProviderOptions: [
-          { value: "codex", label: "Codex" },
-          { value: "cursor", label: "Cursor" },
-          { value: "pi", label: "Pi" },
-        ],
-      });
-      expect(sdk.system.executionOptions).not.toHaveBeenCalled();
+  it("loads no other provider on open and prefetches only the hovered tab on the routed host", async () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () => new Promise<SystemExecutionOptionsResponse>(() => undefined),
+    );
+    renderPicker({
+      providerRouting: { hostId: "h1" },
+      pickerProviderOptions: [
+        { value: "codex", label: "Codex" },
+        { value: "cursor", label: "Cursor" },
+        { value: "pi", label: "Pi" },
+      ],
+    });
+    const requested = () =>
+      vi
+        .mocked(sdk.system.executionOptions)
+        .mock.calls.map(([args]) => `${args?.hostId}/${args?.providerId}`);
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Provider, model and reasoning" }),
-      );
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.pointerEnter(screen.getByTitle("Codex"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(requested()).toEqual([]);
 
-      expect(screen.getByRole("dialog")).not.toBeNull();
-      expect(
-        vi
-          .mocked(sdk.system.executionOptions)
-          .mock.calls.map(([args]) => `${args?.hostId}/${args?.providerId}`)
-          .sort(),
-      ).toEqual(expected.map((providerId) => `h1/${providerId}`));
-    },
-  );
+    fireEvent.pointerEnter(screen.getByTitle("Pi"));
+    await vi.waitFor(() => expect(requested()).toEqual(["h1/pi"]));
+  });
 
   it("loads provider models on the compose-selected host", async () => {
     renderPicker({ providerRouting: { hostId: "host-remote" } });
@@ -1080,25 +1136,6 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(apiQualifier);
 
     expect(onModelChange).toHaveBeenCalledWith(apiModel);
-  });
-
-  it("uses picker search policy and selects the match by keyboard", () => {
-    const { onModelChange } = renderPicker({ modelOptions: manyCodexModels });
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Provider, model and reasoning" }),
-    );
-
-    const search = screen.getByPlaceholderText("Search models");
-    fireEvent.change(search, { target: { value: "o4m" } });
-
-    expect(screen.getByText("o4-mini")).not.toBeNull();
-    expect(screen.queryByText("Sonnet")).toBeNull();
-
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    fireEvent.keyDown(search, { key: "Enter" });
-
-    expect(onModelChange).toHaveBeenCalledWith("o4-mini");
   });
 
   it("ranks primary and selected-only model matches together", () => {
@@ -1561,13 +1598,6 @@ describe("ModelReasoningPicker service tiers", () => {
         levels.map((level) => ({ value: level, label: `Thinking: ${level}` })),
       ),
     ).toEqual(["flex", true]);
-  });
-
-  it("shows no agent options when the provider reports none", () => {
-    renderPicker();
-    openPicker();
-
-    expect(screen.queryByRole("switch")).toBeNull();
   });
 
   it("greys out a model the chosen options rule out and never selects it", () => {

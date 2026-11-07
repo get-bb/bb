@@ -24,6 +24,7 @@ import {
 } from "./timeline-snapshot.js";
 import {
   buildThreadTimelineFromEvents,
+  startThreadTimelineProjectionFold,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
@@ -32,7 +33,6 @@ import {
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import {
-  LEGACY_CODEX_GOAL_EXTENSION_KIND,
   THREAD_PROVIDER_COMMANDS_STATE_KIND,
   THREAD_SESSION_OPTIONS_STATE_KIND,
   THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
@@ -115,11 +115,16 @@ import { parseStoredEvent } from "./thread-data.js";
 import { withCompactionOffer } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 import {
+  forgetTimelineProjectionFolds,
+  keepTimelineProjectionFold,
+} from "./timeline-projection-fold.js";
+import {
   selectTimelineWindowStart,
-  forgetLatestTimelineSelections,
   lookupLatestTimelineSelection,
   rememberLatestTimelineSelection,
+  TimelineSelectionTrimFallback,
   type LatestTimelineSelectionMemoArgs,
+  type TimelineSelectionRowSource,
   type StandardTimelineEventRowSelection,
   type ThreadTimelineEventSelectionStrategy,
   type TimelineBudgetFloor,
@@ -203,6 +208,7 @@ export interface ThreadTimelineSurfaceOptions {
   maxInlineOutputChars: InlineOutputCharLimit;
   providerDisplayName?: string;
   planCommand?: ProviderComposerCommand | null;
+  extensionStateKinds?: readonly string[];
   summarizeShellCommands: boolean;
 }
 
@@ -262,6 +268,7 @@ interface ThreadTimelineBuildProfileStageTiming {
 
 export interface ThreadTimelineBuildProfile {
   compactedEventCount: number;
+  foldedEventCount: number;
   contextWindowEventDataBytes: number;
   contextWindowEventRowCount: number;
   decodedEventCount: number;
@@ -286,6 +293,7 @@ interface BuildThreadTimelineInternalResult {
 
 interface ThreadTimelineBuildProfileAccumulator {
   compactedEventCount: number;
+  foldedEventCount: number;
   contextWindowEventDataBytes: number;
   contextWindowEventRowCount: number;
   decodedEventCount: number;
@@ -305,6 +313,7 @@ interface TimelineWindowRowsArgs {
 
 interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
   excludeDiagnosticEvents: boolean;
+  source: TimelineSelectionRowSource;
   maxInlineOutputChars: InlineOutputCharLimit;
   sequenceBounds: {
     beforeSequence: number | undefined;
@@ -538,6 +547,21 @@ function collectStoredParentToolCallIds(
   return [...parentToolCallIds];
 }
 
+function databaseTimelineRowSource(
+  db: DbConnection,
+): TimelineSelectionRowSource {
+  return {
+    listChildRows: (args) => listStoredEventRowsByParentToolCallIds(db, args),
+    listContextRows: (args) =>
+      listStoredEventRows(db, { ...args, types: [...args.types] }),
+    listParentRows: (args) => listStoredDelegatingItemRowsByItemIds(db, args),
+    listRootWindowTurnIds: (args) => listTimelineRootWindowTurnIds(db, args),
+    listThreadWindowRows: (args) =>
+      listStoredTimelineThreadWindowEventRows(db, args),
+    listTurnRows: (args) => listStoredTimelineTurnEventRows(db, args),
+  };
+}
+
 function ensureTimelineWindowParentedRows(
   db: DbConnection,
   args: TimelineWindowParentedRowsArgs,
@@ -559,7 +583,7 @@ function ensureTimelineWindowParentedRows(
     }
 
     const childSequenceBounds = args.sequenceBounds;
-    const childRows = listStoredEventRowsByParentToolCallIds(db, {
+    const childRows = args.source.listChildRows({
       beforeSequence: childSequenceBounds?.beforeSequence,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
       excludeDiagnosticEvents: args.excludeDiagnosticEvents,
@@ -584,7 +608,7 @@ function ensureTimelineWindowParentedRows(
   const missingParentToolCallIds = collectStoredParentToolCallIds(rows).filter(
     (parentToolCallId) => !visibleToolCallIds.has(parentToolCallId),
   );
-  const parentRows = listStoredDelegatingItemRowsByItemIds(db, {
+  const parentRows = args.source.listParentRows({
     itemIds: missingParentToolCallIds,
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
@@ -933,12 +957,15 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
 function listLatestTimelineHeadStateRows(
   db: DbConnection,
   threadId: string,
+  extensionStateKinds: readonly string[],
 ): StoredEventRow[] {
   return mergeStoredEventRowsById([
-    ...listLatestThreadStateEventRowsByThreadIds(db, {
-      threadIds: [threadId],
-      kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
-    }),
+    ...extensionStateKinds.flatMap((kind) =>
+      listLatestThreadStateEventRowsByThreadIds(db, {
+        threadIds: [threadId],
+        kind,
+      }),
+    ),
     ...listLatestThreadStateEventRowsByThreadIds(db, {
       threadIds: [threadId],
       kind: THREAD_PROVIDER_COMMANDS_STATE_KIND,
@@ -967,6 +994,8 @@ function selectStandardTimelineEventRows(
   contentCursor: TimelineContentCursor | undefined,
   knownBudgetFloor: TimelineBudgetFloor | null,
   profile: ThreadTimelineBuildProfileAccumulator,
+  source: TimelineSelectionRowSource,
+  extensionStateKinds: readonly string[],
 ): StandardTimelineEventRowSelection {
   const decode: StoredEventDecoder = (row) =>
     decodeStoredEventRowCached(db, row);
@@ -1041,9 +1070,9 @@ function selectStandardTimelineEventRows(
         maxSeq,
       }),
   );
-  let rows = listStoredTimelineThreadWindowEventRows(db, windowArgs);
+  let rows = source.listThreadWindowRows(windowArgs);
   const initialTurnIds = [
-    ...listTimelineRootWindowTurnIds(db, windowArgs),
+    ...source.listRootWindowTurnIds(windowArgs),
     ...rows.flatMap((row) => {
       if (row.type !== "client/turn/requested") return [];
       const requestId = tryReadClientTurnRequestedRequestId(row, decode);
@@ -1070,7 +1099,7 @@ function selectStandardTimelineEventRows(
       for (const turnId of turnIds) fetchedTurns.add(turnId);
       selectedRows = mergeStoredEventRowsById([
         ...selectedRows,
-        ...listStoredTimelineTurnEventRows(db, {
+        ...source.listTurnRows({
           ...windowArgs,
           sequenceStart: epochSequenceStart,
           beforeSequence: maxSeq + 1,
@@ -1080,6 +1109,7 @@ function selectStandardTimelineEventRows(
       selectedRows = ensureTimelineWindowParentedRows(db, {
         threadId: thread.id,
         rows: selectedRows,
+        source,
         maxInlineOutputChars,
         excludeDiagnosticEvents,
         sequenceBounds: {
@@ -1112,7 +1142,7 @@ function selectStandardTimelineEventRows(
     profile,
     "group-context-query",
     () =>
-      listStoredEventRows(db, {
+      source.listContextRows({
         threadId: thread.id,
         afterSequence: contextStart - 1,
         beforeSequence: contextEnd + 1,
@@ -1185,13 +1215,18 @@ function selectStandardTimelineEventRows(
     [...contextRows, ...rows].map((row) => row.sequence),
   );
   return {
+    budgetFloorSequence: budgetFloor,
     hints,
     fetchedTurnIds: fetchedTurns,
     selection: {
       headStateRows:
         page.kind === "latest"
           ? measureThreadTimelineStage(profile, "group-context-query", () =>
-              listLatestTimelineHeadStateRows(db, thread.id).filter(
+              listLatestTimelineHeadStateRows(
+                db,
+                thread.id,
+                extensionStateKinds,
+              ).filter(
                 (row) =>
                   row.sequence <= maxSeq && !visibleSequences.has(row.sequence),
               ),
@@ -1224,10 +1259,17 @@ function selectStandardTimelineEventRows(
   };
 }
 
+const storedEventRowByteLengths = new WeakMap<StoredEventRow, number>();
+
 function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
   let byteLength = 0;
   for (const row of rows) {
-    byteLength += Buffer.byteLength(row.data, "utf8");
+    let rowByteLength = storedEventRowByteLengths.get(row);
+    if (rowByteLength === undefined) {
+      rowByteLength = Buffer.byteLength(row.data, "utf8");
+      storedEventRowByteLengths.set(row, rowByteLength);
+    }
+    byteLength += rowByteLength;
   }
   return byteLength;
 }
@@ -1235,6 +1277,7 @@ function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
 function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
   return {
     compactedEventCount: 0,
+    foldedEventCount: 0,
     contextWindowEventDataBytes: 0,
     contextWindowEventRowCount: 0,
     decodedEventCount: 0,
@@ -1272,6 +1315,7 @@ function completeThreadTimelineBuildProfile(
 ): ThreadTimelineBuildProfile {
   return {
     compactedEventCount: accumulator.compactedEventCount,
+    foldedEventCount: accumulator.foldedEventCount,
     contextWindowEventDataBytes: accumulator.contextWindowEventDataBytes,
     contextWindowEventRowCount: accumulator.contextWindowEventRowCount,
     decodedEventCount: accumulator.decodedEventCount,
@@ -1291,6 +1335,21 @@ function completeThreadTimelineBuildProfile(
       ),
     ),
   };
+}
+
+function selectTrimmedOrFreshRows(
+  trimSource: TimelineSelectionRowSource | null,
+  select: (
+    source?: TimelineSelectionRowSource,
+  ) => StandardTimelineEventRowSelection,
+): StandardTimelineEventRowSelection {
+  if (trimSource === null) return select();
+  try {
+    return select(trimSource);
+  } catch (error) {
+    if (!(error instanceof TimelineSelectionTrimFallback)) throw error;
+    return select();
+  }
 }
 
 function buildThreadTimelineInternal(
@@ -1317,7 +1376,10 @@ function buildThreadTimelineInternal(
   const historySequenceStart = options.includeClearedContextHistory
     ? 0
     : (contextBoundarySeq ?? 0);
-  const selectRows = (knownBudgetFloor: TimelineBudgetFloor | null) =>
+  const selectRows = (
+    knownBudgetFloor: TimelineBudgetFloor | null,
+    source: TimelineSelectionRowSource = databaseTimelineRowSource(db),
+  ) =>
     selectStandardTimelineEventRows(
       db,
       thread,
@@ -1330,20 +1392,22 @@ function buildThreadTimelineInternal(
       contentCursor,
       knownBudgetFloor,
       profile,
+      source,
+      options.extensionStateKinds ?? [],
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
-  if (thread.status !== "active") {
-    forgetLatestTimelineSelections(db, thread.id);
-  }
+  const active = thread.status === "active";
+  if (!active) forgetTimelineProjectionFolds(db, thread.id);
   const memoArgs: LatestTimelineSelectionMemoArgs | null =
     options.page.kind === "latest" &&
     contentCursor === undefined &&
-    maxInlineOutputChars !== null &&
-    thread.status === "active"
+    maxInlineOutputChars !== null
       ? {
+          active,
           epochSequenceStart: historySequenceStart,
           eventBudget: options.eventBudget,
           excludeDiagnosticEvents: !includeDiagnosticOperations,
+          extensionStateKinds: options.extensionStateKinds ?? [],
           maxInlineOutputChars,
           maxSeq: snapshot.maxSeq,
           page: options.page,
@@ -1365,7 +1429,9 @@ function buildThreadTimelineInternal(
       if (lookup.selection !== null) {
         return lookup.selection;
       }
-      const result = selectRows(lookup.budgetFloor);
+      const result = selectTrimmedOrFreshRows(lookup.trimSource, (source) =>
+        selectRows(lookup.budgetFloor, source),
+      );
       rememberLatestTimelineSelection(db, memoArgs, lookup, result);
       return result.selection;
     },
@@ -1427,6 +1493,7 @@ function buildThreadTimelineInternal(
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
     planCommand: options.planCommand,
+    extensionStateKinds: options.extensionStateKinds,
     summarizeShellCommands: options.summarizeShellCommands,
     threadStatus: snapshot.status,
     threadName: surface.threadName,
@@ -1444,6 +1511,11 @@ function buildThreadTimelineInternal(
     acceptedClientRequestEvents: [],
     rejectedClientRequestEvents: [],
   };
+  const timelineOptions = {
+    ...commonProjectionOptions,
+    includeNestedRows,
+    providerId: thread.providerId,
+  };
   const timeline = measureThreadTimelineStage(
     profile,
     "thread-view-projection",
@@ -1453,11 +1525,33 @@ function buildThreadTimelineInternal(
         contextWindowEvents,
         headStateEvents,
         events: decodedEvents,
-        options: {
-          ...commonProjectionOptions,
-          includeNestedRows,
-          providerId: thread.providerId,
-        },
+        fold:
+          memoArgs === null || !active
+            ? undefined
+            : keepTimelineProjectionFold(db, profile, {
+                decodedRows: decodedRawEvents,
+                key: JSON.stringify([
+                  thread.id,
+                  memoArgs.epochSequenceStart,
+                  memoArgs.eventBudget,
+                  memoArgs.excludeDiagnosticEvents,
+                  memoArgs.maxInlineOutputChars,
+                  memoArgs.page.segmentLimit,
+                  includeDiagnosticOperations,
+                  options.providerDisplayName ?? null,
+                  snapshot.status,
+                  surface.threadName,
+                ]),
+                rows: rawEventRows,
+                start: () =>
+                  startThreadTimelineProjectionFold({
+                    acceptedClientRequestContext,
+                    events: decodedEvents,
+                    options: timelineOptions,
+                  }),
+                threadId: thread.id,
+              }),
+        options: timelineOptions,
       }),
   );
   const projectedTimelineRows = orderTimelineRowsUsingContext(
@@ -1521,7 +1615,7 @@ function buildThreadTimelineInternal(
     activeBackgroundCommands:
       options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     pendingTodos: timeline.pendingTodos,
-    goal: timeline.goal,
+    extensionStates: timeline.extensionStates,
     providerCommands: timeline.providerCommands,
     sessionOptions: timeline.sessionOptions,
     modelFallback:
@@ -1585,6 +1679,7 @@ export function buildThreadTimelineWithProfile(
         result.profile.eventDataBytes += older.profile.eventDataBytes;
         result.profile.decodedEventCount += older.profile.decodedEventCount;
         result.profile.compactedEventCount += older.profile.compactedEventCount;
+        result.profile.foldedEventCount += older.profile.foldedEventCount;
         result.profile.contextWindowEventRowCount +=
           older.profile.contextWindowEventRowCount;
         result.profile.contextWindowEventDataBytes +=
@@ -2223,6 +2318,7 @@ function buildTimelineTurnSummaryDetailsPage(
   });
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     excludeDiagnosticEvents: !includeDiagnosticOperations,
+    source: databaseTimelineRowSource(db),
     maxInlineOutputChars: detailsInlineOutputLimit,
     sequenceBounds: {
       beforeSequence: snapshot.maxSeq + 1,

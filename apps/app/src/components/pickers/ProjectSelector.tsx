@@ -19,8 +19,10 @@ import {
 } from "@bb/shared-ui/option-display";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { useScrollOverflowState } from "../thread/timeline/useScrollOverflowState";
-import { searchPickerOptions } from "./picker-search";
-import { useResetPickerScroll } from "./useResetPickerScroll";
+import { searchPickerOptions } from "@bb/shared-ui/picker-search";
+import {
+  useResetPickerScroll,
+} from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 
 const PROJECT_SEARCH_MIN_OPTIONS = 5;
 const NO_HIGHLIGHT_VALUE = "__project-picker-idle__";

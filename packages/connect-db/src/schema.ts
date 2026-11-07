@@ -1,29 +1,36 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
+  boolean,
+  customType,
   index,
   integer,
+  pgTable,
   primaryKey,
-  sqliteTable,
   text,
   uniqueIndex,
-} from "drizzle-orm/sqlite-core";
+} from "drizzle-orm/pg-core";
+import { MACHINE_KINDS } from "./constants.js";
 
-const timestampMs = (name: string) => integer(name, { mode: "timestamp_ms" });
+const timestampMs = customType<{ data: Date; driverData: number | string }>({
+  dataType: () => "bigint",
+  toDriver: (value) => value.getTime(),
+  fromDriver: (value) => new Date(Number(value)),
+});
+const micros = (name: string) => bigint(name, { mode: "number" });
 
-export const user = sqliteTable("user", {
+export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: integer("email_verified", { mode: "boolean" })
-    .notNull()
-    .default(false),
+  emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
   githubLogin: text("github_login"),
   createdAt: timestampMs("created_at").notNull(),
   updatedAt: timestampMs("updated_at").notNull(),
 });
 
-export const session = sqliteTable(
+export const session = pgTable(
   "session",
   {
     id: text("id").primaryKey(),
@@ -40,7 +47,7 @@ export const session = sqliteTable(
   (table) => [index("session_user_id_idx").on(table.userId)],
 );
 
-export const account = sqliteTable(
+export const account = pgTable(
   "account",
   {
     id: text("id").primaryKey(),
@@ -62,7 +69,7 @@ export const account = sqliteTable(
   (table) => [index("account_user_id_idx").on(table.userId)],
 );
 
-export const verification = sqliteTable(
+export const verification = pgTable(
   "verification",
   {
     id: text("id").primaryKey(),
@@ -75,7 +82,7 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
-export const profile = sqliteTable("profile", {
+export const profile = pgTable("profile", {
   userId: text("user_id")
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
@@ -85,7 +92,7 @@ export const profile = sqliteTable("profile", {
 
 const labelClaimKinds = ["handle", "server", "machine"] as const;
 
-export const labelClaim = sqliteTable(
+export const labelClaim = pgTable(
   "label_claim",
   {
     label: text("label").primaryKey(),
@@ -100,7 +107,7 @@ export const labelClaim = sqliteTable(
   (table) => [index("label_claim_user_id_idx").on(table.userId)],
 );
 
-export const server = sqliteTable(
+export const server = pgTable(
   "server",
   {
     id: text("id").primaryKey(),
@@ -124,7 +131,7 @@ export const server = sqliteTable(
   ],
 );
 
-export const connectCode = sqliteTable(
+export const connectCode = pgTable(
   "connect_code",
   {
     code: text("code").primaryKey(),
@@ -150,7 +157,7 @@ export const connectCode = sqliteTable(
   ],
 );
 
-export const machine = sqliteTable(
+export const machine = pgTable(
   "machine",
   {
     id: text("id").primaryKey(),
@@ -158,6 +165,7 @@ export const machine = sqliteTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name"),
+    kind: text("kind", { enum: MACHINE_KINDS }),
     subdomain: text("subdomain").unique(),
     credentialHash: text("credential_hash").notNull(),
     lastSeenAt: timestampMs("last_seen_at"),
@@ -173,7 +181,7 @@ export const machine = sqliteTable(
   ],
 );
 
-export const auditLog = sqliteTable(
+export const auditLog = pgTable(
   "audit_log",
   {
     id: text("id").primaryKey(),
@@ -183,20 +191,20 @@ export const auditLog = sqliteTable(
     ipAddress: text("ip_address"),
     createdAt: timestampMs("created_at")
       .notNull()
-      .default(sql`(unixepoch() * 1000)`),
+      .default(sql`(floor(extract(epoch from now())) * 1000)::bigint`),
   },
   (table) => [index("audit_log_user_id_idx").on(table.userId)],
 );
 
-export const aiUsageDay = sqliteTable(
+export const aiUsageDay = pgTable(
   "ai_usage_day",
   {
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     day: text("day").notNull(),
-    spentMicros: integer("spent_micros").notNull().default(0),
-    reservedMicros: integer("reserved_micros").notNull().default(0),
+    spentMicros: micros("spent_micros").notNull().default(0),
+    reservedMicros: micros("reserved_micros").notNull().default(0),
     requests: integer("requests").notNull().default(0),
   },
   (table) => [
@@ -217,7 +225,7 @@ export const aiRequestOutcomes = [
 
 export type AiRequestOutcome = (typeof aiRequestOutcomes)[number];
 
-export const aiRequestLog = sqliteTable(
+export const aiRequestLog = pgTable(
   "ai_request_log",
   {
     id: text("id").primaryKey(),
@@ -230,7 +238,7 @@ export const aiRequestLog = sqliteTable(
     model: text("model"),
     promptTokens: integer("prompt_tokens"),
     completionTokens: integer("completion_tokens"),
-    costMicros: integer("cost_micros").notNull().default(0),
+    costMicros: micros("cost_micros").notNull().default(0),
     latencyMs: integer("latency_ms").notNull(),
     outcome: text("outcome", { enum: aiRequestOutcomes }).notNull(),
     createdAt: timestampMs("created_at").notNull(),
@@ -244,7 +252,7 @@ export const aiRequestLog = sqliteTable(
   ],
 );
 
-export const oauthGrant = sqliteTable(
+export const oauthGrant = pgTable(
   "oauth_grant",
   {
     id: text("id").primaryKey(),
@@ -268,7 +276,7 @@ export const oauthGrant = sqliteTable(
   ],
 );
 
-export const oauthCode = sqliteTable(
+export const oauthCode = pgTable(
   "oauth_code",
   {
     codeHash: text("code_hash").primaryKey(),
@@ -290,7 +298,7 @@ export const oauthCode = sqliteTable(
   (table) => [index("oauth_code_expires_at_idx").on(table.expiresAt)],
 );
 
-export const oauthRefreshToken = sqliteTable(
+export const oauthRefreshToken = pgTable(
   "oauth_refresh_token",
   {
     tokenHash: text("token_hash").primaryKey(),

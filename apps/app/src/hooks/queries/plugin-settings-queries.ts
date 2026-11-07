@@ -20,6 +20,7 @@ type PluginProvenance = InstalledPlugin["provenance"];
 
 interface PluginUpdateFailure {
   version: string;
+  label: string;
   at: number | null;
   detail: string;
 }
@@ -28,7 +29,9 @@ export interface PluginUpdateState {
   outcome: InstalledPlugin["updateState"]["outcome"] | null;
   detail: string | null;
   availableVersion: string | null;
+  availableLabel: string | null;
   blockedVersion: string | null;
+  blockedLabel: string | null;
   blockedReasons: string[];
   lastCheckAt: number | null;
   lastFailure: PluginUpdateFailure | null;
@@ -63,6 +66,7 @@ export interface PluginListItem {
   category?: string;
   publisherLabel: string | null;
   sourceDisplay: string;
+  sourceNotice: string | null;
   updateState: PluginUpdateState;
 }
 
@@ -85,7 +89,9 @@ export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   outcome: null,
   detail: null,
   availableVersion: null,
+  availableLabel: null,
   blockedVersion: null,
+  blockedLabel: null,
   blockedReasons: [],
   lastCheckAt: null,
   lastFailure: null,
@@ -122,11 +128,14 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     category: plugin.category,
     publisherLabel: plugin.publisherLabel,
     sourceDisplay: plugin.sourceDisplay,
+    sourceNotice: plugin.sourceNotice,
     updateState: {
       outcome: state.outcome ?? null,
       detail: state.detail ?? null,
       availableVersion: state.availableVersion ?? null,
+      availableLabel: state.availableLabel ?? null,
       blockedVersion: state.blockedVersion ?? null,
+      blockedLabel: state.blockedLabel ?? null,
       blockedReasons: state.blockedReasons ?? [],
       lastCheckAt: toEpochMs(state.lastCheckAt),
       lastFailure:
@@ -134,6 +143,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
           ? null
           : {
               version: state.lastFailure.version,
+              label: state.lastFailure.label,
               at: toEpochMs(state.lastFailure.at),
               detail: state.lastFailure.detail,
             },

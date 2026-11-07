@@ -57,6 +57,7 @@ import { machineProviderUnavailableReason } from "./provider-availability.js";
 import { errorMessage } from "../lib/error-log-fields.js";
 import { toHostWithStatus } from "../lib/entity-lookup.js";
 import { perDbRegistry } from "../lib/per-db-registry.js";
+import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import { emitPluginHostDeleted } from "../plugins/plugin-thread-events.js";
 
 type Deps = ThreadProvisioningDeps;
@@ -1461,26 +1462,40 @@ export async function sweepProviderMachine(
   await removeMachine(deps, hostId);
 }
 
-export async function sweepMachineLifecycles(
-  deps: Deps,
-  options?: { background: true },
-): Promise<void> {
-  const pending: Promise<void>[] = [];
+function listSweptMachines(deps: Deps) {
   const primaryHostId = readPrimaryHostIdFromDataDir({
     dataDir: deps.config.dataDir,
   });
+  return listMachineProviders()
+    .flatMap((record) => listProviderMachines(deps.db, record.provider.id))
+    .filter((machine) => machine.id !== primaryHostId);
+}
+
+export function machineRemovalRequestSweep(deps: Deps): ItemSweep {
+  return defineItemSweep({
+    name: "machine-removal-request",
+    concurrency: 1,
+    list: () => listSweptMachines(deps),
+    key: (machine) => machine.id,
+    process: (machine) => {
+      requestAutomaticMachineRemoval(deps, machine.id);
+    },
+  });
+}
+
+export function machineLifecycleSweep(deps: Deps): ItemSweep {
   const operations = perDbRegistry(machineSweepOperations, deps.db);
-  for (const record of listMachineProviders()) {
-    for (const machine of listProviderMachines(deps.db, record.provider.id)) {
-      if (machine.id === primaryHostId) continue;
-      if (operations.has(machine.id))
-        requestAutomaticMachineRemoval(deps, machine.id);
-      const sweeping = runTrackedOperation({
+  return defineItemSweep({
+    name: "machine-provider-lifecycle",
+    concurrency: Number.POSITIVE_INFINITY,
+    list: () => listSweptMachines(deps),
+    key: (machine) => machine.id,
+    process: (machine) =>
+      runTrackedOperation({
         map: operations,
         key: machine.id,
         run: async () => sweepProviderMachine(deps, machine.id),
-      }).done;
-      const settled = sweeping.catch((error: unknown) => {
+      }).done.catch((error: unknown) => {
         const current = getHost(deps.db, machine.id);
         if (current !== null && current.destroyedAt === null) {
           updateHost(deps.db, deps.hub, machine.id, {
@@ -1498,9 +1513,12 @@ export async function sweepMachineLifecycles(
           { hostId: machine.id, error: errorMessage(error) },
           "Machine lifecycle sweep will retry",
         );
-      });
-      if (options?.background !== true) pending.push(settled);
-    }
-  }
-  await Promise.all(pending);
+      }),
+  });
+}
+
+export async function sweepMachineLifecycles(deps: Deps): Promise<void> {
+  const now = Date.now();
+  await machineRemovalRequestSweep(deps).run(deps, now);
+  await machineLifecycleSweep(deps).run(deps, now);
 }

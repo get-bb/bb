@@ -15,6 +15,7 @@ export const solarizedThemeCss = `
   --warning-text: #a53c12;
   --attention: #b58900;
   --success: #718c00;
+  --success-foreground: #5f7800;
   --diff-added: #718c00;
   --diff-removed: #dc322f;
   --pr-merged: #6c71c4;
@@ -65,6 +66,7 @@ export const solarizedThemeCss = `
   --warning-text: #e07a4e;
   --attention: #b58900;
   --success: #859900;
+  --success-foreground: #859900;
   --diff-added: #859900;
   --diff-removed: #dc322f;
   --pr-merged: #6c71c4;

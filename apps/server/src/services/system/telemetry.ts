@@ -5,13 +5,21 @@ import { DEFAULTS } from "@bb/config/defaults";
 import type { ServerConfig } from "@bb/config/server";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
-import type { RecordTelemetryEventRequest } from "@bb/server-contract";
+import type {
+  RecordTelemetryEventRequest,
+  SetupGuideVariant,
+} from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
 const TELEMETRY_ID_FILE_NAME = "telemetry-id";
 
-const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
+export type TelemetryAccessRoute = "connect" | "direct" | "loopback";
+
+const telemetryRequestStorage = new AsyncLocalStorage<{
+  appSurface: RequestAppSurface;
+  accessRoute: TelemetryAccessRoute | null;
+}>();
 
 export type TelemetryInitiator =
   | "user"
@@ -21,6 +29,10 @@ export type TelemetryInitiator =
   | "system";
 
 export type TurnFinishedOutcome = "succeeded" | "failed" | "stopped";
+export type TurnExecutionLocation =
+  | "server_machine"
+  | "additional_machine"
+  | "unknown";
 export type TurnErrorCategory =
   | "none"
   | "auth"
@@ -41,6 +53,7 @@ export type TelemetryEvent =
         error_category: TurnErrorCategory;
         provider: string;
         install_turn_number: number;
+        execution_location: TurnExecutionLocation;
       };
     }
   | { name: "app_started" }
@@ -69,14 +82,55 @@ export type TelemetryEvent =
         provenance: "builtin" | "catalog" | "direct";
         marketplace: string | null;
         source_kind: "builtin" | "git" | "npm" | "path";
+        is_fresh_install: boolean;
+        entry_id: string | null;
       };
     }
-  | RecordTelemetryEventRequest;
+  | { name: "plugin_use"; properties: { plugin_id: string } }
+  | {
+      name: "recommendation";
+      properties: {
+        resource_type: "plugin";
+        resource_id: string;
+        recommendation_id: string;
+        action: "used";
+      };
+    }
+  | {
+      name: "onboarding_exposed";
+      properties: {
+        entry: "first_run" | "replay";
+        setup_guide_variant: SetupGuideVariant;
+        setup_guide_source: "override" | "flag" | "default";
+        $set: { setup_guide_variant: SetupGuideVariant };
+      };
+    }
+  | {
+      name: "$feature_flag_called";
+      properties: {
+        $feature_flag: string;
+        $feature_flag_response: string;
+      };
+    }
+  | RecordTelemetryEventRequest
+  | {
+      name: RecordTelemetryEventRequest["name"];
+      properties: Readonly<Record<string, unknown>> & {
+        setup_guide_variant: SetupGuideVariant;
+      };
+    };
+
+export interface FeatureFlagIdentity {
+  apiKey: string;
+  distinctId: string;
+}
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;
   setEnabled(enabled: boolean): void;
   isEnabled(): boolean;
+  featureFlagIdentity(): FeatureFlagIdentity | null;
+  setSharedProperty(name: string, value: string): void;
 }
 
 interface CreateTelemetryServiceArgs {
@@ -94,6 +148,8 @@ const noopTelemetryService: TelemetryService = {
   isEnabled: () => false,
   capture: () => {},
   setEnabled: () => {},
+  featureFlagIdentity: () => null,
+  setSharedProperty: () => {},
 };
 
 export function createNoopTelemetryService(): TelemetryService {
@@ -136,11 +192,14 @@ function appInstallProperties(install: AppInstall | null) {
   return { install_kind: "source", source_origin: install.origin };
 }
 
-export function runWithTelemetryAppSurface<T>(
-  appSurface: RequestAppSurface,
+export function runWithTelemetryRequest<T>(
+  request: {
+    appSurface: RequestAppSurface;
+    accessRoute: TelemetryAccessRoute | null;
+  },
   callback: () => T,
 ): T {
-  return telemetryAppSurfaceStorage.run(appSurface, callback);
+  return telemetryRequestStorage.run(request, callback);
 }
 
 export async function createTelemetryService(
@@ -172,15 +231,20 @@ export async function createTelemetryService(
     os_release: osRelease,
     platform: process.platform,
   };
+  const sharedProperties = new Map<string, string>();
   return {
     isEnabled: () => telemetryEnabled,
     setEnabled(enabled: boolean): void {
       telemetryEnabled = enabled;
     },
+    featureFlagIdentity: () => ({ apiKey: args.apiKey, distinctId }),
+    setSharedProperty(name: string, value: string): void {
+      sharedProperties.set(name, value);
+    },
     capture(event: TelemetryEvent): void {
       if (!telemetryEnabled) return;
-      const appSurface =
-        telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
+      const request = telemetryRequestStorage.getStore();
+      const appSurface = request?.appSurface ?? args.appSurface;
       const eventProperties = "properties" in event ? event.properties : {};
       const body = JSON.stringify({
         api_key: args.apiKey,
@@ -188,8 +252,12 @@ export async function createTelemetryService(
         event: event.name,
         properties: {
           ...commonProperties,
+          ...Object.fromEntries(sharedProperties),
           ...eventProperties,
           app_surface: appSurface,
+          ...(request?.accessRoute
+            ? { access_route: request.accessRoute }
+            : {}),
         },
         timestamp: new Date().toISOString(),
       });

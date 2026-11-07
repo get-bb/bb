@@ -68,7 +68,8 @@ describe("server choice IPC", () => {
     registerServerChoiceIpc({
       applicationWindowWebContentsIds: new Set([7]),
       onListRequested: sync.onListRequested,
-      list: () => buildDesktopServerChoices(store, servers),
+      list: () =>
+        buildDesktopServerChoices(store, servers, "http://127.0.0.1:1234/app"),
       select: async () => undefined,
       onError: () => undefined,
     });
@@ -79,10 +80,18 @@ describe("server choice IPC", () => {
     const initial = list(event);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(initial).toEqual([
-      { id: "builtin", name: expect.any(String), active: false },
+      {
+        id: "builtin",
+        name: expect.any(String),
+        origin: "http://127.0.0.1:1234",
+        kind: "local",
+        active: false,
+      },
       {
         id: expect.stringMatching(/^custom:[a-f0-9]{64}$/),
         name: "custom.example",
+        origin: "https://custom.example",
+        kind: "custom",
         active: true,
       },
     ]);
@@ -92,6 +101,8 @@ describe("server choice IPC", () => {
     expect(list(event)).toContainEqual({
       id: "connect:remote",
       name: "remote.example",
+      origin: "https://remote.example",
+      kind: "account",
       active: false,
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -125,8 +136,20 @@ describe("server choice IPC", () => {
       applicationWindowWebContentsIds: new Set([7]),
       onListRequested: () => undefined,
       list: () => [
-        { id: "builtin", name: "Local", active: true },
-        { id: "remote", name: "Remote", active: false },
+        {
+          id: "builtin",
+          name: "Local",
+          origin: "http://127.0.0.1:38886",
+          kind: "local",
+          active: true,
+        },
+        {
+          id: "remote",
+          name: "Remote",
+          origin: "https://remote.example",
+          kind: "custom",
+          active: false,
+        },
       ],
       select,
       onError,

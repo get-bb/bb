@@ -9,7 +9,7 @@ import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
-import { DetailsDisclosure, displayPluginVersion } from "./plugin-ui";
+import { DetailsDisclosure } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
@@ -22,8 +22,8 @@ function pluginCompatibilityBlockedVersion(
   plugin: PluginListItem,
 ): string | null {
   if (!pluginHasUpdateSurfaces(plugin)) return null;
-  return plugin.updateState.availableVersion === null
-    ? plugin.updateState.blockedVersion
+  return plugin.updateState.availableLabel === null
+    ? plugin.updateState.blockedLabel
     : null;
 }
 
@@ -41,7 +41,7 @@ export function PluginDetailReleaseControl({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const queryClient = useQueryClient();
   const notificationAction = usePluginNotificationAction();
-  const availableVersion = plugin.updateState.availableVersion;
+  const availableVersion = plugin.updateState.availableLabel;
   const failure = plugin.updateState.lastFailure;
   const retry = useMutation({
     meta: { showErrorToast: false },
@@ -69,7 +69,7 @@ export function PluginDetailReleaseControl({
         className="h-6 px-2 text-xs"
         disabled={retry.isPending}
         aria-busy={retry.isPending}
-        aria-label={`Retry update to ${displayPluginVersion(availableVersion)}`}
+        aria-label={`Retry update to ${availableVersion}`}
         onClick={() => retry.mutate()}
       >
         {retry.isPending ? (
@@ -89,7 +89,7 @@ export function PluginDetailReleaseControl({
         variant="outline"
         size="sm"
         className="h-6 px-2 text-xs"
-        aria-label={`Update ${plugin.name ?? plugin.id} to ${displayPluginVersion(availableVersion)}`}
+        aria-label={`Update ${plugin.name ?? plugin.id} to ${availableVersion}`}
         onClick={() => setDetailsOpen(true)}
       >
         <Icon name={UPDATE_ACTION_ICON} className="size-3.5" aria-hidden />
@@ -128,8 +128,8 @@ export function PluginDetailReleaseStatus({
           aria-hidden
         />
         <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-          bb couldn&rsquo;t activate {displayPluginVersion(failure.version)}. It
-          restored {displayPluginVersion(plugin.version)} and its data.
+          bb couldn&rsquo;t activate {failure.label}. It restored{" "}
+          {plugin.version} and its data.
         </p>
       </div>
     );
@@ -157,11 +157,11 @@ export function PluginDetailReleaseStatus({
     );
   }
 
-  if (plugin.updateState.availableVersion !== null) {
+  if (plugin.updateState.availableLabel !== null) {
     return (
       <div role="status" className="flex min-w-0 items-baseline gap-2">
         <span className="font-mono text-xs text-foreground">
-          {displayPluginVersion(plugin.updateState.availableVersion)}
+          {plugin.updateState.availableLabel}
         </span>
         <span className="text-xs text-muted-foreground">Available</span>
       </div>
@@ -183,10 +183,10 @@ export function PluginDetailReleaseStatus({
       <div className="min-w-0">
         <p className="text-xs leading-relaxed text-muted-foreground">
           {blockedReasons[0] === undefined
-            ? `${displayPluginVersion(blockedVersion)} isn’t compatible with this bb.`
+            ? `${blockedVersion} isn’t compatible with this bb.`
             : sentence(blockedReasons[0])}{" "}
-          {displayPluginVersion(plugin.version)} remains installed. Keep using
-          it and check again when a compatible plugin version is available.
+          {plugin.version} remains installed. Keep using it and check again when
+          a compatible plugin version is available.
         </p>
         {blockedReasons.length > 1 ? (
           <div className="mt-1.5">

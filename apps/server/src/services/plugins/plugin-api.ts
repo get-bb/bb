@@ -1,5 +1,7 @@
-import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
-import type { ContractTagDeclarations } from "@bb/domain";
+import {
+  rpcInvalidationTags,
+  type ContractTagDeclarations,
+} from "@get-bb/plugin-sdk/internal/rpc-tags";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -116,6 +118,7 @@ import type {
   NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
+import { createRetiredEnvironmentMembers } from "@bb/sdk";
 import type {
   BbSdk,
   ThreadForkArgs,
@@ -150,8 +153,8 @@ export type {
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 
-class PluginContextStaleError extends Error {
-  constructor(pluginId: string) {
+export class PluginContextStaleError extends Error {
+  constructor(readonly pluginId: string) {
     super(
       `plugin "${pluginId}" used a stale API handle — it was reloaded or disabled; ` +
         `re-entry happens via a fresh factory call`,
@@ -349,18 +352,12 @@ function withPluginThreadAttribution<
   return { ...args, ...attribution };
 }
 
-function wrapSdkForPlugin(
-  sdk: BbSdk,
-  pluginId: string,
-  rpcCallerSdk: BbSdk,
-): PluginBbSdk {
+function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
   return {
     ...sdk,
-    plugins: {
-      ...sdk.plugins,
-      callRpc(args) {
-        return rpcCallerSdk.plugins.callRpc(args);
-      },
+    environments: {
+      ...sdk.environments,
+      ...createRetiredEnvironmentMembers(sdk.plugins.callRpc),
     },
     threads: {
       ...sdk.threads,
@@ -487,6 +484,7 @@ function createStagedRegistrations<
 const PLUGIN_HOST_CALL_MAX_TIMEOUT_MS = 30 * 60_000;
 
 export function createPluginApi(options: {
+  recordPluginUse: () => void;
   pluginId: string;
   logger: ServerLogger;
   db: DbConnection;
@@ -616,6 +614,7 @@ export function createPluginApi(options: {
   const threadEventHandlers: PluginThreadEventHandlers = {
     "experimental_thread.events": [],
     "experimental_thread.parentChanged": [],
+    "experimental_thread.read": [],
     "experimental_terminal.input": [],
     "experimental_host.deleted": [],
     "experimental_environment.removed": [],
@@ -656,8 +655,14 @@ export function createPluginApi(options: {
   const backgroundServices: PluginBackgroundServiceRecord[] = [];
   const schedules: PluginScheduleRecord[] = [];
 
+  let staleError: PluginContextStaleError | undefined;
+  function stale(): PluginContextStaleError {
+    staleError ??= new PluginContextStaleError(pluginId);
+    return staleError;
+  }
+
   function assertLive(): void {
-    if (invalidated) throw new PluginContextStaleError(pluginId);
+    if (invalidated) throw stale();
   }
 
   const prefix = `[plugin:${pluginId}]`;
@@ -752,6 +757,7 @@ export function createPluginApi(options: {
       const dir = join(dataDir, "plugins", pluginId);
       mkdirSync(dir, { recursive: true });
       const database = new Database(join(dir, "data.db"));
+      database.pragma("auto_vacuum = INCREMENTAL");
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
       databaseHandle = database;
@@ -1086,7 +1092,7 @@ export function createPluginApi(options: {
       };
       if (invalidated) {
         await lease.close();
-        throw new PluginContextStaleError(pluginId);
+        throw stale();
       }
       openTunnelIngresses.add(close);
       disposeHooks.push(close);
@@ -1410,6 +1416,10 @@ export function createPluginApi(options: {
   };
 
   const api: BbPluginApi = {
+    internal_DO_NOT_USE_recordPluginUse() {
+      assertLive();
+      options.recordPluginUse();
+    },
     pluginId,
     log,
     settings,
@@ -1433,21 +1443,19 @@ export function createPluginApi(options: {
     experimental_aiServices,
     get sdk(): PluginBbSdk {
       assertLive();
-      const sdk = getSdk();
       const loopbackBaseUrl = getLoopbackBaseUrl();
-      if (!sdk || loopbackBaseUrl === undefined) {
+      if (!getSdk() || loopbackBaseUrl === undefined) {
         throw new Error(
           "bb.sdk is not available until the server is listening — " +
             "use it inside handlers, services, or timers, not at factory load time",
         );
       }
       wrappedSdk ??= wrapSdkForPlugin(
-        sdk,
-        pluginId,
         createPluginRpcCallerSdk({
           baseUrl: loopbackBaseUrl,
           token: rpcCaller.token,
         }),
+        pluginId,
       );
       return wrappedSdk;
     },

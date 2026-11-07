@@ -150,7 +150,11 @@ function seedActivePlan(harness: TestAppHarness, fixture: BannerFixture): void {
   });
 }
 
-function seedActiveGoal(harness: TestAppHarness, fixture: BannerFixture): void {
+function seedGoal(
+  harness: TestAppHarness,
+  fixture: BannerFixture,
+  status: "active" | "paused",
+): void {
   seedThreadRuntimeState(harness.deps, {
     environmentId: fixture.environmentId,
     providerThreadId: "provider-thread-1",
@@ -167,7 +171,7 @@ function seedActiveGoal(harness: TestAppHarness, fixture: BannerFixture): void {
     data: {
       providerThreadId: "provider-thread-1",
       objective: "Verify authoritative Goal cancellation",
-      status: "active",
+      status,
       tokenBudget: null,
       tokensUsed: 100,
       timeUsedSeconds: 10,
@@ -178,18 +182,32 @@ function seedActiveGoal(harness: TestAppHarness, fixture: BannerFixture): void {
 async function readBannerActivity(
   harness: TestAppHarness,
   fixture: BannerFixture,
-): Promise<{ activeGoalCount: number; activePlanModeCount: number }> {
+): Promise<{ activePlanModeCount: number }> {
   const response = await harness.app.request(
     `/api/v1/threads?projectId=${fixture.projectId}`,
   );
   expect(response.status).toBe(200);
   const threads = (await readJson(response)) as Array<{
     id: string;
-    activity: { activeGoalCount: number; activePlanModeCount: number };
+    activity: { activePlanModeCount: number };
   }>;
   const thread = threads.find((entry) => entry.id === fixture.threadId);
   if (!thread) throw new Error(`Missing thread ${fixture.threadId}`);
   return thread.activity;
+}
+
+async function readTimelineGoalStatus(
+  harness: TestAppHarness,
+  fixture: BannerFixture,
+): Promise<string | null> {
+  const response = await harness.app.request(
+    `/api/v1/threads/${fixture.threadId}/timeline`,
+  );
+  expect(response.status).toBe(200);
+  const timeline = (await readJson(response)) as {
+    extensionStates: Record<string, { status: string } | undefined>;
+  };
+  return timeline.extensionStates["provider-codex/goal"]?.status ?? null;
 }
 
 describe("public thread banner actions", () => {
@@ -554,7 +572,7 @@ describe("public thread banner actions", () => {
       expect(response.status).toBe(409);
       expect(await readJson(response)).toMatchObject({
         code: "invalid_request",
-        message: "No active Goal to clear",
+        message: "No Goal to clear",
       });
     });
   });
@@ -562,7 +580,7 @@ describe("public thread banner actions", () => {
   it("accepts a stale Goal clear result after provider events persist the clear", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedBannerFixture(harness, { status: "idle" });
-      seedActiveGoal(harness, fixture);
+      seedGoal(harness, fixture, "active");
       registerHostRpcResponder(harness, {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,
@@ -596,18 +614,77 @@ describe("public thread banner actions", () => {
         response.status,
         JSON.stringify(await readJson(response.clone())),
       ).toBe(200);
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activeGoalCount: 0,
-        },
+      await expect(
+        readTimelineGoalStatus(harness, fixture),
+      ).resolves.toBeNull();
+    });
+  });
+
+  it("serves the Codex plugin's latest Goal state to its app through the timeline", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "idle" });
+      seedGoal(harness, fixture, "paused");
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/timeline`,
       );
+
+      expect(response.status).toBe(200);
+      const timeline = (await readJson(response)) as {
+        extensionStates: Record<string, unknown>;
+      };
+      expect(timeline.extensionStates).toEqual({
+        "provider-codex/goal": {
+          objective: "Verify authoritative Goal cancellation",
+          status: "paused",
+          tokenBudget: null,
+          tokensUsed: 100,
+          timeUsedSeconds: 10,
+        },
+      });
+    });
+  });
+
+  it("clears a paused Goal", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "idle" });
+      seedGoal(harness, fixture, "paused");
+      registerHostRpcResponder(harness, {
+        hostId: fixture.hostId,
+        sessionId: fixture.sessionId,
+        handle: ({ command }) => {
+          if (command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
+          }
+          seedEvent(harness.deps, {
+            threadId: fixture.threadId,
+            environmentId: fixture.environmentId,
+            providerThreadId: "provider-thread-1",
+            sequence: 4,
+            type: "thread/goal/cleared",
+            scope: threadScope(),
+            data: { providerThreadId: "provider-thread-1" },
+          });
+          return { ok: true, result: { cleared: true } };
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/goal/clear`,
+        { method: "POST" },
+      );
+
+      expect(
+        response.status,
+        JSON.stringify(await readJson(response.clone())),
+      ).toBe(200);
     });
   });
 
   it("keeps Goal active when provider cancellation fails", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedBannerFixture(harness, { status: "idle" });
-      seedActiveGoal(harness, fixture);
+      seedGoal(harness, fixture, "active");
       const responder = registerHostRpcResponder(harness, {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,
@@ -633,10 +710,8 @@ describe("public thread banner actions", () => {
           ({ command }) => command.type === "thread.goal.clear",
         ),
       ).toBe(true);
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activeGoalCount: 1,
-        },
+      await expect(readTimelineGoalStatus(harness, fixture)).resolves.toBe(
+        "active",
       );
     });
   });

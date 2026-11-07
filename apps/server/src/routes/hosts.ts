@@ -24,7 +24,7 @@ import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import {
   getGateAuthKind,
-  type GateAuthHeaderReader,
+  type RequestHeaderReader,
 } from "../request-context.js";
 import {
   listPublicHostsWithStatus,
@@ -79,7 +79,7 @@ function requireMutableHost(deps: AppDeps, hostId: string) {
   return host;
 }
 
-function assertHostManagementAllowed(context: GateAuthHeaderReader): void {
+function assertHostManagementAllowed(context: RequestHeaderReader): void {
   if (getGateAuthKind(context) === "machine") {
     throw new ApiError(
       403,
@@ -114,11 +114,12 @@ async function revokeConnectMachineCredential(
       throw new Error(`connect plugin revoke handler is ${handler.outcome}`);
     }
     const result = await plugins.invokeRpcHandler(
-      connectPlugin.id,
+      handler.owner,
       "revokeMachine",
       handler.value,
       { machineId },
       { kind: "client" },
+      null,
     );
     if (!result.ok) throw new Error(result.error.message);
   } catch (error) {
@@ -363,6 +364,7 @@ export function registerHostRoutes(
           })?.id ?? null,
       })),
       truncated: result.truncated,
+      unreadableCount: result.unreadableCount,
     });
   });
 
@@ -429,10 +431,13 @@ export function registerHostRoutes(
     return context.json(result);
   });
 
-  get(routes.providerCliStatus, async (context) => {
+  get(routes.providerCliStatus, async (context, query) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
-    const result = await getProviderInstallations(deps, { hostId });
+    const result = await getProviderInstallations(deps, {
+      hostId,
+      mode: query.refresh === "true" ? "refresh" : "read",
+    });
     return context.json(result);
   });
 

@@ -4,9 +4,12 @@ import {
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import {
+  GIT_SHOW_CHANGES_SETTING,
+  GIT_SHOW_COMMIT_BUTTON_SETTING,
   gitFilesTag,
   gitRefsTag,
   gitStatusTag,
+  gitViewedTag,
   parseGitPatchKey,
   type GitPatchKey,
   type GitPatchResult,
@@ -31,15 +34,32 @@ function patchGroupKey(key: GitPatchKey): string {
 }
 
 export default function gitPlugin(bb: BbPluginApi): void {
+  bb.settings.define({
+    [GIT_SHOW_CHANGES_SETTING]: {
+      type: "boolean",
+      label: "Show Git changes above the composer",
+      description: "Show changed files and the merge base above the composer.",
+      default: true,
+    },
+    [GIT_SHOW_COMMIT_BUTTON_SETTING]: {
+      type: "boolean",
+      label: "Show Commit button",
+      description: "Show Commit in the thread header and actions menu.",
+      default: false,
+    },
+  });
   const watchedEnvironments = new Map<string, number>();
   const generations = createReadGenerations((environmentId) =>
     watchedEnvironments.has(environmentId),
   );
   const reads = createGitReads(bb, generations.freshness);
-  const viewed = createGitViewed(bb);
   const invalidator = createCoalescedInvalidator((tags) =>
     bb.rpc.experimental_invalidate(tags),
   );
+  const viewed = createGitViewed(bb, (environmentId) => {
+    if (watchedEnvironments.has(environmentId))
+      invalidator.invalidate(environmentId, [gitViewedTag(environmentId)]);
+  });
 
   let stopEnvironmentEvents: (() => void) | null = null;
   const threadEnvironments = new Map<string, string | null>();
@@ -290,6 +310,8 @@ export default function gitPlugin(bb: BbPluginApi): void {
           ...(query === undefined ? {} : { query }),
           ...(selectedBranch === undefined ? {} : { selectedBranch }),
         }),
+      fetchRemoteBranches: ({ environmentId }) =>
+        reads.fetchRemoteBranches(environmentId),
       viewed: ({ environmentId, target, paths }) =>
         viewed.list(environmentId, target, paths),
       markViewed: ({ environmentId, target, path, revision }) =>

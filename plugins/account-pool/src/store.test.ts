@@ -131,8 +131,17 @@ describe("QuotaStore", () => {
     const quotas = new QuotaStore(database);
 
     const migrated = quotas.get("11111111-1111-4111-8111-111111111111");
-    expect(migrated.sevenDayUtilization).toBe(0.5);
-    expect(migrated.limitWindows).toEqual([]);
+    expect(migrated.limitWindows).toEqual([
+      {
+        slot: "secondary",
+        windowMinutes: 10_080,
+        utilization: 0.5,
+        resetAt: null,
+        status: null,
+        observedAt: 0,
+        source: "header",
+      },
+    ]);
     expect(migrated.extraUsage).toBeNull();
     expect(migrated.familyWeekly).toEqual({
       fable: null,
@@ -184,6 +193,94 @@ describe("QuotaStore", () => {
         source: "usage",
       },
     ]);
+    database.close();
+  });
+
+  it("moves stored Claude five-hour and seven-day columns into limit windows", () => {
+    const database = new Database(":memory:");
+    const moveMigration = QUOTA_MIGRATIONS.length - 1;
+    for (const migration of QUOTA_MIGRATIONS.slice(0, moveMigration))
+      database.exec(migration);
+    const claudeId = "11111111-1111-4111-8111-111111111111";
+    const codexId = "22222222-2222-4222-8222-222222222222";
+    const codexWindows = JSON.stringify([
+      {
+        slot: "primary",
+        windowMinutes: 10_080,
+        utilization: 0.48,
+        resetAt: null,
+        status: "allowed",
+        observedAt: 10,
+        source: "usage",
+      },
+    ]);
+    const insert = database.prepare(
+      `INSERT INTO account_quota (
+        account_id, five_hour_utilization, five_hour_reset_at, five_hour_status,
+        seven_day_utilization, seven_day_reset_at, seven_day_status,
+        limit_windows_json, observed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    insert.run(
+      claudeId,
+      1,
+      4_102_444_800_000,
+      "rejected",
+      0.25,
+      4_102_448_400_000,
+      "allowed",
+      "[]",
+      50,
+    );
+    insert.run(codexId, null, null, null, null, null, null, codexWindows, 60);
+    database.exec(QUOTA_MIGRATIONS[moveMigration] ?? "");
+    const quotas = new QuotaStore(database);
+
+    expect(quotas.get(claudeId).limitWindows).toEqual([
+      {
+        slot: "primary",
+        windowMinutes: 300,
+        utilization: 1,
+        resetAt: 4_102_444_800_000,
+        status: "rejected",
+        observedAt: 50,
+        source: "header",
+      },
+      {
+        slot: "secondary",
+        windowMinutes: 10_080,
+        utilization: 0.25,
+        resetAt: 4_102_448_400_000,
+        status: "allowed",
+        observedAt: 50,
+        source: "header",
+      },
+    ]);
+    expect(quotas.get(codexId).limitWindows).toEqual(JSON.parse(codexWindows));
+    expect(
+      database
+        .prepare(
+          `SELECT count(*) AS stale FROM account_quota
+           WHERE five_hour_utilization IS NOT NULL OR five_hour_status IS NOT NULL
+             OR seven_day_utilization IS NOT NULL OR seven_day_status IS NOT NULL`,
+        )
+        .get(),
+    ).toEqual({ stale: 0 });
+    database.close();
+  });
+
+  it("reads and writes quotas when a newer build has added a column", () => {
+    const database = new Database(":memory:");
+    for (const migration of QUOTA_MIGRATIONS) database.exec(migration);
+    database.exec(
+      "ALTER TABLE account_quota ADD COLUMN later_json TEXT NOT NULL DEFAULT '{}'",
+    );
+    const quotas = new QuotaStore(database);
+    const accountId = "11111111-1111-4111-8111-111111111111";
+
+    quotas.put({ ...quotas.get(accountId), representativeClaim: "five_hour" });
+
+    expect(quotas.get(accountId).representativeClaim).toBe("five_hour");
     database.close();
   });
 });

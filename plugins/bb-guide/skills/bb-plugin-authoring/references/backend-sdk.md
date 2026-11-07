@@ -26,11 +26,14 @@ signatures (see "Looking up the exact API" in distribution.md).
   `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`
   `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
   `experimental_listPluginMetadata` `experimental_listAncestors`
-  `experimental_listDescendants` `experimental_listCascade`; sub-areas `events` (`list` `wait`),
+  `experimental_listDescendants` `experimental_listCascade`
+  `experimental_regenerateTitle`; sub-areas `events` (`list` `wait`),
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
-  `experimental_releaseEditHold`), `tabs` (`get` `update`)
+  `experimental_releaseEditHold`; `update` takes any of `input`, `sendAt`,
+  `model`, `reasoningLevel`, `permissionMode`, `serviceTier`),
+  `tabs` (`get` `update`)
 - `threadSections`: `list` `create` `update` `delete`
 - `projects`: `list` `get` `create` `update` `delete` `reorder` `paths`
   `files` `fileContent` `branches` `commands` `defaultExecutionOptions`
@@ -41,8 +44,6 @@ signatures (see "Looking up the exact API" in distribution.md).
 - `experimental_promptHistory`: `list`
 - `environments`: `list` `listProviders` `get` `update` `delete` `paths`
   `commit` `archiveThreads` `experimental_cleanup`
-  `experimental_diffViewed` `experimental_markDiffViewed`
-  `experimental_clearDiffViewed`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
   `pickFolder` `cloneDefaultPath` `providerCliStatus` `installProviderCli`
   `retryUpdate` `experimental_listProviders` `experimental_create`
@@ -90,6 +91,13 @@ Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
 areas write app-wide state that the user owns.
 
+`threads.experimental_regenerateTitle({ threadId })` replaces a thread's title
+with one the thread-title AI service writes from its first task message,
+latest user messages, and the agent's latest replies, in the task's language:
+the thread menu's Regenerate title action. The service may keep the current
+title when it still fits. It rejects and keeps the title when no title service
+is available or generation fails.
+
 ```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,
@@ -119,6 +127,13 @@ handOver(input, { experimental_caller: caller }) {
   return handOver(input);
 },
 ```
+
+The context's `experimental_signal` aborts when the caller stops waiting
+(its HTTP request disconnects) or when this plugin generation is reloaded,
+disabled or removed. Pass it to long work and stop when it aborts.
+`bb.sdk.plugins.callRpc` gives up after 75 seconds, which disconnects the
+request and aborts the handler's signal; build longer operations as a job the
+caller polls.
 
 ### Thread plugin metadata
 
@@ -176,6 +191,11 @@ a thread moves to a new parent or loses its parent (a `threads.update` of
 and `previousParentThreadId`. Threads below it move with it and get no event of
 their own. Push notifications uses all three: a parent's level limits every
 thread below it.
+
+`bb.events.on("experimental_thread.read", handler)` fires with `thread` after a
+thread becomes read: a client opened it or marked it read, or the user sent it
+a turn. Marking a thread unread does not fire it, and a thread that was already
+read can fire it again when a client re-marks it, so keep the handler cheap.
 
 Every `bb.agents.configure` callback receives its plugin's current namespace as
 a deep-frozen snapshot at top-level `context.pluginMetadata`, or `{}` when it
@@ -334,9 +354,8 @@ mimeType? })`; `clientFile` accepts `Uint8Array`, `ArrayBuffer`, `Blob`, or a
 File-like value (bare bytes/Blob require `filename`). The SDK sends multipart
 bytes and returns the stable uploaded-attachment DTO whose relative `path` can
 be used in `localFile`/`localImage` prompt input. Read an existing attachment
-with `bb.sdk.projects.attachments.read({ projectId, path })`. Image MIME types
-cap at 10 MB and other files at 25 MB. There is no attachment list or
-per-attachment remove operation.
+with `bb.sdk.projects.attachments.read({ projectId, path })`. Uploads cap at
+35 MB per file. There is no attachment list or per-attachment remove operation.
 
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`

@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/connect-db/**"
+      - "packages/connect-db-pg/**"
       - "packages/domain/src/plugin-install-badge.ts"
       - "packages/shared-ui/src/**"
       - "plugins/plugin-api-docs/src/**"
@@ -31,10 +32,9 @@ env:
 permissions:
   contents: read
 
-# Shared group with deploy-connect so the two never run `wrangler d1 migrations
-# apply` concurrently against the same prod D1: a parallel double-apply would
-# fail on already-applied SQL (e.g. 0005's CREATE TRIGGER). Serializing the
-# two workflows makes the second run's migrate step a tracked no-op.
+# Shared group with deploy-connect so a migration lands once before either worker
+# ships. The migrator also holds a Postgres advisory lock, so an overlapping
+# run waits instead of double-applying.
 # cancel-in-progress:false so a queued deploy waits rather than being dropped.
 concurrency:
   group: connect-db-deploy-${{ github.ref }}
@@ -83,6 +83,7 @@ jobs:
         env:
           CLOUDFLARE_ENV: production
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm exec turbo run build --filter=@bb/web --cache-dir=.turbo/cache --output-logs=new-only
 
       - name: Sync marketing analytics secret
@@ -108,16 +109,12 @@ jobs:
           printf '%s' "$RESEND_API_KEY" | pnpm --filter @bb/web exec wrangler secret put RESEND_API_KEY --name bb-web
 
       # Apply any pending connect-db migrations BEFORE the new worker ships so
-      # it never queries columns prod D1 doesn't have yet. Runs off the gate's
-      # wrangler config (which declares migrations_dir); the d1_migrations
-      # tracking table makes this a no-op when nothing is pending. If
-      # deploy-connect runs concurrently its apply races this one — the loser
-      # fails on already-applied SQL and a re-run goes green; prod is fine
-      # because the winner applied everything.
+      # it never queries columns Postgres doesn't have yet. The
+      # connect_db_migrations table makes this a no-op when nothing is pending.
       - name: Apply connect-db migrations
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @bb/connect exec wrangler d1 migrations apply DB --remote
+          CONNECT_DB_PG_MIGRATOR_URL: ${{ secrets.CONNECT_DB_PG_MIGRATOR_URL }}
+        run: pnpm --filter @bb/connect-db-pg run db:migrate
 
       # GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET are set
       # once by hand and intentionally NOT synced from CI.

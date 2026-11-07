@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { registerConfiguredAcpProvider } from "../../../../apps/server/test/helpers/provider-registry.js";
 import { formatBbAppConfigPath } from "@bb/config/bb-app-managed-config";
 import { describe, expect, it } from "vitest";
 import { getAvailableModels } from "../../helpers/api.js";
@@ -10,14 +12,25 @@ describe.sequential("custom provider models integration", () => {
   it("offers config-registered custom models after a config reload", () =>
     withHarness(async (harness) => {
       await waitForHostConnected(harness.api, DEFAULT_TIMEOUT_MS);
+      await registerConfiguredAcpProvider(harness.server.providerRegistry, {
+        id: "custom-models",
+        displayName: "Custom Models Fixture",
+        command: process.execPath,
+        args: [
+          fileURLToPath(
+            new URL("../../fixtures/dynamic-acp-agent.mjs", import.meta.url),
+          ),
+        ],
+        env: {},
+      });
 
       await fs.writeFile(
         formatBbAppConfigPath(harness.server.config.dataDir),
         `${JSON.stringify({
           customModels: [
             {
-              providerId: "claude-code",
-              model: "claude-example-preview[1m]",
+              providerId: "acp-custom-models",
+              model: "fixture-example-preview[1m]",
               displayName: "Example Preview (1M)",
             },
           ],
@@ -28,10 +41,10 @@ describe.sequential("custom provider models integration", () => {
       expect(reloadResponse.status).toBe(200);
 
       const models = await getAvailableModels(harness.api, {
-        providerId: "claude-code",
+        providerId: "acp-custom-models",
       });
       const customModel = models.find(
-        (model) => model.model === "claude-example-preview[1m]",
+        (model) => model.model === "fixture-example-preview[1m]",
       );
       expect(customModel).toMatchObject({
         displayName: "Example Preview (1M)",
@@ -40,9 +53,9 @@ describe.sequential("custom provider models integration", () => {
       });
       const defaultModel = models.find((model) => model.isDefault);
       expect(defaultModel).toBeDefined();
-      expect(defaultModel?.model).not.toBe("claude-example-preview[1m]");
+      expect(defaultModel?.model).not.toBe("fixture-example-preview[1m]");
       expect(models[models.length - 1]?.model).toBe(
-        "claude-example-preview[1m]",
+        "fixture-example-preview[1m]",
       );
     }));
 });

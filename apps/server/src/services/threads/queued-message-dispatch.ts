@@ -7,10 +7,12 @@ import {
   getThread,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
+  listReadySystemNoticesOnBusyThreads,
   listQueuedThreadMessagePluginWaitRefs,
   listQueuedThreadMessagesByWaitHolder,
   listQueuedThreadMessagesWaitingOnKind,
   listRetryableFailedQueuedThreadMessages,
+  listThreadIdsWithAppUpdateQueueWaits,
   listThreadIdsWithHostOfflineQueueWaits,
 } from "@bb/db";
 import {
@@ -26,6 +28,7 @@ import {
 import { isDispatchRequeuedRecently } from "./dispatch-hooks.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import { clearQueuedMessageWait } from "./queue-waits.js";
+import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import {
   createAutomaticQueuedMessageGroupEligibility,
   releaseStaleQueuedMessageDispatchClaims,
@@ -45,6 +48,7 @@ export type QueuedMessageDispatchWake =
   | { kind: "interaction-settled"; threadId: string }
   | { kind: "edit-released"; queuedMessageId: string; threadId: string }
   | { kind: "host-connected"; hostId: string }
+  | { kind: "app-update-released" }
   | { kind: "time-reached"; now: number }
   | { kind: "plugin-recheck" }
   | { kind: "plugin-unregistered"; pluginId: string }
@@ -128,6 +132,7 @@ function dispatchWakeContext(
     case "failed-retry":
       return { now: wake.now, wake: wake.kind };
     case "orphaned-plugin-recovery":
+    case "app-update-released":
       return { wake: wake.kind };
     case "time-reached":
       return { now: wake.now, wake: wake.kind };
@@ -212,6 +217,25 @@ export function requestQueuedMessageDispatch(
   }
 }
 
+export function requestQueuedMessageDispatchAt(
+  deps: QueueDispatchDeps,
+  at: number,
+): void {
+  setTimeout(
+    () => {
+      if (Date.now() < at) {
+        requestQueuedMessageDispatchAt(deps, at);
+        return;
+      }
+      requestQueuedMessageDispatch(deps, {
+        kind: "time-reached",
+        now: Date.now(),
+      });
+    },
+    Math.max(0, at - Date.now()),
+  ).unref();
+}
+
 export async function runQueuedMessageDispatch(
   deps: QueueDispatchDeps,
   wake: QueuedMessageDispatchWake,
@@ -236,6 +260,20 @@ async function executePreparedQueuedMessageDispatch(
       )) {
         for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
           kind: "host-offline",
+          threadId,
+        })) {
+          await attemptAutomaticQueuedMessage(deps, row, {
+            now: Date.now(),
+            respectRequeuePacing: false,
+            retryingFailure: false,
+          });
+        }
+      }
+      return;
+    case "app-update-released":
+      for (const threadId of listThreadIdsWithAppUpdateQueueWaits(deps.db)) {
+        for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
+          kind: "app-update",
           threadId,
         })) {
           await attemptAutomaticQueuedMessage(deps, row, {
@@ -271,17 +309,17 @@ async function executePreparedQueuedMessageDispatch(
       await runPluginUnregisteredDispatch(deps, wake.pluginId);
       return;
     case "time-reached":
-      await runDueScheduledDispatch(deps, wake.now);
+      await dueScheduledQueueSweep(deps, wake.now).run(deps, wake.now);
       return;
     case "idle-recovery":
       releaseStaleQueuedMessageDispatchClaims(deps, wake.now);
-      await runIdleThreadRecovery(deps);
+      await idleThreadQueueSweep(deps).run(deps, wake.now);
       return;
     case "failed-retry":
-      await runFailedRetryDispatch(deps, wake.now);
+      await failedQueueRetrySweep(deps, wake.now).run(deps, wake.now);
       return;
     case "orphaned-plugin-recovery":
-      await runOrphanedPluginWaitRecovery(deps, wake.plugins);
+      await orphanedPluginWaitSweep(deps, wake.plugins).run(deps, Date.now());
       return;
   }
 }
@@ -396,6 +434,17 @@ async function runEditReleasedDispatch(
   await runThreadReadyDispatch(deps, row.threadId);
 }
 
+export async function attemptQueuedMessageNow(
+  deps: QueueDispatchDeps,
+  row: QueuedMessageDispatchRef,
+): Promise<void> {
+  await attemptAutomaticQueuedMessage(deps, row, {
+    now: Date.now(),
+    respectRequeuePacing: false,
+    retryingFailure: false,
+  });
+}
+
 async function attemptAutomaticQueuedMessage(
   deps: QueueDispatchDeps,
   row: QueuedMessageDispatchRef,
@@ -488,17 +537,22 @@ async function runPluginUnregisteredDispatch(
   await runThreadReadyDispatches(deps, threadIds);
 }
 
-async function runDueScheduledDispatch(
+export function dueScheduledQueueSweep(
   deps: QueueDispatchDeps,
   now: number,
-): Promise<void> {
-  for (const row of listDueScheduledQueuedThreadMessages(deps.db, now)) {
-    await attemptAutomaticQueuedMessage(deps, row, {
-      now,
-      respectRequeuePacing: true,
-      retryingFailure: false,
-    });
-  }
+): ItemSweep {
+  return defineItemSweep({
+    name: "due-scheduled-queue-dispatch",
+    concurrency: 1,
+    list: () => listDueScheduledQueuedThreadMessages(deps.db, now),
+    key: (row) => row.id,
+    process: (row) =>
+      attemptAutomaticQueuedMessage(deps, row, {
+        now,
+        respectRequeuePacing: true,
+        retryingFailure: false,
+      }),
+  });
 }
 
 /**
@@ -513,54 +567,109 @@ async function runDueScheduledDispatch(
  * passed. So this one re-asks the whole question instead, and the row's
  * remaining attempts are what stop it asking forever.
  */
-async function runFailedRetryDispatch(
+export function failedQueueRetrySweep(
   deps: QueueDispatchDeps,
   now: number,
-): Promise<void> {
-  for (const row of listRetryableFailedQueuedThreadMessages(deps.db, now)) {
-    deps.logger.info(
-      {
-        failureCount: row.failureCount,
-        queuedMessageId: row.id,
-        threadId: row.threadId,
-      },
-      "Retrying a queued message whose dispatch failed",
-    );
-    await attemptAutomaticQueuedMessage(deps, row, {
-      now,
-      respectRequeuePacing: true,
-      retryingFailure: true,
-    });
-  }
+): ItemSweep {
+  return defineItemSweep({
+    name: "failed-queue-message-retry",
+    concurrency: 1,
+    list: () => listRetryableFailedQueuedThreadMessages(deps.db, now),
+    key: (row) => row.id,
+    process: (row) => {
+      deps.logger.info(
+        {
+          failureCount: row.failureCount,
+          queuedMessageId: row.id,
+          threadId: row.threadId,
+        },
+        "Retrying a queued message whose dispatch failed",
+      );
+      return attemptAutomaticQueuedMessage(deps, row, {
+        now,
+        respectRequeuePacing: true,
+        retryingFailure: true,
+      });
+    },
+  });
 }
 
-async function runIdleThreadRecovery(deps: QueueDispatchDeps): Promise<void> {
-  for (const candidate of listIdleThreadsWithQueuedMessages(deps.db)) {
-    await runThreadReadyDispatch(deps, candidate.threadId);
-  }
+type IdleQueueRecoveryItem =
+  | { kind: "idle-thread"; threadId: string }
+  | { kind: "busy-thread-notice"; row: QueuedMessageDispatchRef };
+
+export function idleThreadQueueSweep(deps: QueueDispatchDeps): ItemSweep {
+  return defineItemSweep<IdleQueueRecoveryItem>({
+    name: "queued-message-auto-send",
+    concurrency: 1,
+    list: () => [
+      ...listIdleThreadsWithQueuedMessages(deps.db).map(
+        (candidate): IdleQueueRecoveryItem => ({
+          kind: "idle-thread",
+          threadId: candidate.threadId,
+        }),
+      ),
+      ...listReadySystemNoticesOnBusyThreads(deps.db).map(
+        (row): IdleQueueRecoveryItem => ({ kind: "busy-thread-notice", row }),
+      ),
+    ],
+    key: (item) =>
+      item.kind === "idle-thread"
+        ? `thread:${item.threadId}`
+        : `notice:${item.row.id}`,
+    process: (item) =>
+      item.kind === "idle-thread"
+        ? runThreadReadyDispatch(deps, item.threadId)
+        : attemptAutomaticQueuedMessage(deps, item.row, {
+            now: Date.now(),
+            respectRequeuePacing: true,
+            retryingFailure: false,
+          }),
+  });
 }
 
-async function runOrphanedPluginWaitRecovery(
+export function orphanedPluginWaitSweep(
   deps: QueueDispatchDeps,
   plugins: QueueWaitPluginDirectory,
-): Promise<void> {
-  const threadIds = new Set<string>();
-  for (const row of listQueuedThreadMessagePluginWaitRefs(deps.db)) {
-    const pluginId = row.waitHolder.slice(
-      QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX.length,
-    );
-    if (plugins.isPluginExpectedToRun(pluginId)) continue;
-    deps.logger.info(
-      { queuedMessageId: row.id, pluginId, threadId: row.threadId },
-      "Clearing a queue wait: its holding plugin is not going to run",
-    );
-    clearQueuedMessageWait(deps, {
-      queuedMessageId: row.id,
-      threadId: row.threadId,
-    });
-    threadIds.add(row.threadId);
-  }
-  await runThreadReadyDispatches(deps, threadIds);
+): ItemSweep {
+  return defineItemSweep({
+    name: "orphaned-queue-wait-clear",
+    concurrency: 1,
+    list: () => {
+      const rowsByThread = new Map<
+        string,
+        Array<{ id: string; pluginId: string }>
+      >();
+      for (const row of listQueuedThreadMessagePluginWaitRefs(deps.db)) {
+        const pluginId = row.waitHolder.slice(
+          QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX.length,
+        );
+        if (plugins.isPluginExpectedToRun(pluginId)) continue;
+        const rows = rowsByThread.get(row.threadId) ?? [];
+        rows.push({ id: row.id, pluginId });
+        rowsByThread.set(row.threadId, rows);
+      }
+      return [...rowsByThread].map(([threadId, rows]) => ({ rows, threadId }));
+    },
+    key: (item) => item.threadId,
+    process: async (item) => {
+      for (const row of item.rows) {
+        deps.logger.info(
+          {
+            queuedMessageId: row.id,
+            pluginId: row.pluginId,
+            threadId: item.threadId,
+          },
+          "Clearing a queue wait: its holding plugin is not going to run",
+        );
+        clearQueuedMessageWait(deps, {
+          queuedMessageId: row.id,
+          threadId: item.threadId,
+        });
+      }
+      await runThreadReadyDispatch(deps, item.threadId);
+    },
+  });
 }
 
 async function runThreadReadyDispatches(

@@ -1,5 +1,5 @@
 import { defineSplit } from "@/lib/define-split";
-import { DiffLoadingSkeleton } from "./code-loading-skeletons";
+import { DiffLoadingSkeleton } from "@bb/shared-ui/diff-loading-skeleton";
 import type { BbDiffProps } from "./code-rendering";
 
 export const BbDiffSplit = defineSplit<BbDiffProps>({

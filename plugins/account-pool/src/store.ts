@@ -1,4 +1,9 @@
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -24,6 +29,22 @@ const accountsSchema = z.array(accountSchema);
 const HUB_TOKEN_PREFIX = "hub-token-";
 const HUB_TOKEN_GRACE_MS = 10 * 60 * 1_000;
 const HUB_TOKEN_LAST_USED_PERSIST_MS = 60 * 1_000;
+const REJECTED_REFRESH_PREFIX = "rejected-refresh:";
+const rejectedRefreshSchema = z
+  .object({
+    fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+    message: z.string(),
+  })
+  .strict();
+
+interface RefreshRejection {
+  message: string;
+  sameToken: boolean;
+}
+
+function refreshTokenFingerprint(refreshToken: string): string {
+  return createHash("sha256").update(refreshToken).digest("hex");
+}
 
 const tokenValueSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 const priorHubTokenSchema = z
@@ -108,6 +129,7 @@ export class AccountStore {
       if (next.length === accounts.length) return false;
       await this.kv.set(ACCOUNTS_KEY, next);
       await fs.rm(this.accountSecretPath(id), { force: true });
+      await this.kv.delete(this.rejectedRefreshKey(id));
       return true;
     });
   }
@@ -182,6 +204,22 @@ export class AccountStore {
     });
   }
 
+  async applyLogin(
+    id: string,
+    identity: Pick<
+      Account,
+      "email" | "accountUuid" | "subscriptionType" | "rateLimitTier"
+    >,
+  ): Promise<Account | null> {
+    return this.update(id, (account) => ({
+      ...account,
+      email: identity.email ?? account.email,
+      accountUuid: identity.accountUuid ?? account.accountUuid,
+      subscriptionType: identity.subscriptionType ?? account.subscriptionType,
+      rateLimitTier: identity.rateLimitTier ?? account.rateLimitTier,
+    }));
+  }
+
   async setAccountUuid(
     id: string,
     accountUuid: string,
@@ -220,6 +258,41 @@ export class AccountStore {
     await fs.writeFile(temporary, value, { encoding: "utf8", mode: 0o600 });
     await fs.rename(temporary, destination);
     await fs.chmod(destination, 0o600);
+  }
+
+  async rejectedRefresh(
+    id: string,
+    refreshToken: string,
+  ): Promise<RefreshRejection | null> {
+    const value = await this.kv.get(this.rejectedRefreshKey(id));
+    if (value === undefined) return null;
+    const rejected = rejectedRefreshSchema.parse(value);
+    return {
+      message: rejected.message,
+      sameToken: rejected.fingerprint === refreshTokenFingerprint(refreshToken),
+    };
+  }
+
+  async recordRejectedRefresh(
+    id: string,
+    refreshToken: string,
+    message: string,
+  ): Promise<void> {
+    await this.serialized(async () => {
+      if (!(await this.list()).some((account) => account.id === id)) return;
+      await this.kv.set(this.rejectedRefreshKey(id), {
+        fingerprint: refreshTokenFingerprint(refreshToken),
+        message,
+      });
+    });
+  }
+
+  async clearRejectedRefresh(id: string): Promise<void> {
+    await this.kv.delete(this.rejectedRefreshKey(id));
+  }
+
+  private rejectedRefreshKey(id: string): string {
+    return `${REJECTED_REFRESH_PREFIX}${z.string().uuid().parse(id)}`;
   }
 
   private accountSecretPath(id: string): string {
@@ -531,36 +604,22 @@ function safeTokenEqual(left: string, right: string): boolean {
   );
 }
 
-const quotaRowSchema = z
-  .object({
-    account_id: z.string().uuid(),
-    five_hour_utilization: z.number().nullable(),
-    five_hour_reset_at: z.number().int().nullable(),
-    five_hour_status: z.string().nullable(),
-    seven_day_utilization: z.number().nullable(),
-    seven_day_reset_at: z.number().int().nullable(),
-    seven_day_status: z.string().nullable(),
-    representative_claim: z.string().nullable(),
-    bucket_exhaustion_json: z.string(),
-    family_weekly_json: z.string(),
-    limit_windows_json: z.string(),
-    extra_usage_json: z.string(),
-    usage_restriction_json: z.string(),
-    observed_at: z.number().int().nullable(),
-    held_until: z.number().int().nullable(),
-    error: z.string().nullable(),
-  })
-  .strict();
+const quotaRowSchema = z.object({
+  account_id: z.string().uuid(),
+  representative_claim: z.string().nullable(),
+  bucket_exhaustion_json: z.string(),
+  family_weekly_json: z.string(),
+  limit_windows_json: z.string(),
+  extra_usage_json: z.string(),
+  usage_restriction_json: z.string(),
+  observed_at: z.number().int().nullable(),
+  held_until: z.number().int().nullable(),
+  error: z.string().nullable(),
+});
 
 const EMPTY_QUOTA = {
   usageRestriction: null,
   extraUsage: null,
-  fiveHourUtilization: null,
-  fiveHourResetAt: null,
-  fiveHourStatus: null,
-  sevenDayUtilization: null,
-  sevenDayResetAt: null,
-  sevenDayStatus: null,
   representativeClaim: null,
   familyWeekly: EMPTY_FAMILY_WEEKLY,
   limitWindows: [],
@@ -585,12 +644,6 @@ export class QuotaStore {
     }
     return quotaSchema.parse({
       accountId: row.account_id,
-      fiveHourUtilization: row.five_hour_utilization,
-      fiveHourResetAt: row.five_hour_reset_at,
-      fiveHourStatus: row.five_hour_status,
-      sevenDayUtilization: row.seven_day_utilization,
-      sevenDayResetAt: row.seven_day_reset_at,
-      sevenDayStatus: row.seven_day_status,
       representativeClaim: row.representative_claim,
       familyWeekly: JSON.parse(row.family_weekly_json),
       limitWindows: JSON.parse(row.limit_windows_json),
@@ -607,18 +660,10 @@ export class QuotaStore {
     this.db
       .prepare(
         `INSERT INTO account_quota (
-          account_id, five_hour_utilization, five_hour_reset_at,
-          five_hour_status, seven_day_utilization, seven_day_reset_at,
-          seven_day_status, representative_claim, bucket_exhaustion_json,
+          account_id, representative_claim, bucket_exhaustion_json,
           family_weekly_json, limit_windows_json, extra_usage_json, usage_restriction_json, observed_at, held_until, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, '{}', ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
-          five_hour_utilization = excluded.five_hour_utilization,
-          five_hour_reset_at = excluded.five_hour_reset_at,
-          five_hour_status = excluded.five_hour_status,
-          seven_day_utilization = excluded.seven_day_utilization,
-          seven_day_reset_at = excluded.seven_day_reset_at,
-          seven_day_status = excluded.seven_day_status,
           representative_claim = excluded.representative_claim,
           family_weekly_json = excluded.family_weekly_json,
           limit_windows_json = excluded.limit_windows_json,
@@ -630,12 +675,6 @@ export class QuotaStore {
       )
       .run(
         value.accountId,
-        value.fiveHourUtilization,
-        value.fiveHourResetAt,
-        value.fiveHourStatus,
-        value.sevenDayUtilization,
-        value.sevenDayResetAt,
-        value.sevenDayStatus,
         value.representativeClaim,
         JSON.stringify(value.familyWeekly),
         JSON.stringify(value.limitWindows),
@@ -761,4 +800,32 @@ export const QUOTA_MIGRATIONS = [
   )`,
   `ALTER TABLE account_quota ADD COLUMN extra_usage_json TEXT NOT NULL DEFAULT 'null'`,
   `ALTER TABLE account_quota ADD COLUMN usage_restriction_json TEXT NOT NULL DEFAULT 'null'`,
+  `UPDATE account_quota SET limit_windows_json = (
+    SELECT json_group_array(json(entry)) FROM (
+      SELECT json_object(
+        'slot', 'primary', 'windowMinutes', 300,
+        'utilization', five_hour_utilization, 'resetAt', five_hour_reset_at,
+        'status', five_hour_status, 'observedAt', coalesce(observed_at, 0),
+        'source', 'header'
+      ) AS entry
+      WHERE five_hour_utilization IS NOT NULL
+        OR five_hour_reset_at IS NOT NULL
+        OR five_hour_status IS NOT NULL
+      UNION ALL
+      SELECT json_object(
+        'slot', 'secondary', 'windowMinutes', 10080,
+        'utilization', seven_day_utilization, 'resetAt', seven_day_reset_at,
+        'status', seven_day_status, 'observedAt', coalesce(observed_at, 0),
+        'source', 'header'
+      )
+      WHERE seven_day_utilization IS NOT NULL
+        OR seven_day_reset_at IS NOT NULL
+        OR seven_day_status IS NOT NULL
+    )
+  )
+  WHERE limit_windows_json = '[]';
+  UPDATE account_quota SET
+    five_hour_utilization = NULL, five_hour_reset_at = NULL,
+    five_hour_status = NULL, seven_day_utilization = NULL,
+    seven_day_reset_at = NULL, seven_day_status = NULL`,
 ];

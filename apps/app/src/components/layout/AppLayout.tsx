@@ -68,6 +68,7 @@ import {
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
 import { PluginAppOverlays } from "@/components/plugin/PluginAppOverlays";
+import { ThreadRowMetadataCollectors } from "@/components/plugin/ThreadRowMetadataCollectors";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import {
   usePluginNavPanelChrome,
@@ -106,7 +107,11 @@ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
-import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
+import { shellSetBadge } from "@/lib/native-shell";
+import {
+  desktopAttentionThreads,
+  shouldShowFaviconAttentionDot,
+} from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
 import { resolveRouteSidebar } from "./routeSidebar";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
@@ -469,7 +474,6 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   );
   useMobileVisualViewportHeight(
     contentShell,
-    isCompactViewport,
     restoreIOSViewportOnKeyboardDismissal,
   );
   const location = useLocation();
@@ -719,6 +723,25 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     ? "unread"
     : "none";
   useFaviconBadge(faviconBadge);
+  const attentionThreads = useMemo(
+    () => desktopAttentionThreads(sidebarThreads),
+    [sidebarThreads],
+  );
+  const pendingThreadCount = attentionThreads.pendingThreadIds.length;
+  useEffect(() => {
+    window.bbDesktop?.setAttentionThreads?.(attentionThreads);
+  }, [attentionThreads]);
+  useEffect(() => {
+    shellSetBadge(pendingThreadCount);
+  }, [pendingThreadCount]);
+  useEffect(
+    () => () =>
+      window.bbDesktop?.setAttentionThreads?.({
+        pendingThreadIds: [],
+        unreadThreadIds: [],
+      }),
+    [],
+  );
 
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {
@@ -795,19 +818,6 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     document.title = documentTitle;
   }, [documentTitle]);
 
-  if (canonicalThreadRoutePath !== null) {
-    return (
-      <Navigate
-        to={{
-          pathname: canonicalThreadRoutePath,
-          search: location.search,
-          hash: location.hash,
-        }}
-        replace
-      />
-    );
-  }
-
   return (
     <SidebarThreadEntriesProvider navigation={sidebarNavigationQuery.data}>
       <TooltipProvider delayDuration={300} disableHoverableContent>
@@ -815,6 +825,16 @@ function AppLayoutContent({ children }: AppLayoutProps) {
           <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
             <ThreadActionsProvider>
               <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
+                {canonicalThreadRoutePath !== null ? (
+                  <Navigate
+                    to={{
+                      pathname: canonicalThreadRoutePath,
+                      search: location.search,
+                      hash: location.hash,
+                    }}
+                    replace
+                  />
+                ) : null}
                 {backToAppRoutePath !== null && !isSidebarResizing ? (
                   <BackToAppCommandHandler routePath={backToAppRoutePath} />
                 ) : null}
@@ -832,7 +852,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                     ref={setContentShell}
                     data-testid="app-layout-content-shell"
                     data-app-content-shell=""
-                    className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
+                    className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-(--bb-content-bottom-inset) pl-[env(safe-area-inset-left)] [--bb-content-bottom-inset:var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]"
                   >
                     {showHeader ? (
                       <AppHeader
@@ -862,6 +882,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                 />
               </SidebarStateBridge>
               <PluginAppOverlays />
+              <ThreadRowMetadataCollectors />
               <IframeDragGuardOverlay
                 active={isSidebarResizing}
                 cursor="col-resize"

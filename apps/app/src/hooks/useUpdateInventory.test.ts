@@ -8,9 +8,12 @@ import type {
   SystemAppUpdateStatus,
   SystemVersionResponse,
 } from "@bb/server-contract";
+import { makePluginListItem } from "@/test/fixtures/plugins";
 import {
+  buildUpdateInventoryPlugins,
   buildUpdateInventoryProviderIssues,
   resolveAppUpdateAvailable,
+  sourceUpdateBadgeDueAt,
   updateInventoryHosts,
 } from "./useUpdateInventory";
 
@@ -56,6 +59,96 @@ describe("buildUpdateInventoryProviderIssues", () => {
   });
 });
 
+describe("buildUpdateInventoryPlugins", () => {
+  it("lists tracking plugins with compatible or blocked candidates only", () => {
+    const tracking = makePluginListItem({
+      id: "notes",
+      name: "Notes",
+      source: "npm:@acme/notes@^1.0.0",
+      updateState: {
+        outcome: "update-available",
+        availableVersion: "1.2.0",
+        availableLabel: "1.2.0",
+      },
+    });
+    const blocked = makePluginListItem({
+      id: "linear",
+      name: "Linear",
+      source: "git:github.com/acme/linear@^0.8.0",
+      updateState: {
+        outcome: "incompatible",
+        blockedVersion: "0.9.0",
+        blockedLabel: "0.9.0",
+        blockedReasons: ["engines.bb requires >=2.0.0"],
+      },
+    });
+    const current = makePluginListItem({
+      id: "current",
+      source: "npm:@acme/current@^1.0.0",
+      updateState: { outcome: "current" },
+    });
+    const pinned = makePluginListItem({
+      id: "pinned",
+      source: "npm:@acme/pinned@1.0.0",
+      updateState: {
+        outcome: "pinned",
+        blockedVersion: "2.0.0",
+        blockedLabel: "2.0.0",
+      },
+    });
+    const path = makePluginListItem({
+      id: "local",
+      source: "path:/plugins/local",
+      updateState: { availableVersion: "9.9.9", availableLabel: "9.9.9" },
+    });
+    const builtin = makePluginListItem({
+      id: "git",
+      source: "builtin:git",
+      provenance: "builtin",
+      updateState: { availableVersion: "9.9.9", availableLabel: "9.9.9" },
+    });
+
+    expect(
+      buildUpdateInventoryPlugins([
+        tracking,
+        blocked,
+        current,
+        pinned,
+        path,
+        builtin,
+      ]),
+    ).toEqual({
+      trackedCount: 3,
+      items: [
+        {
+          kind: "blocked",
+          plugin: blocked,
+          version: "0.9.0",
+          reasons: ["engines.bb requires >=2.0.0"],
+        },
+        { kind: "update", plugin: tracking, version: "1.2.0" },
+      ],
+    });
+  });
+
+  it("offers the compatible update when a newer release is also blocked", () => {
+    const plugin = makePluginListItem({
+      source: "npm:@acme/notes@^1.0.0",
+      updateState: {
+        outcome: "update-available",
+        availableVersion: "1.2.0",
+        availableLabel: "1.2.0",
+        blockedVersion: "1.3.0",
+        blockedLabel: "1.3.0",
+        blockedReasons: ["engines.bbPluginSdk requires ^3.0.0"],
+      },
+    });
+    expect(buildUpdateInventoryPlugins([plugin]).items).toEqual([
+      { kind: "update", plugin, version: "1.2.0" },
+    ]);
+  });
+});
+
 describe("updateInventoryHosts", () => {
   it("omits machines from ephemeral providers", () => {
     const modal = makeHost({
@@ -93,6 +186,7 @@ describe("resolveAppUpdateAvailable", () => {
     return {
       activity: { phase: "idle" },
       available: {
+        behindSince: null,
         channel: "latest",
         commit: null,
         commitCount: null,
@@ -102,7 +196,10 @@ describe("resolveAppUpdateAvailable", () => {
       blocked: null,
       current: { commit: null, version: "1.0.0" },
       lastResult: null,
+      autoUpdate: false,
+      availableSkipped: false,
       runningThreadCount: 0,
+      scheduled: null,
       support: { kind: "supported", mode: "npm" },
       ...overrides,
     };
@@ -131,16 +228,6 @@ describe("resolveAppUpdateAvailable", () => {
     ).toBe(false);
   });
 
-  it("does not badge every new main commit on a source checkout", () => {
-    expect(
-      resolveAppUpdateAvailable({
-        appUpdate: status({ support: { kind: "supported", mode: "source" } }),
-        isDesktop: true,
-        systemVersion: undefined,
-      }),
-    ).toBe(false);
-  });
-
   it("keeps the npm version badge for web installs without the launcher shim", () => {
     expect(
       resolveAppUpdateAvailable({
@@ -152,5 +239,58 @@ describe("resolveAppUpdateAvailable", () => {
         systemVersion: npmVersion,
       }),
     ).toBe(true);
+  });
+});
+
+describe("sourceUpdateBadgeDueAt", () => {
+  const behindSince = "2026-11-02T12:00:00.000Z";
+  const sixHoursLater = Date.parse("2026-11-02T18:00:00.000Z");
+
+  function sourceStatus(
+    commitCount: number,
+    blocked: SystemAppUpdateStatus["blocked"] = null,
+  ): SystemAppUpdateStatus {
+    return {
+      activity: { phase: "idle" },
+      available: {
+        behindSince,
+        channel: "main",
+        commit: "e722e64ea8779dd5d216d45dad99832e62ef648d",
+        commitCount,
+        subjects: [],
+        version: "1.0.0",
+      },
+      blocked,
+      current: {
+        commit: "d0bf4528508b46beafe5f7ef526e506cde5e0313",
+        version: "1.0.0",
+      },
+      lastResult: null,
+      autoUpdate: false,
+      availableSkipped: false,
+      runningThreadCount: 0,
+      scheduled: null,
+      support: { kind: "supported", mode: "source" },
+    };
+  }
+
+  it("waits six hours after the oldest missing commit while 30 or fewer commits are missing", () => {
+    expect(sourceUpdateBadgeDueAt(sourceStatus(1))).toBe(sixHoursLater);
+    expect(sourceUpdateBadgeDueAt(sourceStatus(30))).toBe(sixHoursLater);
+  });
+
+  it("is due immediately once more than 30 commits are missing", () => {
+    expect(sourceUpdateBadgeDueAt(sourceStatus(31))).toBe(0);
+  });
+
+  it("never badges a source update the user cannot apply", () => {
+    expect(
+      sourceUpdateBadgeDueAt(
+        sourceStatus(50, {
+          message: "Local main has uncommitted changes.",
+          reason: "uncommitted-changes",
+        }),
+      ),
+    ).toBeNull();
   });
 });

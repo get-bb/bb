@@ -58,7 +58,11 @@ export interface SystemConfigArgs {
   signal?: AbortSignal;
 }
 
-export interface SystemExecutionOptionsArgs extends SystemExecutionOptionsQuery {
+export interface SystemExecutionOptionsArgs extends Omit<
+  SystemExecutionOptionsQuery,
+  "preferCached"
+> {
+  preferCached?: boolean;
   signal?: AbortSignal;
 }
 
@@ -103,6 +107,9 @@ export type SystemSetAiServiceSelectionArgs = SetAiServiceSelectionRequest;
 export type SystemTestAiServiceArgs = TestAiServiceRequest;
 export type SystemTestAiServiceResult = TestAiServiceResponse;
 export type SystemRecordTelemetryEventArgs = RecordTelemetryEventRequest;
+export interface SystemRecordTelemetryEventOptions {
+  keepalive: boolean;
+}
 export interface SystemRecordTelemetryEventResult {
   ok: true;
 }
@@ -182,6 +189,7 @@ export interface SystemArea {
   ): Promise<SystemInstallCliSkillsResult>;
   experimental_recordTelemetryEvent(
     args: SystemRecordTelemetryEventArgs,
+    options?: SystemRecordTelemetryEventOptions,
   ): Promise<SystemRecordTelemetryEventResult>;
   reloadConfig(): Promise<SystemReloadConfigResult>;
   setAiServiceSelection(
@@ -217,6 +225,11 @@ export interface SystemArea {
   acknowledgeAppUpdate(
     args: SystemAcknowledgeAppUpdateArgs,
   ): Promise<SystemAppUpdateStatusResult>;
+  experimental_scheduleAppUpdate(): Promise<SystemAppUpdateStatusResult>;
+  experimental_cancelScheduledAppUpdate(): Promise<SystemAppUpdateStatusResult>;
+  experimental_setAppUpdateAuto(args: {
+    enabled: boolean;
+  }): Promise<SystemAppUpdateStatusResult>;
   experimental_cliCommand(
     args?: SystemCliCommandArgs,
   ): Promise<SystemCliCommandStatusResult>;
@@ -349,9 +362,14 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.system["cli-skills"].install.$post({ json: input }),
       );
     },
-    async experimental_recordTelemetryEvent(input) {
+    async experimental_recordTelemetryEvent(input, options) {
       return transport.readJson(
-        transport.api.v1.system.telemetry.events.$post({ json: input }),
+        transport.api.v1.system.telemetry.events.$post(
+          { json: input },
+          ...(options === undefined
+            ? []
+            : [{ init: { keepalive: options.keepalive } }]),
+        ),
       );
     },
     async reloadConfig() {
@@ -457,6 +475,21 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.system["app-update"].acknowledge.$post({
           json: input,
         }),
+      );
+    },
+    async experimental_scheduleAppUpdate() {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].schedule.$post({}),
+      );
+    },
+    async experimental_cancelScheduledAppUpdate() {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].schedule.cancel.$post({}),
+      );
+    },
+    async experimental_setAppUpdateAuto(input) {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].auto.$post({ json: input }),
       );
     },
     async experimental_cliCommand(input) {

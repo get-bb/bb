@@ -1,4 +1,4 @@
-import { CORE_TAG_SCOPE, invalidateTags, pluginTagScope } from "@bb/query-tags";
+import { invalidateTags, pluginTagScope } from "@bb/query-tags";
 import type { QueryClient } from "@tanstack/react-query";
 import { assertNever } from "@bb/core-ui";
 import {
@@ -26,11 +26,11 @@ import {
 } from "@/lib/document-visibility";
 import {
   applyRealtimeThreadPatches,
-  collectCachedThreadIdsForEnvironment,
   createFlushOncePredicate,
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
   getCachedThreadEnvironmentId,
+  invalidateSidebarNavigation,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
   REALTIME_HOST_CHANGE_REGISTRY,
   REALTIME_PROJECT_CHANGE_REGISTRY,
@@ -38,19 +38,6 @@ import {
   REALTIME_THREAD_CHANGE_REGISTRY,
   partitionThreadChangesByFlushPriority,
 } from "./cache-owners/realtime-cache-registry";
-
-interface ThreadInvalidationDebounce {
-  debounceMs: number;
-  maxWaitMs: number;
-}
-
-export function resolveThreadInvalidationDebounce(
-  isCoarsePointer: boolean,
-): ThreadInvalidationDebounce {
-  return isCoarsePointer
-    ? { debounceMs: 150, maxWaitMs: 400 }
-    : { debounceMs: 50, maxWaitMs: 200 };
-}
 
 function detectCoarsePointer(): boolean {
   return (
@@ -60,16 +47,12 @@ function detectCoarsePointer(): boolean {
   );
 }
 
-const {
-  debounceMs: INVALIDATION_DEBOUNCE_MS,
-  maxWaitMs: INVALIDATION_MAX_WAIT_MS,
-} = resolveThreadInvalidationDebounce(detectCoarsePointer());
 const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;
+const HIDDEN_SIDEBAR_REFRESH_DEBOUNCE_MS = 1_000;
+const HIDDEN_SIDEBAR_REFRESH_MAX_WAIT_MS = 5_000;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
 const WATCHED_ENVIRONMENT_CHANGE_KINDS: EnvironmentChangeKind[] = [
   "work-status-changed",
-  "git-refs-changed",
-  "thread-storage-changed",
 ];
 
 type RealtimeConnectedEvent =
@@ -92,6 +75,7 @@ export interface RealtimeCacheEffectsVisibility {
 
 interface RealtimeCacheEffectsOptions {
   queryClient: QueryClient;
+  refreshSidebarWhileHidden?: boolean;
   visibility?: RealtimeCacheEffectsVisibility;
 }
 
@@ -336,8 +320,6 @@ function invalidateRealtimeEnvironmentChange({
     executeRealtimeDirtyHandlers({
       context: {
         environmentId,
-        getCachedThreadIdsForEnvironment: () =>
-          collectCachedThreadIdsForEnvironment({ environmentId, queryClient }),
         queryClient,
       },
       handlers: REALTIME_ENVIRONMENT_CHANGE_REGISTRY[changeKind].dirty,
@@ -391,14 +373,16 @@ const DEFAULT_VISIBILITY: RealtimeCacheEffectsVisibility = {
 
 export function createRealtimeCacheEffects({
   queryClient,
+  refreshSidebarWhileHidden = false,
   visibility = DEFAULT_VISIBILITY,
 }: RealtimeCacheEffectsOptions): RealtimeCacheEffects {
   const threadChangeState = createThreadChangeState();
   let hasDeferredThreadChanges = false;
   const deferredNonThreadChanges = createDeferredNonThreadChanges();
   const invalidationScheduler = createDebouncedCallbackScheduler({
-    debounceMs: INVALIDATION_DEBOUNCE_MS,
-    maxWaitMs: INVALIDATION_MAX_WAIT_MS,
+    ...(detectCoarsePointer()
+      ? { debounceMs: 150, maxWaitMs: 400 }
+      : { debounceMs: 50, maxWaitMs: 200 }),
     onFlush: () => {
       if (!visibility.isDocumentVisible()) {
         hasDeferredThreadChanges = true;
@@ -406,6 +390,16 @@ export function createRealtimeCacheEffects({
       }
       hasDeferredThreadChanges = false;
       flushThreadInvalidations(queryClient, threadChangeState);
+    },
+  });
+  const hiddenSidebarRefreshScheduler = createDebouncedCallbackScheduler({
+    debounceMs: HIDDEN_SIDEBAR_REFRESH_DEBOUNCE_MS,
+    maxWaitMs: HIDDEN_SIDEBAR_REFRESH_MAX_WAIT_MS,
+    onFlush: () => {
+      if (visibility.isDocumentVisible()) {
+        return;
+      }
+      invalidateSidebarNavigation(queryClient);
     },
   });
   const environmentInvalidator = createBufferedEnvironmentInvalidator({
@@ -468,6 +462,15 @@ export function createRealtimeCacheEffects({
       });
     }
   };
+  const applyOrDeferSystemChanges = (
+    changeKinds: readonly SystemChangeKind[],
+  ): void => {
+    if (!visibility.isDocumentVisible()) {
+      addAll(deferredNonThreadChanges.systemKinds, changeKinds);
+      return;
+    }
+    applySystemChanges(changeKinds);
+  };
 
   const deferredTags = new Map<string, Set<string> | null>();
   const applyTags = (scope: string, tags: readonly string[] | null): void => {
@@ -492,6 +495,12 @@ export function createRealtimeCacheEffects({
         );
         return;
       case "thread-detail": {
+        mergeThreadChanges({
+          changes: ["storage-changed"],
+          state: threadChangeState,
+          threadId: target.threadId,
+        });
+        invalidationScheduler.schedule();
         const environmentId = getCachedThreadEnvironmentId({
           queryClient,
           threadId: target.threadId,
@@ -559,6 +568,7 @@ export function createRealtimeCacheEffects({
     dispose: () => {
       unsubscribeVisibility();
       invalidationScheduler.dispose();
+      hiddenSidebarRefreshScheduler.dispose();
       environmentInvalidator.dispose();
       disposeTrailingActiveRefetches(queryClient);
       resetThreadChangeState(threadChangeState);
@@ -578,6 +588,9 @@ export function createRealtimeCacheEffects({
           if (!documentVisible) {
             recordThreadChange(threadChangeState, message);
             hasDeferredThreadChanges = true;
+            if (refreshSidebarWhileHidden) {
+              hiddenSidebarRefreshScheduler.schedule();
+            }
             break;
           }
           if (message.metadata?.eventTypes?.includes("turn/completed")) {
@@ -639,15 +652,8 @@ export function createRealtimeCacheEffects({
         case "plugin":
           applyTags(pluginTagScope(message.pluginId), message.tags);
           break;
-        case "tags":
-          applyTags(CORE_TAG_SCOPE, message.tags);
-          break;
         case "system":
-          if (!documentVisible) {
-            addAll(deferredNonThreadChanges.systemKinds, message.changes);
-            break;
-          }
-          applySystemChanges(message.changes);
+          applyOrDeferSystemChanges(message.changes);
           break;
         default:
           assertNever(message);
@@ -665,7 +671,7 @@ export function createRealtimeCacheEffects({
         for (const pluginId of pluginIds)
           if (typeof pluginId === "string")
             applyTags(pluginTagScope(pluginId), null);
-        applyTags(CORE_TAG_SCOPE, null);
+        applyOrDeferSystemChanges(["ui-preferences-changed"]);
         invalidateRealtimeQueriesAfterServerReconnect({
           disconnectedAt: event.disconnectedAt,
           queryClient,

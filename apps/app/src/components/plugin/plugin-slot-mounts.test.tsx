@@ -1348,7 +1348,7 @@ describe("useComposer", () => {
     function Harness() {
       const host = useMemo<PluginComposerHost>(
         () => ({
-          scope: { kind: "thread", threadId: "thr_submit" },
+          scope: { kind: "thread", threadId: "thr_submit", environment: null },
           textEffectKey: "thread:thr_submit",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
@@ -1587,7 +1587,7 @@ describe("useComposer().experimental_setSelection", () => {
       }),
     );
     const host = {
-      scope: { kind: "thread", threadId: "thr_own_selection" },
+      scope: { kind: "thread", threadId: "thr_own_selection", environment: null },
       textEffectKey: "thread:thr_own_selection",
       getSelection: () => selection,
       subscribeSelection: (listener: () => void) => {
@@ -1936,10 +1936,11 @@ describe("plugin thread panel actions", () => {
     threadId: string | null;
     openPluginPanel: (args: OpenPluginPanelArgs) => void;
   }) {
-    const { actions } = useThreadFixedTabs({ threadId });
+    const { actions } = useThreadFixedTabs({ threadId, environmentId: null });
     const entries = usePluginPanelActions({
       panel: usePanelFor(actions, openPluginPanel),
       threadId,
+      environmentId: null,
       actions,
     });
     return (
@@ -1993,7 +1994,7 @@ describe("plugin thread panel actions", () => {
           {tab ? (
             <PluginPanelTabContent
               tab={tab}
-              context={{ kind: "thread", threadId: "thr_9" }}
+              context={{ kind: "thread", threadId: "thr_9", environment: null }}
             />
           ) : null}
         </>
@@ -2134,12 +2135,13 @@ describe("plugin thread panel actions", () => {
       opened.push(args.paramsJson);
     };
     function BothActionsHarness() {
-      const { actions } = useThreadFixedTabs({ threadId: "thr_one" });
+      const { actions } = useThreadFixedTabs({ threadId: "thr_one", environmentId: null });
       const { newThreadPanelActions } = usePluginSlots();
       const threadEntries = usePluginPanelActions({
         actions,
         panel: usePanelFor(actions, recordOpen),
         threadId: "thr_9",
+        environmentId: null,
       });
       const rootEntries = usePluginNewThreadPanelActions({
         panel: usePanelFor(newThreadPanelActions, recordOpen),
@@ -2264,7 +2266,7 @@ describe("plugin thread panel actions", () => {
     render(
       <PluginPanelTabContent
         tab={tab}
-        context={{ kind: "thread", threadId: "thr_9" }}
+        context={{ kind: "thread", threadId: "thr_9", environment: null }}
       />,
     );
     expect(screen.queryByText(/This plugin tab is not available/)).toBeNull();
@@ -2293,7 +2295,7 @@ describe("plugin thread panel actions", () => {
     render(
       <PluginPanelTabContent
         tab={tab}
-        context={{ kind: "thread", threadId: "thr_9" }}
+        context={{ kind: "thread", threadId: "thr_9", environment: null }}
       />,
     );
     expect(screen.getByText("panel body for thr_9 / null")).toBeDefined();
@@ -2447,7 +2449,7 @@ describe("plugin file opener tabs", () => {
       const content = () => (
         <PluginPanelTabContent
           tab={tab}
-          context={{ kind: "thread", threadId: "thr_1" }}
+          context={{ kind: "thread", threadId: "thr_1", environment: null }}
           fileOpenerOriginal={<div>native</div>}
         />
       );
@@ -2524,7 +2526,7 @@ describe("plugin file opener tabs", () => {
     render(
       <PluginPanelTabContent
         tab={tab}
-        context={{ kind: "thread", threadId: "thr_1" }}
+        context={{ kind: "thread", threadId: "thr_1", environment: null }}
         fileOpenerOriginal={
           <button type="button">Native line 7 and editor actions</button>
         }

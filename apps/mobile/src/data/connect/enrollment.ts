@@ -54,7 +54,7 @@ export function describeEnrollmentError(error: unknown): EnrollmentFailure {
           code: "machine_limit",
           title: "Device limit reached",
           message:
-            "This account already has the maximum number of paired devices (20). Revoke one you no longer use in the getbb.app dashboard under Machines, then pair again.",
+            "This account already has the maximum number of paired devices. Revoke one you no longer use in the getbb.app dashboard, then pair again.",
         };
       case "network":
         return {
@@ -107,7 +107,12 @@ export async function redeemEnrollment(
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<RedeemedEnrollment> {
   const credential = await redeemMachineCredential(
-    { apexUrl: args.apexUrl, code: args.code, deviceName: args.deviceName },
+    {
+      apexUrl: args.apexUrl,
+      code: args.code,
+      deviceName: args.deviceName,
+      kind: "mobile",
+    },
     fetchImpl,
   );
   const label = (args.label?.trim() || credential.handle).slice(

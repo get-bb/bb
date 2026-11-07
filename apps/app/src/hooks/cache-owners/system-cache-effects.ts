@@ -5,12 +5,8 @@ import type {
   SystemProviderCatalogEntry,
 } from "@bb/server-contract";
 import {
-  allEnvironmentDiffFilesQueryKeyPrefix,
-  allEnvironmentDiffPatchQueryKeyPrefix,
   allEnvironmentFilePreviewQueryKeyPrefix,
-  allEnvironmentMergeBaseBranchesQueryKeyPrefix,
   allEnvironmentQueryKeyPrefix,
-  allEnvironmentWorkStatusQueryKeyPrefix,
   allHostQueryKeyPrefix,
   allMachineEnvironmentQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
@@ -36,9 +32,11 @@ import {
   hostsQueryKey,
   projectsQueryKey,
   serverMoveStatusQueryKey,
+  uiPreferencesQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemProviderCatalogQueryKey,
+  systemProviderStatesQueryKey,
   threadPromptHistoryQueryKeyPrefix,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
@@ -46,7 +44,6 @@ import {
 import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
 import type { QueryClientArg } from "../cache-effect-types";
 import { clearCachedModelCatalogs } from "@/lib/model-catalog-cache";
-import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import { invalidateAppUpdateStatus } from "./app-update-cache-owner";
 import { invalidatePluginList } from "./plugin-cache-owner";
 import { invalidateSystemVersion } from "./system-version-cache-owner";
@@ -78,10 +75,6 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
   }
   invalidateSystemVersion({ queryClient });
   invalidateAppUpdateStatus({ queryClient });
-  bumpAllDiffPatchEvictionGenerations();
-  queryClient.removeQueries({
-    queryKey: allEnvironmentDiffPatchQueryKeyPrefix(),
-  });
 }
 
 export function refetchErroredRealtimeQueriesOnInitialConnect({
@@ -133,6 +126,10 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   });
 }
 
+export function invalidateUiPreferences({ queryClient }: QueryClientArg): void {
+  invalidateQueryKeys({ queryClient, queryKeys: [uiPreferencesQueryKey()] });
+}
+
 export function invalidateMachineEnvironment({
   queryClient,
 }: QueryClientArg): void {
@@ -162,6 +159,15 @@ export function invalidateSystemProviders({
 }: QueryClientArg): Promise<void> {
   return queryClient.invalidateQueries({
     queryKey: allSystemProvidersQueryKeyPrefix(),
+  });
+}
+
+export function restartSystemProviderStatesLoad({
+  queryClient,
+  hostId,
+}: QueryClientArg & { hostId: string | null }): Promise<void> {
+  return queryClient.resetQueries({
+    queryKey: systemProviderStatesQueryKey({ environmentId: null, hostId }),
   });
 }
 
@@ -244,9 +250,6 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allThreadHostFilePreviewQueryKeyPrefix(),
     allTerminalsQueryKeyPrefix(),
     allEnvironmentQueryKeyPrefix(),
-    allEnvironmentWorkStatusQueryKeyPrefix(),
-    allEnvironmentMergeBaseBranchesQueryKeyPrefix(),
-    allEnvironmentDiffFilesQueryKeyPrefix(),
     allEnvironmentFilePreviewQueryKeyPrefix(),
     hostPathExistenceQueryKeyPrefix(),
     allSystemProvidersQueryKeyPrefix(),

@@ -131,6 +131,7 @@ export function createFakeWorkspace(pathname: string) {
     path: pathname,
     isGitRepo: true,
     isWorktree: false,
+    gitCommonDir: `${pathname}/.git`,
     async getDefaultBranch() {
       return "main";
     },
@@ -144,7 +145,11 @@ export function createFakeWorkspace(pathname: string) {
       return { fingerprint: "local-1", branchName: "main" };
     },
     async getSharedGitRefsSnapshot() {
-      return { fingerprint: "refs-1", defaultBranch: "main" };
+      return {
+        defaultBranch: "main",
+        branchNamesFingerprint: "names-1",
+        fingerprintFor: () => "refs-1",
+      };
     },
     async getAdditionalWorkspaceWriteRoots() {
       return [];
@@ -262,6 +267,7 @@ export function createFakeRuntime() {
       state.ranTurnClientRequestId = args.clientRequestId;
       state.ranTurnInput = args.input;
       activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
+      return { status: "started" };
     },
     async steerTurn(args) {
       state.steeredTurnId = args.expectedTurnId;
@@ -318,6 +324,9 @@ export function createFakeRuntime() {
     },
     hasOpenBackgroundWork() {
       return false;
+    },
+    listOpenBackgroundWork() {
+      return [];
     },
     async listModels() {
       return {

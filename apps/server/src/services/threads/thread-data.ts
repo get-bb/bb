@@ -1,9 +1,11 @@
 import {
   canHydrateRetainedEventOutputRowsWithinDataByteLimit,
+  findLastRootStoredTurnStarted,
   findStoredEventRow as findStoredEventRowRecord,
-  getLatestThreadOutputEventRow,
+  getTurnFinalAgentMessageEventRow,
   getLatestThreadSystemErrorEventRow,
   hydrateRetainedEventOutputRows,
+  listLatestTurnFinalAgentMessageEventRows,
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
@@ -162,29 +164,54 @@ export function findThreadEvent(
   return parseStoredEventRow(hydrated ?? row);
 }
 
-export function getLastThreadOutput(
+interface GetTurnFinalOutputArgs {
+  threadId: string;
+  turnId: string;
+}
+
+export function getTurnFinalOutput(
   db: DbConnection,
-  threadId: string,
+  args: GetTurnFinalOutputArgs,
 ): string | null {
-  const row = getLatestThreadOutputEventRow(db, { threadId });
-
+  const row = getTurnFinalAgentMessageEventRow(db, args);
   if (!row) return null;
-
   const eventRow = parseStoredEventRow(row);
-
-  if (eventRow.type === "system/manager/user_message") {
-    return eventRow.data.text.length > 0 ? eventRow.data.text : null;
-  }
-
   if (
     eventRow.type === "item/completed" &&
     eventRow.data.item.type === "agentMessage" &&
-    eventRow.data.item.text.length > 0
+    eventRow.data.item.text.trim().length > 0
   ) {
     return eventRow.data.item.text;
   }
-
   return null;
+}
+
+export function getLatestTurnFinalOutput(
+  db: DbConnection,
+  threadId: string,
+): string | null {
+  const turn = findLastRootStoredTurnStarted(db, { threadId });
+  return turn
+    ? getTurnFinalOutput(db, { threadId, turnId: turn.turnId })
+    : null;
+}
+
+interface ListLatestTurnFinalAgentRepliesArgs {
+  limit: number;
+  threadId: string;
+}
+
+export function listLatestTurnFinalAgentReplies(
+  db: DbConnection,
+  args: ListLatestTurnFinalAgentRepliesArgs,
+): string[] {
+  return listLatestTurnFinalAgentMessageEventRows(db, args).flatMap((row) => {
+    const eventRow = parseStoredEventRow(row);
+    return eventRow.type === "item/completed" &&
+      eventRow.data.item.type === "agentMessage"
+      ? [eventRow.data.item.text]
+      : [];
+  });
 }
 
 export function getLastThreadErrorMessage(

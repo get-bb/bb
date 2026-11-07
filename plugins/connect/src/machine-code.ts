@@ -20,13 +20,20 @@ export async function redeemMachineCode(args: {
   signal: AbortSignal;
   code: string;
   serverUrl: string;
+  deviceName: string | null;
 }): Promise<{ credential: string; machineId: string; serverUrl: string }> {
   const response = await fetch(
     `${deriveConnectBaseUrl(args.serverUrl)}/api/connect/redeem-machine`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: args.code }),
+      body: JSON.stringify({
+        code: args.code,
+        ...(args.deviceName === null
+          ? {}
+          : { deviceName: args.deviceName.slice(0, 128) }),
+        kind: "host",
+      }),
       signal: AbortSignal.any([args.signal, AbortSignal.timeout(10_000)]),
     },
   );

@@ -189,6 +189,7 @@ function createUiPreferences(): UiPreferenceEntries {
     "infoPanel.collapsedSections": uiPreferenceEntry(
       "infoPanel.collapsedSections",
     ),
+    "threadContextCard.pinned": uiPreferenceEntry("threadContextCard.pinned"),
   };
 }
 
@@ -262,11 +263,14 @@ export class DemoWorld {
         case "/system/app-update":
           return json({
             activity: { phase: "idle" },
+            autoUpdate: false,
             available: null,
+            availableSkipped: false,
             blocked: null,
             current: { commit: null, version: SYSTEM_VERSION.currentVersion },
             lastResult: null,
             runningThreadCount: 0,
+            scheduled: null,
             support: { kind: "unsupported", reason: "unmanaged" },
           } satisfies SystemAppUpdateStatus);
         case "/system/cli-command":
@@ -550,7 +554,7 @@ export class DemoWorld {
       activeWorkflows: [],
       activeBackgroundCommands: [],
       pendingTodos: null,
-      goal: null,
+      extensionStates: {},
       providerCommands: null,
       sessionOptions: null,
       modelFallback: null,

@@ -19,7 +19,6 @@ import { ManagePanel } from "../views/manage/manage-panel.js";
 import { EmptyState } from "../components/empty-state.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { TasksRefreshProvider } from "./refresh.js";
 
 const BOARD_MIN_WIDTH = 448;
 
@@ -49,9 +48,9 @@ function RouteOutlet({
 }) {
   switch (route.kind) {
     case "all":
-      return <ListView projectId={null} />;
+      return <ListView key="all" projectId={null} />;
     case "active":
-      return <ListView projectId={null} activeOnly />;
+      return <ListView key="active" projectId={null} activeOnly />;
     case "manage":
       return <ManagePanel />;
     case "task":
@@ -60,7 +59,7 @@ function RouteOutlet({
       return route.view === "board" && boardUsable ? (
         <BoardView projectId={route.projectId} />
       ) : (
-        <ListView projectId={route.projectId} />
+        <ListView key={route.projectId} projectId={route.projectId} />
       );
   }
 }
@@ -216,9 +215,5 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
 }
 
 export function TasksAppShell(props: PluginNavPanelProps) {
-  return (
-    <TasksRefreshProvider>
-      <TasksAppShellContent {...props} />
-    </TasksRefreshProvider>
-  );
+  return <TasksAppShellContent {...props} />;
 }

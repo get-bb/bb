@@ -1,5 +1,8 @@
 import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
-import { createRpcQueryHooks } from "@get-bb/plugin-sdk/internal/rpc-query-host";
+import {
+  createRpcQueryHooks,
+  type RpcQueryHost,
+} from "@get-bb/plugin-sdk/internal/rpc-query-host";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
   useCallback,
@@ -10,7 +13,11 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type {
   BbContext,
   ComposerView,
@@ -25,6 +32,7 @@ import type {
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalPanelController,
+  ExperimentalPanelTabs,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
@@ -366,9 +374,19 @@ function useExperimentalFixedTabTarget<Target extends JsonValue>(
   };
 }
 
+function useExperimentalPanelTabs(): ExperimentalPanelTabs {
+  const { panel } = useAppNavigationHost();
+  return useSyncExternalStore(
+    panel.subscribeTabs,
+    panel.getTabs,
+    panel.getTabs,
+  );
+}
+
 export {
   useExperimentalAppPanel as experimental_useAppPanel,
   useExperimentalFixedTabTarget as experimental_useFixedTabTarget,
+  useExperimentalPanelTabs as experimental_usePanelTabs,
 };
 
 function createComposerScopeOwnership(scopeKey: string) {
@@ -776,43 +794,51 @@ export function useComposers(): readonly PluginComposerApi[] {
   );
 }
 
+const rpcQueryHosts = new WeakMap<
+  QueryClient,
+  Map<string | null, RpcQueryHost>
+>();
+
+function rpcQueryHostFor(
+  pluginId: string | null,
+  queryClient: QueryClient,
+): RpcQueryHost {
+  let hosts = rpcQueryHosts.get(queryClient);
+  if (hosts === undefined) {
+    hosts = new Map();
+    rpcQueryHosts.set(queryClient, hosts);
+  }
+  const cached = hosts.get(pluginId);
+  if (cached !== undefined) return cached;
+  const host: RpcQueryHost = {
+    pluginId,
+    queryClient,
+    call: (id, method, input) => callPluginRpc(fetch, id, method, input),
+    watch: (id, method, read) => {
+      const target = {
+        kind: "plugin-read",
+        pluginId: id,
+        method,
+        read,
+      } as const;
+      wsManager.subscribe(target);
+      return () => wsManager.unsubscribe(target);
+    },
+    subscribe: (id) => {
+      const target = { kind: "plugin", pluginId: id } as const;
+      wsManager.subscribe(target);
+      return () => wsManager.unsubscribe(target);
+    },
+  };
+  hosts.set(pluginId, host);
+  return host;
+}
+
 export const {
   experimental_useRpcQuery,
   experimental_useRpcKeyedQuery,
   experimental_useRpcMutation,
   experimental_useRpcRefresh,
-} = createRpcQueryHooks(() => {
-  const pluginId = useContext(PluginContext);
-  const queryClient = useQueryClient();
-  return useMemo(
-    () => ({
-      pluginId,
-      queryClient,
-      call: (
-        id: string,
-        method: string,
-        input: import("@bb/domain").JsonValue,
-      ) => callPluginRpc(fetch, id, method, input),
-      watch: (
-        id: string,
-        method: string,
-        read: { input: import("@bb/domain").JsonValue } | { key: string },
-      ) => {
-        const target = {
-          kind: "plugin-read",
-          pluginId: id,
-          method,
-          read,
-        } as const;
-        wsManager.subscribe(target);
-        return () => wsManager.unsubscribe(target);
-      },
-      subscribe: (id: string) => {
-        const target = { kind: "plugin", pluginId: id } as const;
-        wsManager.subscribe(target);
-        return () => wsManager.unsubscribe(target);
-      },
-    }),
-    [pluginId, queryClient],
-  );
-});
+} = createRpcQueryHooks(() =>
+  rpcQueryHostFor(useContext(PluginContext), useQueryClient()),
+);

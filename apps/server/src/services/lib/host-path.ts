@@ -1,15 +1,30 @@
-import { joinHostPath } from "@bb/domain";
+import {
+  getHostPathBasename,
+  getHostPathDirname,
+  joinHostPath,
+} from "@bb/domain";
+
+function requireAbsoluteHostPathResult<T>(result: T | null, path: string): T {
+  if (result === null) {
+    throw new Error(`Host path is not absolute: ${path}`);
+  }
+  return result;
+}
 
 export function joinHostPathSegments(
   rootPath: string,
   ...segments: string[]
 ): string {
-  const joined = joinHostPath({
+  return requireAbsoluteHostPathResult(
+    joinHostPath({ rootPath, relativePath: segments.join("/") }),
     rootPath,
-    relativePath: segments.join("/"),
-  });
-  if (joined === null) {
-    throw new Error(`Host path is not absolute: ${rootPath}`);
-  }
-  return joined;
+  );
+}
+
+export function hostPathDirname(path: string): string {
+  return requireAbsoluteHostPathResult(getHostPathDirname(path), path);
+}
+
+export function hostPathBasename(path: string): string {
+  return requireAbsoluteHostPathResult(getHostPathBasename(path), path);
 }

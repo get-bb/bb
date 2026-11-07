@@ -56,6 +56,20 @@ function settlePushes(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 50));
 }
 
+async function waitForTimelinePush(
+  socket: ReturnType<typeof createMockHubSocket>,
+): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        socket.messages.some(
+          (message) => JSON.parse(message).type === "thread-timeline",
+        ),
+      { timeout: 2_000 },
+    )
+    .toBe(true);
+}
+
 function timelineSignals(messages: readonly string[]): ThreadTimelineSignal[] {
   return messages
     .map((message) => JSON.parse(message))
@@ -113,7 +127,7 @@ describe("thread-timeline realtime push", () => {
           data: { itemId: "assistant-1", delta },
         });
         harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
-        await settlePushes();
+        await waitForTimelinePush(socket);
         const [signal] = timelineSignals(socket.messages.splice(0));
         expect(signal).toMatchObject({
           target,
@@ -146,7 +160,7 @@ describe("thread-timeline realtime push", () => {
         data: { status: "completed" },
       });
       harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [completed] = timelineSignals(socket.messages.splice(0));
       expect(isThreadTimelineDelta(completed!.timeline)).toBe(true);
       expect(applySignal(client, completed!)).toEqual(
@@ -182,6 +196,7 @@ describe("thread-timeline realtime push", () => {
         harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
         harness.deps.hub.notifyThread(other.id, ["events-appended"]);
       }
+      await waitForTimelinePush(socket);
       await settlePushes();
 
       const signals = timelineSignals(socket.messages);
@@ -206,7 +221,7 @@ describe("thread-timeline realtime push", () => {
         deferContent: false,
       };
       let socket = createMockHubSocket();
-      const appendAndPush = async (sequence: number) => {
+      const append = (sequence: number) => {
         seedEvent(harness.deps, {
           threadId: thread.id,
           environmentId: environment.id,
@@ -217,21 +232,27 @@ describe("thread-timeline realtime push", () => {
           data: sequence === 1 ? {} : { itemId: "a", delta: `${sequence}\n` },
         });
         harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
-        await settlePushes();
-        return timelineSignals(socket.messages.splice(0));
       };
 
       harness.deps.hub.subscribe(socket, target);
-      const [first] = await appendAndPush(1);
+      append(1);
+      await waitForTimelinePush(socket);
+      const [first] = timelineSignals(socket.messages.splice(0));
       expect(isThreadTimelineDelta(first!.timeline)).toBe(false);
-      const [second] = await appendAndPush(2);
+      append(2);
+      await waitForTimelinePush(socket);
+      const [second] = timelineSignals(socket.messages.splice(0));
       const received = applySignal(applySignal(null, first!), second!);
       expect(received).not.toBeNull();
       harness.deps.hub.unregisterClient(socket);
-      expect(await appendAndPush(3)).toEqual([]);
+      append(3);
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
       socket = createMockHubSocket();
       harness.deps.hub.subscribe(socket, { ...target });
-      const [resumed] = await appendAndPush(4);
+      append(4);
+      await waitForTimelinePush(socket);
+      const [resumed] = timelineSignals(socket.messages.splice(0));
       expect(resumed?.timeline).toMatchObject({
         delta: { afterTag: received!.tag },
       });
@@ -268,7 +289,7 @@ describe("thread-timeline realtime push", () => {
       harness.deps.hub.subscribe(socket, target);
       let client = await freshTimeline(harness, thread.id);
       append(2);
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [pushed] = timelineSignals(socket.messages.splice(0));
       client = applySignal(client, pushed!)!;
 
@@ -282,7 +303,7 @@ describe("thread-timeline realtime push", () => {
       client = refetched.timeline;
 
       append(4);
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [resumed] = timelineSignals(socket.messages.splice(0));
       expect(resumed?.timeline).toMatchObject({
         maxSeq: 4,
@@ -357,7 +378,7 @@ describe("thread-timeline realtime push", () => {
 
       startTurn();
       appendDelta();
-      await settlePushes();
+      await waitForTimelinePush(socket);
 
       const [pushed] = timelineSignals(socket.messages.splice(0));
       expect(pushed?.timeline).toMatchObject({
@@ -384,7 +405,10 @@ describe("thread-timeline realtime push", () => {
       harness.deps.hub.subscribe(activeSocket, { ...target });
 
       appendDelta();
-      await settlePushes();
+      await Promise.all([
+        waitForTimelinePush(idleSocket),
+        waitForTimelinePush(activeSocket),
+      ]);
 
       const fresh = await freshTimeline(harness, thread.id);
       const [idlePush] = timelineSignals(idleSocket.messages.splice(0));
@@ -426,7 +450,7 @@ describe("thread-timeline realtime push", () => {
       harness.deps.hub.subscribe(socket, target);
       let client = await freshTimeline(harness, thread.id);
       append(2);
-      await settlePushes();
+      await waitForTimelinePush(socket);
       client = applySignal(
         client,
         timelineSignals(socket.messages.splice(0))[0]!,
@@ -439,7 +463,7 @@ describe("thread-timeline realtime push", () => {
         .run(JSON.stringify({ itemId: "a", delta: "rewritten\n" }), thread.id);
       harness.deps.hub.notifyThread(thread.id, ["history-rewritten"]);
       append(3);
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [rewritten] = timelineSignals(socket.messages.splice(0));
       expect(isThreadTimelineDelta(rewritten!.timeline)).toBe(true);
       const applied = applySignal(client, rewritten!);
@@ -512,7 +536,7 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
 
       subscribe(harness, socket, target, fetched.tag);
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [pushed] = timelineSignals(socket.messages.splice(0));
       expect(pushed?.timeline).toMatchObject({
         maxSeq: 3,
@@ -522,6 +546,7 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       expect(client).toEqual(await freshTimeline(harness, thread.id));
 
       append();
+      await waitForTimelinePush(socket);
       await settlePushes();
       const signals = timelineSignals(socket.messages.splice(0));
       expect(signals).toHaveLength(1);
@@ -557,7 +582,7 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       append();
       const socket = createMockHubSocket();
       subscribe(harness, socket, target, held.tag);
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [pushed] = timelineSignals(socket.messages.splice(0));
       expect(pushed?.timeline).toMatchObject({
         maxSeq: 3,
@@ -569,13 +594,47 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
     });
   });
 
+  it("pushes a delta to a subscriber that returns with the last pushed window's tag", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const fetched = await freshTimeline(harness, thread.id);
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, fetched.tag);
+      append();
+      await waitForTimelinePush(socket);
+      const [pushed] = timelineSignals(socket.messages.splice(0));
+      const held = applySignal(fetched, pushed!);
+      expect(held).not.toBeNull();
+      onClientSocketMessage(
+        harness.deps.hub,
+        socket,
+        JSON.stringify({ type: "unsubscribe", target }),
+      );
+      vi.useFakeTimers({ now: Date.now() + 30_001, toFake: ["Date"] });
+      append();
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
+
+      subscribe(harness, socket, target, held!.tag);
+      await waitForTimelinePush(socket);
+      const [resumed] = timelineSignals(socket.messages.splice(0));
+      expect(resumed?.timeline).toMatchObject({
+        delta: { afterTag: held!.tag },
+      });
+      expect(applySignal(held, resumed!)).toEqual(
+        await freshTimeline(harness, thread.id),
+      );
+    });
+  });
+
   it("pushes the full window for a tag the server no longer holds", async () => {
     await withTestHarness(async (harness) => {
       const { append, target, thread } = seedRunningThread(harness);
       append();
       const socket = createMockHubSocket();
       subscribe(harness, socket, target, "evicted-tag");
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [pushed] = timelineSignals(socket.messages.splice(0));
       expect(isThreadTimelineDelta(pushed!.timeline)).toBe(false);
       expect(applySignal(null, pushed!)).toEqual(
@@ -597,14 +656,18 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       const newerSocket = createMockHubSocket();
       subscribe(harness, olderSocket, target, older.tag);
       subscribe(harness, newerSocket, target, newer.tag);
-      await settlePushes();
+      await waitForTimelinePush(olderSocket);
       for (const socket of [legacySocket, olderSocket, newerSocket]) {
         socket.messages.splice(0);
       }
       const caughtUp = await freshTimeline(harness, thread.id);
 
       append();
-      await settlePushes();
+      await Promise.all([
+        waitForTimelinePush(olderSocket),
+        waitForTimelinePush(newerSocket),
+        waitForTimelinePush(legacySocket),
+      ]);
       const fresh = await freshTimeline(harness, thread.id);
       const [olderPush] = timelineSignals(olderSocket.messages);
       const [newerPush] = timelineSignals(newerSocket.messages);
@@ -631,7 +694,10 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       harness.deps.hub.subscribe(newerSocket, { ...target }, newer.tag);
 
       append();
-      await settlePushes();
+      await Promise.all([
+        waitForTimelinePush(olderSocket),
+        waitForTimelinePush(newerSocket),
+      ]);
       const fresh = await freshTimeline(harness, thread.id);
       const [olderPush] = timelineSignals(olderSocket.messages);
       const [newerPush] = timelineSignals(newerSocket.messages);
@@ -661,7 +727,7 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       }
       harness.deps.hub.setClientVisible(socket, true);
       append();
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [resumed] = timelineSignals(socket.messages.splice(0));
       expect(resumed?.timeline).toMatchObject({
         delta: { afterTag: held.tag },
@@ -685,7 +751,7 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
       harness.deps.hub.setClientVisible(socket, true);
       append();
-      await settlePushes();
+      await waitForTimelinePush(socket);
       const [resumed] = timelineSignals(socket.messages.splice(0));
       expect(resumed?.timeline).toMatchObject({
         delta: { afterTag: held.tag },

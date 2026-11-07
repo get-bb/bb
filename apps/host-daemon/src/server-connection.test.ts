@@ -31,6 +31,7 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;
   onMachineShutdown?: () => void | Promise<void>;
+  onInteractiveRequestsEnded?: ServerConnectionOptions["onInteractiveRequestsEnded"];
   onServerMoved?: (notice: ServerMovedNotice) => Promise<void>;
   onMachineEnvironment?: (
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
@@ -62,6 +63,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     agentCpuPriority: true,
     leaseTimeoutMs: args.leaseTimeoutMs,
     retiredEnvironmentIds: [],
+    endedInteractiveRequests: [],
     connectShares: { generation: 0, ports: [] },
     connectNext: { generation: 0, config: null },
     pluginHostGenerations: [],
@@ -195,6 +197,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     protocolSelfUpdater: args.protocolSelfUpdater,
     onSelfUpdateInstalled: args.onSelfUpdateInstalled,
     onMachineShutdown: args.onMachineShutdown,
+    onInteractiveRequestsEnded: args.onInteractiveRequestsEnded,
     onServerMoved: args.onServerMoved,
     onMachineEnvironment: args.onMachineEnvironment,
     onIdleProviderSessionTimeout: args.onIdleProviderSessionTimeout,
@@ -341,6 +344,38 @@ describe("ServerConnection", () => {
 
     await vi.waitFor(() => {
       expect(onMachineShutdown).toHaveBeenCalledOnce();
+    });
+    await connection.shutdown();
+  });
+
+  it("hands ended provider questions to the registry", async () => {
+    const onInteractiveRequestsEnded = vi.fn();
+    const { connection, webSocket } = createConnectionFixture({
+      onInteractiveRequestsEnded,
+    });
+    await connection.start();
+    const socket = webSocket.sockets[0];
+    if (!socket) throw new Error("Expected test socket");
+    const request = {
+      threadId: "thr_ended",
+      providerId: "claude-code",
+      providerThreadId: "provider-thr-ended",
+      providerRequestId: "request-ended",
+    };
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "interactive-requests.end",
+        requests: [request],
+        reason: "closed on the server",
+      }),
+    });
+
+    await vi.waitFor(() => {
+      expect(onInteractiveRequestsEnded).toHaveBeenCalledWith({
+        reason: "closed on the server",
+        requests: [request],
+      });
     });
     await connection.shutdown();
   });

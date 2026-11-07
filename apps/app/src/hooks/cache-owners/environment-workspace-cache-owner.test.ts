@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { QueryObserver } from "@tanstack/react-query";
+import { describe, expect, it, vi } from "vitest";
+import type { Environment } from "@bb/domain";
 import { createAppQueryClient } from "@/lib/query-client";
+import { sdk } from "@/lib/sdk";
+import { environmentQueryOptions } from "../queries/environment-queries";
 import {
   makeEnvironment,
   makeThreadListEntry,
@@ -19,6 +23,10 @@ import {
   completeEnvironmentNameUpdateTransaction,
   rollbackEnvironmentNameUpdateTransaction,
 } from "./environment-workspace-cache-owner";
+
+vi.mock("@/lib/sdk", () => ({
+  sdk: { environments: { get: vi.fn() } },
+}));
 
 function makeQueryClient() {
   return createAppQueryClient({
@@ -192,6 +200,52 @@ describe("applyEnvironmentUpdateResult", () => {
 
     expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
       true,
+    );
+  });
+
+  it("keeps a rename result when an older environment fetch lands later", async () => {
+    const queryClient = makeQueryClient();
+    const original = makeTestEnvironment("Original environment");
+    let resolveStaleFetch: (environment: Environment) => void = () => {};
+    vi.mocked(sdk.environments.get).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveStaleFetch = resolve;
+      }),
+    );
+    const observer = new QueryObserver(
+      queryClient,
+      environmentQueryOptions("env_1"),
+    );
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      const renamed = {
+        ...makeTestEnvironment("Renamed environment"),
+        updatedAt: original.updatedAt + 1,
+      };
+      applyEnvironmentUpdateResult({ environment: renamed, queryClient });
+      resolveStaleFetch(original);
+      await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      expect(queryClient.getQueryData(environmentQueryKey("env_1"))).toEqual(
+        renamed,
+      );
+    } finally {
+      unsubscribe();
+      queryClient.clear();
+    }
+  });
+
+  it("keeps a newer cached environment over an older rename result", () => {
+    const queryClient = makeQueryClient();
+    const renamed = makeTestEnvironment("Renamed environment");
+    const newer = {
+      ...makeTestEnvironment("Renamed environment"),
+      status: "error" as const,
+      updatedAt: renamed.updatedAt + 1,
+    };
+    queryClient.setQueryData(environmentQueryKey("env_1"), newer);
+    applyEnvironmentUpdateResult({ environment: renamed, queryClient });
+    expect(queryClient.getQueryData(environmentQueryKey("env_1"))).toEqual(
+      newer,
     );
   });
 });

@@ -825,6 +825,87 @@ describe("public thread interaction routes", () => {
     },
   );
 
+  it.each([
+    { name: "missing", description: "no answer", optionalAnswer: {} },
+    {
+      name: "empty",
+      description: "an empty answer",
+      optionalAnswer: { notes: { selected: [] } },
+    },
+  ])(
+    "accepts $description only for an optional question",
+    async ({ name, optionalAnswer }) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedThreadFixture(harness, {
+          session: { id: `host-public-thread-optional-${name}` },
+        });
+        const userQuestion = registerPendingInteraction(
+          harness.deps,
+          harness.deps.pendingInteractions,
+          {
+            threadId: thread.id,
+            turnId: `turn-optional-${name}`,
+            providerId: "codex",
+            providerThreadId: `provider-thread-optional-${name}`,
+            providerRequestId: `request-optional-${name}`,
+            payload: {
+              kind: "user_question",
+              questions: [
+                {
+                  id: "target",
+                  prompt: "Which target?",
+                  multiSelect: false,
+                  options: [{ value: "staging", label: "Staging" }],
+                  allowFreeText: false,
+                  required: true,
+                },
+                {
+                  id: "notes",
+                  prompt: "Anything else?",
+                  multiSelect: false,
+                  allowFreeText: true,
+                  required: false,
+                },
+              ],
+            },
+          },
+        );
+        if (userQuestion.outcome === "rejected") {
+          throw new Error(userQuestion.reason);
+        }
+        const resolve = (answers: Record<string, unknown>) =>
+          harness.app.request(
+            `/api/v1/threads/${thread.id}/interactions/${userQuestion.interaction.id}/resolve`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ kind: "user_answer", answers }),
+            },
+          );
+
+        const missingRequired = await resolve(optionalAnswer);
+        expect(missingRequired.status).toBe(400);
+        await expect(readJson(missingRequired)).resolves.toEqual({
+          code: "invalid_request",
+          message: "Missing answer for question 'target'",
+        });
+
+        const answered = await resolve({
+          target: { selected: ["staging"] },
+          ...optionalAnswer,
+        });
+        expect(answered.status).toBe(200);
+        await expect(readJson(answered)).resolves.toMatchObject({
+          status: "resolving",
+          resolution: {
+            kind: "user_answer",
+            answers: { target: { selected: ["staging"] }, ...optionalAnswer },
+          },
+        });
+      });
+    },
+  );
+
   it("holds sends and rejects queued-message send while a thread awaits user interaction", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -843,9 +924,6 @@ describe("public thread interaction routes", () => {
         environmentId: environment.id,
         status: "idle",
       });
-      // An `idle` thread has always run a turn, and the checkpoint resolves the
-      // execution tuple it would freeze on a queued row before it decides to
-      // queue — so the fixture needs the prior turn a real thread would have.
       seedThreadRuntimeState(harness.deps, {
         environmentId: environment.id,
         providerThreadId: "provider-thread-blocked",
@@ -899,8 +977,6 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
-      // A prompt cannot interrupt the interaction, but the message is not lost:
-      // it joins the queue and delivers once the interaction settles (#1650).
       expect(sendResponse.status).toBe(200);
       await expect(readJson(sendResponse)).resolves.toMatchObject({
         ok: true,
@@ -911,8 +987,6 @@ describe("public thread interaction routes", () => {
           sendAt: null,
         },
       });
-      // The queued row sits alongside the message that was already queued, and
-      // it is the only one carrying the interaction wait.
       expect(
         listQueuedThreadMessages(harness.db, thread.id).filter(
           (row) => row.waitingOn !== null,
@@ -1002,9 +1076,6 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
-      // The queue drains when the thread is next idle, which an open
-      // interaction does not change, so an explicit queue request queues behind
-      // the running turn rather than behind the interaction.
       expect(activeSendResponse.status).toBe(200);
       await expect(readJson(activeSendResponse)).resolves.toMatchObject({
         ok: true,

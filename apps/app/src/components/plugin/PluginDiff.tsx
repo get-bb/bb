@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { DiffProps } from "@get-bb/plugin-sdk";
 import { DiffHost } from "@/components/code/DiffHost";
-import { normalizeFilePatch } from "@/components/git-diff/git-diff-parsing";
+import { normalizeFilePatch } from "@bb/shared-ui/git-diff/parsing";
 import { useSelectionAddToChat } from "@/components/thread/SelectionAddToChatContext";
 import { cn } from "@bb/shared-ui/lib/utils";
 

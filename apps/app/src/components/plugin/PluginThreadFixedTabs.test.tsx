@@ -51,11 +51,14 @@ function install(title = "Status") {
           id: "status",
           title,
           icon: "Info",
-          useVisible: ({ threadId }) =>
-            usePluginId() === "example" && threadId !== "hidden",
-          component: ({ threadId }) => (
+          useVisible: ({ threadId, environment }) =>
+            usePluginId() === "example" &&
+            threadId !== "hidden" &&
+            environment?.id !== "env_hidden",
+          component: ({ threadId, environment }) => (
             <div>
               {threadId}:{title}
+              {environment === null ? "" : `@${environment.id}`}
             </div>
           ),
         });
@@ -64,12 +67,24 @@ function install(title = "Status") {
   );
 }
 
-function Host({ threadId }: { threadId: string | null }) {
-  const { entries, observers } = useThreadFixedTabs({ threadId });
+function Host({
+  threadId,
+  environmentId = null,
+}: {
+  threadId: string | null;
+  environmentId?: string | null;
+}) {
+  const { entries, observers } = useThreadFixedTabs({
+    threadId,
+    environmentId,
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const descriptors = entries.map((entry) =>
-    createThreadFixedTabDescriptor(entry, threadId ?? "", () =>
-      setActiveId(entry.tab.id),
+    createThreadFixedTabDescriptor(
+      entry,
+      threadId ?? "",
+      environmentId === null ? null : { id: environmentId },
+      () => setActiveId(entry.tab.id),
     ),
   );
   return (
@@ -90,6 +105,7 @@ function Host({ threadId }: { threadId: string | null }) {
 function RestoringHost() {
   const { entries, observers, isReady } = useThreadFixedTabs({
     threadId: "thr_restore",
+    environmentId: null,
   });
   const state = useReconciledFixedPanelTabsState({
     fixedTabs: entries.map((entry) => entry.tab),
@@ -105,20 +121,25 @@ function RestoringHost() {
   );
 }
 
-function mount(threadId: string | null) {
+function mount(threadId: string | null, environmentId: string | null = null) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const result = render(<Host threadId={threadId} />, {
-    wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </QueryClientProvider>
-    ),
-  });
+  const result = render(
+    <Host threadId={threadId} environmentId={environmentId} />,
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <MemoryRouter>{children}</MemoryRouter>
+        </QueryClientProvider>
+      ),
+    },
+  );
   return {
     changeThread: (id: string | null) =>
-      result.rerender(<Host threadId={id} />),
+      result.rerender(<Host threadId={id} environmentId={environmentId} />),
+    changeEnvironment: (id: string | null) =>
+      result.rerender(<Host threadId={threadId} environmentId={id} />),
   };
 }
 
@@ -142,6 +163,15 @@ describe("thread fixed-tab contract", () => {
     view.changeThread("thr_one");
     fireEvent.click(screen.getByRole("button", { name: "Status" }));
     expect(screen.getByText("thr_one:Status")).toBeTruthy();
+  });
+
+  it("hands the thread's environment to the tab and its visibility hook", () => {
+    install();
+    const view = mount("thr_one", "env_one");
+    fireEvent.click(screen.getByRole("button", { name: "Status" }));
+    expect(screen.getByText("thr_one:Status@env_one")).toBeTruthy();
+    view.changeEnvironment("env_hidden");
+    expect(screen.queryByRole("button", { name: "Status" })).toBeNull();
   });
 
   it("keeps a restored selection while registrations and initial visibility are loading", () => {

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appInstallFromServerConfig,
   createTelemetryService,
-  runWithTelemetryAppSurface,
+  runWithTelemetryRequest,
 } from "../../src/services/system/telemetry.js";
 
 function createTestLogger() {
@@ -50,15 +50,18 @@ describe("telemetry service", () => {
     });
 
     telemetry.capture({ name: "app_started" });
-    runWithTelemetryAppSurface("desktop", () => {
-      telemetry.capture({
-        name: "thread_created",
-        properties: {
-          is_child_thread: true,
-          provider: "claude-code",
-        },
-      });
-    });
+    runWithTelemetryRequest(
+      { appSurface: "desktop", accessRoute: "connect" },
+      () => {
+        telemetry.capture({
+          name: "thread_created",
+          properties: {
+            is_child_thread: true,
+            provider: "claude-code",
+          },
+        });
+      },
+    );
     telemetry.capture({
       name: "user_message_sent",
       properties: {
@@ -99,10 +102,12 @@ describe("telemetry service", () => {
       properties: {
         app_version: "1.2.3",
         app_surface: "desktop",
+        access_route: "connect",
         is_child_thread: true,
         provider: "claude-code",
       },
     });
+    expect(calls[2]?.payload.properties).not.toHaveProperty("access_route");
     expect(calls[2]?.payload).toMatchObject({
       event: "user_message_sent",
       properties: {
@@ -112,6 +117,50 @@ describe("telemetry service", () => {
         message_source: "thread_send",
         provider: "codex",
       },
+    });
+  });
+
+  it("adds shared properties such as a flag variant to later events", async () => {
+    const telemetry = await createTelemetryService({
+      apiKey: "phc_test",
+      appInstall: null,
+      appSurface: "web",
+      appVersion: "1.2.3",
+      dataDir,
+      telemetryEnabled: true,
+      enabled: true,
+      logger: createTestLogger(),
+    });
+    telemetry.capture({ name: "app_started" });
+    telemetry.setSharedProperty("$feature/setup-guide-redesign", "new");
+    telemetry.capture({
+      name: "turn_finished",
+      properties: {
+        outcome: "succeeded",
+        error_category: "none",
+        provider: "codex",
+        install_turn_number: 1,
+        execution_location: "server_machine",
+      },
+    });
+
+    const payloads = fetchMock.mock.calls.map((call) => {
+      const [, init] = call as [string, { body: string }];
+      return JSON.parse(init.body) as { properties: Record<string, unknown> };
+    });
+    expect(payloads[0]?.properties).not.toHaveProperty(
+      "$feature/setup-guide-redesign",
+    );
+    expect(payloads[1]?.properties).toMatchObject({
+      "$feature/setup-guide-redesign": "new",
+      install_turn_number: 1,
+      outcome: "succeeded",
+    });
+    expect(telemetry.featureFlagIdentity()).toEqual({
+      apiKey: "phc_test",
+      distinctId: (
+        await readFile(join(dataDir, "telemetry-id"), "utf8")
+      ).trim(),
     });
   });
 

@@ -38,6 +38,21 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
 }
 
+function readPid(file: string): number | null {
+  if (!existsSync(file)) return null;
+  const pid = Number(readFileSync(file, "utf8"));
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+}
+
+async function waitForPid(file: string): Promise<number> {
+  let pid = 0;
+  await waitFor(() => {
+    pid = readPid(file) ?? 0;
+    return pid > 0;
+  });
+  return pid;
+}
+
 const shutdowns = (["SIGTERM", "SIGINT", "stdin"] as const).filter(
   (shutdown) => shutdown === "stdin" || process.platform !== "win32",
 );
@@ -147,8 +162,7 @@ input.on("line", (line) => {
           1,
         );
       }
-      await waitFor(() => existsSync(readyFile));
-      const pid = Number(readFileSync(readyFile, "utf8"));
+      const pid = await waitForPid(readyFile);
       expect(isAlive(pid)).toBe(true);
       if (shutdown === "stdin") worker.stdin.end();
       else worker.kill(shutdown);
@@ -186,10 +200,8 @@ input.on("line", (line) => {
         worker.kill("SIGKILL");
       await exited;
       for (const file of [readyFile, lateFile]) {
-        if (existsSync(file)) {
-          const pid = Number(readFileSync(file, "utf8"));
-          if (isAlive(pid)) process.kill(pid, "SIGKILL");
-        }
+        const pid = readPid(file);
+        if (pid !== null && isAlive(pid)) process.kill(pid, "SIGKILL");
       }
       worker.stdout.destroy();
       worker.stderr.destroy();
@@ -308,8 +320,7 @@ input.on("line", (line) => {
         },
         2,
       );
-      await waitFor(() => existsSync(childFile));
-      const childPid = Number(readFileSync(childFile, "utf8"));
+      const childPid = await waitForPid(childFile);
       expect(isAlive(childPid)).toBe(true);
       if (shutdown === "stdin") worker.stdin.end();
       else worker.kill(shutdown);
@@ -328,10 +339,8 @@ input.on("line", (line) => {
       if (worker.exitCode === null && worker.signalCode === null)
         worker.kill("SIGKILL");
       await exited;
-      if (existsSync(childFile)) {
-        const pid = Number(readFileSync(childFile, "utf8"));
-        if (isAlive(pid)) process.kill(pid, "SIGKILL");
-      }
+      const pid = readPid(childFile);
+      if (pid !== null && isAlive(pid)) process.kill(pid, "SIGKILL");
       worker.stdout.destroy();
       worker.stderr.destroy();
       rmSync(dir, { recursive: true, force: true });

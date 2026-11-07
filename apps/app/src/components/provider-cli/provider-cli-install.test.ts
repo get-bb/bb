@@ -1,9 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { ProviderCliInstallEvent } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BbHttpError } from "@bb/sdk/browser";
+import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import {
   allSystemExecutionOptionsQueryKeyPrefix,
   hostProviderCliStatusQueryKey,
@@ -30,6 +31,10 @@ vi.mock("@/components/dialogs/ProviderCliInstallLogDialog", () => ({
   ProviderCliInstallLogDialog: () => null,
 }));
 
+vi.mock("@/components/onboarding/onboarding-telemetry", () => ({
+  recordTelemetryEvent: vi.fn(),
+}));
+
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -53,6 +58,7 @@ vi.mock("@/lib/sdk", () => {
 
 const installHostProviderCliMock = vi.mocked(sdk.hosts.installProviderCli);
 const appToastMock = vi.mocked(appToast);
+const telemetryMock = vi.mocked(recordTelemetryEvent);
 
 let pendingInstalls: DeferredInstall[] = [];
 let queryClient: QueryClient;
@@ -423,5 +429,77 @@ describe("provider CLI install store", () => {
     expect(
       new TextEncoder().encode(newestFailure.logDialogState.log).byteLength,
     ).toBeLessThanOrEqual(PROVIDER_CLI_FAILURE_LOG_MAX_BYTES);
+  });
+});
+
+describe("onboarding agent install outcomes", () => {
+  it.each([
+    { success: true, outcome: "succeeded", failure: {} },
+    {
+      success: false,
+      outcome: "failed",
+      failure: { failure_reason: "command_failed" },
+    },
+  ])(
+    "records started then $outcome for a guide install",
+    async ({ success, outcome, failure }) => {
+      startProviderCliInstall({
+        hostId: "host_1",
+        issue: issueForProvider("codex"),
+        onboardingEntry: "first_run",
+      });
+      completeInstall(installAt(0), {
+        type: "completed",
+        provider: "codex",
+        success,
+        exitCode: success ? 0 : 1,
+        signal: null,
+      });
+      await settle();
+
+      expect(
+        telemetryMock.mock.calls.map(([event]) => event.properties),
+      ).toEqual([
+        {
+          entry: "first_run",
+          step: "agent",
+          operation: "update",
+          outcome: "started",
+          resource_id: "codex",
+        },
+        {
+          entry: "first_run",
+          step: "agent",
+          operation: "update",
+          outcome,
+          resource_id: "codex",
+          ...failure,
+        },
+      ]);
+    },
+  );
+
+  it("records a failed request and nothing outside the guide", async () => {
+    startProviderCliInstall({
+      hostId: "host_1",
+      issue: issueForProvider("codex"),
+    });
+    installAt(0).reject(new Error("offline"));
+    await settle();
+    expect(telemetryMock).not.toHaveBeenCalled();
+
+    startProviderCliInstall({
+      hostId: "host_1",
+      issue: issueForProvider("codex"),
+      onboardingEntry: "replay",
+    });
+    installAt(1).reject(new BbRequestTimeoutError(30_000));
+    await settle();
+    expect(
+      telemetryMock.mock.calls.map(([event]) => event.properties),
+    ).toMatchObject([
+      { outcome: "started" },
+      { outcome: "failed", failure_reason: "timed_out" },
+    ]);
   });
 });

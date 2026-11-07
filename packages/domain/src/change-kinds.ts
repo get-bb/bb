@@ -28,6 +28,7 @@ export const THREAD_CHANGE_KINDS = [
   "read-state-changed",
   "tabs-changed",
   "terminals-changed",
+  "storage-changed",
 ] as const;
 export type ThreadChangeKind = (typeof THREAD_CHANGE_KINDS)[number];
 
@@ -48,8 +49,7 @@ export const ENVIRONMENT_CHANGE_KINDS = [
   "status-changed",
   "work-status-changed",
   "git-refs-changed",
-  "thread-storage-changed",
-  "diff-viewed-changed",
+  "git-branches-changed",
 ] as const;
 export type EnvironmentChangeKind = (typeof ENVIRONMENT_CHANGE_KINDS)[number];
 
@@ -58,6 +58,7 @@ export const HOST_CHANGE_KINDS = [
   "host-disconnected",
   "provider-model-catalog-changed",
   "provider-commands-changed",
+  "provider-cli-status-changed",
 ] as const;
 export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 
@@ -67,6 +68,7 @@ export const SYSTEM_CHANGE_KINDS = [
   "plugin-install-jobs-changed",
   "plugin-update-jobs-changed",
   "provider-registrations-changed",
+  "ui-preferences-changed",
   "environment-availability-changed",
   "server-move-changed",
   "app-update-changed",
@@ -356,15 +358,6 @@ export const systemChangedMessageSchema = z
   })
   .strict();
 
-export const tagsChangedMessageSchema = z
-  .object({
-    type: z.literal("changed"),
-    entity: z.literal("tags"),
-    tags: z.array(z.string().min(1)).min(1),
-  })
-  .strict();
-export type TagsChangedMessage = z.infer<typeof tagsChangedMessageSchema>;
-
 export const pluginChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
@@ -380,7 +373,6 @@ export const changedMessageSchema = z.discriminatedUnion("entity", [
   environmentChangedMessageSchema,
   hostChangedMessageSchema,
   systemChangedMessageSchema,
-  tagsChangedMessageSchema,
   pluginChangedMessageSchema,
 ]);
 export type ChangedMessage = z.infer<typeof changedMessageSchema>;
@@ -455,6 +447,5 @@ export const changedMessageLenientSchema = z.discriminatedUnion("entity", [
   environmentChangedMessageLenientSchema,
   hostChangedMessageLenientSchema,
   systemChangedMessageLenientSchema,
-  tagsChangedMessageSchema.strip(),
   pluginChangedMessageSchema.strip(),
 ]);

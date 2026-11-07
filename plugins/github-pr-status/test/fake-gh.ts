@@ -8,6 +8,7 @@ interface FakeGhResponse {
   stdout?: string;
   stderr?: string;
   exit?: number;
+  resources?: Record<string, { data: object | null; error?: string }>;
   whenQueryIncludes?: { text: string; response: FakeGhResponse };
 }
 
@@ -26,18 +27,32 @@ export async function installFakeGh(
   const scriptPath = path.join(binPath, "gh.cjs");
   await fs.writeFile(
     scriptPath,
-    `
+    String.raw`
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const inputIndex = args.indexOf("--input");
 const query = inputIndex === -1 ? null : JSON.parse(fs.readFileSync(args[inputIndex + 1], "utf8")).query;
-fs.appendFileSync(process.env.TEST_GH_LOG, JSON.stringify({args, query}) + "\\n");
+fs.appendFileSync(process.env.TEST_GH_LOG, JSON.stringify({args, query}) + "\n");
 const responses = JSON.parse(process.env.TEST_GH_RESPONSES);
 const configured = responses[args.slice(0, 2).join(" ")] ?? {};
 const response = configured.whenQueryIncludes && query?.includes(configured.whenQueryIncludes.text) ? configured.whenQueryIncludes.response : configured;
-if (response.stdout) process.stdout.write(response.stdout);
+if (response.resources && query) {
+  const data = {};
+  const errors = [];
+  for (const [, alias, encodedUrl] of query.matchAll(/(p\d+): resource\(url: ("(?:\\.|[^"\\])*")\)/g)) {
+    const url = JSON.parse(encodedUrl);
+    const resource = response.resources[url];
+    if (!resource) throw new Error("No fake GraphQL resource for " + url);
+    data[alias] = resource.data;
+    if (resource.error) errors.push({path: [alias], message: resource.error});
+  }
+  process.stdout.write(JSON.stringify({data, errors}));
+  process.exitCode = response.exit ?? (errors.length > 0 ? 1 : 0);
+} else {
+  if (response.stdout) process.stdout.write(response.stdout);
+  process.exitCode = response.exit ?? 0;
+}
 if (response.stderr) process.stderr.write(response.stderr);
-process.exitCode = response.exit ?? 0;
 `,
   );
   const ghPath = path.join(

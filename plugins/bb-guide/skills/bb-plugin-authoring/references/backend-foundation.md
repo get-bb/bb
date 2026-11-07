@@ -129,8 +129,10 @@ plugin requires it.
   are capped at **256KB each** — kv is for cursors, links, and small state;
   caches and datasets go in the plugin database.
 - `bb.storage.database()` — the plugin's own better-sqlite3 database at
-  `<dataDir>/plugins/<id>/data.db` (WAL, busy_timeout 5000). Handles are
-  host-tracked and closed on reload; a closed handle throws.
+  `<dataDir>/plugins/<id>/data.db` (WAL, busy_timeout 5000). New files use
+  incremental auto_vacuum; run `PRAGMA incremental_vacuum` to return freed
+  pages, since bb never runs a full VACUUM on it. Handles are host-tracked
+  and closed on reload; a closed handle throws.
 - `bb.storage.migrate(db, statements)` — statement index = migration id;
   unapplied statements run in one transaction. **Append-only**: never
   reorder or edit shipped statements, only push new ones.
@@ -317,7 +319,11 @@ artifact, including for managed Git installs, which run
 published `@get-bb/plugin-sdk/host` contract such as
 `experimental_nativeRootsHostContract` is bundled from the plugin's own SDK
 install, so that plugin lists the SDK under `dependencies`. Every provider
-plugin does this. Either way the daemon never resolves the SDK or private BB
+plugin does this. A server entry is the same: bb provides only the bare
+`@get-bb/plugin-sdk` at load time, so a runtime import of any SDK subpath
+needs the SDK under `dependencies`. `bb plugin types` reads the entries'
+imports and keeps or moves the SDK to the right field, and `--check` fails
+when it is in the wrong one. Either way the daemon never resolves the SDK or private BB
 packages from the plugin at runtime.
 
 Pure JavaScript dependencies are bundled, and host code may use Node APIs

@@ -1,5 +1,4 @@
 import { appToast, AppToastContent, type AppToastTone } from "./app-toast";
-import { AppToastCommitDescription } from "./app-toast-descriptions";
 import { ArchivedThreadToastDescription } from "../thread/ArchivedThreadToastDescription";
 import { pluginNotificationDescription } from "../plugin/PluginNotificationDescription";
 import { Button } from "@bb/shared-ui/button";
@@ -46,26 +45,7 @@ interface ToastUsageHintProps {
   usage: readonly string[];
 }
 
-interface GitSuccessDescriptionParams {
-  commitSha: string;
-  commitSubject: string;
-}
-
 const LIVE_TOAST_DURATION = Infinity;
-const GIT_SUCCESS_COMMIT_SHA = "e547e81c0ffee1234567890abcdef123456789";
-const GIT_SUCCESS_COMMIT_SUBJECT = "Update provider CLI health toasts";
-
-function gitSuccessDescription({
-  commitSha,
-  commitSubject,
-}: GitSuccessDescriptionParams): ReactNode {
-  return (
-    <AppToastCommitDescription
-      commitSha={commitSha}
-      commitSubject={commitSubject}
-    />
-  );
-}
 
 const TOAST_EXAMPLES: readonly ToastExample[] = [
   {
@@ -161,44 +141,6 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
         { id: "linear", name: "Linear" },
         "installed",
       ),
-    },
-  },
-  {
-    id: "git-loading",
-    group: "Git actions",
-    label: "git loading",
-    source: "useThreadGitActions",
-    usage: ["Click Commit in thread header", "Replaced by success/error"],
-    current: {
-      tone: "loading",
-      title: "Creating commit",
-    },
-  },
-  {
-    id: "git-commit-success",
-    group: "Git actions",
-    label: "commit success",
-    source: "useThreadGitActions",
-    usage: ["Commit action succeeds"],
-    current: {
-      tone: "success",
-      title: "Commit created",
-      description: gitSuccessDescription({
-        commitSha: GIT_SUCCESS_COMMIT_SHA,
-        commitSubject: GIT_SUCCESS_COMMIT_SUBJECT,
-      }),
-    },
-  },
-  {
-    id: "git-error",
-    group: "Git actions",
-    label: "git error",
-    source: "useThreadGitActions",
-    usage: ["Thread git action fails"],
-    current: {
-      tone: "error",
-      title: "Commit failed",
-      description: "Command exited with code 1",
     },
   },
   {

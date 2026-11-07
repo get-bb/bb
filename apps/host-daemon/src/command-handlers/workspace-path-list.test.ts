@@ -247,6 +247,44 @@ describe("workspace path discovery", () => {
     expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);
   });
 
+  it("stops an unqueried listing after the limit with the same entries as a full walk", async () => {
+    const root = await createRoot();
+    for (const dir of ["a", "b", "c", "d"]) {
+      await write(root, `${dir}/one.txt`);
+      await write(root, `${dir}/nested/two.txt`);
+    }
+    const command = {
+      type: "host.list_paths" as const,
+      path: root,
+      includeFiles: true,
+      includeDirectories: true,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: [],
+      limit: 5,
+    };
+    const signal = new AbortController().signal;
+    const fullWalk = await listWorkspacePaths(listingArgs(root));
+    const readdir = vi.spyOn(fs, "readdir");
+    try {
+      const result = await listHostPaths(command, signal);
+      expect(result.truncated).toBe(true);
+      expect(
+        result.paths.map(({ kind, name, path }) => ({ kind, name, path })),
+      ).toEqual(fullWalk.slice(0, 5));
+      expect(readdir.mock.calls.length).toBeLessThan(5);
+    } finally {
+      readdir.mockRestore();
+    }
+
+    const exact = await listHostPaths(
+      { ...command, limit: fullWalk.length },
+      signal,
+    );
+    expect(exact.truncated).toBe(false);
+    expect(exact.paths).toHaveLength(fullWalk.length);
+  });
+
   it("skips excluded names at any depth and never lists .git", async () => {
     const root = await createRoot();
     await write(root, ".git/HEAD");

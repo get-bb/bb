@@ -111,6 +111,22 @@ browser—chooses the environment and working directory, serializes
 installations, supervises the process, streams output, and asks the bridge
 for fresh status to verify success.
 
+Full discovery starts several npm and CLI processes per provider and takes
+seconds, so the server caches each provider's status per machine for
+`GET /hosts/:id/provider-clis/status`. For 30 seconds the cached status is
+served as is. After that, a request still gets the cached status while the
+server probes again in the background; when the new status differs, the
+server sends a `provider-cli-status-changed` host change so open clients
+refetch. A failed refresh keeps the previous status. Machine reconnects keep
+the cache. When an active, non-ephemeral machine connects, the server probes
+in the background the providers that have no cached status yet, so the first
+read after a server restart is already cached; a reconnect with every status
+cached sends no probe. An install or update through bb drops the machine's cached
+statuses before and after it runs, so the next read waits for a fresh probe.
+`?refresh=true` (`hosts.providerCliStatus({ refresh: true })`) always waits
+for a fresh probe; Settings → Updates uses it when it checks for updates, as
+do `bb machine provider-cli status` and `bb updates`.
+
 Every handshake capability gates a request method, which is why the set holds
 no compaction fact: there is no compact request method. Compaction is a
 standalone builtin `/compact` prompt travelling the normal turn pipeline,
@@ -137,8 +153,11 @@ deltas and owns every timeline invariant:
   stream keys, parent refs, optional provider turn ids) and the assembler
   holds the bidirectional provider↔bb maps — both for scoping incoming
   deltas and for reverse-mapping bb ids on the command plane
-  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`) and on
-  provider-native interaction requests (`providerNativeIds: true`). An
+  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`). Bridges
+  send `interaction/request` and `item/tool/call` with the ids they put
+  on deltas: when the request names its `threadId`, the runtime maps its
+  `turnId`, approval subject `itemId`, and tool `callId` to the bb ids
+  minted for them, and passes through any id the assembler has not seen. An
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
   the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).
@@ -272,7 +291,13 @@ The current grammar (`grammarVersions: [3, 3]`) includes:
   per-session settings other than model and reasoning level, each a `select`
   (`value`, `values`) or a `boolean`, with an optional `category` such as
   `mode` (the model picker, `bb thread options`; `mode` shows in the composer
-  footer). Latest snapshot wins: re-emit the whole list when it changes. The
+  footer). `bb/provider-model-catalog` carries
+  `{ models, selectedOnlyModels }` using the `model/list` result shape. A
+  bridge can publish the catalog its session just received, without another
+  discovery request. The server accepts it only for the current provider
+  thread identity, updates that provider's host/workspace catalog, and
+  invalidates connected model pickers immediately. Latest snapshot wins:
+  re-emit the whole list when it changes. The
   server alone writes `bb/session-option-selections` (choices the provider
   has not applied yet) and refuses it from a bridge.
 - **`sessionOptions`** (`{ [optionId]: string | boolean }`) on `thread/start`
@@ -548,7 +573,11 @@ content.
    sub-agent as a `delegation` (codex does), re-open it when the agent works
    again, and settle it — as failed — when your provider child dies, or the
    runtime keeps refusing to reap a thread that no longer exists on your
-   side. There is no side channel for this.
+   side. There is no side channel for this. When the bridge process itself
+   exits, or the runtime shuts down, the runtime settles every
+   `backgroundTask` still pending on the bridge's threads as `interrupted`
+   with `taskStatus: "stopped"`; a bridge that outlives its provider child
+   still settles that child's work itself.
 
 ## Ordering guarantees
 

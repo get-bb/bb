@@ -138,7 +138,7 @@
 .marketplace-controls {
   position: sticky;
   z-index: 20;
-  top: 0;
+  top: var(--site-header-offset);
   display: flex;
   align-items: center;
   gap: 10px;

@@ -100,6 +100,7 @@ describe("session option selections", () => {
   it("lets a provider write the live state kinds but not the server's selection kind", () => {
     expect(coreThreadStateSchema("bb/session-options")).not.toBeNull();
     expect(coreThreadStateSchema("bb/provider-commands")).not.toBeNull();
+    expect(coreThreadStateSchema("bb/provider-model-catalog")).not.toBeNull();
     expect(coreThreadStateSchema("bb/session-option-selections")).toBeNull();
     expect(coreThreadStateSchema("toString")).toBeNull();
   });

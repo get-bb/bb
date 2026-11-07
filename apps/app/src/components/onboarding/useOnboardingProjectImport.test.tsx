@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { BbHttpError } from "@bb/sdk/browser";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
+import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
+
+vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 
 const createProject = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/mutations/project-mutations", () => ({
@@ -43,6 +47,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   createProject.mockReset();
+  vi.mocked(recordTelemetryEvent).mockClear();
   createProject.mockImplementation(async ({ name }: { name: string }) => ({
     id: `proj_${name}`,
   }));
@@ -79,6 +84,44 @@ describe("onboarding project imports", () => {
       expect(view.result.current.selection[0]).toBe(selected);
     },
   );
+
+  it("records how many selected projects imported before a failure and why it failed", async () => {
+    createProject
+      .mockResolvedValueOnce({ id: "proj_atlas-web" })
+      .mockRejectedValueOnce(
+        new BbHttpError({
+          body: null,
+          code: "host_unavailable",
+          message: "Host is not connected",
+          status: 502,
+        }),
+      );
+    const view = arrange();
+    await act(() => view.result.current.importProjects("host_local", repos));
+    expect(
+      vi
+        .mocked(recordTelemetryEvent)
+        .mock.calls.map(([event]) => event.properties),
+    ).toEqual([
+      {
+        entry: "first_run",
+        step: "projects",
+        operation: "import",
+        outcome: "started",
+        item_count: 3,
+        succeeded_count: 0,
+      },
+      {
+        entry: "first_run",
+        step: "projects",
+        operation: "import",
+        outcome: "failed",
+        item_count: 3,
+        succeeded_count: 1,
+        failure_reason: "host_unavailable",
+      },
+    ]);
+  });
 
   it("does not preselect imports when the setup guide is replayed", async () => {
     const view = arrange("replay");

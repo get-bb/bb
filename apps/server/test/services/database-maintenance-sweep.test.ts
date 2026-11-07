@@ -21,7 +21,10 @@ import {
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import type { ServerLogger } from "../../src/types.js";
-import { runDatabaseMaintenanceSweep } from "../../src/services/system/periodic-sweeps.js";
+import {
+  runDatabaseMaintenanceSweep,
+  runPluginDatabaseMaintenanceSweep,
+} from "../../src/services/system/periodic-sweeps.js";
 import { testLogger } from "../helpers/test-app.js";
 
 const FREELIST_ROW_COUNT = 1_200;
@@ -178,7 +181,7 @@ describe("runDatabaseMaintenanceSweep", () => {
     );
   });
 
-  it("skips busy legacy databases before dbstat or full maintenance", async () => {
+  it("leaves idle auto_vacuum=NONE databases untouched without scanning pages", async () => {
     const tempDatabase = createTempDatabasePath();
     try {
       createLegacyDatabaseFile(tempDatabase.dbPath);
@@ -189,18 +192,15 @@ describe("runDatabaseMaintenanceSweep", () => {
       });
       try {
         migrate(db);
-        expect(getDatabaseAutoVacuumMode(db)).toBe("none");
-        markDatabaseBusy(db);
+        expect(getDatabaseAutoVacuumMode(db.$client)).toBe("none");
         buildFreelist(db);
-        const before = getDatabaseFreelistStats(db);
+        const before = getDatabaseFreelistStats(db.$client);
         slowQueryLogger.clear();
 
         await runDatabaseMaintenanceSweep({ db, logger: testLogger });
 
-        expect(getDatabaseAutoVacuumMode(db)).toBe("none");
-        expect(getDatabaseFreelistStats(db).freelistCount).toBe(
-          before.freelistCount,
-        );
+        expect(getDatabaseAutoVacuumMode(db.$client)).toBe("none");
+        expect(getDatabaseFreelistStats(db.$client)).toEqual(before);
         expect(
           slowQueryLogger.debugLogs.some((log) => log.sql.includes("dbstat")),
         ).toBe(false);
@@ -214,7 +214,7 @@ describe("runDatabaseMaintenanceSweep", () => {
 
   it("vacuums in chunks and yields to the event loop between them", async () => {
     const { db } = setupBusyDatabaseWithFreelist();
-    const before = getDatabaseFreelistStats(db);
+    const before = getDatabaseFreelistStats(db.$client);
     expect(before.freelistCount).toBeGreaterThan(512);
     let yielded = false;
     setImmediate(() => {
@@ -224,7 +224,7 @@ describe("runDatabaseMaintenanceSweep", () => {
     await runDatabaseMaintenanceSweep({ db, logger: testLogger });
 
     expect(yielded).toBe(true);
-    expect(getDatabaseFreelistStats(db).freelistCount).toBeLessThan(
+    expect(getDatabaseFreelistStats(db.$client).freelistCount).toBeLessThan(
       before.freelistCount - 256,
     );
   });
@@ -239,7 +239,7 @@ describe("runDatabaseMaintenanceSweep", () => {
         readerDb.exec("BEGIN");
         readerTransactionOpen = true;
         readerDb.prepare("SELECT COUNT(*) FROM scratch_blobs").get();
-        const before = getDatabaseFreelistStats(db);
+        const before = getDatabaseFreelistStats(db.$client);
         const startedAt = performance.now();
 
         await runDatabaseMaintenanceSweep({ db, logger: testLogger });
@@ -248,7 +248,7 @@ describe("runDatabaseMaintenanceSweep", () => {
         expect(elapsedMs).toBeLessThan(
           DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS + SQLITE_BUSY_HEADROOM_MS,
         );
-        expect(getDatabaseFreelistStats(db).freelistCount).toBeLessThan(
+        expect(getDatabaseFreelistStats(db.$client).freelistCount).toBeLessThan(
           before.freelistCount,
         );
       } finally {
@@ -272,7 +272,7 @@ describe("runDatabaseMaintenanceSweep", () => {
       try {
         writerDb.exec("BEGIN IMMEDIATE");
         writerTransactionOpen = true;
-        const before = getDatabaseFreelistStats(db);
+        const before = getDatabaseFreelistStats(db.$client);
         const { logger, warnMessages } = createCapturingServerLogger();
         const startedAt = performance.now();
 
@@ -283,7 +283,7 @@ describe("runDatabaseMaintenanceSweep", () => {
           DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS + SQLITE_BUSY_HEADROOM_MS,
         );
         expect(warnMessages).toHaveLength(1);
-        expect(getDatabaseFreelistStats(db).freelistCount).toBe(
+        expect(getDatabaseFreelistStats(db.$client).freelistCount).toBe(
           before.freelistCount,
         );
       } finally {
@@ -292,6 +292,51 @@ describe("runDatabaseMaintenanceSweep", () => {
         }
         writerDb.close();
         db.$client.close();
+      }
+    } finally {
+      tempDatabase.cleanup();
+    }
+  });
+
+  it("returns free pages of incremental plugin databases and never converts auto_vacuum=NONE ones", async () => {
+    const tempDatabase = createTempDatabasePath();
+    try {
+      const open = (name: string, incremental: boolean) => {
+        const database = new Database(join(tempDatabase.dbPath, "..", name));
+        if (incremental) database.pragma("auto_vacuum = INCREMENTAL");
+        database.pragma("journal_mode = WAL");
+        database.exec("CREATE TABLE blobs (value BLOB NOT NULL)");
+        const insert = database.prepare("INSERT INTO blobs VALUES (?)");
+        database.transaction(() => {
+          for (let i = 0; i < 2_000; i++) insert.run(Buffer.alloc(4_096));
+        })();
+        database.exec("DELETE FROM blobs");
+        return database;
+      };
+      const incremental = open("incremental.db", true);
+      const none = open("none.db", false);
+      try {
+        const noneFreelist = getDatabaseFreelistStats(none).freelistCount;
+        expect(
+          getDatabaseFreelistStats(incremental).freelistCount,
+        ).toBeGreaterThan(1_024);
+
+        await runPluginDatabaseMaintenanceSweep({
+          logger: testLogger,
+          plugins: {
+            listOpenPluginDatabases: () => [
+              { database: incremental, pluginId: "incremental" },
+              { database: none, pluginId: "none" },
+            ],
+          },
+        });
+
+        expect(getDatabaseFreelistStats(incremental).freelistCount).toBe(0);
+        expect(getDatabaseAutoVacuumMode(none)).toBe("none");
+        expect(getDatabaseFreelistStats(none).freelistCount).toBe(noneFreelist);
+      } finally {
+        incremental.close();
+        none.close();
       }
     } finally {
       tempDatabase.cleanup();

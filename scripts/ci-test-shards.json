@@ -133,7 +133,7 @@
     {
       "shard": "plugins-2",
       "filter": "--filter=bb-plugin-* --filter=!bb-plugin-provider-* --filter=!bb-plugin-tasks --filter=!bb-plugin-connect --filter=!bb-plugin-thread-list",
-      "concurrency": 2,
+      "concurrency": 4,
       "vitestShard": ""
     },
     {
@@ -157,7 +157,7 @@
     {
       "shard": "packages-other",
       "filter": "--filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-* --filter=!@bb/host-daemon --filter=!@bb/cli --filter=!@bb/integration-tests --filter=!@bb/templates --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop --filter=!@bb/plugin-build --filter=!@bb/process-utils --filter=!@bb/host-workspace --filter=!@bb/host-watcher --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol --filter=!@bb/provider-bridge-acp --filter=!@bb/host-daemon-contract --filter=!@bb/config --filter=!@bb/db",
-      "concurrency": 2,
+      "concurrency": 4,
       "vitestShard": ""
     }
   ],

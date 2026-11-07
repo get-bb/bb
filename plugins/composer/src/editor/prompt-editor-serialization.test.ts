@@ -252,3 +252,78 @@ describe("prompt editor serialization", () => {
     ]);
   });
 });
+
+describe("prompt editor mention word boundaries", () => {
+  function skill(from: number, name: string): ComposerMention {
+    return {
+      from,
+      to: from + 1 + name.length,
+      kind: "command",
+      trigger: "/",
+      name,
+      source: "skill",
+      origin: "user",
+      label: name,
+      argumentHint: null,
+    };
+  }
+
+  function thread(from: number, threadId: string): ComposerMention {
+    return {
+      from,
+      to: from + "@thread:".length + threadId.length,
+      kind: "thread",
+      threadId,
+      label: threadId,
+    };
+  }
+
+  it.each([
+    {
+      name: "a word typed right after a pill",
+      input: {
+        text: "I am lost. /poteto-modeAlso testing",
+        mentions: [skill(11, "poteto-mode")],
+      },
+      expected: {
+        text: "I am lost. /poteto-mode Also testing",
+        mentions: [skill(11, "poteto-mode")],
+      },
+    },
+    {
+      name: "a word typed right before a pill",
+      input: { text: "hello/review", mentions: [skill(5, "review")] },
+      expected: { text: "hello /review", mentions: [skill(6, "review")] },
+    },
+    {
+      name: "two adjacent pills",
+      input: {
+        text: "@thread:thr_a@thread:thr_b",
+        mentions: [thread(0, "thr_a"), thread(13, "thr_b")],
+      },
+      expected: {
+        text: "@thread:thr_a @thread:thr_b",
+        mentions: [thread(0, "thr_a"), thread(14, "thr_b")],
+      },
+    },
+    {
+      name: "a pill inside a quote",
+      input: { text: "> /reviewAlso", mentions: [skill(2, "review")] },
+      expected: { text: "> /review Also", mentions: [skill(2, "review")] },
+    },
+  ])("separates $name", ({ input, expected }) => {
+    const separated = roundTrip(input);
+    expect(separated).toEqual(expected);
+    expect(roundTrip(separated)).toEqual(expected);
+  });
+
+  it.each([
+    { text: "see /review, then", mentions: [skill(4, "review")] },
+    { text: "(/review)", mentions: [skill(1, "review")] },
+    { text: "/review world", mentions: [skill(0, "review")] },
+    { text: "/review\nAlso", mentions: [skill(0, "review")] },
+    { text: "/review", mentions: [skill(0, "review")] },
+  ])("leaves punctuation, whitespace and line breaks alone: $text", (value) => {
+    expect(roundTrip(value)).toEqual(value);
+  });
+});
