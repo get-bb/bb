@@ -131,7 +131,10 @@ guard describes omitted conversation rows, not head-state rows.
 older page. These pages have their own `historySnapshot` and use the same
 recursive merge. A page holds at most 200 leaves and targets 1 MiB. The app
 loads the newest page when a summary is expanded and requests older pages only
-when the user asks for earlier activity.
+when the user asks for earlier activity. The server projects a turn once per
+snapshot and inputs, and serves every page of that walk and a repeat expand
+from the kept projection (32 projections, 32 MiB, per database connection). A
+new event, a history rewrite or an expiring output preview projects it again.
 
 Without `itemId`, the response covers the whole turn and command and tool
 output longer than 4,000 characters is previewed. With `itemId`, pass the range
@@ -303,7 +306,9 @@ assistant items only while its Agent messages tab is open. Active
 threads reuse completed outline items from a bounded in-memory cache (16 threads,
 8 million characters) and reproject only the tail; history rewrites, context
 clears, metadata or display changes, and writes from another database connection
-force a rebuild. Eviction only affects performance.
+force a rebuild. Background tasks in the kept history do not prevent reuse, but
+a later event for one of them, like a child event of a kept tool call, forces a
+rebuild. Eviction only affects performance.
 
 ## Catch-up feedback
 
