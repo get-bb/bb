@@ -64,6 +64,7 @@ import {
 } from "@bb/server-contract";
 import {
   findStoredTimelineWindowByteBudgetFloor,
+  findLatestTimelineTurnEventSequenceBefore,
   findTimelineWindowBudgetFloorSequence,
   hydrateRetainedEventOutputRows,
   hydrateRetainedEventOutputRowsWithinDataByteLimit,
@@ -87,7 +88,11 @@ import {
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
+  listStoredTimelineItemEventRows,
+  listStoredItemStartSequencesBefore,
+  listTimelineTurnLastSequences,
   listStoredTimelineTurnEventRows,
+  listStoredTimelineTurnContextRows,
   listStoredTimelineThreadWindowEventRows,
   listTimelineRootWindowTurnIds,
   listStoredDelegatingItemRowsByItemIds,
@@ -325,6 +330,7 @@ interface TimelineWindowRowsArgs {
 }
 
 interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
+  childOwnerSequenceStart?: number;
   excludeDiagnosticEvents: boolean;
   source: TimelineSelectionRowSource;
   maxInlineOutputChars: InlineOutputCharLimit;
@@ -595,14 +601,97 @@ function databaseTimelineRowSource(
 ): TimelineSelectionRowSource {
   return {
     listChildRows: (args) => listStoredEventRowsByParentToolCallIds(db, args),
+    listItemRows: (args) => listStoredTimelineItemEventRows(db, args),
+    listItemStartsBefore: (args) =>
+      listStoredItemStartSequencesBefore(db, args),
     listContextRows: (args) =>
       listStoredEventRows(db, { ...args, types: [...args.types] }),
     listParentRows: (args) => listStoredDelegatingItemRowsByItemIds(db, args),
     listRootWindowTurnIds: (args) => listTimelineRootWindowTurnIds(db, args),
     listThreadWindowRows: (args) =>
       listStoredTimelineThreadWindowEventRows(db, args),
+    listTurnContextRows: (args) => listStoredTimelineTurnContextRows(db, args),
+    listTurnLastSequences: (args) => listTimelineTurnLastSequences(db, args),
     listTurnRows: (args) => listStoredTimelineTurnEventRows(db, args),
   };
+}
+
+interface WindowedTurnItemRowsArgs {
+  closedItemKeys: Set<string>;
+  epochSequenceStart: number;
+  excludeDiagnosticEvents: boolean;
+  latestPage: boolean;
+  maxInlineOutputChars: InlineOutputCharLimit;
+  maxSeq: number;
+  rows: readonly StoredEventRow[];
+  sequenceStart: number;
+  source: TimelineSelectionRowSource;
+  threadId: string;
+  windowedTurnIds: ReadonlySet<string>;
+}
+
+function collectWindowedTurnItemsCrossingWindow(
+  args: WindowedTurnItemRowsArgs,
+): ScopedItemRef[] {
+  const items = new Map<
+    string,
+    { ref: ScopedItemRef; started: boolean; terminal: boolean }
+  >();
+  for (const row of args.rows) {
+    if (
+      row.itemId === null ||
+      row.turnId === null ||
+      !args.windowedTurnIds.has(row.turnId)
+    ) {
+      continue;
+    }
+    const ref = storedEventRowItemRef(row);
+    const key = scopedItemRefKey(ref);
+    if (args.closedItemKeys.has(key)) continue;
+    let item = items.get(key);
+    if (item === undefined) {
+      item = { ref, started: false, terminal: false };
+      items.set(key, item);
+    }
+    if (row.type === "item/started") item.started = true;
+    if (row.type === "item/completed") item.terminal = true;
+  }
+  const crossing: ScopedItemRef[] = [];
+  const completedWithoutStart: ScopedItemRef[] = [];
+  for (const [key, item] of items) {
+    args.closedItemKeys.add(key);
+    if (!item.started && item.terminal) completedWithoutStart.push(item.ref);
+    else if (!item.started || (!item.terminal && !args.latestPage)) {
+      crossing.push(item.ref);
+    }
+  }
+  if (completedWithoutStart.length === 0) return crossing;
+  return [
+    ...crossing,
+    ...args.source.listItemStartsBefore({
+      beforeSequence: args.sequenceStart,
+      items: completedWithoutStart,
+      threadId: args.threadId,
+    }),
+  ];
+}
+
+function listWindowedTurnItemRows(
+  args: WindowedTurnItemRowsArgs,
+): StoredEventRow[] {
+  const items = collectWindowedTurnItemsCrossingWindow(args);
+  if (items.length === 0) return [];
+  return args.source
+    .listItemRows({
+      beforeSequence: args.maxSeq + 1,
+      excludeDiagnosticEvents: args.excludeDiagnosticEvents,
+      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      items,
+      maxInlineOutputChars: args.maxInlineOutputChars,
+      sequenceStart: args.epochSequenceStart,
+      threadId: args.threadId,
+    })
+    .filter((row) => row.sequence <= args.maxSeq);
 }
 
 function ensureTimelineWindowParentedRows(
@@ -613,10 +702,20 @@ function ensureTimelineWindowParentedRows(
   const rowIds = new Set(rows.map((row) => row.id));
   const visibleToolCallIds = new Set(collectStoredDelegatingItemIds(rows));
   const { lookups } = args;
+  const ownerSequenceStart = args.childOwnerSequenceStart;
+  const ownsChildren = (toolCallId: string): boolean =>
+    ownerSequenceStart === undefined ||
+    rows.some(
+      (row) =>
+        row.type === "item/started" &&
+        row.itemId === toolCallId &&
+        row.sequence >= ownerSequenceStart,
+    );
 
   while (true) {
     const toolCallIdsToFetch = [...visibleToolCallIds].filter(
-      (toolCallId) => !lookups.childToolCallIds.has(toolCallId),
+      (toolCallId) =>
+        !lookups.childToolCallIds.has(toolCallId) && ownsChildren(toolCallId),
     );
     if (toolCallIdsToFetch.length === 0) {
       break;
@@ -1016,6 +1115,7 @@ function selectStandardTimelineEventRows(
   knownBudgetFloor: TimelineBudgetFloor | null,
   profile: ThreadTimelineBuildProfileAccumulator,
   source: TimelineSelectionRowSource,
+  flatTurnDisplay: boolean,
 ): StandardTimelineEventRowSelection {
   const decode: StoredEventDecoder = (row) =>
     decodeStoredEventRowCached(db, row);
@@ -1108,8 +1208,23 @@ function selectStandardTimelineEventRows(
   const fetchedTurns = new Set<string>();
   const parentedRowLookups =
     createTimelineWindowParentedRowLookups(fetchedTurns);
+  const windowedTurns = new Set<string>();
+  const closedItemKeys = new Set<string>();
   rows = measureThreadTimelineStage(profile, "group-context-query", () => {
     let selectedRows = rows;
+    const itemRowsArgs = {
+      closedItemKeys,
+      epochSequenceStart,
+      excludeDiagnosticEvents,
+      latestPage: beforeSequence === maxSeq + 1,
+      maxInlineOutputChars,
+      maxSeq,
+      sequenceStart,
+      source,
+      threadId: thread.id,
+      windowedTurnIds: windowedTurns,
+    };
+    let parentedAddedRows = true;
     for (;;) {
       const turnIds = [
         ...new Set([
@@ -1118,21 +1233,95 @@ function selectStandardTimelineEventRows(
             row.turnId === null ? [] : [row.turnId],
           ),
         ]),
-      ].filter((turnId) => !fetchedTurns.has(turnId));
-      if (turnIds.length === 0) break;
-      for (const turnId of turnIds) fetchedTurns.add(turnId);
+      ].filter(
+        (turnId) => !fetchedTurns.has(turnId) && !windowedTurns.has(turnId),
+      );
+      const windowTurnRows = source.listTurnRows({ ...windowArgs, turnIds });
+      const startedInWindow = new Set(
+        windowTurnRows.flatMap((row) =>
+          row.type === "turn/started" && row.turnId !== null
+            ? [row.turnId]
+            : [],
+        ),
+      );
+      const turnLastSequences =
+        startedInWindow.size === 0 || beforeSequence === maxSeq + 1
+          ? null
+          : source.listTurnLastSequences({
+              maxSeq,
+              threadId: thread.id,
+              turnIds: [...startedInWindow],
+            });
+      const completeTurnIds = new Set(
+        [...startedInWindow].filter(
+          (turnId) =>
+            turnLastSequences === null ||
+            (turnLastSequences.get(turnId) ?? 0) < beforeSequence,
+        ),
+      );
+      const partialTurnIds = turnIds.filter(
+        (turnId) => !completeTurnIds.has(turnId),
+      );
+      const contextRows = source.listTurnContextRows({
+        ...windowArgs,
+        sequenceStart: epochSequenceStart,
+        beforeSequence: maxSeq + 1,
+        turnIds: partialTurnIds,
+      });
+      const completedTurnIds = new Set(
+        contextRows.flatMap((row) =>
+          row.type === "turn/completed" && row.turnId !== null
+            ? [row.turnId]
+            : [],
+        ),
+      );
+      const wholeTurnIds = partialTurnIds.filter(
+        (turnId) => !flatTurnDisplay && completedTurnIds.has(turnId),
+      );
+      const windowTurnIds = partialTurnIds.filter(
+        (turnId) => flatTurnDisplay || !completedTurnIds.has(turnId),
+      );
+      for (const turnId of completeTurnIds) fetchedTurns.add(turnId);
+      for (const turnId of wholeTurnIds) fetchedTurns.add(turnId);
+      for (const turnId of windowTurnIds) windowedTurns.add(turnId);
+      const windowTurnIdSet = new Set(windowTurnIds);
       selectedRows = mergeStoredEventRowsById([
         ...selectedRows,
+        ...windowTurnRows,
         ...source.listTurnRows({
           ...windowArgs,
           sequenceStart: epochSequenceStart,
-          beforeSequence: maxSeq + 1,
-          turnIds,
+          beforeSequence: sequenceStart,
+          turnIds: wholeTurnIds,
         }),
+        ...(beforeSequence === maxSeq + 1
+          ? []
+          : source.listTurnRows({
+              ...windowArgs,
+              sequenceStart: beforeSequence,
+              beforeSequence: maxSeq + 1,
+              turnIds: wholeTurnIds,
+            })),
+        ...contextRows.filter(
+          (row) => row.turnId !== null && windowTurnIdSet.has(row.turnId),
+        ),
+      ]);
+      const itemRows = listWindowedTurnItemRows({
+        ...itemRowsArgs,
+        rows: selectedRows,
+      });
+      if (turnIds.length === 0 && itemRows.length === 0 && !parentedAddedRows) {
+        break;
+      }
+      const rowsBeforeParents = mergeStoredEventRowsById([
+        ...selectedRows,
+        ...itemRows,
       ]);
       selectedRows = ensureTimelineWindowParentedRows(db, {
+        childOwnerSequenceStart:
+          beforeSequence === maxSeq + 1 ? undefined : sequenceStart,
         threadId: thread.id,
-        rows: selectedRows,
+        rows: rowsBeforeParents,
         source,
         lookups: parentedRowLookups,
         maxInlineOutputChars,
@@ -1142,6 +1331,25 @@ function selectStandardTimelineEventRows(
           beforeSequence: maxSeq + 1,
         },
       }).rows.filter((row) => row.sequence <= maxSeq);
+      parentedAddedRows = selectedRows.length > rowsBeforeParents.length;
+    }
+    const tailEnd = selectedRows.reduce(
+      (end, row) =>
+        row.itemId === null || row.itemKind === "contextCompaction"
+          ? end
+          : Math.max(end, row.sequence),
+      beforeSequence - 1,
+    );
+    if (tailEnd >= beforeSequence && windowedTurns.size > 0) {
+      selectedRows = mergeStoredEventRowsById([
+        ...selectedRows,
+        ...source.listTurnRows({
+          ...windowArgs,
+          sequenceStart: beforeSequence,
+          beforeSequence: tailEnd + 1,
+          turnIds: [...windowedTurns],
+        }),
+      ]);
     }
     selectedRows = ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
@@ -1243,6 +1451,7 @@ function selectStandardTimelineEventRows(
     budgetFloorSequence: budgetFloor,
     hints,
     fetchedTurnIds: fetchedTurns,
+    windowedTurnIds: windowedTurns,
     selection: {
       contextOnlyInterruptionSequences: new Set(
         interruptionRows
@@ -1253,6 +1462,16 @@ function selectStandardTimelineEventRows(
       ownedSequenceStart: sequenceStart,
       ownedSequenceEnd: beforeSequence,
       hasOlderSegments: hasOlder,
+      omittedTurnSequenceEnd:
+        sequenceStart > epochSequenceStart
+          ? findLatestTimelineTurnEventSequenceBefore(db, {
+              beforeSequence: sequenceStart,
+              excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+              sequenceStart: epochSequenceStart,
+              threadId: thread.id,
+              turnIds: [...windowedTurns],
+            })
+          : null,
       paginationPage:
         contentCursor === undefined ? page : { ...page, segmentLimit: 1 },
       rows: ensureTimelineWindowTurnStartedRows(db, {
@@ -1386,6 +1605,7 @@ function buildThreadTimelineInternal(
       knownBudgetFloor,
       profile,
       source,
+      options.completedTurnDisplay === "flat",
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
   const active = thread.status === "active";
@@ -1399,6 +1619,7 @@ function buildThreadTimelineInternal(
           epochSequenceStart: historySequenceStart,
           eventBudget: options.eventBudget,
           excludeDiagnosticEvents: !includeDiagnosticOperations,
+          flatTurnDisplay: options.completedTurnDisplay === "flat",
           maxInlineOutputChars,
           maxSeq: snapshot.maxSeq,
           page: options.page,
@@ -1618,6 +1839,7 @@ function buildThreadTimelineInternal(
         ownedSequenceStart: eventSelection.ownedSequenceStart,
         ownedSequenceEnd: eventSelection.ownedSequenceEnd,
         hasOlderSegments: eventSelection.hasOlderSegments,
+        omittedTurnSequenceEnd: eventSelection.omittedTurnSequenceEnd,
         page: eventSelection.paginationPage,
         rows: pageableTimelineRows,
       }),
