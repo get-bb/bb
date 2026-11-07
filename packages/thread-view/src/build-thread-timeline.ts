@@ -92,6 +92,7 @@ interface ThreadTimelineFromEventsBaseOptions {
 
 interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
   includeNestedRows: boolean;
+  omitSettledDelegationChildRows: boolean;
 }
 
 interface BuildThreadTimelineFromEventsArgs {
@@ -183,6 +184,7 @@ type ThreadTimelineTurnDetailsFromEventsResult =
 interface BuildTimelineRowsOptions {
   completedTurnDisplay: CompletedTurnDisplay;
   includeNestedRows: boolean;
+  omitSettledDelegationChildRows: boolean;
   rowIdPrefix: string;
   summarizeShellCommands: boolean;
   workspaceRoot: string | null;
@@ -751,6 +753,18 @@ function convertMessage(
       ];
     case "delegation": {
       const base = buildTimelineRowBase(message, options.rowIdPrefix);
+      const childOptions: BuildTimelineRowsOptions = {
+        completedTurnDisplay: options.completedTurnDisplay,
+        includeNestedRows: true,
+        omitSettledDelegationChildRows: options.omitSettledDelegationChildRows,
+        rowIdPrefix: `${base.id}:child:`,
+        summarizeShellCommands: options.summarizeShellCommands,
+        workspaceRoot: options.workspaceRoot,
+      };
+      const omitChildRows =
+        options.omitSettledDelegationChildRows &&
+        base.turnId !== null &&
+        message.status !== "pending";
       return [
         {
           ...base,
@@ -765,15 +779,13 @@ function convertMessage(
           description: message.description ?? null,
           output: message.output,
           completedAt: message.completedAt,
-          childRows: filterDelegationChildRows(
-            buildTimelineRows(message.childProjection, {
-              completedTurnDisplay: options.completedTurnDisplay,
-              includeNestedRows: true,
-              rowIdPrefix: `${base.id}:child:`,
-              summarizeShellCommands: options.summarizeShellCommands,
-              workspaceRoot: options.workspaceRoot,
-            }),
-          ),
+          childRows: omitChildRows
+            ? hasDelegationChildRows(message.childProjection, childOptions)
+              ? null
+              : []
+            : filterDelegationChildRows(
+                buildTimelineRows(message.childProjection, childOptions),
+              ),
           ...rowPresentation(message),
         },
       ];
@@ -1178,6 +1190,27 @@ function materializeTimelinePlan(
   ];
 }
 
+function hasDelegationChildRows(
+  projection: EventProjection,
+  options: BuildTimelineRowsOptions,
+): boolean {
+  const rows: TimelineRow[] = [];
+  for (const entry of projection.entries) {
+    for (const item of planTimelineRows(
+      { ...projection, entries: [entry] },
+      options.completedTurnDisplay,
+      options.rowIdPrefix,
+    )) {
+      const from = Math.max(0, rows.length - 1);
+      appendRows(rows, materializeTimelinePlan(item, options));
+      for (let index = from; index < rows.length; index += 1) {
+        if (!isDelegationLifecycleChildRow(rows[index]!)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function buildTimelineRows(
   projection: EventProjection,
   options: BuildTimelineRowsOptions,
@@ -1218,6 +1251,8 @@ export function buildThreadTimelineFromEvents(
     ...buildTimelineRows(projection, {
       completedTurnDisplay: args.options.completedTurnDisplay,
       includeNestedRows: args.options.includeNestedRows,
+      omitSettledDelegationChildRows:
+        args.options.omitSettledDelegationChildRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       summarizeShellCommands: args.options.summarizeShellCommands,
       workspaceRoot: args.options.workspaceRoot,
@@ -1325,6 +1360,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   const options: BuildTimelineRowsOptions = {
     completedTurnDisplay: args.options.completedTurnDisplay,
     includeNestedRows: true,
+    omitSettledDelegationChildRows: false,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     summarizeShellCommands: args.options.summarizeShellCommands,
     workspaceRoot: args.options.workspaceRoot,

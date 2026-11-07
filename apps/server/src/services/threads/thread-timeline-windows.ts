@@ -35,6 +35,7 @@ import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
 import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
+import { reuseUnchangedTimelineWindowParts } from "./timeline-window-reuse.js";
 import { isCompactionOfferEnabled } from "./compaction-offer.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
@@ -177,7 +178,7 @@ export function createThreadTimelineWindows(
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
       }),
-      () => {
+      (previous) => {
         const { profile, response: built } = buildThreadTimelineWithProfile(
           deps.db,
           thread,
@@ -190,10 +191,13 @@ export function createThreadTimelineWindows(
           },
         );
         slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        const window = shortenTimelineResponseOutputs(built, {
-          maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-          preview: !request.includeNestedRows,
-        });
+        const window = reuseUnchangedTimelineWindowParts(
+          shortenTimelineResponseOutputs(built, {
+            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+            preview: !request.includeNestedRows,
+          }),
+          previous,
+        );
         return { ...window, tag: timelineWindowTag(window) };
       },
     );

@@ -28,6 +28,7 @@ function timeline(events: ThreadEventRow[], includeNestedRows: boolean) {
     options: {
       ...options,
       includeNestedRows,
+      omitSettledDelegationChildRows: false,
     },
   });
 }
@@ -55,7 +56,12 @@ describe("timeline row planning", () => {
       contextWindowEvents: [],
       events: fromRows(events),
       headStateEvents,
-      options: { ...options, threadStatus: "active", includeNestedRows: false },
+      options: {
+        ...options,
+        threadStatus: "active",
+        includeNestedRows: false,
+        omitSettledDelegationChildRows: false,
+      },
     });
     expect(withHeadState.rows).toEqual(current.rows);
     expect(withHeadState.pendingTodos?.items.map((item) => item.text)).toEqual([

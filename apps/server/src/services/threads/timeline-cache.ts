@@ -18,7 +18,9 @@ interface ThreadTimelineCache {
     threadId: string,
     key: string,
     revision: string,
-    build: () => ThreadTimelineResponse,
+    build: (
+      previous: ThreadTimelineResponse | undefined,
+    ) => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
   invalidateThread(threadId: string): void;
   readonly size: number;
@@ -64,7 +66,7 @@ export function createThreadTimelineCache(
         }
       }
 
-      const value = build();
+      const value = build(cached?.response);
       const bytes = timelineWindowJsonLength(value);
       if (bytes <= maxEntryBytes) {
         entries.set(key, { bytes, response: value, revision, threadId });

@@ -30,6 +30,8 @@ import type { ProviderRegistryService } from "../../src/services/providers/provi
 import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
 import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
 import { clearTimelineProjectionFolds } from "../../src/services/threads/timeline-projection-fold.js";
+import { clearKeptPageableTimelineRows } from "../../src/services/threads/timeline-window-reuse.js";
+import { clearDecodedTimelineSelections } from "../../src/services/threads/timeline-selection-decode.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -203,6 +205,8 @@ export function buildRouteTimelinePage(
 
 export function clearCrossBuildTimelineCaches(db: DbConnection): void {
   clearStoredEventDecodeCache(db);
+  clearDecodedTimelineSelections(db);
+  clearKeptPageableTimelineRows(db);
   clearTimelineSelectionMemo(db);
   clearTimelineProjectionFolds(db);
 }
@@ -254,12 +258,7 @@ export function buildAllRouteTimelinePages(
 }
 
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 export function normalizeJson(value: unknown): JsonValue {
   if (value === null || value === undefined) {

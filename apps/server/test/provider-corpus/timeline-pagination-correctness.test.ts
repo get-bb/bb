@@ -96,6 +96,7 @@ describe.skipIf(!corpusAvailable())(
               summarizeShellCommands: true,
               includeNestedRows: false,
               isLatestPage: true,
+              omitSettledDelegationChildRows: false,
               providerId: thread.providerId,
               providerDisplayName: harness.deps.providerRegistry.get(
                 thread.providerId,

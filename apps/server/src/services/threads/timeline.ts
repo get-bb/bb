@@ -115,6 +115,12 @@ import { parseStoredEvent } from "./thread-data.js";
 import { withCompactionOffer } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 import {
+  byteLengthOfStoredEventRows,
+  decodeTimelineSelectionRows,
+  withRowMeta,
+} from "./timeline-selection-decode.js";
+import { reusePreviousPageableTimelineRows } from "./timeline-window-reuse.js";
+import {
   forgetTimelineProjectionFolds,
   keepTimelineProjectionFold,
 } from "./timeline-projection-fold.js";
@@ -333,20 +339,6 @@ interface SelectClientRequestContextRowsArgs {
 interface SelectedClientRequestContextRows {
   acceptedRows: StoredEventRow[];
   rejectedRows: StoredEventRow[];
-}
-
-function withRowMeta(
-  row: StoredEventRow,
-  event: ThreadEvent,
-): ThreadEventWithMeta {
-  return {
-    event,
-    meta: {
-      id: row.id,
-      seq: row.sequence,
-      createdAt: row.createdAt,
-    },
-  };
 }
 
 export function toThreadEventWithMeta(
@@ -1259,21 +1251,6 @@ function selectStandardTimelineEventRows(
   };
 }
 
-const storedEventRowByteLengths = new WeakMap<StoredEventRow, number>();
-
-function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
-  let byteLength = 0;
-  for (const row of rows) {
-    let rowByteLength = storedEventRowByteLengths.get(row);
-    if (rowByteLength === undefined) {
-      rowByteLength = Buffer.byteLength(row.data, "utf8");
-      storedEventRowByteLengths.set(row, rowByteLength);
-    }
-    byteLength += rowByteLength;
-  }
-  return byteLength;
-}
-
 function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
   return {
     compactedEventCount: 0,
@@ -1444,17 +1421,15 @@ function buildThreadTimelineInternal(
         }
       : storedEventSelection;
   const rawEventRows = eventSelection.rows;
-  profile.eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
-  profile.eventRowCount = rawEventRows.length;
-  profile.selectionStrategy = eventSelection.strategy;
-  const decodedRawEvents = measureThreadTimelineStage(
+  const decodedSelection = measureThreadTimelineStage(
     profile,
     "event-json-decode",
-    () =>
-      rawEventRows.map((row) =>
-        withRowMeta(row, decodeStoredEventRowCached(db, row)),
-      ),
+    () => decodeTimelineSelectionRows(db, thread.id, rawEventRows),
   );
+  const decodedRawEvents = decodedSelection.events;
+  profile.eventDataBytes = decodedSelection.dataBytes;
+  profile.eventRowCount = rawEventRows.length;
+  profile.selectionStrategy = eventSelection.strategy;
   const headStateEvents = measureThreadTimelineStage(
     profile,
     "event-json-decode",
@@ -1511,9 +1486,11 @@ function buildThreadTimelineInternal(
     acceptedClientRequestEvents: [],
     rejectedClientRequestEvents: [],
   };
+  const deferContent = options.deferContent ?? false;
   const timelineOptions = {
     ...commonProjectionOptions,
     includeNestedRows,
+    omitSettledDelegationChildRows: deferContent,
     providerId: thread.providerId,
   };
   const timeline = measureThreadTimelineStage(
@@ -1574,14 +1551,26 @@ function buildThreadTimelineInternal(
     "available",
     Date.now(),
   );
-  const deferContent = options.deferContent ?? false;
-  const pageableTimelineRows = mapTimelineRowTree(
+  const mappedTimelineRows = mapTimelineRowTree(
     projectedTimelineRows,
     (row) => {
       const previewed = withRetainedOutputPreview(row, retainedOutputPreviews);
       return deferContent ? deferSettledTimelineRow(previewed) : previewed;
     },
   );
+  const pageableTimelineRows =
+    options.page.kind === "latest" && contentCursor === undefined
+      ? reusePreviousPageableTimelineRows(
+          db,
+          JSON.stringify([
+            thread.id,
+            options.page.segmentLimit,
+            deferContent,
+            includeNestedRows,
+          ]),
+          mappedTimelineRows,
+        )
+      : mappedTimelineRows;
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
@@ -1818,6 +1807,7 @@ function buildThreadConversationRows(
       options: {
         completedTurnDisplay: options.completedTurnDisplay,
         includeNestedRows: options.includeNestedRows,
+        omitSettledDelegationChildRows: false,
         includeDiagnosticOperations: false,
         isLatestPage: true,
         providerDisplayName: options.providerDisplayName,
@@ -1883,6 +1873,7 @@ function selectThreadConversationOutline(
         options: {
           completedTurnDisplay: options.completedTurnDisplay,
           includeNestedRows: false,
+          omitSettledDelegationChildRows: false,
           includeDiagnosticOperations: false,
           isLatestPage: true,
           providerDisplayName: options.providerDisplayName,
