@@ -89,7 +89,16 @@ function render(element: ReactNode) {
   });
 }
 
+const hostDaemon = vi.hoisted(() => ({
+  localDaemonHostId: null as string | null,
+}));
+
 const mocks = vi.hoisted(() => ({
+  primaryHostId: "host_1" as string | null,
+  hosts: [
+    { id: "host_1", name: "Machine" },
+    { id: "host_2", name: "Other machine" },
+  ] as Array<{ id: string; name: string }>,
   unknownReasoning: false,
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
@@ -159,6 +168,12 @@ vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
       </div>
     );
   },
+}));
+
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({
+    localDaemonHostId: hostDaemon.localDaemonHostId,
+  }),
 }));
 
 vi.mock("@/hooks/queries/environment-provider-queries", () => ({
@@ -264,16 +279,18 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
-    data: [
-      { id: "host_1", name: "Machine" },
-      { id: "host_2", name: "Other machine" },
-    ],
+    data: mocks.hosts,
   }),
   selectHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
   selectPrimaryHost: (
     hosts: Array<{ id: string }> | undefined,
     primaryHostId: string | null,
-  ) => hosts?.find((host) => host.id === primaryHostId) ?? hosts?.[0] ?? null,
+  ) =>
+    primaryHostId === null
+      ? null
+      : (hosts?.find((host) => host.id === primaryHostId) ??
+        hosts?.[0] ??
+        null),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -283,7 +300,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useHostProviderCliStatus: () => ({ data: undefined }),
   useSystemConfig: () => ({
     data: {
-      primaryHostId: "host_1",
+      primaryHostId: mocks.primaryHostId,
       generalSettings: defaultAppSettings,
       serverAccess: {
         providers: [
@@ -700,6 +717,12 @@ async function submit(): Promise<void> {
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     resetFixedPanelTabsStateForTest();
+    hostDaemon.localDaemonHostId = null;
+    mocks.primaryHostId = "host_1";
+    mocks.hosts = [
+      { id: "host_1", name: "Machine" },
+      { id: "host_2", name: "Other machine" },
+    ];
     mocks.closeTerminal.mockClear();
     mocks.modelSessionOptions = undefined;
     mocks.unknownReasoning = false;
@@ -928,6 +951,313 @@ describe("PluginNewThreadComposer seeding", () => {
       );
     },
   );
+
+  it.each(["project-checkout", "git-worktree"])(
+    "defaults %s to the local machine when another machine is remembered",
+    async (providerId) => {
+      hostDaemon.localDaemonHostId = "host_2";
+      window.localStorage.setItem(
+        "bb.promptbox.environment-proj_1-1",
+        `provider:${providerId}`,
+      );
+      window.localStorage.setItem("bb.promptbox.machine-proj_1-1", "host_1");
+      render(newThreadElement("proj_1"));
+      await waitFor(() => {
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          `provider:${providerId}`,
+        );
+        expect(
+          latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+        ).toBe("host_2");
+      });
+      expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
+        "host_1",
+      );
+      expect(
+        window.localStorage.getItem("bb.promptbox.environment-proj_1-1"),
+      ).toBe(`provider:${providerId}`);
+    },
+  );
+
+  it("keeps the remembered machine when the local daemon is unknown", async () => {
+    hostDaemon.localDaemonHostId = "host_deleted";
+    window.localStorage.setItem("bb.promptbox.machine-proj_1-1", "host_2");
+    render(newThreadElement("proj_1"));
+    await waitFor(() => {
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+    expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
+      "host_2",
+    );
+  });
+
+  it("keeps the remembered machine when the provider is unavailable on the local daemon", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    mocks.hosts = [
+      { id: "host_1", name: "Machine" },
+      { id: "host_2", name: "Other machine" },
+      { id: "host_3", name: "Remembered machine" },
+    ];
+    mocks.environmentProviders = [
+      {
+        ...CHECKOUT_PROVIDER,
+        machineAvailability: {
+          host_2: {
+            status: "unavailable",
+            message: "Checkout is unavailable",
+          },
+        },
+      },
+      MANAGED_WORKTREE_SUGAR_PROVIDER,
+      PERSONAL_WORKSPACE_PROVIDER,
+    ];
+    mocks.extraProjects = [
+      {
+        ...PROJECT,
+        id: "proj_three",
+        name: "Three hosts",
+        sources: [
+          ...PROJECT.sources,
+          {
+            ...PROJECT.sources[0],
+            id: "src_3",
+            projectId: "proj_three",
+            hostId: "host_3",
+            isDefault: false,
+          },
+        ],
+      },
+    ];
+    window.localStorage.setItem("bb.promptbox.machine-proj_three-1", "host_3");
+    render(newThreadElement("proj_three"));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:project-checkout",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_3");
+    });
+    expect(
+      window.localStorage.getItem("bb.promptbox.machine-proj_three-1"),
+    ).toBe("host_3");
+  });
+
+  it("uses the primary machine when the local daemon and remembered machine cannot run the provider", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    mocks.environmentProviders = [
+      {
+        ...CHECKOUT_PROVIDER,
+        machineAvailability: {
+          host_2: {
+            status: "unavailable",
+            message: "Checkout is unavailable",
+          },
+        },
+      },
+      MANAGED_WORKTREE_SUGAR_PROVIDER,
+      PERSONAL_WORKSPACE_PROVIDER,
+    ];
+    window.localStorage.setItem(
+      "bb.promptbox.machine-proj_1-1",
+      "host_deleted",
+    );
+    render(newThreadElement("proj_1"));
+    await waitFor(() => {
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_1");
+    });
+    expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
+      "host_deleted",
+    );
+  });
+
+  it("keeps a seeded machine ahead of a usable local daemon", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    renderComposer(STORED_REQUEST, () => undefined, "seeded-machine");
+    await waitFor(() => {
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_1");
+    });
+  });
+
+  it("keeps a seeded new machine ahead of a usable local daemon", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      {
+        ...STORED_REQUEST,
+        environment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: {
+            type: "new",
+            machineProviderId: "qa-machine",
+            inputs: null,
+          },
+          inputs: { branch: { kind: "named", name: "release" } },
+        },
+      },
+      (request) => {
+        submitted.push(request);
+      },
+      "seeded-new-machine",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:git-worktree",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBeNull();
+    });
+    await submit();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.environment).toMatchObject({
+      type: "provider",
+      environmentProviderId: "git-worktree",
+      machine: {
+        type: "new",
+        machineProviderId: "qa-machine",
+        inputs: null,
+      },
+    });
+  });
+
+  it("keeps an in-session machine pick ahead of the local daemon", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    render(newThreadElement("proj_1"));
+    await waitFor(() => {
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        MANAGED_WORKTREE_SUGAR_PROVIDER,
+        "host_1",
+      );
+    });
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_1");
+  });
+
+  it("chooses the local machine for a personal thread", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    render(newThreadElement(PERSONAL_PROJECT_ID));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:personal-workspace",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+  });
+
+  it("keeps the personal workspace when the current machine can host it and there is no primary", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    mocks.primaryHostId = null;
+    render(newThreadElement(PERSONAL_PROJECT_ID));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:personal-workspace",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+  });
+
+  it("defaults a project checkout that exists only on the local machine", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    mocks.extraProjects = [
+      {
+        ...PROJECT,
+        id: "proj_mac",
+        name: "Mac only",
+        sources: [
+          {
+            ...PROJECT.sources[1],
+            id: "src_mac",
+            projectId: "proj_mac",
+            isDefault: true,
+          },
+        ],
+      },
+    ];
+    render(newThreadElement("proj_mac"));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:project-checkout",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+  });
+
+  it("defaults a component-local composer to the local machine and ignores the remembered id", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    window.localStorage.setItem("bb.promptbox.machine-proj_1-1", "host_1");
+    render(
+      <Provider>
+        <MemoryRouter>
+          <PluginNewThreadComposer
+            draftKey="component-local-machine"
+            defaultProjectId="proj_1"
+            initialPrompt="hello"
+            onSubmit={() => undefined}
+          />
+        </MemoryRouter>
+      </Provider>,
+    );
+    await waitFor(() => {
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+    expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
+      "host_1",
+    );
+  });
+
+  it("submits the local machine", async () => {
+    hostDaemon.localDaemonHostId = "host_2";
+    const submitted: NewThreadRequest[] = [];
+    render(
+      <MemoryRouter>
+        <PluginNewThreadComposer
+          draftKey="local-machine-submit"
+          defaultProjectId="proj_1"
+          initialPrompt="hello"
+          onSubmit={(request) => {
+            submitted.push(request);
+          }}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({
+      projectId: "proj_1",
+      environment: {
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        machine: { type: "existing", hostId: "host_2" },
+        inputs: {},
+      },
+    });
+  });
 
   it("keeps a plugin composer's machine separate from the new-thread preference", async () => {
     window.localStorage.setItem("bb.promptbox.machine-proj_1-1", "host_2");
@@ -2299,6 +2629,12 @@ const PROJECT_WITHOUT_CHECKOUT = {
 
 describe("NewThreadComposer environment providers", () => {
   beforeEach(() => {
+    hostDaemon.localDaemonHostId = null;
+    mocks.primaryHostId = "host_1";
+    mocks.hosts = [
+      { id: "host_1", name: "Machine" },
+      { id: "host_2", name: "Other machine" },
+    ];
     mocks.promptBoxProps.length = 0;
     mocks.projectThreads = [];
     mocks.sidebarNavigationSettled = true;
@@ -2882,6 +3218,12 @@ describe("NewThreadComposer environment providers", () => {
 describe("NewThreadComposer setSelection", () => {
   beforeEach(() => {
     resetFixedPanelTabsStateForTest();
+    hostDaemon.localDaemonHostId = null;
+    mocks.primaryHostId = "host_1";
+    mocks.hosts = [
+      { id: "host_1", name: "Machine" },
+      { id: "host_2", name: "Other machine" },
+    ];
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();

@@ -92,6 +92,7 @@ import {
   selectPrimaryHost,
   useHosts,
 } from "@/hooks/queries/host-queries";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import {
   stripProjectThreads,
@@ -609,6 +610,7 @@ export function NewThreadComposer({
     [hostsQuery.data],
   );
   const systemConfigQuery = useSystemConfig();
+  const { localDaemonHostId } = useHostDaemon();
   const primaryHostId =
     selectPrimaryHost(
       availableHosts,
@@ -618,6 +620,10 @@ export function NewThreadComposer({
     () => new Set(availableHosts.map((host) => host.id)),
     [availableHosts],
   );
+  const currentMachineHostId =
+    localDaemonHostId !== null && knownHostIds.has(localDaemonHostId)
+      ? localDaemonHostId
+      : null;
   const connectedHostIds = useMemo(
     () =>
       new Set(
@@ -789,6 +795,21 @@ export function NewThreadComposer({
     setPickedProviderMachine(null);
   }
 
+  const isProviderUsableOnHost = useCallback(
+    (providerId: string, hostId: string | null): boolean =>
+      hostId !== null &&
+      knownHostIds.has(hostId) &&
+      (environmentProvidersByHostId
+        .get(hostId)
+        ?.some(
+          (candidate) =>
+            candidate.id === providerId &&
+            candidate.availability?.status !== "unavailable",
+        ) ??
+        false),
+    [environmentProvidersByHostId, knownHostIds],
+  );
+
   const resolveProviderSelection = useCallback(
     (
       effectiveValue: string,
@@ -803,17 +824,6 @@ export function NewThreadComposer({
       );
       if (provider === undefined) return null;
       if (provider.machineProviderId) return { provider, machine: null };
-      const usable = (hostId: string | null): boolean =>
-        hostId !== null &&
-        knownHostIds.has(hostId) &&
-        (environmentProvidersByHostId
-          .get(hostId)
-          ?.some(
-            (candidate) =>
-              candidate.id === provider.id &&
-              candidate.availability?.status !== "unavailable",
-          ) ??
-          false);
       const picked =
         pickedProviderMachine?.selectionValue === effectiveValue
           ? pickedProviderMachine.machine
@@ -825,29 +835,48 @@ export function NewThreadComposer({
         environmentSeed.selectionValue === effectiveValue
           ? environmentSeed.providerMachine
           : null;
+      if (seeded?.type === "new") return { provider, machine: seeded };
+      if (
+        seeded?.type === "existing" &&
+        isProviderUsableOnHost(provider.id, seeded.hostId)
+      ) {
+        return { provider, machine: seeded };
+      }
+      if (
+        currentMachineHostId !== null &&
+        isProviderUsableOnHost(provider.id, currentMachineHostId)
+      ) {
+        return {
+          provider,
+          machine: { type: "existing", hostId: currentMachineHostId },
+        };
+      }
       const remembered: EnvironmentMachineSelection | null =
         selectionScope === "new-thread" && storedMachineId !== ""
           ? { type: "existing", hostId: storedMachineId }
           : null;
       const candidate = seeded ?? remembered;
-      if (candidate?.type === "new") return { provider, machine: candidate };
-      if (usable(candidate?.hostId ?? null)) {
+      if (
+        candidate?.type === "existing" &&
+        isProviderUsableOnHost(provider.id, candidate.hostId)
+      ) {
         return { provider, machine: candidate };
       }
       return {
         provider,
         machine:
-          primaryHostId !== null && usable(primaryHostId)
+          primaryHostId !== null &&
+          isProviderUsableOnHost(provider.id, primaryHostId)
             ? { type: "existing", hostId: primaryHostId }
             : null,
       };
     },
     [
+      currentMachineHostId,
       seedOverridden,
       environmentSeed,
       environmentProviders,
-      environmentProvidersByHostId,
-      knownHostIds,
+      isProviderUsableOnHost,
       pickedProviderMachine,
       selectionScope,
       storedMachineId,
@@ -858,12 +887,14 @@ export function NewThreadComposer({
   const resolveProviderRouting = useCallback(
     (environmentSelectionValue: string) => {
       const effectiveValue = resolveRootComposeEffectiveEnvironmentValue({
+        currentMachineHostId,
         environmentSelectionValue,
         environmentProviders,
         isProjectless,
         knownHostIds,
         primaryHostId,
         projectSources,
+        providerUsableOnHost: isProviderUsableOnHost,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
         seededReuseEnvironment,
@@ -880,8 +911,10 @@ export function NewThreadComposer({
         : {};
     },
     [
+      currentMachineHostId,
       environmentProviders,
       isProjectless,
+      isProviderUsableOnHost,
       knownHostIds,
       primaryHostId,
       projectSources,
@@ -1070,20 +1103,24 @@ export function NewThreadComposer({
   const effectiveEnvironmentValue = useMemo(
     () =>
       resolveRootComposeEffectiveEnvironmentValue({
+        currentMachineHostId,
         environmentSelectionValue,
         environmentProviders,
         isProjectless,
         knownHostIds,
         primaryHostId,
         projectSources,
+        providerUsableOnHost: isProviderUsableOnHost,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
         seededReuseEnvironment,
       }),
     [
+      currentMachineHostId,
       environmentSelectionValue,
       environmentProviders,
       isProjectless,
+      isProviderUsableOnHost,
       knownHostIds,
       primaryHostId,
       projectSources,
@@ -1563,7 +1600,9 @@ export function NewThreadComposer({
       ? parsedEnvironment.environmentId
       : null;
   const projectHostId =
-    reuseEnvironmentId !== null ? null : (providerHostId ?? primaryHostId);
+    reuseEnvironmentId !== null
+      ? null
+      : (providerHostId ?? currentMachineHostId ?? primaryHostId);
   const panelThreadId = resolvePanelThreadId(
     reuseEnvironmentId,
     reuseThreadOptions,
