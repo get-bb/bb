@@ -111,6 +111,22 @@ function tokenUsage(threadId: string, sequence: number): InsertEventInput {
   });
 }
 
+function rateLimits(threadId: string, sequence: number): InsertEventInput {
+  return row(
+    threadId,
+    sequence,
+    "provider/rateLimits/updated",
+    { rateLimits: { providerId: "codex" } },
+    { scope: threadScope() },
+  );
+}
+
+function turnDiff(threadId: string, sequence: number): InsertEventInput {
+  return row(threadId, sequence, "turn/diff/updated", {
+    diff: `diff ${sequence}`,
+  });
+}
+
 function taskProgress(threadId: string, sequence: number): InsertEventInput {
   return row(
     threadId,
@@ -192,12 +208,12 @@ describe("thread event rewrite generation", () => {
       rewrite: (db, threadId) => deleteSuffix(db, threadId, 2),
     },
     {
-      name: "a usage prune",
-      seed: (threadId) => [tokenUsage(threadId, 1)],
-      noop: (db) => pruneThreadEvents(db, "usage"),
+      name: "a rate-limit snapshot prune",
+      seed: (threadId) => [rateLimits(threadId, 1)],
+      noop: (db) => pruneThreadEvents(db, "rate-limits"),
       between: (threadId) =>
-        [2, 3, 4].map((sequence) => tokenUsage(threadId, sequence)),
-      rewrite: (db) => pruneThreadEvents(db, "usage"),
+        [2, 3, 4].map((sequence) => rateLimits(threadId, sequence)),
+      rewrite: (db) => pruneThreadEvents(db, "rate-limits"),
     },
     {
       name: "a resolved delta prune",
@@ -253,6 +269,28 @@ describe("thread event rewrite generation", () => {
     });
     expect(getThreadEventRewriteGeneration(otherThreadId)).toBe(otherBefore);
   });
+
+  it.each([
+    {
+      name: "usage",
+      rows: (threadId: string) =>
+        [1, 2, 3, 4].map((sequence) => tokenUsage(threadId, sequence)),
+    },
+    {
+      name: "turn-diffs",
+      rows: (threadId: string) =>
+        [1, 2, 3, 4].map((sequence) => turnDiff(threadId, sequence)),
+    },
+  ] as const)(
+    "does not change when a $name prune removes rows the timeline never reads",
+    ({ name, rows }) => {
+      const { db, threadId } = setup();
+      insertEvents(db, noopNotifier, [...rows(threadId), message(threadId, 5)]);
+      expectGenerationBump(threadId, false, () => {
+        expect(pruneThreadEvents(db, name)).toBeGreaterThan(0);
+      });
+    },
+  );
 
   it("changes when a completed output is migrated and not when the scanned output fits", () => {
     const fits = setup();

@@ -35,7 +35,7 @@ import {
   buildThreadTimelineCacheRevision,
   createThreadTimelineCache,
 } from "./timeline-cache.js";
-import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
+import { forgetTimelineGroupingContexts } from "./timeline-context-order.js";
 import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
 import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
@@ -385,7 +385,7 @@ export function createThreadTimelineWindows(
       return;
     }
     if (rewritten) {
-      clearTimelineOrderingContextCache(deps.db);
+      forgetTimelineGroupingContexts(deps.db, message.id);
     }
     forgetLatestTimelineSelections(deps.db, message.id);
     forgetTimelineProjectionFolds(deps.db, message.id);

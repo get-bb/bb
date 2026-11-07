@@ -47,6 +47,7 @@ interface TimelineOrderingContextLog {
   dataVersion: number;
   generation: number;
   rows: TimelineOrderingContextRow[];
+  threadId: string;
   throughSequence: number;
 }
 
@@ -56,6 +57,7 @@ interface TimelineGroupingContextEntry {
   dataVersion: number;
   generation: number;
   maxSeq: number;
+  threadId: string;
 }
 
 const GROUPING_CONTEXT_KEY_LIMIT = 128;
@@ -75,6 +77,24 @@ const orderingContextLogs = new WeakMap<
 export function clearTimelineOrderingContextCache(db: DbConnection): void {
   orderingContexts.delete(db);
   orderingContextLogs.delete(db);
+}
+
+export function forgetTimelineGroupingContexts(
+  db: DbConnection,
+  threadId: string,
+): void {
+  const contexts = orderingContexts.get(db);
+  if (contexts !== undefined) {
+    for (const [key, entries] of contexts) {
+      if (entries[0]?.threadId === threadId) contexts.delete(key);
+    }
+  }
+  const logs = orderingContextLogs.get(db);
+  if (logs !== undefined) {
+    for (const [key, log] of logs) {
+      if (log.threadId === threadId) logs.delete(key);
+    }
+  }
 }
 
 function sequenceCut(
@@ -114,6 +134,7 @@ function listOrderingContextRows(
       dataVersion,
       generation,
       rows: [],
+      threadId: args.threadId,
       throughSequence: args.sequenceStart - 1,
     };
   }
@@ -222,7 +243,14 @@ export function getTimelineGroupingContext(
         : (orderingContext.boundarySequence ?? parentedBoundary),
   };
   cache.set(key, [
-    { context, orderingContext, dataVersion, generation, maxSeq: args.maxSeq },
+    {
+      context,
+      orderingContext,
+      dataVersion,
+      generation,
+      maxSeq: args.maxSeq,
+      threadId: args.threadId,
+    },
     ...entries.slice(0, GROUPING_CONTEXT_ENTRIES_PER_KEY - 1),
   ]);
   if (cache.size > GROUPING_CONTEXT_KEY_LIMIT) {
