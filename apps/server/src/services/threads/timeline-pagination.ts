@@ -74,10 +74,12 @@ function buildTimelineLogicalSegments(
       ),
     ),
   ].sort((left, right) => left - right);
-  const segments = bounds.map((sequenceStart): TimelineLogicalSegment => ({
-    rows: [],
-    sequenceStart,
-  }));
+  const segments = bounds.map(
+    (sequenceStart): TimelineLogicalSegment => ({
+      rows: [],
+      sequenceStart,
+    }),
+  );
   for (const row of args.rows) {
     if (
       row.sourceSeqStart < ownedSequenceStart ||
@@ -166,15 +168,9 @@ export function paginateTimelineRows(
     return {
       olderRowsSourceSeqEnd: omitted
         .filter((row) => !reported.includes(row))
-        .reduce<number | null>(
-          (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
-          args.omittedTurnSequenceEnd === null
-            ? omittedContentSourceSeqEnd
-            : Math.max(
-                omittedContentSourceSeqEnd ?? 0,
-                args.omittedTurnSequenceEnd,
-              ),
-        ),
+        .reduce<
+          number | null
+        >((sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd), args.omittedTurnSequenceEnd === null ? omittedContentSourceSeqEnd : Math.max(omittedContentSourceSeqEnd ?? 0, args.omittedTurnSequenceEnd)),
       ...(reported.length > 0 ? { olderRowUpdates: updates } : {}),
     };
   };
