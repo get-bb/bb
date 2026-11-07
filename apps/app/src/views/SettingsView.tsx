@@ -1169,11 +1169,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Add Metadata to the built-in thread list's Organize → Rows menu. When it is checked, plugins can show details such as a thread's pull request on a second line under its title.",
   },
-  timelinePush: {
-    label: "Pushed timeline updates",
-    description:
-      "Send an open thread's timeline changes over the live connection instead of reloading the latest window after each update.",
-  },
   updateWhenIdle: {
     label: "Update when idle",
     description:

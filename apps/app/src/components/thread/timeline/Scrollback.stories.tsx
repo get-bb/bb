@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { defaultExperiments } from "@bb/domain";
 import {
   computeThreadTimelineDelta,
   type ThreadTimelineResponse,
@@ -14,9 +13,7 @@ import {
   makeThreadResponse,
   makeThreadTimelineResponse,
 } from "@/test/fixtures/thread-responses";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
-  systemConfigQueryKey,
   threadDetailBootstrapQueryKey,
   threadQueryKey,
   threadTimelineQueryKey,
@@ -220,15 +217,6 @@ function createScrollbackStory(delivery: TimelineDelivery): {
     canSpawnChild: false,
   });
   const timelineKey = threadTimelineQueryKey(THREAD_ID);
-  queryClient.setQueryData(
-    systemConfigQueryKey(),
-    makeSystemConfig({
-      experiments: {
-        ...defaultExperiments,
-        timelinePush: delivery === "push",
-      },
-    }),
-  );
   queryClient.setQueryData(threadDetailBootstrapQueryKey(THREAD_ID), thread);
   queryClient.setQueryData(threadQueryKey(THREAD_ID), thread);
   queryClient.setQueryData(timelineKey, server.latest());

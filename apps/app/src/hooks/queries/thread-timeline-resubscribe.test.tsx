@@ -4,19 +4,14 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { JSX, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  clientMessageSchema,
-  defaultExperiments,
-  type ClientMessage,
-} from "@bb/domain";
+import { clientMessageSchema, type ClientMessage } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { makeThreadTimelineResponse } from "@/test/fixtures/thread-responses";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { systemConfigQueryKey, threadTimelineQueryKey } from "./query-keys";
+import { threadTimelineQueryKey } from "./query-keys";
 import { useThreadTimeline } from "./thread-panel-queries";
 
 const fakeSockets = vi.hoisted(() => {
@@ -125,12 +120,6 @@ function timelineSubscribeTags(): Array<Record<string, string | null>> {
 
 function renderApp() {
   const harness = createQueryClientTestHarness();
-  harness.queryClient.setQueryData(
-    systemConfigQueryKey(),
-    makeSystemConfig({
-      experiments: { ...defaultExperiments, timelinePush: true },
-    }),
-  );
   const HarnessWrapper = harness.wrapper;
   const wrapper = ({ children }: { children: ReactNode }): JSX.Element => (
     <MemoryRouter>

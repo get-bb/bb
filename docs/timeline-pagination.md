@@ -213,7 +213,7 @@ client keeps optimistic rows after the server's rows, so ranges still address
 the base window. `sdk.threads.timeline` returns a full window unless it is
 given `afterTag`.
 
-With the `timelinePush` experiment, the server pushes a full window or a delta
+While a thread view is open, the server pushes a full window or a delta
 over the WebSocket after events are appended. A `subscribe` message tells the
 server which window the client holds: `timelineTags` maps each
 `thread-timeline` target key to the tag the client holds, or to `null` before

@@ -40,7 +40,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     skipFocusedThreadNotifications: false,
     threadContextCard: false,
     threadRowMetadata: false,
-    timelinePush: false,
     updateWhenIdle: false,
   },
   appearance: defaultAppTheme,
