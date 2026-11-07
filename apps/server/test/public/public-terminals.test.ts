@@ -1768,6 +1768,63 @@ describe("public terminal routes", () => {
     },
   );
 
+  it("catches a reattached browser up from its own position after output no browser was watching", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+    for (const seq of [0, 1, 2]) {
+      fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        message: {
+          type: "terminal.output",
+          terminalId: stored.id,
+          chunk: {
+            seq,
+            dataBase64: Buffer.from(`chunk-${seq}`).toString("base64"),
+          },
+        },
+      });
+    }
+    handleDaemonSocketClosed(fixture.harness.deps, {
+      sessionId: fixture.session.id,
+    });
+    const browserSocket = createFakeBrowserSocket();
+    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+      outputAcks: false,
+      socket: browserSocket,
+      sinceSeq: 0,
+      terminalId: stored.id,
+    });
+
+    const replacementSession = seedSession(
+      fixture.harness.deps,
+      fixture.host.id,
+    );
+    const replacementSocket = createFakeDaemonSocket();
+    onDaemonSocketOpen(fixture.harness.deps, {
+      hostId: fixture.host.id,
+      sessionId: replacementSession.id,
+      socket: replacementSocket,
+    });
+
+    expect(
+      readDaemonOperationMessages(replacementSocket).find(
+        (message) => message.type === "terminal.attach",
+      ),
+    ).toMatchObject({ terminalId: stored.id, sinceSeq: 0 });
+  });
+
   it("expires disconnected terminals when a restarted daemon instance reconnects", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
