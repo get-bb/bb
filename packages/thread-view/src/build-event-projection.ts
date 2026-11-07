@@ -86,6 +86,7 @@ import {
   finalizeProjectionState,
   flushProjectionBufferedOutputs,
   flushProjectionBufferedOutputsAfterTurnCompleted,
+  interruptedTurnFinalizationChangesState,
   onThreadInterrupted,
   onTurnCompleted,
   onTurnStarted,
@@ -1182,8 +1183,8 @@ function copyProjectionStateForFinish(
   options: BuildEventProjectionOptions,
 ): ProjectionState {
   if (
-    state.pendingFinalizationByTurnId.size > 0 ||
-    !shouldPreservePendingMessages(options.threadStatus)
+    !shouldPreservePendingMessages(options.threadStatus) ||
+    interruptedTurnFinalizationChangesState(state)
   ) {
     return structuredClone(state);
   }

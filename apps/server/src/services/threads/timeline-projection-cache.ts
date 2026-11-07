@@ -15,6 +15,7 @@ export interface TimelineProjectionCacheArgs {
   contextWindowRows: readonly StoredEventRow[];
   headStateRows: readonly StoredEventRow[];
   includeNestedRows: boolean;
+  omitSettledDelegationChildRows: boolean;
   projectionKey: string;
   rows: readonly StoredEventRow[];
 }
@@ -29,7 +30,7 @@ interface TimelineProjectionCacheEntry {
   eventProjection: EventProjection;
   headStateRows: readonly StoredEventRow[];
   projectionKey: string;
-  projections: Map<boolean, TimelineProjection>;
+  projections: Map<string, TimelineProjection>;
 }
 
 export const TIMELINE_PROJECTION_CACHE_MAX_ENTRIES_PER_SELECTION = 4;
@@ -63,11 +64,12 @@ export function keepTimelineProjection(
       candidate.headStateRows === args.headStateRows &&
       sameStoredRows(candidate.contextWindowRows, args.contextWindowRows),
   );
-  const cached = entry?.projections.get(args.includeNestedRows);
+  const rowsKey = `${args.includeNestedRows}:${args.omitSettledDelegationChildRows}`;
+  const cached = entry?.projections.get(rowsKey);
   if (cached !== undefined) return cached;
   const built = build(entry?.eventProjection ?? null);
   if (entry !== undefined) {
-    entry.projections.set(args.includeNestedRows, built.projection);
+    entry.projections.set(rowsKey, built.projection);
     return built.projection;
   }
   projectionsBySelectedRows.set(
@@ -78,7 +80,7 @@ export function keepTimelineProjection(
         eventProjection: built.eventProjection,
         headStateRows: args.headStateRows,
         projectionKey: args.projectionKey,
-        projections: new Map([[args.includeNestedRows, built.projection]]),
+        projections: new Map([[rowsKey, built.projection]]),
       },
       ...entries,
     ].slice(0, TIMELINE_PROJECTION_CACHE_MAX_ENTRIES_PER_SELECTION),

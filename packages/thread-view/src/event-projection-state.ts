@@ -291,6 +291,41 @@ function finalizePendingMessageForInterruptedTurn(
   }
 }
 
+function isPendingInTurns(
+  message: EventProjectionMessage,
+  turnIds: ReadonlyMap<string, TurnPendingFinalization>,
+): boolean {
+  return (
+    message.scope.kind === "turn" &&
+    turnIds.has(message.scope.turnId) &&
+    "status" in message &&
+    message.status === "pending"
+  );
+}
+
+export function interruptedTurnFinalizationChangesState(
+  state: ProjectionState,
+): boolean {
+  const turnIds = state.pendingFinalizationByTurnId;
+  if (turnIds.size === 0) {
+    return false;
+  }
+  for (const call of state.toolActivity.runningCallsById.values()) {
+    if (call.scope.kind === "turn" && turnIds.has(call.scope.turnId)) {
+      return true;
+    }
+  }
+  const activeCell = state.toolActivity.activeCell;
+  if (activeCell !== null && isPendingInTurns(activeCell, turnIds)) {
+    return true;
+  }
+  return (
+    state.toolActivity.historyCells.some((cell) =>
+      isPendingInTurns(cell, turnIds),
+    ) || state.messages.some((message) => isPendingInTurns(message, turnIds))
+  );
+}
+
 function finalizeInterruptedTurnPendingMessages(state: ProjectionState): void {
   if (state.pendingFinalizationByTurnId.size === 0) {
     return;
