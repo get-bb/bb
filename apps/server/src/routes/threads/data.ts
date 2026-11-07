@@ -272,6 +272,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       thread.id,
       getDatabaseDataVersion(deps.db),
       buildThreadConversationOutlineProjectionKey(
+        deps.db,
         thread,
         outlineSequence,
         outlineOptions,

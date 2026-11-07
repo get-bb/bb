@@ -359,7 +359,7 @@ export function deleteThreadEventSuffixInTransaction(
     db.delete(threadTurnTimelinePlans)
       .where(eq(threadTurnTimelinePlans.threadId, args.threadId))
       .run();
-    bumpThreadEventRewriteGeneration(args.threadId);
+    bumpThreadEventRewriteGeneration(db, args.threadId);
     markThreadPruningWork(db, [args.threadId]);
   }
   return { deletedEventCount: result.changes };
@@ -585,7 +585,7 @@ export function insertEvents(
           insertedInputIndexes.push(index);
           const highWaterMark = highWaterMarks[input.threadId];
           if (highWaterMark !== undefined && input.sequence <= highWaterMark) {
-            bumpThreadEventRewriteGeneration(input.threadId);
+            bumpThreadEventRewriteGeneration(tx, input.threadId);
           }
           const eventTypes = eventTypesByThreadId.get(input.threadId);
           if (eventTypes) {

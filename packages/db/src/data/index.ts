@@ -425,6 +425,7 @@ export {
 export {
   getDatabaseDataVersion,
   getThreadEventRewriteGeneration,
+  getStoredThreadEventRewriteGeneration,
 } from "./event-rewrite-generation.js";
 export {
   canHydrateRetainedEventOutputRowsWithinDataByteLimit,

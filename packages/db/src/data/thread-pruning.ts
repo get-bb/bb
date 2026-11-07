@@ -538,6 +538,9 @@ function advanceThreadPruningTransaction(
           ),
         )
         .run();
+      if (removed > 0 && threadId !== null) {
+        bumpThreadEventRewriteGeneration(tx, threadId);
+      }
       return {
         policy,
         action,
@@ -550,8 +553,6 @@ function advanceThreadPruningTransaction(
     },
     { behavior: "immediate" },
   );
-  if (result.removed > 0 && result.threadId !== null)
-    bumpThreadEventRewriteGeneration(result.threadId);
   return result;
 }
 

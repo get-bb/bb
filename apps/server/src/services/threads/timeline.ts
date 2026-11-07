@@ -72,7 +72,7 @@ import {
   getEnvironment,
   getLatestCompletedThreadContextClearSequence,
   getThreadConversationOutlineRecord,
-  getThreadEventRewriteGeneration,
+  getStoredThreadEventRewriteGeneration,
   listContextWindowUsageRows,
   isTimelineCursorSequencePresent,
   listStoredConversationOutlineEventRows,
@@ -1765,7 +1765,7 @@ function buildThreadTimelineInternal(
     options.completedTurnDisplay === "flat" || includeNestedRows
       ? null
       : timelineTurnPlanProjectionKey([
-          getThreadEventRewriteGeneration(thread.id),
+          getStoredThreadEventRewriteGeneration(db, thread.id),
           thread.providerId,
           snapshot.status,
           historySequenceStart,
@@ -2401,13 +2401,14 @@ export function getThreadMessage(
 }
 
 export function buildThreadConversationOutlineProjectionKey(
+  db: DbConnection,
   thread: Thread,
   outlineSequence: number,
   options: BuildThreadConversationOutlineOptions,
 ): string {
   return JSON.stringify([
     CONVERSATION_OUTLINE_PROJECTION_VERSION,
-    getThreadEventRewriteGeneration(thread.id),
+    getStoredThreadEventRewriteGeneration(db, thread.id),
     outlineSequence,
     thread.providerId,
     options.providerDisplayName ?? null,
@@ -2442,6 +2443,7 @@ export function loadThreadConversationOutline(
   options: LoadThreadConversationOutlineOptions,
 ): ThreadConversationOutlineResponse {
   const projectionKey = buildThreadConversationOutlineProjectionKey(
+    db,
     thread,
     options.outlineSequence,
     options,
@@ -2471,7 +2473,7 @@ export function loadThreadConversationOutline(
         items: projectConversationOutlineIncrementally({
           db,
           threadId: thread.id,
-          key: buildThreadConversationOutlineProjectionKey(thread, 0, options),
+          key: buildThreadConversationOutlineProjectionKey(db, thread, 0, options),
           maxSeq: options.maxSeq,
           historySequenceStart,
           orderingBoundarySequence,
