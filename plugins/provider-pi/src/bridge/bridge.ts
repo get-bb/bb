@@ -62,7 +62,7 @@ import {
 } from "./provider-maintenance.js";
 import {
   closeAllPiCatalogs,
-  createLiveContextWindowResolver,
+  createLiveModelCatalogResolvers,
   getPiCatalog,
 } from "./catalog.js";
 import {
@@ -241,9 +241,10 @@ function requireExtensionPath(): string {
   return extensionPath;
 }
 
-const contextWindows = createLiveContextWindowResolver();
+const modelCatalog = createLiveModelCatalogResolvers();
 const piDeltaTranslator = createPiDeltaTranslator({
-  resolveModelContextWindow: contextWindows.resolve,
+  resolveModelContextWindow: modelCatalog.resolve,
+  resolvePromptCacheLifetime: modelCatalog.resolvePromptCacheLifetime,
 });
 
 function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
@@ -628,7 +629,7 @@ async function handleModelList(
       params.cwd ?? process.cwd(),
       requireExtensionPath(),
     );
-    contextWindows.learn(await catalog.rawModels());
+    modelCatalog.learn(await catalog.rawModels());
     sendResult(id, await catalog.listModels());
   } catch (error) {
     sendError(
@@ -777,11 +778,12 @@ async function constructPiThreadSession(
       typeof liveModel.id === "string" &&
       typeof liveModel.provider === "string"
     ) {
-      contextWindows.learn([
+      modelCatalog.learn([
         {
           id: liveModel.id,
           provider: liveModel.provider,
           contextWindow: liveModel.contextWindow,
+          promptCache: liveModel.promptCache,
         },
       ]);
     }

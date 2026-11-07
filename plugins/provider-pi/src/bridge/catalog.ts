@@ -2,7 +2,9 @@ import type { AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
 import { resolve } from "node:path";
 import {
   createPiModelContextWindowResolverFrom,
+  createPiPromptCacheLifetimeResolverFrom,
   type PiModelContextWindowResolver,
+  type PiPromptCacheLifetimeResolver,
 } from "../delta-translation.js";
 import { buildPiAvailableModels, type PiCatalogModel } from "../model-list.js";
 import {
@@ -31,6 +33,7 @@ interface PiRpcModel {
   input?: unknown;
   reasoning?: boolean;
   contextWindow?: number;
+  promptCache?: { long?: number; short?: number };
   thinkingLevelMap?: Record<string, string | null | undefined>;
 }
 
@@ -393,18 +396,42 @@ export async function closeAllPiCatalogs(): Promise<void> {
   );
 }
 
-export function createLiveContextWindowResolver(): {
+export interface PiModelCatalogResolvers {
+  resolvePromptCacheLifetime: PiPromptCacheLifetimeResolver;
   resolve: PiModelContextWindowResolver;
   learn(models: readonly PiRpcModel[]): void;
-} {
-  const known = new Map<string, PiRpcModel>();
-  let resolver = createPiModelContextWindowResolverFrom([]);
+}
+
+function toCatalogResolverModel(model: PiRpcModel) {
   return {
-    resolve: (lastAssistant) => resolver(lastAssistant),
+    id: model.id,
+    provider: model.provider,
+    contextWindow: model.contextWindow,
+    promptCache: model.promptCache,
+  };
+}
+
+function hasCatalogResolverFields(model: PiRpcModel): boolean {
+  return (
+    typeof model.contextWindow === "number" ||
+    model.promptCache !== undefined
+  );
+}
+
+export function createLiveModelCatalogResolvers(): PiModelCatalogResolvers {
+  const known = new Map<string, PiRpcModel>();
+  let resolvers = {
+    resolve: createPiModelContextWindowResolverFrom([]),
+    resolvePromptCacheLifetime: createPiPromptCacheLifetimeResolverFrom([]),
+  };
+  return {
+    resolve: (lastAssistant) => resolvers.resolve(lastAssistant),
+    resolvePromptCacheLifetime: (lastAssistant) =>
+      resolvers.resolvePromptCacheLifetime(lastAssistant),
     learn(models) {
       let changed = false;
       for (const model of models) {
-        if (typeof model.contextWindow !== "number") {
+        if (!hasCatalogResolverFields(model)) {
           continue;
         }
         const key = `${model.provider}\0${model.id}`;
@@ -414,13 +441,14 @@ export function createLiveContextWindowResolver(): {
         }
       }
       if (changed) {
-        resolver = createPiModelContextWindowResolverFrom(
-          [...known.values()].map((model) => ({
-            id: model.id,
-            provider: model.provider,
-            contextWindow: model.contextWindow,
-          })),
+        const resolverModels = [...known.values()].map(
+          toCatalogResolverModel,
         );
+        resolvers = {
+          resolve: createPiModelContextWindowResolverFrom(resolverModels),
+          resolvePromptCacheLifetime:
+            createPiPromptCacheLifetimeResolverFrom(resolverModels),
+        };
       }
     },
   };

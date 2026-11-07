@@ -15,7 +15,9 @@ import {
 import {
   createPiDeltaTranslator,
   createPiModelContextWindowResolverFrom,
+  createPiPromptCacheLifetimeResolverFrom,
   type PiModelContextWindowResolver,
+  type PiPromptCacheLifetimeResolver,
 } from "./delta-translation.js";
 
 const builtinCatalogResolver = createPiModelContextWindowResolverFrom(
@@ -58,10 +60,12 @@ interface PiEquivalenceHarness {
 
 function createHarness(options?: {
   resolveModelContextWindow?: PiModelContextWindowResolver;
+  resolvePromptCacheLifetime?: PiPromptCacheLifetimeResolver;
 }): PiEquivalenceHarness {
   const translator = createPiDeltaTranslator({
     resolveModelContextWindow:
       options?.resolveModelContextWindow ?? builtinCatalogResolver,
+    resolvePromptCacheLifetime: options?.resolvePromptCacheLifetime,
   });
   const assembler = createDeltaAssembler({
     providerId: "pi",
@@ -1833,6 +1837,121 @@ describe("pi delta translation equivalence", () => {
     });
 
     expect(reported).toEqual(turns.map(([, ttl]) => ttl));
+  });
+
+  const declaredLifetimeResolver = createPiPromptCacheLifetimeResolverFrom([
+    {
+      id: "gpt-6.1-sol",
+      provider: "cpa",
+      promptCache: { short: 1800 },
+    },
+    {
+      id: "claude-sonnet-5-5",
+      provider: "cpa",
+      promptCache: { long: 3600, short: 300 },
+    },
+  ]);
+
+  it.each([
+    ["gpt-6.1-sol", undefined, 1_800_000],
+    ["claude-sonnet-5-5", undefined, 300_000],
+    ["gpt-6.1-sol", { cacheWrite1h: 9 }, 3_600_000],
+    ["gpt-6.1-sol", { cacheWrite1h: 0, cacheWrite: 9 }, 300_000],
+    ["gpt-unlisted", undefined, undefined],
+    ["gpt-unlisted", { cacheWrite: 9 }, undefined],
+  ])(
+    "reports the declared prompt cache lifetime for %s with %j",
+    (model, cache, expected) => {
+      const harness = createHarness({
+        resolvePromptCacheLifetime: declaredLifetimeResolver,
+      });
+      harness.translate(loadFixture("agent-start.json"));
+      const event = harness
+        .translate({
+          type: "agent_end",
+          messages: [
+            {
+              role: "assistant",
+              content: [],
+              model,
+              provider: "cpa",
+              usage: { input: 80, output: 20, ...cache },
+            },
+          ],
+        })
+        .find((event) => event.type === "thread/tokenUsage/updated");
+      expect(event?.tokenUsage.promptCacheTtlMs).toBe(expected);
+    },
+  );
+
+  it.each([
+    ["short", 1_800_000],
+    ["long", 86_400_000],
+    [undefined, 1_800_000],
+  ])(
+    "resolves the declared lifetime for PI_CACHE_RETENTION=%s",
+    (retention, expected) => {
+      const previous = process.env.PI_CACHE_RETENTION;
+      try {
+        if (retention === undefined) delete process.env.PI_CACHE_RETENTION;
+        else process.env.PI_CACHE_RETENTION = retention;
+        const harness = createHarness({
+          resolvePromptCacheLifetime: createPiPromptCacheLifetimeResolverFrom([
+            {
+              id: "gpt-6.1-sol",
+              provider: "cpa",
+              promptCache: { long: 86_400, short: 1800 },
+            },
+          ]),
+        });
+        harness.translate(loadFixture("agent-start.json"));
+        const event = harness
+          .translate({
+            type: "agent_end",
+            messages: [
+              {
+                role: "assistant",
+                content: [],
+                model: "gpt-6.1-sol",
+                provider: "cpa",
+                usage: { input: 80, output: 20 },
+              },
+            ],
+          })
+          .find((event) => event.type === "thread/tokenUsage/updated");
+        expect(event?.tokenUsage.promptCacheTtlMs).toBe(expected);
+      } finally {
+        if (previous === undefined) delete process.env.PI_CACHE_RETENTION;
+        else process.env.PI_CACHE_RETENTION = previous;
+      }
+    },
+  );
+
+  it("ignores a declared lifetime outside the reported positive range", () => {
+    const resolver = createPiPromptCacheLifetimeResolverFrom([
+      {
+        id: "gpt-6.1-sol",
+        provider: "cpa",
+        promptCache: { long: 0, short: -1 },
+      },
+      {
+        id: "gpt-6.1-terra",
+        provider: "cpa",
+        promptCache: { short: 0, long: 86_400 },
+      },
+    ]);
+
+    expect(resolver(undefined)).toBeUndefined();
+    expect(resolver({} as never)).toBeUndefined();
+    expect(resolver({ model: "gpt-6.1-terra" } as never)).toEqual({
+      long: 86_400,
+    });
+    expect(
+      resolver({
+        model: "gpt-6.1-sol",
+        provider: "cpa",
+      } as never),
+    ).toBeUndefined();
   });
 
   it.each(["cacheRead", "cacheWrite"])(

@@ -9,7 +9,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
-import { closeAllPiCatalogs, getPiCatalog } from "./catalog.js";
+import {
+  closeAllPiCatalogs,
+  createLiveModelCatalogResolvers,
+  getPiCatalog,
+} from "./catalog.js";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
 import { fakePiPath } from "./test-support.js";
 
@@ -233,4 +237,49 @@ describe("pi catalog freshness", () => {
     },
     60_000,
   );
+});
+
+describe("live model catalog resolvers", () => {
+  it("resolves prompt cache lifetimes learned from the catalog", () => {
+    const resolvers = createLiveModelCatalogResolvers();
+    expect(
+      resolvers.resolvePromptCacheLifetime({
+        model: "gpt-6.1-sol",
+        provider: "cpa",
+      } as never),
+    ).toBeUndefined();
+
+    resolvers.learn([
+      {
+        id: "gpt-6.1-sol",
+        provider: "cpa",
+        contextWindow: 1050000,
+        promptCache: { short: 1800 },
+      },
+    ]);
+
+    const assistant = { model: "gpt-6.1-sol", provider: "cpa" } as never;
+    expect(resolvers.resolvePromptCacheLifetime(assistant)).toEqual({
+      short: 1800,
+    });
+    expect(resolvers.resolve(assistant)).toBe(1050000);
+  });
+
+  it("learns a model that only declares a prompt cache lifetime", () => {
+    const resolvers = createLiveModelCatalogResolvers();
+    resolvers.learn([
+      {
+        id: "gpt-6.1-terra",
+        provider: "cpa",
+        promptCache: { long: 86400, short: 1800 },
+      },
+    ]);
+
+    expect(
+      resolvers.resolvePromptCacheLifetime({
+        model: "gpt-6.1-terra",
+        provider: "cpa",
+      } as never),
+    ).toEqual({ long: 86400, short: 1800 });
+  });
 });

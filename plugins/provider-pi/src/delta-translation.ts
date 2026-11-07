@@ -36,7 +36,13 @@ import { runSettlementError } from "./bridge/run-settlement.js";
 export interface PiContextWindowModel {
   contextWindow?: number;
   id: string;
+  promptCache?: PiPromptCacheLifetimes;
   provider: string;
+}
+
+export interface PiPromptCacheLifetimes {
+  long?: number;
+  short?: number;
 }
 
 const piEventTypeSchema = z
@@ -496,6 +502,64 @@ function resolvePiModelContextWindow(
   return modelContextWindowLookup.byModelId.get(modelId) ?? null;
 }
 
+interface PiPromptCacheLifetimeLookup {
+  byCanonicalId: ReadonlyMap<string, PiPromptCacheLifetimes>;
+  byModelId: ReadonlyMap<string, PiPromptCacheLifetimes>;
+}
+
+export type PiPromptCacheLifetimeResolver = (
+  lastAssistant: PiAssistantMessage | undefined,
+) => PiPromptCacheLifetimes | undefined;
+
+function buildPiPromptCacheLifetimeLookup(
+  models: readonly PiContextWindowModel[],
+): PiPromptCacheLifetimeLookup {
+  const byCanonicalId = new Map<string, PiPromptCacheLifetimes>();
+  const byModelId = new Map<string, PiPromptCacheLifetimes>();
+  for (const model of models) {
+    const lifetimes = toPromptCacheLifetimes(model.promptCache);
+    if (lifetimes === undefined) {
+      continue;
+    }
+    byCanonicalId.set(
+      toCanonicalPiModelId(model.provider, model.id),
+      lifetimes,
+    );
+    byModelId.set(model.id, lifetimes);
+  }
+  return { byCanonicalId, byModelId };
+}
+
+function toPromptCacheLifetimes(
+  promptCache: PiPromptCacheLifetimes | undefined,
+): PiPromptCacheLifetimes | undefined {
+  if (promptCache === undefined) return undefined;
+  const short = toPositiveNumber(promptCache.short);
+  const long = toPositiveNumber(promptCache.long);
+  if (short === undefined && long === undefined) return undefined;
+  return {
+    ...(long === undefined ? {} : { long }),
+    ...(short === undefined ? {} : { short }),
+  };
+}
+
+export function createPiPromptCacheLifetimeResolverFrom(
+  models: readonly PiContextWindowModel[],
+): PiPromptCacheLifetimeResolver {
+  const lookup = buildPiPromptCacheLifetimeLookup(models);
+  return (lastAssistant) => {
+    const modelId = toOptionalString(lastAssistant?.model);
+    if (!modelId) return undefined;
+    const providerId = toOptionalString(lastAssistant?.provider);
+    if (providerId) {
+      return lookup.byCanonicalId.get(
+        toCanonicalPiModelId(providerId, modelId),
+      );
+    }
+    return lookup.byModelId.get(modelId);
+  };
+}
+
 interface PiDeltaTranslationContext {
   threadId?: string;
   parentToolCallId?: string;
@@ -504,6 +568,7 @@ interface PiDeltaTranslationContext {
 
 interface CreatePiDeltaTranslatorOptions {
   resolveModelContextWindow: PiModelContextWindowResolver;
+  resolvePromptCacheLifetime?: PiPromptCacheLifetimeResolver | undefined;
 }
 
 const MAX_STARTED_TOOL_SHAPES = 1024;
@@ -516,7 +581,8 @@ interface StartedPiTool {
 export function createPiDeltaTranslator(
   options: CreatePiDeltaTranslatorOptions,
 ) {
-  const { resolveModelContextWindow } = options;
+  const { resolveModelContextWindow, resolvePromptCacheLifetime } =
+    options;
 
   const startedToolShapes = new Map<string, StartedPiTool>();
   const cumulativeTokensByThreadId = new Map<
@@ -998,7 +1064,10 @@ export function createPiDeltaTranslator(
             usage,
           );
           cumulativeTokensByThreadId.set(threadKey, total);
-          const reportedTtlMs = toPromptCacheTtlMs(lastAssistant);
+          const reportedTtlMs = toPromptCacheTtlMs(
+            lastAssistant,
+            resolvePromptCacheLifetime,
+          );
           if (reportedTtlMs !== undefined) {
             promptCacheTtlMsByThreadId.set(threadKey, reportedTtlMs);
           }
@@ -1295,16 +1364,27 @@ function extractPiToolProgressText(event: PiToolExecutionUpdateEvent): string {
 const PI_ONE_HOUR_CACHE_TTL_MS = 60 * 60_000;
 const PI_FIVE_MINUTE_CACHE_TTL_MS = 5 * 60_000;
 
+function piCacheRetentionTier(): "long" | "short" {
+  return process.env.PI_CACHE_RETENTION === "long" ? "long" : "short";
+}
+
 function toPromptCacheTtlMs(
   lastAssistant: PiAssistantMessage | undefined,
+  resolvePromptCacheLifetime: PiPromptCacheLifetimeResolver | undefined,
 ): number | undefined {
   const usage = lastAssistant?.usage;
-  if (usage?.cacheWrite1h === undefined) return undefined;
-  if (usage.cacheWrite1h > 0) return PI_ONE_HOUR_CACHE_TTL_MS;
-  if (toNonNegativeNumber(usage.cacheWrite) > 0) {
-    return PI_FIVE_MINUTE_CACHE_TTL_MS;
+  if (usage?.cacheWrite1h !== undefined) {
+    if (usage.cacheWrite1h > 0) return PI_ONE_HOUR_CACHE_TTL_MS;
+    if (toNonNegativeNumber(usage.cacheWrite) > 0) {
+      return PI_FIVE_MINUTE_CACHE_TTL_MS;
+    }
   }
-  return undefined;
+  const declared = resolvePromptCacheLifetime?.(lastAssistant);
+  const seconds =
+    piCacheRetentionTier() === "long"
+      ? (declared?.long ?? declared?.short)
+      : (declared?.short ?? declared?.long);
+  return seconds === undefined ? undefined : seconds * 1_000;
 }
 
 function toAssistantUsageBreakdown(

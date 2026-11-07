@@ -216,9 +216,13 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   the TTL they were written with, so a bridge reports the TTL of its latest
   observed cache write and repeats it on later `usage` deltas, resetting
   where it sends `session.reset`; omit it until the provider reports one.
-  Claude derives it from `cache_creation` (any 1h write ⇒ 1h, else 5m) and
-  Pi from `cacheWrite1h`, which only its Anthropic and Bedrock APIs report;
-  Codex and ACP agents report no retention and omit it.
+  Claude derives it from `cache_creation` (any 1h write ⇒ 1h, else 5m).
+  Pi prefers `cacheWrite1h`, which only its Anthropic and Bedrock APIs
+  report, and otherwise falls back to the model's declared
+  `promptCache.short` lifetime from the pi catalog, so implicit-cache
+  providers (OpenAI `openai-responses` and `openai-completions`, which
+  report no cache writes at all) report a TTL too. Codex and ACP agents
+  report no retention and omit it.
 - **Context meter.** The context meter is always the separate `contextWindow`
   delta, which may name a vouched `providerTurnId` (codex sends one beside
   each `usage`). It may carry the session's cumulative `cost`

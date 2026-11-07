@@ -162,7 +162,12 @@ export async function runPiTransientAuthConstruction(args: {
 }
 
 export interface PiRpcSessionState {
-  model?: { provider?: string; id?: string; contextWindow?: number };
+  model?: {
+    provider?: string;
+    id?: string;
+    contextWindow?: number;
+    promptCache?: { long?: number; short?: number };
+  };
   thinkingLevel?: string;
   isStreaming: boolean;
   isCompacting: boolean;
