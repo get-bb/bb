@@ -369,6 +369,8 @@ export {
   advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
   findLatestTimelineTurnEventSequenceBefore,
+  isTimelineEventInCompletedTurn,
+  findTimelineWindowCutSequence,
   findStoredTimelineWindowByteBudgetFloor,
   isTimelineCursorSequencePresent,
   listStoredClientTurnRequestIdsInRange,
@@ -570,7 +572,6 @@ export * from "./machines.js";
 export {
   advanceThreadPruning,
   deleteThreadScopedPruningCursors,
-  findUnprunableThreadEventSequence,
   getNextThreadPruningPolicy,
   pickThreadPruningThread,
   THREAD_PRUNING_POLICIES,

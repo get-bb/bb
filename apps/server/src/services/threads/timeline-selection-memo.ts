@@ -4,7 +4,6 @@ import type { TimelineRow } from "@bb/server-contract";
 import {
   advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
-  findUnprunableThreadEventSequence,
   getDatabaseDataVersion,
   getLatestThreadSequence,
   getThreadEventRewriteGeneration,
@@ -20,6 +19,8 @@ import {
   listStoredTimelineWindowEventRows,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
+  findTimelineWindowCutSequence,
+  isTimelineEventInCompletedTurn,
   scopedItemRefKey,
   selectAppendedTimelineWindowRows,
   type DbConnection,
@@ -220,39 +221,73 @@ export function readDecodedLatestTimelineSelections(db: DbConnection): {
   );
 }
 
-export interface TimelineWindowStartArgs {
-  beforeSequence: number;
+export interface SelectTimelineWindowStartArgs {
   budgetFloorSequence: number | undefined;
   epochSequenceStart: number;
+  eventBudget: number;
   hints: readonly TimelineWindowHint[];
   segmentLimit: number;
-  threadId: string;
+  splitTurnAt: (
+    gridSequence: number,
+    budgetFloorSequence: number,
+  ) => number | null;
 }
 
 export function selectTimelineWindowStart(
-  db: DbConnection,
-  args: TimelineWindowStartArgs,
+  args: SelectTimelineWindowStartArgs,
 ): number {
-  const { budgetFloorSequence, hints, segmentLimit } = args;
+  const { budgetFloorSequence, epochSequenceStart, hints, segmentLimit } = args;
   if (budgetFloorSequence === undefined && hints.length <= segmentLimit) {
-    return args.epochSequenceStart;
+    return epochSequenceStart;
   }
   const affordable = hints.filter(
     (hint) =>
       budgetFloorSequence === undefined || hint.sequence >= budgetFloorSequence,
   );
-  const hintStart =
-    affordable[Math.min(segmentLimit, affordable.length) - 1]?.sequence ??
-    hints[0]?.sequence;
-  if (hintStart !== undefined) return hintStart;
-  if (budgetFloorSequence === undefined) return args.epochSequenceStart;
-  return (
-    findUnprunableThreadEventSequence(db, {
-      beforeSequence: args.beforeSequence,
-      sequenceStart: budgetFloorSequence,
+  const hinted = affordable[Math.min(segmentLimit, affordable.length) - 1];
+  if (hinted !== undefined) return hinted.sequence;
+  const newestHint = hints[0]?.sequence;
+  if (budgetFloorSequence === undefined) {
+    return newestHint ?? epochSequenceStart;
+  }
+  const gridSequence =
+    budgetFloorSequence -
+    (budgetFloorSequence % timelineWindowGridStep(args.eventBudget));
+  const lowerBound = newestHint ?? epochSequenceStart;
+  if (gridSequence <= lowerBound) return lowerBound;
+  const cut = args.splitTurnAt(gridSequence, budgetFloorSequence);
+  return cut === null || cut <= lowerBound ? lowerBound : cut;
+}
+
+function timelineWindowGridStep(eventBudget: number): number {
+  return Math.max(1, Math.ceil(eventBudget / 2));
+}
+
+export function timelineTurnSplitter(
+  db: DbConnection,
+  args: {
+    flatTurnDisplay: boolean;
+    maxSeq: number;
+    threadId: string;
+  },
+): SelectTimelineWindowStartArgs["splitTurnAt"] {
+  return (gridSequence, budgetFloorSequence) => {
+    if (
+      !args.flatTurnDisplay &&
+      isTimelineEventInCompletedTurn(db, {
+        maxSeq: args.maxSeq,
+        sequence: budgetFloorSequence,
+        threadId: args.threadId,
+      })
+    ) {
+      return null;
+    }
+    return findTimelineWindowCutSequence(db, {
+      budgetFloorSequence,
+      sequence: gridSequence,
       threadId: args.threadId,
-    }) ?? budgetFloorSequence
-  );
+    });
+  };
 }
 
 function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
@@ -434,13 +469,13 @@ function lookupFromWiderSibling(
     sequence: wider.budgetFloorSequence,
   };
   const hints = wider.hints.slice(0, args.page.segmentLimit + 1);
-  const sequenceStart = selectTimelineWindowStart(db, {
-    beforeSequence: args.maxSeq + 1,
+  const sequenceStart = selectTimelineWindowStart({
     budgetFloorSequence: budgetFloor.sequence,
+    splitTurnAt: timelineTurnSplitter(db, args),
     epochSequenceStart: args.epochSequenceStart,
+    eventBudget: args.eventBudget,
     hints,
     segmentLimit: args.page.segmentLimit,
-    threadId: args.threadId,
   });
   if (sequenceStart === wider.selection.ownedSequenceStart) {
     return adoptSiblingSelection(memo, args, miss, wider, budgetFloor, hints);
@@ -1170,13 +1205,13 @@ export function lookupLatestTimelineSelection(
     appendedHints.length === 0
       ? entry.hints
       : [...appendedHints, ...entry.hints].slice(0, args.page.segmentLimit + 1);
-  const sequenceStart = selectTimelineWindowStart(db, {
-    beforeSequence: args.maxSeq + 1,
+  const sequenceStart = selectTimelineWindowStart({
     budgetFloorSequence: budgetFloor.sequence,
+    splitTurnAt: timelineTurnSplitter(db, args),
     epochSequenceStart: args.epochSequenceStart,
+    eventBudget: args.eventBudget,
     hints,
     segmentLimit: args.page.segmentLimit,
-    threadId: args.threadId,
   });
   if (sequenceStart < entry.selection.ownedSequenceStart) {
     return { ...miss, budgetFloor };

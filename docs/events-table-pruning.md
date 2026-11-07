@@ -59,9 +59,10 @@ commits advance the thread's rewrite generation, and every server-side timeline
 cache for the thread rebuilds on its next read. A viewer that does not refetch
 keeps its shorter window until it reloads the thread.
 
-A timeline window starts at a `client/turn/requested` row, or, when its range
-has none, at the first row at or after the event-budget floor that pruning
-never deletes (`PRUNABLE_THREAD_EVENT_TYPES` in
+A timeline window starts at a `client/turn/requested` row, the history epoch
+start, or a turn or item lifecycle row (`TIMELINE_WINDOW_CUT_EVENT_TYPES` in
+`packages/db/src/data/events.ts`; see `docs/timeline-pagination.md`). Pruning
+never deletes those types (`PRUNABLE_THREAD_EVENT_TYPES` in
 `packages/db/src/data/thread-pruning.ts`). The window's older-page cursor
 anchors on that row, so pruning cannot invalidate a cursor a client already
 holds.
