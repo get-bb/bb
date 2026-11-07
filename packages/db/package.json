@@ -13,6 +13,11 @@
       "types": "./src/internal-environment-lifecycle.ts",
       "default": "./src/internal-environment-lifecycle.ts"
     },
+    "./sqlite-maintenance": {
+      "source": "./src/sqlite-maintenance.ts",
+      "types": "./src/sqlite-maintenance.ts",
+      "default": "./src/sqlite-maintenance.ts"
+    },
     "./testing": {
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",

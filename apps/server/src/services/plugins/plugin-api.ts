@@ -1,7 +1,4 @@
-import {
-  rpcInvalidationTags,
-  type ContractTagDeclarations,
-} from "@get-bb/plugin-sdk/internal/rpc-tags";
+import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -13,9 +10,7 @@ import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { detachActivePluginToolCallForUserInput } from "./plugin-tool-calls.js";
 import { fillPluginPresentation } from "./plugin-presentation.js";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import {
   deletePluginKvValue,
@@ -119,15 +114,7 @@ import type {
   NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import { createRetiredEnvironmentMembers } from "@bb/sdk";
-import type {
-  BbSdk,
-  ThreadForkArgs,
-  PluginThreadMetadataListArgs,
-  ThreadPluginMetadataArgs,
-  ThreadPluginMetadataUpdateArgs,
-  ThreadSpawnArgs,
-} from "@bb/sdk";
+import type { BbSdk } from "@bb/sdk";
 import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
 import { requestServerAccessRecheck } from "./plugin-server-access-registry.js";
 import {
@@ -137,6 +124,13 @@ import {
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
+import { openPluginDatabase } from "./plugin-database.js";
+import { wrapSdkForPlugin } from "./plugin-sdk-wrapping.js";
+import { callSettingsListener } from "./plugin-settings-listener.js";
+import {
+  runPluginRpcMethod,
+  type PluginRpcMethodOutcome,
+} from "./plugin-rpc-method.js";
 import type { TunnelIngressLease } from "../connect-next/tunnel-ingress.js";
 import {
   readPluginSettingsValues,
@@ -200,14 +194,11 @@ export interface PluginWebSocketRouteRecord {
 
 export interface PluginRpcHandler {
   whileWatched?: boolean;
-  declarations: ContractTagDeclarations<unknown, unknown>;
   publication: ReturnType<typeof publishRpcMethod>;
-  inputSchema: StandardSchemaV1;
-  outputSchema: StandardSchemaV1;
-  handler: (
+  invoke: (
     input: unknown,
     context: ExperimentalPluginRpcHandlerContext,
-  ) => unknown;
+  ) => Promise<PluginRpcMethodOutcome>;
 }
 
 export interface PluginAgentToolRecord {
@@ -302,6 +293,7 @@ export interface PluginApiHandle {
   instructionProvider: PluginInstructionProvider | null;
   mentionProviders: PluginMentionProviderRecord[];
   activate(): void;
+  assertLive(): void;
   closeWebSockets(): void;
   invalidate(): void;
 }
@@ -340,70 +332,6 @@ export type PluginProviderEnvHealthResolver = (
   | ExperimentalPluginProviderEnvHealth
   | null
   | Promise<ExperimentalPluginProviderEnvHealth | null>;
-
-function withPluginThreadAttribution<
-  TArgs extends ThreadForkArgs | ThreadSpawnArgs,
->(args: TArgs, pluginId: string): TArgs {
-  const attribution: Pick<ThreadSpawnArgs, "origin" | "originPluginId"> =
-    args.pluginMetadata !== undefined
-      ? { origin: "plugin", originPluginId: pluginId }
-      : args.origin === undefined || args.origin === "plugin"
-        ? { origin: "plugin", originPluginId: args.originPluginId ?? pluginId }
-        : { origin: args.origin };
-  return { ...args, ...attribution };
-}
-
-function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
-  return {
-    ...sdk,
-    environments: {
-      ...sdk.environments,
-      ...createRetiredEnvironmentMembers(sdk.plugins.callRpc),
-    },
-    threads: {
-      ...sdk.threads,
-      async getPluginMetadata(
-        args: Omit<ThreadPluginMetadataArgs, "pluginId"> & {
-          pluginId?: string;
-        },
-      ) {
-        return sdk.threads.getPluginMetadata({
-          ...args,
-          pluginId: args.pluginId ?? pluginId,
-        });
-      },
-      async experimental_listPluginMetadata(
-        args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
-          pluginId?: string;
-        },
-      ) {
-        return sdk.threads.experimental_listPluginMetadata({
-          ...args,
-          pluginId: args.pluginId ?? pluginId,
-        });
-      },
-      async updatePluginMetadata(
-        args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
-          pluginId?: string;
-        },
-      ) {
-        return sdk.threads.updatePluginMetadata({
-          ...args,
-          pluginId: args.pluginId ?? pluginId,
-        });
-      },
-      fork(args: ThreadForkArgs) {
-        return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));
-      },
-      spawn(args: ThreadSpawnArgs) {
-        return sdk.threads.spawn(withPluginThreadAttribution(args, pluginId));
-      },
-      send(args) {
-        return sdk.threads.send({ ...args, originPluginId: pluginId });
-      },
-    },
-  };
-}
 
 function createStagedRegistrations<
   TDeclaration,
@@ -758,12 +686,7 @@ export function createPluginApi(options: {
         if (index !== -1) databaseHandles.splice(index, 1);
         void walCheckpointer?.detach(databaseHandle);
       }
-      const dir = join(dataDir, "plugins", pluginId);
-      mkdirSync(dir, { recursive: true });
-      const database = new Database(join(dir, "data.db"));
-      database.pragma("auto_vacuum = INCREMENTAL");
-      database.pragma("journal_mode = WAL");
-      database.pragma("busy_timeout = 5000");
+      const database = openPluginDatabase(dataDir, pluginId);
       walCheckpointer?.attach(database);
       databaseHandle = database;
       databaseHandles.push(database);
@@ -814,14 +737,12 @@ export function createPluginApi(options: {
           const next = await readPluginSettingsValues(storeArgs);
           if (JSON.stringify(next) !== JSON.stringify(prev)) {
             for (const listener of settingsRecord.listeners) {
-              try {
-                listener(next, prev);
-              } catch (error) {
+              callSettingsListener(listener, [next, prev], (error) => {
                 emitLog(
                   "warn",
                   `settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
                 );
-              }
+              });
             }
             if (activated) settingsChanged();
           }
@@ -897,7 +818,10 @@ export function createPluginApi(options: {
         rpcHandlers,
         options,
       )) {
-        rpcHandlers.set(name, record);
+        rpcHandlers.set(name, {
+          publication: record.publication,
+          invoke: (input, context) => runPluginRpcMethod(record, input, context),
+        });
       }
     },
   };
@@ -1531,6 +1455,7 @@ export function createPluginApi(options: {
         pendingNeedsConfiguration = null;
       }
     },
+    assertLive,
     closeWebSockets() {
       for (const route of websocketRoutes) {
         route.active = false;

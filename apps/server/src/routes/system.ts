@@ -382,6 +382,14 @@ export function registerSystemRoutes(
   put(routes.experiments, (context, payload) => {
     setExperiments(deps.db, payload);
     deps.hub.notifySystem(["config-changed"]);
+    if (payload.isolatedPluginServers !== undefined) {
+      void pluginService.applyServerIsolationExperiment().catch((error) => {
+        deps.logger.warn(
+          { err: error },
+          "Could not reload plugins for the isolatedPluginServers experiment",
+        );
+      });
+    }
     return context.json(getExperiments(deps.db));
   });
 

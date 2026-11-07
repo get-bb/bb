@@ -856,13 +856,14 @@ describe("public host management", () => {
         source: "builtin:connect",
         status: "running",
       });
-      const revokeHandler = vi.fn(async () => ({ ok: true }));
+      const revokeHandler = vi.fn(async () => ({
+        ok: true as const,
+        result: { ok: true },
+        invalidated: [],
+      }));
       const revokeRecord = {
         publication: null,
-        declarations: {},
-        inputSchema: z.object({ machineId: z.string() }),
-        outputSchema: z.object({ ok: z.literal(true) }),
-        handler: revokeHandler,
+        invoke: revokeHandler,
       };
       const live = harness.pluginService.getRpcHandler(
         connectPlugin.id,

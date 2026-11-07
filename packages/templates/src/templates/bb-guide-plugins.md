@@ -117,6 +117,16 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
 Installed plugins and their settings also appear under Settings → Installed
 plugins.
 
+With the `isolatedPluginServers` experiment on (`bb settings experiment
+isolatedPluginServers true`), plugins installed from git or npm run their
+server code in their own worker thread, so a slow plugin cannot stall bb.
+Their RPC, HTTP routes, services, events, settings, `bb.sdk`, and
+`storage.database()` work as before; one that exits is restarted with
+backoff. A plugin that uses an API a worker cannot host yet (agent tools,
+providers, mention providers, hooks, WebSocket routes, host-plugin clients,
+and similar) stays in-process, and `bb plugin logs` and the server log say
+which call kept it there. Bundled plugins always run in-process.
+
 Plugin CLI commands
 
 A plugin can register one top-level `bb` subcommand (for example

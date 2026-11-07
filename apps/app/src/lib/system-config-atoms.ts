@@ -32,6 +32,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   experiments: {
     compactExpiredCache: false,
     dismissReadNotifications: false,
+    isolatedPluginServers: false,
     narrowPluginCss: false,
     serverMove: false,
     performanceDiagnostics: false,

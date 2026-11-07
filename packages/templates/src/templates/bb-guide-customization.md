@@ -189,6 +189,10 @@ gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
+`isolatedPluginServers` runs the server code of plugins installed from git or
+npm in their own worker threads, so a slow plugin cannot freeze bb; plugins
+that use APIs a worker cannot host yet stay in-process, and toggling it
+reloads those plugins. See `bb guide plugins`.
 `narrowPluginCss` serves each plugin a stylesheet that matches only that
 plugin's own UI, which makes style updates cheaper with many plugins; it
 applies after a reload. It defaults on for early adopters.
