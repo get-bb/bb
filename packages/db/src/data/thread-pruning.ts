@@ -38,6 +38,10 @@ const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
   "turn-diffs": 1,
   "resolved-items": 1,
 };
+const TIMELINE_PRESERVING_POLICIES: ReadonlySet<ThreadPruningPolicy> = new Set([
+  "usage",
+  "turn-diffs",
+]);
 const BATCH_SIZE = 500;
 const LIVE_BATCH_SIZE = 32;
 
@@ -550,9 +554,13 @@ function advanceThreadPruningTransaction(
     },
     { behavior: "immediate" },
   );
-  if (result.removed > 0 && result.threadId !== null)
-    bumpThreadEventRewriteGeneration(result.threadId);
-  return result;
+  const rewrittenThreadId =
+    result.removed > 0 && !TIMELINE_PRESERVING_POLICIES.has(policy)
+      ? result.threadId
+      : null;
+  if (rewrittenThreadId !== null)
+    bumpThreadEventRewriteGeneration(rewrittenThreadId);
+  return { ...result, rewroteHistory: rewrittenThreadId !== null };
 }
 
 export function advanceThreadPruning(

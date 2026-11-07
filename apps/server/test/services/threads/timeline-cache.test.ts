@@ -66,6 +66,7 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
 };
 
 const baseRevisionArgs: ThreadTimelineCacheRevisionArgs = {
+  generation: 0,
   maxSeq: 10,
   status: "idle",
   surface: "surface-a",
@@ -255,6 +256,7 @@ describe("buildThreadTimelineCacheRevision", () => {
     const base = buildThreadTimelineCacheRevision(baseRevisionArgs);
     const variants: ThreadTimelineCacheRevisionArgs[] = [
       { ...baseRevisionArgs, maxSeq: 11 },
+      { ...baseRevisionArgs, generation: 1 },
       { ...baseRevisionArgs, status: "active" },
       { ...baseRevisionArgs, surface: "surface-b" },
     ];

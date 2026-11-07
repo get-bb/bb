@@ -1,5 +1,10 @@
 import { performance } from "node:perf_hooks";
-import { getAppSettings, getLatestThreadSequence, getThread } from "@bb/db";
+import {
+  getAppSettings,
+  getLatestThreadSequence,
+  getThread,
+  getThreadEventRewriteGeneration,
+} from "@bb/db";
 import {
   DEFAULT_COMPLETED_TURN_DISPLAY,
   type AppSettings,
@@ -30,7 +35,7 @@ import {
   buildThreadTimelineCacheRevision,
   createThreadTimelineCache,
 } from "./timeline-cache.js";
-import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
+import { forgetTimelineGroupingContexts } from "./timeline-context-order.js";
 import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
 import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
@@ -172,6 +177,7 @@ export function createThreadTimelineWindows(
         includeNestedRows: request.includeNestedRows,
       }),
       buildThreadTimelineCacheRevision({
+        generation: getThreadEventRewriteGeneration(thread.id),
         maxSeq,
         status: thread.status,
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
@@ -377,7 +383,7 @@ export function createThreadTimelineWindows(
       return;
     }
     if (rewritten) {
-      clearTimelineOrderingContextCache(deps.db);
+      forgetTimelineGroupingContexts(deps.db, message.id);
     }
     forgetLatestTimelineSelections(deps.db, message.id);
     forgetTimelineProjectionFolds(deps.db, message.id);
