@@ -643,6 +643,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
         {
           type: "provider-session-policy.replace",
           idleProviderSessionTimeoutMinutes: 30,
+          agentCpuPriority: false,
         },
         {
           type: "machine-environment.replace",
@@ -690,6 +691,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
         {
           type: "provider-session-policy.replace",
           idleProviderSessionTimeoutMinutes: 30,
+          agentCpuPriority: false,
         },
         {
           type: "machine-environment.replace",

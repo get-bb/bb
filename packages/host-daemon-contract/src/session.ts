@@ -248,6 +248,7 @@ export const hostDaemonSessionOpenResponseSchema = z
     sessionId: z.string().min(1),
     machineEnvironment: machineEnvironmentSchema,
     idleProviderSessionTimeoutMinutes: idleProviderSessionTimeoutMinutesSchema,
+    agentCpuPriority: z.boolean(),
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
     watchSet: hostDaemonWatchSetSchema.default({
@@ -723,6 +724,7 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
       type: z.literal("provider-session-policy.replace"),
       idleProviderSessionTimeoutMinutes:
         idleProviderSessionTimeoutMinutesSchema,
+      agentCpuPriority: z.boolean(),
     })
     .strict(),
   z

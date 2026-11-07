@@ -65,6 +65,7 @@ describe("experiments settings", () => {
       const put = await putExperiments(harness, { updateWhenIdle: true });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        agentCpuPriority: false,
         compactExpiredCache: false,
         dismissReadNotifications: false,
         isolatedPluginServers: false,

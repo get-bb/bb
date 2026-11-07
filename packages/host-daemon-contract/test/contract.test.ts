@@ -1068,7 +1068,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(264);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(265);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1092,7 +1092,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(263)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(264)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(264)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(265)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -2920,6 +2921,7 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         machineEnvironment: { revision: 0, entries: [] },
         idleProviderSessionTimeoutMinutes: 30,
+        agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
         connectShares: {
@@ -2947,6 +2949,7 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_default_shares",
         machineEnvironment: { revision: 0, entries: [] },
         idleProviderSessionTimeoutMinutes: 30,
+        agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
         endedInteractiveRequests: [],
@@ -2958,6 +2961,7 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_default_next",
         machineEnvironment: { revision: 0, entries: [] },
         idleProviderSessionTimeoutMinutes: 30,
+        agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
         endedInteractiveRequests: [],
