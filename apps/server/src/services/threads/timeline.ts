@@ -24,12 +24,15 @@ import {
 } from "./timeline-snapshot.js";
 import {
   buildThreadTimelineFromEvents,
+  buildThreadTimelineFromProjection,
+  projectThreadTimelineEvents,
   startThreadTimelineProjectionFold,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
   MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
   type AcceptedClientRequestContext,
+  type EventProjection,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import {
@@ -114,6 +117,11 @@ import { runEventLoopWorkSync } from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { withCompactionOffer } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
+import {
+  keepTimelineProjection,
+  type BuiltTimelineProjection,
+  type TimelineProjection,
+} from "./timeline-projection-cache.js";
 import {
   forgetTimelineProjectionFolds,
   keepTimelineProjectionFold,
@@ -259,6 +267,7 @@ type ThreadTimelineBuildProfileStage =
   | "context-window-query"
   | "context-window-json-decode"
   | "thread-view-projection"
+  | "thread-view-rows"
   | "pagination-segmentation";
 
 interface ThreadTimelineBuildProfileStageTiming {
@@ -1455,25 +1464,12 @@ function buildThreadTimelineInternal(
         withRowMeta(row, decodeStoredEventRowCached(db, row)),
       ),
   );
-  const headStateEvents = measureThreadTimelineStage(
-    profile,
-    "event-json-decode",
-    () =>
-      eventSelection.headStateRows.map((row) =>
-        withRowMeta(row, decodeStoredEventRowCached(db, row)),
-      ),
-  );
   profile.eventRowCount += eventSelection.headStateRows.length;
   profile.eventDataBytes += byteLengthOfStoredEventRows(
     eventSelection.headStateRows,
   );
-  profile.decodedEventCount = decodedRawEvents.length + headStateEvents.length;
-  const decodedEvents = measureThreadTimelineStage(
-    profile,
-    "summary-compaction",
-    () => compactThreadTimelineSummaryEvents(decodedRawEvents),
-  );
-  profile.compactedEventCount = decodedEvents.length;
+  profile.decodedEventCount =
+    decodedRawEvents.length + eventSelection.headStateRows.length;
   const contextWindowUsageRows = measureThreadTimelineStage(
     profile,
     "context-window-query",
@@ -1487,7 +1483,7 @@ function buildThreadTimelineInternal(
     contextWindowUsageRows,
   );
   profile.contextWindowEventRowCount = contextWindowUsageRows.length;
-  const commonProjectionOptions = {
+  const projectionOptions = {
     completedTurnDisplay: options.completedTurnDisplay,
     includeDiagnosticOperations,
     isLatestPage: options.page.kind === "latest",
@@ -1498,76 +1494,125 @@ function buildThreadTimelineInternal(
     threadStatus: snapshot.status,
     threadName: surface.threadName,
     workspaceRoot: surface.workspaceRoot,
-  };
-  const contextWindowEvents = measureThreadTimelineStage(
-    profile,
-    "context-window-json-decode",
-    () =>
-      contextWindowUsageRows.map((row) =>
-        withRowMeta(row, decodeStoredEventRowCached(db, row)),
-      ),
-  );
-  const acceptedClientRequestContext: AcceptedClientRequestContext = {
-    acceptedClientRequestEvents: [],
-    rejectedClientRequestEvents: [],
-  };
-  const timelineOptions = {
-    ...commonProjectionOptions,
-    includeNestedRows,
     providerId: thread.providerId,
   };
-  const timeline = measureThreadTimelineStage(
-    profile,
-    "thread-view-projection",
-    () =>
-      buildThreadTimelineFromEvents({
-        acceptedClientRequestContext,
-        contextWindowEvents,
-        headStateEvents,
-        events: decodedEvents,
-        fold:
-          memoArgs === null || !active
-            ? undefined
-            : keepTimelineProjectionFold(db, profile, {
-                decodedRows: decodedRawEvents,
-                key: JSON.stringify([
-                  thread.id,
-                  memoArgs.epochSequenceStart,
-                  memoArgs.eventBudget,
-                  memoArgs.excludeDiagnosticEvents,
-                  memoArgs.maxInlineOutputChars,
-                  memoArgs.page.segmentLimit,
-                  includeDiagnosticOperations,
-                  options.providerDisplayName ?? null,
-                  snapshot.status,
-                  surface.threadName,
-                ]),
-                rows: rawEventRows,
-                start: () =>
-                  startThreadTimelineProjectionFold({
-                    acceptedClientRequestContext,
-                    events: decodedEvents,
-                    options: timelineOptions,
-                  }),
-                threadId: thread.id,
-              }),
-        options: timelineOptions,
-      }),
-  );
-  const projectedTimelineRows = orderTimelineRowsUsingContext(
-    timeline.rows.filter(
-      (row) =>
-        !(
-          row.kind === "system" &&
-          row.systemKind === "operation" &&
-          row.operationKind === "thread-interrupted" &&
-          eventSelection.contextOnlyInterruptionSequences.has(
-            row.sourceSeqStart,
-          )
+  const timelineOptions = { ...projectionOptions, includeNestedRows };
+  const project = (
+    cachedEventProjection: EventProjection | null,
+  ): BuiltTimelineProjection => {
+    const headStateEvents = measureThreadTimelineStage(
+      profile,
+      "event-json-decode",
+      () =>
+        eventSelection.headStateRows.map((row) =>
+          withRowMeta(row, decodeStoredEventRowCached(db, row)),
         ),
-    ),
-    eventSelection.orderingBoundarySequence,
-  );
+    );
+    const decodedEvents = measureThreadTimelineStage(
+      profile,
+      "summary-compaction",
+      () => compactThreadTimelineSummaryEvents(decodedRawEvents),
+    );
+    const contextWindowEvents = measureThreadTimelineStage(
+      profile,
+      "context-window-json-decode",
+      () =>
+        contextWindowUsageRows.map((row) =>
+          withRowMeta(row, decodeStoredEventRowCached(db, row)),
+        ),
+    );
+    const acceptedClientRequestContext: AcceptedClientRequestContext = {
+      acceptedClientRequestEvents: [],
+      rejectedClientRequestEvents: [],
+    };
+    const eventProjection =
+      cachedEventProjection ??
+      measureThreadTimelineStage(profile, "thread-view-projection", () =>
+        projectThreadTimelineEvents({
+          acceptedClientRequestContext,
+          events: decodedEvents,
+          fold:
+            memoArgs === null || !active
+              ? undefined
+              : keepTimelineProjectionFold(db, profile, {
+                  decodedRows: decodedRawEvents,
+                  key: JSON.stringify([
+                    thread.id,
+                    memoArgs.epochSequenceStart,
+                    memoArgs.eventBudget,
+                    memoArgs.excludeDiagnosticEvents,
+                    memoArgs.maxInlineOutputChars,
+                    memoArgs.page.segmentLimit,
+                    includeDiagnosticOperations,
+                    options.providerDisplayName ?? null,
+                    snapshot.status,
+                    surface.threadName,
+                  ]),
+                  rows: rawEventRows,
+                  start: () =>
+                    startThreadTimelineProjectionFold({
+                      acceptedClientRequestContext,
+                      events: decodedEvents,
+                      options: timelineOptions,
+                    }),
+                  threadId: thread.id,
+                }),
+          options: timelineOptions,
+        }),
+      );
+    const { rows: timelineRows, ...summary } = measureThreadTimelineStage(
+      profile,
+      "thread-view-rows",
+      () =>
+        buildThreadTimelineFromProjection({
+          acceptedClientRequestContext,
+          contextWindowEvents,
+          headStateEvents,
+          events: decodedEvents,
+          options: timelineOptions,
+          projection: eventProjection,
+        }),
+    );
+    const projection: TimelineProjection = {
+      compactedEventCount: decodedEvents.length,
+      rows: orderTimelineRowsUsingContext(
+        timelineRows.filter(
+          (row) =>
+            !(
+              row.kind === "system" &&
+              row.systemKind === "operation" &&
+              row.operationKind === "thread-interrupted" &&
+              eventSelection.contextOnlyInterruptionSequences.has(
+                row.sourceSeqStart,
+              )
+            ),
+        ),
+        eventSelection.orderingBoundarySequence,
+      ),
+      summary,
+    };
+    return { eventProjection, projection };
+  };
+  const projection =
+    memoArgs === null
+      ? project(null).projection
+      : keepTimelineProjection(
+          {
+            contextWindowRows: contextWindowUsageRows,
+            headStateRows: eventSelection.headStateRows,
+            includeNestedRows,
+            projectionKey: JSON.stringify([
+              projectionOptions,
+              eventSelection.orderingBoundarySequence,
+              [...eventSelection.contextOnlyInterruptionSequences],
+            ]),
+            rows: rawEventRows,
+          },
+          project,
+        );
+  const timeline = projection.summary;
+  const projectedTimelineRows = projection.rows;
+  profile.compactedEventCount = projection.compactedEventCount;
   profile.projectedRowCount = projectedTimelineRows.length;
   const retainedOutputPreviews = retainedOutputPreviewsByCallId(
     decodedRawEvents,

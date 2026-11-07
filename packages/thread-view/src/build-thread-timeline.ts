@@ -1197,22 +1197,41 @@ function buildTimelineRows(
   );
 }
 
+export function projectThreadTimelineEvents(
+  args: Pick<
+    BuildThreadTimelineFromEventsArgs,
+    "acceptedClientRequestContext" | "events" | "fold" | "options"
+  >,
+): EventProjection {
+  return args.fold === undefined
+    ? buildEventProjection(
+        args.events,
+        threadTimelineProjectionOptions(
+          args.acceptedClientRequestContext,
+          args.options,
+        ),
+      )
+    : finishEventProjectionFold(args.fold, args.events);
+}
+
 export function buildThreadTimelineFromEvents(
   args: BuildThreadTimelineFromEventsArgs,
+): ThreadTimelineFromEventsResult {
+  return buildThreadTimelineFromProjection({
+    ...args,
+    projection: projectThreadTimelineEvents(args),
+  });
+}
+
+export function buildThreadTimelineFromProjection(
+  args: Omit<BuildThreadTimelineFromEventsArgs, "fold"> & {
+    projection: EventProjection;
+  },
 ): ThreadTimelineFromEventsResult {
   const stateEvents = args.headStateEvents?.length
     ? getOrderedThreadEvents([...args.events, ...args.headStateEvents])
     : args.events;
-  const projection =
-    args.fold === undefined
-      ? buildEventProjection(
-          args.events,
-          threadTimelineProjectionOptions(
-            args.acceptedClientRequestContext,
-            args.options,
-          ),
-        )
-      : finishEventProjectionFold(args.fold, args.events);
+  const { projection } = args;
 
   const rows = [
     ...buildTimelineRows(projection, {
