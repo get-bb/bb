@@ -10,6 +10,7 @@ import {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
   findUnnamedPluginRoots,
+  splitPluginUtilityScopes,
 } from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
@@ -394,6 +395,12 @@ export async function loadPluginAppBundle(
       : null;
   const hasher = createHash("sha256").update(js);
   if (css !== null) {
+    css.original = Buffer.from(
+      splitPluginUtilityScopes(css.original.toString("utf8")),
+    );
+    css.withoutHostTailwind = Buffer.from(
+      splitPluginUtilityScopes(css.withoutHostTailwind.toString("utf8")),
+    );
     hasher.update(css.original);
     hasher.update(css.withoutHostTailwind);
   }

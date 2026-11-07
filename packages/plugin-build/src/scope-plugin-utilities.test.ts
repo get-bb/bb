@@ -5,6 +5,7 @@ import {
   findUnnamedPluginRoots,
   pluginScopeRoots,
   scopePluginUtilities,
+  splitPluginUtilityScopes,
 } from "./scope-plugin-utilities.js";
 
 const ROOTS = pluginScopeRoots("demo");
@@ -173,6 +174,29 @@ describe("dropAnonymousPluginRootScope", () => {
     ).toBe(
       `${scopePluginUtilities(utilities, '[data-bb-plugin="demo"]')}${authored}`,
     );
+  });
+});
+
+describe("splitPluginUtilityScopes", () => {
+  it.each(["demo", '"demo"', "'demo'"])(
+    "preserves nested selector specificity for %s while separating root alternatives",
+    (identifier) => {
+      const named = `[data-bb-plugin=${identifier}]`;
+      const anonymous = "[data-bb-plugin-root]:not([data-bb-plugin])";
+      const scope = `:where(${named}, ${anonymous})`;
+      const body = "{&:hover{color:red}}";
+      const css = `@layer utilities{@container (width>1px){${scope} .a,${scope} #b${body}}}`;
+      const expected = `@layer utilities{@container (width>1px){:where(${named}) .a,:where(${named}) #b${body}:where(${anonymous}) .a,:where(${anonymous}) #b${body}}}`;
+      expect(splitPluginUtilityScopes(css)).toBe(expected);
+      expect(splitPluginUtilityScopes(expected)).toBe(expected);
+    },
+  );
+
+  it("leaves authored rules, keyframes, declarations and unmatched selector lists alone", () => {
+    const scope =
+      ":where([data-bb-plugin=demo],[data-bb-plugin-root]:not([data-bb-plugin]))";
+    const css = `${scope} .authored{color:red}@layer utilities{${scope} .a,.outside{color:red}@keyframes spin{from{opacity:0}}.content{content:'${scope}'}}`;
+    expect(splitPluginUtilityScopes(css)).toBe(css);
   });
 });
 

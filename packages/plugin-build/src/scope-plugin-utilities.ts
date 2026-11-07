@@ -65,6 +65,53 @@ export function findUnnamedPluginRoots(js: string): number[] {
 const ANONYMOUS_PLUGIN_ROOT_ARM =
   /,\s*\[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)/g;
 
+const PLUGIN_UTILITY_SCOPE =
+  /^:where\((\[data-bb-plugin=(?:"[a-z0-9-]+"|'[a-z0-9-]+'|[a-z0-9-]+)\]),\s*(\[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\))\)/;
+
+export function splitPluginUtilityScopes(css: string): string {
+  return splitStatements(css)
+    .map((statement) => {
+      if (statement.body === null) return statement.prelude;
+      const body = isUtilitiesLayer(statement.prelude)
+        ? splitUtilityScopeStatements(statement.body)
+        : statement.body;
+      return `${statement.prelude}{${body}}`;
+    })
+    .join("");
+}
+
+function splitUtilityScopeStatements(css: string): string {
+  return splitStatements(css)
+    .map((statement) => {
+      if (statement.body === null) return statement.prelude;
+      const prelude = statement.prelude.trim();
+      if (prelude.startsWith("@")) {
+        const name = /^@([\w-]+)/.exec(prelude)?.[1]?.toLowerCase() ?? "";
+        const body = NESTED_STYLE_RULE_AT_RULES.has(name)
+          ? splitUtilityScopeStatements(statement.body)
+          : statement.body;
+        return `${statement.prelude}{${body}}`;
+      }
+      const selectors = splitSelectorList(prelude);
+      const scope = PLUGIN_UTILITY_SCOPE.exec(selectors[0] ?? "");
+      if (
+        scope === null ||
+        !selectors.every((selector) => selector.startsWith(scope[0]))
+      ) {
+        return `${statement.prelude}{${statement.body}}`;
+      }
+      return [scope[1], scope[2]]
+        .map((root) => {
+          const scoped = selectors.map(
+            (selector) => `:where(${root})${selector.slice(scope[0].length)}`,
+          );
+          return `${scoped.join(",")}{${statement.body}}`;
+        })
+        .join("");
+    })
+    .join("");
+}
+
 export function dropAnonymousPluginRootScope(css: string): string {
   return splitStatements(css)
     .map((statement) => {

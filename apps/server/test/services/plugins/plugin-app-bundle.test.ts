@@ -181,8 +181,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect((await brotliJsHead.arrayBuffer()).byteLength).toBe(0);
 
     const legacyCss = await harness.app.request(`${BASE}${bundle.cssUrl}`);
-    expect(await legacyCss.text()).toBe(
-      await readFile(join(rootDir, "dist", "app.css"), "utf8"),
+    const fullCssText = await legacyCss.text();
+    expect(fullCssText).toContain(":where([data-bb-plugin=appy])");
+    expect(fullCssText).toContain(
+      ":where([data-bb-plugin-root]:not([data-bb-plugin]))",
     );
 
     const css = await harness.app.request(
@@ -192,8 +194,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(css.headers.get("content-type")).toContain("text/css");
     const cssText = await css.text();
     expect(cssText).toContain("line-clamp-2");
-    const scope =
-      ":where([data-bb-plugin=appy],[data-bb-plugin-root]:not([data-bb-plugin]))";
+    const scope = ":where([data-bb-plugin=appy])";
     expect(cssText).toContain(`${scope} .line-clamp-2`);
     expect(cssText).toContain(`${scope}.line-clamp-2`);
     expect(cssText).not.toMatch(/@layer utilities\{\./);
@@ -228,7 +229,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
         );
         const compressed = Buffer.from(await response.arrayBuffer());
         expect(gunzipSync(compressed).toString()).toBe(
-          version === HOST_TAILWIND_VERSION ? cssText : builtCss,
+          version === HOST_TAILWIND_VERSION ? cssText : fullCssText,
         );
       }
     }
@@ -267,9 +268,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     const entry = await harness.pluginService.installPath(rootDir);
     const bundle = entry.app.bundle;
     if (bundle === null) throw new Error("missing built app bundle");
-    const legacy = await readFile(join(rootDir, "dist", "app.css"), "utf8");
-    expect(legacy).toContain(",[data-bb-plugin-root]:not([data-bb-plugin])");
-    const owned = legacy.replaceAll(
+    const built = await readFile(join(rootDir, "dist", "app.css"), "utf8");
+    const legacyResponse = await harness.app.request(`${BASE}${bundle.cssUrl}`);
+    const legacy = await legacyResponse.text();
+    const owned = built.replaceAll(
       ",[data-bb-plugin-root]:not([data-bb-plugin])",
       "",
     );
@@ -325,7 +327,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     }
   }, 60_000);
 
-  it("keeps legacy CSS for bundles that render plugin roots without an id", async () => {
+  it("serves filterable utility scopes without dropping unnamed or named-only roots", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-scope");
     await writeAppPluginFixture(rootDir, { name: "bb-plugin-scope" });
     const dist = join(rootDir, "dist");
@@ -335,6 +337,9 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       "[data-bb-plugin-root]:not([data-bb-plugin]) .authored{color:red}";
     const owned =
       "@layer utilities{:where([data-bb-plugin=scope]) .p-2{padding:.5rem}}" +
+      "[data-bb-plugin-root]:not([data-bb-plugin]) .authored{color:red}";
+    const filterable =
+      "@layer utilities{:where([data-bb-plugin=scope]) .p-2{padding:.5rem}:where([data-bb-plugin-root]:not([data-bb-plugin])) .p-2{padding:.5rem}}" +
       "[data-bb-plugin-root]:not([data-bb-plugin]) .authored{color:red}";
     await writeFile(join(dist, "app.css"), legacy);
     await writeFile(
@@ -373,7 +378,9 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
         if (requested !== null) url.searchParams.set("css-scope", requested);
         const response = await harness.app.request(url.toString());
         expect(await response.text(), `${scenario.js} ${requested}`).toBe(
-          scenario.narrowed && requested === "owned-root-v1" ? owned : legacy,
+          scenario.narrowed && requested === "owned-root-v1"
+            ? owned
+            : filterable,
         );
       }
     }
