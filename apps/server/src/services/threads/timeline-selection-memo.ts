@@ -24,6 +24,7 @@ import {
   type TimelineGroupingContext,
 } from "./timeline-context-order.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
+import type { DecodedTimelineRows } from "./timeline-selection-decode.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
@@ -91,6 +92,7 @@ export class TimelineSelectionTrimFallback extends Error {}
 export interface LatestTimelineSelectionLookup {
   budgetFloor: TimelineBudgetFloor | null;
   dataVersion: number;
+  decodedPrefix: DecodedTimelineRows | null;
   generation: number;
   selection: TimelineEventRowSelection | null;
   trimSource: TimelineSelectionRowSource | null;
@@ -105,6 +107,7 @@ interface TimelineSelectionMemoEntry {
   missingParentToolCallIds: ReadonlySet<string>;
   dataChars: number;
   dataVersion: number;
+  decoded: DecodedTimelineRows | null;
   epochSequenceStart: number;
   familyKey: string;
   generation: number;
@@ -121,7 +124,7 @@ interface TimelineSelectionMemo {
 
 export const TIMELINE_SELECTION_MEMO_MAX_ENTRIES = 16;
 export const TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES = 4;
-const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
+export const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
 const TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS = 512;
 
 const SELECTION_CHANGING_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
@@ -159,6 +162,17 @@ export function clearTimelineSelectionMemo(db: DbConnection): void {
 
 export function countTimelineSelectionMemoEntries(db: DbConnection): number {
   return selectionMemos.get(db)?.entries.size ?? 0;
+}
+
+export function readDecodedLatestTimelineSelections(db: DbConnection): {
+  dataChars: number;
+  decoded: DecodedTimelineRows;
+  threadId: string;
+}[] {
+  const entries = [...(selectionMemos.get(db)?.entries.values() ?? [])];
+  return entries.flatMap(({ dataChars, decoded, threadId }) =>
+    decoded === null ? [] : [{ dataChars, decoded, threadId }],
+  );
 }
 
 export function selectTimelineWindowStart(
@@ -861,6 +875,7 @@ export function lookupLatestTimelineSelection(
   const miss: LatestTimelineSelectionLookup = {
     budgetFloor: null,
     dataVersion,
+    decodedPrefix: null,
     generation,
     selection: null,
     trimSource: null,
@@ -979,11 +994,22 @@ export function lookupLatestTimelineSelection(
     delegatingItemIds: appended.extension.delegatingItemIds,
     missingParentToolCallIds: appended.extension.missingParentToolCallIds,
     dataChars: entry.dataChars + dataCharsOfRows(appended.rows),
+    decoded: null,
     hints,
     maxSeq: args.maxSeq,
     selection,
   });
-  return { ...miss, budgetFloor, selection };
+  return { ...miss, budgetFloor, decodedPrefix: entry.decoded, selection };
+}
+
+export function rememberDecodedLatestTimelineSelection(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  rows: readonly StoredEventRow[],
+  decoded: DecodedTimelineRows,
+): void {
+  const entry = selectionMemos.get(db)?.entries.get(selectionMemoKey(args));
+  if (entry?.selection.rows === rows) entry.decoded = decoded;
 }
 
 export function rememberLatestTimelineSelection(
@@ -1009,6 +1035,7 @@ export function rememberLatestTimelineSelection(
       dataCharsOfRows(result.selection.rows) +
       dataCharsOfRows(result.selection.headStateRows),
     dataVersion: lookup.dataVersion,
+    decoded: null,
     epochSequenceStart: args.epochSequenceStart,
     familyKey: selectionMemoFamilyKey(args),
     generation: lookup.generation,
