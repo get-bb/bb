@@ -6,6 +6,7 @@ import {
   openSync,
   readSync,
   rmSync,
+  statSync,
   unlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,6 +54,10 @@ async function withDatabase(
     if (db.$client.open) db.$client.close();
     rmSync(dir, { force: true, recursive: true });
   }
+}
+
+function walFileFrames(path: string): number {
+  return (statSync(`${path}-wal`).size - 32) / (PAGE_SIZE + 24);
 }
 
 function walRestartCount(path: string): number {
@@ -121,15 +126,19 @@ describe("startWalCheckpointer", () => {
         writeBatch();
         reader.exec("BEGIN");
         reader.prepare("SELECT count(*) FROM blobs").get();
-        const pinnedUntil = performance.now() + 1_500;
-        while (performance.now() < pinnedUntil) {
+        const pinnedUntil = performance.now() + 10_000;
+        while (
+          walFileFrames(path) <= 32_768 &&
+          performance.now() < pinnedUntil
+        ) {
           writeBatch();
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
+        await new Promise<void>((resolve) => setTimeout(resolve, 250));
         const [pinned] = db.$client.pragma(
           "wal_checkpoint(PASSIVE)",
         ) as CheckpointRow[];
-        expect(pinned?.log).toBeGreaterThan(20_000);
+        expect(pinned?.log).toBeGreaterThan(32_768);
         expect(pinned?.checkpointed).toBeLessThan(pinned?.log ?? 0);
 
         expect(logger.infos).not.toContain(
