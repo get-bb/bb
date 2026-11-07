@@ -127,6 +127,7 @@ import {
 import {
   selectTimelineWindowStart,
   lookupLatestTimelineSelection,
+  rememberDecodedLatestTimelineSelection,
   rememberLatestTimelineSelection,
   TimelineSelectionTrimFallback,
   type LatestTimelineSelectionMemoArgs,
@@ -1391,12 +1392,10 @@ function buildThreadTimelineInternal(
           threadId: thread.id,
         }
       : null;
-  const storedEventSelection = measureThreadTimelineStage(
-    profile,
-    "event-query",
-    () => {
+  const { decodedPrefix, selection: storedEventSelection } =
+    measureThreadTimelineStage(profile, "event-query", () => {
       if (memoArgs === null) {
-        return selectRows(null).selection;
+        return { decodedPrefix: null, selection: selectRows(null).selection };
       }
       const lookup = measureThreadTimelineStage(
         profile,
@@ -1404,15 +1403,17 @@ function buildThreadTimelineInternal(
         () => lookupLatestTimelineSelection(db, memoArgs),
       );
       if (lookup.selection !== null) {
-        return lookup.selection;
+        return {
+          decodedPrefix: lookup.decodedPrefix,
+          selection: lookup.selection,
+        };
       }
       const result = selectTrimmedOrFreshRows(lookup.trimSource, (source) =>
         selectRows(lookup.budgetFloor, source),
       );
       rememberLatestTimelineSelection(db, memoArgs, lookup, result);
-      return result.selection;
-    },
-  );
+      return { decodedPrefix: null, selection: result.selection };
+    });
   const eventSelection =
     options.maxInlineOutputChars === null
       ? {
@@ -1424,9 +1425,17 @@ function buildThreadTimelineInternal(
   const decodedSelection = measureThreadTimelineStage(
     profile,
     "event-json-decode",
-    () => decodeTimelineSelectionRows(db, thread.id, rawEventRows),
+    () => decodeTimelineSelectionRows(db, rawEventRows, decodedPrefix),
   );
-  const decodedRawEvents = decodedSelection.events;
+  if (memoArgs !== null) {
+    rememberDecodedLatestTimelineSelection(
+      db,
+      memoArgs,
+      rawEventRows,
+      decodedSelection,
+    );
+  }
+  const decodedRawEvents = decodedSelection.events.slice();
   profile.eventDataBytes = decodedSelection.dataBytes;
   profile.eventRowCount = rawEventRows.length;
   profile.selectionStrategy = eventSelection.strategy;
