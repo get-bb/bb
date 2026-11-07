@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
+  THREAD_PROVIDER_COMMANDS_STATE_KIND,
+  THREAD_SESSION_OPTIONS_STATE_KIND,
+  THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -8,13 +11,17 @@ import type { ClientTurnRequestId, Thread } from "@bb/domain";
 import {
   createProject,
   createThread,
+  getLatestThreadSequence,
   insertEvents,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
-import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
+import {
+  buildThreadTimelineWithProfile,
+  readThreadHeadState,
+} from "../../../src/services/threads/timeline.js";
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -363,5 +370,130 @@ describe("timeline head state under a budgeted window", () => {
     expect(budgeted.pendingTodos).toBeNull();
     expect(budgeted.extensionStates).toEqual({});
     expect(budgeted.activeWorkflows).toHaveLength(0);
+  });
+});
+
+function insertExtensionState(
+  db: DbConnection,
+  thread: Thread,
+  kind: string,
+  payload: unknown,
+): void {
+  insertEvents(db, noopNotifier, [
+    {
+      threadId: thread.id,
+      sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
+      type: "thread/extensionState/updated",
+      scope: threadScope(),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ kind, payload }),
+    },
+  ]);
+}
+
+function insertAgentMessages(
+  db: DbConnection,
+  thread: Thread,
+  count: number,
+): void {
+  const start = getLatestThreadSequence(db, { threadId: thread.id });
+  insertEvents(
+    db,
+    noopNotifier,
+    Array.from({ length: count }, (_, index) => ({
+      threadId: thread.id,
+      sequence: start + index + 1,
+      type: "item/completed" as const,
+      scope: turnScope("turn-1"),
+      providerThreadId,
+      itemId: `late-item-${index}`,
+      itemKind: "agentMessage" as const,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        item: {
+          type: "agentMessage",
+          id: `late-item-${index}`,
+          text: `Late item ${index}`,
+        },
+      }),
+    })),
+  );
+}
+
+describe("readThreadHeadState", () => {
+  function seedHeadState(db: DbConnection, thread: Thread): void {
+    seedThreadWithEarlyHeadState(db, thread, 1, 0, false);
+    insertExtensionState(db, thread, THREAD_PROVIDER_COMMANDS_STATE_KIND, {
+      commands: [{ name: "stale", description: "Replaced later" }],
+    });
+    insertExtensionState(db, thread, THREAD_SESSION_OPTIONS_STATE_KIND, {
+      options: [
+        {
+          id: "effort",
+          label: "Effort",
+          type: "select",
+          value: "medium",
+          values: [
+            { id: "medium", label: "Medium" },
+            { id: "high", label: "High" },
+          ],
+        },
+      ],
+    });
+    insertExtensionState(
+      db,
+      thread,
+      THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
+      { selections: { effort: "high" } },
+    );
+    insertExtensionState(db, thread, THREAD_PROVIDER_COMMANDS_STATE_KIND, {
+      commands: [
+        { name: "review", description: "Review changes", inputHint: "[path]" },
+      ],
+    });
+    insertAgentMessages(db, thread, 800);
+  }
+
+  it("matches the latest timeline window's todos, commands, and options", () => {
+    const { db, thread } = setup();
+    seedHeadState(db, thread);
+
+    const latest = buildThreadTimelineWithProfile(db, thread, {
+      ...baseOptions,
+      completedTurnDisplay: "collapse",
+      eventBudget: 100,
+      summaryOnly: true,
+    }).response;
+    const headState = readThreadHeadState(db, thread);
+
+    expect(headState).toEqual({
+      pendingTodos: latest.pendingTodos,
+      providerCommands: latest.providerCommands,
+      sessionOptions: latest.sessionOptions,
+    });
+    expect(headState.pendingTodos?.items.map((item) => item.text)).toEqual([
+      "Shipping the thing",
+      "Write the docs",
+    ]);
+    expect(headState.providerCommands?.map((command) => command.name)).toEqual([
+      "review",
+    ]);
+    expect(headState.sessionOptions).toMatchObject([
+      { id: "effort", value: "medium", pendingValue: "high" },
+    ]);
+    db.$client.close();
+  });
+
+  it("reports no todos once the thread is no longer active", () => {
+    const { db, thread } = setup();
+    seedHeadState(db, thread);
+    const headState = readThreadHeadState(db, { ...thread, status: "idle" });
+
+    expect(headState.pendingTodos).toBeNull();
+    expect(headState.providerCommands).not.toBeNull();
+    db.$client.close();
   });
 });

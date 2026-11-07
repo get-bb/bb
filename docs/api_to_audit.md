@@ -1096,6 +1096,26 @@ keys. Callers: the built-in thread list, which gates row metadata on
 2. **Plugin-owned experiments.** Decide whether plugins should declare their
    own experiments in Settings → Experiments rather than only read bb's.
 
+## `bb.sdk.threads.experimental_headState`
+
+`GET /threads/:id/head-state` returns `{ pendingTodos, providerCommands,
+sessionOptions }` with the same values as the latest timeline window's fields
+of those names. It decodes only the latest to-do snapshot and provider state
+events, so its cost does not grow with turn or thread length. `pendingTodos` is null unless the thread is active. Core callers: `bb
+thread show`, `bb thread commands`, `bb thread options`, and `sdk.status`,
+which previously read these fields from a `summaryOnly` timeline build.
+
+Docs: `backend-sdk.md`.
+
+**Audit before stabilizing.**
+
+1. **Field set.** Extension states are left out because they need the
+   provider's declared state kinds. Decide whether to add them, and whether the
+   timeline window should drop these fields in favor of this read.
+2. **`summaryOnly`.** It still builds the latest page. Decide whether to keep
+   it once no caller needs the page-derived head state (`activeWorkflows`,
+   `activeThinking`, `modelFallback`).
+
 ## `bb.sdk.threads.experimental_listAncestors`
 
 `POST /threads/ancestors` with `{ threadIds }` (1–200 ids) returns

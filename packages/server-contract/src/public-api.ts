@@ -274,6 +274,7 @@ import {
   type ThreadTimelineQuery,
   type ThreadTimelineReadResponse,
   type ThreadContextResponse,
+  type ThreadHeadStateResponse,
   type ThreadWithIncludesResponse,
   type TimelineTurnSummaryDetailsQuery,
   type TimelineTurnSummaryDetailsResponse,
@@ -1725,6 +1726,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadContextResponse>(),
+    }),
+    headState: defineRoute({
+      path: "/threads/:id/head-state",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadHeadStateResponse>(),
     }),
     conversationOutline: defineRoute({
       path: "/threads/:id/conversation-outline",

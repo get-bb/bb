@@ -1324,6 +1324,15 @@ export type ThreadTimelineReadResponse = z.infer<
   typeof threadTimelineReadResponseSchema
 >;
 
+export const threadHeadStateResponseSchema = z.object({
+  pendingTodos: threadTimelineWindowFieldsShape.pendingTodos,
+  providerCommands: threadTimelineWindowFieldsShape.providerCommands,
+  sessionOptions: threadTimelineWindowFieldsShape.sessionOptions,
+});
+export type ThreadHeadStateResponse = z.infer<
+  typeof threadHeadStateResponseSchema
+>;
+
 export const threadTimelineSignalSchema = z
   .object({
     type: z.literal("thread-timeline"),

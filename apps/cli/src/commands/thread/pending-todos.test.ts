@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type { ThreadHeadStateResponse } from "@bb/server-contract";
 import {
   createNodeBbSdk,
   type BbSdk,
@@ -101,31 +101,10 @@ describe("printPendingTodos", () => {
 });
 
 describe("fetchThreadPendingTodos", () => {
-  function makeTimelineResponse(
+  function makeHeadStateResponse(
     pendingTodos: ThreadTimelinePendingTodos | null,
-  ): ThreadTimelineResponse {
-    return {
-      activePromptMode: null,
-      contextBoundarySeq: null,
-      completedTurnDisplay: "collapse",
-      activeThinking: null,
-      activeWorkflows: [],
-      activeBackgroundCommands: [],
-      pendingTodos,
-      extensionStates: {},
-      providerCommands: null,
-      sessionOptions: null,
-      modelFallback: null,
-      rows: [],
-      maxSeq: 0,
-      tag: "timeline-0",
-      timelinePage: {
-        returnedSegmentCount: 0,
-        olderCursor: null,
-        historySnapshot: "snapshot-1",
-        olderRowsSourceSeqEnd: null,
-      },
-    };
+  ): ThreadHeadStateResponse {
+    return { pendingTodos, providerCommands: null, sessionOptions: null };
   }
 
   interface SdkOverHttpBoundary {
@@ -148,14 +127,14 @@ describe("fetchThreadPendingTodos", () => {
     };
   }
 
-  it("requests a summary-only timeline and returns its pendingTodos field", async () => {
+  it("reads pendingTodos from the head-state route instead of a timeline window", async () => {
     const snapshot: ThreadTimelinePendingTodos = {
       sourceSeq: 7,
       updatedAt: 7,
       items: [{ id: "a", text: "Work", status: "in_progress" }],
     };
     const { requestUrls, sdk } = makeSdkOverHttpBoundary(async () =>
-      Response.json(makeTimelineResponse(snapshot)),
+      Response.json(makeHeadStateResponse(snapshot)),
     );
     const result = await fetchThreadPendingTodos({
       sdk,
@@ -163,11 +142,11 @@ describe("fetchThreadPendingTodos", () => {
     });
     expect(result).toEqual(snapshot);
     expect(requestUrls).toEqual([
-      "http://bb.test/api/v1/threads/thread-1/timeline?summaryOnly=true",
+      "http://bb.test/api/v1/threads/thread-1/head-state",
     ]);
   });
 
-  it("returns null when the timeline request fails at the network level (best-effort contract)", async () => {
+  it("returns null when the head-state request fails at the network level (best-effort contract)", async () => {
     const { sdk } = makeSdkOverHttpBoundary(async () => {
       throw new Error("network down");
     });
