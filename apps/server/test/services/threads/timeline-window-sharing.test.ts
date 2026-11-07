@@ -324,11 +324,17 @@ describe("timeline window caches", () => {
       });
       const windows = createThreadTimelineWindows(harness.deps);
       full(windows.read(thread, desktop, undefined));
+      const rowShape = (request: ThreadTimelineWindowRequest) =>
+        `${request.includeNestedRows}:${request.deferContent}`;
+      const materializedShapes = new Set([rowShape(desktop)]);
       for (const [name, request] of Object.entries(variants)) {
         const response = full(windows.read(thread, request, undefined));
         const stages = stagesOfLastBuild();
         expect(stages.has("thread-view-projection"), name).toBe(false);
-        expect(stages.has("thread-view-rows"), name).toBe(name === "nested");
+        expect(stages.has("thread-view-rows"), name).toBe(
+          !materializedShapes.has(rowShape(request)),
+        );
+        materializedShapes.add(rowShape(request));
         expect(response, name).toEqual(freshRead(harness, thread.id, request));
       }
     });
