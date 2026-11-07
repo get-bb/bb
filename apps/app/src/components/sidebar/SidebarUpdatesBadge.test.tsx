@@ -7,7 +7,8 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
@@ -28,6 +29,7 @@ import type {
 } from "@/hooks/useUpdateInventory";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makePluginListItem } from "@/test/fixtures/plugins";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
 const useUpdateInventoryMock = vi.hoisted(() => vi.fn());
@@ -285,10 +287,16 @@ function BadgeHarness() {
   return (
     <MemoryRouter>
       <TooltipProvider>
-        <SidebarUpdatesBadge />
+        <SidebarProvider>
+          <SidebarUpdatesBadge />
+        </SidebarProvider>
       </TooltipProvider>
     </MemoryRouter>
   );
+}
+
+function LocationProbe() {
+  return <output data-testid="location">{useLocation().pathname}</output>;
 }
 
 function updateButton(): HTMLElement {
@@ -309,8 +317,9 @@ function rowStates(card: HTMLElement): Array<[string, string | null]> {
 
 describe("SidebarUpdatesBadge", () => {
   it("renders nothing when no update needs attention", () => {
-    const result = renderBadge({});
-    expect(result.container.innerHTML).toBe("");
+    renderBadge({});
+    expect(screen.queryByTestId("sidebar-update-button")).toBeNull();
+    expect(screen.queryByTestId("sidebar-machines-attention-badge")).toBeNull();
   });
 
   it("draws every kind of update as one button that opens Settings › Updates", () => {
@@ -437,6 +446,52 @@ describe("SidebarUpdatesBadge", () => {
     });
     expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
     expect(applyAppUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the card in a drawer on a phone instead of leaving for Settings", async () => {
+    appUpdateState.status = appUpdateStatus();
+    const codex = providerIssue("codex", "Codex");
+    useUpdateInventoryMock.mockReturnValue(
+      inventory({
+        appUpdateAvailable: true,
+        machines: [machine({ issues: [codex] })],
+      }),
+    );
+    const onNavigate = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <MemoryRouter>
+          <TooltipProvider>
+            <SidebarProvider>
+              <SidebarUpdatesBadge onNavigate={onNavigate} />
+            </SidebarProvider>
+            <LocationProbe />
+          </TooltipProvider>
+        </MemoryRouter>
+      </CompactViewportOverrideProvider>,
+      { wrapper },
+    );
+
+    fireEvent.click(updateButton());
+    const card = await screen.findByTestId("sidebar-update-card");
+    expect(screen.getByTestId("location").textContent).toBe("/");
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(within(card).getByText("bb 0.49.0")).toBeTruthy();
+
+    fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
+    expect(runner.startInstall).toHaveBeenCalledWith({
+      hostId: "host-1",
+      issue: codex,
+    });
+    expect(updateButton().getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(within(card).getByRole("link", { name: "Details" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/settings/updates",
+    );
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(updateButton().getAttribute("aria-expanded")).toBe("false");
   });
 
   it("spins while updates run and shows each row's progress", async () => {

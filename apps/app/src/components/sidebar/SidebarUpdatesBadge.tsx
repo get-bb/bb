@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { ProviderInfo } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
@@ -7,7 +8,8 @@ import {
   HoverCardTrigger,
 } from "@bb/shared-ui/hover-card";
 import { Icon } from "@bb/shared-ui/icon";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { useResponsiveOverlayBehavior } from "@bb/shared-ui/responsive-overlay";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatAppUpdateRevision } from "@/components/app-update/app-update-presentation";
 import { useStartAppUpdate } from "@/components/app-update/useStartAppUpdate";
@@ -16,7 +18,8 @@ import { useProviderCliInstallRunner } from "@/components/provider-cli/provider-
 import { resolveReleaseUpdateVersion } from "@/components/settings/release-notes-model";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { BbLogo } from "@/components/ui/bb-logo";
-import { SidebarMenuItem } from "@/components/ui/sidebar.js";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { useAppUpdateStatus } from "@/hooks/queries/app-update-queries";
 import { usePluginUpdateJobs } from "@/hooks/queries/plugin-update-job-queries";
 import {
@@ -40,11 +43,6 @@ import {
 interface SidebarUpdatesBadgeProps {
   onNavigate?: () => void;
 }
-
-const CHIP_CLASS = cn(
-  "flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-sidebar-border px-2",
-  "text-xs font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
-);
 
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
@@ -124,43 +122,56 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     }
   }
 
-  if (sidebarUpdateModelIsEmpty(model) && machineAttention.label === null) {
-    return null;
-  }
-
+  const showUpdates = !sidebarUpdateModelIsEmpty(model);
   return (
-    <SidebarMenuItem className="flex min-w-0 items-center gap-1">
+    <>
       {machineAttention.label !== null ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
+        <SidebarMenuItem className="ml-auto shrink-0">
+          <SidebarMenuButton
+            asChild
+            aria-label={machineAttention.label}
+            tooltip={{
+              children: machineAttention.label,
+              hidden: false,
+              side: "top",
+            }}
+            className={cn(
+              SIDEBAR_FOOTER_ACTION_CLASS,
+              "text-warning-text hover:text-warning-text",
+            )}
+          >
             <Link
               to={getSettingsRoutePath("machines")}
               onClick={() => {
                 machineAttention.acknowledge();
                 onNavigate?.();
               }}
-              aria-label={machineAttention.label}
               data-testid="sidebar-machines-attention-badge"
-              className={cn(CHIP_CLASS, "text-warning-text")}
             >
-              <Icon name="AlertTriangle" className="size-3" />
+              <Icon name="AlertTriangle" />
             </Link>
-          </TooltipTrigger>
-          <TooltipContent side="top">{machineAttention.label}</TooltipContent>
-        </Tooltip>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       ) : null}
-      {sidebarUpdateModelIsEmpty(model) ? null : (
-        <SidebarUpdateButton
-          model={model}
-          providers={providers ?? null}
-          restartPending={appUpdateStart.pending}
-          onNavigate={onNavigate}
-          onUpdateAll={updateAll}
-          onRestartBb={restartBb}
-        />
-      )}
-      {appUpdateStart.confirmDialog}
-    </SidebarMenuItem>
+      {showUpdates ? (
+        <SidebarMenuItem
+          className={cn(
+            "shrink-0",
+            machineAttention.label === null && "ml-auto",
+          )}
+        >
+          <SidebarUpdateButton
+            model={model}
+            providers={providers ?? null}
+            restartPending={appUpdateStart.pending}
+            onNavigate={onNavigate}
+            onUpdateAll={updateAll}
+            onRestartBb={restartBb}
+          />
+          {appUpdateStart.confirmDialog}
+        </SidebarMenuItem>
+      ) : null}
+    </>
   );
 }
 
@@ -174,7 +185,6 @@ interface SidebarUpdateButtonProps {
   model: SidebarUpdateModel;
   providers: readonly ProviderInfo[] | null;
   restartPending: boolean;
-  defaultOpen?: boolean;
   onNavigate?: () => void;
   onUpdateAll: () => void;
   onRestartBb: () => void;
@@ -184,33 +194,74 @@ export function SidebarUpdateButton({
   model,
   providers,
   restartPending,
-  defaultOpen,
   onNavigate,
   onUpdateAll,
   onRestartBb,
 }: SidebarUpdateButtonProps) {
-  const updatesRoutePath = getSettingsRoutePath("updates");
+  const { supportsHover } = useResponsiveOverlayBehavior();
+  const [tapOpen, setTapOpen] = useState(false);
   const label = sidebarUpdateButtonLabel(model);
-  return (
-    <HoverCard openDelay={150} closeDelay={200} defaultOpen={defaultOpen}>
-      <HoverCardTrigger asChild>
-        <Link
-          to={updatesRoutePath}
-          onClick={onNavigate}
-          aria-label={label}
-          data-testid="sidebar-update-button"
-          data-updating={model.updating || undefined}
-          className={cn(
-            "ml-auto grid size-7 shrink-0 place-items-center rounded-full",
-            "bg-sidebar-accent text-sidebar-foreground transition-colors",
-            "hover:bg-sidebar-border focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
-          )}
+  const icon = (
+    <Icon
+      name={model.updating ? "Loading" : "Download"}
+      className={cn(model.updating && "animate-spin")}
+    />
+  );
+  const cardBody = (
+    <SidebarUpdateCardBody
+      model={model}
+      providers={providers}
+      restartPending={restartPending}
+      onDetails={() => {
+        setTapOpen(false);
+        onNavigate?.();
+      }}
+      onUpdateAll={onUpdateAll}
+      onRestartBb={onRestartBb}
+    />
+  );
+
+  if (!supportsHover) {
+    return (
+      <Popover open={tapOpen} onOpenChange={setTapOpen}>
+        <PopoverTrigger asChild>
+          <SidebarMenuButton
+            aria-label={label}
+            data-testid="sidebar-update-button"
+            data-updating={model.updating || undefined}
+            className={UPDATE_BUTTON_CLASS}
+          >
+            {icon}
+          </SidebarMenuButton>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="end"
+          sideOffset={8}
+          mobileTitle="Updates"
+          data-testid="sidebar-update-card"
+          className="w-76 p-3 text-xs"
         >
-          <Icon
-            name={model.updating ? "Loading" : "Download"}
-            className={cn("size-3.5", model.updating && "animate-spin")}
-          />
-        </Link>
+          {cardBody}
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  return (
+    <HoverCard openDelay={150} closeDelay={200}>
+      <HoverCardTrigger asChild>
+        <SidebarMenuButton asChild className={UPDATE_BUTTON_CLASS}>
+          <Link
+            to={getSettingsRoutePath("updates")}
+            onClick={onNavigate}
+            aria-label={label}
+            data-testid="sidebar-update-button"
+            data-updating={model.updating || undefined}
+          >
+            {icon}
+          </Link>
+        </SidebarMenuButton>
       </HoverCardTrigger>
       <HoverCardContent
         side="top"
@@ -219,52 +270,80 @@ export function SidebarUpdateButton({
         data-testid="sidebar-update-card"
         className="w-76 p-3 text-xs"
       >
-        {model.bb === null ? null : (
-          <SidebarBbUpdateSection
-            bb={model.bb}
-            restartPending={restartPending}
-            onRestart={onRestartBb}
-          />
-        )}
-        {model.bb !== null && model.rows.length > 0 ? (
-          <div className="-mx-3 my-3 border-t border-border" />
-        ) : null}
-        {model.rows.length === 0 ? null : (
-          <ul className="space-y-0.5" aria-label="Updates">
-            {model.rows.map((row) => (
-              <SidebarUpdateRowItem
-                key={row.key}
-                row={row}
-                providers={providers}
-              />
-            ))}
-          </ul>
-        )}
-        <div className="mt-3 flex gap-2">
-          <Button asChild variant="outline" size="sm" className="h-7 flex-1">
-            <Link to={updatesRoutePath} onClick={onNavigate}>
-              Details
-            </Link>
-          </Button>
-          {model.rows.length === 0 ? null : (
-            <Button
-              size="sm"
-              className="h-7 flex-1"
-              disabled={model.startableCount === 0}
-              onClick={onUpdateAll}
-            >
-              {model.startableCount === 0
-                ? "Updating…"
-                : model.retryOnly
-                  ? "Try again"
-                  : model.startableCount === model.rows.length
-                    ? "Update all"
-                    : `Update ${String(model.startableCount)}`}
-            </Button>
-          )}
-        </div>
+        {cardBody}
       </HoverCardContent>
     </HoverCard>
+  );
+}
+
+const UPDATE_BUTTON_CLASS = cn(
+  SIDEBAR_FOOTER_ACTION_CLASS,
+  "rounded-full bg-sidebar-accent text-sidebar-foreground [&>[data-icon-root]]:opacity-100",
+  "hover:bg-sidebar-border hover:text-sidebar-foreground active:bg-sidebar-border",
+);
+
+function SidebarUpdateCardBody({
+  model,
+  providers,
+  restartPending,
+  onDetails,
+  onUpdateAll,
+  onRestartBb,
+}: {
+  model: SidebarUpdateModel;
+  providers: readonly ProviderInfo[] | null;
+  restartPending: boolean;
+  onDetails: () => void;
+  onUpdateAll: () => void;
+  onRestartBb: () => void;
+}) {
+  return (
+    <>
+      {model.bb === null ? null : (
+        <SidebarBbUpdateSection
+          bb={model.bb}
+          restartPending={restartPending}
+          onRestart={onRestartBb}
+        />
+      )}
+      {model.bb !== null && model.rows.length > 0 ? (
+        <div className="-mx-3 my-3 border-t border-border" />
+      ) : null}
+      {model.rows.length === 0 ? null : (
+        <ul className="space-y-0.5" aria-label="Updates">
+          {model.rows.map((row) => (
+            <SidebarUpdateRowItem
+              key={row.key}
+              row={row}
+              providers={providers}
+            />
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex gap-2">
+        <Button asChild variant="outline" size="sm" className="h-7 flex-1">
+          <Link to={getSettingsRoutePath("updates")} onClick={onDetails}>
+            Details
+          </Link>
+        </Button>
+        {model.rows.length === 0 ? null : (
+          <Button
+            size="sm"
+            className="h-7 flex-1"
+            disabled={model.startableCount === 0}
+            onClick={onUpdateAll}
+          >
+            {model.startableCount === 0
+              ? "Updating…"
+              : model.retryOnly
+                ? "Try again"
+                : model.startableCount === model.rows.length
+                  ? "Update all"
+                  : `Update ${String(model.startableCount)}`}
+          </Button>
+        )}
+      </div>
+    </>
   );
 }
 

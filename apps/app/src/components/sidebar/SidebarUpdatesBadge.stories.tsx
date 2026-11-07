@@ -147,6 +147,7 @@ interface Scenario {
   plugins: boolean;
   runningThreads?: number;
   failing?: ReadonlySet<string>;
+  offlineMachine?: boolean;
 }
 
 function seedScenario(queryClient: QueryClient, scenario: Scenario): void {
@@ -364,10 +365,24 @@ function SeededScenario({
   return seeded ? children : null;
 }
 
+const OFFLINE_MACHINE_HOSTS = [
+  makeHost({ id: HOST_IDS.local, name: "Work laptop" }),
+  makeHost({
+    id: HOST_IDS.remote,
+    name: "Studio desktop",
+    status: "disconnected",
+    lastSeenAt: Date.now(),
+  }),
+];
+
 function ScenarioStage({ scenario }: { scenario: Scenario }) {
   const { pathname } = useLocation();
   return (
-    <SettingsStoryFixtures>
+    <SettingsStoryFixtures
+      hosts={
+        scenario.offlineMachine === true ? OFFLINE_MACHINE_HOSTS : undefined
+      }
+    >
       <SeededScenario scenario={scenario}>
         {pathname === "/settings/updates" ? (
           <SettingsStoryChrome activeSection="updates">
@@ -440,6 +455,15 @@ const SCENARIOS = {
     plugins: true,
     failing: new Set(["claude-code"]),
   },
+  offlineMachine: {
+    title: "Updates with a machine offline",
+    description:
+      "The machine warning and the update button sit side by side at the end of the footer.",
+    bb: "auto",
+    providers: true,
+    plugins: true,
+    offlineMachine: true,
+  },
 } satisfies Record<string, Scenario>;
 
 export function Everything() {
@@ -460,6 +484,10 @@ export function BbWaitsForRestart() {
 
 export function OneUpdateFails() {
   return <ScenarioStage scenario={SCENARIOS.oneFails} />;
+}
+
+export function UpdatesWithMachineOffline() {
+  return <ScenarioStage scenario={SCENARIOS.offlineMachine} />;
 }
 
 export function MachineNotices() {
