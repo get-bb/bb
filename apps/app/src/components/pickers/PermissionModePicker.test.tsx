@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PermissionModePicker } from "./PermissionModePicker";
 
@@ -16,6 +16,29 @@ afterEach(() => {
 });
 
 describe("PermissionModePicker", () => {
+  it("opens without locking the page behind it", () => {
+    render(
+      <>
+        <PermissionModePicker
+          value="full"
+          options={permissionOptions}
+          onChange={() => {}}
+          supported
+        />
+        <button type="button">Outside control</button>
+      </>,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "Permission mode" }), {
+      key: "Enter",
+    });
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(document.body.style.pointerEvents).not.toBe("none");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Outside control" }),
+    ).toBeTruthy();
+  });
+
   it("can show an effective display override without changing the selected value", () => {
     const onChange = vi.fn();
     render(

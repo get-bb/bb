@@ -254,7 +254,6 @@ function renderPicker({
         onServiceTierChange={onServiceTierChange}
         serviceTierSupportByProvider={serviceTierSupportByProvider}
         muted={muted}
-        modal={false}
         handoff={handoff}
         agentSections={agentSections}
         onAgentOptionChange={onAgentOptionChange}
@@ -719,6 +718,18 @@ describe("ModelReasoningPicker", () => {
 
     expect(onReasoningChange).toHaveBeenCalledWith("high");
     expect(screen.getByRole("dialog")).not.toBeNull();
+  });
+
+  it("opens without locking the page behind it", () => {
+    renderPicker();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(document.body.style.pointerEvents).not.toBe("none");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
   });
 
   it("marks the portaled picker as native no-drag content", () => {

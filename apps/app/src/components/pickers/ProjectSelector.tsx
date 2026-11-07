@@ -69,7 +69,7 @@ export function ProjectSelector({
   showChevronWhenDisabled = false,
   className,
   defaultOpen,
-  modal = true,
+  modal = false,
 }: ProjectSelectorProps) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");

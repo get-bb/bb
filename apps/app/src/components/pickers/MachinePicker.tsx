@@ -76,7 +76,7 @@ export function MachinePickerUI({
   muted,
   disabled = false,
   className,
-  modal = true,
+  modal = false,
   machineProviders = [],
 }: MachinePickerUIProps) {
   const [open, setOpen] = useState(false);

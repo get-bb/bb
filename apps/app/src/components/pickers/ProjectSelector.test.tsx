@@ -17,6 +17,26 @@ const PROJECTS = [
 afterEach(cleanup);
 
 describe("ProjectSelector", () => {
+  it("opens without locking the page behind it", () => {
+    render(
+      <>
+        <ProjectSelector
+          projects={PROJECTS}
+          value="proj_alpha"
+          onChange={() => {}}
+          defaultOpen
+        />
+        <button type="button">Outside control</button>
+      </>,
+    );
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    expect(document.body.style.pointerEvents).not.toBe("none");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Outside control" }),
+    ).toBeTruthy();
+  });
+
   it("selects a searched project and returns to all projects without falling back to the first project", () => {
     function Picker() {
       const [value, setValue] = useState<string | null>("all");
