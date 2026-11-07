@@ -90,7 +90,8 @@ import {
   listStoredTimelineWindowEventRows,
   listStoredTimelineItemEventRows,
   listStoredItemStartSequencesBefore,
-  listTimelineTurnLastSequences,
+  countTimelineTurnEventsOutsideWindow,
+  listTimelineTurnFirstSequences,
   listStoredTimelineTurnEventRows,
   listStoredTimelineTurnContextRows,
   listStoredTimelineThreadWindowEventRows,
@@ -612,11 +613,14 @@ function databaseTimelineRowSource(
     listThreadWindowRows: (args) =>
       listStoredTimelineThreadWindowEventRows(db, args),
     listTurnContextRows: (args) => listStoredTimelineTurnContextRows(db, args),
-    listTurnLastSequences: (args) => listTimelineTurnLastSequences(db, args),
+    countTurnEventsOutsideWindow: (args) =>
+      countTimelineTurnEventsOutsideWindow(db, args),
+    listTurnFirstSequences: (args) => listTimelineTurnFirstSequences(db, args),
     listTurnRows: (args) => listStoredTimelineTurnEventRows(db, args),
   };
 }
 
+const SMALL_TURN_OUTSIDE_EVENTS = 256;
 interface WindowedTurnItemRowsArgs {
   closedItemKeys: Set<string>;
   epochSequenceStart: number;
@@ -1164,7 +1168,8 @@ function selectStandardTimelineEventRows(
           hints,
           segmentLimit: page.segmentLimit,
           splitTurnAt: timelineTurnSplitter(db, {
-            flatTurnDisplay,
+            epochSequenceStart,
+            eventBudget,
             maxSeq,
             threadId: thread.id,
           }),
@@ -1231,7 +1236,7 @@ function selectStandardTimelineEventRows(
     };
     let parentedAddedRows = true;
     for (;;) {
-      const turnIds = [
+      let turnIds = [
         ...new Set([
           ...initialTurnIds,
           ...selectedRows.flatMap((row) =>
@@ -1239,89 +1244,140 @@ function selectStandardTimelineEventRows(
           ),
         ]),
       ].filter(
-        (turnId) => !fetchedTurns.has(turnId) && !windowedTurns.has(turnId),
+        (turnId) =>
+          !fetchedTurns.has(turnId) &&
+          !windowedTurns.has(turnId),
       );
-      const windowTurnRows = source.listTurnRows({ ...windowArgs, turnIds });
-      const startedInWindow = new Set(
-        windowTurnRows.flatMap((row) =>
-          row.type === "turn/started" && row.turnId !== null
-            ? [row.turnId]
-            : [],
-        ),
-      );
-      const turnLastSequences =
-        startedInWindow.size === 0 || beforeSequence === maxSeq + 1
-          ? null
-          : source.listTurnLastSequences({
-              maxSeq,
-              threadId: thread.id,
-              turnIds: [...startedInWindow],
-            });
-      const completeTurnIds = new Set(
-        [...startedInWindow].filter(
+      const allTurnIds = turnIds;
+      if (allTurnIds.length > 0) {
+        const latestPage = beforeSequence === maxSeq + 1;
+        let windowTurnRows: StoredEventRow[];
+        let outsideCounts: Map<string, number>;
+        if (latestPage) {
+          const firstSequences = source.listTurnFirstSequences({
+            epochSequenceStart,
+            maxSeq,
+            threadId: thread.id,
+            turnIds,
+          });
+          const firstSequenceOf = (turnId: string) =>
+            firstSequences.get(turnId) ?? sequenceStart;
+          const nearTurnIds = turnIds.filter(
+            (turnId) =>
+              firstSequenceOf(turnId) >=
+              sequenceStart - SMALL_TURN_OUTSIDE_EVENTS,
+          );
+          const farTurnIds = turnIds.filter(
+            (turnId) =>
+              firstSequenceOf(turnId) <
+              sequenceStart - SMALL_TURN_OUTSIDE_EVENTS,
+          );
+          windowTurnRows = [
+            ...source.listTurnRows({
+              ...windowArgs,
+              sequenceStart: Math.min(
+                sequenceStart,
+                ...nearTurnIds.map(firstSequenceOf),
+              ),
+              turnIds: nearTurnIds,
+            }),
+            ...source.listTurnRows({ ...windowArgs, turnIds: farTurnIds }),
+          ];
+          outsideCounts = new Map(
+            farTurnIds.map((turnId) => [
+              turnId,
+              sequenceStart - firstSequenceOf(turnId),
+            ]),
+          );
+        } else {
+          windowTurnRows = source.listTurnRows({ ...windowArgs, turnIds });
+          outsideCounts = source.countTurnEventsOutsideWindow({
+            beforeSequence,
+            epochSequenceStart,
+            maxSeq,
+            sequenceStart,
+            threadId: thread.id,
+            turnIds,
+          });
+        }
+        const completeTurnIds = new Set(
+          turnIds.filter((turnId) => (outsideCounts.get(turnId) ?? 0) === 0),
+        );
+        const smallTurnIds = turnIds.filter((turnId) => {
+          const count = outsideCounts.get(turnId) ?? 0;
+          return count > 0 && count <= SMALL_TURN_OUTSIDE_EVENTS;
+        });
+        const partialTurnIds = turnIds.filter(
           (turnId) =>
-            turnLastSequences === null ||
-            (turnLastSequences.get(turnId) ?? 0) < beforeSequence,
-        ),
-      );
-      const partialTurnIds = turnIds.filter(
-        (turnId) => !completeTurnIds.has(turnId),
-      );
-      const contextRows = source.listTurnContextRows({
-        ...windowArgs,
-        sequenceStart: epochSequenceStart,
-        beforeSequence: maxSeq + 1,
-        turnIds: partialTurnIds,
-      });
-      const completedTurnIds = new Set(
-        contextRows.flatMap((row) =>
-          row.type === "turn/completed" && row.turnId !== null
-            ? [row.turnId]
-            : [],
-        ),
-      );
-      const wholeTurnIds = partialTurnIds.filter(
-        (turnId) => !flatTurnDisplay && completedTurnIds.has(turnId),
-      );
-      const windowTurnIds = partialTurnIds.filter(
-        (turnId) => flatTurnDisplay || !completedTurnIds.has(turnId),
-      );
-      for (const turnId of completeTurnIds) fetchedTurns.add(turnId);
-      for (const turnId of wholeTurnIds) fetchedTurns.add(turnId);
-      for (const turnId of windowTurnIds) windowedTurns.add(turnId);
-      const windowTurnIdSet = new Set(windowTurnIds);
-      selectedRows = mergeStoredEventRowsById([
-        ...selectedRows,
-        ...windowTurnRows,
-        ...source.listTurnRows({
+            (outsideCounts.get(turnId) ?? 0) > SMALL_TURN_OUTSIDE_EVENTS,
+        );
+        const contextRows = source.listTurnContextRows({
           ...windowArgs,
           sequenceStart: epochSequenceStart,
-          beforeSequence: sequenceStart,
-          turnIds: wholeTurnIds,
-        }),
-        ...(beforeSequence === maxSeq + 1
+          beforeSequence: maxSeq + 1,
+          turnIds: partialTurnIds,
+        });
+        const completedTurnIds = new Set(
+          contextRows.flatMap((row) =>
+            row.type === "turn/completed" && row.turnId !== null
+              ? [row.turnId]
+              : [],
+          ),
+        );
+        const collapsedTurnIds = flatTurnDisplay
           ? []
-          : source.listTurnRows({
-              ...windowArgs,
-              sequenceStart: beforeSequence,
-              beforeSequence: maxSeq + 1,
-              turnIds: wholeTurnIds,
-            })),
-        ...contextRows.filter(
-          (row) => row.turnId !== null && windowTurnIdSet.has(row.turnId),
-        ),
-      ]);
+          : partialTurnIds.filter((turnId) => completedTurnIds.has(turnId));
+        const wholeTurnIds = [...smallTurnIds, ...collapsedTurnIds];
+        const collapsedTurnIdSet = new Set(collapsedTurnIds);
+        const windowTurnIds = partialTurnIds.filter(
+          (turnId) => !collapsedTurnIdSet.has(turnId),
+        );
+        for (const turnId of completeTurnIds) fetchedTurns.add(turnId);
+        for (const turnId of wholeTurnIds) fetchedTurns.add(turnId);
+        for (const turnId of windowTurnIds) windowedTurns.add(turnId);
+        const windowTurnIdSet = new Set(windowTurnIds);
+        const newRows = [
+          ...windowTurnRows,
+          ...source.listTurnRows({
+            ...windowArgs,
+            sequenceStart: epochSequenceStart,
+            beforeSequence: sequenceStart,
+            turnIds: wholeTurnIds,
+          }),
+          ...(beforeSequence === maxSeq + 1
+            ? []
+            : source.listTurnRows({
+                ...windowArgs,
+                sequenceStart: beforeSequence,
+                beforeSequence: maxSeq + 1,
+                turnIds: wholeTurnIds,
+              })),
+          ...contextRows.filter(
+            (row) => row.turnId !== null && windowTurnIdSet.has(row.turnId),
+          ),
+        ];
+        if (newRows.length > 0) {
+          selectedRows = mergeStoredEventRowsById([
+            ...selectedRows,
+            ...newRows,
+          ]);
+        }
+      }
       const itemRows = listWindowedTurnItemRows({
         ...itemRowsArgs,
         rows: selectedRows,
       });
-      if (turnIds.length === 0 && itemRows.length === 0 && !parentedAddedRows) {
+      if (
+        allTurnIds.length === 0 &&
+        itemRows.length === 0 &&
+        !parentedAddedRows
+      ) {
         break;
       }
-      const rowsBeforeParents = mergeStoredEventRowsById([
-        ...selectedRows,
-        ...itemRows,
-      ]);
+      const rowsBeforeParents =
+        itemRows.length === 0
+          ? selectedRows
+          : mergeStoredEventRowsById([...selectedRows, ...itemRows]);
       selectedRows = ensureTimelineWindowParentedRows(db, {
         childOwnerSequenceStart:
           beforeSequence === maxSeq + 1 ? undefined : sequenceStart,
@@ -1337,24 +1393,6 @@ function selectStandardTimelineEventRows(
         },
       }).rows.filter((row) => row.sequence <= maxSeq);
       parentedAddedRows = selectedRows.length > rowsBeforeParents.length;
-    }
-    const tailEnd = selectedRows.reduce(
-      (end, row) =>
-        row.itemId === null || row.itemKind === "contextCompaction"
-          ? end
-          : Math.max(end, row.sequence),
-      beforeSequence - 1,
-    );
-    if (tailEnd >= beforeSequence && windowedTurns.size > 0) {
-      selectedRows = mergeStoredEventRowsById([
-        ...selectedRows,
-        ...source.listTurnRows({
-          ...windowArgs,
-          sequenceStart: beforeSequence,
-          beforeSequence: tailEnd + 1,
-          turnIds: [...windowedTurns],
-        }),
-      ]);
     }
     selectedRows = ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,

@@ -13,7 +13,8 @@ import {
   listAppendedEventRows,
   listStoredTimelineItemEventRows,
   listStoredItemStartSequencesBefore,
-  listTimelineTurnLastSequences,
+  countTimelineTurnEventsOutsideWindow,
+  listTimelineTurnFirstSequences,
   listStoredTimelineTurnEventRows,
   listStoredTimelineTurnContextRows,
   listStoredTimelineWindowEventRows,
@@ -21,6 +22,7 @@ import {
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   findTimelineWindowCutSequence,
   isTimelineEventInCompletedTurn,
+  countTimelineTurnEventsBeforeCut,
   scopedItemRefKey,
   selectAppendedTimelineWindowRows,
   type DbConnection,
@@ -102,8 +104,11 @@ export interface TimelineSelectionRowSource {
   listTurnContextRows(
     args: Parameters<typeof listStoredTimelineTurnContextRows>[1],
   ): StoredEventRow[];
-  listTurnLastSequences(
-    args: Parameters<typeof listTimelineTurnLastSequences>[1],
+  countTurnEventsOutsideWindow(
+    args: Parameters<typeof countTimelineTurnEventsOutsideWindow>[1],
+  ): Map<string, number>;
+  listTurnFirstSequences(
+    args: Parameters<typeof listTimelineTurnFirstSequences>[1],
   ): Map<string, number>;
   listTurnRows(
     args: Parameters<typeof listStoredTimelineTurnEventRows>[1],
@@ -266,14 +271,14 @@ function timelineWindowGridStep(eventBudget: number): number {
 export function timelineTurnSplitter(
   db: DbConnection,
   args: {
-    flatTurnDisplay: boolean;
+    epochSequenceStart: number;
+    eventBudget: number;
     maxSeq: number;
     threadId: string;
   },
 ): SelectTimelineWindowStartArgs["splitTurnAt"] {
   return (gridSequence, budgetFloorSequence) => {
     if (
-      !args.flatTurnDisplay &&
       isTimelineEventInCompletedTurn(db, {
         maxSeq: args.maxSeq,
         sequence: budgetFloorSequence,
@@ -282,11 +287,21 @@ export function timelineTurnSplitter(
     ) {
       return null;
     }
-    return findTimelineWindowCutSequence(db, {
+    const cut = findTimelineWindowCutSequence(db, {
       budgetFloorSequence,
       sequence: gridSequence,
       threadId: args.threadId,
     });
+    if (cut === null) return null;
+    const eventsBeforeCut = countTimelineTurnEventsBeforeCut(db, {
+      cutSequence: cut,
+      epochSequenceStart: args.epochSequenceStart,
+      sequence: budgetFloorSequence,
+      threadId: args.threadId,
+    });
+    return eventsBeforeCut !== null && eventsBeforeCut <= args.eventBudget
+      ? null
+      : cut;
   };
 }
 
@@ -1104,8 +1119,11 @@ function createTrimmedSelectionRowSource(
         (row) => row.turnId === null && row.sequence >= sequenceStart,
       );
     },
-    listTurnLastSequences() {
-      return trimFallback("turn-last-sequences");
+    countTurnEventsOutsideWindow(query) {
+      return countTimelineTurnEventsOutsideWindow(db, query);
+    },
+    listTurnFirstSequences(query) {
+      return listTimelineTurnFirstSequences(db, query);
     },
     listTurnRows(query) {
       const sequenceStart = query.sequenceStart;

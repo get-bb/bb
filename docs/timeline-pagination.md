@@ -33,21 +33,24 @@ empty page with a usable older cursor. Latest-page head state is retained while
 skipping. Context loading and complete-group reconstruction can exceed the
 initial event budget.
 
-When no visible segment start fits the event budget, the window starts on a
-grid of half the event budget at or below the budget floor, moved back to the
-first event of the item the grid lands in. A long turn is then paged in windows
-of one to one and a half budgets, and the latest window start moves only once
-per half budget of appended events. The grid is not used inside a finished
-turn that the page collapses into summaries.
+When no visible segment start fits the event budget inside a running turn, the
+window starts on a grid of half the event budget at or below the budget floor,
+moved back to the first event of the item the grid lands in. A long running
+turn is then paged in windows of one to two budgets, and the latest window
+start moves only once per half budget of appended events. The grid is not used
+when the turn has at most one budget of events before the cut, or inside a
+finished turn, so pages over finished history keep their boundaries.
 
-A page reads a turn whose rows render flat, meaning a running turn or any turn
-under the flat display, only inside its window. It adds the complete events of
-items that cross the window edges, the delegation parents of rows it reads, the
-children of delegations it owns (on the latest page, of every delegation it
-reads), the turn's lifecycle, compaction and provider error events, and, on an
-older page, the turn's events up to the furthest event those items reach.
-A finished turn under the collapsed display is still read whole because its
-summary rows depend on all of it.
+A page reads a turn that starts inside its window, or has at most 256 events
+outside it, whole. Otherwise a turn whose rows render flat, meaning a running
+turn or any turn under the flat display, is read only inside the window. The
+page adds the complete events of items that cross the window edges, the
+delegation parents of rows it reads, the children of delegations it owns (on
+the latest page, of every delegation it reads), and the turn's lifecycle,
+accepted input, compaction and provider events.
+
+A finished turn under the collapsed display that started before the window is
+still read whole, because its summary rows depend on all of it.
 
 Content cuts continue inside the same window bounds, reconstructing the same
 group so leaf offsets remain meaningful. The current cursor format is v3;

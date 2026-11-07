@@ -3695,6 +3695,31 @@ export function findTimelineWindowCutSequence(
   return start?.sequence ?? row.sequence;
 }
 
+export function countTimelineTurnEventsBeforeCut(
+  db: DbConnection,
+  args: {
+    cutSequence: number;
+    epochSequenceStart: number;
+    sequence: number;
+    threadId: string;
+  },
+): number | null {
+  const [turn] = db.all<{ turnId: string | null }>(sql`
+    SELECT turn_id AS turnId FROM events
+    WHERE thread_id = ${args.threadId} AND sequence = ${args.sequence}
+  `);
+  if (turn === undefined || turn.turnId === null) return null;
+  const [row] = db.all<{ count: number }>(sql`
+    SELECT COUNT(*) AS count
+    FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND turn_id = ${turn.turnId}
+      AND sequence >= ${args.epochSequenceStart}
+      AND sequence < ${args.cutSequence}
+  `);
+  return row?.count ?? 0;
+}
+
 export function isTimelineEventInCompletedTurn(
   db: DbConnection,
   args: { maxSeq: number; sequence: number; threadId: string },
@@ -4245,27 +4270,69 @@ export function listStoredTimelineItemEventRows(
     .sort((left, right) => left.sequence - right.sequence);
 }
 
-export function listTimelineTurnLastSequences(
+export function listTimelineTurnFirstSequences(
   db: DbConnection,
-  args: { maxSeq: number; threadId: string; turnIds: readonly string[] },
+  args: {
+    epochSequenceStart: number;
+    maxSeq: number;
+    threadId: string;
+    turnIds: readonly string[];
+  },
 ): Map<string, number> {
   if (args.turnIds.length === 0) return new Map();
   return new Map(
     db
       .all<{ sequence: number; turnId: string }>(
         sql`
-      SELECT turn_id AS turnId, MAX(sequence) AS sequence
+      SELECT turn_id AS turnId, MIN(sequence) AS sequence
       FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
       WHERE thread_id = ${args.threadId}
         AND turn_id IN (${sql.join(
           args.turnIds.map((turnId) => sql`${turnId}`),
           sql`, `,
         )})
+        AND sequence >= ${args.epochSequenceStart}
         AND sequence <= ${args.maxSeq}
       GROUP BY turn_id
     `,
       )
       .map((row) => [row.turnId, row.sequence]),
+  );
+}
+
+export function countTimelineTurnEventsOutsideWindow(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    epochSequenceStart: number;
+    maxSeq: number;
+    sequenceStart: number;
+    threadId: string;
+    turnIds: readonly string[];
+  },
+): Map<string, number> {
+  if (args.turnIds.length === 0) return new Map();
+  return new Map(
+    db
+      .all<{ count: number; turnId: string }>(
+        sql`
+      SELECT turn_id AS turnId, COUNT(*) AS count
+      FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+      WHERE thread_id = ${args.threadId}
+        AND turn_id IN (${sql.join(
+          args.turnIds.map((turnId) => sql`${turnId}`),
+          sql`, `,
+        )})
+        AND sequence >= ${args.epochSequenceStart}
+        AND sequence <= ${args.maxSeq}
+        AND (
+          sequence < ${args.sequenceStart}
+          OR sequence >= ${args.beforeSequence}
+        )
+      GROUP BY turn_id
+    `,
+      )
+      .map((row) => [row.turnId, row.count]),
   );
 }
 

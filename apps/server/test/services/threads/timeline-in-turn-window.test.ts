@@ -2691,9 +2691,9 @@ function commandItemEvents(
 }
 
 describe("page-bounded reads of turns whose rows render flat", () => {
-  it("reads only each page's window of a long finished turn", () => {
+  it("reads only each page's window of a long running turn", () => {
     const { db, thread } = setup();
-    seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [300] });
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [300] });
 
     const unbudgeted = walkFlatPages(db, thread, LARGE_BUDGET);
     expect(unbudgeted.maxEventRowCount).toBeGreaterThan(600);
@@ -2701,7 +2701,7 @@ describe("page-bounded reads of turns whose rows render flat", () => {
     const budgeted = walkFlatPages(db, thread, 100);
     expect(budgeted.rows).toEqual(unbudgeted.rows);
     expect(budgeted.pages).toBeGreaterThan(3);
-    expect(budgeted.maxEventRowCount).toBeLessThan(200);
+    expect(budgeted.maxEventRowCount).toBeLessThan(250);
   });
 
   it("reads a cross-turn delegation's subtree without its spawning turn", () => {
@@ -2790,7 +2790,6 @@ describe("page-bounded reads of turns whose rows render flat", () => {
       );
       sequence += 2;
     }
-    events.push(turnCompletedEvent(thread, sequence, "turn-1"));
     insertEvents(db, noopNotifier, events);
 
     const budgeted = walkFlatPages(db, thread, 100);
