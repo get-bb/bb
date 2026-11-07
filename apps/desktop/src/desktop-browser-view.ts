@@ -581,7 +581,7 @@ export function createDesktopBrowserViewManager(
       !leasedPages.has(webContents) &&
       (!downloadingPages.has(webContents) || discarded) &&
       !webContents.debugger.isAttached() &&
-      webContents.navigationHistory.length() > 0
+      webContents.navigationHistory.getAllEntries().length > 0
     );
   }
 
