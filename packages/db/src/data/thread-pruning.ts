@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { THREAD_PRUNING_PENDING_POLICY } from "./thread-pruning-work.js";
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import {
@@ -21,6 +22,7 @@ import {
 import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import {
   getHighWaterMarks,
+  getContextWindowUsagePruningBoundarySequence,
   pruneContextWindowUsageEventsInTransaction,
   pruneTokenUsageEventsInTransaction,
 } from "./events.js";
@@ -40,6 +42,8 @@ const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
 };
 const BATCH_SIZE = 500;
 const LIVE_BATCH_SIZE = 32;
+const CHUNK_SIZE = 16;
+export const THREAD_PRUNING_ADVANCE_WORK_BUDGET_MS = 20;
 
 function isSettledThread(threadId: SQLWrapper | string) {
   return sql`NOT EXISTS (
@@ -343,6 +347,8 @@ function advanceThreadPruningTransaction(
   const batchSize = threadScope === undefined ? BATCH_SIZE : LIVE_BATCH_SIZE;
   const result = db.transaction(
     (tx) => {
+      const deadline = performance.now() + THREAD_PRUNING_ADVANCE_WORK_BUDGET_MS;
+      const withinDeadline = () => performance.now() < deadline;
       const { cursor, now } = prepareThreadPruningCursor(tx, policy, threadScope);
       let action:
         | "advanced"
@@ -375,22 +381,33 @@ function advanceThreadPruningTransaction(
         } else if (!thread.settled) {
           action = "thread-busy";
         } else if (policy === "rate-limits") {
-          const batch = pruneRateLimitSnapshotWindow(tx, {
-            threadId,
-            afterSequence: cursor.sequence,
-            throughSequence: cursor.upperSequence,
-            limit: threadScope === undefined ? 64 : LIVE_BATCH_SIZE,
-          });
-          scanned = batch.scanned;
-          removed = batch.removed;
-          cursor.sequence = batch.nextSequence;
-          if (batch.complete || cursor.sequence >= cursor.upperSequence)
+          const limit = threadScope === undefined ? 64 : LIVE_BATCH_SIZE;
+          let complete = false;
+          while (
+            !complete &&
+            scanned < limit &&
+            cursor.sequence < cursor.upperSequence &&
+            (scanned === 0 || withinDeadline())
+          ) {
+            const batch = pruneRateLimitSnapshotWindow(tx, {
+              threadId,
+              afterSequence: cursor.sequence,
+              throughSequence: cursor.upperSequence,
+              limit: Math.min(CHUNK_SIZE, limit - scanned),
+            });
+            scanned += batch.scanned;
+            removed += batch.removed;
+            cursor.sequence = batch.nextSequence;
+            complete = batch.complete;
+          }
+          if (complete || cursor.sequence >= cursor.upperSequence)
             action = "thread-complete";
         } else if (policy === "resolved-items") {
           const batch = advanceLiveEventPruning(tx, {
             threadId,
             kind: cursor.step === 0 ? "deltas" : "background",
             limit: batchSize,
+            deadline,
           });
           scanned = batch.scanned;
           removed = batch.removed;
@@ -405,38 +422,47 @@ function advanceThreadPruningTransaction(
               : cursor.step <= 1
                 ? "thread/contextWindowUsage/updated"
                 : "thread/tokenUsage/updated";
-          const rows = tx.all<{ id: string; sequence: number }>(sql`
-            SELECT id, sequence FROM events INDEXED BY events_thread_type_sequence_idx
-            WHERE thread_id = ${threadId} AND type = ${type}
-              AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
-            ORDER BY sequence LIMIT ${batchSize}
-          `);
-          scanned = rows.length;
-          const last = rows.at(-1);
-          const throughSequence = last?.sequence ?? cursor.sequence;
-          if (last) {
+          const boundarySequence =
+            policy === "usage" && cursor.step === 1
+              ? getContextWindowUsagePruningBoundarySequence(tx, threadId)
+              : 0;
+          let exhausted = false;
+          while (
+            !exhausted &&
+            scanned < batchSize &&
+            (scanned === 0 || withinDeadline())
+          ) {
+            const chunkSize = Math.min(CHUNK_SIZE, batchSize - scanned);
+            const chunk = tx.all<{ id: string; sequence: number }>(sql`
+              SELECT id, sequence FROM events INDEXED BY events_thread_type_sequence_idx
+              WHERE thread_id = ${threadId} AND type = ${type}
+                AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
+              ORDER BY sequence LIMIT ${chunkSize}
+            `);
+            exhausted = chunk.length < chunkSize;
+            const last = chunk.at(-1);
+            if (!last) break;
+            scanned += chunk.length;
             const window = {
               threadId,
               afterSequence: cursor.sequence,
               throughSequence: last.sequence,
-              candidateIds: rows.map((row) => row.id),
+              candidateIds: chunk.map((row) => row.id),
             };
-            const relevantIds = rows.map((row) => row.id);
+            const relevantIds = chunk.map((row) => row.id);
             const bytesQuery = sql`SELECT COALESCE(SUM(octet_length(data)), 0) AS bytes FROM events WHERE ${inArray(events.id, relevantIds)} AND ${events.type} = ${type}`;
             const before =
               threadScope !== undefined ||
               (policy === "usage" && (cursor.step === 0 || cursor.step === 2))
                 ? 0
                 : (tx.get<{ bytes: number }>(bytesQuery)?.bytes ?? 0);
+            let chunkRemoved = 0;
             if (policy === "turn-diffs") {
-              removed = tx
+              chunkRemoved = tx
                 .delete(events)
                 .where(
                   and(
-                    inArray(
-                      events.id,
-                      rows.map((row) => row.id),
-                    ),
+                    inArray(events.id, relevantIds),
                     isBeforeLatestThreadEvent(threadId),
                   ),
                 )
@@ -447,6 +473,7 @@ function advanceThreadPruningTransaction(
                 usageKeepers: {
                   latestRootSequence: cursor.latestRootSequence,
                   latestContextSequence: cursor.latestContextSequence,
+                  boundarySequence,
                 },
               };
               switch (cursor.step) {
@@ -477,28 +504,26 @@ function advanceThreadPruningTransaction(
                   break;
                 }
                 case 1:
-                  removed = pruneContextWindowUsageEventsInTransaction(
+                  chunkRemoved = pruneContextWindowUsageEventsInTransaction(
                     tx,
                     args,
                   );
                   break;
                 case 3:
-                  removed = pruneTokenUsageEventsInTransaction(tx, args);
+                  chunkRemoved = pruneTokenUsageEventsInTransaction(tx, args);
                   break;
                 default:
                   throw new Error("Invalid usage pruning step");
               }
             }
-            if (removed > 0 && threadScope === undefined) {
+            if (chunkRemoved > 0 && threadScope === undefined) {
               const after = tx.get<{ bytes: number }>(bytesQuery)?.bytes ?? 0;
-              removedBytes = before - after;
+              removedBytes += before - after;
             }
-            cursor.sequence = throughSequence;
+            removed += chunkRemoved;
+            cursor.sequence = last.sequence;
           }
-          if (
-            rows.length < batchSize ||
-            cursor.sequence >= cursor.upperSequence
-          ) {
+          if (exhausted || cursor.sequence >= cursor.upperSequence) {
             if (policy === "usage" && cursor.step < 3) {
               cursor.step += 1;
               cursor.sequence = 0;

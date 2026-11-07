@@ -421,9 +421,13 @@ describe("thread pruning sweep", () => {
         (call) => call[1] === "Thread pruning policy advanced",
       );
       expect(steps.length).toBeLessThanOrEqual(64);
-      expect(harness.db.select().from(threadPruningCursors).all()).toHaveLength(
-        4,
-      );
+      expect(
+        harness.db
+          .select()
+          .from(threadPruningCursors)
+          .where(eq(threadPruningCursors.scope, ""))
+          .all(),
+      ).toHaveLength(4);
       const before = getNextThreadPruningPolicy(harness.db, new Set());
       expect(before).not.toBeNull();
       if (before === null) throw new Error("Missing next policy");

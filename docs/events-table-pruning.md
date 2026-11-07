@@ -45,3 +45,20 @@ deletions invalidate cached timelines and publish a history-compacted
 notification to viewers of the thread. Archiving a thread runs one live step and
 then drops the thread's live progress; the background sweep finishes archived
 threads.
+
+## Pass bounds and resumption
+
+Each call works for about 20 ms, then commits and records where it stopped.
+Deletes run in chunks of 16 rows, so one call stays well under 50 ms even when
+deletes are slow.
+
+A pass over a thread's deltas or background-task progress ends at the event
+before the thread's latest one. The next pass starts from that bound instead of
+the first event. It reaches back below the bound only for items that gained a
+completion (deltas) or newer progress or completion (background tasks) since the
+last pass, starting at that item's earliest candidate. Everything else below the
+bound was either pruned or is kept for good: the first delta of an item, a delta
+without a turn or item, or a candidate whose deciding row has not arrived yet,
+which the reach-back covers once it does. Deleting a thread's event suffix, or
+inserting an event at or below the thread's latest sequence, moves the bound back
+before that sequence.

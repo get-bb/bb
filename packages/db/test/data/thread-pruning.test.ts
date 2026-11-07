@@ -326,15 +326,20 @@ describe("thread pruning", () => {
           .map((row) => row.scope)
           .sort(),
       ).toEqual([f.thread.id, other.thread.id].sort());
-      const hasLiveDeltaCursor = () =>
+      const hasUnfinishedLiveDeltaPass = () =>
         f.db
           .select()
           .from(threadPruningCursors)
           .all()
-          .some((row) => row.policy === "deltas" && row.scope === f.thread.id);
-      for (let i = 0; i < 1000 && hasLiveDeltaCursor(); i++)
+          .some(
+            (row) =>
+              row.policy === "deltas" &&
+              row.scope === f.thread.id &&
+              row.sequence < row.upperSequence,
+          );
+      for (let i = 0; i < 1000 && hasUnfinishedLiveDeltaPass(); i++)
         advanceThreadPruning(f.db, { threadId: f.thread.id });
-      expect(hasLiveDeltaCursor()).toBe(false);
+      expect(hasUnfinishedLiveDeltaPass()).toBe(false);
       const remaining = f.db.select().from(threadPruningCursors).all();
       expect(remaining.filter((row) => row.scope !== f.thread.id)).toEqual(
         before.filter((row) => row.scope !== f.thread.id),
@@ -885,6 +890,7 @@ describe("thread pruning", () => {
             threadId: f.thread.id,
             kind: "deltas",
             limit: 5,
+            deadline: Number.POSITIVE_INFINITY,
           }),
         );
         expect(batch.scanned).toBeLessThanOrEqual(5);
