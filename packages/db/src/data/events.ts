@@ -87,6 +87,7 @@ import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fiel
 import {
   upsertThreadSearchSegments,
   type UpsertThreadSearchSegmentInput,
+  upsertThreadSearchSegmentBatch,
 } from "./threads.js";
 import {
   copyRetainedEventOutputs,
@@ -1102,6 +1103,7 @@ export function copyStoredThreadEventsInTransaction(
       .map((row) => row.id),
   );
   const copiedIds: { sourceEventId: string; targetEventId: string }[] = [];
+  const segments: UpsertThreadSearchSegmentInput[] = [];
   let pending: CopiedEventRowValues[] = [];
   const flush = () => {
     insertCopiedEventRowsFromSource(db, pending);
@@ -1169,17 +1171,14 @@ export function copyStoredThreadEventsInTransaction(
             type: row.type,
           });
     if (event !== null) {
-      upsertThreadSearchSegments(db, {
-        updatedAt: now,
-        segments: listThreadSearchSegmentsForThreadEvent({
-          event,
-          sequence,
-        }),
-      });
+      segments.push(
+        ...listThreadSearchSegmentsForThreadEvent({ event, sequence }),
+      );
     }
     sequence += 1;
   }
   flush();
+  upsertThreadSearchSegmentBatch(db, { segments, updatedAt: now });
   copyRetainedEventOutputs(db, { copiedAt: now, events: copiedIds });
   markThreadPruningWork(db, [args.targetThreadId]);
   return args.rows.length;

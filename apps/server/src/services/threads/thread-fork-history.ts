@@ -17,7 +17,11 @@ import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
 import { resolveTurnProviderCheckpointId } from "./thread-edit-message.js";
-import type { ThreadForkDescriptor } from "./thread-startup-store.js";
+import {
+  clearThreadForkHistoryCopyMark,
+  isThreadCopyingForkHistory,
+  type ThreadForkDescriptor,
+} from "./thread-startup-store.js";
 
 export interface ThreadForkPoint {
   descriptor: ThreadForkDescriptor;
@@ -336,8 +340,8 @@ async function selectInheritedForkEventRows(
   });
 }
 
-const FORK_HISTORY_COPY_BATCH_ROWS = 25;
-const FORK_HISTORY_COPY_SLICE_MS = 20;
+const FORK_HISTORY_COPY_BATCH_ROWS = 10;
+const FORK_HISTORY_COPY_SLICE_MS = 8;
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
@@ -358,6 +362,7 @@ export async function copyForkSourceHistory(
     })
   ).map((row) => ({ ...row, providerThreadId: null }));
   if (rows.length === 0) {
+    clearThreadForkHistoryCopyMark(deps.db, args.fork.id);
     return;
   }
   const firstSequence =
@@ -370,13 +375,14 @@ export async function copyForkSourceHistory(
     deps.db.transaction(
       (tx) => {
         if (
+          !isThreadCopyingForkHistory(tx, args.fork.id) ||
           getLatestThreadSequence(tx, { threadId: args.fork.id }) !==
-          firstSequence + copied - 1
+            firstSequence + copied - 1
         ) {
           throw new ApiError(
             409,
             "fork_history_changed",
-            "The fork received other events while its history was being copied",
+            "The fork was deleted or received other events while its history was being copied",
           );
         }
         const sliceStartedAt = performance.now();
@@ -395,6 +401,9 @@ export async function copyForkSourceHistory(
           copied < rows.length &&
           performance.now() - sliceStartedAt < FORK_HISTORY_COPY_SLICE_MS
         );
+        if (copied === rows.length) {
+          clearThreadForkHistoryCopyMark(tx, args.fork.id);
+        }
       },
       { behavior: "immediate" },
     );

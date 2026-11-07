@@ -3,6 +3,7 @@ import {
   createProject,
   createThread,
   getLatestThreadSequence,
+  getThread,
   insertEvents,
   listStoredEventRows,
   noopNotifier,
@@ -16,9 +17,26 @@ import {
   turnScope,
 } from "@bb/domain";
 import { copyForkSourceHistory } from "../../../src/services/threads/thread-fork-history.js";
+import { discardInterruptedForkHistoryCopies } from "../../../src/services/threads/thread-create.js";
+import {
+  isThreadCopyingForkHistory,
+  listThreadIdsCopyingForkHistory,
+} from "../../../src/services/threads/thread-startup-store.js";
+import { withTestHarness } from "../../helpers/test-app.js";
 import { NotificationHub } from "../../../src/ws/hub.js";
 
 const TURN_COUNT = 60;
+
+function copyingStartupContext(): string {
+  return JSON.stringify({
+    kind: "pending",
+    environmentIntent: { type: "reuse", environmentId: "env_fork_history" },
+    fork: null,
+    historyCopy: "copying",
+    startedOnBehalfOf: null,
+    titleProvided: false,
+  });
+}
 
 function seedSource(db: DbConnection) {
   const host = upsertHost(db, noopNotifier, { name: "fork-history-host" });
@@ -33,6 +51,8 @@ function seedSource(db: DbConnection) {
   const fork = createThread(db, noopNotifier, {
     projectId: project.id,
     providerId: "codex",
+    status: "pending",
+    startupContext: copyingStartupContext(),
   });
   let sequence = 0;
   const event = (
@@ -136,6 +156,7 @@ describe("fork history copy", () => {
     );
     observer.stop();
 
+    expect(isThreadCopyingForkHistory(db, fork.id)).toBe(false);
     const sourceRows = listStoredEventRows(db, { threadId: source.id });
     const forkRows = listStoredEventRows(db, { threadId: fork.id });
     expect(
@@ -192,5 +213,65 @@ describe("fork history copy", () => {
     });
     expect(intruded).toBe(true);
     db.$client.close();
+  });
+  it("deletes a fork left half-copied by a crash on the next boot sweep", async () => {
+    await withTestHarness(async (harness) => {
+      const { fork, historyEndSequence, source } = seedSource(harness.db);
+      sliceEveryBatch();
+      harness.db.$client.exec(`
+        CREATE TEMP TRIGGER crash_mid_copy BEFORE INSERT ON events
+        WHEN NEW.thread_id = '${fork.id}' AND NEW.sequence > 100
+        BEGIN SELECT RAISE(ABORT, 'simulated crash'); END
+      `);
+
+      await expect(
+        copyForkSourceHistory(harness.deps, {
+          fork,
+          historyEndSequence,
+          sourceThreadId: source.id,
+        }),
+      ).rejects.toThrow();
+      harness.db.$client.exec("DROP TRIGGER temp.crash_mid_copy");
+      expect(
+        getLatestThreadSequence(harness.db, { threadId: fork.id }),
+      ).toBeGreaterThan(0);
+      expect(listThreadIdsCopyingForkHistory(harness.db)).toEqual([fork.id]);
+
+      expect(discardInterruptedForkHistoryCopies(harness.deps)).toBe(1);
+
+      expect(getThread(harness.db, fork.id)?.deletedAt).not.toBeNull();
+      expect(listThreadIdsCopyingForkHistory(harness.db)).toEqual([]);
+      const response = await harness.app.request(
+        `/api/v1/threads/${fork.id}/timeline`,
+      );
+      expect(response.status).toBe(404);
+      expect(discardInterruptedForkHistoryCopies(harness.deps)).toBe(0);
+    });
+  });
+
+  it("refuses to dispatch a fork while its history is being copied", async () => {
+    await withTestHarness(async (harness) => {
+      const { fork } = seedSource(harness.db);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "start",
+            input: [{ type: "text", text: "Too early" }],
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "fork_history_copying",
+      });
+      expect(getLatestThreadSequence(harness.db, { threadId: fork.id })).toBe(
+        0,
+      );
+    });
   });
 });
