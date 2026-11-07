@@ -2,7 +2,7 @@ import type { TunnelIngressLease } from "../connect-next/tunnel-ingress.js";
 import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
-import type { DbConnection, HostRow } from "@bb/db";
+import type { DbConnection, HostRow, WalCheckpointer } from "@bb/db";
 import type {
   DynamicTool,
   PendingInteraction,
@@ -110,6 +110,7 @@ export interface PluginServiceDeps {
     | "onWatchedTargets"
   >;
   logger: ServerLogger;
+  walCheckpointer?: Pick<WalCheckpointer, "attach" | "detach">;
   telemetry: TelemetryService;
   pendingInteractions?: Pick<
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
