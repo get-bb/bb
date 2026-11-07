@@ -4230,6 +4230,115 @@ describe("acp bridge", () => {
     ]);
   });
 
+  it("uses the target fork path when the source lacks fork support", async () => {
+    const source = await startThread({
+      envVars: { FAKE_ACP_CLOSE_SESSION: "1" },
+    });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-close-only-source",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_FORK_SESSION: "1",
+              FAKE_ACP_RESUME_SESSION: "1",
+              FAKE_ACP_CLOSE_SESSION: "1",
+            },
+          }),
+        },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    expect((await waitForResponse(forkId)).error).toBeUndefined();
+  });
+
+  it("preserves native fork model selection across an ID-only resume", async () => {
+    const forkThreadId = "thread-native-fork-model";
+    const envVars = {
+      FAKE_ACP_FORK_SESSION: "1",
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_CLOSE_SESSION: "1",
+      FAKE_ACP_MODELS_FIELD: "1",
+      FAKE_ACP_RESUME_ID_ONLY: "1",
+    };
+    const source = await startThread({ envVars });
+    const forkId = sendRequest("thread/fork", {
+      threadId: forkThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        model: "fake/strong",
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    expect((await waitForResponse(forkId)).error).toBeUndefined();
+    const forkedProviderThreadId = providerThreadIdOf(await waitForResponse(forkId));
+    bbThreadIdByProviderThreadId.set(forkedProviderThreadId, forkThreadId);
+    await expect(
+      completeTurnWith(forkedProviderThreadId, "echo-selected-model", executionOptions({})),
+    ).resolves.toBe("selected-model:fake/strong");
+  });
+
+  it("applies modes-only setup and subsequent legacy mode updates", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_LEGACY_MODES: "1" },
+    });
+    expect(extensionStatePayloadsFor(bbThreadId, "bb/session-options").at(-1))
+      .toMatchObject({
+        options: expect.arrayContaining([
+          expect.objectContaining({ id: "_bb/legacy-mode" }),
+        ]),
+      });
+    await completeTurnWith(providerThreadId, "switch-legacy-mode", {
+      ...executionOptions({}),
+      sessionOptions: { "_bb/legacy-mode": "plan" },
+    });
+    expect(extensionStatePayloadsFor(bbThreadId, "bb/session-options").at(-1))
+      .toMatchObject({
+        options: expect.arrayContaining([
+          expect.objectContaining({ id: "_bb/legacy-mode", value: "plan" }),
+        ]),
+      });
+  });
+
+  it("isolates setup notifications for concurrent handoffs on one source", async () => {
+    const envVars = {
+      FAKE_ACP_FORK_SESSION: "1",
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_CLOSE_SESSION: "1",
+      FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE: "1",
+      FAKE_ACP_FORK_DELAY_MS: "40",
+    };
+    const source = await startThread({ envVars });
+    const requestFork = (threadId: string) =>
+      sendRequest("thread/fork", {
+        threadId,
+        cwd: workspaceDir,
+        instructionMode: "append",
+        options: executionOptions({
+          providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+        }),
+        sourceProviderThreadId: source.providerThreadId,
+      });
+    const firstId = requestFork("thread-concurrent-fork-a");
+    const secondId = requestFork("thread-concurrent-fork-b");
+    const [first, second] = await Promise.all([
+      waitForResponse(firstId),
+      waitForResponse(secondId),
+    ]);
+    expect(first.error).toBeUndefined();
+    expect(second.error).toBeUndefined();
+    expect(contextWindowDeltasFor("thread-concurrent-fork-a")).toEqual([
+      { used: 12_345, size: 200_000 },
+    ]);
+    expect(contextWindowDeltasFor("thread-concurrent-fork-b")).toEqual([
+      { used: 12_345, size: 200_000 },
+    ]);
+  });
+
   it("hands a live source fork to a new ACP process through close and resume", async () => {
     const requestLog = join(workspaceDir, "source-fork-handoff.jsonl");
     const envVars = {
