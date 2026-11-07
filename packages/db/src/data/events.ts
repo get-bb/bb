@@ -1266,6 +1266,22 @@ function allStoredEventRowsUnmapped(
     .all(...params);
 }
 
+function allStoredEventRowsInVariableBatches(
+  db: DbConnection,
+  values: readonly string[],
+  buildQuery: (batch: readonly string[]) => {
+    toSQL(): { sql: string; params: unknown[] };
+  },
+): StoredEventRow[] {
+  return queryInSqliteVariableBatches({
+    dedupeKey: (value) => value,
+    fixedVariableCount: buildQuery([]).toSQL().params.length,
+    queryBatch: (batch) => allStoredEventRowsUnmapped(db, buildQuery(batch)),
+    values,
+    variableCountPerValue: 1,
+  }).sort((left, right) => left.sequence - right.sequence);
+}
+
 export interface ListStoredEventRowsArgs {
   afterSequence?: number;
   beforeSequence?: number;
@@ -1944,37 +1960,39 @@ export function listStoredEventRowsByParentToolCallIds(
   db: DbConnection,
   args: ListStoredEventRowsByParentToolCallIdsArgs,
 ): StoredEventRow[] {
-  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
-  if (conditions === null) {
+  const parentToolCallIds = args.parentToolCallIds.filter(
+    (parentToolCallId) => parentToolCallId.length > 0,
+  );
+  if (parentToolCallIds.length === 0) {
     return [];
   }
+  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
 
-  return allStoredEventRowsUnmapped(
+  return allStoredEventRowsInVariableBatches(
     db,
-    db
-      .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
-      .from(
-        sql`${events} INDEXED BY events_parent_tool_call_thread_parent_sequence_idx`,
-      )
-      .where(and(...conditions, isNotNull(events.parentToolCallId)))
-      .orderBy(events.sequence),
+    parentToolCallIds,
+    (batch) =>
+      db
+        .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
+        .from(
+          sql`${events} INDEXED BY events_parent_tool_call_thread_parent_sequence_idx`,
+        )
+        .where(
+          and(
+            ...conditions,
+            inArray(events.parentToolCallId, [...batch]),
+            isNotNull(events.parentToolCallId),
+          ),
+        ),
   );
 }
 
 function storedEventRowsByParentToolCallIdsConditions(
   args: ListStoredEventRowsByParentToolCallIdsArgs,
-): SQL[] | null {
-  const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
-    (parentToolCallId) => parentToolCallId.length > 0,
-  );
-  if (parentToolCallIds.length === 0) {
-    return null;
-  }
-
+): SQL[] {
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     isNotSupersededBackgroundTaskProgressBefore(args.beforeSequence),
-    inArray(events.parentToolCallId, parentToolCallIds),
   ];
   if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
   if (args.excludedTypes && args.excludedTypes.length > 0) {
@@ -3831,27 +3849,17 @@ export function listStoredTimelineTurnEventRows(
   args: ListStoredTimelineWindowEventRowsArgs & { turnIds: readonly string[] },
 ): StoredEventRow[] {
   if (args.turnIds.length === 0) return [];
-  return queryInSqliteVariableBatches({
-    values: args.turnIds,
-    variableCountPerValue: 1,
-    dedupeKey: (turnId) => turnId,
-    fixedVariableCount: 32,
-    queryBatch: (turnIds) =>
-      allStoredEventRowsUnmapped(
-        db,
-        db
-          .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
-          .from(
-            sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
-          )
-          .where(
-            and(
-              ...storedTimelineWindowConditions(args),
-              inArray(events.turnId, [...turnIds]),
-            ),
-          ),
+  return allStoredEventRowsInVariableBatches(db, args.turnIds, (turnIds) =>
+    db
+      .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
+      .from(sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`)
+      .where(
+        and(
+          ...storedTimelineWindowConditions(args),
+          inArray(events.turnId, [...turnIds]),
+        ),
       ),
-  }).sort((left, right) => left.sequence - right.sequence);
+  );
 }
 
 export function listTimelineRootWindowTurnIds(

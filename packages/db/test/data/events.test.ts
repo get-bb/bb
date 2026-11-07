@@ -2029,6 +2029,74 @@ describe("events", () => {
     ).toEqual(storedRows.filter((row) => row.sequence !== 6));
   });
 
+  it("batches parented and turn timeline reads above the SQLite variable limit", () => {
+    const { db, thread } = setup();
+    const parentToolCallIds = Array.from(
+      { length: 40_000 },
+      (_, index) => `tool-${index}`,
+    );
+    const excludedTurnIds = Array.from(
+      { length: 500 },
+      (_, index) => `excluded-turn-${index}`,
+    );
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "item/completed",
+        scope: turnScope("child-turn"),
+        itemId: "first-batch-child",
+        itemKind: "agentMessage",
+        parentToolCallId: parentToolCallIds[0]!,
+        data: JSON.stringify({ item: { id: "first-batch-child" } }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope(excludedTurnIds[0]!),
+        itemId: "excluded-child",
+        itemKind: "agentMessage",
+        parentToolCallId: parentToolCallIds[1]!,
+        data: JSON.stringify({ item: { id: "excluded-child" } }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/completed",
+        scope: turnScope("last-turn"),
+        itemId: "last-batch-child",
+        itemKind: "agentMessage",
+        parentToolCallId: parentToolCallIds.at(-1)!,
+        data: JSON.stringify({ item: { id: "last-batch-child" } }),
+      },
+    ]);
+
+    expect(
+      listStoredEventRowsByParentToolCallIds(db, {
+        beforeSequence: 4,
+        excludedTurnIds,
+        maxInlineOutputChars: 1_000,
+        parentToolCallIds,
+        sequenceStart: 0,
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([1, 3]);
+    expect(
+      listStoredTimelineTurnEventRows(db, {
+        beforeSequence: 4,
+        maxInlineOutputChars: 1_000,
+        sequenceStart: 0,
+        threadId: thread.id,
+        turnIds: [
+          "child-turn",
+          ...Array.from({ length: 33_000 }, (_, index) => `turn-${index}`),
+          "last-turn",
+        ],
+      }).map((row) => row.sequence),
+    ).toEqual([1, 3]);
+  });
+
   it("skips superseded backgroundTask progress snapshots in timeline reads", () => {
     const { db, thread } = setup();
 
