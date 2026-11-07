@@ -291,7 +291,7 @@ export function runtimeShimPlugin(
           }
           if (/\.\s*experimental_threadHeaderAction\b/u.test(source)) {
             warnings.push({
-              text: `experimental_threadHeaderAction is retired from SDK typings. Register a thread action with placement "header" instead: app.slots.experimental_threadAction({ id, title, icon, group, placement: "header", item }). Existing plugins remain supported. See bb-plugin-authoring, frontend-registration.md#a-button-in-the-thread-header.`,
+              text: `experimental_threadHeaderAction is retired from SDK typings. Register a thread action with placement "header" instead: app.slots.experimental_threadAction({ id, title, icon, group, placement: "header", item }); the item's display, badge, choices and popover cover icon buttons, status chips, pickers and popovers. Existing plugins remain supported. See bb-plugin-authoring, frontend-registration.md#a-button-in-the-thread-header.`,
             });
           }
           for (const text of retiredSdkMemberWarnings(source)) {

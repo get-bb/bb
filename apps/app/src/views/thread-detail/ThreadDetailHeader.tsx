@@ -11,12 +11,11 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { useAtomValue } from "jotai";
 import type {
-  PluginThreadActionEntry,
+  PluginThreadActionsInlineItem,
   PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
-import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
-import { SplitButton } from "@/components/ui/split-button.js";
+import { Popover, PopoverAnchor } from "@bb/shared-ui/popover";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -58,11 +57,12 @@ import {
 } from "@bb/shared-ui/context-selection";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
+import {
+  ThreadHeaderActionPopoverContent,
+  ThreadHeaderActions,
+  threadHeaderActionInlineItems,
+} from "./ThreadHeaderActions";
 
-const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
-  COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
-  "border-border/70 bg-transparent font-normal hover:bg-state-hover",
-);
 const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 const INTERACTIVE_TITLE_TARGET_SELECTOR =
   "a, button, input, select, textarea, label, [role='button'], [role='link'], [contenteditable='true']";
@@ -74,13 +74,12 @@ function isInteractiveTitleTarget(event: ReactPointerEvent): boolean {
 }
 
 export interface ThreadDetailHeaderActionsMenuArgs {
-  includeResponsiveActions: boolean;
-  headerActions: readonly PluginThreadActionEntry[];
+  headerActions: readonly PluginThreadActionsInlineItem[];
   requestRename: (threadId: string) => void;
   onCloseAutoFocus: (event: Event) => void;
 }
 
-interface ThreadDetailHeaderProps {
+export interface ThreadDetailHeaderProps {
   actionsMenu: ((args: ThreadDetailHeaderActionsMenuArgs) => ReactNode) | null;
   contextCardButton?: ReactNode;
   environmentId: string | null;
@@ -90,7 +89,6 @@ interface ThreadDetailHeaderProps {
   pluginActions?: ReactNode;
   thread: PluginThreadActionTarget;
   threadTitle: string;
-  workspaceOpenButton?: ReactNode;
 }
 
 export function ThreadDetailHeader({
@@ -102,14 +100,17 @@ export function ThreadDetailHeader({
   pluginActions,
   thread,
   threadTitle,
-  workspaceOpenButton,
   contextCardButton,
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
   const threadId = thread.id;
   const headerActions = useThreadHeaderActionEntries(thread);
   const pluginTitleSlot = usePluginThreadHeaderTitleSlot();
-  const [primaryAction, ...secondaryActions] = headerActions;
+  const [foldedPopoverKey, setFoldedPopoverKey] = useState<string | null>(null);
+  const foldedPopoverEntry = headerActions.find(
+    (entry) =>
+      entry.key === foldedPopoverKey && entry.action.popover !== undefined,
+  );
   const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
     (nextTitle: string) => renameThreadAsync(threadId, nextTitle),
@@ -245,19 +246,39 @@ export function ThreadDetailHeader({
         </TitleElement>
       </div>
       {actionsMenu == null ? null : (
-        <span
-          className={cn(
-            "flex items-center",
-            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-          )}
+        <Popover
+          open={foldedPopoverEntry !== undefined}
+          onOpenChange={(open) => {
+            if (!open) setFoldedPopoverKey(null);
+          }}
         >
-          {actionsMenu({
-            includeResponsiveActions: usesResponsiveActionOverflow,
-            headerActions,
-            requestRename: startEditingFromMenu,
-            onCloseAutoFocus,
-          })}
-        </span>
+          <PopoverAnchor asChild>
+            <span
+              className={cn(
+                "flex items-center",
+                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+              )}
+            >
+              {actionsMenu({
+                headerActions: usesResponsiveActionOverflow
+                  ? threadHeaderActionInlineItems(
+                      headerActions,
+                      setFoldedPopoverKey,
+                    )
+                  : [],
+                requestRename: startEditingFromMenu,
+                onCloseAutoFocus,
+              })}
+            </span>
+          </PopoverAnchor>
+          {foldedPopoverEntry === undefined ? null : (
+            <ThreadHeaderActionPopoverContent
+              entry={foldedPopoverEntry}
+              thread={thread}
+              close={() => setFoldedPopoverKey(null)}
+            />
+          )}
+        </Popover>
       )}
     </>
   );
@@ -269,42 +290,9 @@ export function ThreadDetailHeader({
         data-thread-header-workflow-actions=""
       >
         {pluginActions}
-        {!usesResponsiveActionOverflow && workspaceOpenButton ? (
-          <span className="inline-flex" data-thread-header-responsive-action="">
-            {workspaceOpenButton}
-          </span>
-        ) : null}
-        {!usesResponsiveActionOverflow && primaryAction ? (
-          <span className="inline-flex" data-thread-header-responsive-action="">
-            {secondaryActions.length > 0 ? (
-              <SplitButton
-                className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-                primaryAction={{
-                  disabled: primaryAction.action.disabled,
-                  label: primaryAction.action.label,
-                  onSelect: () => void primaryAction.action.run(),
-                }}
-                secondaryActions={secondaryActions.map(({ key, action }) => ({
-                  id: key,
-                  disabled: action.disabled,
-                  label: action.label,
-                  onSelect: () => void action.run(),
-                }))}
-              />
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-                disabled={primaryAction.action.disabled}
-                onClick={() => void primaryAction.action.run()}
-              >
-                {primaryAction.action.label}
-              </Button>
-            )}
-          </span>
-        ) : null}
+        {usesResponsiveActionOverflow ? null : (
+          <ThreadHeaderActions entries={headerActions} thread={thread} />
+        )}
       </div>
       <div
         className="ml-1 flex items-center gap-0.5"

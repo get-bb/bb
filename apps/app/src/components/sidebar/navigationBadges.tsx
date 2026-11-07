@@ -4,9 +4,9 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { z } from "zod";
 import type { ExperimentalBadge } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { experimentalBadgeSchema } from "@/lib/experimental-badge";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 
 export type NavigationBadges = ReadonlyMap<string, ExperimentalBadge>;
@@ -20,38 +20,7 @@ interface NavigationBadgeSourceProps {
   setBadges: Dispatch<SetStateAction<NavigationBadges>>;
 }
 
-const MAX_BADGE_TEXT_GRAPHEMES = 8;
-const graphemeSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "grapheme",
-});
-
-function graphemeCount(text: string): number {
-  let count = 0;
-  for (const _segment of graphemeSegmenter.segment(text)) count += 1;
-  return count;
-}
-
-const navigationBadgeSchema = z
-  .object({
-    count: z.number().int().positive().optional(),
-    text: z
-      .string()
-      .trim()
-      .min(1)
-      .refine(
-        (text) => graphemeCount(text) <= MAX_BADGE_TEXT_GRAPHEMES,
-        `text must be at most ${MAX_BADGE_TEXT_GRAPHEMES} characters`,
-      )
-      .optional(),
-    tone: z.enum(["neutral", "warning", "critical"]).optional(),
-    label: z.string().trim().min(1),
-  })
-  .strict()
-  .refine(
-    (badge) => badge.count === undefined || badge.text === undefined,
-    "count and text cannot both be set",
-  )
-  .nullable();
+const navigationBadgeSchema = experimentalBadgeSchema.nullable();
 
 function sameBadge(
   left: ExperimentalBadge | undefined | null,

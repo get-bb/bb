@@ -685,7 +685,7 @@ function TestThreadActionRows({
     ...inline.map((item) => ({
       key: item.key,
       action: item.action,
-      run: () => item.action.run({ requestRename: rename }),
+      run: async () => item.action.run?.({ requestRename: rename }),
     })),
   ];
   return (

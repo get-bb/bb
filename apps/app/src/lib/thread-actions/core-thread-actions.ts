@@ -20,6 +20,7 @@ import { PARENT_NOTIFICATIONS_OPTIONS } from "@/lib/parent-notifications";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { countPanes, listPanes } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { workspaceOpenThreadAction } from "./workspace-open-thread-action";
 
 function coreThreadAction<Data>(
   registration: PluginThreadActionRegistration<Data>,
@@ -208,6 +209,7 @@ function useLifecycleHandlers(): LifecycleHandlers {
 
 export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknown>[] =
   [
+    coreThreadAction(workspaceOpenThreadAction),
     coreThreadAction({
       id: "split",
       group: GROUPS.open,
