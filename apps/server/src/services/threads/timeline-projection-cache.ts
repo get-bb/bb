@@ -14,10 +14,9 @@ export interface TimelineProjection {
 export interface TimelineProjectionCacheArgs {
   contextWindowRows: readonly StoredEventRow[];
   headStateRows: readonly StoredEventRow[];
-  includeNestedRows: boolean;
-  omitSettledDelegationChildRows: boolean;
   projectionKey: string;
   rows: readonly StoredEventRow[];
+  rowsKey: string;
 }
 
 export interface BuiltTimelineProjection {
@@ -64,7 +63,7 @@ export function keepTimelineProjection(
       candidate.headStateRows === args.headStateRows &&
       sameStoredRows(candidate.contextWindowRows, args.contextWindowRows),
   );
-  const rowsKey = `${args.includeNestedRows}:${args.omitSettledDelegationChildRows}`;
+  const { rowsKey } = args;
   const cached = entry?.projections.get(rowsKey);
   if (cached !== undefined) return cached;
   const built = build(entry?.eventProjection ?? null);

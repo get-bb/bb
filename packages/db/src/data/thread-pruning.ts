@@ -567,6 +567,13 @@ function advanceThreadPruningTransaction(
           ),
         )
         .run();
+      if (
+        removed > 0 &&
+        threadId !== null &&
+        !TIMELINE_PRESERVING_POLICIES.has(policy)
+      ) {
+        bumpThreadEventRewriteGeneration(tx, threadId);
+      }
       return {
         policy,
         action,
@@ -579,13 +586,13 @@ function advanceThreadPruningTransaction(
     },
     { behavior: "immediate" },
   );
-  const rewrittenThreadId =
-    result.removed > 0 && !TIMELINE_PRESERVING_POLICIES.has(policy)
-      ? result.threadId
-      : null;
-  if (rewrittenThreadId !== null)
-    bumpThreadEventRewriteGeneration(rewrittenThreadId);
-  return { ...result, rewroteHistory: rewrittenThreadId !== null };
+  return {
+    ...result,
+    rewroteHistory:
+      result.removed > 0 &&
+      result.threadId !== null &&
+      !TIMELINE_PRESERVING_POLICIES.has(policy),
+  };
 }
 
 export function advanceThreadPruning(

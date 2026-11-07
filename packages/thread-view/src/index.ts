@@ -56,6 +56,10 @@ export {
   startThreadTimelineProjectionFold,
   buildThreadTimelineTurnDetailsFromEvents,
 } from "./build-thread-timeline.js";
+export type {
+  StoredTimelineTurnPlan,
+  StoredTimelineTurnPlanItem,
+} from "./timeline-row-plan.js";
 export { extractThreadTimelineActivePlanTurn } from "./active-prompt-mode-extraction.js";
 export {
   extractThreadProviderCommands,

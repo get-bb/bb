@@ -61,7 +61,12 @@ import {
   parseRejectedUsersFromClientRequest,
 } from "./user-message-parsing.js";
 import { getOrderedThreadEvents } from "./group-event-projection-turns.js";
-import { planTimelineRows, type TimelineRowPlan } from "./timeline-row-plan.js";
+import {
+  captureTimelineTurnPlans,
+  planTimelineRows,
+  type StoredTimelineTurnPlan,
+  type TimelineRowPlan,
+} from "./timeline-row-plan.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
 import {
   extractThreadTimelineActivePromptMode,
@@ -91,8 +96,10 @@ interface ThreadTimelineFromEventsBaseOptions {
 }
 
 interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
+  captureTurnPlans?: boolean;
   includeNestedRows: boolean;
   omitSettledDelegationChildRows: boolean;
+  storedTurnPlans?: ReadonlyMap<string, StoredTimelineTurnPlan>;
 }
 
 interface BuildThreadTimelineFromEventsArgs {
@@ -149,6 +156,7 @@ export interface ThreadTimelineFromEventsResult {
   providerCommands: ProviderCommand[] | null;
   sessionOptions: ThreadTimelineSessionOption[] | null;
   rows: TimelineRow[];
+  turnPlans: Map<string, StoredTimelineTurnPlan>;
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsOptions {
@@ -186,6 +194,7 @@ interface BuildTimelineRowsOptions {
   includeNestedRows: boolean;
   omitSettledDelegationChildRows: boolean;
   rowIdPrefix: string;
+  storedTurnPlans?: ReadonlyMap<string, StoredTimelineTurnPlan>;
   summarizeShellCommands: boolean;
   workspaceRoot: string | null;
 }
@@ -1110,13 +1119,17 @@ function isRootOwnedHumanSteerRow(row: TimelineRow): boolean {
 
 function collectExternalUserBoundarySeqs(
   projection: EventProjection,
+  storedTurnPlans: ReadonlyMap<string, StoredTimelineTurnPlan> | undefined,
 ): number[] {
   const boundarySeqs = new Set<number>();
   for (const entry of projection.entries) {
     if (entry.kind !== "turn") {
       continue;
     }
-    for (const seq of entry.turn.externalUserBoundarySeqs ?? []) {
+    const stored = storedTurnPlans?.get(entry.turn.turnId);
+    for (const seq of stored?.externalUserBoundarySeqs ??
+      entry.turn.externalUserBoundarySeqs ??
+      []) {
       boundarySeqs.add(seq);
     }
   }
@@ -1220,13 +1233,14 @@ function buildTimelineRows(
     projection,
     options.completedTurnDisplay,
     options.rowIdPrefix,
+    options.storedTurnPlans,
   )) {
     appendRows(rows, materializeTimelinePlan(item, options));
   }
 
   return orderRowsAfterExternalUserBoundary(
     rows,
-    collectExternalUserBoundarySeqs(projection),
+    collectExternalUserBoundarySeqs(projection, options.storedTurnPlans),
   );
 }
 
@@ -1273,6 +1287,7 @@ export function buildThreadTimelineFromProjection(
       omitSettledDelegationChildRows:
         args.options.omitSettledDelegationChildRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
+      storedTurnPlans: args.options.storedTurnPlans,
       summarizeShellCommands: args.options.summarizeShellCommands,
       workspaceRoot: args.options.workspaceRoot,
     }),
@@ -1332,6 +1347,13 @@ export function buildThreadTimelineFromProjection(
           stateEvents,
         ),
     rows,
+    turnPlans: args.options.captureTurnPlans
+      ? captureTimelineTurnPlans(
+          projection,
+          args.options.completedTurnDisplay,
+          ROOT_TIMELINE_ROW_ID_PREFIX,
+        )
+      : new Map(),
   };
 }
 
