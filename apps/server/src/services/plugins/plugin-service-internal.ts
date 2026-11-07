@@ -33,6 +33,7 @@ import type {
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
+import type { PluginServerWorker } from "./plugin-server-isolation.js";
 
 type PluginServiceState = "running" | "backoff" | "stopped";
 
@@ -57,6 +58,7 @@ export interface LoadedPlugin {
   stopping: AbortController;
   released: AbortController;
   invocations: Set<Promise<void>>;
+  serverWorker: PluginServerWorker | null;
 }
 
 export interface PluginHostArtifactSnapshot {

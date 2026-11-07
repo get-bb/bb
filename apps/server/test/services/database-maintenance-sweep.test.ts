@@ -328,6 +328,7 @@ describe("runDatabaseMaintenanceSweep", () => {
               { database: incremental, pluginId: "incremental" },
               { database: none, pluginId: "none" },
             ],
+            maintainIsolatedPluginDatabases: async () => {},
           },
         });
 

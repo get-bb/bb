@@ -42,6 +42,7 @@ import {
 } from "./mutable-plugin-artifacts.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
+  getExperiments,
   getInstalledPlugin,
   getPluginSafeMode,
   listInstalledPlugins,
@@ -109,6 +110,12 @@ import { runEventLoopWork } from "../system/event-loop-work.js";
 import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 import { buildCachedPluginServer } from "./plugin-server-cache.js";
 import { createPluginRpcCallerRegistry } from "./plugin-rpc-caller.js";
+import {
+  isPluginServerIsolationCandidate,
+  isPluginServerWorkerUnsupportedError,
+  pluginServerWorkerUnsupportedError,
+  startPluginServerWorker,
+} from "./plugin-server-isolation.js";
 
 const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
 const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
@@ -533,6 +540,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   const serviceContext = new AsyncLocalStorage<ServiceInstance>();
+  const serviceInstances = new WeakSet<object>();
 
   function runService(id: string, service: ServiceRuntime): void {
     const controller = new AbortController();
@@ -545,6 +553,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       controller,
       uncaughtError: undefined,
     };
+    serviceInstances.add(instance);
     const current = serviceContext.run(instance, async () => {
       await service.record.start(controller.signal);
     });
@@ -590,10 +599,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return true;
   }
 
-  function containPluginError(error: unknown): boolean {
-    if (reportStaleError(error)) return true;
-    const pluginId = pluginOwningStack(error);
-    if (pluginId === undefined) return false;
+  function reportPluginUncaught(pluginId: string, error: unknown): void {
+    if (reportStaleError(error)) return;
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(
       { err: error },
@@ -602,12 +609,44 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (statuses.get(pluginId)?.status === "running") {
       setStatus(pluginId, "running", `uncaught error: ${message}`);
     }
+  }
+
+  function containPluginError(error: unknown): boolean {
+    if (reportStaleError(error)) return true;
+    const pluginId = pluginOwningStack(error);
+    if (pluginId === undefined) return false;
+    reportPluginUncaught(pluginId, error);
     return true;
   }
 
   function handleUncaughtException(error: unknown): boolean {
     const instance = serviceContext.getStore();
     if (instance === undefined) return containPluginError(error);
+    handleServiceUncaught(instance, error);
+    return true;
+  }
+
+  function isServiceInstance(value: unknown): value is ServiceInstance {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      serviceInstances.has(value)
+    );
+  }
+
+  function handleIsolatedUncaught(
+    pluginId: string,
+    error: unknown,
+    invocationContext: unknown,
+  ): void {
+    if (isServiceInstance(invocationContext)) {
+      handleServiceUncaught(invocationContext, error);
+      return;
+    }
+    reportPluginUncaught(pluginId, error);
+  }
+
+  function handleServiceUncaught(instance: ServiceInstance, error: unknown): void {
     const { id, service, controller } = instance;
     const name = service.record.name;
     const message = error instanceof Error ? error.message : String(error);
@@ -615,9 +654,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       logger.warn(
         `[plugin:${id}] service ${name} raised an uncaught exception from a stopped run: ${message}`,
       );
-      return true;
+      return;
     }
-    if (instance.uncaughtError !== undefined) return true;
+    if (instance.uncaughtError !== undefined) return;
     instance.uncaughtError = { error };
     logger.warn(
       { err: error },
@@ -625,7 +664,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
     const current = service.current;
     controller.abort();
-    if (current === null) return true;
+    if (current === null) return;
     void settledWithin(current, serviceStopTimeoutMs).then((settled) => {
       if (settled || service.controller !== controller || service.disposed) {
         return;
@@ -639,7 +678,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         `[plugin:${id}] service ${name} did not stop within ${serviceStopTimeoutMs}ms of its uncaught exception — plugin degraded until it does`,
       );
     });
-    return true;
   }
 
   function onServiceSettled(
@@ -1602,6 +1640,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         database.close();
       } catch {}
     }
+    void candidate.serverWorker?.terminate();
     candidate.released.abort();
     candidate.handle.invalidate();
   }
@@ -1659,7 +1698,74 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return `plugin safe mode is on; turn it off with \`bb plugin safe-mode off\` before you ${args.action} "${args.pluginId}"`;
   }
 
+  const inProcessServerDigests = new Map<string, string>();
+  const isolatedServerStarts = new Map<string, number>();
+  const isolatedCrashCounts = new Map<string, number>();
+  const isolatedRestartTimers = new Map<string, NodeJS.Timeout>();
+
+  function clearIsolatedRestart(id: string): void {
+    const timer = isolatedRestartTimers.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    isolatedRestartTimers.delete(id);
+  }
+
+  function onIsolatedPluginUnsupported(
+    id: string,
+    plugin: LoadedPlugin,
+    digest: string,
+    member: string,
+  ): void {
+    inProcessServerDigests.set(id, digest);
+    logger.warn(
+      `[plugin:${id}] called ${member}, which its server worker does not support yet — reloading it in-process`,
+    );
+    void withLifecycleLock(id, async () => {
+      if (loaded.get(id) !== plugin) return;
+      const row = getInstalledPlugin(deps.db, id);
+      if (row !== undefined) await loadOne(row);
+    });
+  }
+
+  function onIsolatedPluginExit(
+    id: string,
+    plugin: LoadedPlugin,
+    detail: string,
+  ): void {
+    if (loaded.get(id) !== plugin) return;
+    void withLifecycleLock(id, async () => {
+      if (loaded.get(id) !== plugin) return;
+      await disposeOne(id);
+      const startedAt = isolatedServerStarts.get(id) ?? 0;
+      if (Date.now() - startedAt >= SERVICE_HEALTHY_RESET_MS) {
+        isolatedCrashCounts.delete(id);
+      }
+      const attempt = (isolatedCrashCounts.get(id) ?? 0) + 1;
+      isolatedCrashCounts.set(id, attempt);
+      const delayMs = calculateExponentialBackoffDelay({
+        attempt,
+        baseDelayMs: serviceRestartBaseMs,
+        maxDelayMs: SERVICE_RESTART_MAX_MS,
+      });
+      setStatus(id, "error", `${detail}; restarting in ${delayMs}ms`);
+      logger.warn(`[plugin:${id}] ${detail} — restarting in ${delayMs}ms`);
+      clearIsolatedRestart(id);
+      const timer = setTimeout(() => {
+        isolatedRestartTimers.delete(id);
+        void withLifecycleLock(id, async () => {
+          if (loaded.has(id) || statuses.get(id)?.status !== "error") return;
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined || !row.enabled) return;
+          await loadOne(row);
+        });
+      }, delayMs);
+      timer.unref?.();
+      isolatedRestartTimers.set(id, timer);
+    });
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
+    clearIsolatedRestart(row.id);
     const held = await heldDetail(row);
     if (held !== null) {
       await disposeOne(row.id);
@@ -1752,6 +1858,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       current: {},
     };
     const stopping = new AbortController();
+    const rpcCaller = rpcCallers.issue(row.id);
     const handle = createPluginApi({
       recordPluginUse: () => capturePluginUse(deps, row.id),
       pluginId: row.id,
@@ -1768,7 +1875,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       },
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
-      rpcCaller: rpcCallers.issue(row.id),
+      rpcCaller,
       invalidateRpc: (tags) => deps.hub.notifyPluginChanged(row.id, tags),
       whileRpcWatched: (method, handler) => {
         const active = new Map<string, AbortController>();
@@ -1961,9 +2068,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       stopping,
       released: new AbortController(),
       invocations: new Set(),
+      serverWorker: null,
     };
-    try {
-      const serverEntry = await resolveServerEntry(row, manifest);
+    async function loadServerInProcess(
+      serverEntry: ResolvedServerEntry,
+    ): Promise<void> {
       if (row.sourceKind === "path" || row.sourceKind === "builtin") {
         const mutation = setMutableRootVersion(
           row.rootDir,
@@ -2014,7 +2123,61 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         factory as (api: BbPluginApi) => unknown,
         handle.api,
       );
+    }
+    let isolated = false;
+    let serverDigest: string | null = null;
+    let unsupportedDuringLoad: string | null = null;
+    try {
+      const serverEntry = await resolveServerEntry(row, manifest);
+      serverDigest = serverEntry.digest;
+      isolated =
+        getExperiments(deps.db).isolatedPluginServers &&
+        isPluginServerIsolationCandidate(row) &&
+        inProcessServerDigests.get(row.id) !== serverEntry.digest;
+      if (isolated) {
+        const worker = startPluginServerWorker({
+          pluginId: row.id,
+          dataDir: deps.dataDir,
+          entry: serverEntry,
+          runtimeExternalUrls: pluginRuntimeExternalUrls,
+          handle,
+          rpcCallerToken: rpcCaller.token,
+          logger,
+          captureInvocationContext: () => serviceContext.getStore(),
+          onUncaught: (error, invocationContext) =>
+            handleIsolatedUncaught(row.id, error, invocationContext),
+          onUnsupported: (member) => {
+            if (loaded.get(row.id) === plugin) {
+              onIsolatedPluginUnsupported(row.id, plugin, serverEntry.digest, member);
+            } else {
+              unsupportedDuringLoad ??= member;
+            }
+          },
+          onExit: (detail) => onIsolatedPluginExit(row.id, plugin, detail),
+        });
+        plugin.serverWorker = worker;
+        await runFactoryTimeBoxed(() => worker.load(), handle.api);
+        if (unsupportedDuringLoad !== null) {
+          throw pluginServerWorkerUnsupportedError(unsupportedDuringLoad);
+        }
+        isolatedServerStarts.set(row.id, Date.now());
+        logger.info(
+          `plugin ${row.id} server running in its own worker (started in ${Math.round(worker.startupMs)}ms)`,
+        );
+      } else {
+        await loadServerInProcess(serverEntry);
+      }
     } catch (error) {
+      if (isolated && isPluginServerWorkerUnsupportedError(error)) {
+        discardCandidate(plugin);
+        if (serverDigest !== null) {
+          inProcessServerDigests.set(row.id, serverDigest);
+        }
+        logger.info(
+          `plugin ${row.id} server stays in-process: ${error.message}`,
+        );
+        return loadOne(row);
+      }
       for (const rollback of rollbackGenerations.reverse()) rollback();
       discardCandidate(plugin);
       let message = error instanceof Error ? error.message : String(error);
@@ -2167,6 +2330,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
       }
     } finally {
+      if (plugin.serverWorker !== null) {
+        await plugin.serverWorker.close(serviceStopTimeoutMs);
+      }
       plugin.released.abort();
       plugin.handle.invalidate();
     }
@@ -2192,6 +2358,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   async function disposeAll(): Promise<void> {
+    for (const id of [...isolatedRestartTimers.keys()]) clearIsolatedRestart(id);
     const pluginIds = new Set([
       ...loaded.keys(),
       ...unavailableProviderRegistrations.keys(),

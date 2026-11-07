@@ -1129,6 +1129,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When you read a thread on any device, remove its notifications from your phones and tablets and from open bb windows and tabs. Phones need an app version that supports it.",
   },
+  isolatedPluginServers: {
+    label: "Run plugin servers in their own workers",
+    description:
+      "Run the server code of plugins you install from a marketplace, git or npm in a separate worker thread, so a slow plugin can't freeze bb. Plugins that use features a worker doesn't support yet keep running inside bb. Turning it on or off reloads those plugins.",
+  },
   narrowPluginCss: {
     label: "Faster plugin styles",
     description:
