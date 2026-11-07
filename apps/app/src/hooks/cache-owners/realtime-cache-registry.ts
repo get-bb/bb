@@ -87,7 +87,6 @@ import {
   getThreadCompactedHistoryInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
-import { isCachedThreadTimelinePushEnabled } from "./thread-timeline-push-owner";
 
 interface TimelineInvalidationQueryKeysArgs {
   queryClient: QueryClient;
@@ -879,7 +878,6 @@ function dirtyThreadTimelineQueriesForAppendedEvents(
   const { eventTypes, queryClient, threadId, timelineSequence } = context;
   if (
     threadId === undefined ||
-    !isCachedThreadTimelinePushEnabled(queryClient) ||
     !hasActiveQueries(queryClient, threadTimelineQueryKeyPrefix(threadId))
   ) {
     dirtyThreadTimelineQueries(context);

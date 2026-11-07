@@ -11,7 +11,6 @@ export const experimentKeys = [
   "skipFocusedThreadNotifications",
   "threadContextCard",
   "threadRowMetadata",
-  "timelinePush",
   "updateWhenIdle",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -37,14 +36,13 @@ export const defaultExperiments: Experiments = {
   skipFocusedThreadNotifications: false,
   threadContextCard: false,
   threadRowMetadata: false,
-  timelinePush: false,
   updateWhenIdle: false,
 };
 
 export const earlyAdopterExperiments: Experiments = {
   compactExpiredCache: true,
-  dismissReadNotifications: false,
-  narrowPluginCss: false,
+  dismissReadNotifications: true,
+  narrowPluginCss: true,
   serverMove: false,
   performanceDiagnostics: false,
   pluginUpdates: true,
@@ -52,6 +50,5 @@ export const earlyAdopterExperiments: Experiments = {
   skipFocusedThreadNotifications: true,
   threadContextCard: false,
   threadRowMetadata: true,
-  timelinePush: true,
   updateWhenIdle: true,
 };

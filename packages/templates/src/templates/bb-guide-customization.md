@@ -186,20 +186,19 @@ Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
 experiment (Settings → Experiments). Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
-`timelinePush` sends an open thread's timeline updates over the live
-connection as row deltas instead of reloading the latest window after each
-update. `compactExpiredCache` offers a Compact chip in the composer when an idle
+`compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
 `narrowPluginCss` serves each plugin a stylesheet that matches only that
 plugin's own UI, which makes style updates cheaper with many plugins; it
-applies after a reload.
+applies after a reload. It defaults on for early adopters.
 `resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
 machine restart cut off, and wakes idle threads whose background work it
 stopped, a few seconds after the machine's daemon comes back; see `bb guide
 thread-lifecycle`.
 `dismissReadNotifications` removes a thread's push, web, and desktop
-notifications once the thread is read on any client.
+notifications once the thread is read on any client. It defaults on for early
+adopters.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
 `skipFocusedThreadNotifications` skips the web and desktop system notification
@@ -217,8 +216,9 @@ every hour and restart into a new version once no thread is running, and
 enables `bb updates app apply --when-idle`; see `bb guide machines`. It defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`timelinePush`, `compactExpiredCache`, `pluginUpdates`,
-`skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`; an
+`compactExpiredCache`, `dismissReadNotifications`, `narrowPluginCss`,
+`pluginUpdates`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
+`updateWhenIdle`; an
 experiment you set yourself keeps your value.
 
 Launcher settings

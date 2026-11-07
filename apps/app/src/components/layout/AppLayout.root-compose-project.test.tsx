@@ -48,7 +48,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       experiments: {
         serverMove: false,
         performanceDiagnostics: false,
-        timelinePush: false,
       },
     },
   }),

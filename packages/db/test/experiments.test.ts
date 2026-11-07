@@ -65,12 +65,12 @@ describe("experiments", () => {
     const db = createMigratedConnection();
 
     try {
-      setExperiments(db, { timelinePush: false, serverMove: true });
+      setExperiments(db, { compactExpiredCache: false, serverMove: true });
       setAppSettings(db, { ...defaultAppSettings, earlyAdopter: true });
 
       expect(getExperiments(db)).toEqual({
         ...earlyAdopterExperiments,
-        timelinePush: false,
+        compactExpiredCache: false,
         serverMove: true,
       });
 

@@ -58,11 +58,7 @@ import {
   type ThreadConversationOutlineRole,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
 } from "./query-keys";
-import {
-  COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
-  isThreadTimelinePushEnabled,
-} from "../cache-owners/thread-timeline-push-owner";
-import { systemConfigQueryOptions } from "./system-queries";
+import { COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT } from "../cache-owners/thread-timeline-push-owner";
 import {
   THREAD_OPEN_CACHE_GC_MS,
   touchThreadOpenCache,
@@ -314,15 +310,10 @@ export function useThreadTimeline(
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   const compactViewport = useMediaQuery(COMPACT_VIEWPORT_QUERY);
-  const pushEnabled = useQuery({
-    ...systemConfigQueryOptions(),
-    enabled: false,
-    select: isThreadTimelinePushEnabled,
-  }).data;
   useThreadDetailRealtimeSubscription(id, { enabled });
   useThreadTimelineRealtimeSubscription(id, {
     deferContent: true,
-    enabled: enabled && pushEnabled === true,
+    enabled,
     segmentLimit: compactViewport
       ? COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT
       : null,
