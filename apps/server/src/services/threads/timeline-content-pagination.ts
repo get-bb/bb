@@ -68,12 +68,9 @@ export function timelineRowsJsonBytes(rows: readonly TimelineRow[]): number {
   return bytes;
 }
 
-export function paginateTimelineContents(
+export function measureTimelineContentLeafBytes(
   rows: readonly TimelineRow[],
-  before: number | undefined,
-  maxLeaves: number,
-  maxBytes: number,
-): TimelineContentPage {
+): number[] {
   const costs: number[] = [];
   const measure = (
     items: readonly TimelineRow[],
@@ -87,6 +84,16 @@ export function paginateTimelineContents(
     }
   };
   measure(rows, 0);
+  return costs;
+}
+
+export function paginateTimelineContents(
+  rows: readonly TimelineRow[],
+  before: number | undefined,
+  maxLeaves: number,
+  maxBytes: number,
+  costs: readonly number[] = measureTimelineContentLeafBytes(rows),
+): TimelineContentPage {
   const end = Math.min(before ?? costs.length, costs.length);
   let start = end;
   let bytes = 0;
