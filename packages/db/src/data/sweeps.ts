@@ -676,7 +676,7 @@ function migrateNextCompletedEventOutput(
       }
       if (prepared.data !== candidate.data)
         markThreadPruningPolicyWork(tx, [candidate.thread_id], "resolved-items");
-      bumpThreadEventRewriteGeneration(candidate.thread_id);
+      bumpThreadEventRewriteGeneration(tx, candidate.thread_id);
       if (retained) {
         insertPreparedRetainedEventOutput(tx, {
           eventId: candidate.id,

@@ -779,6 +779,16 @@ export const threadConversationOutlines = sqliteTable(
   },
 );
 
+export const threadEventRewriteGenerations = sqliteTable(
+  "thread_event_rewrite_generations",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    generation: integer("generation").notNull(),
+  },
+);
+
 export const threadTurnTimelinePlans = sqliteTable(
   "thread_turn_timeline_plans",
   {
