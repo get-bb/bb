@@ -116,6 +116,7 @@ import { appendFileSync, renameSync, writeFileSync } from "node:fs";
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
 const forkSession = process.env.FAKE_ACP_FORK_SESSION === "1";
+const closeSession = process.env.FAKE_ACP_CLOSE_SESSION === "1";
 const deleteSession = process.env.FAKE_ACP_DELETE_SESSION === "1";
 const additionalDirectories =
   process.env.FAKE_ACP_ADDITIONAL_DIRECTORIES === "1";
@@ -908,12 +909,14 @@ async function handleMessage(message) {
             promptCapabilities: { image: false },
             ...(forkSession ||
             resumeSession ||
+            closeSession ||
             deleteSession ||
             additionalDirectories
               ? {
                   sessionCapabilities: {
                     ...(forkSession ? { fork: {} } : {}),
                     ...(resumeSession ? { resume: {} } : {}),
+                    ...(closeSession ? { close: {} } : {}),
                     ...(deleteSession ? { delete: {} } : {}),
                     ...(additionalDirectories
                       ? { additionalDirectories: {} }
@@ -1000,6 +1003,17 @@ async function handleMessage(message) {
           },
           activeSessionId,
         );
+      }
+      return;
+    case "session/close":
+      if (closeSession) {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+      } else {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "Unknown method session/close" },
+        });
       }
       return;
     case "session/delete":

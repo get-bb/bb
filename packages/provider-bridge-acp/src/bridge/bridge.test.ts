@@ -4118,6 +4118,41 @@ describe("acp bridge", () => {
     expect(notifications("error")).toEqual([]);
   }, 15_000);
 
+  it("hands a live source fork to a new ACP process through close and resume", async () => {
+    const requestLog = join(workspaceDir, "source-fork-handoff.jsonl");
+    const envVars = {
+      FAKE_ACP_FORK_SESSION: "1",
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_CLOSE_SESSION: "1",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const source = await startThread({ envVars });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-source-fork-handoff",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    const response = await waitForResponse(forkId);
+    expect(response.error).toBeUndefined();
+    const forkedProviderThreadId = providerThreadIdOf(response);
+    expect(forkedProviderThreadId).not.toBe(source.providerThreadId);
+
+    const requests = loggedAcpRequests(requestLog);
+    const forkIndex = requests.findIndex((request) => request.method === "session/fork");
+    const closeIndex = requests.findIndex((request) => request.method === "session/close");
+    const resumeIndex = requests.findIndex((request) => request.method === "session/resume");
+    expect(forkIndex).toBeGreaterThan(-1);
+    expect(closeIndex).toBeGreaterThan(forkIndex);
+    expect(resumeIndex).toBeGreaterThan(closeIndex);
+    expect(requests.filter((request) => request.method === "session/fork")).toHaveLength(1);
+    expect(requests[closeIndex]?.params).toMatchObject({ sessionId: forkedProviderThreadId });
+    expect(requests[resumeIndex]?.params).toMatchObject({ sessionId: forkedProviderThreadId });
+  });
+
   it("forks an advertised ACP session with the target cwd and MCP servers", async () => {
     const forkLog = join(workspaceDir, "fork-params.json");
     const forkId = sendRequest("thread/fork", {
