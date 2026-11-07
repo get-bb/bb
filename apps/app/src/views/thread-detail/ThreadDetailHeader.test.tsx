@@ -24,14 +24,20 @@ import {
   ThreadActionCollectors,
   resetThreadActionRegistryForTest,
 } from "@/lib/thread-actions/thread-action-registry";
-import type { ThreadDetailHeaderActionsMenuArgs } from "./ThreadDetailHeader";
+import type {
+  ThreadDetailHeaderActionsMenuArgs,
+  ThreadDetailHeaderProps,
+} from "./ThreadDetailHeader";
 import { useRenameController } from "@bb/shared-ui/inline-rename";
 import {
   RENAME_PRESENTATION_CASES,
   type RenamePresentationOutcome,
 } from "@bb/shared-ui/inline-rename-presentation-cases";
 import { RenameControllerProvider } from "@/components/sidebar/SidebarInlineRename";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type {
+  PluginThreadAction,
+  PluginThreadActionPopoverProps,
   PluginThreadActionRegistration,
   PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
@@ -105,9 +111,11 @@ vi.mock("@bb/shared-ui/hooks/use-pointer-coarse", () => ({
 function RenameHost({ children }: { children: ReactNode }) {
   const controller = useRenameController();
   return (
-    <RenameControllerProvider controller={controller}>
-      {children}
-    </RenameControllerProvider>
+    <TooltipProvider>
+      <RenameControllerProvider controller={controller}>
+        {children}
+      </RenameControllerProvider>
+    </TooltipProvider>
   );
 }
 
@@ -135,6 +143,27 @@ const COMMIT_HEADER_ACTION: PluginThreadActionRegistration<unknown> = {
   title: "Commit",
   icon: "GitBranch",
   item: () => ({ label: "Commit", icon: "GitBranch", run: () => {} }),
+};
+
+const OPEN_HEADER_ACTION: PluginThreadActionRegistration<unknown> = {
+  id: "openWorkspace",
+  placement: "header",
+  group: "0_workspace",
+  title: "Open workspace",
+  icon: "FolderOpen",
+  item: () => ({
+    label: "Open workspace in Cursor",
+    icon: "FolderOpen",
+    display: "icon",
+    choices: {
+      split: true,
+      items: [
+        { id: "cursor", label: "Cursor" },
+        { id: "zed", label: "Zed" },
+      ],
+    },
+    run: () => {},
+  }),
 };
 
 function headerAction(
@@ -345,20 +374,17 @@ describe("ThreadDetailHeader", () => {
 
     render(
       <>
-        <HeaderActionCollectors />
+        <HeaderActionCollectors
+          registrations={[OPEN_HEADER_ACTION, COMMIT_HEADER_ACTION]}
+        />
         <PaneContext.Provider value={splitContext}>
           <ThreadDetailHeader
-            actionsMenu={({ includeResponsiveActions, headerActions }) => (
+            actionsMenu={({ headerActions }) => (
               <>
                 <span>Thread menu</span>
-                {includeResponsiveActions ? (
-                  <span>Responsive menu actions</span>
-                ) : null}
-                {includeResponsiveActions
-                  ? headerActions.map(({ key, action }) => (
-                      <span key={key}>{`menu: ${action.label}`}</span>
-                    ))
-                  : null}
+                {headerActions.map(({ key, action }) => (
+                  <span key={key}>{`menu: ${action.label}`}</span>
+                ))}
               </>
             )}
             isSecondaryPanelOpen={false}
@@ -366,17 +392,19 @@ describe("ThreadDetailHeader", () => {
             onToggleSecondaryPanel={vi.fn()}
             thread={THREAD_TARGET}
             threadTitle="Narrow split"
-            workspaceOpenButton={<button>Open workspace</button>}
           />
         </PaneContext.Provider>
       </>,
     );
 
-    expect(screen.queryByText("Open workspace")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open workspace in Cursor" }),
+    ).toBeNull();
     expect(screen.queryByText("Commit")).toBeNull();
     expect(screen.getByText("Thread menu")).not.toBeNull();
-    expect(screen.getByText("Responsive menu actions")).not.toBeNull();
-    expect(screen.getByText("menu: Commit")).not.toBeNull();
+    expect(
+      screen.getAllByText(/^menu: /).map((row) => row.textContent),
+    ).toEqual(["menu: Open workspace in Cursor", "menu: Commit"]);
     const closePane = screen.getByRole("button", { name: "Close pane" });
     expect(closePane.classList).toContain("header-pane-action-button");
     const closeIcon = closePane.querySelector('[data-icon="CloseThreadPane"]');
@@ -387,7 +415,7 @@ describe("ThreadDetailHeader", () => {
     );
   });
 
-  it("keeps responsive controls inline and out of the menu for wide split panes", () => {
+  it("keeps responsive controls inline and out of the menu for wide split panes", async () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       bottom: 40,
       height: 40,
@@ -408,20 +436,17 @@ describe("ThreadDetailHeader", () => {
 
     render(
       <>
-        <HeaderActionCollectors />
+        <HeaderActionCollectors
+          registrations={[OPEN_HEADER_ACTION, COMMIT_HEADER_ACTION]}
+        />
         <PaneContext.Provider value={splitContext}>
           <ThreadDetailHeader
-            actionsMenu={({ includeResponsiveActions, headerActions }) => (
+            actionsMenu={({ headerActions }) => (
               <>
                 <span>Thread menu</span>
-                {includeResponsiveActions ? (
-                  <span>Responsive menu actions</span>
-                ) : null}
-                {includeResponsiveActions
-                  ? headerActions.map(({ key, action }) => (
-                      <span key={key}>{`menu: ${action.label}`}</span>
-                    ))
-                  : null}
+                {headerActions.map(({ key, action }) => (
+                  <span key={key}>{`menu: ${action.label}`}</span>
+                ))}
               </>
             )}
             isSecondaryPanelOpen={false}
@@ -429,17 +454,17 @@ describe("ThreadDetailHeader", () => {
             onToggleSecondaryPanel={vi.fn()}
             thread={THREAD_TARGET}
             threadTitle="Wide split"
-            workspaceOpenButton={<button>Open workspace</button>}
           />
         </PaneContext.Provider>
       </>,
     );
 
-    expect(screen.getByText("Open workspace")).not.toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "Open workspace in Cursor" }),
+    ).not.toBeNull();
     expect(screen.getByText("Commit")).not.toBeNull();
     expect(screen.getByText("Thread menu")).not.toBeNull();
-    expect(screen.queryByText("Responsive menu actions")).toBeNull();
-    expect(screen.queryByText("menu: Commit")).toBeNull();
+    expect(screen.queryByText(/^menu: /)).toBeNull();
   });
 
   it("keeps each of several header actions independently enabled in one split button", async () => {
@@ -829,18 +854,16 @@ describe("ThreadDetailHeader", () => {
     return menuArgs;
   }
 
-  async function expectRenamePresentation(
-    outcome: RenamePresentationOutcome,
-  ) {
+  async function expectRenamePresentation(outcome: RenamePresentationOutcome) {
     if (outcome === "none") {
       expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
       return;
     }
     const input = await screen.findByRole("textbox", { name: "Thread name" });
     expect(input).toHaveProperty("value", "Focused thread");
-    expect(input.closest('[role="dialog"]') === null ? "inline" : "dialog").toBe(
-      outcome,
-    );
+    expect(
+      input.closest('[role="dialog"]') === null ? "inline" : "dialog",
+    ).toBe(outcome);
     fireEvent.keyDown(input, { key: "Escape" });
     await waitFor(() =>
       expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
@@ -930,4 +953,233 @@ describe("ThreadDetailHeader", () => {
       }
     },
   );
+});
+
+describe("ThreadDetailHeader header actions", () => {
+  function renderHeader(
+    registrations: readonly PluginThreadActionRegistration<unknown>[],
+    actionsMenu: ThreadDetailHeaderProps["actionsMenu"] = null,
+  ) {
+    return render(
+      <>
+        <HeaderActionCollectors registrations={registrations} />
+        <PaneContext.Provider value={PANE_CONTEXT}>
+          <ThreadDetailHeader
+            actionsMenu={actionsMenu}
+            isSecondaryPanelOpen={false}
+            onToggleSecondaryPanel={vi.fn()}
+            thread={THREAD_TARGET}
+            threadTitle="Header actions"
+          />
+        </PaneContext.Provider>
+      </>,
+    );
+  }
+
+  function registration(
+    id: string,
+    action: Omit<PluginThreadAction, "icon"> & { icon?: string },
+  ): PluginThreadActionRegistration<unknown> {
+    return {
+      id,
+      placement: "header",
+      group: "plugin",
+      title: id,
+      icon: "Workflow",
+      item: () => ({ icon: "Workflow", ...action }),
+    };
+  }
+
+  it("draws an icon-only button with its badge in the accessible name", async () => {
+    const run = vi.fn();
+    renderHeader([
+      registration("graph", {
+        label: "Agent graph",
+        display: "icon",
+        badge: { count: 3, tone: "warning", label: "3 running" },
+        run,
+      }),
+    ]);
+
+    const button = await screen.findByRole("button", {
+      name: "Agent graph, 3 running",
+    });
+    expect(button.textContent).toBe("3");
+    expect(
+      button
+        .querySelector("[data-thread-action-badge]")
+        ?.getAttribute("data-thread-action-badge-tone"),
+    ).toBe("warning");
+    fireEvent.click(button);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a button with a badge out of the shared split button", async () => {
+    renderHeader([
+      registration("ship", { label: "Ship", run: vi.fn() }),
+      registration("review", {
+        label: "Review",
+        badge: { text: "3/5", label: "3 of 5 steps" },
+        run: vi.fn(),
+      }),
+      registration("deploy", { label: "Deploy", run: vi.fn() }),
+    ]);
+
+    await screen.findByRole("button", { name: "Review, 3 of 5 steps" });
+    expect(screen.getByRole("button", { name: "Ship" })).not.toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More actions" }),
+      { button: 0, ctrlKey: false },
+    );
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Deploy"]);
+  });
+
+  it("opens choices from the button and runs the picked one", async () => {
+    const run = vi.fn();
+    renderHeader([
+      registration("bot", {
+        label: "Reviewer bot",
+        display: "iconAndLabel",
+        choices: {
+          heading: "Bot",
+          items: [
+            { id: "none", label: "No bot" },
+            { id: "reviewer", label: "Reviewer", selected: true },
+          ],
+        },
+        run,
+      }),
+    ]);
+
+    const trigger = await screen.findByRole("button", {
+      name: "Reviewer bot",
+    });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(screen.getByRole("menuitem", { name: "No bot" }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0]?.[0]).toMatchObject({ value: "none" });
+  });
+
+  it("runs a split action without a value and its chevron's choice with one", async () => {
+    const values: (string | undefined)[] = [];
+    renderHeader([
+      registration("open", {
+        label: "Open workspace in Cursor",
+        display: "icon",
+        choices: {
+          split: true,
+          heading: "Open Workspace",
+          items: [
+            { id: "cursor", label: "Cursor" },
+            { id: "zed", label: "Zed" },
+          ],
+        },
+        run: ({ value }) => {
+          values.push(value);
+        },
+      }),
+    ]);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open workspace in Cursor" }),
+    );
+    await waitFor(() => expect(values).toEqual([undefined]));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Open Workspace" }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Zed" }));
+    await waitFor(() => expect(values).toEqual([undefined, "zed"]));
+  });
+
+  it("disables a button while its run is pending", async () => {
+    let finish = () => {};
+    const run = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderHeader([
+      registration("compact", {
+        label: "Compact",
+        display: "iconAndLabel",
+        run,
+      }),
+    ]);
+
+    const button = await screen.findByRole("button", { name: "Compact" });
+    fireEvent.click(button);
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(run).toHaveBeenCalledTimes(1);
+    finish();
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  });
+
+  it("shows a popover component for the thread and closes it from inside", async () => {
+    function BurnCard({ thread, close }: PluginThreadActionPopoverProps) {
+      return (
+        <button type="button" onClick={close}>
+          {`Spend for ${thread.id}`}
+        </button>
+      );
+    }
+    renderHeader([
+      registration("burn", {
+        label: "$4.20",
+        display: "iconAndLabel",
+        popover: BurnCard,
+      }),
+    ]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "$4.20" }));
+    const card = await screen.findByRole("button", {
+      name: `Spend for ${THREAD_ID}`,
+    });
+    fireEvent.click(card);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: `Spend for ${THREAD_ID}` }),
+      ).toBeNull(),
+    );
+  });
+
+  it("opens a folded popover action's component from its menu row", async () => {
+    viewportState.isCompactViewport = true;
+    function ChildList({ thread }: PluginThreadActionPopoverProps) {
+      return <p>{`Children of ${thread.id}`}</p>;
+    }
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      renderHeader(
+        [
+          registration("children", {
+            label: "2 children",
+            badge: { count: 2, label: "2 children" },
+            popover: ChildList,
+          }),
+        ],
+        ({ headerActions }) =>
+          headerActions.map(({ key, action }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => void action.run?.({ requestRename: vi.fn() })}
+            >{`menu: ${action.label}`}</button>
+          )),
+      );
+
+      expect(
+        screen.queryByRole("button", { name: "2 children, 2 children" }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "menu: 2 children" }));
+      vi.runAllTimers();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await screen.findByText(`Children of ${THREAD_ID}`)).not.toBeNull();
+  });
 });

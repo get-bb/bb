@@ -75,7 +75,11 @@ export default definePluginApp((app) => {
     component: IssuePanel,
     run: async ({ threadId, experimental_panel }) => {
       experimental_panel.openTab({
-        tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
+        tab: {
+          id: "issue",
+          context: { kind: "thread" },
+          availability: "action",
+        },
         title: `Issue for ${threadId}`,
       });
     },
@@ -148,20 +152,16 @@ export default definePluginApp((app) => {
 
 ### A button in the thread header
 
-A thread action with `placement: "header"` is a button in the open thread's
-header instead of a menu entry. It shows after the workspace's Open button
-with its `label` (several share one split button). On phones and in narrow
-split panes it folds into the header's thread menu, as a row at the top. It
-never appears in other menus, the quick-action picker, or
-`experimental_useThreadActions`. Its `useData` receives only the threads
-whose header is on screen. Return null from `item` whenever the button does
-not apply. Header buttons do not show `choices`. bb's Git plugin registers
-Commit this way.
+A `placement: "header"` thread action is a header button (bb's Open workspace
+is one): `display` `"label"`|`"icon"`|`"iconAndLabel"`, `badge`, `choices` in a
+dropdown (`split` for a split button), or a module-level `popover` component
+given `{ thread, close }`. It folds into the thread menu on phones; `useData`
+gets only threads whose header is on screen.
 
 ```tsx
 app.slots.experimental_threadAction({ id: "deploy", title: "Deploy", icon: "Rocket", group: "deploy", placement: "header",
-  useData: ({ threadIds }) => useDeployable(threadIds),
-  item: ({ thread, data }) => data.has(thread.id) ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) } : null });
+  useData: ({ threadIds }) => useDeploys(threadIds),
+  item: ({ thread, data }) => data.has(thread.id) ? { label: "Deploys", icon: "Rocket", display: "icon", badge: { count: 2, tone: "critical", label: "2 failed" }, popover: DeployList } : null });
 ```
 
 `app.slots.experimental_threadHeaderAction` is retired: existing callers keep
