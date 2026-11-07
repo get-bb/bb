@@ -152,57 +152,16 @@ export default definePluginApp((app) => {
 
 ### A button in the thread header
 
-A thread action with `placement: "header"` is a button in the open thread's
-header instead of a menu entry, beside bb's own Open workspace button (also a
-header action). The evaluated action controls the button:
-
-- `display`: `"label"` (default), `"icon"` (icon only; `label` becomes the
-  tooltip and accessible name) or `"iconAndLabel"`.
-- `badge`: an `ExperimentalBadge` (`count`, short `text`, or neither for a
-  dot; `tone` `neutral` | `warning` | `critical`; required `label`).
-- `choices`: open in a dropdown from the button. With `choices.split` the
-  button calls `run` with no `value` and a chevron opens the choices.
-- `popover`: a module-level component bb shows in a popover (a drawer on
-  phones) with `{ thread, close }`, instead of calling `run`. `run` is then
-  optional; don't set both `popover` and `choices`.
-
-While `run`'s promise is pending the button is disabled. Plain label buttons
-share one split button; the rest are separate controls. On phones and in
-narrow split panes every header action folds into the header's thread menu,
-as a row at the top (a popover row opens the popover). Header actions never
-appear in other menus, the quick-action picker, or
-`experimental_useThreadActions`. Their `useData` receives only the threads
-whose header is on screen. Return null from `item` whenever the button does
-not apply. bb's Git plugin registers Commit this way.
+A `placement: "header"` thread action is a header button (bb's Open workspace
+is one): `display` `"label"`|`"icon"`|`"iconAndLabel"`, `badge`, `choices` in a
+dropdown (`split` for a split button), or a module-level `popover` component
+given `{ thread, close }`. It folds into the thread menu on phones; `useData`
+gets only threads whose header is on screen.
 
 ```tsx
-app.slots.experimental_threadAction({
-  id: "deploy",
-  title: "Deploy",
-  icon: "Rocket",
-  group: "deploy",
-  placement: "header",
+app.slots.experimental_threadAction({ id: "deploy", title: "Deploy", icon: "Rocket", group: "deploy", placement: "header",
   useData: ({ threadIds }) => useDeploys(threadIds),
-  item: ({ thread, data }) => {
-    const deploy = data.get(thread.id);
-    return deploy === undefined
-      ? null
-      : {
-          label: "Deploys",
-          icon: "Rocket",
-          display: "icon",
-          badge: {
-            count: deploy.failed,
-            tone: "critical",
-            label: `${deploy.failed} failed`,
-          },
-          popover: DeployList,
-        };
-  },
-});
-function DeployList({ thread, close }: PluginThreadActionPopoverProps) {
-  /* ... */
-}
+  item: ({ thread, data }) => data.has(thread.id) ? { label: "Deploys", icon: "Rocket", display: "icon", badge: { count: 2, tone: "critical", label: "2 failed" }, popover: DeployList } : null });
 ```
 
 `app.slots.experimental_threadHeaderAction` is retired: existing callers keep
