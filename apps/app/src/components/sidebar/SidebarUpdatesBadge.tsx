@@ -10,7 +10,6 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { useResponsiveOverlayBehavior } from "@bb/shared-ui/responsive-overlay";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatAppUpdateRevision } from "@/components/app-update/app-update-presentation";
 import { useStartAppUpdate } from "@/components/app-update/useStartAppUpdate";
@@ -19,7 +18,8 @@ import { useProviderCliInstallRunner } from "@/components/provider-cli/provider-
 import { resolveReleaseUpdateVersion } from "@/components/settings/release-notes-model";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { BbLogo } from "@/components/ui/bb-logo";
-import { SidebarMenuItem } from "@/components/ui/sidebar.js";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { useAppUpdateStatus } from "@/hooks/queries/app-update-queries";
 import { usePluginUpdateJobs } from "@/hooks/queries/plugin-update-job-queries";
 import {
@@ -43,11 +43,6 @@ import {
 interface SidebarUpdatesBadgeProps {
   onNavigate?: () => void;
 }
-
-const CHIP_CLASS = cn(
-  "flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-sidebar-border px-2",
-  "text-xs font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
-);
 
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
@@ -127,43 +122,56 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     }
   }
 
-  if (sidebarUpdateModelIsEmpty(model) && machineAttention.label === null) {
-    return null;
-  }
-
+  const showUpdates = !sidebarUpdateModelIsEmpty(model);
   return (
-    <SidebarMenuItem className="flex min-w-0 items-center gap-1">
+    <>
       {machineAttention.label !== null ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
+        <SidebarMenuItem className="ml-auto shrink-0">
+          <SidebarMenuButton
+            asChild
+            aria-label={machineAttention.label}
+            tooltip={{
+              children: machineAttention.label,
+              hidden: false,
+              side: "top",
+            }}
+            className={cn(
+              SIDEBAR_FOOTER_ACTION_CLASS,
+              "text-warning-text hover:text-warning-text",
+            )}
+          >
             <Link
               to={getSettingsRoutePath("machines")}
               onClick={() => {
                 machineAttention.acknowledge();
                 onNavigate?.();
               }}
-              aria-label={machineAttention.label}
               data-testid="sidebar-machines-attention-badge"
-              className={cn(CHIP_CLASS, "text-warning-text")}
             >
-              <Icon name="AlertTriangle" className="size-3" />
+              <Icon name="AlertTriangle" />
             </Link>
-          </TooltipTrigger>
-          <TooltipContent side="top">{machineAttention.label}</TooltipContent>
-        </Tooltip>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       ) : null}
-      {sidebarUpdateModelIsEmpty(model) ? null : (
-        <SidebarUpdateButton
-          model={model}
-          providers={providers ?? null}
-          restartPending={appUpdateStart.pending}
-          onNavigate={onNavigate}
-          onUpdateAll={updateAll}
-          onRestartBb={restartBb}
-        />
-      )}
-      {appUpdateStart.confirmDialog}
-    </SidebarMenuItem>
+      {showUpdates ? (
+        <SidebarMenuItem
+          className={cn(
+            "shrink-0",
+            machineAttention.label === null && "ml-auto",
+          )}
+        >
+          <SidebarUpdateButton
+            model={model}
+            providers={providers ?? null}
+            restartPending={appUpdateStart.pending}
+            onNavigate={onNavigate}
+            onUpdateAll={updateAll}
+            onRestartBb={restartBb}
+          />
+          {appUpdateStart.confirmDialog}
+        </SidebarMenuItem>
+      ) : null}
+    </>
   );
 }
 
@@ -196,7 +204,7 @@ export function SidebarUpdateButton({
   const icon = (
     <Icon
       name={model.updating ? "Loading" : "Download"}
-      className={cn("size-3.5", model.updating && "animate-spin")}
+      className={cn(model.updating && "animate-spin")}
     />
   );
   const cardBody = (
@@ -217,15 +225,14 @@ export function SidebarUpdateButton({
     return (
       <Popover open={tapOpen} onOpenChange={setTapOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
+          <SidebarMenuButton
             aria-label={label}
             data-testid="sidebar-update-button"
             data-updating={model.updating || undefined}
             className={UPDATE_BUTTON_CLASS}
           >
             {icon}
-          </button>
+          </SidebarMenuButton>
         </PopoverTrigger>
         <PopoverContent
           side="top"
@@ -244,16 +251,17 @@ export function SidebarUpdateButton({
   return (
     <HoverCard openDelay={150} closeDelay={200}>
       <HoverCardTrigger asChild>
-        <Link
-          to={getSettingsRoutePath("updates")}
-          onClick={onNavigate}
-          aria-label={label}
-          data-testid="sidebar-update-button"
-          data-updating={model.updating || undefined}
-          className={UPDATE_BUTTON_CLASS}
-        >
-          {icon}
-        </Link>
+        <SidebarMenuButton asChild className={UPDATE_BUTTON_CLASS}>
+          <Link
+            to={getSettingsRoutePath("updates")}
+            onClick={onNavigate}
+            aria-label={label}
+            data-testid="sidebar-update-button"
+            data-updating={model.updating || undefined}
+          >
+            {icon}
+          </Link>
+        </SidebarMenuButton>
       </HoverCardTrigger>
       <HoverCardContent
         side="top"
@@ -269,9 +277,9 @@ export function SidebarUpdateButton({
 }
 
 const UPDATE_BUTTON_CLASS = cn(
-  "ml-auto grid size-7 shrink-0 place-items-center rounded-full",
-  "bg-sidebar-accent text-sidebar-foreground transition-colors",
-  "hover:bg-sidebar-border focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+  SIDEBAR_FOOTER_ACTION_CLASS,
+  "rounded-full bg-sidebar-accent text-sidebar-foreground [&>[data-icon-root]]:opacity-100",
+  "hover:bg-sidebar-border hover:text-sidebar-foreground active:bg-sidebar-border",
 );
 
 function SidebarUpdateCardBody({

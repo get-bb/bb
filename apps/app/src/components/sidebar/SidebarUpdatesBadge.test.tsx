@@ -29,6 +29,7 @@ import type {
 } from "@/hooks/useUpdateInventory";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makePluginListItem } from "@/test/fixtures/plugins";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
 const useUpdateInventoryMock = vi.hoisted(() => vi.fn());
@@ -286,7 +287,9 @@ function BadgeHarness() {
   return (
     <MemoryRouter>
       <TooltipProvider>
-        <SidebarUpdatesBadge />
+        <SidebarProvider>
+          <SidebarUpdatesBadge />
+        </SidebarProvider>
       </TooltipProvider>
     </MemoryRouter>
   );
@@ -314,8 +317,9 @@ function rowStates(card: HTMLElement): Array<[string, string | null]> {
 
 describe("SidebarUpdatesBadge", () => {
   it("renders nothing when no update needs attention", () => {
-    const result = renderBadge({});
-    expect(result.container.innerHTML).toBe("");
+    renderBadge({});
+    expect(screen.queryByTestId("sidebar-update-button")).toBeNull();
+    expect(screen.queryByTestId("sidebar-machines-attention-badge")).toBeNull();
   });
 
   it("draws every kind of update as one button that opens Settings › Updates", () => {
@@ -459,7 +463,9 @@ describe("SidebarUpdatesBadge", () => {
       <CompactViewportOverrideProvider isCompactViewport>
         <MemoryRouter>
           <TooltipProvider>
-            <SidebarUpdatesBadge onNavigate={onNavigate} />
+            <SidebarProvider>
+              <SidebarUpdatesBadge onNavigate={onNavigate} />
+            </SidebarProvider>
             <LocationProbe />
           </TooltipProvider>
         </MemoryRouter>
