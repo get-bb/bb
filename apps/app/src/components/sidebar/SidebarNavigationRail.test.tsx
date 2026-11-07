@@ -599,7 +599,9 @@ describe("Rail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
     act(() => vi.advanceTimersByTime(250));
 
-    fireEvent.click(screen.getByRole("link", { name: "1 update available" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 update available" }));
+    act(() => vi.advanceTimersByTime(250));
+    fireEvent.click(screen.getByRole("link", { name: "Details" }));
     expect(pathname()).toBe(`${SETTINGS_ROUTE_PATH}/updates`);
     act(() => vi.advanceTimersByTime(250));
 

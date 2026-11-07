@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { ProviderInfo } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
@@ -7,6 +8,8 @@ import {
   HoverCardTrigger,
 } from "@bb/shared-ui/hover-card";
 import { Icon } from "@bb/shared-ui/icon";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { useResponsiveOverlayBehavior } from "@bb/shared-ui/responsive-overlay";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatAppUpdateRevision } from "@/components/app-update/app-update-presentation";
@@ -174,7 +177,6 @@ interface SidebarUpdateButtonProps {
   model: SidebarUpdateModel;
   providers: readonly ProviderInfo[] | null;
   restartPending: boolean;
-  defaultOpen?: boolean;
   onNavigate?: () => void;
   onUpdateAll: () => void;
   onRestartBb: () => void;
@@ -184,32 +186,73 @@ export function SidebarUpdateButton({
   model,
   providers,
   restartPending,
-  defaultOpen,
   onNavigate,
   onUpdateAll,
   onRestartBb,
 }: SidebarUpdateButtonProps) {
-  const updatesRoutePath = getSettingsRoutePath("updates");
+  const { supportsHover } = useResponsiveOverlayBehavior();
+  const [tapOpen, setTapOpen] = useState(false);
   const label = sidebarUpdateButtonLabel(model);
+  const icon = (
+    <Icon
+      name={model.updating ? "Loading" : "Download"}
+      className={cn("size-3.5", model.updating && "animate-spin")}
+    />
+  );
+  const cardBody = (
+    <SidebarUpdateCardBody
+      model={model}
+      providers={providers}
+      restartPending={restartPending}
+      onDetails={() => {
+        setTapOpen(false);
+        onNavigate?.();
+      }}
+      onUpdateAll={onUpdateAll}
+      onRestartBb={onRestartBb}
+    />
+  );
+
+  if (!supportsHover) {
+    return (
+      <Popover open={tapOpen} onOpenChange={setTapOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={label}
+            data-testid="sidebar-update-button"
+            data-updating={model.updating || undefined}
+            className={UPDATE_BUTTON_CLASS}
+          >
+            {icon}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="end"
+          sideOffset={8}
+          mobileTitle="Updates"
+          data-testid="sidebar-update-card"
+          className="w-76 p-3 text-xs"
+        >
+          {cardBody}
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
   return (
-    <HoverCard openDelay={150} closeDelay={200} defaultOpen={defaultOpen}>
+    <HoverCard openDelay={150} closeDelay={200}>
       <HoverCardTrigger asChild>
         <Link
-          to={updatesRoutePath}
+          to={getSettingsRoutePath("updates")}
           onClick={onNavigate}
           aria-label={label}
           data-testid="sidebar-update-button"
           data-updating={model.updating || undefined}
-          className={cn(
-            "ml-auto grid size-7 shrink-0 place-items-center rounded-full",
-            "bg-sidebar-accent text-sidebar-foreground transition-colors",
-            "hover:bg-sidebar-border focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
-          )}
+          className={UPDATE_BUTTON_CLASS}
         >
-          <Icon
-            name={model.updating ? "Loading" : "Download"}
-            className={cn("size-3.5", model.updating && "animate-spin")}
-          />
+          {icon}
         </Link>
       </HoverCardTrigger>
       <HoverCardContent
@@ -219,52 +262,80 @@ export function SidebarUpdateButton({
         data-testid="sidebar-update-card"
         className="w-76 p-3 text-xs"
       >
-        {model.bb === null ? null : (
-          <SidebarBbUpdateSection
-            bb={model.bb}
-            restartPending={restartPending}
-            onRestart={onRestartBb}
-          />
-        )}
-        {model.bb !== null && model.rows.length > 0 ? (
-          <div className="-mx-3 my-3 border-t border-border" />
-        ) : null}
-        {model.rows.length === 0 ? null : (
-          <ul className="space-y-0.5" aria-label="Updates">
-            {model.rows.map((row) => (
-              <SidebarUpdateRowItem
-                key={row.key}
-                row={row}
-                providers={providers}
-              />
-            ))}
-          </ul>
-        )}
-        <div className="mt-3 flex gap-2">
-          <Button asChild variant="outline" size="sm" className="h-7 flex-1">
-            <Link to={updatesRoutePath} onClick={onNavigate}>
-              Details
-            </Link>
-          </Button>
-          {model.rows.length === 0 ? null : (
-            <Button
-              size="sm"
-              className="h-7 flex-1"
-              disabled={model.startableCount === 0}
-              onClick={onUpdateAll}
-            >
-              {model.startableCount === 0
-                ? "Updating…"
-                : model.retryOnly
-                  ? "Try again"
-                  : model.startableCount === model.rows.length
-                    ? "Update all"
-                    : `Update ${String(model.startableCount)}`}
-            </Button>
-          )}
-        </div>
+        {cardBody}
       </HoverCardContent>
     </HoverCard>
+  );
+}
+
+const UPDATE_BUTTON_CLASS = cn(
+  "ml-auto grid size-7 shrink-0 place-items-center rounded-full",
+  "bg-sidebar-accent text-sidebar-foreground transition-colors",
+  "hover:bg-sidebar-border focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+);
+
+function SidebarUpdateCardBody({
+  model,
+  providers,
+  restartPending,
+  onDetails,
+  onUpdateAll,
+  onRestartBb,
+}: {
+  model: SidebarUpdateModel;
+  providers: readonly ProviderInfo[] | null;
+  restartPending: boolean;
+  onDetails: () => void;
+  onUpdateAll: () => void;
+  onRestartBb: () => void;
+}) {
+  return (
+    <>
+      {model.bb === null ? null : (
+        <SidebarBbUpdateSection
+          bb={model.bb}
+          restartPending={restartPending}
+          onRestart={onRestartBb}
+        />
+      )}
+      {model.bb !== null && model.rows.length > 0 ? (
+        <div className="-mx-3 my-3 border-t border-border" />
+      ) : null}
+      {model.rows.length === 0 ? null : (
+        <ul className="space-y-0.5" aria-label="Updates">
+          {model.rows.map((row) => (
+            <SidebarUpdateRowItem
+              key={row.key}
+              row={row}
+              providers={providers}
+            />
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex gap-2">
+        <Button asChild variant="outline" size="sm" className="h-7 flex-1">
+          <Link to={getSettingsRoutePath("updates")} onClick={onDetails}>
+            Details
+          </Link>
+        </Button>
+        {model.rows.length === 0 ? null : (
+          <Button
+            size="sm"
+            className="h-7 flex-1"
+            disabled={model.startableCount === 0}
+            onClick={onUpdateAll}
+          >
+            {model.startableCount === 0
+              ? "Updating…"
+              : model.retryOnly
+                ? "Try again"
+                : model.startableCount === model.rows.length
+                  ? "Update all"
+                  : `Update ${String(model.startableCount)}`}
+          </Button>
+        )}
+      </div>
+    </>
   );
 }
 

@@ -7,7 +7,8 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
@@ -291,6 +292,10 @@ function BadgeHarness() {
   );
 }
 
+function LocationProbe() {
+  return <output data-testid="location">{useLocation().pathname}</output>;
+}
+
 function updateButton(): HTMLElement {
   return screen.getByTestId("sidebar-update-button");
 }
@@ -437,6 +442,50 @@ describe("SidebarUpdatesBadge", () => {
     });
     expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
     expect(applyAppUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the card in a drawer on a phone instead of leaving for Settings", async () => {
+    appUpdateState.status = appUpdateStatus();
+    const codex = providerIssue("codex", "Codex");
+    useUpdateInventoryMock.mockReturnValue(
+      inventory({
+        appUpdateAvailable: true,
+        machines: [machine({ issues: [codex] })],
+      }),
+    );
+    const onNavigate = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <MemoryRouter>
+          <TooltipProvider>
+            <SidebarUpdatesBadge onNavigate={onNavigate} />
+            <LocationProbe />
+          </TooltipProvider>
+        </MemoryRouter>
+      </CompactViewportOverrideProvider>,
+      { wrapper },
+    );
+
+    fireEvent.click(updateButton());
+    const card = await screen.findByTestId("sidebar-update-card");
+    expect(screen.getByTestId("location").textContent).toBe("/");
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(within(card).getByText("bb 0.49.0")).toBeTruthy();
+
+    fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
+    expect(runner.startInstall).toHaveBeenCalledWith({
+      hostId: "host-1",
+      issue: codex,
+    });
+    expect(updateButton().getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(within(card).getByRole("link", { name: "Details" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/settings/updates",
+    );
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(updateButton().getAttribute("aria-expanded")).toBe("false");
   });
 
   it("spins while updates run and shows each row's progress", async () => {
