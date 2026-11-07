@@ -377,6 +377,24 @@ function messagesForThread(threadId: string): BridgeJsonRpcOutputMessage[] {
   });
 }
 
+function extensionStatePayloadsFor(
+  threadId: string,
+  extensionKind: string,
+): unknown[] {
+  return messagesForThread(threadId).flatMap((message) => {
+    const deltas = (message.params as {
+      deltas?: Array<Record<string, unknown>>;
+    }).deltas ?? [];
+    return deltas
+      .filter(
+        (delta) =>
+          delta.kind === "extension.state" &&
+          delta.extensionKind === extensionKind,
+      )
+      .map((delta) => delta.payload);
+  });
+}
+
 function deltaKindsOf(message: BridgeJsonRpcOutputMessage): string[] {
   if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
     return [];
@@ -4117,6 +4135,135 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
     expect(notifications("error")).toEqual([]);
   }, 15_000);
+
+  it("falls back to a new-process fork when the source has exited", async () => {
+    const readyFile = join(workspaceDir, "exited-source-ready");
+    const requestLog = join(workspaceDir, "exited-source-fork.jsonl");
+    const envVars = {
+      FAKE_ACP_FORK_SESSION: "1",
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_CLOSE_SESSION: "1",
+      FAKE_ACP_READY_FILE: readyFile,
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const source = await startThread({ envVars });
+    process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+    await waitForAgentExit(readyFile);
+    await waitFor(
+      () => notifications("error").at(-1),
+      "source exit notification",
+    );
+
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-exited-source-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    const response = await waitForResponse(forkId);
+    expect(response.error).toBeUndefined();
+    expect(providerThreadIdOf(response)).not.toBe(source.providerThreadId);
+    const requests = loggedAcpRequests(requestLog);
+    expect(requests.filter((request) => request.method === "session/fork")).toHaveLength(1);
+    expect(requests.filter((request) => request.method === "session/close")).toHaveLength(0);
+  });
+
+  it("preserves source session options for an ID-only fork response", async () => {
+    const envVars = {
+      FAKE_ACP_FORK_SESSION: "1",
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_CLOSE_SESSION: "1",
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_FORK_ID_ONLY: "1",
+    };
+    const source = await startThread({ envVars });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-id-only-source-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    expect((await waitForResponse(forkId)).error).toBeUndefined();
+    expect(extensionStatePayloadsFor(source.bbThreadId, "bb/session-options").at(-1))
+      .toMatchObject({
+        options: expect.arrayContaining([
+          expect.objectContaining({ id: "approach" }),
+        ]),
+      });
+  });
+
+  it("routes fork setup state and notifications to the destination", async () => {
+    const forkThreadId = "thread-destination-fork-state";
+    const envVars = {
+      FAKE_ACP_FORK_SESSION: "1",
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_CLOSE_SESSION: "1",
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_RESUME_ID_ONLY: "1",
+      FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE: "1",
+    };
+    const source = await startThread({ envVars });
+    const forkId = sendRequest("thread/fork", {
+      threadId: forkThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    expect((await waitForResponse(forkId)).error).toBeUndefined();
+    expect(extensionStatePayloadsFor(forkThreadId, "bb/session-options").at(-1))
+      .toMatchObject({
+        options: expect.arrayContaining([
+          expect.objectContaining({ id: "approach" }),
+        ]),
+      });
+    expect(contextWindowDeltasFor(forkThreadId)).toEqual([
+      { used: 12_345, size: 200_000 },
+    ]);
+  });
+
+  it("hands a live source fork to a new ACP process through close and resume", async () => {
+    const requestLog = join(workspaceDir, "source-fork-handoff.jsonl");
+    const envVars = {
+      FAKE_ACP_FORK_SESSION: "1",
+      FAKE_ACP_RESUME_SESSION: "1",
+      FAKE_ACP_CLOSE_SESSION: "1",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const source = await startThread({ envVars });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-source-fork-handoff",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    const response = await waitForResponse(forkId);
+    expect(response.error).toBeUndefined();
+    const forkedProviderThreadId = providerThreadIdOf(response);
+    expect(forkedProviderThreadId).not.toBe(source.providerThreadId);
+
+    const requests = loggedAcpRequests(requestLog);
+    const forkIndex = requests.findIndex((request) => request.method === "session/fork");
+    const closeIndex = requests.findIndex((request) => request.method === "session/close");
+    const resumeIndex = requests.findIndex((request) => request.method === "session/resume");
+    expect(forkIndex).toBeGreaterThan(-1);
+    expect(closeIndex).toBeGreaterThan(forkIndex);
+    expect(resumeIndex).toBeGreaterThan(closeIndex);
+    expect(requests.filter((request) => request.method === "session/fork")).toHaveLength(1);
+    expect(requests[closeIndex]?.params).toMatchObject({ sessionId: forkedProviderThreadId });
+    expect(requests[resumeIndex]?.params).toMatchObject({ sessionId: forkedProviderThreadId });
+  });
 
   it("forks an advertised ACP session with the target cwd and MCP servers", async () => {
     const forkLog = join(workspaceDir, "fork-params.json");
