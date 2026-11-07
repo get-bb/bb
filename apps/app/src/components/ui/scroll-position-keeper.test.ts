@@ -875,29 +875,54 @@ describe("ScrollPositionKeeper", () => {
     expect(timeline.topOf("row-2")).toBe(before);
   });
 
-  it("holds a correction as a transform during a touch and writes it once scrolling settles", () => {
+  it("writes a correction at once during a touch while the view is within its bounds, so older rows loaded mid-gesture stay reachable", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const rows = rowsOf(10);
     const timeline = createTimeline(rows, { deferWrites: true });
     timeline.userScrollTo(450);
     vi.advanceTimersByTime(500);
     const before = timeline.topOf("row-3");
-    const setter = vi.spyOn(timeline.scrollElement, "scrollTop", "set");
 
     timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
     timeline.setRows([...rowsOf(4, 100, "older"), ...rows]);
     timeline.keeper.reconcile();
-    expect(setter).not.toHaveBeenCalled();
-    expect(timeline.topOf("row-3")).toBe(before);
 
-    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
-    vi.advanceTimersByTime(400);
-    expect(setter).toHaveBeenCalled();
     expect(timeline.content.style.transform).toBe("");
+    expect(timeline.layout.scrollTop).toBe(850);
     expect(timeline.topOf("row-3")).toBe(before);
   });
 
-  it("writes a held correction once the finger lifts from a target that left the document, so older rows loaded mid-touch stay reachable", () => {
+  it("holds a correction as a transform while the view is in the top bounce and writes it once the bounce settles", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows, { deferWrites: true });
+    timeline.userScrollTo(300);
+    vi.advanceTimersByTime(500);
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchstart"));
+    timeline.layout.bounceTo(-40);
+    timeline.keeper.reconcile();
+    const before = timeline.topOf("row-0");
+    const setter = vi.spyOn(timeline.scrollElement, "scrollTop", "set");
+
+    timeline.setRows([...rowsOf(4, 100, "older"), ...rows]);
+    timeline.keeper.reconcile();
+    expect(setter).not.toHaveBeenCalled();
+    expect(timeline.content.style.transform).not.toBe("");
+    expect(timeline.topOf("row-0")).toBe(before);
+
+    timeline.scrollElement.dispatchEvent(new TouchEvent("touchend"));
+    vi.advanceTimersByTime(400);
+    expect(setter).not.toHaveBeenCalled();
+
+    timeline.layout.bounceTo(0);
+    timeline.scrollElement.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(400);
+    expect(timeline.content.style.transform).toBe("");
+    expect(timeline.layout.scrollTop).toBe(400);
+    expect(timeline.topOf("row-0")).toBe(0);
+  });
+
+  it("writes older rows loaded mid-touch at once when the finger rests on a target that leaves the document", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const rows = rowsOf(10);
     const timeline = createTimeline(rows, { deferWrites: true });
@@ -911,12 +936,13 @@ describe("ScrollPositionKeeper", () => {
     loadingStatus.remove();
     timeline.setRows([...rowsOf(4, 100, "older"), ...rows]);
     timeline.keeper.reconcile();
-    expect(timeline.content.style.transform).not.toBe("");
+
+    expect(timeline.content.style.transform).toBe("");
+    expect(timeline.layout.scrollTop).toBe(850);
+    expect(timeline.topOf("row-3")).toBe(before);
 
     loadingStatus.dispatchEvent(new TouchEvent("touchend", { bubbles: true }));
     vi.advanceTimersByTime(400);
-
-    expect(timeline.content.style.transform).toBe("");
     expect(timeline.layout.scrollTop).toBe(850);
     expect(timeline.topOf("row-3")).toBe(before);
   });
