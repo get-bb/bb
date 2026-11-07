@@ -121,6 +121,8 @@ const deleteSession = process.env.FAKE_ACP_DELETE_SESSION === "1";
 const additionalDirectories =
   process.env.FAKE_ACP_ADDITIONAL_DIRECTORIES === "1";
 const forkReuseSourceId = process.env.FAKE_ACP_FORK_REUSE_SOURCE_ID === "1";
+const forkIdOnly = process.env.FAKE_ACP_FORK_ID_ONLY === "1";
+const resumeIdOnly = process.env.FAKE_ACP_RESUME_ID_ONLY === "1";
 const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
@@ -1071,7 +1073,7 @@ async function handleMessage(message) {
       }
       captureMcpServers(message);
       activeSessionId = message.params?.sessionId;
-      send({ jsonrpc: "2.0", id: message.id, result: configState() });
+      send({ jsonrpc: "2.0", id: message.id, result: resumeIdOnly ? {} : configState() });
       return;
     case "session/fork":
       if (!requireAuthenticated(message)) {
@@ -1097,7 +1099,7 @@ async function handleMessage(message) {
       captureMcpServers(message);
       sendSessionResponse(message, {
         sessionId: activeSessionId,
-        ...configState(),
+        ...(forkIdOnly ? {} : configState()),
       });
       return;
     case "session/set_model": {
