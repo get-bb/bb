@@ -259,13 +259,13 @@ describe("runDatabaseMaintenanceSweep", () => {
     try {
       const { db } = setupBusyFileDatabaseWithFreelist(tempDatabase);
       try {
-        const before = getDatabaseFreelistStats(db);
+        const before = getDatabaseFreelistStats(db.$client);
         expect(before.freelistCount).toBeGreaterThan(256 * 4);
         const restartsBefore = walRestartCount(tempDatabase.dbPath);
 
         await runSweepWithCheckpointer(db);
 
-        expect(getDatabaseFreelistStats(db).freelistCount).toBe(0);
+        expect(getDatabaseFreelistStats(db.$client).freelistCount).toBe(0);
         expect(
           walRestartCount(tempDatabase.dbPath) - restartsBefore,
         ).toBeGreaterThanOrEqual(3);
@@ -363,6 +363,8 @@ describe("runDatabaseMaintenanceSweep", () => {
       };
       const incremental = open("incremental.db", true);
       const none = open("none.db", false);
+      const walCheckpointer = startWalCheckpointer({ logger: testLogger });
+      walCheckpointer.attach(incremental);
       try {
         const noneFreelist = getDatabaseFreelistStats(none).freelistCount;
         expect(
@@ -371,6 +373,7 @@ describe("runDatabaseMaintenanceSweep", () => {
 
         await runPluginDatabaseMaintenanceSweep({
           logger: testLogger,
+          walCheckpointer,
           plugins: {
             listOpenPluginDatabases: () => [
               { database: incremental, pluginId: "incremental" },
@@ -383,6 +386,7 @@ describe("runDatabaseMaintenanceSweep", () => {
         expect(getDatabaseAutoVacuumMode(none)).toBe("none");
         expect(getDatabaseFreelistStats(none).freelistCount).toBe(noneFreelist);
       } finally {
+        await walCheckpointer.stop();
         incremental.close();
         none.close();
       }
