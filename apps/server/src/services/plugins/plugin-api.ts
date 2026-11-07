@@ -125,6 +125,7 @@ import type { PluginInteractionResult } from "../interactions/pending-interactio
 import { appendPluginLogLine } from "./plugin-log.js";
 import { openPluginDatabase } from "./plugin-database.js";
 import { wrapSdkForPlugin } from "./plugin-sdk-wrapping.js";
+import { callSettingsListener } from "./plugin-settings-listener.js";
 import {
   runPluginRpcMethod,
   type PluginRpcMethodOutcome,
@@ -731,14 +732,12 @@ export function createPluginApi(options: {
           const next = await readPluginSettingsValues(storeArgs);
           if (JSON.stringify(next) !== JSON.stringify(prev)) {
             for (const listener of settingsRecord.listeners) {
-              try {
-                listener(next, prev);
-              } catch (error) {
+              callSettingsListener(listener, [next, prev], (error) => {
                 emitLog(
                   "warn",
                   `settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
                 );
-              }
+              });
             }
             if (activated) settingsChanged();
           }

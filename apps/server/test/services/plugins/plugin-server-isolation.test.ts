@@ -525,6 +525,192 @@ describe("plugin server isolation", { timeout: 60_000 }, () => {
     await expect.poll(readThread).toBe(0);
   });
 
+  it("gives a worker route the same Hono context as an in-process one", async () => {
+    const source = `${THREAD_ID_SOURCE}
+      export default function plugin(bb: any) {
+        bb.http.route("POST", "/ctx", async (c: any) => c.json({
+          inWorker: threadId !== 0,
+          params: c.req.param(),
+          id: c.req.param("id"),
+          path: c.req.path,
+          routePath: c.req.routePath,
+          variables: c.var,
+          method: c.req.method,
+          url: new URL(c.req.url).pathname + new URL(c.req.url).search,
+          queries: c.req.queries(),
+          header: c.req.header("x-probe"),
+          body: await c.req.json(),
+        }));
+      }`;
+    await install("ctx-worker", source, true);
+    await install("ctx-core", source, false);
+    const read = async (id: string) =>
+      (
+        await fetch(
+          `${server.baseUrl}/api/v1/plugins/${id}/http/ctx?q=a%20b&q=%2541`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-probe": "1" },
+            body: JSON.stringify({ hello: "world" }),
+          },
+        )
+      ).json();
+    const worker = await read("ctx-worker");
+    const core = await read("ctx-core");
+    expect(worker.inWorker).toBe(true);
+    expect(core.inWorker).toBe(false);
+    expect(worker.params).toEqual({ id: "ctx-worker" });
+    const normalize = (value: Record<string, unknown>, id: string) =>
+      JSON.parse(JSON.stringify({ ...value, inWorker: null }).replaceAll(id, "<id>"));
+    expect(normalize(worker, "ctx-worker")).toEqual(normalize(core, "ctx-core"));
+  });
+
+  it.each([true, false])(
+    "reports every forwarded callback's errors the same way (isolated %s)",
+    async (isolated) => {
+      setExperiments(server.db, { isolatedPluginServers: isolated });
+      const lines: string[] = [];
+      const capture = (level: string) => (...args: unknown[]) => {
+        const message = args.find((arg) => typeof arg === "string");
+        if (typeof message === "string") lines.push(`${level} ${message}`);
+      };
+      const service = createPluginService({
+        aiServices: createAiServiceRegistry(),
+        telemetry: createNoopTelemetryService(),
+        db: server.db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginChanged: () => {},
+          onWatchedTargets: () => () => {},
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger: {
+          debug: capture("debug"),
+          info: capture("info"),
+          warn: capture("warn"),
+          error: capture("error"),
+        } as unknown as Logger,
+        dataDir: join(workDir, `errors-${isolated}`),
+        appVersion: "0.9.0",
+        loadTimeoutMs: 5_000,
+        serviceStopTimeoutMs: 200,
+        serviceRestartBaseMs: 60_000,
+      });
+      const id = `errors-${isolated ? "worker" : "core"}`;
+      try {
+        const source = await writeGitPlugin(
+          workDir,
+          id,
+          `${THREAD_ID_SOURCE}
+          export default function plugin(bb: any) {
+            const settings = bb.settings.define({
+              mode: { type: "string", label: "Mode", default: "a" },
+            });
+            settings.onChange(() => { throw new Error("boom-listener"); });
+            bb.onInstall(() => { throw new Error("boom-install"); });
+            bb.onDispose(() => { throw new Error("boom-dispose"); });
+            bb.background.service("crashy", {
+              async start() { throw new Error("boom-service"); },
+            });
+            bb.cli.register({
+              name: "boomcli",
+              summary: "Throws",
+              run: async () => { throw new Error("boom-cli"); },
+            });
+            bb.rpc.register(
+              { fail: { input: any, output: any }, setOwn: { input: any, output: any } },
+              {
+                fail() { throw new Error("boom-rpc"); },
+                async setOwn() { await settings.experimental_set({ mode: "c" }); return null; },
+              },
+            );
+          }`,
+        );
+        await service.install(source, { kind: "root" });
+        await expect
+          .poll(() => lines.some((line) => line.includes("boom-service")))
+          .toBe(true);
+        await service.updateSettings(id, { mode: "b" });
+        const rpc = service.getRpcHandler(id, "fail");
+        const own = service.getRpcHandler(id, "setOwn");
+        if (rpc.outcome !== "found" || own.outcome !== "found") {
+          throw new Error("rpc handlers missing");
+        }
+        const failed = await service.invokeRpcHandler(
+          rpc.owner,
+          "fail",
+          rpc.value,
+          null,
+          { kind: "client" },
+          null,
+        );
+        expect(failed).toEqual({
+          ok: false,
+          error: { code: "handler_error", message: "boom-rpc" },
+        });
+        await service.invokeRpcHandler(
+          own.owner,
+          "setOwn",
+          own.value,
+          null,
+          { kind: "client" },
+          null,
+        );
+        const cli = await service.runCliCommand(id, [], {});
+        expect(cli).toMatchObject({ exitCode: 1 });
+        expect(JSON.stringify(cli)).toContain("boom-cli");
+        await service.setEnabled(id, false);
+        await expect
+          .poll(() => lines.filter((line) => line.includes("boom")).length)
+          .toBeGreaterThanOrEqual(7);
+        const boom = lines
+          .filter((line) => line.includes("boom"))
+          .map((line) => line.replaceAll(id, "<id>").replace(/\d+ms/g, "<n>ms"))
+          .sort();
+        expect(boom).toEqual(
+          [
+            "warn [plugin:<id>] cli boomcli failed: boom-cli",
+            "warn [plugin:<id>] install handler failed: boom-install",
+            "warn [plugin:<id>] rpc fail failed: boom-rpc",
+            "warn [plugin:<id>] service crashy crashed: boom-service — restarting in <n>ms",
+            "warn [plugin:<id>] settings onChange listener failed: boom-listener",
+            "warn plugin <id> dispose hook failed: boom-dispose",
+            "warn plugin <id> settings onChange listener failed: boom-listener",
+          ].sort(),
+        );
+      } finally {
+        await service.stop();
+      }
+    },
+  );
+
+  it("runs setup once for a plugin whose code uses an API the worker lacks", async () => {
+    const entry = await install(
+      "once",
+      `export default function plugin(bb: any) {
+        const db = bb.storage.database();
+        bb.storage.migrate(db, ["CREATE TABLE setups (at INTEGER)"]);
+        db.prepare("INSERT INTO setups (at) VALUES (?)").run(Date.now());
+        bb.agents.registerTool({
+          name: "once_echo",
+          description: "Echo",
+          parameters: { type: "object", properties: {} },
+          execute: () => "ok",
+        });
+        bb.http.route("GET", "/setups", (c: any) =>
+          c.json({ setups: db.prepare("SELECT COUNT(*) AS n FROM setups").get().n }),
+        );
+      }`,
+      true,
+    );
+    expect(entry).toMatchObject({ status: "running" });
+    const response = await (
+      await fetch(`${server.baseUrl}/api/v1/plugins/once/http/setups`)
+    ).json();
+    expect(response.setups).toBe(1);
+  });
+
   it("gives a worker plugin the same API surface as an in-process one", async () => {
     const walker = `${THREAD_ID_SOURCE}
       function walk(value: any, prefix: string, out: string[], seen: Set<unknown>) {
