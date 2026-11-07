@@ -5,6 +5,7 @@ import { roundDurationMs } from "./event-loop-delay.js";
 import { EVENT_LOOP_GAP_INTERVAL_MS } from "./event-loop-gaps.js";
 import {
   STALL_WINDOW_THRESHOLD_MS,
+  type ProfileCodeOwner,
   type StallWindowBatch,
 } from "./stall-windows.js";
 type StallWindow = StallWindowBatch["windows"][number];
@@ -12,11 +13,30 @@ type StallWindow = StallWindowBatch["windows"][number];
 export const PROFILE_SAMPLING_INTERVAL_MS = 10;
 const MAX_SAMPLE_MS = 2 * PROFILE_SAMPLING_INTERVAL_MS;
 
-export function createStallSampleSummarizer(profile: Profiler.Profile) {
+export function createStallSampleSummarizer(
+  profile: Profiler.Profile,
+  codeOwners: readonly ProfileCodeOwner[] = [],
+) {
   const nodes = new Map(profile.nodes.map((node) => [node.id, node]));
   const parents = new Map<number, number>();
   for (const node of profile.nodes)
     for (const child of node.children ?? []) parents.set(child, node.id);
+  const owners = new Map<number, string | null>();
+  const ownerOf = (id: number): string | null => {
+    const known = owners.get(id);
+    if (known !== undefined) return known;
+    const url = nodes.get(id)?.callFrame.url ?? "";
+    const direct =
+      url === ""
+        ? undefined
+        : codeOwners.find((entry) => url.includes(entry.location))?.owner;
+    const parent = parents.get(id);
+    const owner =
+      direct ??
+      (parent === undefined || parent === id ? null : ownerOf(parent));
+    owners.set(id, owner);
+    return owner;
+  };
   return (window: StallWindow) => {
     const durations = new Map<number, number>();
     let at = profile.startTime / 1_000;
@@ -72,8 +92,18 @@ export function createStallSampleSummarizer(profile: Profiler.Profile) {
           });
           current = parents.get(current);
         }
-        return { sampledMs: roundDurationMs(duration), frames };
+        return {
+          sampledMs: roundDurationMs(duration),
+          owner: ownerOf(id),
+          frames,
+        };
       });
+    const ownedMs = new Map<string, number>();
+    for (const [id, duration] of durations) {
+      const owner = ownerOf(id);
+      if (owner !== null)
+        ownedMs.set(owner, (ownedMs.get(owner) ?? 0) + duration);
+    }
     return {
       stallAttribution: stacks.length > 0 ? "sampled" : "unattributed",
       sampledMs: roundDurationMs(sampledMs),
@@ -81,6 +111,12 @@ export function createStallSampleSummarizer(profile: Profiler.Profile) {
       unobservedMs: roundDurationMs(
         Math.max(0, window.endedAt - window.startedAt - sampledMs),
       ),
+      owners: [...ownedMs]
+        .sort((left, right) => right[1] - left[1])
+        .map(([owner, duration]) => ({
+          owner,
+          sampledMs: roundDurationMs(duration),
+        })),
       stacks,
     };
   };
@@ -89,9 +125,10 @@ export function createStallSampleSummarizer(profile: Profiler.Profile) {
 export function summarizeStallWindows(
   profile: Profiler.Profile,
   batch: StallWindowBatch,
+  codeOwners: readonly ProfileCodeOwner[],
 ) {
   if (batch.windows.length === 0) return [];
-  const summarize = createStallSampleSummarizer(profile);
+  const summarize = createStallSampleSummarizer(profile, codeOwners);
   return batch.windows.map((window) => ({
     pid: process.pid,
     startedAt: new Date(batch.epochOffsetMs + window.startedAt).toISOString(),

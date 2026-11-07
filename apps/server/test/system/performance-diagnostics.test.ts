@@ -60,6 +60,7 @@ describe("performance diagnostics gates", () => {
       };
       const monitor = await startGatedPerformanceDiagnostics({
         allowed,
+        codeOwners: () => [],
         dataDir,
         db,
         hub,
@@ -100,6 +101,7 @@ describe("performance diagnostics gates", () => {
         expect(monitor.isEnabled()).toBe(false);
         const restarted = await startGatedPerformanceDiagnostics({
           allowed,
+          codeOwners: () => [],
           dataDir,
           db,
           hub,

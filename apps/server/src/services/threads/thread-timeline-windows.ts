@@ -178,18 +178,18 @@ export function createThreadTimelineWindows(
           .cacheKey,
       }),
       () => {
-        const { profile, response: built } = buildThreadTimelineWithProfile(
-          deps.db,
-          thread,
-          {
-            ...surfaceOptions,
-            eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
-            maxSeq,
-            page: request.page,
-            summaryOnly: request.summaryOnly,
-          },
-        );
-        slowTimelineBuildLogger.log({ profile, threadId: thread.id });
+        const {
+          cost,
+          profile,
+          response: built,
+        } = buildThreadTimelineWithProfile(deps.db, thread, {
+          ...surfaceOptions,
+          eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
+          maxSeq,
+          page: request.page,
+          summaryOnly: request.summaryOnly,
+        });
+        slowTimelineBuildLogger.log({ cost, profile, threadId: thread.id });
         const window = shortenTimelineResponseOutputs(built, {
           maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
           preview: !request.includeNestedRows,

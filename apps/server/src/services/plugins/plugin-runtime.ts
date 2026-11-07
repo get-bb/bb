@@ -545,9 +545,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       controller,
       uncaughtError: undefined,
     };
-    const current = serviceContext.run(instance, async () => {
-      await service.record.start(controller.signal);
-    });
+    const current = serviceContext.run(instance, () =>
+      runEventLoopWork(`plugin:${id} service ${service.record.name}`, () =>
+        service.record.start(controller.signal),
+      ),
+    );
     service.current = current;
     current.then(
       () =>
@@ -567,6 +569,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   const reportedStaleErrors = new WeakSet<PluginContextStaleError>();
   const pluginCodeLocations = new Map<string, string>();
+
+  function listPluginCodeOwners(): { location: string; owner: string }[] {
+    return [...pluginCodeLocations].map(([location, pluginId]) => ({
+      location,
+      owner: `plugin:${pluginId}`,
+    }));
+  }
 
   function pluginOwningStack(error: unknown): string | undefined {
     if (!(error instanceof Error) || typeof error.stack !== "string") {
@@ -2010,9 +2019,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
         );
       }
-      await runFactoryTimeBoxed(
-        factory as (api: BbPluginApi) => unknown,
-        handle.api,
+      await runEventLoopWork(`plugin:${row.id} load`, () =>
+        runFactoryTimeBoxed(
+          factory as (api: BbPluginApi) => unknown,
+          handle.api,
+        ),
       );
     } catch (error) {
       for (const rollback of rollbackGenerations.reverse()) rollback();
@@ -2258,6 +2269,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     isBuiltinPluginId,
     isSafeModeExemptRow,
     isSuppressedBySafeMode,
+    listPluginCodeOwners,
     listPluginHooks,
     listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
