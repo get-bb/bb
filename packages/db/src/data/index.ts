@@ -18,6 +18,12 @@ export {
   getThreadConversationOutlineRecord,
   upsertThreadConversationOutlineRecord,
 } from "./thread-conversation-outlines.js";
+export {
+  getTimelineTurnPlanWatermark,
+  listThreadTurnTimelinePlanRecords,
+  upsertThreadTurnTimelinePlanRecord,
+} from "./thread-turn-timeline-plans.js";
+export type { ThreadTurnTimelinePlanRecord } from "./thread-turn-timeline-plans.js";
 
 export {
   createThreadSection,

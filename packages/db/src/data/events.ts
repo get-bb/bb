@@ -69,6 +69,7 @@ import {
   promptHistoryEntries,
   threadConversationOutlines,
   threadDynamicContextFileStates,
+  threadTurnTimelinePlans,
   threadSearchSegments,
   threads,
 } from "../schema.js";
@@ -358,6 +359,9 @@ export function deleteThreadEventSuffixInTransaction(
   if (result.changes > 0) {
     db.delete(threadConversationOutlines)
       .where(eq(threadConversationOutlines.threadId, args.threadId))
+      .run();
+    db.delete(threadTurnTimelinePlans)
+      .where(eq(threadTurnTimelinePlans.threadId, args.threadId))
       .run();
     bumpThreadEventRewriteGeneration(args.threadId);
     rewindResolvedItemPruning(db, {

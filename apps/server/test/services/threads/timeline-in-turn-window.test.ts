@@ -29,6 +29,7 @@ import {
   TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
 } from "../../../src/services/threads/timeline.js";
 import { TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS } from "../../../src/services/threads/timeline-output-shortening.js";
+import { clearTimelineSelectionMemo } from "../../../src/services/threads/timeline-selection-memo.js";
 
 const LARGE_BUDGET = 1_000_000;
 const BYTE_WINDOW_ITEM_COUNT = 250;
@@ -2931,5 +2932,88 @@ describe("page-bounded reads of turns whose rows render flat", () => {
     expect(budgeted.response.modelFallback).toEqual(
       unbudgeted.response.modelFallback,
     );
+  });
+});
+
+describe("finished collapsed turns read from a stored plan", () => {
+  function seedCollapsedTurnWithSteer(db: DbConnection, thread: Thread) {
+    const events: EventInput[] = [...turnEvents(thread, 1, 1)];
+    let sequence = 4;
+    for (let item = 0; item < 300; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `turn-1-item-${item}`),
+      );
+      sequence += 2;
+    }
+    const [steer] = turnEvents(thread, sequence, 2);
+    const steerData = JSON.parse(steer!.data) as Record<string, unknown>;
+    events.push(
+      {
+        ...steer!,
+        data: JSON.stringify({
+          ...steerData,
+          target: { kind: "steer", expectedTurnId: "turn-1" },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: sequence + 1,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ clientRequestId: requestId(2) }),
+      },
+    );
+    sequence += 2;
+    for (let item = 300; item < 600; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `turn-1-item-${item}`),
+      );
+      sequence += 2;
+    }
+    events.push(
+      itemEvent(thread, sequence++, "item/completed", "turn-1", {
+        type: "agentMessage",
+        id: "answer",
+        text: "All done.",
+      }),
+      turnCompletedEvent(thread, sequence++, "turn-1"),
+    );
+    insertEvents(db, noopNotifier, events);
+    return sequence;
+  }
+
+  it("reads only the rows a page renders once the turn's plan is stored", () => {
+    const { db, thread } = setup();
+    seedCollapsedTurnWithSteer(db, thread);
+
+    const first = walkAllPages(db, thread, 100, 1);
+    clearTimelineSelectionMemo(db);
+    const second = walkAllPages(db, thread, 100, 1);
+    const unbudgeted = walkAllPages(db, thread, LARGE_BUDGET);
+
+    expect(first.rows).toEqual(unbudgeted.rows);
+    expect(second.rows).toEqual(unbudgeted.rows);
+    expect(first.maxEventRowCount).toBeGreaterThan(1_200);
+    expect(second.maxEventRowCount).toBeLessThan(100);
+  });
+
+  it("rebuilds the plan when the turn changes after it was stored", () => {
+    const { db, thread } = setup();
+    const sequence = seedCollapsedTurnWithSteer(db, thread);
+    const before = walkAllPages(db, thread, 100, 1);
+    insertEvents(
+      db,
+      noopNotifier,
+      commandItemEvents(thread, sequence, "turn-1", "late-item"),
+    );
+    clearTimelineSelectionMemo(db);
+
+    const after = walkAllPages(db, thread, 100, 1);
+    expect(after.rows).not.toEqual(before.rows);
+    expect(after.rows).toEqual(walkAllPages(db, thread, LARGE_BUDGET).rows);
   });
 });
