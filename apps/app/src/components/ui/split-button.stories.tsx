@@ -115,7 +115,7 @@ export function Overview() {
           mobileTitle="Thread actions"
         />
       </StoryRow>
-      <StoryRow label="icon primary" hint="ThreadWorkspaceOpenButton">
+      <StoryRow label="icon primary" hint="Open workspace header action">
         <SplitButton
           primaryAction={openInVSCodeAction}
           primaryTooltip="Open in VS Code"

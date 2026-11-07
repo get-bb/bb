@@ -31,6 +31,7 @@ import {
 import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { experimentalBadgeSchema } from "@/lib/experimental-badge";
 
 export const CORE_THREAD_ACTION_OWNER = "bb--core";
 
@@ -394,16 +395,34 @@ export function bindThreadAction(
   action: PluginThreadAction,
   requestRename: (threadId: string) => void,
 ): PluginBoundThreadAction {
+  const run = action.run;
   return {
     ...action,
     run: (value) =>
-      containRun(key, () =>
-        action.run({
-          ...(value !== undefined ? { value } : {}),
-          requestRename,
-        }),
-      ),
+      run === undefined
+        ? Promise.resolve()
+        : containRun(key, () =>
+            run({
+              ...(value !== undefined ? { value } : {}),
+              requestRename,
+            }),
+          ),
   };
+}
+
+function checkedAction(action: PluginThreadAction): PluginThreadAction {
+  if (action.popover !== undefined && action.choices !== undefined) {
+    throw new Error("an action cannot set both popover and choices");
+  }
+  if (action.popover === undefined && action.run === undefined) {
+    throw new Error("an action without a popover needs run");
+  }
+  if (action.badge === undefined) return action;
+  const badge = experimentalBadgeSchema.safeParse(action.badge);
+  if (!badge.success) {
+    throw new Error(`invalid badge: ${badge.error.message}`);
+  }
+  return { ...action, badge: badge.data };
 }
 
 function evaluateRecord(
@@ -437,7 +456,11 @@ function evaluateRecord(
       key: record.key,
       pluginId: record.pluginId,
       group: record.registration.group,
-      action: bindThreadAction(record.key, action, requestRename),
+      action: bindThreadAction(
+        record.key,
+        checkedAction(action),
+        requestRename,
+      ),
     };
   } catch (error) {
     reportFailure(
@@ -479,8 +502,24 @@ function evaluateThreadActions(
         });
   return records.flatMap((record) => {
     const entry = evaluateRecord(record, target, registry, requestRename);
-    return entry === null ? [] : [entry];
+    return entry === null ||
+      (placement === "menu" && entry.action.popover !== undefined)
+      ? []
+      : [entry];
   });
+}
+
+const popoverIds = new WeakMap<object, number>();
+let nextPopoverId = 1;
+
+function popoverSignature(key: string, value: unknown): unknown {
+  if (key !== "popover" || typeof value !== "function") return value;
+  let id = popoverIds.get(value);
+  if (id === undefined) {
+    id = nextPopoverId++;
+    popoverIds.set(value, id);
+  }
+  return `popover:${id}`;
 }
 
 interface RetainedThreadActionEntries {
@@ -498,7 +537,7 @@ function retainThreadActionEntries(
   owner: object,
   evaluated: readonly PluginThreadActionEntry[],
 ): readonly PluginThreadActionEntry[] {
-  const signature = JSON.stringify(evaluated);
+  const signature = JSON.stringify(evaluated, popoverSignature);
   let retained = retainedThreadActionEntries.get(owner);
   if (retained === undefined || retained.signature !== signature) {
     const latest = new Map<string, PluginBoundThreadAction>();
@@ -533,8 +572,6 @@ function useThreadEntries(
         { kind: "thread", thread },
         options,
         placement,
-      ).filter(
-        (entry) => placement === "menu" || entry.action.choices === undefined,
       ),
     ),
   );

@@ -240,6 +240,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadActionTarget`
 - `PluginThreadActionChoice`
 - `PluginThreadActionChoices`
+- `PluginThreadActionDisplay`
+- `PluginThreadActionPopoverProps`
 - `PluginThreadActionRunInput`
 - `PluginThreadAction`
 - `PluginThreadActionDataInput`

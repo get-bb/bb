@@ -155,7 +155,7 @@ export function subscribeExtendedIcons(listener: () => void): () => void {
   };
 }
 
-interface AppIconDefinition {
+export interface AppIconDefinition {
   component: ComponentType<{ className?: string }>;
   key: string;
 }
@@ -170,8 +170,21 @@ export function setAppIcons(
   for (const listener of appIconListeners) listener();
 }
 
+let coreIcons: ReadonlyMap<string, AppIconDefinition> = new Map();
+
+export function setCoreIcons(
+  next: ReadonlyMap<string, AppIconDefinition>,
+): void {
+  coreIcons = next;
+  for (const listener of appIconListeners) listener();
+}
+
+export function getCoreIcons(): ReadonlyMap<string, AppIconDefinition> {
+  return coreIcons;
+}
+
 export function getAppIcon(name: string): AppIconDefinition | undefined {
-  return appIcons.get(name);
+  return coreIcons.get(name) ?? appIcons.get(name);
 }
 
 export function subscribeAppIcons(listener: () => void): () => void {

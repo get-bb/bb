@@ -162,7 +162,7 @@ function renderMove(
 
 function run(action: PluginThreadAction | null, value: string) {
   if (action === null) throw new Error("Move is hidden");
-  return action.run({ value, requestRename: () => {} });
+  return action.run?.({ value, requestRename: () => {} });
 }
 
 describe("Move to section", () => {

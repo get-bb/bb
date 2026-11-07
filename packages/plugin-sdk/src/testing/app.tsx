@@ -683,7 +683,7 @@ function TestThreadActionRows({
     ...inline.map((item) => ({
       key: item.key,
       action: item.action,
-      run: () => item.action.run({ requestRename: rename }),
+      run: async () => item.action.run?.({ requestRename: rename }),
     })),
   ];
   return (
@@ -1459,7 +1459,10 @@ function TestVoiceInputTextarea({
  * the target path, with the plugin's Preview body drawn from the file the
  * `filePreview` option returns for the target (nothing when it returns null).
  */
-function TestFilePreview({ target, renderPreview }: ExperimentalFilePreviewProps) {
+function TestFilePreview({
+  target,
+  renderPreview,
+}: ExperimentalFilePreviewProps) {
   const file = useSlotEnv("experimental_FilePreview").filePreview(target);
   return (
     <div data-testid="bb-file-preview" data-path={target.path}>
