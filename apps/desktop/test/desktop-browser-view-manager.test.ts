@@ -489,13 +489,22 @@ const electronMock = vi.hoisted(() => {
       this.id = id;
     }
 
+    public historyCommitted = true;
+
     public readonly navigationHistory = {
-      getAllEntries: () => [{ url: this.getURL(), title: this.getTitle() }],
+      getAllEntries: () =>
+        this.historyCommitted
+          ? [{ url: this.getURL(), title: this.getTitle() }]
+          : [],
       getActiveIndex: () => 0,
       length: () => 1,
-      restore: vi.fn(async ({ entries }: { entries: { url: string }[] }) => {
-        await this.loadURL(entries[0]!.url);
-      }),
+      restore: vi.fn(
+        ({ entries, index }: { entries: { url: string }[]; index: number }) => {
+          const entry = entries[index];
+          if (entry === undefined) throw new Error("Invalid index.");
+          return this.loadURL(entry.url);
+        },
+      ),
       canGoBack: (): boolean => this.canGoBackResult,
       canGoForward: (): boolean => this.canGoForwardResult,
       goBack: (): void => {
@@ -4803,6 +4812,22 @@ describe("hidden browser retention", () => {
       },
     });
     expect(electronMock.fakeViews).toHaveLength(8);
+    manager.destroyAll();
+  });
+
+  it("keeps a hidden page with no committed navigation alive so revealing it cannot fail", () => {
+    vi.useFakeTimers();
+    const { manager, hostWindow, view } = createRendererRecoveryFixture(92);
+    view.webContents.historyCommitted = false;
+    hideTab(manager, hostWindow, "browser:a");
+    vi.advanceTimersByTime(6 * 60_000);
+    expect(view.webContents.isDestroyed()).toBe(false);
+    manager.setVisibleWithoutFocus({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(electronMock.fakeViews).toHaveLength(1);
+    expect(view.visible).toBe(true);
     manager.destroyAll();
   });
 
