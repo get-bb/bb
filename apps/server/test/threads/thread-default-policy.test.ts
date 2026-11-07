@@ -487,7 +487,14 @@ describe("resolveCreateThreadEnvironment", () => {
           path: "/tmp/personal-child-parent",
           providerOwnsPath: true,
           status: "ready",
-          environmentProvider: null,
+          environmentProvider: {
+            environmentProviderId: "personal-workspace",
+            instanceKey: null,
+            selection: {
+              machine: { type: "existing", hostId: host.id },
+              inputs: null,
+            },
+          },
         });
         await expect(
           resolveCreateThreadEnvironment(harness.deps, {

@@ -942,6 +942,80 @@ describe("environment providers are asked inside provisioning", () => {
     });
   });
 
+  it.each([
+    { type: "project-default" as const },
+    {
+      type: "host" as const,
+      workspace: { type: "personal" as const },
+    },
+    {
+      type: "provider" as const,
+      environmentProviderId: "personal-workspace",
+      machine: {
+        type: "existing" as const,
+        hostId: "host-attached-personal-parent",
+      },
+      inputs: null,
+    },
+  ])(
+    "creates a fresh personal workspace for a $type child of an attached-directory parent",
+    async (environment) => {
+      await withTestHarness(async (harness) => {
+        installTargets([
+          {
+            id: "personal-workspace",
+            provision: () => ({
+              action: "wait",
+              reason: "Preparing workspace",
+            }),
+            requiresProjectless: true,
+          },
+        ]);
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-attached-personal-parent",
+        });
+        seedPrimaryHost(harness.deps, host.id);
+        ensurePersonalProject(harness.db);
+        const attachedEnvironment = createEnvironment(harness.db, harness.hub, {
+          hostId: host.id,
+          projectId: PERSONAL_PROJECT_ID,
+          path: "/tmp/attached-personal-parent",
+          providerOwnsPath: false,
+          status: "ready",
+          environmentProvider: null,
+        });
+        const parent = seedThread(harness.deps, {
+          environmentId: attachedEnvironment.id,
+          projectId: PERSONAL_PROJECT_ID,
+          status: "idle",
+        });
+
+        const child = await createThreadFromRequest(harness.deps, {
+          environment,
+          input: textInput("Start child"),
+          origin: "cli",
+          parentThreadId: parent.id,
+          projectId: PERSONAL_PROJECT_ID,
+          providerId: "codex",
+          model: "requested-model",
+          startedOnBehalfOf: null,
+        });
+
+        expect(getThread(harness.db, child.id)?.parentThreadId).toBe(parent.id);
+        expect(
+          getThreadProvisionContext(harness.db, child.id)?.request
+            .environmentIntent,
+        ).toEqual({
+          type: "provider",
+          environmentProviderId: "personal-workspace",
+          machine: { type: "existing", hostId: host.id },
+          inputs: null,
+          selectionResolved: true,
+        });
+      });
+    },
+  );
+
   it("opens the workspace-setup block and parks the thread starting on a wait", async () => {
     await withTestHarness(async (harness) => {
       const contexts: TestEnvironmentProviderContext[] = [];
