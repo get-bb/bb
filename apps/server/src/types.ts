@@ -1,5 +1,5 @@
 import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
-import type { DbConnection } from "@bb/db";
+import type { DbConnection, WalCheckpointer } from "@bb/db";
 import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
@@ -61,6 +61,7 @@ export interface AppDeps {
   terminalSessions: TerminalSessionLifecycle;
   watchInterests: WatchInterestCoordinator;
   sharedPorts: HostSharedPortCoordinator;
+  walCheckpointer: WalCheckpointer;
 }
 
 export interface ServerAppDeps extends AppDeps {

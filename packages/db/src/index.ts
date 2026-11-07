@@ -6,6 +6,11 @@ export type {
   SlowDbQueryLogger,
   SlowDbQueryLogFields,
 } from "./connection.js";
+export { startWalCheckpointer } from "./wal-checkpointer.js";
+export type {
+  WalCheckpointer,
+  WalCheckpointLogger,
+} from "./wal-checkpointer.js";
 
 export * from "./schema.js";
 export {
