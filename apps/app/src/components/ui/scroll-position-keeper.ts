@@ -146,7 +146,7 @@ export class ScrollPositionKeeper {
   private inputUntil = Number.NEGATIVE_INFINITY;
   private touchStartScrollTop = 0;
   private userScrolled = false;
-  private scrollMovedAt = Number.NEGATIVE_INFINITY;
+  private overscrolledAt = Number.NEGATIVE_INFINITY;
   private settleTimeout: number | null = null;
   private clampFrame: number | null = null;
   private attachFrame: number | null = null;
@@ -239,7 +239,6 @@ export class ScrollPositionKeeper {
       this.touching = false;
       if (Math.abs(scrollElement.scrollTop - this.touchStartScrollTop) >= 1) {
         this.gestureScrolled = true;
-        this.scrollMovedAt = window.performance.now();
       }
       if (this.gestureScrolled) {
         this.extendInput(MOMENTUM_SESSION_MS);
@@ -490,6 +489,7 @@ export class ScrollPositionKeeper {
     const scrollElement = this.options.getScrollElement();
     if (scrollElement === null) return;
     const scrollTop = scrollElement.scrollTop;
+    this.noteOverscroll(scrollElement, scrollTop);
     const previous = this.ownScrollTop;
     if (previous !== null && Math.abs(scrollTop - previous) < MIN_WRITE_PX) {
       return;
@@ -512,7 +512,6 @@ export class ScrollPositionKeeper {
     this.extendInput(SESSION_EXTENSION_MS);
     if (this.touching || this.pointerDown) this.gestureScrolled = true;
     this.ownScrollTop = scrollTop;
-    this.scrollMovedAt = window.performance.now();
     this.userScrolled = true;
     this.pendingRestore = null;
     const movedDown = previous === null || scrollTop > previous;
@@ -560,6 +559,7 @@ export class ScrollPositionKeeper {
   ): void {
     const scrollTop = scrollElement.scrollTop;
     const max = this.refreshExtent(scrollElement);
+    this.noteOverscroll(scrollElement, scrollTop, max);
     const width = scrollElement.clientWidth;
     const widthChanged =
       this.reconciledWidth > 0 && Math.abs(this.reconciledWidth - width) >= 1;
@@ -582,7 +582,6 @@ export class ScrollPositionKeeper {
     if (navigated) {
       this.userScrolled = true;
       this.pendingRestore = null;
-      this.scrollMovedAt = window.performance.now();
       this.setPosition(this.capture(scrollElement) ?? FREE);
     } else if (
       movement !== 0 &&
@@ -590,7 +589,6 @@ export class ScrollPositionKeeper {
       this.isInputSession()
     ) {
       this.position.offset -= movement;
-      this.scrollMovedAt = window.performance.now();
     }
     this.ownScrollTop = scrollTop;
     const restored = this.advancePendingRestore(scrollElement);
@@ -904,17 +902,34 @@ export class ScrollPositionKeeper {
     return this.maxScrollTop;
   }
 
+  private noteOverscroll(
+    scrollElement: HTMLElement,
+    scrollTop: number,
+    max?: number,
+  ): void {
+    if (!this.options.deferWritesWhileScrolling) return;
+    const end =
+      max ??
+      Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
+    if (scrollTop < 0 || scrollTop > end + 0.5) {
+      this.overscrolledAt = window.performance.now();
+    }
+  }
+
   private shouldDefer(scrollTop: number, max: number): boolean {
     if (!this.options.deferWritesWhileScrolling) return false;
-    if (this.touching) return true;
-    if (window.performance.now() - this.scrollMovedAt < SCROLL_SETTLE_MS) {
-      return true;
-    }
-    return scrollTop < 0 || scrollTop > max;
+    if (scrollTop < 0 || scrollTop > max) return true;
+    return (
+      window.performance.now() - this.overscrolledAt < SCROLL_SETTLE_MS
+    );
   }
 
   private scheduleDeferredWrite(): void {
     if (this.deferred === 0 || this.settleTimeout !== null) return;
+    const settleMs = Math.max(
+      16,
+      SCROLL_SETTLE_MS - (window.performance.now() - this.overscrolledAt),
+    );
     this.settleTimeout = window.setTimeout(() => {
       this.settleTimeout = null;
       const scrollElement = this.options.getScrollElement();
@@ -926,7 +941,7 @@ export class ScrollPositionKeeper {
       }
       this.flushDeferred();
       this.reconcile();
-    }, SCROLL_SETTLE_MS);
+    }, settleMs);
   }
 
   private flushDeferred(): void {
