@@ -67,6 +67,9 @@ Inspecting:
     --self                                 Target current thread
 
   Shows pull request status for the attached environment branch when available.
+  An archived thread's status line names the archive time, as in `Status: idle
+  (archived 11/6/2026, 4:18:02 PM)`; status alone is the run state, so check
+  `thread.archivedAt` in `--json`.
   Read the thread's git status and diff with `bb git status|diff
   <environment-id>`; `--json` prints the environment ID as `environment.id`.
   The deprecated `--work-status`, `--git-diff`, `--diff-target`, `--diff-sha`

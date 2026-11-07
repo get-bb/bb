@@ -352,22 +352,12 @@ function withPluginThreadAttribution<
   return { ...args, ...attribution };
 }
 
-function wrapSdkForPlugin(
-  sdk: BbSdk,
-  pluginId: string,
-  rpcCallerSdk: BbSdk,
-): PluginBbSdk {
+function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
   return {
     ...sdk,
     environments: {
       ...sdk.environments,
-      ...createRetiredEnvironmentMembers(rpcCallerSdk.plugins.callRpc),
-    },
-    plugins: {
-      ...sdk.plugins,
-      callRpc(args) {
-        return rpcCallerSdk.plugins.callRpc(args);
-      },
+      ...createRetiredEnvironmentMembers(sdk.plugins.callRpc),
     },
     threads: {
       ...sdk.threads,
@@ -1453,21 +1443,19 @@ export function createPluginApi(options: {
     experimental_aiServices,
     get sdk(): PluginBbSdk {
       assertLive();
-      const sdk = getSdk();
       const loopbackBaseUrl = getLoopbackBaseUrl();
-      if (!sdk || loopbackBaseUrl === undefined) {
+      if (!getSdk() || loopbackBaseUrl === undefined) {
         throw new Error(
           "bb.sdk is not available until the server is listening — " +
             "use it inside handlers, services, or timers, not at factory load time",
         );
       }
       wrappedSdk ??= wrapSdkForPlugin(
-        sdk,
-        pluginId,
         createPluginRpcCallerSdk({
           baseUrl: loopbackBaseUrl,
           token: rpcCaller.token,
         }),
+        pluginId,
       );
       return wrappedSdk;
     },

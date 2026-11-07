@@ -22,12 +22,27 @@ describe("bb thread action command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  function stubArchivedThread(threadId: string, archivedAt: number) {
+    return vi.fn(async () =>
+      fixtures.makeThread({
+        id: threadId,
+        projectId: "proj-1",
+        providerId: "codex",
+        status: "idle",
+        archivedAt,
+      }),
+    );
+  }
+
   it("bb thread archive sends the thread id from args", async () => {
     const archivePost = vi.fn(async () => ({
       ok: true,
       archivedThreadIds: ["thread-archive-1"],
     }));
-    stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
+    stubServerApi({
+      "v1.threads.:id.archive-all.$post": archivePost,
+      "v1.threads.:id.$get": stubArchivedThread("thread-archive-1", 1),
+    });
 
     await runCommand(["thread", "archive", "thread-archive-1"], register);
 
@@ -44,7 +59,10 @@ describe("bb thread action command output", () => {
       ok: true,
       archivedThreadIds: ["thread-child-1", "thread-archive-1"],
     }));
-    stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
+    stubServerApi({
+      "v1.threads.:id.archive-all.$post": archivePost,
+      "v1.threads.:id.$get": stubArchivedThread("thread-archive-1", 1),
+    });
 
     await runCommand(["thread", "archive", "thread-archive-1"], register);
 
@@ -56,13 +74,56 @@ describe("bb thread action command output", () => {
     );
   });
 
+  it("bb thread archive says when an already-archived thread was archived", async () => {
+    const archivedAt = 1_700_000_000_000;
+    stubServerApi({
+      "v1.threads.:id.archive-all.$post": vi.fn(async () => ({
+        ok: true,
+        archivedThreadIds: [],
+      })),
+      "v1.threads.:id.$get": stubArchivedThread("thread-old-1", archivedAt),
+    });
+
+    await runCommand(["thread", "archive", "thread-old-1"], register);
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      `Thread thread-old-1 was already archived at ${new Date(archivedAt).toLocaleString()}`,
+    ]);
+  });
+
+  it("bb thread archive --json reports already-archived threads", async () => {
+    const archivedAt = 1_700_000_000_000;
+    stubServerApi({
+      "v1.threads.:id.archive-all.$post": vi.fn(async () => ({
+        ok: true,
+        archivedThreadIds: ["thread-child-1"],
+      })),
+      "v1.threads.:id.$get": stubArchivedThread("thread-old-1", archivedAt),
+    });
+
+    await runCommand(["thread", "archive", "thread-old-1", "--json"], register);
+
+    expect(
+      JSON.parse(collectLogLines(vi.mocked(console.log)).join("\n")),
+    ).toEqual({
+      ok: true,
+      threadId: "thread-old-1",
+      alreadyArchived: true,
+      archivedAt,
+      archivedThreadIds: ["thread-child-1"],
+    });
+  });
+
   it("bb thread archive --self resolves from BB_THREAD_ID", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-archive-2");
     const archivePost = vi.fn(async () => ({
       ok: true,
       archivedThreadIds: ["thread-archive-2"],
     }));
-    stubServerApi({ "v1.threads.:id.archive-all.$post": archivePost });
+    stubServerApi({
+      "v1.threads.:id.archive-all.$post": archivePost,
+      "v1.threads.:id.$get": stubArchivedThread("thread-archive-2", 1),
+    });
 
     await runCommand(["thread", "archive", "--self"], register);
 

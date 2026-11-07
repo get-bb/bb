@@ -78,6 +78,11 @@ Lifecycle:
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
 
+  Archiving an already-archived thread keeps its original archive time and
+  prints when it was archived; `--json` reports `alreadyArchived` and
+  `archivedAt`. The server logs each archive and unarchive with the thread IDs
+  and the caller (app, CLI with the calling BB_THREAD_ID, plugin, or API).
+
   Archive is not a hard stop: for 30 seconds a running turn and the thread's
   terminals keep going, and unarchiving within that window leaves everything in
   place. Use `thread stop` to end a run now.

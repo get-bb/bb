@@ -51,7 +51,9 @@ Cleanup waits for stopped threads and online persistent machines. Pending cleanu
 survives reloads and retries every minute; unarchiving or deleting cancels it, and
 turning the setting off discards pending work on the next cleanup pass. Failures
 are logged and retried. Threads without an environment need a completed scan to
-identify their storage machine, just like clear-thread.
+identify their storage machine, just like clear-thread. Each clear logs the
+thread ID, its archive time and the bytes removed, so a cleared archive can be
+told apart from a live thread that lost its storage.
 
 Delete development data when its checkout is removed defaults to off and is
 independent of archive cleanup. Set `--delete-dev-data-on-checkout-removal` to
