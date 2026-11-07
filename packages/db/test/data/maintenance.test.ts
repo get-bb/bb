@@ -8,13 +8,15 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   dropDeferredLegacyTables,
-  getDatabaseAutoVacuumMode,
-  getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
-  runIncrementalVacuum,
 } from "../../src/data/maintenance.js";
+import {
+  getDatabaseAutoVacuumMode,
+  getDatabaseFreelistStats,
+  runIncrementalVacuum,
+} from "../../src/sqlite-maintenance.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread, markThreadDeleted } from "../../src/data/threads.js";

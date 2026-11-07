@@ -193,6 +193,10 @@ after restarting bb, and terminals keep normal priority.
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
+`isolatedPluginServers` runs the server code of plugins installed from git or
+npm in their own worker threads, so a slow plugin cannot freeze bb; plugins
+that use APIs a worker cannot host yet stay in-process, and toggling it
+reloads those plugins. See `bb guide plugins`.
 `resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
 machine restart cut off, and wakes idle threads whose background work it
 stopped, a few seconds after the machine's daemon comes back; see `bb guide

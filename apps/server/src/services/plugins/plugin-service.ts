@@ -2,7 +2,6 @@ import {
   capturePluginUse,
   forgetPluginRecommendation,
 } from "./plugin-use-telemetry.js";
-import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -39,15 +38,14 @@ import {
 import {
   enforcePluginCliOutputLimit,
   normalizePluginAgentConfiguration,
-  normalizeRpcJsonResult,
-  readPluginRpcRefusal,
   RESERVED_AGENT_TOOL_NAMES,
   adoptHttpRouteResponse,
   validatePluginProviderEnvEntries,
-  validateRpcValue,
   validateSettingsUpdate,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
+import { PluginRpcBoundaryError } from "./plugin-rpc-method.js";
+import { isPluginServerIsolationCandidate } from "./plugin-server-isolation.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { buildMutablePluginHost } from "./mutable-plugin-artifacts.js";
 import {
@@ -74,6 +72,7 @@ import {
   deletePluginSchedules,
   forgetPluginProviders,
   getDisabledPluginProviderCatalog,
+  getExperiments,
   getInstalledPlugin,
   getInstalledPluginRegistration,
   getPluginSafeMode,
@@ -352,6 +351,8 @@ export interface PluginService {
    * plugin database maintenance sweep.
    */
   listOpenPluginDatabases(): OpenPluginDatabase[];
+  maintainIsolatedPluginDatabases(): Promise<void>;
+  applyServerIsolationExperiment(): Promise<void>;
   /**
    * Asset backing GET /plugins/:id/assets/app.{js,css}: a reader for its
    * bytes (app.js from disk, app.css as loaded, without the Tailwind rules the
@@ -504,27 +505,6 @@ const DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS = 5_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
-
-class PluginRpcBoundaryError extends Error {
-  constructor(readonly rpcError: PluginRpcError) {
-    const issues = rpcError.issues
-      ?.slice(0, 3)
-      .map((issue) =>
-        issue.path
-          ? `${issue.path.join(".")}: ${issue.message}`
-          : issue.message,
-      )
-      .join("; ");
-    const summary =
-      issues && issues.length > 300 ? `${issues.slice(0, 299)}…` : issues;
-    super(summary ? `${rpcError.message} (${summary})` : rpcError.message);
-    this.name = "PluginRpcBoundaryError";
-  }
-}
-
-function throwRpcBoundaryError(error: PluginRpcError): never {
-  throw new PluginRpcBoundaryError(error);
-}
 
 function normalizeAgentToolResult(
   name: string,
@@ -1957,6 +1937,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         : { ok: false, error: failures.join("; "), plugins };
     },
 
+    async applyServerIsolationExperiment() {
+      const isolate = getExperiments(deps.db).isolatedPluginServers;
+      const rows = listInstalledPlugins(deps.db).filter((row) => {
+        const plugin = loaded.get(row.id);
+        return (
+          plugin !== undefined &&
+          isPluginServerIsolationCandidate(row) &&
+          (plugin.serverWorker !== null) !== isolate
+        );
+      });
+      for (const row of rows) {
+        await withLifecycleLock(row.id, async () => {
+          const fresh = getInstalledPlugin(deps.db, row.id);
+          if (fresh !== undefined && loaded.has(row.id)) await loadOne(fresh);
+        });
+      }
+      if (rows.length > 0) notifyPluginsChanged();
+    },
+
     getApi(id) {
       return loaded.get(id)?.handle.api;
     },
@@ -1974,6 +1973,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           .filter((database) => database.open)
           .map((database) => ({ pluginId, database })),
       );
+    },
+
+    async maintainIsolatedPluginDatabases() {
+      for (const [pluginId, plugin] of [...loaded]) {
+        if (plugin.serverWorker === null) continue;
+        try {
+          await plugin.serverWorker.maintainDatabases();
+        } catch (error) {
+          deps.logger.warn(
+            { err: error, pluginId },
+            "Plugin worker database maintenance failed",
+          );
+        }
+      }
     },
 
     getAppAsset(id, kind) {
@@ -2230,41 +2243,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         owner,
         `rpc ${method}`,
         async (invocationSignal) => {
-          const parsedInput = await validateRpcValue(
-            handler.inputSchema,
-            input,
-            "input",
-            throwRpcBoundaryError,
-          );
-          let result: unknown;
-          try {
-            result = await handler.handler(parsedInput, {
-              experimental_caller: caller,
-              experimental_signal: invocationSignal,
-            });
-          } catch (error) {
-            const refusal = readPluginRpcRefusal(error);
-            if (refusal === null) throw error;
-            return { ok: false as const, error: refusal };
-          }
-          const parsedOutput = await validateRpcValue(
-            handler.outputSchema,
-            result,
-            "output",
-            throwRpcBoundaryError,
-          );
-          const resultValue = normalizeRpcJsonResult(
-            parsedOutput,
-            throwRpcBoundaryError,
-          );
-          const { invalidated } = rpcResponseTags(
-            handler.declarations,
-            parsedInput,
-            parsedOutput,
-          );
-          if (invalidated.length > 0)
-            deps.hub.notifyPluginChanged(owner.pluginId, invalidated);
-          return { ok: true as const, result: resultValue };
+          const invocation = await handler.invoke(input, {
+            experimental_caller: caller,
+            experimental_signal: invocationSignal,
+          });
+          if (!invocation.ok) return invocation;
+          if (invocation.invalidated.length > 0)
+            deps.hub.notifyPluginChanged(owner.pluginId, invocation.invalidated);
+          return { ok: true as const, result: invocation.result };
         },
         signal ?? undefined,
       );

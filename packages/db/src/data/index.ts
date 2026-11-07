@@ -550,17 +550,19 @@ export {
 } from "./sweeps.js";
 export {
   dropDeferredLegacyTables,
+  getDatabaseMaintenanceActivity,
+  isDatabaseMaintenanceIdle,
+  listDeferredLegacyTables,
+} from "./maintenance.js";
+export {
   runIncrementalVacuum,
   getDatabaseAutoVacuumMode,
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS,
   getDatabaseFreelistStats,
-  getDatabaseMaintenanceActivity,
-  isDatabaseMaintenanceIdle,
-  listDeferredLegacyTables,
   shouldRunIncrementalVacuum,
-} from "./maintenance.js";
+} from "../sqlite-maintenance.js";
 export * from "./machines.js";
 export {
   advanceThreadPruning,

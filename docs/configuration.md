@@ -1006,6 +1006,27 @@ either way.
   the background task; an older Android app in the foreground would list the
   silent push as a blank notification.
   The plugin reads it on each delivery and read, so a toggle applies live.
+- `isolatedPluginServers` runs the server entry of each plugin installed from
+  git or npm (marketplace and direct installs; not bundled or path plugins) in
+  its own Node worker thread instead of on the bb server's event loop, so a
+  plugin's slow SQLite queries or synchronous loops cannot stall core. RPC
+  handlers, HTTP routes (streamed both ways, with the request's abort signal),
+  background services and schedules, event and settings listeners, CLI
+  commands, `onInstall`/`onDispose`, `bb.sdk`, and `bb.storage.database()`
+  (still synchronous, opened inside the worker) behave as in-process. Logs,
+  settings, status, load timeouts, service crash backoff, and uncaught-error
+  handling follow the same rules; a worker that exits (for example
+  `process.exit()` or running out of memory) marks the plugin `error` and bb
+  restarts it with the background-service backoff instead of taking the
+  server down. Each worker costs about 75–145 ms to start and roughly
+  25–70 MB of memory. A plugin that registers something a worker cannot host
+  yet (agent tools, agent configuration or instructions, providers, mention
+  providers, message hooks, environment, machine, server-access or AI-service
+  providers, WebSocket routes, host-plugin clients, tunnel APIs, or settings
+  with `experimental_schema`) is loaded in-process instead, and bb logs which
+  call kept it there. Bundled first-party plugins always run in-process
+  because they use those core objects directly. Turning the experiment on or
+  off reloads the affected plugins.
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel

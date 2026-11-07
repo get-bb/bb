@@ -26,14 +26,11 @@ import {
 } from "../machines/provider-orchestration.js";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
-  DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
-  DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   deleteExpiredRetainedEventOutputs,
   EXITED_TERMINAL_SESSION_ROW_RETENTION_MS,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
-  getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   getEnvironment,
   isDatabaseMaintenanceIdle,
@@ -47,8 +44,6 @@ import {
   pruneClosedSessions,
   pruneExitedTerminalSessions,
   RETAINED_EVENT_OUTPUT_TARGETS,
-  runIncrementalVacuum,
-  shouldRunIncrementalVacuum,
   threadPurges,
   threads,
   DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
@@ -89,7 +84,10 @@ import {
 } from "../threads/queued-messages.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 import type { OpenPluginDatabase } from "../plugins/plugin-service.js";
-import type Database from "better-sqlite3";
+import {
+  maintainPluginDatabases,
+  runIncrementalVacuumAboveFreelistThreshold,
+} from "./sqlite-incremental-vacuum.js";
 import {
   defineItemSweep,
   defineSingleItemSweep,
@@ -114,10 +112,10 @@ type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps &
 
 interface PluginDatabaseDirectory {
   listOpenPluginDatabases(): OpenPluginDatabase[];
+  maintainIsolatedPluginDatabases(): Promise<void>;
 }
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
-const DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES = 256;
 const EXITED_TERMINAL_SESSION_PRUNE_BATCH_SIZE = 1_000;
 const COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP = 64;
 const RETAINED_EVENT_OUTPUT_EXPIRY_MAX_ADVANCES_PER_SWEEP = 256;
@@ -215,98 +213,16 @@ export async function runPeriodicSweepJobs(
   }
 }
 
-async function runChunkedIncrementalVacuum(
-  client: Database.Database,
-  walCheckpointer: AppDeps["walCheckpointer"],
-): Promise<ReturnType<typeof runIncrementalVacuum>> {
-  let first: ReturnType<typeof runIncrementalVacuum> | null = null;
-  let last: ReturnType<typeof runIncrementalVacuum> | null = null;
-  for (
-    let vacuumedPages = 0;
-    vacuumedPages < DATABASE_INCREMENTAL_VACUUM_MAX_PAGES;
-    vacuumedPages += DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES
-  ) {
-    if (last !== null) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    await walCheckpointer.checkpoint(client);
-    last = runIncrementalVacuum(client, {
-      maxPages: Math.min(
-        DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES,
-        DATABASE_INCREMENTAL_VACUUM_MAX_PAGES - vacuumedPages,
-      ),
-    });
-    await walCheckpointer.checkpoint(client);
-    first ??= last;
-    if (last.after.freelistCount === 0) {
-      break;
-    }
-  }
-  if (first === null || last === null) {
-    throw new Error("Incremental vacuum ran no chunks");
-  }
-  return { before: first.before, after: last.after };
-}
-
-interface IncrementalVacuumLogArgs {
-  logFields: { pluginId?: string };
-  logger: AppDeps["logger"];
-  walCheckpointer: AppDeps["walCheckpointer"];
-}
-
-async function runIncrementalVacuumAboveFreelistThreshold(
-  client: Database.Database,
-  args: IncrementalVacuumLogArgs,
-): Promise<void> {
-  const freelistStats = getDatabaseFreelistStats(client);
-  if (
-    !shouldRunIncrementalVacuum({
-      minFreelistPages: DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
-      stats: freelistStats,
-    })
-  ) {
-    args.logger.debug(
-      { ...args.logFields, freelistStats },
-      "Incremental database vacuum skipped below freelist threshold",
-    );
-    return;
-  }
-  try {
-    const result = await runChunkedIncrementalVacuum(
-      client,
-      args.walCheckpointer,
-    );
-    args.logger.info(
-      { ...args.logFields, result },
-      "Incremental database vacuum completed",
-    );
-  } catch (error) {
-    args.logger.warn(
-      { ...args.logFields, err: error },
-      "Incremental database vacuum failed",
-    );
-  }
-}
-
 export async function runPluginDatabaseMaintenanceSweep(
   deps: Pick<AppDeps, "logger" | "walCheckpointer"> & {
     plugins: PluginDatabaseDirectory;
   },
 ): Promise<void> {
-  for (const { database, pluginId } of deps.plugins.listOpenPluginDatabases()) {
-    if (
-      !database.open ||
-      database.inTransaction ||
-      getDatabaseAutoVacuumMode(database) !== "incremental"
-    ) {
-      continue;
-    }
-    await runIncrementalVacuumAboveFreelistThreshold(database, {
-      logFields: { pluginId },
-      logger: deps.logger,
-      walCheckpointer: deps.walCheckpointer,
-    });
-  }
+  await maintainPluginDatabases(deps.plugins.listOpenPluginDatabases(), {
+    logger: deps.logger,
+    checkpoint: (database) => deps.walCheckpointer.checkpoint(database),
+  });
+  await deps.plugins.maintainIsolatedPluginDatabases();
 }
 
 export async function runDatabaseMaintenanceSweep(
@@ -344,7 +260,7 @@ export async function runDatabaseMaintenanceSweep(
   await runIncrementalVacuumAboveFreelistThreshold(deps.db.$client, {
     logFields: {},
     logger: deps.logger,
-    walCheckpointer: deps.walCheckpointer,
+    checkpoint: (database) => deps.walCheckpointer.checkpoint(database),
   });
 }
 
