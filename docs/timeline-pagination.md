@@ -49,8 +49,17 @@ delegation parents of rows it reads, the children of delegations it owns (on
 the latest page, of every delegation it reads), and the turn's lifecycle,
 accepted input, compaction and provider events.
 
-A finished turn under the collapsed display that started before the window is
-still read whole, because its summary rows depend on all of it.
+A finished turn of at least 1,000 events under the collapsed display stores its
+row plan in `thread_turn_timeline_plans` the first time a page reads it whole:
+the summary rows, and the id and source range of each message it shows
+ungrouped. Later pages take the summary rows from the plan and read only the
+events of the ungrouped messages they show, plus the turn's context events. A
+plan is keyed by a projection version, the in-process rewrite generation, the
+thread status and the display settings that change the output, and is used
+only while the greatest sequence of the turn's events, its delegations'
+children and its open items is unchanged. Rewriting the thread's history
+suffix deletes its plans. Pages with `includeNestedRows`, which
+`bb thread log --format verbose` uses, read the turn whole.
 
 Content cuts continue inside the same window bounds, reconstructing the same
 group so leaf offsets remain meaningful. The current cursor format is v3;

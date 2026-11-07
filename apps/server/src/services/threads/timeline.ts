@@ -121,6 +121,12 @@ import { parseStoredEvent } from "./thread-data.js";
 import { withCompactionOffer } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 import {
+  loadValidTimelineTurnPlans,
+  storeTimelineTurnPlans,
+  timelineTurnPlanProjectionKey,
+  type LoadedTimelineTurnPlan,
+} from "./timeline-turn-plans.js";
+import {
   forgetTimelineProjectionFolds,
   keepTimelineProjectionFold,
 } from "./timeline-projection-fold.js";
@@ -579,6 +585,55 @@ function databaseTimelineRowSource(
 }
 
 const SMALL_TURN_OUTSIDE_EVENTS = 256;
+const PLAN_MIN_TURN_EVENTS = 1_000;
+const PLANNED_TURN_MAX_RANGES = 32;
+
+function listPlannedTurnRows(
+  source: TimelineSelectionRowSource,
+  args: {
+    beforeSequence: number;
+    plans: ReadonlyMap<string, LoadedTimelineTurnPlan>;
+    sequenceStart: number;
+    windowArgs: Omit<
+      Parameters<TimelineSelectionRowSource["listTurnRows"]>[0],
+      "turnIds"
+    >;
+  },
+): StoredEventRow[] {
+  return [...args.plans].flatMap(([turnId, loaded]) => {
+    const ranges = loaded.plan.items
+      .flatMap((item) =>
+        item.kind === "message" &&
+        item.sourceSeqStart < args.beforeSequence &&
+        item.sourceSeqEnd >= args.sequenceStart
+          ? [{ end: item.sourceSeqEnd, start: item.sourceSeqStart }]
+          : [],
+      )
+      .sort((left, right) => left.start - right.start)
+      .reduce<{ end: number; start: number }[]>((merged, range) => {
+        const last = merged[merged.length - 1];
+        if (last !== undefined && range.start <= last.end + 1) {
+          last.end = Math.max(last.end, range.end);
+        } else {
+          merged.push({ ...range });
+        }
+        return merged;
+      }, []);
+    const reads =
+      ranges.length > PLANNED_TURN_MAX_RANGES
+        ? [{ end: ranges[ranges.length - 1]!.end, start: ranges[0]!.start }]
+        : ranges;
+    return reads.flatMap((range) =>
+      source.listTurnRows({
+        ...args.windowArgs,
+        sequenceStart: range.start,
+        beforeSequence: range.end + 1,
+        turnIds: [turnId],
+      }),
+    );
+  });
+}
+
 interface WindowedTurnItemRowsArgs {
   closedItemKeys: Set<string>;
   epochSequenceStart: number;
@@ -1103,6 +1158,7 @@ function selectStandardTimelineEventRows(
   source: TimelineSelectionRowSource,
   extensionStateKinds: readonly string[],
   flatTurnDisplay: boolean,
+  turnPlanKey: string | null,
 ): StandardTimelineEventRowSelection {
   const decode: StoredEventDecoder = (row) =>
     decodeStoredEventRowCached(db, row);
@@ -1200,6 +1256,8 @@ function selectStandardTimelineEventRows(
   const fetchedTurns = new Set<string>();
   const windowedTurns = new Set<string>();
   const closedItemKeys = new Set<string>();
+  const turnPlans = new Map<string, LoadedTimelineTurnPlan>();
+  const captureTurnPlanIds = new Set<string>();
   rows = measureThreadTimelineStage(profile, "group-context-query", () => {
     let selectedRows = rows;
     const itemRowsArgs = {
@@ -1227,10 +1285,34 @@ function selectStandardTimelineEventRows(
       ].filter(
         (turnId) =>
           !fetchedTurns.has(turnId) &&
-          !windowedTurns.has(turnId),
+          !windowedTurns.has(turnId) &&
+          !turnPlans.has(turnId),
       );
       const allTurnIds = turnIds;
       if (allTurnIds.length > 0) {
+        const plannedNow =
+          turnPlanKey === null || turnIds.length === 0
+            ? new Map<string, LoadedTimelineTurnPlan>()
+            : loadValidTimelineTurnPlans(db, {
+                maxSeq,
+                projectionKey: turnPlanKey,
+                threadId: thread.id,
+                turnIds,
+              });
+        for (const [turnId, plan] of plannedNow) turnPlans.set(turnId, plan);
+        const plannedRows = listPlannedTurnRows(source, {
+          beforeSequence,
+          plans: plannedNow,
+          sequenceStart,
+          windowArgs,
+        });
+        const plannedContextRows = source.listTurnContextRows({
+          ...windowArgs,
+          sequenceStart: epochSequenceStart,
+          beforeSequence: maxSeq + 1,
+          turnIds: [...plannedNow.keys()],
+        });
+        turnIds = turnIds.filter((turnId) => !plannedNow.has(turnId));
         const latestPage = beforeSequence === maxSeq + 1;
         let windowTurnRows: StoredEventRow[];
         let outsideCounts: Map<string, number>;
@@ -1305,13 +1387,42 @@ function selectStandardTimelineEventRows(
               : [],
           ),
         );
-        const collapsedTurnIds = flatTurnDisplay
+        const unplannedTurnIds = flatTurnDisplay
           ? []
           : partialTurnIds.filter((turnId) => completedTurnIds.has(turnId));
-        const wholeTurnIds = [...smallTurnIds, ...collapsedTurnIds];
-        const collapsedTurnIdSet = new Set(collapsedTurnIds);
+        const wholeTurnIds = [...smallTurnIds, ...unplannedTurnIds];
+        if (turnPlanKey !== null && !flatTurnDisplay) {
+          const windowRowCounts = new Map<string, number>();
+          const completedInWindow = new Set<string>();
+          for (const row of windowTurnRows) {
+            if (row.turnId === null) continue;
+            windowRowCounts.set(
+              row.turnId,
+              (windowRowCounts.get(row.turnId) ?? 0) + 1,
+            );
+            if (row.type === "turn/completed")
+              completedInWindow.add(row.turnId);
+          }
+          const turnEventCount = (turnId: string) =>
+            (windowRowCounts.get(turnId) ?? 0) +
+            (outsideCounts.get(turnId) ?? 0);
+          for (const turnId of [...completeTurnIds, ...smallTurnIds]) {
+            if (
+              completedInWindow.has(turnId) &&
+              turnEventCount(turnId) >= PLAN_MIN_TURN_EVENTS
+            ) {
+              captureTurnPlanIds.add(turnId);
+            }
+          }
+          for (const turnId of unplannedTurnIds) {
+            if (turnEventCount(turnId) >= PLAN_MIN_TURN_EVENTS) {
+              captureTurnPlanIds.add(turnId);
+            }
+          }
+        }
+        const unplannedTurnIdSet = new Set(unplannedTurnIds);
         const windowTurnIds = partialTurnIds.filter(
-          (turnId) => !collapsedTurnIdSet.has(turnId),
+          (turnId) => !unplannedTurnIdSet.has(turnId),
         );
         for (const turnId of completeTurnIds) fetchedTurns.add(turnId);
         for (const turnId of wholeTurnIds) fetchedTurns.add(turnId);
@@ -1336,6 +1447,8 @@ function selectStandardTimelineEventRows(
           ...contextRows.filter(
             (row) => row.turnId !== null && windowTurnIdSet.has(row.turnId),
           ),
+          ...plannedRows,
+          ...plannedContextRows,
         ];
         if (newRows.length > 0) {
           selectedRows = mergeStoredEventRowsById([
@@ -1477,6 +1590,8 @@ function selectStandardTimelineEventRows(
     fetchedTurnIds: fetchedTurns,
     windowedTurnIds: windowedTurns,
     selection: {
+      captureTurnPlanIds,
+      turnPlans,
       headStateRows:
         page.kind === "latest"
           ? measureThreadTimelineStage(profile, "group-context-query", () =>
@@ -1506,7 +1621,7 @@ function selectStandardTimelineEventRows(
               excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
               sequenceStart: epochSequenceStart,
               threadId: thread.id,
-              turnIds: [...windowedTurns],
+              turnIds: [...windowedTurns, ...turnPlans.keys()],
             })
           : null,
       paginationPage:
@@ -1620,6 +1735,8 @@ function selectTrimmedOrFreshRows(
   }
 }
 
+const storedTurnPlanSelections = new WeakSet<object>();
+
 function buildThreadTimelineInternal(
   db: DbConnection,
   thread: Thread,
@@ -1644,6 +1761,21 @@ function buildThreadTimelineInternal(
   const historySequenceStart = options.includeClearedContextHistory
     ? 0
     : (contextBoundarySeq ?? 0);
+  const turnPlanKey =
+    options.completedTurnDisplay === "flat" || includeNestedRows
+      ? null
+      : timelineTurnPlanProjectionKey([
+          getThreadEventRewriteGeneration(thread.id),
+          thread.providerId,
+          snapshot.status,
+          historySequenceStart,
+          includeDiagnosticOperations,
+          options.summarizeShellCommands,
+          options.maxInlineOutputChars,
+          options.providerDisplayName ?? null,
+          surface.threadName,
+          surface.workspaceRoot,
+        ]);
   const selectRows = (
     knownBudgetFloor: TimelineBudgetFloor | null,
     source: TimelineSelectionRowSource = databaseTimelineRowSource(db),
@@ -1663,6 +1795,7 @@ function buildThreadTimelineInternal(
       source,
       options.extensionStateKinds ?? [],
       options.completedTurnDisplay === "flat",
+      turnPlanKey,
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
   const active = thread.status === "active";
@@ -1682,6 +1815,7 @@ function buildThreadTimelineInternal(
           maxSeq: snapshot.maxSeq,
           page: options.page,
           threadId: thread.id,
+          turnPlanKey,
         }
       : null;
   const storedEventSelection = measureThreadTimelineStage(
@@ -1783,8 +1917,15 @@ function buildThreadTimelineInternal(
   };
   const timelineOptions = {
     ...commonProjectionOptions,
+    captureTurnPlans: eventSelection.captureTurnPlanIds.size > 0,
     includeNestedRows,
     providerId: thread.providerId,
+    storedTurnPlans: new Map(
+      [...eventSelection.turnPlans].map(([turnId, loaded]) => [
+        turnId,
+        loaded.plan,
+      ]),
+    ),
   };
   const timeline = measureThreadTimelineStage(
     profile,
@@ -1824,6 +1965,21 @@ function buildThreadTimelineInternal(
         options: timelineOptions,
       }),
   );
+  if (
+    turnPlanKey !== null &&
+    eventSelection.captureTurnPlanIds.size > 0 &&
+    !storedTurnPlanSelections.has(storedEventSelection)
+  ) {
+    storedTurnPlanSelections.add(storedEventSelection);
+    storeTimelineTurnPlans(db, {
+      maxSeq: snapshot.maxSeq,
+      plans: timeline.turnPlans,
+      projectionKey: turnPlanKey,
+      rows: storedEventSelection.rows,
+      threadId: thread.id,
+      turnIds: eventSelection.captureTurnPlanIds,
+    });
+  }
   const projectedTimelineRows = orderTimelineRowsUsingContext(
     timeline.rows.filter(
       (row) =>

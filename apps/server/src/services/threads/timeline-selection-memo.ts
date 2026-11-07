@@ -33,6 +33,7 @@ import {
   type TimelineGroupingContext,
 } from "./timeline-context-order.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
+import type { LoadedTimelineTurnPlan } from "./timeline-turn-plans.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
@@ -47,6 +48,8 @@ export interface TimelineEventRowSelection {
   rows: StoredEventRow[];
   headStateRows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
+  captureTurnPlanIds: ReadonlySet<string>;
+  turnPlans: ReadonlyMap<string, LoadedTimelineTurnPlan>;
 }
 
 export interface StandardTimelineEventRowSelection {
@@ -72,6 +75,7 @@ export interface LatestTimelineSelectionMemoArgs {
   maxSeq: number;
   page: ThreadTimelinePageRequest;
   threadId: string;
+  turnPlanKey: string | null;
 }
 
 export interface TimelineSelectionRowSource {
@@ -138,6 +142,7 @@ interface TimelineSelectionMemoEntry {
   maxSeq: number;
   selection: TimelineEventRowSelection;
   threadId: string;
+  turnPlanKey: string | null;
 }
 
 interface TimelineSelectionMemo {
@@ -723,10 +728,30 @@ function acceptsBackgroundTask(
   );
 }
 
+function touchesPlannedTurn(
+  scope: SelectionExtensionScope,
+  row: StoredEventRow,
+): boolean {
+  const plans = scope.entry.selection.turnPlans;
+  if (plans.size === 0) return false;
+  if (row.turnId !== null && plans.has(row.turnId)) return true;
+  for (const plan of plans.values()) {
+    if (
+      (row.parentToolCallId !== null &&
+        plan.delegatingItemIds.includes(row.parentToolCallId)) ||
+      (row.itemId !== null && plan.openItemIds.includes(row.itemId))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function acceptsAppendedRow(
   scope: SelectionExtensionScope,
   row: StoredEventRow,
 ): boolean {
+  if (touchesPlannedTurn(scope, row)) return false;
   return (
     acceptsParent(scope, row) &&
     acceptsDelegatingItem(scope, row) &&
@@ -1007,7 +1032,9 @@ export function lookupLatestTimelineSelection(
     memo === undefined ||
     entry === undefined ||
     entry.generation !== generation ||
-    entry.dataVersion !== dataVersion
+    entry.dataVersion !== dataVersion ||
+    (entry.selection.turnPlans.size > 0 &&
+      entry.turnPlanKey !== args.turnPlanKey)
   ) {
     return miss;
   }
@@ -1127,5 +1154,6 @@ export function rememberLatestTimelineSelection(
     maxSeq: args.maxSeq,
     selection: result.selection,
     threadId: args.threadId,
+    turnPlanKey: args.turnPlanKey,
   });
 }
