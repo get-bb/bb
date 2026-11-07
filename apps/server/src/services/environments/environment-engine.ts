@@ -286,8 +286,13 @@ function provisioningReporter(
   };
 }
 
-function emptyReporter(): PluginEnvironmentProviderProgress {
-  return { step: () => undefined, log: () => undefined };
+function removalReporter(
+  deps: Pick<Deps, "logger">,
+  environmentId: string,
+): PluginEnvironmentProviderProgress {
+  const log = (text: string) =>
+    deps.logger.info({ environmentId, text }, "Environment removal");
+  return { step: log, log };
 }
 
 function runTrackedOperation(args: {
@@ -744,7 +749,7 @@ async function runRemove(
             pathKey: row.environmentProviderInstanceKey ?? row.id,
             resource: row.resource,
             attempt,
-            report: emptyReporter(),
+            report: removalReporter(deps, environmentId),
             signal,
           }),
       );
