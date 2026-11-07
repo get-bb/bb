@@ -102,6 +102,52 @@ describe("bb plugin update commands", () => {
     expect(output).toContain("unavailable");
   });
 
+  it("outdated names releases outside the saved range and how to take them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      Response.json({
+        results: [
+          {
+            id: "theme-toggle",
+            outcome: "current",
+            installed: version("0.2.2"),
+            rangeUpgrade: {
+              currentRange: "^0.2.0",
+              range: ">=0.2.0 <0.4.0",
+              basis: "catalog",
+              candidate: version("0.3.0"),
+              breaking: true,
+              reasons: [],
+            },
+          },
+          {
+            id: "genui",
+            outcome: "current",
+            installed: version("0.1.0"),
+            rangeUpgrade: {
+              currentRange: "^0.1.0",
+              range: "^0.3.1",
+              basis: "release",
+              candidate: version("0.3.1"),
+              breaking: true,
+              reasons: ["requires bb >=9.0.0, running bb is 1.0.0"],
+            },
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "outdated"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("current · 0.3.0 outside range");
+    expect(output).toContain(
+      "theme-toggle: 0.3.0 is outside your saved range ^0.2.0; its marketplace now lists >=0.2.0 <0.4.0. It may include breaking changes. Review it with `bb plugin update theme-toggle --range '>=0.2.0 <0.4.0'`.",
+    );
+    expect(output).toContain(
+      "genui: 0.3.1 is outside your saved range ^0.1.0, but it does not run on this bb: requires bb >=9.0.0, running bb is 1.0.0.",
+    );
+  });
+
   it("outdated --json prints the parsed results", async () => {
     const results = [
       {
@@ -326,6 +372,56 @@ describe("bb plugin update commands", () => {
     expect(output).toContain("bad: skipped — incompatible: requires newer bb");
     expect(output).toContain("good: updated and activated 1 → 2");
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({});
+  });
+
+  it("--range applies only the reviewed out-of-range release, and --all leaves it alone", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const checked = {
+      results: [
+        {
+          id: "notes",
+          outcome: "current",
+          installed: version("1.4.0"),
+          rangeUpgrade: {
+            currentRange: "^1.0.0",
+            range: "^2.0.0",
+            basis: "release",
+            candidate: version("2.0.0"),
+            breaking: true,
+            reasons: [],
+          },
+        },
+      ],
+    };
+    fetchMock.mockResolvedValueOnce(Response.json(checked));
+    await runCommand(["plugin", "update", "--all", "--yes"], register);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "Review it with `bb plugin update notes --range '^2.0.0'`",
+    );
+
+    vi.clearAllMocks();
+    fetchMock
+      .mockResolvedValueOnce(Response.json(checked))
+      .mockResolvedValueOnce(
+        Response.json({
+          applied: true,
+          from: version("1.4.0"),
+          to: version("2.0.0"),
+          outcome: "updated",
+        }),
+      );
+    await runCommand(
+      ["plugin", "update", "notes", "--range", "^2.0.0", "--yes"],
+      register,
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      range: "^2.0.0",
+      expectedVersion: "2.0.0",
+    });
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "notes: now follows ^2.0.0; updated and activated 1.4.0 → 2.0.0.",
+    );
   });
 
   it("renders a rolled-back server result", async () => {

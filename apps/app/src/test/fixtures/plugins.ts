@@ -89,6 +89,7 @@ export function makePluginListItem(
       blockedVersion: null,
       blockedLabel: null,
       blockedReasons: [],
+      rangeUpgrade: null,
       lastCheckAt: null,
       lastFailure: null,
     },

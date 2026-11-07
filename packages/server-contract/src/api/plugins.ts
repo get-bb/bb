@@ -33,6 +33,16 @@ export const pluginResolvedVersionSchema = z.object({
   display: z.string(),
 });
 
+export const pluginRangeUpgradeSchema = z.object({
+  currentRange: z.string(),
+  range: z.string(),
+  basis: z.enum(["catalog", "release"]),
+  candidate: pluginResolvedVersionSchema,
+  breaking: z.boolean(),
+  reasons: z.array(z.string()),
+});
+export type PluginRangeUpgrade = z.infer<typeof pluginRangeUpgradeSchema>;
+
 export const pluginUpdateCheckEntrySchema = z.object({
   id: z.string(),
   outcome: pluginUpdateOutcomeSchema,
@@ -46,6 +56,7 @@ export const pluginUpdateCheckEntrySchema = z.object({
       reasons: z.array(z.string()),
     })
     .optional(),
+  rangeUpgrade: pluginRangeUpgradeSchema.optional(),
   detail: z.string().optional(),
 });
 export type PluginUpdateCheckEntry = z.infer<
@@ -60,7 +71,15 @@ export const pluginUpdateCheckResponseSchema = z.object({
   results: z.array(pluginUpdateCheckEntrySchema),
 });
 
-export const pluginApplyUpdateRequestSchema = z.object({}).strict();
+export const pluginApplyUpdateRequestSchema = z
+  .object({
+    range: z.string().min(1).optional(),
+    expectedVersion: z.string().min(1).optional(),
+  })
+  .strict();
+export type PluginApplyUpdateRequest = z.infer<
+  typeof pluginApplyUpdateRequestSchema
+>;
 
 export const pluginApplyUpdateResultSchema = z.object({
   applied: z.boolean(),
@@ -144,6 +163,7 @@ export const pluginUpdateStateSchema = z.object({
   blockedVersion: z.string().optional(),
   blockedLabel: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),
+  rangeUpgrade: pluginRangeUpgradeSchema.optional(),
   lastCheckAt: z.number().optional(),
   lastFailure: z
     .object({

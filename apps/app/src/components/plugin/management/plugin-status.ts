@@ -1,4 +1,7 @@
-import type { PluginRuntimeStatus } from "@bb/server-contract";
+import type {
+  PluginRangeUpgrade,
+  PluginRuntimeStatus,
+} from "@bb/server-contract";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -117,6 +120,17 @@ export type PluginRowSignal =
       detail: string | null;
     };
 
+export function reviewableRangeUpgrade(
+  plugin: PluginListItem,
+): PluginRangeUpgrade | null {
+  const state = plugin.updateState;
+  return state.availableLabel === null &&
+    state.rangeUpgrade !== null &&
+    state.rangeUpgrade.reasons.length === 0
+    ? state.rangeUpgrade
+    : null;
+}
+
 export function pluginRowSignal(
   plugin: PluginListItem,
 ): PluginRowSignal | null {
@@ -154,6 +168,10 @@ export function pluginRowSignal(
   }
   if (state.availableLabel !== null) {
     return { kind: "update", version: state.availableLabel };
+  }
+  const rangeUpgrade = reviewableRangeUpgrade(plugin);
+  if (rangeUpgrade !== null) {
+    return { kind: "update", version: rangeUpgrade.candidate.label };
   }
   return null;
 }
