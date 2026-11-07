@@ -134,12 +134,34 @@ vi.mock("@/hooks/useUpdateInventory", () => ({
 }));
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemProviders: () => ({ data: [] }),
+  useSystemConfig: () => ({ data: undefined }),
+}));
+vi.mock("@/hooks/useStartPluginUpdates", () => ({
+  useStartPluginUpdates: () => vi.fn(),
+}));
+vi.mock("@/hooks/queries/app-update-queries", () => ({
+  useAppUpdateStatus: () => ({ data: undefined }),
+}));
+vi.mock("@/hooks/mutations/app-update-mutations", () => ({
+  useApplyAppUpdate: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+vi.mock("@/hooks/queries/plugin-update-job-queries", () => ({
+  usePluginUpdateJobs: () => ({ data: [] }),
+  startPluginUpdate: vi.fn(),
 }));
 vi.mock("@/hooks/useMachineAttention", () => ({
   useMachineAttention: () => ({ label: null }),
 }));
-vi.mock("@/components/provider-cli/provider-cli-install", () => ({
-  useProviderCliInstallRunner: () => ({ runningJobKey: null }),
+vi.mock("@/components/provider-cli/provider-cli-install", async (original) => ({
+  ...(await original<
+    typeof import("@/components/provider-cli/provider-cli-install")
+  >()),
+  useProviderCliInstallRunner: () => ({
+    runningJobKey: null,
+    queuedJobKeys: new Set(),
+    failuresByJobKey: new Map(),
+    startInstall: vi.fn(),
+  }),
 }));
 
 const THREAD_PATH = getThreadRoutePath({
@@ -577,7 +599,7 @@ describe("Rail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
     act(() => vi.advanceTimersByTime(250));
 
-    fireEvent.click(screen.getByRole("link", { name: "bb update available" }));
+    fireEvent.click(screen.getByRole("link", { name: "1 update available" }));
     expect(pathname()).toBe(`${SETTINGS_ROUTE_PATH}/updates`);
     act(() => vi.advanceTimersByTime(250));
 
