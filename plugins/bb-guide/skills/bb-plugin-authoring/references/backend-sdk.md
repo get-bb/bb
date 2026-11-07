@@ -27,7 +27,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
   `experimental_listPluginMetadata` `experimental_listAncestors`
   `experimental_listDescendants` `experimental_listCascade`
-  `experimental_regenerateTitle`; sub-areas `events` (`list` `wait`),
+  `experimental_regenerateTitle` `experimental_headState`; sub-areas `events` (`list` `wait`),
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
@@ -260,6 +260,10 @@ of a set of threads still exist.
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
+To read only the thread's to-do list, slash commands, or session options, use
+`threads.experimental_headState({ threadId })`: it reads their latest stored
+state without building a timeline window, so it stays cheap on threads with
+long turns. `threads.context({ threadId })` does the same for context usage.
 For raw history, `threads.events.list` defaults to ascending order and supports
 exclusive `afterSeq` / `beforeSeq` cursors, `order: "asc" | "desc"`, and a
 non-empty typed `types` array. Combine `order: "desc"` with `beforeSeq` to page

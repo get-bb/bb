@@ -42,6 +42,7 @@ import {
   getThreadMessage,
   buildTimelineTurnSummaryDetails,
   loadThreadConversationOutline,
+  readThreadHeadState,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
 } from "../../services/threads/timeline.js";
@@ -237,6 +238,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
               usage,
             }),
     });
+  });
+
+  get(routes.headState, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(readThreadHeadState(deps.db, thread));
   });
 
   get(routes.timeline, (context, query) => {

@@ -88,6 +88,10 @@ with the returned rows. Updates that do not fit the remaining budget, and leaves
 omitted by a content cut, still count toward `olderRowsSourceSeqEnd`.
 
 `summaryOnly=true` returns head state without timeline rows or older-row updates.
+It still selects and projects the latest page. Callers that need only the
+to-do list, provider commands, or session options read
+`GET /threads/:id/head-state` instead, which decodes only the latest state
+events (`readThreadHeadState`).
 
 `completedTurnDisplay` reports whether the page projected finished turns as
 collapsed "Worked for" rows or flat rows. It is part of the display surface: a
