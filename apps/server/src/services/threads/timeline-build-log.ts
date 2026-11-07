@@ -1,4 +1,6 @@
 import type { ServerLogger } from "../../types.js";
+import { roundDurationMs } from "@bb/process-utils";
+import type { MainThreadCost } from "../system/event-loop-work.js";
 import type { ThreadTimelineBuildProfile } from "./timeline.js";
 
 const SLOW_THREAD_TIMELINE_BUILD_LOG_THRESHOLD_MS = 150;
@@ -8,6 +10,7 @@ const SLOW_THREAD_TIMELINE_BUILD_LOG_INTERVAL_MS = 30_000;
 const SLOW_THREAD_TIMELINE_BUILD_LOG_MAX_TRACKED_THREADS = 256;
 
 interface LogSlowThreadTimelineBuildArgs {
+  cost: MainThreadCost;
   profile: ThreadTimelineBuildProfile;
   threadId: string;
 }
@@ -27,7 +30,7 @@ export function createSlowThreadTimelineBuildLogger(
   const suppressedByThread = new Map<string, number>();
 
   return {
-    log({ profile, threadId }) {
+    log({ cost, profile, threadId }) {
       if (
         profile.totalDurationMs < SLOW_THREAD_TIMELINE_BUILD_LOG_THRESHOLD_MS
       ) {
@@ -66,6 +69,9 @@ export function createSlowThreadTimelineBuildLogger(
         {
           threadId,
           totalDurationMs: profile.totalDurationMs,
+          cpuDurationMs: roundDurationMs(cost.cpuMs),
+          voluntaryContextSwitches: cost.voluntaryContextSwitches,
+          involuntaryContextSwitches: cost.involuntaryContextSwitches,
           thresholdMs: SLOW_THREAD_TIMELINE_BUILD_LOG_THRESHOLD_MS,
           suppressedSinceLastLog,
           selectionStrategy: profile.selectionStrategy,

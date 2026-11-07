@@ -271,6 +271,7 @@ export interface PluginService {
   start(options?: PluginStartOptions): Promise<void>;
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
+  listCodeOwners(): { location: string; owner: string }[];
   list(): InstalledPlugin[];
   getDisplayName(id: string): string;
   providerCatalog(): Array<{
@@ -694,6 +695,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     isBuiltinPluginId,
     isSafeModeExemptRow,
     isSuppressedBySafeMode,
+    listPluginCodeOwners,
     listPluginHooks,
     listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
@@ -1660,6 +1662,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     handleUncaughtException,
+    listCodeOwners: listPluginCodeOwners,
 
     list,
     getDisplayName(id) {

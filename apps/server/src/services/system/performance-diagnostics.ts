@@ -5,6 +5,7 @@ import type { NotificationHub } from "../../ws/hub.js";
 
 export async function startGatedPerformanceDiagnostics(options: {
   allowed: boolean;
+  codeOwners: () => readonly { location: string; owner: string }[];
   dataDir: string;
   db: DbConnection;
   hub: NotificationHub;
@@ -24,6 +25,7 @@ export async function startGatedPerformanceDiagnostics(options: {
       .then(async () => {
         if (enabled && recorder === null) {
           recorder = await startPerformanceDiagnostics({
+            codeOwners: options.codeOwners,
             dataDir: options.dataDir,
             logger: options.logger,
           });

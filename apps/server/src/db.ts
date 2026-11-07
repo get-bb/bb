@@ -6,6 +6,10 @@ import type {
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import {
+  recordCompletedEventLoopWork,
+  runEventLoopWorkSync,
+} from "./services/system/event-loop-work.js";
+import {
   exportLegacyAutomationsForPluginImport,
   hasLegacyAutomationsToExport,
 } from "./legacy-automations-export.js";
@@ -29,6 +33,10 @@ export function initDb(
     slowQueryLogger: options.logger,
     slowQueryThresholdMs: options.slowQueryThresholdMs,
     slowQueryDiagnosticsEnabled: options.slowQueryDiagnosticsEnabled,
+    synchronousWorkTracker: {
+      run: runEventLoopWorkSync,
+      record: recordCompletedEventLoopWork,
+    },
   });
   try {
     if (options.dataDir !== undefined && options.logger !== undefined) {
