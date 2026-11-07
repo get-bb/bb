@@ -242,3 +242,50 @@ export function createThreadStartup(
     },
   };
 }
+
+export const FORK_HISTORY_COPY_MARK = "copying";
+
+export function clearThreadForkHistoryCopyMark(
+  db: DbConnection | DbTransaction,
+  threadId: string,
+): void {
+  db.update(threads)
+    .set({
+      startupContext: sql`json_remove(${threads.startupContext}, '$.historyCopy')`,
+    })
+    .where(eq(threads.id, threadId))
+    .run();
+}
+
+export function listThreadIdsCopyingForkHistory(db: DbConnection): string[] {
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        isNull(threads.deletedAt),
+        sql`json_extract(${threads.startupContext}, '$.historyCopy') = ${FORK_HISTORY_COPY_MARK}`,
+      ),
+    )
+    .all()
+    .map((row) => row.id);
+}
+
+export function isThreadCopyingForkHistory(
+  db: DbConnection | DbTransaction,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .where(
+        and(
+          eq(threads.id, threadId),
+          isNull(threads.deletedAt),
+          sql`json_extract(${threads.startupContext}, '$.historyCopy') = ${FORK_HISTORY_COPY_MARK}`,
+        ),
+      )
+      .get() !== undefined
+  );
+}

@@ -5,9 +5,11 @@ import {
   findLastRootStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   getStoredProviderSession,
+  listStoredEventRowMetadata,
   listStoredEventRows,
   listStoredTurnCompletedRowsByTurnIds,
   type StoredEventRow,
+  type StoredEventRowMetadata,
 } from "@bb/db";
 import type { Thread, ThreadEvent, ThreadEventType } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -15,7 +17,11 @@ import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
 import { resolveTurnProviderCheckpointId } from "./thread-edit-message.js";
-import type { ThreadForkDescriptor } from "./thread-startup-store.js";
+import {
+  clearThreadForkHistoryCopyMark,
+  isThreadCopyingForkHistory,
+  type ThreadForkDescriptor,
+} from "./thread-startup-store.js";
 
 export interface ThreadForkPoint {
   descriptor: ThreadForkDescriptor;
@@ -263,22 +269,63 @@ function parseAcceptedClientRequestId(row: StoredEventRow): string {
   return event.clientRequestId;
 }
 
-function selectInheritedForkEventRows(
+const FORK_HISTORY_SELECTION_PAGE_ROWS = 2_000;
+
+async function listForkSourceRowsInPages<TRow extends { sequence: number }>(
+  listPage: (afterSequence: number) => TRow[],
+): Promise<TRow[]> {
+  const rows: TRow[] = [];
+  let afterSequence = 0;
+  for (;;) {
+    const page = listPage(afterSequence);
+    rows.push(...page);
+    const last = page.at(-1);
+    if (last === undefined || page.length < FORK_HISTORY_SELECTION_PAGE_ROWS) {
+      return rows;
+    }
+    afterSequence = last.sequence;
+    await yieldToEventLoop();
+  }
+}
+
+async function selectInheritedForkEventRows(
   deps: Pick<AppDeps, "db">,
   args: { historyEndSequence: number; sourceThreadId: string },
-): StoredEventRow[] {
-  const rows = listStoredEventRows(deps.db, {
+): Promise<StoredEventRowMetadata[]> {
+  const page = (afterSequence: number) => ({
+    afterSequence,
     beforeSequence: args.historyEndSequence + 1,
+    limit: FORK_HISTORY_SELECTION_PAGE_ROWS,
     threadId: args.sourceThreadId,
-    types: INHERITED_EVENT_TYPES,
   });
+  const rows = await listForkSourceRowsInPages((afterSequence) =>
+    listStoredEventRowMetadata(deps.db, {
+      ...page(afterSequence),
+      types: INHERITED_EVENT_TYPES,
+    }),
+  );
   const completedTurnIds = new Set<string>();
-  const acceptedClientRequestIds = new Set<string>();
   for (const row of rows) {
     if (row.type === "turn/completed" && row.turnId !== null) {
       completedTurnIds.add(row.turnId);
-    } else if (row.type === "turn/input/accepted") {
+    }
+  }
+  const acceptedClientRequestIds = new Set<string>();
+  const requestIdsByEventId = new Map<string, string>();
+  const requestRows = await listForkSourceRowsInPages((afterSequence) =>
+    listStoredEventRows(deps.db, {
+      ...page(afterSequence),
+      types: ["turn/input/accepted", "client/turn/requested"],
+    }),
+  );
+  for (const row of requestRows) {
+    if (row.type === "turn/input/accepted") {
       acceptedClientRequestIds.add(parseAcceptedClientRequestId(row));
+    } else if (row.turnId === null) {
+      requestIdsByEventId.set(
+        row.id,
+        parseStoredTurnRequestEvent(row).requestId,
+      );
     }
   }
   return rows.filter((row) => {
@@ -288,36 +335,79 @@ function selectInheritedForkEventRows(
     if (row.type !== "client/turn/requested") {
       return true;
     }
-    return acceptedClientRequestIds.has(
-      parseStoredTurnRequestEvent(row).requestId,
-    );
+    const requestId = requestIdsByEventId.get(row.id);
+    return requestId !== undefined && acceptedClientRequestIds.has(requestId);
   });
 }
 
-export function copyForkSourceHistory(
+const FORK_HISTORY_COPY_BATCH_ROWS = 10;
+const FORK_HISTORY_COPY_SLICE_MS = 8;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+export async function copyForkSourceHistory(
   deps: Pick<AppDeps, "db" | "hub">,
   args: {
     fork: Pick<Thread, "environmentId" | "id">;
     historyEndSequence: number;
     sourceThreadId: string;
   },
-): void {
-  const rows = selectInheritedForkEventRows(deps, {
-    historyEndSequence: args.historyEndSequence,
-    sourceThreadId: args.sourceThreadId,
-  }).map((row) => ({ ...row, providerThreadId: null }));
+): Promise<void> {
+  const rows = (
+    await selectInheritedForkEventRows(deps, {
+      historyEndSequence: args.historyEndSequence,
+      sourceThreadId: args.sourceThreadId,
+    })
+  ).map((row) => ({ ...row, providerThreadId: null }));
   if (rows.length === 0) {
+    clearThreadForkHistoryCopyMark(deps.db, args.fork.id);
     return;
   }
-  deps.db.transaction(
-    (tx) =>
-      copyStoredThreadEventsInTransaction(tx, {
-        rows,
-        targetEnvironmentId: args.fork.environmentId,
-        targetThreadId: args.fork.id,
-      }),
-    { behavior: "immediate" },
-  );
+  const firstSequence =
+    getLatestThreadSequence(deps.db, { threadId: args.fork.id }) + 1;
+  let copied = 0;
+  while (copied < rows.length) {
+    if (copied > 0) {
+      await yieldToEventLoop();
+    }
+    deps.db.transaction(
+      (tx) => {
+        if (
+          !isThreadCopyingForkHistory(tx, args.fork.id) ||
+          getLatestThreadSequence(tx, { threadId: args.fork.id }) !==
+            firstSequence + copied - 1
+        ) {
+          throw new ApiError(
+            409,
+            "fork_history_changed",
+            "The fork was deleted or received other events while its history was being copied",
+          );
+        }
+        const sliceStartedAt = performance.now();
+        do {
+          const batch = rows.slice(
+            copied,
+            copied + FORK_HISTORY_COPY_BATCH_ROWS,
+          );
+          copyStoredThreadEventsInTransaction(tx, {
+            rows: batch,
+            targetEnvironmentId: args.fork.environmentId,
+            targetThreadId: args.fork.id,
+          });
+          copied += batch.length;
+        } while (
+          copied < rows.length &&
+          performance.now() - sliceStartedAt < FORK_HISTORY_COPY_SLICE_MS
+        );
+        if (copied === rows.length) {
+          clearThreadForkHistoryCopyMark(tx, args.fork.id);
+        }
+      },
+      { behavior: "immediate" },
+    );
+  }
   deps.hub.notifyThread(args.fork.id, ["events-appended"], {
     timelineSequence: getLatestThreadSequence(deps.db, {
       threadId: args.fork.id,
