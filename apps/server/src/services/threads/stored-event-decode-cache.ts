@@ -20,6 +20,10 @@ interface StoredEventDecodeCache {
 
 export const STORED_EVENT_DECODE_CACHE_MAX_ENTRIES = 100_000;
 export const STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS = 16_000_000;
+const STORED_EVENT_DECODE_CACHE_EVICTED_ENTRIES =
+  STORED_EVENT_DECODE_CACHE_MAX_ENTRIES * 0.9;
+const STORED_EVENT_DECODE_CACHE_EVICTED_DATA_CHARS =
+  STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS * 0.9;
 
 const decodeCaches = new WeakMap<DbConnection, StoredEventDecodeCache>();
 let freezeDecodedEvents = false;
@@ -96,10 +100,16 @@ function rememberEntry(
   }
   cache.entries.set(rowId, entry);
   cache.dataChars += entry.data.length;
+  if (
+    cache.entries.size <= STORED_EVENT_DECODE_CACHE_MAX_ENTRIES &&
+    cache.dataChars <= STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS
+  ) {
+    return;
+  }
   for (const oldest of cache.entries.keys()) {
     if (
-      cache.entries.size <= STORED_EVENT_DECODE_CACHE_MAX_ENTRIES &&
-      cache.dataChars <= STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS
+      cache.entries.size <= STORED_EVENT_DECODE_CACHE_EVICTED_ENTRIES &&
+      cache.dataChars <= STORED_EVENT_DECODE_CACHE_EVICTED_DATA_CHARS
     ) {
       return;
     }
