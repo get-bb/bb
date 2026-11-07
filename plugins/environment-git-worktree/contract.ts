@@ -72,7 +72,7 @@ export const worktreeHostContract = defineRpcContract({
           status: z.literal("created"),
           path: z.string().min(1),
           baseBranch: z.string().min(1).nullable(),
-          createdBranch: z.boolean(),
+          ownsBranch: z.boolean(),
         })
         .strict(),
       z

@@ -167,7 +167,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         ...(result.baseBranch === null
           ? {}
           : { mergeBaseBranch: result.baseBranch }),
-        ...(result.createdBranch
+        ...(result.ownsBranch
           ? {
               resource: {
                 ownedBranch: {

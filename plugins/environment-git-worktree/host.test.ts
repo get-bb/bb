@@ -1068,7 +1068,7 @@ describe.concurrent("worktree host entry", () => {
         }),
       );
       if (created.status !== "created") throw new Error(created.message);
-      expect(created.createdBranch).toBe(true);
+      expect(created.ownsBranch).toBe(true);
       const remove = () =>
         harness.experimental_call("remove", {
           operationId: "remove",
@@ -1252,7 +1252,7 @@ describe.concurrent("worktree host entry", () => {
         branchMode: "reuse-existing",
       });
       if (restored.status !== "created") throw new Error(restored.message);
-      expect(restored.createdBranch).toBe(true);
+      expect(restored.ownsBranch).toBe(true);
       expect((await git(restored.path, "rev-parse", "HEAD")).trim()).toBe(
         pushedHead,
       );
@@ -1264,13 +1264,18 @@ describe.concurrent("worktree host entry", () => {
       await owned.harness.experimental_dispose();
     });
 
-    it("does not claim a kept local branch it restores onto", async ({
+    it("owns a branch it kept again when a restore reuses it", async ({
       onTestFinished,
     }) => {
       const { clone, dataDir } = await createClonedRepository(onTestFinished);
       const owned = await createOwned(clone, dataDir, "bb/kept-thr_8");
       const head = await commitIn(owned.path, "kept.txt");
       await owned.remove();
+      expect(
+        (
+          await git(clone, "config", "--get", "branch.bb/kept-thr_8.bbOwned")
+        ).trim(),
+      ).toBe("true");
       const restored = await owned.harness.experimental_call("create", {
         ...createInput({
           operationId: "restore",
@@ -1281,9 +1286,30 @@ describe.concurrent("worktree host entry", () => {
         branchMode: "reuse-existing",
       });
       if (restored.status !== "created") throw new Error(restored.message);
-      expect(restored.createdBranch).toBe(false);
+      expect(restored.ownsBranch).toBe(true);
       expect((await git(restored.path, "rev-parse", "HEAD")).trim()).toBe(head);
       await owned.harness.experimental_dispose();
+    });
+
+    it("does not claim a branch it never kept when a restore reuses it", async ({
+      onTestFinished,
+    }) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      await git(sourcePath, "branch", "my-feature");
+      const harness = createHarness(dataDir);
+      const restored = await harness.experimental_call("create", {
+        ...createInput({
+          operationId: "restore",
+          sourcePath,
+          pathKey: "user-branch",
+          branchName: "my-feature",
+        }),
+        branchMode: "reuse-existing",
+      });
+      if (restored.status !== "created") throw new Error(restored.message);
+      expect(restored.ownsBranch).toBe(false);
+      await harness.experimental_dispose();
     });
   });
 });

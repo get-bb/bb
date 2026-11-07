@@ -43,7 +43,7 @@ async function setup(
         status: "created",
         path: WORKTREE_PATH,
         baseBranch: "main",
-        createdBranch:
+        ownsBranch:
           worktreeHostContract.create.input.parse(call.input).branchMode ===
           "reset",
       };
@@ -222,7 +222,7 @@ describe("worktree resource operations", () => {
       status: "created",
       path: WORKTREE_PATH,
       baseBranch: null,
-      createdBranch: true,
+      ownsBranch: true,
     });
     await expect(creating).resolves.toMatchObject({ status: "created" });
   });

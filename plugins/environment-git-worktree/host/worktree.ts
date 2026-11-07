@@ -525,7 +525,7 @@ async function removeCreateTarget(args: CreateWorktreeArgs): Promise<void> {
 
 export async function createWorktree(
   args: CreateWorktreeArgs,
-): Promise<{ path: string; createdBranch: boolean }> {
+): Promise<{ path: string; ownsBranch: boolean }> {
   throwIfProvisionAborted(args.signal);
   const existingWorkspaceMatches = await ensureExistingWorkspaceMatches(
     args.targetPath,
@@ -535,7 +535,9 @@ export async function createWorktree(
   if (existingWorkspaceMatches) {
     const existing = {
       path: args.targetPath,
-      createdBranch: args.branchMode === "reset",
+      ownsBranch:
+        args.branchMode === "reset" ||
+        (await isKeptOwnedBranch(args.sourcePath, args.branchName)),
     };
     if ((await readCompletedBranch(args.completionPath)) === args.branchName) {
       return existing;
@@ -585,6 +587,9 @@ export async function createWorktree(
   const reuseExistingBranch =
     args.branchMode === "reuse-existing" &&
     (await hasRef(args.sourcePath, `refs/heads/${args.branchName}`));
+  const ownsBranch =
+    !reuseExistingBranch ||
+    (await isKeptOwnedBranch(args.sourcePath, args.branchName));
   const remoteTrackingBranch =
     args.branchMode === "reuse-existing" && !reuseExistingBranch
       ? await findRemoteTrackingBranch(
@@ -659,7 +664,7 @@ export async function createWorktree(
     });
     worktreeCreated = true;
     await finishWorktreeSetup(args);
-    return { path: args.targetPath, createdBranch: !reuseExistingBranch };
+    return { path: args.targetPath, ownsBranch };
   } catch (error) {
     if (!worktreeCreated) {
       emitStep({
@@ -748,6 +753,31 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   throwIfProvisionAborted(args.signal);
   await fs.rm(workspacePath, { recursive: true, force: true });
   await removeDirectoryIfEmpty(parentPath);
+}
+
+function keptOwnedBranchConfigKey(branchName: string): string {
+  return `branch.${branchName}.bbOwned`;
+}
+
+async function isKeptOwnedBranch(
+  sourcePath: string,
+  branchName: string,
+): Promise<boolean> {
+  const result = await runGit(
+    ["config", "--type=bool", "--get", keptOwnedBranchConfigKey(branchName)],
+    { cwd: sourcePath, allowFailure: true },
+  );
+  return result.exitCode === 0 && result.stdout.trim() === "true";
+}
+
+async function markKeptOwnedBranch(
+  branchName: string,
+  gitOptions: RunGitOptions,
+): Promise<void> {
+  await runGit(["config", keptOwnedBranchConfigKey(branchName), "true"], {
+    ...gitOptions,
+    allowFailure: true,
+  });
 }
 
 async function findRemoteTrackingBranch(
@@ -979,6 +1009,7 @@ async function cleanUpOwnedBranch(args: {
       gitOptions,
     })
   ) {
+    await markKeptOwnedBranch(args.branchName, gitOptions);
     return "unpushed-commits";
   }
   return withWorktreeMetadataLock(
@@ -991,6 +1022,7 @@ async function cleanUpOwnedBranch(args: {
           signalOptions(args.signal),
         )) !== null
       ) {
+        await markKeptOwnedBranch(args.branchName, gitOptions);
         return "checked-out";
       }
       throwIfProvisionAborted(args.signal);

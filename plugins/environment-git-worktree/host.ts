@@ -110,7 +110,7 @@ export function createWorktreeHostEntry() {
             status: "created",
             path: created.path,
             baseBranch: baseBranch?.ref ?? null,
-            createdBranch: created.createdBranch,
+            ownsBranch: created.ownsBranch,
           } as const;
         } catch (error) {
           if (context.signal.aborted) throw error;
