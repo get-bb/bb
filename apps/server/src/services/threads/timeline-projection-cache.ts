@@ -13,6 +13,7 @@ export interface TimelineProjection {
 
 export interface TimelineProjectionCacheArgs {
   includeNestedRows: boolean;
+  omitSettledDelegationChildRows: boolean;
   projectionKey: string;
   rows: readonly StoredEventRow[];
 }
@@ -25,7 +26,7 @@ export interface BuiltTimelineProjection {
 interface TimelineProjectionCacheEntry {
   eventProjection: EventProjection;
   projectionKey: string;
-  projections: Map<boolean, TimelineProjection>;
+  projections: Map<string, TimelineProjection>;
 }
 
 export const TIMELINE_PROJECTION_CACHE_MAX_ENTRIES_PER_SELECTION = 4;
@@ -35,19 +36,27 @@ const projectionsBySelectedRows = new WeakMap<
   TimelineProjectionCacheEntry[]
 >();
 
+function rowVariantKey(args: TimelineProjectionCacheArgs): string {
+  return JSON.stringify([
+    args.includeNestedRows,
+    args.omitSettledDelegationChildRows,
+  ]);
+}
+
 export function keepTimelineProjection(
   args: TimelineProjectionCacheArgs,
   build: (cached: EventProjection | null) => BuiltTimelineProjection,
 ): TimelineProjection {
+  const variant = rowVariantKey(args);
   const entries = projectionsBySelectedRows.get(args.rows) ?? [];
   const entry = entries.find(
     (candidate) => candidate.projectionKey === args.projectionKey,
   );
-  const cached = entry?.projections.get(args.includeNestedRows);
+  const cached = entry?.projections.get(variant);
   if (cached !== undefined) return cached;
   const built = build(entry?.eventProjection ?? null);
   if (entry !== undefined) {
-    entry.projections.set(args.includeNestedRows, built.projection);
+    entry.projections.set(variant, built.projection);
     return built.projection;
   }
   projectionsBySelectedRows.set(
@@ -56,7 +65,7 @@ export function keepTimelineProjection(
       {
         eventProjection: built.eventProjection,
         projectionKey: args.projectionKey,
-        projections: new Map([[args.includeNestedRows, built.projection]]),
+        projections: new Map([[variant, built.projection]]),
       },
       ...entries,
     ].slice(0, TIMELINE_PROJECTION_CACHE_MAX_ENTRIES_PER_SELECTION),

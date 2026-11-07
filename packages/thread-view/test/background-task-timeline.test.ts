@@ -37,6 +37,7 @@ function buildTimeline(
     options: {
       completedTurnDisplay: "collapse",
       includeNestedRows: options.includeNestedRows ?? true,
+      omitSettledDelegationChildRows: false,
       includeDiagnosticOperations: false,
       summarizeShellCommands: true,
       isLatestPage: true,
@@ -758,10 +759,9 @@ describe("background task timeline projection", () => {
       },
       2,
     );
-    const whileForeground = buildTimeline(
-      [turnStarted("turn-1", 1), started],
-      { includeNestedRows: false },
-    );
+    const whileForeground = buildTimeline([turnStarted("turn-1", 1), started], {
+      includeNestedRows: false,
+    });
     expect(whileForeground.activeBackgroundCommands).toEqual([]);
 
     const afterBackgrounding = buildTimeline(

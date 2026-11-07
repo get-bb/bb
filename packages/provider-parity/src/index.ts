@@ -83,6 +83,7 @@ export const projectParityRows: ParityRowProjector = ({
       includeDiagnosticOperations: true,
       includeNestedRows: true,
       isLatestPage: true,
+      omitSettledDelegationChildRows: false,
       providerId,
       summarizeShellCommands: true,
       threadStatus: "idle",
