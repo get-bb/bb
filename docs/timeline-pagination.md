@@ -33,6 +33,15 @@ empty page with a usable older cursor. Latest-page head state is retained while
 skipping. Context loading and complete-group reconstruction can exceed the
 initial event budget.
 
+A page reads a turn whose rows render flat, meaning a running turn or any turn
+under the flat display, only inside its window. It adds the complete events of
+items that cross the window edges, the delegation parents of rows it reads, the
+children of delegations it owns (on the latest page, of every delegation it
+reads), the turn's lifecycle, compaction and provider error events, and, on an
+older page, the turn's events up to the furthest event those items reach.
+A finished turn under the collapsed display is still read whole because its
+summary rows depend on all of it.
+
 Content cuts continue inside the same window bounds, reconstructing the same
 group so leaf offsets remain meaningful. The current cursor format is v3;
 previous versions return the existing 400 reload response because their group
@@ -52,8 +61,9 @@ and display surface. A walk excludes subsequent appends. Earlier events can
 change grouping even after a turn completed. `timelinePage.olderRowsSourceSeqEnd`
 is the greatest `sourceSeqEnd` among rows the snapshot projected before the
 page's returned rows but did not return: older conversation groups, and the
-leaves a content cut omitted from the page's oldest group. It is `null` when the
-snapshot projected no such rows. When a new latest snapshot's window reaches
+leaves a content cut omitted from the page's oldest group. When the page reads
+a turn only inside its window, the value is at least that turn's last event
+before the window. It is `null` when the snapshot projected no such rows. When a new latest snapshot's window reaches
 the loaded tip and this value does not exceed it, `mergeLoadedTimelineWithLatest`
 keeps loaded older pages and replaces the rows the latest page covers, so
 streaming does not unload history. Otherwise a later event changed a row the
