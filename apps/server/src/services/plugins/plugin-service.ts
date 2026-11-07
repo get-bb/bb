@@ -46,6 +46,7 @@ import {
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { PluginRpcBoundaryError } from "./plugin-rpc-method.js";
 import { isPluginServerIsolationCandidate } from "./plugin-server-isolation.js";
+import { callSettingsListener } from "./plugin-settings-listener.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { buildMutablePluginHost } from "./mutable-plugin-artifacts.js";
 import {
@@ -2111,13 +2112,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const next = await readPluginSettingsValues(storeArgs);
       if (JSON.stringify(next) !== JSON.stringify(prev)) {
         for (const listener of plugin.handle.settings.listeners) {
-          try {
-            listener(next, prev);
-          } catch (error) {
+          callSettingsListener(listener, [next, prev], (error) => {
             logger.warn(
               `plugin ${id} settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
             );
-          }
+          });
         }
         deps.onSettingsChanged?.(id);
         notifyPluginsChanged();

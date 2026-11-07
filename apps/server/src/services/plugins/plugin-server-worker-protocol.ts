@@ -81,9 +81,14 @@ interface EncodedError {
   props: Record<string, unknown>;
 }
 
+export type MarkedFunctionKind = "http" | "listener";
+
 export interface RemoteCodecOptions {
   importFunction(id: number): (...args: unknown[]) => unknown;
-  importHttpHandler?(id: number): (...args: unknown[]) => unknown;
+  importMarkedFunction?(
+    kind: MarkedFunctionKind,
+    id: number,
+  ): (...args: unknown[]) => unknown;
   decodeError?(encoded: EncodedError, error: Error): Error;
   postAbort(signal: number, reason: unknown): void;
 }
@@ -104,12 +109,12 @@ export class RemoteCodec {
   private readonly signalCleanup = new FinalizationRegistry<number>((id) => {
     this.importedSignals.delete(id);
   });
-  private readonly httpHandlers = new WeakSet<object>();
+  private readonly markedFunctions = new WeakMap<object, MarkedFunctionKind>();
 
   constructor(private readonly options: RemoteCodecOptions) {}
 
-  markHttpHandler<T extends object>(fn: T): T {
-    this.httpHandlers.add(fn);
+  markFunction<T extends object>(fn: T, kind: MarkedFunctionKind): T {
+    this.markedFunctions.set(fn, kind);
     return fn;
   }
 
@@ -193,8 +198,9 @@ export class RemoteCodec {
   ): unknown {
     if (typeof value === "function") {
       const fn = value as (...args: unknown[]) => unknown;
-      if (this.httpHandlers.has(fn)) {
-        return { [MARKER]: "http", id: this.exportFunction(fn) };
+      const kind = this.markedFunctions.get(fn);
+      if (kind !== undefined) {
+        return { [MARKER]: "marked", kind, id: this.exportFunction(fn) };
       }
       const bound = holder === undefined ? fn : fn.bind(holder);
       return { [MARKER]: "fn", id: this.exportFunction(bound) };
@@ -294,12 +300,15 @@ export class RemoteCodec {
     switch (marker) {
       case "fn":
         return this.options.importFunction(Number(Reflect.get(value, "id")));
-      case "http": {
-        const importHttp = this.options.importHttpHandler;
-        if (importHttp === undefined) {
-          throw new Error("http handlers cannot cross in this direction");
+      case "marked": {
+        const importMarked = this.options.importMarkedFunction;
+        if (importMarked === undefined) {
+          throw new Error("marked functions cannot cross in this direction");
         }
-        return importHttp(Number(Reflect.get(value, "id")));
+        return importMarked(
+          Reflect.get(value, "kind") as MarkedFunctionKind,
+          Number(Reflect.get(value, "id")),
+        );
       }
       case "signal":
         return this.importSignal(

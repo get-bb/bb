@@ -17,6 +17,7 @@ import {
   type PluginRpcHandler,
 } from "./plugin-api.js";
 import { PluginRpcBoundaryError } from "./plugin-rpc-method.js";
+import { deferredListenerFailure } from "./plugin-settings-listener.js";
 import {
   PLUGIN_SERVER_WORKER_UNSUPPORTED_ERROR,
   RemoteCodec,
@@ -211,9 +212,24 @@ export function startPluginServerWorker(
         return result;
       };
     },
-    importHttpHandler: (id) => {
+    importMarkedFunction: (kind, id) => {
+      if (kind === "listener") {
+        return (...callArgs: unknown[]) =>
+          deferredListenerFailure(
+            invokeWorker({ t: "invoke", fn: id, args: callArgs }).then(
+              (result) =>
+                typeof result === "object" &&
+                result !== null &&
+                "threw" in result
+                  ? result.threw
+                  : null,
+              (error: unknown) => error,
+            ),
+          );
+      }
       return async (...callArgs: unknown[]) => {
-        const raw = (callArgs[0] as Context).req.raw;
+        const context = callArgs[0] as Context;
+        const raw = context.req.raw;
         return invokeWorker({
           t: "invoke",
           fn: id,
@@ -224,6 +240,10 @@ export function startPluginServerWorker(
               headers: [...raw.headers],
               body: raw.body,
               signal: raw.signal,
+              path: context.req.path,
+              routePath: context.req.routePath,
+              params: context.req.param(),
+              variables: context.var,
             },
           ],
         });

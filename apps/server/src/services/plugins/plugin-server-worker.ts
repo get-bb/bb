@@ -30,6 +30,7 @@ import {
   type WorkerToCoreMessage,
 } from "./plugin-server-worker-protocol.js";
 import { maintainPluginDatabases } from "../system/sqlite-incremental-vacuum.js";
+import { findUnsupportedPluginServerApi } from "./plugin-server-worker-preflight.js";
 
 if (parentPort === null) {
   throw new Error("plugin server worker must run in a worker thread");
@@ -117,13 +118,17 @@ const localRpcHandlers = new Map<string, unknown>();
 
 function httpHandler(handler: unknown) {
   if (typeof handler !== "function") return handler;
-  return codec.markHttpHandler(
+  return codec.markFunction(
     async (request: {
       url: string;
       method: string;
       headers: Array<[string, string]>;
       body: ReadableStream<Uint8Array> | null;
       signal: AbortSignal;
+      path: string;
+      routePath: string;
+      params: Record<string, string>;
+      variables: Record<string, unknown>;
     }) => {
       const raw = new Request(request.url, {
         method: request.method,
@@ -133,12 +138,44 @@ function httpHandler(handler: unknown) {
           ? {}
           : { body: request.body, duplex: "half" as const }),
       } as RequestInit);
+      const encodedParams = Object.fromEntries(
+        Object.entries(request.params).map(([key, value]) => [
+          key,
+          encodeURIComponent(value),
+        ]),
+      );
+      const route = {
+        basePath: "/",
+        path: request.routePath,
+        method: "ALL",
+        handler,
+      };
+      const context = new Context(raw, {
+        path: request.path,
+        matchResult: [[[[handler, route], encodedParams]]],
+      } as ConstructorParameters<typeof Context>[1]);
+      for (const [key, value] of Object.entries(request.variables)) {
+        context.set(key as never, value as never);
+      }
       const response = await (handler as (context: Context) => unknown)(
-        new Context(raw),
+        context,
       );
       return adoptHttpRouteResponse(response);
     },
+    "http",
   );
+}
+
+function settingsListener(listener: unknown) {
+  if (typeof listener !== "function") return listener;
+  return codec.markFunction((...args: unknown[]) => {
+    try {
+      listener(...args);
+    } catch (error) {
+      return { threw: error };
+    }
+    return null;
+  }, "listener");
 }
 
 let sdk: PluginBbSdk | undefined;
@@ -167,11 +204,16 @@ const api = {
           )();
         }
       }
-      return syncRequest({
+      const handle = syncRequest({
         t: "call",
         path: "settings.define",
         args: [descriptors],
-      });
+      }) as { onChange: (listener: unknown) => unknown };
+      const onChange = handle.onChange;
+      return {
+        ...handle,
+        onChange: (listener: unknown) => onChange(settingsListener(listener)),
+      };
     },
   },
   storage: {
@@ -334,6 +376,10 @@ function installRuntimeExternals(): void {
 }
 
 async function loadPlugin(): Promise<void> {
+  const unsupportedMember = await findUnsupportedPluginServerApi(
+    data.entryPath,
+  );
+  if (unsupportedMember !== null) unsupported(unsupportedMember)();
   installRuntimeExternals();
   let mod: { default?: unknown };
   if (data.loader === "cjs") {
