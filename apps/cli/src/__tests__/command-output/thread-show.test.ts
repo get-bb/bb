@@ -106,7 +106,7 @@ describe("bb thread show command output", () => {
           archivedAt,
         }),
       ),
-      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
+      "v1.threads.:id.head-state.$get": fixtures.makeEmptyHeadStateGetMock(),
     });
 
     await runCommand(["thread", "show", "thread-archived-1"], register);
@@ -129,10 +129,10 @@ describe("bb thread show command output", () => {
       pinnedAt: 1_700_000_000_000,
     });
     const get = vi.fn(async () => thread);
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(["thread", "show", "thread-pinned-1"], register);
@@ -140,9 +140,8 @@ describe("bb thread show command output", () => {
     expect(get).toHaveBeenCalledWith({
       param: { id: "thread-pinned-1" },
     });
-    expect(timelineGet).toHaveBeenCalledWith({
+    expect(headStateGet).toHaveBeenCalledWith({
       param: { id: "thread-pinned-1" },
-      query: { summaryOnly: "true" },
     });
     const lines = collectLogLines(vi.mocked(console.log));
     expect(lines).toContain("  Status: idle");
@@ -160,10 +159,10 @@ describe("bb thread show command output", () => {
       updatedAt: 2,
     });
     const get = vi.fn(async () => thread);
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(["thread", "show", "--self"], register);
@@ -199,11 +198,11 @@ describe("bb thread show command output", () => {
       reason: "non_git_environment",
       message: "Workspace is not a Git repository.",
     });
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(
@@ -283,11 +282,11 @@ describe("bb thread show command output", () => {
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
     const rpc = stubGitRpc({ outcome: "available", diff: gitDiff });
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(
@@ -332,7 +331,7 @@ describe("bb thread show command output", () => {
     stubServerApi({
       "v1.environments.:id.$get": vi.fn(async () => environment),
       "v1.threads.:id.$get": vi.fn(async () => thread),
-      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
+      "v1.threads.:id.head-state.$get": fixtures.makeEmptyHeadStateGetMock(),
     });
 
     await runCommand(
@@ -393,11 +392,11 @@ describe("bb thread show command output", () => {
     });
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(
@@ -450,11 +449,11 @@ describe("bb thread show command output", () => {
       outcome: "available",
       pullRequest,
     });
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(["thread", "show", "thread-show-pr"], register);
@@ -503,11 +502,11 @@ describe("bb thread show command output", () => {
       outcome: "unavailable",
       message: "gh pr view failed: authentication required",
     });
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(["thread", "show", "thread-show-pr-down"], register);
@@ -542,11 +541,11 @@ describe("bb thread show command output", () => {
       outcome: "available",
       pullRequest,
     });
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(
@@ -579,10 +578,10 @@ describe("bb thread show command output", () => {
       updatedAt: 2,
     });
     const get = vi.fn(async () => thread);
-    const timelineGet = fixtures.makeEmptyTimelineGetMock();
+    const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.head-state.$get": headStateGet,
     });
 
     await runCommand(

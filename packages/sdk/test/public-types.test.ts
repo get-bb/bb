@@ -395,6 +395,7 @@ type ExpectedThreadsKey =
   | "experimental_listDescendants"
   | "experimental_listCascade"
   | "experimental_listPluginMetadata"
+  | "experimental_headState"
   | "experimental_regenerateTitle"
   | "getPluginMetadata"
   | "updatePluginMetadata"

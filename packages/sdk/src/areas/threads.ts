@@ -56,6 +56,7 @@ import type {
   ThreadTimelineReadResponse,
   ThreadTimelineResponse,
   ThreadContextResponse,
+  ThreadHeadStateResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsResponse,
   ThreadOpenFile,
@@ -197,6 +198,7 @@ export type ThreadInteractionCancelResult = PendingInteraction;
 export type ThreadEventsListResult = ThreadEventRow[];
 export type ThreadEventWaitResult = ThreadEventRow | null;
 export type ThreadContextResult = ThreadContextResponse;
+export type ThreadHeadStateResult = ThreadHeadStateResponse;
 export type ThreadTimelineResult = ThreadTimelineResponse;
 export type ThreadTimelineReadResult = ThreadTimelineReadResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
@@ -737,6 +739,15 @@ export interface ThreadsArea {
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   context(args: ThreadStatusArgs): Promise<ThreadContextResult>;
+  /**
+   * The thread's to-do list, provider slash commands, and session options,
+   * read from their latest stored state events without building a timeline
+   * window. `pendingTodos` is null unless the thread is active.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_headState(
+    args: ThreadStatusArgs,
+  ): Promise<ThreadHeadStateResult>;
   timeline(
     args: ThreadTimelineArgs & { afterTag?: undefined },
   ): Promise<ThreadTimelineResult>;
@@ -1640,6 +1651,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async context(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].context.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_headState(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["head-state"].$get(
           { param: { id: input.threadId } },
           ...signalRequestArgs(input.signal),
         ),

@@ -28,6 +28,9 @@ import {
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
+  extractThreadProviderCommands,
+  extractThreadSessionOptions,
+  extractThreadTimelinePendingTodos,
   MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
@@ -49,6 +52,7 @@ import type {
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
+  ThreadHeadStateResponse,
   TimelineConversationAttachments,
   ThreadConversationOutlineAttachmentSummary,
   ThreadMessageResponse,
@@ -980,6 +984,20 @@ function listLatestTimelineHeadStateRows(
     }),
     ...listTodoSnapshotEventRowsForThread(db, { threadId }),
   ]);
+}
+
+export function readThreadHeadState(
+  db: DbConnection,
+  thread: Thread,
+): ThreadHeadStateResponse {
+  const events = listLatestTimelineHeadStateRows(db, thread.id, []).map((row) =>
+    withRowMeta(row, decodeStoredEventRowCached(db, row)),
+  );
+  return {
+    pendingTodos: extractThreadTimelinePendingTodos(thread.status, events),
+    providerCommands: extractThreadProviderCommands(events),
+    sessionOptions: extractThreadSessionOptions(events),
+  };
 }
 
 function selectStandardTimelineEventRows(

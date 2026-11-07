@@ -119,6 +119,11 @@ Inspecting:
   a thread in error with nothing queued to recover it. A failed thread whose
   retry is queued to send by itself is still waited on.
 
+  To follow a child thread, block on `bb thread wait <id>` rather than polling.
+  `bb thread show`, `bb thread list --json`, `thread commands` and `thread
+  options` read stored state and do not build the thread's timeline, so they
+  stay cheap on long threads; `bb thread log` builds timeline pages.
+
 Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
