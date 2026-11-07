@@ -21,6 +21,7 @@ import {
   resolveTimelineSnapshot,
   timelineSnapshotKey,
   type TimelineContentCursor,
+  type TimelineSnapshot,
 } from "./timeline-snapshot.js";
 import {
   buildThreadTimelineFromEvents,
@@ -114,6 +115,10 @@ import { runEventLoopWorkSync } from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { withCompactionOffer } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
+import {
+  getOrProjectTimelineTurnDetails,
+  type TimelineTurnDetailsProjection,
+} from "./timeline-turn-details-cache.js";
 import {
   forgetTimelineProjectionFolds,
   keepTimelineProjectionFold,
@@ -387,6 +392,33 @@ export function retainedOutputPreviewsByCallId(
     }
   }
   return previews;
+}
+
+function nextRetainedOutputPreviewExpiry(
+  events: readonly ThreadEventWithMeta[],
+  now: number,
+): number | null {
+  let expiresAt: number | null = null;
+  for (const { event } of events) {
+    if (event.type !== "item/completed") {
+      continue;
+    }
+    const item = event.item;
+    const truncation =
+      item.type === "commandExecution"
+        ? item.truncation?.aggregatedOutput
+        : item.type === "toolCall"
+          ? item.truncation?.result
+          : undefined;
+    if (
+      truncation !== undefined &&
+      truncation.truncatedAt > now &&
+      (expiresAt === null || truncation.truncatedAt < expiresAt)
+    ) {
+      expiresAt = truncation.truncatedAt;
+    }
+  }
+  return expiresAt;
 }
 
 export function withRetainedOutputPreview(
@@ -2224,6 +2256,49 @@ function buildTimelineTurnSummaryDetailsPage(
     ]),
   );
   const contentCursor = readTimelineContentCursor(detailsPage);
+  const now = Date.now();
+  const projection = getOrProjectTimelineTurnDetails(db, {
+    now,
+    project: () =>
+      projectTimelineTurnSummaryDetails(db, thread, options, snapshot, now),
+    revision: JSON.stringify([
+      timelineSnapshotKey(snapshot),
+      getThreadEventRewriteGeneration(thread.id),
+    ]),
+    slot: JSON.stringify([thread.id, snapshot.surface]),
+  });
+  const contents = paginateTimelineContents(
+    projection.rows,
+    contentCursor?.beforeLeaf,
+    TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
+    TIMELINE_TURN_DETAILS_PAGE_BYTE_LIMIT,
+    projection.leafBytes,
+  );
+  const cursor =
+    contents.start === 0
+      ? null
+      : bindTimelineCursor(
+          {
+            anchorId: options.turnId,
+            anchorSeq: Math.max(1, options.sourceSeqStart),
+          },
+          snapshot,
+          { beforeLeaf: contents.start, beforeSequence: snapshot.maxSeq + 1 },
+        );
+  return {
+    rows: contents.rows,
+    olderCursor: cursor?.anchorId ?? null,
+    historySnapshot: timelineSnapshotKey(snapshot),
+  };
+}
+
+function projectTimelineTurnSummaryDetails(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineTurnSummaryDetailsOptions,
+  snapshot: TimelineSnapshot,
+  now: number,
+): Pick<TimelineTurnDetailsProjection, "expiresAt" | "rows"> {
   const includeDiagnosticOperations = options.includeDiagnosticOperations;
   const detailsWindow = {
     beforeSequence: Math.min(options.sourceSeqEnd, snapshot.maxSeq) + 1,
@@ -2368,50 +2443,27 @@ function buildTimelineTurnSummaryDetailsPage(
     },
   });
 
-  if (children.kind !== "missing-match") {
-    const scopedRows = scopeTimelineTurnDetailsRows(
-      children.rows,
-      retainedOutputPreviewsByCallId(
-        projectionEvents,
-        "detail-limit",
-        Date.now(),
-      ),
-      options,
+  if (children.kind === "missing-match") {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
     );
-    if (scopedRows === null) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include item ${options.itemId}`,
-      );
-    }
-    const contents = paginateTimelineContents(
-      scopedRows,
-      contentCursor?.beforeLeaf,
-      TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
-      TIMELINE_TURN_DETAILS_PAGE_BYTE_LIMIT,
-    );
-    const cursor =
-      contents.start === 0
-        ? null
-        : bindTimelineCursor(
-            {
-              anchorId: options.turnId,
-              anchorSeq: Math.max(1, options.sourceSeqStart),
-            },
-            snapshot,
-            { beforeLeaf: contents.start, beforeSequence: snapshot.maxSeq + 1 },
-          );
-    return {
-      rows: contents.rows,
-      olderCursor: cursor?.anchorId ?? null,
-      historySnapshot: timelineSnapshotKey(snapshot),
-    };
   }
-
-  throw new ApiError(
-    400,
-    "invalid_request",
-    `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
+  const scopedRows = scopeTimelineTurnDetailsRows(
+    children.rows,
+    retainedOutputPreviewsByCallId(projectionEvents, "detail-limit", now),
+    options,
   );
+  if (scopedRows === null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include item ${options.itemId}`,
+    );
+  }
+  return {
+    expiresAt: nextRetainedOutputPreviewExpiry(projectionEvents, now),
+    rows: scopedRows,
+  };
 }
