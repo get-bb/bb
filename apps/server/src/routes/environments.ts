@@ -28,6 +28,10 @@ import {
 } from "../services/environments/git-plugin-reads.js";
 import { ApiError } from "../errors.js";
 import {
+  resolveRequestSource,
+  type ResolvePluginRpcCaller,
+} from "../request-context.js";
+import {
   toEnvironmentResponse,
   toEnvironmentResponses,
 } from "../services/environments/environment-response.js";
@@ -77,7 +81,7 @@ async function mapNoChangesTo409<TResult>(
 export function registerEnvironmentRoutes(
   app: Hono,
   deps: AppDeps,
-  plugins: GitPluginRpc,
+  plugins: GitPluginRpc & { resolveRpcCaller: ResolvePluginRpcCaller },
 ): void {
   const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -180,6 +184,14 @@ export function registerEnvironmentRoutes(
   post(routes.archiveThreads, (context) => {
     const environment = requireEnvironment(deps.db, context.req.param("id"));
     const archivedThreadIds = archiveEnvironmentThreads(deps, { environment });
+    deps.logger.info(
+      {
+        environmentId: environment.id,
+        archivedThreadIds,
+        source: resolveRequestSource(context, plugins.resolveRpcCaller),
+      },
+      "Environment threads archived",
+    );
     return context.json({
       ok: true,
       archivedThreadIds,

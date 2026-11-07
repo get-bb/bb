@@ -88,6 +88,10 @@ import {
 } from "../../services/threads/thread-provisioning.js";
 import { archiveThreadAndChildren } from "../../services/threads/thread-archive.js";
 import {
+  resolveRequestSource,
+  type ResolvePluginRpcCaller,
+} from "../../request-context.js";
+import {
   requireThreadCommandEnvironment,
   requireThreadHostCommandEnvironment,
   resolveThreadHostCommandEnvironment,
@@ -207,7 +211,11 @@ function assertPinnedThreadOrderResult(
   }
 }
 
-export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
+export function registerThreadActionRoutes(
+  app: Hono,
+  deps: AppDeps,
+  plugins: { resolveRpcCaller: ResolvePluginRpcCaller },
+): void {
   const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
@@ -614,6 +622,17 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const archivedThreadIds = archiveThreadAndChildren(deps, {
       parentThread: thread,
     });
+    deps.logger.info(
+      {
+        threadId: thread.id,
+        alreadyArchivedAt: thread.archivedAt,
+        archivedThreadIds,
+        source: resolveRequestSource(context, plugins.resolveRpcCaller),
+      },
+      thread.archivedAt === null
+        ? "Thread archived"
+        : "Archive requested for an already-archived thread",
+    );
     return context.json({
       ok: true,
       archivedThreadIds,
@@ -633,6 +652,14 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "Lifecycle owner must be unarchived first",
       );
     }
+    deps.logger.info(
+      {
+        threadId: thread.id,
+        archivedAt: thread.archivedAt,
+        source: resolveRequestSource(context, plugins.resolveRpcCaller),
+      },
+      "Thread unarchived",
+    );
     const unarchivedThread = getThread(deps.db, thread.id);
     if (unarchivedThread !== null) {
       if (unarchivedThread.environmentId !== null)

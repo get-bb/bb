@@ -1509,16 +1509,42 @@ export function createStorage(
           `This thread’s storage contains the workspace ${workspace}, which an environment still uses`,
         );
       }
+      const removedBytes =
+        archivedAt === null
+          ? null
+          : await measureThreadStorage(hostId, rootPath, threadId);
       await worker.call(
         "discard",
         { rootPath, names: [threadId], recreate: true },
         { hostId, signal: lifecycle.signal },
       );
       forget(hostId, { entries: new Set([threadId]) });
+      if (archivedAt !== null)
+        bb.log.info(
+          `Cleared archived storage for thread ${threadId} (archived_at ${new Date(archivedAt).toISOString()}): removed ${removedBytes} bytes`,
+        );
       return { ok: true as const };
     } finally {
       release();
     }
+  }
+  async function measureThreadStorage(
+    hostId: string,
+    rootPath: string,
+    threadId: string,
+  ) {
+    const directory = `${rootPath.replace(/[\\/]$/, "")}/${threadId}`;
+    const result = await worker.call(
+      "measure",
+      {
+        targets: [{ path: directory, perChild: false }],
+        largeFileMinBytes: null,
+        timeoutMs: 29 * 60_000,
+      },
+      { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
+    );
+    const measured = result.targets.find((target) => target.path === directory);
+    return measured?.outcome === "measured" ? measured.sizeBytes : 0;
   }
   let cleaningArchives = false;
   function queueArchivedStorage(threadId: string, archivedAt: number) {

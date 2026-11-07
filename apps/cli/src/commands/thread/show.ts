@@ -630,7 +630,11 @@ function printThreadStatus(
 ): void {
   const { thread } = payload;
   console.log(`Thread: ${thread.id}`);
-  console.log(`  Status: ${thread.status}`);
+  console.log(
+    thread.archivedAt === null
+      ? `  Status: ${thread.status}`
+      : `  Status: ${thread.status} (archived ${new Date(thread.archivedAt).toLocaleString()})`,
+  );
   if (thread.title) {
     console.log(`  Title: ${thread.title}`);
   }
@@ -638,9 +642,6 @@ function printThreadStatus(
   if (thread.parentThreadId) {
     console.log(`  Parent: ${thread.parentThreadId}`);
     console.log(`  Parent notifications: ${thread.parentNotifications}`);
-  }
-  if (thread.archivedAt !== null) {
-    console.log(`  Archived: ${new Date(thread.archivedAt).toLocaleString()}`);
   }
   if (thread.pinnedAt !== null) {
     console.log(`  Pinned: ${new Date(thread.pinnedAt).toLocaleString()}`);

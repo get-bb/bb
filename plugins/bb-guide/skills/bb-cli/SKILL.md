@@ -82,6 +82,9 @@ A plugin's commands and settings are documented in that plugin's own skill.
   it sees the same files.
 - To check whether a thread ever received a message, search
   `bb thread log <thread-id> --all`, not the default page.
+- `status` is the run state, so an archived thread can read `idle`. Check
+  `thread.archivedAt` in `bb thread show <thread-id> --json` before treating a
+  thread as live.
 - Before retrying a failed thread, read `bb thread show <thread-id> --json` and
   `bb thread log <thread-id>`. Treat a thread the user stopped as intentionally
   stopped unless they ask you to continue.

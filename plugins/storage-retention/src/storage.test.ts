@@ -2286,6 +2286,11 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "measure")
+        return worker.experimental_call(
+          "measure",
+          hostStorageContract.measure.input.parse(call.input),
+        );
       if (call.method !== "discard") throw new Error("Unexpected host method");
       return worker.experimental_call(
         "discard",
@@ -2362,6 +2367,18 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
       retryClock.mockRestore();
     }
     expect(await fs.readdir(path.join(root, "thr_wait"))).toEqual([]);
+    expect(
+      host.harness.inspection.logEntries.filter((entry) =>
+        entry.message.startsWith("Cleared archived storage"),
+      ),
+    ).toEqual([
+      {
+        level: "info",
+        message: expect.stringMatching(
+          /^Cleared archived storage for thread thr_wait \(archived_at 1970-01-01T00:00:00\.001Z\): removed [1-9]\d* bytes$/,
+        ),
+      },
+    ]);
     for (const id of ids.filter((id) => id !== "thr_wait"))
       expect(await fs.readdir(path.join(root, id))).toEqual(["artifact.txt"]);
     const recent = threads.get("thr_recent")!;
@@ -2415,6 +2432,11 @@ it("waits for storage inventory for detached archives and persists backoff for f
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "measure")
+        return {
+          targets: [{ outcome: "missing", path: "/storage/thr_detached" }],
+          largeFiles: [],
+        };
       if (call.method === "discard") return discard();
       throw new Error("Unexpected host method");
     },
