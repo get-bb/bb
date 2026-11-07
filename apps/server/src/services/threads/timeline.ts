@@ -124,6 +124,7 @@ import {
   keepTimelineProjectionFold,
 } from "./timeline-projection-fold.js";
 import {
+  timelineTurnSplitter,
   selectTimelineWindowStart,
   lookupLatestTimelineSelection,
   rememberLatestTimelineSelection,
@@ -1138,12 +1139,18 @@ function selectStandardTimelineEventRows(
   const sequenceStart =
     contentCursor !== undefined && page.kind === "older"
       ? page.beforeCursor.anchorSeq
-      : selectTimelineWindowStart(
-          hints,
-          budgetFloor,
-          page.segmentLimit,
+      : selectTimelineWindowStart({
+          budgetFloorSequence: budgetFloor,
           epochSequenceStart,
-        );
+          eventBudget,
+          hints,
+          segmentLimit: page.segmentLimit,
+          splitTurnAt: timelineTurnSplitter(db, {
+            flatTurnDisplay,
+            maxSeq,
+            threadId: thread.id,
+          }),
+        });
   const hasOlder =
     sequenceStart > epochSequenceStart &&
     findTimelineWindowBudgetFloorSequence(db, {

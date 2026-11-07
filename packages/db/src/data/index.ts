@@ -367,6 +367,8 @@ export {
   advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
   findLatestTimelineTurnEventSequenceBefore,
+  isTimelineEventInCompletedTurn,
+  findTimelineWindowCutSequence,
   findStoredTimelineWindowByteBudgetFloor,
   isTimelineCursorSequencePresent,
   listStoredClientTurnRequestIdsInRange,

@@ -33,6 +33,13 @@ empty page with a usable older cursor. Latest-page head state is retained while
 skipping. Context loading and complete-group reconstruction can exceed the
 initial event budget.
 
+When no visible segment start fits the event budget, the window starts on a
+grid of half the event budget at or below the budget floor, moved back to the
+first event of the item the grid lands in. A long turn is then paged in windows
+of one to one and a half budgets, and the latest window start moves only once
+per half budget of appended events. The grid is not used inside a finished
+turn that the page collapses into summaries.
+
 A page reads a turn whose rows render flat, meaning a running turn or any turn
 under the flat display, only inside its window. It adds the complete events of
 items that cross the window edges, the delegation parents of rows it reads, the

@@ -3404,6 +3404,85 @@ export function findLatestTimelineTurnEventSequenceBefore(
   return row?.sequence ?? null;
 }
 
+const TIMELINE_WINDOW_CUT_EVENT_TYPES = [
+  "client/turn/requested",
+  "turn/started",
+  "turn/input/accepted",
+  "turn/completed",
+  "item/started",
+  "item/completed",
+] as const satisfies readonly ThreadEventType[];
+
+export function findTimelineWindowCutSequence(
+  db: DbConnection,
+  args: { budgetFloorSequence: number; sequence: number; threadId: string },
+): number | null {
+  const [row] = db.all<{
+    itemId: string | null;
+    itemKind: string | null;
+    scopeKind: string;
+    sequence: number;
+    turnId: string | null;
+  }>(sql`
+    SELECT sequence, item_id AS itemId, item_kind AS itemKind,
+      scope_kind AS scopeKind, turn_id AS turnId
+    FROM events INDEXED BY events_thread_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND sequence >= ${args.sequence}
+      AND sequence <= ${args.budgetFloorSequence}
+      AND type IN (${sql.join(
+        TIMELINE_WINDOW_CUT_EVENT_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      )})
+    ORDER BY sequence
+    LIMIT 1
+  `);
+  if (row === undefined) return null;
+  if (
+    row.itemId === null ||
+    row.turnId === null ||
+    row.itemKind === "toolCall" ||
+    row.itemKind === "delegation" ||
+    row.itemKind === "backgroundTask"
+  ) {
+    return row.sequence;
+  }
+  const [start] = db.all<{ sequence: number | null }>(sql`
+    SELECT MIN(sequence) AS sequence
+    FROM events INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND item_id = ${row.itemId}
+      AND type IN (
+        'item/started',
+        'item/completed',
+        'item/backgroundTask/completed'
+      )
+      AND turn_id = ${row.turnId}
+      AND scope_kind = ${row.scopeKind}
+  `);
+  return start?.sequence ?? row.sequence;
+}
+
+export function isTimelineEventInCompletedTurn(
+  db: DbConnection,
+  args: { maxSeq: number; sequence: number; threadId: string },
+): boolean {
+  const [row] = db.all<{ completed: number }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM events AS completed
+      WHERE completed.thread_id = event.thread_id
+        AND completed.turn_id = event.turn_id
+        AND completed.type = 'turn/completed'
+        AND completed.sequence <= ${args.maxSeq}
+    ) AS completed
+    FROM events AS event
+    WHERE event.thread_id = ${args.threadId}
+      AND event.sequence = ${args.sequence}
+      AND event.turn_id IS NOT NULL
+  `);
+  return row?.completed === 1;
+}
+
 export interface AdvanceTimelineWindowBudgetFloorSequenceArgs {
   appendedEventCount: number;
   excludeDiagnosticEvents?: boolean;
