@@ -656,11 +656,13 @@ function createTrimmedSelectionRowSource(
           trimFallback("unfetched-children");
         }
       }
+      const excludedTurnIds = new Set(query.excludedTurnIds);
       return rows.filter(
         (row) =>
           row.parentToolCallId !== null &&
           parents.has(row.parentToolCallId) &&
-          row.sequence >= args.epochSequenceStart,
+          row.sequence >= args.epochSequenceStart &&
+          (row.turnId === null || !excludedTurnIds.has(row.turnId)),
       );
     },
     listContextRows(query) {

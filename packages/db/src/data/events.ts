@@ -1236,6 +1236,52 @@ function storedEventRowSqlFields(maxInlineOutputChars: InlineOutputCharLimit) {
   };
 }
 
+function storedEventRowAliasedSqlFields(
+  maxInlineOutputChars: InlineOutputCharLimit,
+) {
+  const fields = storedEventRowSqlFields(maxInlineOutputChars);
+  return {
+    createdAt: fields.createdAt.as("createdAt"),
+    data: fields.data.as("data"),
+    id: fields.id.as("id"),
+    itemId: fields.itemId.as("itemId"),
+    itemKind: fields.itemKind.as("itemKind"),
+    parentToolCallId: fields.parentToolCallId.as("parentToolCallId"),
+    providerThreadId: fields.providerThreadId.as("providerThreadId"),
+    scopeKind: fields.scopeKind.as("scopeKind"),
+    sequence: fields.sequence.as("sequence"),
+    threadId: fields.threadId.as("threadId"),
+    turnId: fields.turnId.as("turnId"),
+    type: fields.type.as("type"),
+  };
+}
+
+function allStoredEventRowsUnmapped(
+  db: DbConnection,
+  query: { toSQL(): { sql: string; params: unknown[] } },
+): StoredEventRow[] {
+  const { sql: source, params } = query.toSQL();
+  return db.$client
+    .prepare<unknown[], StoredEventRow>(source)
+    .all(...params);
+}
+
+function allStoredEventRowsInVariableBatches(
+  db: DbConnection,
+  values: readonly string[],
+  buildQuery: (batch: readonly string[]) => {
+    toSQL(): { sql: string; params: unknown[] };
+  },
+): StoredEventRow[] {
+  return queryInSqliteVariableBatches({
+    dedupeKey: (value) => value,
+    fixedVariableCount: buildQuery([]).toSQL().params.length,
+    queryBatch: (batch) => allStoredEventRowsUnmapped(db, buildQuery(batch)),
+    values,
+    variableCountPerValue: 1,
+  }).sort((left, right) => left.sequence - right.sequence);
+}
+
 export interface ListStoredEventRowsArgs {
   afterSequence?: number;
   beforeSequence?: number;
@@ -1254,6 +1300,7 @@ export interface FindStoredEventRowArgs {
 export interface ListStoredEventRowsByParentToolCallIdsArgs {
   excludeDiagnosticEvents?: boolean;
   beforeSequence?: number;
+  excludedTurnIds?: readonly string[];
   excludedTypes?: readonly ThreadEventType[];
   maxInlineOutputChars: InlineOutputCharLimit;
   parentToolCallIds: readonly string[];
@@ -1913,39 +1960,48 @@ export function listStoredEventRowsByParentToolCallIds(
   db: DbConnection,
   args: ListStoredEventRowsByParentToolCallIdsArgs,
 ): StoredEventRow[] {
-  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
-  if (conditions === null) {
+  const parentToolCallIds = args.parentToolCallIds.filter(
+    (parentToolCallId) => parentToolCallId.length > 0,
+  );
+  if (parentToolCallIds.length === 0) {
     return [];
   }
+  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
 
-  return db
-    .select(storedEventRowSqlFields(args.maxInlineOutputChars))
-    .from(
-      sql`${events} INDEXED BY events_parent_tool_call_thread_parent_sequence_idx`,
-    )
-    .where(and(...conditions, isNotNull(events.parentToolCallId)))
-    .orderBy(events.sequence)
-    .all();
+  return allStoredEventRowsInVariableBatches(
+    db,
+    parentToolCallIds,
+    (batch) =>
+      db
+        .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
+        .from(
+          sql`${events} INDEXED BY events_parent_tool_call_thread_parent_sequence_idx`,
+        )
+        .where(
+          and(
+            ...conditions,
+            inArray(events.parentToolCallId, [...batch]),
+            isNotNull(events.parentToolCallId),
+          ),
+        ),
+  );
 }
 
 function storedEventRowsByParentToolCallIdsConditions(
   args: ListStoredEventRowsByParentToolCallIdsArgs,
-): SQL[] | null {
-  const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
-    (parentToolCallId) => parentToolCallId.length > 0,
-  );
-  if (parentToolCallIds.length === 0) {
-    return null;
-  }
-
+): SQL[] {
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     isNotSupersededBackgroundTaskProgressBefore(args.beforeSequence),
-    inArray(events.parentToolCallId, parentToolCallIds),
   ];
   if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+  if (args.excludedTurnIds && args.excludedTurnIds.length > 0) {
+    conditions.push(
+      sql`(${isNull(events.turnId)} OR ${notInArray(events.turnId, [...args.excludedTurnIds])})`,
+    );
   }
   if (args.sequenceStart !== undefined) {
     conditions.push(gte(events.sequence, args.sequenceStart));
@@ -3793,25 +3849,17 @@ export function listStoredTimelineTurnEventRows(
   args: ListStoredTimelineWindowEventRowsArgs & { turnIds: readonly string[] },
 ): StoredEventRow[] {
   if (args.turnIds.length === 0) return [];
-  return queryInSqliteVariableBatches({
-    values: args.turnIds,
-    variableCountPerValue: 1,
-    dedupeKey: (turnId) => turnId,
-    fixedVariableCount: 32,
-    queryBatch: (turnIds) =>
-      db
-        .select(storedEventRowSqlFields(args.maxInlineOutputChars))
-        .from(
-          sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
-        )
-        .where(
-          and(
-            ...storedTimelineWindowConditions(args),
-            inArray(events.turnId, [...turnIds]),
-          ),
-        )
-        .all(),
-  }).sort((left, right) => left.sequence - right.sequence);
+  return allStoredEventRowsInVariableBatches(db, args.turnIds, (turnIds) =>
+    db
+      .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
+      .from(sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`)
+      .where(
+        and(
+          ...storedTimelineWindowConditions(args),
+          inArray(events.turnId, [...turnIds]),
+        ),
+      ),
+  );
 }
 
 export function listTimelineRootWindowTurnIds(

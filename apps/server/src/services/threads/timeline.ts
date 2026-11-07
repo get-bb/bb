@@ -323,6 +323,23 @@ interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
     beforeSequence: number | undefined;
     sequenceStart: number;
   } | null;
+  lookups: TimelineWindowParentedRowLookups;
+}
+
+interface TimelineWindowParentedRowLookups {
+  childToolCallIds: Set<string>;
+  loadedTurnIds: ReadonlySet<string>;
+  parentToolCallIds: Set<string>;
+}
+
+function createTimelineWindowParentedRowLookups(
+  loadedTurnIds: ReadonlySet<string>,
+): TimelineWindowParentedRowLookups {
+  return {
+    childToolCallIds: new Set(),
+    loadedTurnIds,
+    parentToolCallIds: new Set(),
+  };
 }
 
 interface TimelineWindowParentedRowsResult {
@@ -573,22 +590,23 @@ function ensureTimelineWindowParentedRows(
   let rows = [...args.rows];
   const rowIds = new Set(rows.map((row) => row.id));
   const visibleToolCallIds = new Set(collectStoredDelegatingItemIds(rows));
-  const fetchedChildToolCallIds = new Set<string>();
+  const { lookups } = args;
 
   while (true) {
     const toolCallIdsToFetch = [...visibleToolCallIds].filter(
-      (toolCallId) => !fetchedChildToolCallIds.has(toolCallId),
+      (toolCallId) => !lookups.childToolCallIds.has(toolCallId),
     );
     if (toolCallIdsToFetch.length === 0) {
       break;
     }
     for (const toolCallId of toolCallIdsToFetch) {
-      fetchedChildToolCallIds.add(toolCallId);
+      lookups.childToolCallIds.add(toolCallId);
     }
 
     const childSequenceBounds = args.sequenceBounds;
     const childRows = args.source.listChildRows({
       beforeSequence: childSequenceBounds?.beforeSequence,
+      excludedTurnIds: [...lookups.loadedTurnIds],
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
       excludeDiagnosticEvents: args.excludeDiagnosticEvents,
       maxInlineOutputChars: args.maxInlineOutputChars,
@@ -610,8 +628,13 @@ function ensureTimelineWindowParentedRows(
   }
 
   const missingParentToolCallIds = collectStoredParentToolCallIds(rows).filter(
-    (parentToolCallId) => !visibleToolCallIds.has(parentToolCallId),
+    (parentToolCallId) =>
+      !visibleToolCallIds.has(parentToolCallId) &&
+      !lookups.parentToolCallIds.has(parentToolCallId),
   );
+  for (const parentToolCallId of missingParentToolCallIds) {
+    lookups.parentToolCallIds.add(parentToolCallId);
+  }
   const parentRows = args.source.listParentRows({
     itemIds: missingParentToolCallIds,
     maxInlineOutputChars: args.maxInlineOutputChars,
@@ -1102,6 +1125,8 @@ function selectStandardTimelineEventRows(
     }),
   ];
   const fetchedTurns = new Set<string>();
+  const parentedRowLookups =
+    createTimelineWindowParentedRowLookups(fetchedTurns);
   rows = measureThreadTimelineStage(profile, "group-context-query", () => {
     let selectedRows = rows;
     for (;;) {
@@ -1128,6 +1153,7 @@ function selectStandardTimelineEventRows(
         threadId: thread.id,
         rows: selectedRows,
         source,
+        lookups: parentedRowLookups,
         maxInlineOutputChars,
         excludeDiagnosticEvents,
         sequenceBounds: {
@@ -2336,6 +2362,7 @@ function buildTimelineTurnSummaryDetailsPage(
   });
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     excludeDiagnosticEvents: !includeDiagnosticOperations,
+    lookups: createTimelineWindowParentedRowLookups(new Set()),
     source: databaseTimelineRowSource(db),
     maxInlineOutputChars: detailsInlineOutputLimit,
     sequenceBounds: {
