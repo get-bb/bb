@@ -46,6 +46,8 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
   listStoredEventRows,
+  listStoredEventRowsByParentToolCallIds,
+  listStoredTimelineTurnEventRows,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
@@ -1935,6 +1937,96 @@ describe("events", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([2, 3]);
+  });
+
+  it("reads parented rows outside the excluded turns as the same stored rows the turn read returns", () => {
+    const { db, thread } = setup();
+    const childFields = (turnId: string | null, itemId: string) => ({
+      scope: turnId === null ? threadScope() : turnScope(turnId),
+      itemId,
+      itemKind: "agentMessage" as const,
+      parentToolCallId: "tool-agent",
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        scope: turnScope("turn-root"),
+        itemId: "tool-agent",
+        itemKind: "toolCall",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: { type: "toolCall", id: "tool-agent", tool: "Agent" },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/completed",
+        ...childFields("turn-root", "same-turn-child"),
+        data: JSON.stringify({ item: { id: "same-turn-child" } }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "turn/started",
+        ...childFields("turn-child", "child-turn-start"),
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "item/completed",
+        ...childFields("turn-child", "child-turn-child"),
+        data: JSON.stringify({ item: { id: "child-turn-child" } }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "item/completed",
+        ...childFields(null, "thread-child"),
+        data: JSON.stringify({ item: { id: "thread-child" } }),
+      },
+    ]);
+    const childArgs = {
+      beforeSequence: 7,
+      maxInlineOutputChars: 1_000,
+      parentToolCallIds: ["tool-agent"],
+      sequenceStart: 0,
+      threadId: thread.id,
+    };
+    const storedRows = listStoredEventRows(db, { threadId: thread.id });
+
+    expect(
+      listStoredEventRowsByParentToolCallIds(db, childArgs).map(
+        (row) => row.sequence,
+      ),
+    ).toEqual([3, 4, 5, 6]);
+    expect(
+      listStoredEventRowsByParentToolCallIds(db, {
+        ...childArgs,
+        excludedTurnIds: ["turn-root"],
+      }),
+    ).toEqual(storedRows.filter((row) => [4, 5, 6].includes(row.sequence)));
+    expect(
+      listStoredTimelineTurnEventRows(db, {
+        beforeSequence: 7,
+        maxInlineOutputChars: 1_000,
+        sequenceStart: 0,
+        threadId: thread.id,
+        turnIds: ["turn-root", "turn-child"],
+      }),
+    ).toEqual(storedRows.filter((row) => row.sequence !== 6));
   });
 
   it("skips superseded backgroundTask progress snapshots in timeline reads", () => {
@@ -4925,6 +5017,58 @@ describe("timeline read-boundary output truncation", () => {
       ...storedItem,
       aggregatedOutput: null,
     });
+  });
+
+  it("counts characters, not UTF-8 bytes, against the cap", () => {
+    const { db, thread } = setup();
+    const commandItem = (id: string, aggregatedOutput: string) => ({
+      threadId: thread.id,
+      type: "item/completed" as const,
+      ...threadEventFields,
+      itemId: id,
+      itemKind: "commandExecution" as const,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        item: {
+          type: "commandExecution",
+          id,
+          command: "cat bees",
+          cwd: "/tmp/test",
+          status: "completed",
+          approvalStatus: null,
+          exitCode: 0,
+          aggregatedOutput,
+        },
+      }),
+    });
+    const fitting = "\u00e9".repeat(maxInlineOutputChars - 200);
+    const overflowing = "\u00e9".repeat(maxInlineOutputChars + 10);
+    insertEvents(db, noopNotifier, [
+      { ...commandItem("cmd-fits", fitting), sequence: 1 },
+      { ...commandItem("cmd-overflows", overflowing), sequence: 2 },
+    ]);
+
+    const capped = listStoredTimelineWindowEventRows(db, {
+      maxInlineOutputChars,
+      sequenceStart: 0,
+      threadId: thread.id,
+    });
+    const stored = listStoredTimelineWindowEventRows(db, {
+      maxInlineOutputChars: null,
+      sequenceStart: 0,
+      threadId: thread.id,
+    });
+    const cappedOutput = (
+      JSON.parse(capped[1]!.data) as { item: { aggregatedOutput: string } }
+    ).item.aggregatedOutput;
+
+    expect(Buffer.byteLength(capped[0]!.data)).toBeGreaterThan(
+      maxInlineOutputChars,
+    );
+    expect(capped[0]!.data).toBe(stored[0]!.data);
+    expect(cappedOutput).toBe(
+      `${"\u00e9".repeat(maxInlineOutputChars)}\n\u2026[10 more characters truncated]`,
+    );
   });
 
   it("leaves a non-text tool result untouched", () => {

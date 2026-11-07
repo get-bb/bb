@@ -31,6 +31,7 @@ export function truncatedEventDataColumn(
   }
 
   return sql<string>`CASE
+    WHEN octet_length(${events.data}) <= ${maxInlineOutputChars} THEN ${events.data}
     WHEN length(${events.data}) <= ${maxInlineOutputChars} THEN ${events.data}
     ELSE json_replace(${events.data}, ${sql.join(pairs, sql`, `)})
   END`;
