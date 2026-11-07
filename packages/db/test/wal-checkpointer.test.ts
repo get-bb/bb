@@ -104,6 +104,57 @@ describe("startWalCheckpointer", () => {
     });
   });
 
+  it("waits out a reader that pins the WAL instead of asking the main thread to checkpoint", async () => {
+    await withDatabase(async (db, path) => {
+      const logger = new CapturingLogger();
+      const checkpointer = startWalCheckpointer({ logger });
+      const reader = new Database(path, { readonly: true });
+      try {
+        checkpointer.attach(db.$client);
+        await checkpointer.checkpoint(db.$client);
+        const insert = db.$client.prepare(
+          `INSERT INTO blobs (body) VALUES (randomblob(${PAGE_SIZE / 2}))`,
+        );
+        const writeBatch = db.$client.transaction(() => {
+          for (let row = 0; row < 32; row += 1) insert.run();
+        });
+        writeBatch();
+        reader.exec("BEGIN");
+        reader.prepare("SELECT count(*) FROM blobs").get();
+        const pinnedUntil = performance.now() + 1_500;
+        while (performance.now() < pinnedUntil) {
+          writeBatch();
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        const [pinned] = db.$client.pragma(
+          "wal_checkpoint(PASSIVE)",
+        ) as CheckpointRow[];
+        expect(pinned?.log).toBeGreaterThan(20_000);
+        expect(pinned?.checkpointed).toBeLessThan(pinned?.log ?? 0);
+
+        expect(logger.infos).not.toContain(
+          "Sustained writes outpaced the WAL checkpoint worker; checkpointed the WAL tail between tasks",
+        );
+
+        reader.exec("COMMIT");
+        const restartsBefore = walRestartCount(path);
+        const deadline = performance.now() + 10_000;
+        while (
+          walRestartCount(path) === restartsBefore &&
+          performance.now() < deadline
+        ) {
+          writeBatch();
+          await new Promise<void>((resolve) => setTimeout(resolve, 5));
+        }
+        expect(walRestartCount(path)).toBeGreaterThan(restartsBefore);
+      } finally {
+        if (reader.inTransaction) reader.exec("COMMIT");
+        reader.close();
+        await checkpointer.stop();
+      }
+    });
+  });
+
   it("checkpoints the remaining WAL on stop and hands checkpoints back to commits", async () => {
     await withDatabase(async (db) => {
       const checkpointer = startWalCheckpointer({

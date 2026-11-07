@@ -53,8 +53,13 @@ function run(id, target) {
   }
   clearTimeout(target.timer);
   const growing = result.walFrames > target.previousWalFrames;
-  const starved = growing && target.previousWalFrames >= workerData.starvedFrames;
+  const progressed =
+    result.checkpointedFrames !== target.previousCheckpointedFrames ||
+    result.walFrames < target.previousWalFrames;
+  const starved =
+    growing && progressed && target.previousWalFrames >= workerData.starvedFrames;
   target.previousWalFrames = result.walFrames;
+  target.previousCheckpointedFrames = result.checkpointedFrames;
   if (target.paused) return;
   if (starved) {
     target.paused = true;
@@ -62,6 +67,7 @@ function run(id, target) {
     return;
   }
   const catchUp =
+    progressed &&
     result.walFrames >= workerData.frameThreshold &&
     (growing || result.checkpointedFrames < result.walFrames);
   target.timer = setTimeout(() => run(id, target), catchUp ? 0 : workerData.intervalMs);
@@ -77,7 +83,13 @@ parentPort.on("message", (message) => {
         parentPort.postMessage({ type: "failed", id: message.id, message: errorMessage(error) });
         return;
       }
-      const target = { database, timer: null, paused: false, previousWalFrames: 0 };
+      const target = {
+        database,
+        timer: null,
+        paused: false,
+        previousWalFrames: 0,
+        previousCheckpointedFrames: 0,
+      };
       targets.set(message.id, target);
       parentPort.postMessage({ type: "attached", id: message.id });
       run(message.id, target);
