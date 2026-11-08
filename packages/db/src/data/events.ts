@@ -97,12 +97,19 @@ import {
   prepareCompletedEventOutputData,
 } from "./retained-event-outputs.js";
 import {
-  queryBuiltInSqliteVariableBatches,
   queryInSqliteVariableBatches,
+  queryRawRowsInSqliteVariableBatches,
 } from "./sqlite-variable-batches.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
+function sqlValueList(values: readonly string[]): SQL {
+  return sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  );
+}
+
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
 );
@@ -1414,16 +1421,6 @@ function storedEventRowAliasedSqlFields(
   };
 }
 
-function allStoredEventRowsUnmapped(
-  db: DbConnection,
-  query: { toSQL(): { sql: string; params: unknown[] } },
-): StoredEventRow[] {
-  const { sql: source, params } = query.toSQL();
-  return db.$client
-    .prepare<unknown[], StoredEventRow>(source)
-    .all(...params);
-}
-
 function allStoredEventRowsInVariableBatches(
   db: DbConnection,
   values: readonly string[],
@@ -1431,13 +1428,11 @@ function allStoredEventRowsInVariableBatches(
     toSQL(): { sql: string; params: unknown[] };
   },
 ): StoredEventRow[] {
-  return queryInSqliteVariableBatches({
-    dedupeKey: (value) => value,
-    fixedVariableCount: buildQuery([]).toSQL().params.length,
-    queryBatch: (batch) => allStoredEventRowsUnmapped(db, buildQuery(batch)),
+  return queryRawRowsInSqliteVariableBatches<StoredEventRow>(
+    db,
     values,
-    variableCountPerValue: 1,
-  }).sort((left, right) => left.sequence - right.sequence);
+    buildQuery,
+  ).sort((left, right) => left.sequence - right.sequence);
 }
 
 export interface ListStoredEventRowsArgs {
@@ -4296,24 +4291,18 @@ export function listTimelineTurnFirstSequences(
   },
 ): Map<string, number> {
   return new Map(
-    queryBuiltInSqliteVariableBatches(args.turnIds, (turnIds) =>
-      db
-        .select({
-          sequence: sql<number>`MIN(${events.sequence})`,
-          turnId: sql<string>`${events.turnId}`,
-        })
-        .from(
-          sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
-        )
-        .where(
-          and(
-            eq(events.threadId, args.threadId),
-            inArray(events.turnId, [...turnIds]),
-            gte(events.sequence, args.epochSequenceStart),
-            lte(events.sequence, args.maxSeq),
-          ),
-        )
-        .groupBy(events.turnId),
+    queryRawRowsInSqliteVariableBatches<{ sequence: number; turnId: string }>(
+      db,
+      args.turnIds,
+      (turnIds) => sql`
+        SELECT turn_id AS turnId, MIN(sequence) AS sequence
+        FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE thread_id = ${args.threadId}
+          AND turn_id IN (${sqlValueList(turnIds)})
+          AND sequence >= ${args.epochSequenceStart}
+          AND sequence <= ${args.maxSeq}
+        GROUP BY turn_id
+      `,
     ).map((row) => [row.turnId, row.sequence]),
   );
 }
@@ -4330,28 +4319,22 @@ export function countTimelineTurnEventsOutsideWindow(
   },
 ): Map<string, number> {
   return new Map(
-    queryBuiltInSqliteVariableBatches(args.turnIds, (turnIds) =>
-      db
-        .select({
-          count: sql<number>`COUNT(*)`,
-          turnId: sql<string>`${events.turnId}`,
-        })
-        .from(
-          sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
-        )
-        .where(
-          and(
-            eq(events.threadId, args.threadId),
-            inArray(events.turnId, [...turnIds]),
-            gte(events.sequence, args.epochSequenceStart),
-            lte(events.sequence, args.maxSeq),
-            or(
-              lt(events.sequence, args.sequenceStart),
-              gte(events.sequence, args.beforeSequence),
-            ),
-          ),
-        )
-        .groupBy(events.turnId),
+    queryRawRowsInSqliteVariableBatches<{ count: number; turnId: string }>(
+      db,
+      args.turnIds,
+      (turnIds) => sql`
+        SELECT turn_id AS turnId, COUNT(*) AS count
+        FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE thread_id = ${args.threadId}
+          AND turn_id IN (${sqlValueList(turnIds)})
+          AND sequence >= ${args.epochSequenceStart}
+          AND sequence <= ${args.maxSeq}
+          AND (
+            sequence < ${args.sequenceStart}
+            OR sequence >= ${args.beforeSequence}
+          )
+        GROUP BY turn_id
+      `,
     ).map((row) => [row.turnId, row.count]),
   );
 }
@@ -4368,30 +4351,23 @@ export function listStoredItemStartSequencesBefore(
     threadId: string;
   },
 ): StoredItemStartSequence[] {
-  return queryBuiltInSqliteVariableBatches(args.itemIds, (itemIds) =>
-    db
-      .select({
-        itemId: sql<string>`${events.itemId}`,
-        scopeKind: sql<ThreadEventScopeKind>`${events.scopeKind}`,
-        sequence: sql<number>`${events.sequence}`,
-        turnId: sql<string | null>`${events.turnId}`,
-      })
-      .from(
-        sql`${events} INDEXED BY events_item_lifecycle_thread_item_sequence_idx`,
-      )
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          inArray(events.itemId, [...itemIds]),
-          sql`${events.type} IN (
-            'item/started',
-            'item/completed',
-            'item/backgroundTask/completed'
-          )`,
-          sql`${events.type} = 'item/started'`,
-          lt(events.sequence, args.beforeSequence),
-        ),
-      ),
+  return queryRawRowsInSqliteVariableBatches<StoredItemStartSequence>(
+    db,
+    args.itemIds,
+    (itemIds) => sql`
+      SELECT item_id AS itemId, scope_kind AS scopeKind, turn_id AS turnId,
+        sequence
+      FROM events INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+      WHERE thread_id = ${args.threadId}
+        AND item_id IN (${sqlValueList(itemIds)})
+        AND type IN (
+          'item/started',
+          'item/completed',
+          'item/backgroundTask/completed'
+        )
+        AND type = 'item/started'
+        AND sequence < ${args.beforeSequence}
+    `,
   );
 }
 

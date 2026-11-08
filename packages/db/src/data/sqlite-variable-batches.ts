@@ -1,3 +1,7 @@
+import { SQL } from "drizzle-orm";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
+import type { DbConnection } from "../connection.js";
+
 const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 
 interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
@@ -39,20 +43,39 @@ export function queryInSqliteVariableBatches<TValue, TRow>(
   return rows;
 }
 
-interface BuiltSqliteQuery<TRow> {
-  all(): TRow[];
-  toSQL(): { params: unknown[] };
+interface RenderedSqliteQuery {
+  toSQL(): { sql: string; params: unknown[] };
 }
 
-export function queryBuiltInSqliteVariableBatches<TRow>(
+const sqliteDialect = new SQLiteSyncDialect();
+
+function renderSqliteQuery(query: SQL | RenderedSqliteQuery): {
+  sql: string;
+  params: unknown[];
+} {
+  return query instanceof SQL ? sqliteDialect.sqlToQuery(query) : query.toSQL();
+}
+
+export function queryRawRowsInSqliteVariableBatches<TRow>(
+  db: DbConnection,
   values: readonly string[],
-  buildQuery: (batch: readonly string[]) => BuiltSqliteQuery<TRow>,
+  buildQuery: (batch: readonly string[]) => SQL | RenderedSqliteQuery,
 ): TRow[] {
+  const uniqueValues = [...new Set(values)];
+  if (uniqueValues.length === 0) {
+    return [];
+  }
+  const run = (query: { sql: string; params: unknown[] }) =>
+    db.$client.prepare<unknown[], TRow>(query.sql).all(...query.params);
+  const whole = renderSqliteQuery(buildQuery(uniqueValues));
+  if (whole.params.length <= SQLITE_MAX_VARIABLE_NUMBER) {
+    return run(whole);
+  }
   return queryInSqliteVariableBatches({
     dedupeKey: (value) => value,
-    fixedVariableCount: buildQuery([]).toSQL().params.length,
-    queryBatch: (batch) => buildQuery(batch).all(),
-    values,
+    fixedVariableCount: whole.params.length - uniqueValues.length,
+    queryBatch: (batch) => run(renderSqliteQuery(buildQuery(batch))),
+    values: uniqueValues,
     variableCountPerValue: 1,
   });
 }
