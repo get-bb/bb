@@ -3,6 +3,7 @@ import {
   advanceThreadPruning,
   getNextThreadPruningPolicy,
   pickThreadPruningThread,
+  type DbConnection,
   type THREAD_PRUNING_POLICIES,
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
@@ -27,6 +28,40 @@ function pruningItemKey(item: ThreadPruningItem): string {
   return `${item.policy}:${item.threadId}`;
 }
 
+export const DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS = 60_000;
+
+const deferredNoticesByDb = new WeakMap<DbConnection, Map<string, number>>();
+
+function deferredNotices(db: DbConnection): Map<string, number> {
+  let notices = deferredNoticesByDb.get(db);
+  if (notices === undefined) {
+    notices = new Map();
+    deferredNoticesByDb.set(db, notices);
+  }
+  return notices;
+}
+
+export function deferHistoryCompactedNoticeToSweep(
+  db: DbConnection,
+  threadId: string,
+): void {
+  const notices = deferredNotices(db);
+  if (!notices.has(threadId)) notices.set(threadId, Date.now());
+}
+
+function flushOverdueHistoryCompactedNotices(
+  deps: Pick<AppDeps, "db" | "hub">,
+): void {
+  const notices = deferredNotices(deps.db);
+  const now = Date.now();
+  for (const [threadId, deferredAt] of notices) {
+    if (now - deferredAt < DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS)
+      continue;
+    notices.delete(threadId);
+    deps.hub.notifyThread(threadId, ["history-compacted"]);
+  }
+}
+
 export function threadPruningSweep(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
   limits: ThreadPruningSweepLimits,
@@ -41,6 +76,7 @@ export function threadPruningSweep(
     name: "thread-event-pruning",
     concurrency: 1,
     list: ({ excludedKeys }) => {
+      flushOverdueHistoryCompactedNotices(deps);
       const items: ThreadPruningItem[] = [];
       if (!withinBudget()) return items;
       const visited = new Set<string>(finishedPolicies);
@@ -67,6 +103,7 @@ export function threadPruningSweep(
     },
     key: pruningItemKey,
     process: async (item) => {
+      const deferredNotice = deferredNotices(deps.db).delete(item.threadId);
       let removed = 0;
       try {
         while (withinBudget()) {
@@ -89,7 +126,7 @@ export function threadPruningSweep(
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
       } finally {
-        if (removed > 0)
+        if (removed > 0 || deferredNotice)
           deps.hub.notifyThread(item.threadId, ["history-compacted"]);
       }
     },

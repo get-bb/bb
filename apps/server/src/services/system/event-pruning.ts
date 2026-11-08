@@ -7,6 +7,7 @@ import {
 import type { ThreadEventType } from "@bb/domain";
 import { roundDurationMs } from "@bb/process-utils";
 import type { AppDeps } from "../../types.js";
+import { deferHistoryCompactedNoticeToSweep } from "./thread-pruning-sweep.js";
 
 type ThreadEventPruningMode = "active" | "archived" | "idle";
 
@@ -111,7 +112,9 @@ export function pruneThreadEventHistoryBestEffort(
     return null;
   } finally {
     if (getThreadEventRewriteGeneration(args.threadId) !== generation) {
-      deps.hub.notifyThread(args.threadId, ["history-compacted"]);
+      if (args.mode === "active")
+        deps.hub.notifyThread(args.threadId, ["history-compacted"]);
+      else deferHistoryCompactedNoticeToSweep(deps.db, args.threadId);
     }
   }
 }

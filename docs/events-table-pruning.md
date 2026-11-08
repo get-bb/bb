@@ -41,8 +41,12 @@ before pruning it, so if a step fails, the sweep records the failure in
 that thread while the other threads keep going; it is picked again once its
 retry time (1 minute, doubling to 1 hour) passes. A new policy, or
 a policy whose version changes, queues every thread for that policy. Committed
-deletions invalidate cached timelines and publish a history-compacted
-notification to viewers of the thread. Archiving a thread runs one live step and
+deletions advance the thread's rewrite generation, which keys every cached
+timeline, and send viewers of the thread a history-compacted notification. A
+live step during an active turn sends it right away. A live step on a settled
+thread, at turn end or archive, leaves it to the sweep's next visit to that
+thread, so the two send one notification; if the sweep hasn't visited the
+thread within a minute, the next sweep run sends it. Archiving a thread runs one live step and
 then drops the thread's live progress; the background sweep finishes archived
 threads.
 

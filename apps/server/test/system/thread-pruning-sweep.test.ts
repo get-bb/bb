@@ -19,7 +19,10 @@ import {
   threadTimelineReadResponseSchema,
   type ThreadTimelineResponse,
 } from "@bb/server-contract";
+import { turnScope } from "@bb/domain";
+import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
 import {
+  DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS,
   threadPruningSweep,
   THREAD_PRUNING_SWEEP_LIMITS,
   type ThreadPruningSweepLimits,
@@ -134,6 +137,82 @@ function runPruning(
   now: number,
 ): Promise<void> {
   return threadPruningSweep(harness.deps, limits).run(harness.deps, now);
+}
+
+function compactionNotices(notify: { mock: { calls: unknown[][] } }) {
+  return notify.mock.calls.filter(
+    ([, changes]) =>
+      Array.isArray(changes) && changes.includes("history-compacted"),
+  );
+}
+
+function seedCompletingTurn(harness: TestAppHarness, rateLimitRows: number) {
+  const host = seedHost(harness.deps);
+  const { project } = seedProjectWithSource(harness.deps, { hostId: host.id });
+  const thread = seedThread(harness.deps, {
+    projectId: project.id,
+    status: "active",
+  });
+  const scope = turnScope("turn");
+  const rateLimits = {
+    providerId: "codex",
+    status: "allowed",
+    kind: "credits",
+    windows: [],
+    reachedReason: null,
+    overageStatus: null,
+    overageReason: null,
+  };
+  insertEvents(harness.db, noopNotifier, [
+    {
+      threadId: thread.id,
+      sequence: 1,
+      scope,
+      type: "turn/started",
+      providerThreadId: "provider-thread",
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: "{}",
+      createdAt: 1,
+    },
+    ...Array.from({ length: rateLimitRows }, (_, index) => ({
+      threadId: thread.id,
+      sequence: index + 2,
+      scope: { kind: "thread" as const },
+      type: "provider/rateLimits/updated" as const,
+      providerThreadId: "provider-thread",
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ rateLimits }),
+      createdAt: 1,
+    })),
+    {
+      threadId: thread.id,
+      sequence: rateLimitRows + 2,
+      scope,
+      type: "turn/completed",
+      providerThreadId: "provider-thread",
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ status: "completed" }),
+      createdAt: 1,
+    },
+  ]);
+  return thread;
+}
+
+function completeTurn(harness: TestAppHarness, threadId: string) {
+  const result = applyTurnCompletedEvent(harness.deps, {
+    type: "turn/completed",
+    threadId,
+    providerThreadId: "provider-thread",
+    scope: turnScope("turn"),
+    status: "completed",
+  });
+  expect(result.nextStatus).toBe("idle");
 }
 
 const UNTIMED_SWEEP_LIMITS: ThreadPruningSweepLimits = {
@@ -348,6 +427,56 @@ describe("thread pruning sweep", () => {
       expect(caughtUp).toEqual(await getTimeline(harness, thread.id));
       notify.mockRestore();
       debug.mockRestore();
+    });
+  });
+
+  it("sends one history compaction for a turn-end prune and the sweep visit that follows", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedCompletingTurn(harness, 100);
+      const generation = getThreadEventRewriteGeneration(thread.id);
+      const notify = vi
+        .spyOn(harness.deps.hub, "notifyThread")
+        .mockImplementation(() => {});
+
+      completeTurn(harness, thread.id);
+      expect(getThreadEventRewriteGeneration(thread.id)).toBe(generation + 1);
+      expect(sequences(harness, thread.id)).toHaveLength(70);
+      expect(compactionNotices(notify)).toEqual([]);
+
+      await runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now());
+      expect(sequences(harness, thread.id)).toEqual([1, 101, 102]);
+      expect(compactionNotices(notify)).toEqual([
+        [thread.id, ["history-compacted"]],
+      ]);
+      notify.mockRestore();
+    });
+  });
+
+  it("sends a deferred turn-end notice once it is overdue when the sweep cannot visit the thread", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedCompletingTurn(harness, 100);
+      const notify = vi
+        .spyOn(harness.deps.hub, "notifyThread")
+        .mockImplementation(() => {});
+      completeTurn(harness, thread.id);
+      const overdueAt =
+        Date.now() + DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS;
+      setThreadStatus(harness, thread.id, "active");
+
+      await runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now());
+      expect(compactionNotices(notify)).toEqual([]);
+      const clock = vi.spyOn(Date, "now").mockReturnValue(overdueAt);
+      try {
+        await runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now());
+        await runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now());
+      } finally {
+        clock.mockRestore();
+      }
+      expect(compactionNotices(notify)).toEqual([
+        [thread.id, ["history-compacted"]],
+      ]);
+      expect(sequences(harness, thread.id)).toHaveLength(70);
+      notify.mockRestore();
     });
   });
 

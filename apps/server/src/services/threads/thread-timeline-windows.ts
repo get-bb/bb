@@ -1,5 +1,10 @@
 import { performance } from "node:perf_hooks";
-import { getAppSettings, getLatestThreadSequence, getThread } from "@bb/db";
+import {
+  getAppSettings,
+  getLatestThreadSequence,
+  getThread,
+  getThreadEventRewriteGeneration,
+} from "@bb/db";
 import {
   DEFAULT_COMPLETED_TURN_DISPLAY,
   type AppSettings,
@@ -172,6 +177,7 @@ export function createThreadTimelineWindows(
         includeNestedRows: request.includeNestedRows,
       }),
       buildThreadTimelineCacheRevision({
+        generation: getThreadEventRewriteGeneration(thread.id),
         maxSeq,
         status: thread.status,
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)

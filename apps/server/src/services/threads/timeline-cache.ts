@@ -101,6 +101,7 @@ export interface ThreadTimelineCacheKeyArgs {
 }
 
 export interface ThreadTimelineCacheRevisionArgs {
+  generation: number;
   maxSeq: number;
   status: ThreadStatus;
   surface: string;
@@ -127,5 +128,10 @@ export function buildThreadTimelineCacheKey(
 export function buildThreadTimelineCacheRevision(
   args: ThreadTimelineCacheRevisionArgs,
 ): string {
-  return JSON.stringify([args.maxSeq, args.status, args.surface]);
+  return JSON.stringify([
+    args.maxSeq,
+    args.generation,
+    args.status,
+    args.surface,
+  ]);
 }
