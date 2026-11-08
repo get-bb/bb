@@ -1956,6 +1956,7 @@ describe("timeline window hints", () => {
         parentToolCallId: null,
         data: JSON.stringify({}),
       },
+      ...commandBlock(thread, 1_002, "turn-steer", "steered", 8),
     ]);
 
     const walked = walkAllPages(db, thread, 20);
@@ -2748,7 +2749,7 @@ describe("page-bounded reads of turns whose rows render flat", () => {
     insertEvents(db, noopNotifier, events);
 
     const latest = flatPage(db, thread, 100);
-    expect(latest.profile.eventRowCount).toBeLessThan(60);
+    expect(latest.profile.eventRowCount).toBeLessThan(250);
     expect(latest.response.timelinePage.olderRowUpdates).toEqual([
       expect.objectContaining({ id: `${thread.id}:delegation:agent-1` }),
     ]);
@@ -3181,14 +3182,14 @@ describe("the older-row bound of a page that reads part of a turn", () => {
     );
     sequence += 2;
     events.push(
-      ...commandBlock(thread, sequence, "turn-1", "after", 20),
-      itemEvent(thread, sequence + 40, "item/completed", "turn-1", {
+      ...commandBlock(thread, sequence, "turn-1", "after", 30),
+      itemEvent(thread, sequence + 60, "item/completed", "turn-1", {
         ...longCommand,
         status: "completed",
         exitCode: 0,
         aggregatedOutput: "slept",
       }),
-      turnCompletedEvent(thread, sequence + 41, "turn-1"),
+      turnCompletedEvent(thread, sequence + 61, "turn-1"),
     );
     insertEvents(db, noopNotifier, events);
 
@@ -3205,6 +3206,77 @@ describe("the older-row bound of a page that reads part of a turn", () => {
         latest.response,
         Number.MAX_SAFE_INTEGER,
       ),
+    );
+  });
+});
+
+describe("windows that would hold less than half their event budget", () => {
+  it("fills a flat page with the newest part of a finished turn that does not fit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [300, 3] });
+
+    const latest = flatPage(db, thread, 100);
+
+    expect(latest.profile.eventRowCount).toBeGreaterThanOrEqual(50);
+    expect(latest.profile.eventRowCount).toBeLessThan(250);
+    expect(latest.response.rows.length).toBeGreaterThan(
+      flatPage(db, thread, 12).response.rows.length,
+    );
+    expect(walkFlatPages(db, thread, 100).rows).toEqual(
+      walkFlatPages(db, thread, LARGE_BUDGET).rows,
+    );
+  });
+
+  it("adds the whole finished turn that does not fit to a collapsed page", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [300, 3] });
+
+    const latest = buildPage(db, thread, 100, null);
+
+    expect(latest.response.timelinePage.olderCursor).toBeNull();
+    expect(latest.response.rows).toEqual(
+      buildPage(db, thread, LARGE_BUDGET, null).response.rows,
+    );
+  });
+
+  it("keeps a page that already holds half its budget at its user message", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [300, 30] });
+
+    const latest = flatPage(db, thread, 100);
+    const older = latest.response.timelinePage.olderCursor;
+
+    expect(older).not.toBeNull();
+    expect(
+      walkFlatPages(db, thread, 100).rows.slice(-latest.response.rows.length),
+    ).toEqual(latest.response.rows.map((row) => JSON.stringify(row)));
+    expect(latest.response.rows.map((row) => JSON.stringify(row))).toEqual(
+      flatPage(db, thread, 70).response.rows.map((row) => JSON.stringify(row)),
+    );
+  });
+
+  it("pages back through thin flat windows to exactly the unbudgeted rows", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: false,
+      itemsPerTurn: [200, 2, 150, 1, 120, 2],
+    });
+
+    expect(flatPage(db, thread, 100).profile.eventRowCount).toBeGreaterThan(50);
+    expect(walkFlatPages(db, thread, 100).rows).toEqual(
+      walkFlatPages(db, thread, LARGE_BUDGET).rows,
+    );
+  });
+
+  it("pages back through thin collapsed windows to exactly the unbudgeted rows", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [200, 2, 150, 1, 120, 2],
+    });
+
+    expect(walkAllPages(db, thread, 100).rows).toEqual(
+      walkAllPages(db, thread, LARGE_BUDGET).rows,
     );
   });
 });

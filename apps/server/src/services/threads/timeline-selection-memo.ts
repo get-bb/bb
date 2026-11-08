@@ -236,10 +236,12 @@ export interface SelectTimelineWindowStartArgs {
   epochSequenceStart: number;
   eventBudget: number;
   hints: readonly TimelineWindowHint[];
+  isThinWindow: (sequenceStart: number) => boolean;
   segmentLimit: number;
   splitTurnAt: (
     gridSequence: number,
     budgetFloorSequence: number,
+    options: { finishedTurns: boolean },
   ) => number | null;
 }
 
@@ -255,22 +257,74 @@ export function selectTimelineWindowStart(
       budgetFloorSequence === undefined || hint.sequence >= budgetFloorSequence,
   );
   const hinted = affordable[Math.min(segmentLimit, affordable.length) - 1];
-  if (hinted !== undefined) return hinted.sequence;
+  if (hinted !== undefined) {
+    if (
+      budgetFloorSequence === undefined ||
+      affordable.length >= segmentLimit ||
+      !args.isThinWindow(hinted.sequence)
+    ) {
+      return hinted.sequence;
+    }
+    return startOnTimelineWindowGrid(args, {
+      budgetFloorSequence,
+      finishedTurns: true,
+      lowerBound: hints[affordable.length]?.sequence ?? epochSequenceStart,
+    });
+  }
   const newestHint = hints[0]?.sequence;
   if (budgetFloorSequence === undefined) {
     return newestHint ?? epochSequenceStart;
   }
+  return startOnTimelineWindowGrid(args, {
+    budgetFloorSequence,
+    finishedTurns: false,
+    lowerBound: newestHint ?? epochSequenceStart,
+  });
+}
+
+function startOnTimelineWindowGrid(
+  args: SelectTimelineWindowStartArgs,
+  bounds: {
+    budgetFloorSequence: number;
+    finishedTurns: boolean;
+    lowerBound: number;
+  },
+): number {
   const gridSequence =
-    budgetFloorSequence -
-    (budgetFloorSequence % timelineWindowGridStep(args.eventBudget));
-  const lowerBound = newestHint ?? epochSequenceStart;
-  if (gridSequence <= lowerBound) return lowerBound;
-  const cut = args.splitTurnAt(gridSequence, budgetFloorSequence);
-  return cut === null || cut <= lowerBound ? lowerBound : cut;
+    bounds.budgetFloorSequence -
+    (bounds.budgetFloorSequence % timelineWindowGridStep(args.eventBudget));
+  if (gridSequence <= bounds.lowerBound) return bounds.lowerBound;
+  const cut = args.splitTurnAt(gridSequence, bounds.budgetFloorSequence, {
+    finishedTurns: bounds.finishedTurns,
+  });
+  return cut === null || cut <= bounds.lowerBound ? bounds.lowerBound : cut;
 }
 
 function timelineWindowGridStep(eventBudget: number): number {
   return Math.max(1, Math.ceil(eventBudget / 2));
+}
+
+export function timelineThinWindowCheck(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    epochSequenceStart: number;
+    eventBudget: number;
+    excludeDiagnosticEvents: boolean;
+    threadId: string;
+  },
+): SelectTimelineWindowStartArgs["isThinWindow"] {
+  return (sequenceStart) => {
+    const halfBudgetFloor = findTimelineWindowBudgetFloorSequence(db, {
+      threadId: args.threadId,
+      sequenceStart: args.epochSequenceStart,
+      beforeSequence: args.beforeSequence,
+      eventBudget: Math.floor(args.eventBudget / 2),
+      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      excludeDiagnosticEvents: args.excludeDiagnosticEvents,
+    });
+    return halfBudgetFloor === undefined || halfBudgetFloor < sequenceStart;
+  };
 }
 
 export function timelineTurnSplitter(
@@ -278,12 +332,14 @@ export function timelineTurnSplitter(
   args: {
     epochSequenceStart: number;
     eventBudget: number;
+    flatTurnDisplay: boolean;
     maxSeq: number;
     threadId: string;
   },
 ): SelectTimelineWindowStartArgs["splitTurnAt"] {
-  return (gridSequence, budgetFloorSequence) => {
+  return (gridSequence, budgetFloorSequence, options) => {
     if (
+      !(options.finishedTurns && args.flatTurnDisplay) &&
       isTimelineEventInCompletedTurn(db, {
         maxSeq: args.maxSeq,
         sequence: budgetFloorSequence,
@@ -308,6 +364,26 @@ export function timelineTurnSplitter(
       ? null
       : cut;
   };
+}
+
+function selectLatestTimelineWindowStart(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  budgetFloor: TimelineBudgetFloor,
+  hints: readonly TimelineWindowHint[],
+): number {
+  return selectTimelineWindowStart({
+    budgetFloorSequence: budgetFloor.sequence,
+    epochSequenceStart: args.epochSequenceStart,
+    eventBudget: args.eventBudget,
+    hints,
+    isThinWindow: timelineThinWindowCheck(db, {
+      ...args,
+      beforeSequence: args.maxSeq + 1,
+    }),
+    segmentLimit: args.page.segmentLimit,
+    splitTurnAt: timelineTurnSplitter(db, args),
+  });
 }
 
 function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
@@ -500,14 +576,12 @@ function lookupFromWiderSibling(
     sequence: wider.budgetFloorSequence,
   };
   const hints = wider.hints.slice(0, args.page.segmentLimit + 1);
-  const sequenceStart = selectTimelineWindowStart({
-    budgetFloorSequence: budgetFloor.sequence,
-    splitTurnAt: timelineTurnSplitter(db, args),
-    epochSequenceStart: args.epochSequenceStart,
-    eventBudget: args.eventBudget,
+  const sequenceStart = selectLatestTimelineWindowStart(
+    db,
+    args,
+    budgetFloor,
     hints,
-    segmentLimit: args.page.segmentLimit,
-  });
+  );
   if (sequenceStart === wider.selection.ownedSequenceStart) {
     return adoptSiblingSelection(memo, args, miss, wider, budgetFloor, hints);
   }
@@ -1263,14 +1337,12 @@ export function lookupLatestTimelineSelection(
     appendedHints.length === 0
       ? entry.hints
       : [...appendedHints, ...entry.hints].slice(0, args.page.segmentLimit + 1);
-  const sequenceStart = selectTimelineWindowStart({
-    budgetFloorSequence: budgetFloor.sequence,
-    splitTurnAt: timelineTurnSplitter(db, args),
-    epochSequenceStart: args.epochSequenceStart,
-    eventBudget: args.eventBudget,
+  const sequenceStart = selectLatestTimelineWindowStart(
+    db,
+    args,
+    budgetFloor,
     hints,
-    segmentLimit: args.page.segmentLimit,
-  });
+  );
   if (sequenceStart < entry.selection.ownedSequenceStart) {
     return { ...miss, budgetFloor };
   }

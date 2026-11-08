@@ -41,6 +41,14 @@ start moves only once per half budget of appended events. The grid is not used
 when the turn has at most one budget of events before the cut, or inside a
 finished turn, so pages over finished history keep their boundaries.
 
+A window whose segments ran out of budget before `segmentLimit` and hold fewer
+than half the event budget is filled from the next older segment, so a short
+turn after a long one does not leave a page too thin to fill the client's
+viewport. Under the flat display the window starts on the same grid, inside a
+finished turn too. When the grid finds no cut, the older turn has at most one
+budget of events before the cut, or the turn is finished under the collapsed
+display, the window takes that whole segment instead.
+
 A page reads a turn that starts inside its window, or has at most 256 events
 outside it, whole. Otherwise a turn whose rows render flat, meaning a running
 turn or any turn under the flat display, is read only inside the window. The
