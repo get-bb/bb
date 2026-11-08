@@ -49,16 +49,21 @@ export function deferHistoryCompactedNoticeToSweep(
   if (!notices.has(threadId)) notices.set(threadId, Date.now());
 }
 
+function announceHistoryCompacted(
+  deps: Pick<AppDeps, "db" | "hub">,
+  threadId: string,
+): void {
+  deferredNotices(deps.db).delete(threadId);
+  deps.hub.notifyThread(threadId, ["history-compacted"]);
+}
+
 function flushOverdueHistoryCompactedNotices(
   deps: Pick<AppDeps, "db" | "hub">,
 ): void {
-  const notices = deferredNotices(deps.db);
   const now = Date.now();
-  for (const [threadId, deferredAt] of notices) {
-    if (now - deferredAt < DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS)
-      continue;
-    notices.delete(threadId);
-    deps.hub.notifyThread(threadId, ["history-compacted"]);
+  for (const [threadId, deferredAt] of deferredNotices(deps.db)) {
+    if (now - deferredAt >= DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS)
+      announceHistoryCompacted(deps, threadId);
   }
 }
 
@@ -103,7 +108,6 @@ export function threadPruningSweep(
     },
     key: pruningItemKey,
     process: async (item) => {
-      const deferredNotice = deferredNotices(deps.db).delete(item.threadId);
       let removed = 0;
       try {
         while (withinBudget()) {
@@ -126,8 +130,7 @@ export function threadPruningSweep(
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
       } finally {
-        if (removed > 0 || deferredNotice)
-          deps.hub.notifyThread(item.threadId, ["history-compacted"]);
+        if (removed > 0) announceHistoryCompacted(deps, item.threadId);
       }
     },
   });

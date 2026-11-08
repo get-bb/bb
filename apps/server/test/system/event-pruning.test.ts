@@ -5,6 +5,10 @@ import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
 import { pruneThreadEventHistoryBestEffort } from "../../src/services/system/event-pruning.js";
+import {
+  THREAD_PRUNING_SWEEP_LIMITS,
+  threadPruningSweep,
+} from "../../src/services/system/thread-pruning-sweep.js";
 import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
 import {
   createTestDaemonEventEnvelope,
@@ -425,7 +429,7 @@ describe("thread event pruning", () => {
     });
   });
 
-  it("notifies only after a committed live advance and reports its bounded work", async () => {
+  it("leaves a committed live advance's notice to the next sweep notice and reports its bounded work", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -462,15 +466,19 @@ describe("thread event pruning", () => {
         scanned: 32,
         totalRemoved: 32,
       });
-      expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
-        "history-compacted",
-      ]);
       const second = pruneThreadEventHistoryBestEffort(harness.deps, {
         threadId: thread.id,
         mode: "active",
       });
       expect(second).toMatchObject({ policy: "usage", totalRemoved: 0 });
-      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify).not.toHaveBeenCalled();
+      await threadPruningSweep(harness.deps, THREAD_PRUNING_SWEEP_LIMITS).run(
+        harness.deps,
+        Date.now(),
+      );
+      expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
+        "history-compacted",
+      ]);
       notify.mockRestore();
     });
   });
