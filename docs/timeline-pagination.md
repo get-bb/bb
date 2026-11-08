@@ -44,7 +44,8 @@ finished turn, so pages over finished history keep their boundaries.
 A page reads a turn that starts inside its window, or has at most 256 events
 outside it, whole. Otherwise a turn whose rows render flat, meaning a running
 turn or any turn under the flat display, is read only inside the window. The
-page adds the complete events of items that cross the window edges, the
+page adds the complete events of items that cross the window edges (also an
+item that started in the turn and completes in the window at thread scope), the
 delegation parents of rows it reads, the children of delegations it owns (on
 the latest page, of every delegation it reads), and the turn's lifecycle,
 accepted input, compaction and provider events.
@@ -80,9 +81,12 @@ and display surface. A walk excludes subsequent appends. Earlier events can
 change grouping even after a turn completed. `timelinePage.olderRowsSourceSeqEnd`
 is the greatest `sourceSeqEnd` among rows the snapshot projected before the
 page's returned rows but did not return: older conversation groups, and the
-leaves a content cut omitted from the page's oldest group. When the page reads
-a turn only inside its window, the value is at least that turn's last event
-before the window. It is `null` when the snapshot projected no such rows. When a new latest snapshot's window reaches
+leaves a content cut omitted from the page's oldest group. A page that reads a
+turn only in part reports the value a whole read of the turn would: a planned
+turn adds the `sourceSeqEnd` of its stored ungrouped messages that end before
+the window, and a turn read only inside the window adds its latest event before
+the window that is not a context event and whose row does not reach into the
+window. It is `null` when the snapshot projected no such rows. When a new latest snapshot's window reaches
 the loaded tip and this value does not exceed it, `mergeLoadedTimelineWithLatest`
 keeps loaded older pages and replaces the rows the latest page covers, so
 streaming does not unload history. Otherwise a later event changed a row the

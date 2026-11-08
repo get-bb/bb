@@ -3017,3 +3017,194 @@ describe("finished collapsed turns read from a stored plan", () => {
     expect(after.rows).toEqual(walkAllPages(db, thread, LARGE_BUDGET).rows);
   });
 });
+
+function steerEvents(
+  thread: Thread,
+  sequence: number,
+  request: number,
+  turnId: string,
+): EventInput[] {
+  const [requested] = turnEvents(thread, sequence, request);
+  const data = JSON.parse(requested!.data) as Record<string, unknown>;
+  return [
+    {
+      ...requested!,
+      data: JSON.stringify({
+        ...data,
+        target: { kind: "steer", expectedTurnId: turnId },
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: sequence + 1,
+      type: "turn/input/accepted",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ clientRequestId: requestId(request) }),
+    },
+  ];
+}
+
+function commandBlock(
+  thread: Thread,
+  sequence: number,
+  turnId: string,
+  prefix: string,
+  count: number,
+): EventInput[] {
+  return Array.from({ length: count }, (_, item) =>
+    commandItemEvents(thread, sequence + item * 2, turnId, `${prefix}-${item}`),
+  ).flat();
+}
+
+function expectedOlderRowsSourceSeqEnd(
+  allRows: readonly TimelineRow[],
+  page: ReturnType<typeof buildPage>["response"],
+  ownedSequenceEnd: number,
+): number | null {
+  const returned = new Set(page.rows.map((row) => row.id));
+  const updated = new Set(
+    (page.timelinePage.olderRowUpdates ?? []).map((row) => row.id),
+  );
+  return allRows.reduce<number | null>(
+    (end, row) =>
+      row.sourceSeqStart < ownedSequenceEnd &&
+      !returned.has(row.id) &&
+      !updated.has(row.id)
+        ? Math.max(end ?? 0, row.sourceSeqEnd)
+        : end,
+    null,
+  );
+}
+
+describe("the older-row bound of a page that reads part of a turn", () => {
+  function seedCollapsedTurnCrossingSteer(db: DbConnection, thread: Thread) {
+    const longCommand = {
+      type: "commandExecution",
+      id: "long-command",
+      command: "sleep 600",
+      cwd: "/tmp/test",
+      approvalStatus: null,
+    };
+    let sequence = 4;
+    const events: EventInput[] = [
+      ...turnEvents(thread, 1, 1),
+      itemEvent(thread, sequence++, "item/started", "turn-1", {
+        ...longCommand,
+        status: "pending",
+      }),
+      ...commandBlock(thread, sequence, "turn-1", "before", 300),
+    ];
+    sequence += 600;
+    events.push(...steerEvents(thread, sequence, 2, "turn-1"));
+    sequence += 2;
+    events.push(
+      itemEvent(thread, sequence++, "item/completed", "turn-1", {
+        ...longCommand,
+        status: "completed",
+        exitCode: 0,
+        aggregatedOutput: "slept",
+      }),
+      ...commandBlock(thread, sequence, "turn-1", "after", 300),
+    );
+    sequence += 600;
+    events.push(
+      itemEvent(thread, sequence++, "item/completed", "turn-1", {
+        type: "agentMessage",
+        id: "answer",
+        text: "All done.",
+      }),
+      turnCompletedEvent(thread, sequence++, "turn-1"),
+    );
+    insertEvents(db, noopNotifier, events);
+  }
+
+  const appLatest = (db: DbConnection, thread: Thread) =>
+    buildPage(db, thread, 100, null, 1);
+  const nestedLatest = (db: DbConnection, thread: Thread) =>
+    buildPage(db, thread, 100, null, 1, undefined, true);
+
+  it("is the same before and after a finished turn's plan is stored, in either read order", () => {
+    const appFirst = setup();
+    seedCollapsedTurnCrossingSteer(appFirst.db, appFirst.thread);
+    const whole = appLatest(appFirst.db, appFirst.thread);
+    clearTimelineSelectionMemo(appFirst.db);
+    const planned = appLatest(appFirst.db, appFirst.thread);
+
+    expect(planned.profile.eventRowCount).toBeLessThan(
+      whole.profile.eventRowCount / 4,
+    );
+    expect(whole.response.timelinePage.olderRowUpdates).toHaveLength(1);
+    expect(planned.response).toEqual(whole.response);
+
+    const nestedFirst = setup();
+    seedCollapsedTurnCrossingSteer(nestedFirst.db, nestedFirst.thread);
+    nestedLatest(nestedFirst.db, nestedFirst.thread);
+    const afterNested = appLatest(nestedFirst.db, nestedFirst.thread);
+    nestedLatest(nestedFirst.db, nestedFirst.thread);
+    const afterPlannedNested = appLatest(nestedFirst.db, nestedFirst.thread);
+    clearTimelineSelectionMemo(nestedFirst.db);
+    const plannedAfterNested = appLatest(nestedFirst.db, nestedFirst.thread);
+
+    for (const page of [afterNested, afterPlannedNested, plannedAfterNested]) {
+      expect(page.response.timelinePage.olderRowsSourceSeqEnd).toBe(
+        whole.response.timelinePage.olderRowsSourceSeqEnd,
+      );
+    }
+    expect(plannedAfterNested.response).toEqual(afterNested.response);
+  });
+
+  it("leaves out a flat turn's item that is still running at the window start", () => {
+    const { db, thread } = setup();
+    const longCommand = {
+      type: "commandExecution",
+      id: "long-command",
+      command: "sleep 600",
+      cwd: "/tmp/test",
+      approvalStatus: null,
+    };
+    let sequence = 4;
+    const events: EventInput[] = [
+      ...turnEvents(thread, 1, 1),
+      ...commandBlock(thread, sequence, "turn-1", "before", 300),
+    ];
+    sequence += 600;
+    events.push(
+      itemEvent(thread, sequence++, "item/started", "turn-1", {
+        ...longCommand,
+        status: "pending",
+      }),
+      ...steerEvents(thread, sequence, 2, "turn-1"),
+    );
+    sequence += 2;
+    events.push(
+      ...commandBlock(thread, sequence, "turn-1", "after", 20),
+      itemEvent(thread, sequence + 40, "item/completed", "turn-1", {
+        ...longCommand,
+        status: "completed",
+        exitCode: 0,
+        aggregatedOutput: "slept",
+      }),
+      turnCompletedEvent(thread, sequence + 41, "turn-1"),
+    );
+    insertEvents(db, noopNotifier, events);
+
+    const latest = flatPage(db, thread, 100);
+    const allRows = flatPage(db, thread, LARGE_BUDGET).response.rows;
+
+    expect(latest.profile.eventRowCount).toBeLessThan(200);
+    expect(latest.response.timelinePage.olderRowUpdates).toEqual([
+      expect.objectContaining({ id: `${thread.id}:command:long-command` }),
+    ]);
+    expect(latest.response.timelinePage.olderRowsSourceSeqEnd).toBe(
+      expectedOlderRowsSourceSeqEnd(
+        allRows,
+        latest.response,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    );
+  });
+});

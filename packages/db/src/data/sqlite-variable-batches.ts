@@ -38,3 +38,21 @@ export function queryInSqliteVariableBatches<TValue, TRow>(
   }
   return rows;
 }
+
+interface BuiltSqliteQuery<TRow> {
+  all(): TRow[];
+  toSQL(): { params: unknown[] };
+}
+
+export function queryBuiltInSqliteVariableBatches<TRow>(
+  values: readonly string[],
+  buildQuery: (batch: readonly string[]) => BuiltSqliteQuery<TRow>,
+): TRow[] {
+  return queryInSqliteVariableBatches({
+    dedupeKey: (value) => value,
+    fixedVariableCount: buildQuery([]).toSQL().params.length,
+    queryBatch: (batch) => buildQuery(batch).all(),
+    values,
+    variableCountPerValue: 1,
+  });
+}

@@ -59,12 +59,13 @@ function planStoredTurn(
     if (item.kind === "summary") {
       return [{ kind: "summary", row: item.row, messages: [] }];
     }
-    const message = messagesById.get(item.messageId)?.shift();
-    return message === undefined ||
-      message.sourceSeqStart !== item.sourceSeqStart ||
-      message.sourceSeqEnd !== item.sourceSeqEnd
-      ? []
-      : [messagePlan(message)];
+    const messages = messagesById.get(item.messageId) ?? [];
+    const index = messages.findIndex(
+      (message) =>
+        message.sourceSeqStart === item.sourceSeqStart &&
+        message.sourceSeqEnd === item.sourceSeqEnd,
+    );
+    return index === -1 ? [] : [messagePlan(messages.splice(index, 1)[0]!)];
   });
 }
 
@@ -72,6 +73,7 @@ export function captureTimelineTurnPlans(
   projection: EventProjection,
   completedTurnDisplay: CompletedTurnDisplay,
   rowIdPrefix: string,
+  rendersRow: (message: EventProjectionMessage) => boolean,
 ): Map<string, StoredTimelineTurnPlan> {
   const plans = new Map<string, StoredTimelineTurnPlan>();
   for (const entry of projection.entries) {
@@ -85,16 +87,20 @@ export function captureTimelineTurnPlans(
       externalUserBoundarySeqs: [
         ...(entry.turn.externalUserBoundarySeqs ?? []),
       ],
-      items: planTurn(entry.turn, completedTurnDisplay, rowIdPrefix).map(
-        (item): StoredTimelineTurnPlanItem =>
+      items: planTurn(entry.turn, completedTurnDisplay, rowIdPrefix).flatMap(
+        (item): StoredTimelineTurnPlanItem[] =>
           item.kind === "summary"
-            ? { kind: "summary", row: item.row }
-            : {
-                kind: "message",
-                messageId: item.message.id,
-                sourceSeqEnd: item.message.sourceSeqEnd,
-                sourceSeqStart: item.message.sourceSeqStart,
-              },
+            ? [{ kind: "summary", row: item.row }]
+            : rendersRow(item.message)
+              ? [
+                  {
+                    kind: "message",
+                    messageId: item.message.id,
+                    sourceSeqEnd: item.message.sourceSeqEnd,
+                    sourceSeqStart: item.message.sourceSeqStart,
+                  },
+                ]
+              : [],
       ),
     });
   }
