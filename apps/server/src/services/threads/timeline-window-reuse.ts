@@ -4,15 +4,7 @@ import {
   withTimelineRowChildren,
   type TimelineRow,
 } from "@bb/server-contract";
-import type { DbConnection } from "@bb/db";
 import type { ThreadTimelineWindow } from "./timeline.js";
-
-const KEPT_PAGEABLE_ROW_WINDOWS = 32;
-
-const keptPageableRows = new WeakMap<
-  DbConnection,
-  Map<string, readonly TimelineRow[]>
->();
 
 const REUSABLE_WINDOW_FIELD_KEYS = [
   ...THREAD_TIMELINE_WINDOW_FIELD_KEYS,
@@ -108,31 +100,6 @@ export function reuseUnchangedTimelineWindowParts(
   };
   for (const key of REUSABLE_WINDOW_FIELD_KEYS) {
     if (key in reused) reuseUnchangedField(reused, previous, key);
-  }
-  return reused;
-}
-
-export function clearKeptPageableTimelineRows(db: DbConnection): void {
-  keptPageableRows.delete(db);
-}
-
-export function reusePreviousPageableTimelineRows(
-  db: DbConnection,
-  key: string,
-  rows: TimelineRow[],
-): TimelineRow[] {
-  let windows = keptPageableRows.get(db);
-  if (windows === undefined) {
-    windows = new Map();
-    keptPageableRows.set(db, windows);
-  }
-  const previous = windows.get(key);
-  const reused =
-    previous === undefined ? rows : reuseUnchangedTimelineRows(rows, previous);
-  windows.delete(key);
-  windows.set(key, reused);
-  while (windows.size > KEPT_PAGEABLE_ROW_WINDOWS) {
-    windows.delete(windows.keys().next().value!);
   }
   return reused;
 }

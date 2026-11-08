@@ -20,6 +20,7 @@ import {
 import {
   forgetLatestTimelineSelections,
   readDecodedLatestTimelineSelections,
+  readKeptLatestTimelinePageableRows,
   TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS,
   TIMELINE_SELECTION_MEMO_MAX_ENTRIES,
 } from "../../../src/services/threads/timeline-selection-memo.js";
@@ -117,6 +118,16 @@ function decodedOf(db: DbConnection, threadId: string) {
   return readDecodedLatestTimelineSelections(db).filter(
     (entry) => entry.threadId === threadId,
   );
+}
+
+function sharedRowIds(
+  previous: { response: { rows: readonly object[] } },
+  next: { response: { rows: readonly { id: string }[] } },
+): string[] {
+  const previousRows = new Set(previous.response.rows);
+  return next.response.rows
+    .filter((row) => previousRows.has(row))
+    .map((row) => row.id);
 }
 
 function addActiveThread(testThread: TestThread) {
@@ -245,6 +256,76 @@ describe("timeline selection decode", () => {
         TIMELINE_SELECTION_MEMO_MAX_ENTRIES,
       );
       expect(decodedOf(testThread.db, second.thread.id)).toEqual([]);
+    });
+  });
+});
+
+describe("kept pageable timeline rows", () => {
+  it("reuses kept rows only while the memo keeps the thread's selection", () => {
+    withTestThread((testThread) => {
+      const { db, thread } = testThread;
+      appendRows(testThread, [
+        ...openTurn(),
+        agentMessage("message-2", "Settled"),
+        messageDelta("one"),
+      ]);
+      const first = buildLatest(testThread);
+      appendRows(testThread, [messageDelta("two")]);
+      const second = buildLatest(testThread);
+      expect(sharedRowIds(first, second)).not.toEqual([]);
+
+      forgetLatestTimelineSelections(db, thread.id);
+      expect(
+        readKeptLatestTimelinePageableRows(db).filter(
+          (kept) => kept.threadId === thread.id,
+        ),
+      ).toEqual([]);
+      appendRows(testThread, [messageDelta("three")]);
+      const third = buildLatest(testThread);
+      expect(sharedRowIds(second, third)).toEqual([]);
+    });
+  });
+
+  it("charges kept rows against the memo's data budget", () => {
+    withTestThread((testThread) => {
+      const rowChars = 1_000_000;
+      const rowsPerThread = Math.ceil(
+        (TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS * 0.3) / rowChars,
+      );
+      const big = () =>
+        Array.from({ length: rowsPerThread }, (_, index) =>
+          agentMessage(`big-${index}`, "x".repeat(rowChars)),
+        );
+      const first = addActiveThread(testThread);
+      appendRows(first, [...openTurn(), ...big()]);
+      const firstBuild = buildLatest(first);
+      const keptOf = (threadId: string) =>
+        readKeptLatestTimelinePageableRows(testThread.db).filter(
+          (kept) => kept.threadId === threadId,
+        );
+      expect(keptOf(first.thread.id)).toHaveLength(1);
+      expect(keptOf(first.thread.id)[0]!.bytes).toBeGreaterThan(
+        rowsPerThread * rowChars,
+      );
+
+      const second = addActiveThread(testThread);
+      appendRows(second, [...openTurn(), ...big()]);
+      buildLatest(second);
+      expect(keptOf(first.thread.id)).toEqual([]);
+      expect(keptOf(second.thread.id)).toHaveLength(1);
+      const retained =
+        readKeptLatestTimelinePageableRows(testThread.db).reduce(
+          (sum, kept) => sum + kept.bytes,
+          0,
+        ) +
+        readDecodedLatestTimelineSelections(testThread.db).reduce(
+          (sum, entry) => sum + entry.dataChars,
+          0,
+        );
+      expect(retained).toBeLessThanOrEqual(
+        TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS,
+      );
+      expect(sharedRowIds(firstBuild, buildLatest(first))).toEqual([]);
     });
   });
 });

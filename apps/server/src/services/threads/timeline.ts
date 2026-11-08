@@ -124,14 +124,15 @@ import {
   decodeTimelineSelectionRows,
   withRowMeta,
 } from "./timeline-selection-decode.js";
-import { reusePreviousPageableTimelineRows } from "./timeline-window-reuse.js";
 import {
   forgetTimelineProjectionFolds,
   keepTimelineProjectionFold,
 } from "./timeline-projection-fold.js";
 import {
   selectTimelineWindowStart,
+  keepLatestTimelinePageableRows,
   lookupLatestTimelineSelection,
+  reuseKeptLatestTimelinePageableRows,
   rememberDecodedLatestTimelineSelection,
   rememberLatestTimelineSelection,
   TimelineSelectionTrimFallback,
@@ -1563,19 +1564,16 @@ function buildThreadTimelineInternal(
       return deferContent ? deferSettledTimelineRow(previewed) : previewed;
     },
   );
+  const pageableRowsVariant = JSON.stringify([deferContent, includeNestedRows]);
   const pageableTimelineRows =
-    options.page.kind === "latest" && contentCursor === undefined
-      ? reusePreviousPageableTimelineRows(
+    memoArgs === null
+      ? mappedTimelineRows
+      : reuseKeptLatestTimelinePageableRows(
           db,
-          JSON.stringify([
-            thread.id,
-            options.page.segmentLimit,
-            deferContent,
-            includeNestedRows,
-          ]),
+          memoArgs,
+          pageableRowsVariant,
           mappedTimelineRows,
-        )
-      : mappedTimelineRows;
+        );
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
@@ -1592,6 +1590,14 @@ function buildThreadTimelineInternal(
         rows: pageableTimelineRows,
       }),
   );
+  if (memoArgs !== null) {
+    keepLatestTimelinePageableRows(
+      db,
+      memoArgs,
+      pageableRowsVariant,
+      pageableTimelineRows,
+    );
+  }
   profile.responseRowCount = paginatedTimeline.rows.length;
   profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
 
