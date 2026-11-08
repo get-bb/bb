@@ -8,6 +8,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import { Profiler } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetPluginLogoStoreForTest,
@@ -215,6 +216,39 @@ describe("MessageActionBar", () => {
       "Add to chat",
       "Fork into new thread",
     ]);
+  });
+
+  it("re-renders only when a resize changes which actions fit", () => {
+    const resizeObserver = installControlledResizeObserver();
+    let commits = 0;
+    render(
+      <Profiler id="action-bar" onRender={() => (commits += 1)}>
+        <MessageActionBar
+          timestamp={TIMESTAMP}
+          messageText="An answer."
+          alignment="end"
+          mobileActionDisplay="inline"
+          onEdit={vi.fn()}
+        />
+      </Profiler>,
+    );
+    resizeObserver.reportWidth(400);
+    const commitsAtRest = commits;
+    const actionRow = screen
+      .getByRole("button", { name: "Edit message" })
+      .closest<HTMLElement>("div");
+
+    for (let width = 399; width >= 300; width -= 1) {
+      resizeObserver.reportWidth(width);
+    }
+
+    expect(commits).toBe(commitsAtRest);
+    expect(actionRow?.style.maxWidth).toBe("300px");
+
+    resizeObserver.reportWidth(30);
+
+    expect(commits).toBeGreaterThan(commitsAtRest);
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull();
   });
 
   it("puts every candidate in the menu when none fit", () => {
