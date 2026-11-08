@@ -51,10 +51,13 @@ deleting them keeps the thread's cached timelines and sends nothing to viewers.
 Deleting rate-limit snapshots, deltas or background-task progress can change a
 timeline window, so the commit advances the thread's rewrite generation and
 every cached timeline for that thread rebuilds on its next read. Viewers of the
-thread then receive one history-compacted notification: after the live step, or
-when the background sweep finishes its pass over the thread for that policy.
-A sweep pass can span several ten-second runs and still sends a single
-notification.
+thread then receive one history-compacted notification. A live step during an
+active turn sends it right away. A live step on a settled thread, at turn end or
+archive, leaves it to the sweep's next visit to that thread, so the two send one
+notification; if the sweep hasn't visited the thread within a minute, the next
+sweep run sends it. A sweep pass can span several ten-second runs and still
+sends a single notification, when the pass over the thread for that policy
+ends.
 
 ## Pass bounds and resumption
 

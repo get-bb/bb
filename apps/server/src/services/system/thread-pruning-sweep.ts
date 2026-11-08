@@ -39,6 +39,40 @@ function unannouncedRewrites(db: DbConnection): Set<string> {
   return keys;
 }
 
+export const DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS = 60_000;
+
+const deferredNoticesByDb = new WeakMap<DbConnection, Map<string, number>>();
+
+function deferredNotices(db: DbConnection): Map<string, number> {
+  let notices = deferredNoticesByDb.get(db);
+  if (notices === undefined) {
+    notices = new Map();
+    deferredNoticesByDb.set(db, notices);
+  }
+  return notices;
+}
+
+export function deferHistoryCompactedNoticeToSweep(
+  db: DbConnection,
+  threadId: string,
+): void {
+  const notices = deferredNotices(db);
+  if (!notices.has(threadId)) notices.set(threadId, Date.now());
+}
+
+function flushOverdueHistoryCompactedNotices(
+  deps: Pick<AppDeps, "db" | "hub">,
+): void {
+  const notices = deferredNotices(deps.db);
+  const now = Date.now();
+  for (const [threadId, deferredAt] of notices) {
+    if (now - deferredAt < DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS)
+      continue;
+    notices.delete(threadId);
+    deps.hub.notifyThread(threadId, ["history-compacted"]);
+  }
+}
+
 export function threadPruningSweep(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
   limits: ThreadPruningSweepLimits,
@@ -53,6 +87,7 @@ export function threadPruningSweep(
     name: "thread-event-pruning",
     concurrency: 1,
     list: ({ excludedKeys }) => {
+      flushOverdueHistoryCompactedNotices(deps);
       const items: ThreadPruningItem[] = [];
       if (!withinBudget()) return items;
       const visited = new Set<string>(finishedPolicies);
@@ -83,6 +118,8 @@ export function threadPruningSweep(
       const pending = unannouncedRewrites(deps.db);
       const rewrittenThreadIds = new Set<string>();
       if (pending.has(itemKey)) rewrittenThreadIds.add(item.threadId);
+      if (deferredNotices(deps.db).delete(item.threadId))
+        rewrittenThreadIds.add(item.threadId);
       let passContinues = false;
       try {
         while (withinBudget()) {
