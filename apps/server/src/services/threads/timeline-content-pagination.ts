@@ -46,6 +46,22 @@ function timelineRowJsonBytes(row: TimelineRow): number {
   return bytes;
 }
 
+export function measuredTimelineRowJsonBytes(row: TimelineRow): number | null {
+  const cached = rowJsonBytes.get(row);
+  if (cached !== undefined) return cached;
+  const nested = children(row);
+  const shell = rowShellJsonBytes.get(row);
+  if (nested === null || shell === undefined) return null;
+  let bytes = shell + nested.length - 1;
+  for (const child of nested) {
+    const childBytes = measuredTimelineRowJsonBytes(child);
+    if (childBytes === null) return null;
+    bytes += childBytes;
+  }
+  rowJsonBytes.set(row, bytes);
+  return bytes;
+}
+
 export function timelineRowsJsonBytes(rows: readonly TimelineRow[]): number {
   let bytes = 2 + Math.max(0, rows.length - 1);
   for (const row of rows) bytes += timelineRowJsonBytes(row);

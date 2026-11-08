@@ -1,5 +1,6 @@
 import { THREAD_TIMELINE_EXCLUDED_EVENT_TYPES } from "@bb/thread-view";
 import type { ThreadEventItemType, ThreadEventType } from "@bb/domain";
+import type { TimelineRow } from "@bb/server-contract";
 import {
   advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
@@ -23,8 +24,10 @@ import {
   getTimelineGroupingContext,
   type TimelineGroupingContext,
 } from "./timeline-context-order.js";
+import { measuredTimelineRowJsonBytes } from "./timeline-content-pagination.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 import type { DecodedTimelineRows } from "./timeline-selection-decode.js";
+import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
@@ -98,6 +101,11 @@ export interface LatestTimelineSelectionLookup {
   trimSource: TimelineSelectionRowSource | null;
 }
 
+interface KeptPageableRows {
+  bytes: number;
+  rows: readonly TimelineRow[];
+}
+
 interface TimelineSelectionMemoEntry {
   active: boolean;
   budgetFloorSequence: number | undefined;
@@ -110,14 +118,16 @@ interface TimelineSelectionMemoEntry {
   decoded: DecodedTimelineRows | null;
   epochSequenceStart: number;
   generation: number;
+  keptPageableRowBytes: number;
+  keptPageableRows: Map<string, KeptPageableRows>;
   maxSeq: number;
   selection: TimelineEventRowSelection;
   threadId: string;
 }
 
 interface TimelineSelectionMemo {
-  dataChars: number;
   entries: Map<string, TimelineSelectionMemoEntry>;
+  retainedSize: number;
 }
 
 export const TIMELINE_SELECTION_MEMO_MAX_ENTRIES = 16;
@@ -162,6 +172,21 @@ export function countTimelineSelectionMemoEntries(db: DbConnection): number {
   return selectionMemos.get(db)?.entries.size ?? 0;
 }
 
+export function readKeptLatestTimelinePageableRows(db: DbConnection): {
+  bytes: number;
+  rows: readonly TimelineRow[];
+  threadId: string;
+}[] {
+  const entries = [...(selectionMemos.get(db)?.entries.values() ?? [])];
+  return entries.flatMap(({ keptPageableRows, threadId }) =>
+    [...keptPageableRows.values()].map(({ bytes, rows }) => ({
+      bytes,
+      rows,
+      threadId,
+    })),
+  );
+}
+
 export function readDecodedLatestTimelineSelections(db: DbConnection): {
   dataChars: number;
   decoded: DecodedTimelineRows;
@@ -197,7 +222,7 @@ export function selectTimelineWindowStart(
 function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
   let memo = selectionMemos.get(db);
   if (memo === undefined) {
-    memo = { dataChars: 0, entries: new Map() };
+    memo = { entries: new Map(), retainedSize: 0 };
     selectionMemos.set(db, memo);
   }
   return memo;
@@ -211,11 +236,15 @@ function dataCharsOfRows(rows: readonly StoredEventRow[]): number {
   return chars;
 }
 
+function retainedSizeOf(entry: TimelineSelectionMemoEntry): number {
+  return entry.dataChars + entry.keptPageableRowBytes;
+}
+
 function deleteMemoEntry(memo: TimelineSelectionMemo, key: string): void {
   const entry = memo.entries.get(key);
   if (entry === undefined) return;
   memo.entries.delete(key);
-  memo.dataChars -= entry.dataChars;
+  memo.retainedSize -= retainedSizeOf(entry);
 }
 
 function deleteThreadMemoEntries(
@@ -250,12 +279,20 @@ function storeMemoEntry(
 ): void {
   deleteMemoEntry(memo, key);
   if (entry.dataChars > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS) return;
-  memo.entries.set(key, entry);
-  memo.dataChars += entry.dataChars;
-  if (!entry.active) deleteOldestIdleEntries(memo);
+  const stored =
+    retainedSizeOf(entry) > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
+      ? { ...entry, keptPageableRowBytes: 0, keptPageableRows: new Map() }
+      : entry;
+  memo.entries.set(key, stored);
+  memo.retainedSize += retainedSizeOf(stored);
+  if (!stored.active) deleteOldestIdleEntries(memo);
+  deleteOldestEntriesOverBudget(memo);
+}
+
+function deleteOldestEntriesOverBudget(memo: TimelineSelectionMemo): void {
   while (
     memo.entries.size > TIMELINE_SELECTION_MEMO_MAX_ENTRIES ||
-    memo.dataChars > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
+    memo.retainedSize > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
   ) {
     const oldest = memo.entries.keys().next().value;
     if (oldest === undefined) break;
@@ -870,6 +907,53 @@ export function rememberDecodedLatestTimelineSelection(
   if (entry?.selection.rows === rows) entry.decoded = decoded;
 }
 
+export function reuseKeptLatestTimelinePageableRows(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  variant: string,
+  rows: TimelineRow[],
+): TimelineRow[] {
+  const previous = selectionMemos
+    .get(db)
+    ?.entries.get(selectionMemoKey(args))
+    ?.keptPageableRows.get(variant);
+  return previous === undefined
+    ? rows
+    : reuseUnchangedTimelineRows(rows, previous.rows);
+}
+
+export function keepLatestTimelinePageableRows(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  variant: string,
+  rows: readonly TimelineRow[],
+): void {
+  const memo = selectionMemos.get(db);
+  const entry = memo?.entries.get(selectionMemoKey(args));
+  if (memo === undefined || entry === undefined) return;
+  const measuredRows: TimelineRow[] = [];
+  let bytes = 0;
+  for (const row of rows) {
+    const rowBytes = measuredTimelineRowJsonBytes(row);
+    if (rowBytes === null) continue;
+    measuredRows.push(row);
+    bytes += rowBytes;
+  }
+  memo.retainedSize -= retainedSizeOf(entry);
+  entry.keptPageableRowBytes -= entry.keptPageableRows.get(variant)?.bytes ?? 0;
+  if (
+    measuredRows.length === 0 ||
+    retainedSizeOf(entry) + bytes > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
+  ) {
+    entry.keptPageableRows.delete(variant);
+  } else {
+    entry.keptPageableRows.set(variant, { bytes, rows: measuredRows });
+    entry.keptPageableRowBytes += bytes;
+  }
+  memo.retainedSize += retainedSizeOf(entry);
+  deleteOldestEntriesOverBudget(memo);
+}
+
 export function rememberLatestTimelineSelection(
   db: DbConnection,
   args: LatestTimelineSelectionMemoArgs,
@@ -882,7 +966,13 @@ export function rememberLatestTimelineSelection(
     args.threadId,
     (entry) => entry.epochSequenceStart === args.epochSequenceStart,
   );
-  storeMemoEntry(memo, selectionMemoKey(args), {
+  const key = selectionMemoKey(args);
+  const previous = memo.entries.get(key);
+  const kept =
+    previous !== undefined && previous.generation === lookup.generation
+      ? previous
+      : null;
+  storeMemoEntry(memo, key, {
     active: args.active,
     budgetFloorSequence: result.budgetFloorSequence,
     hints: result.hints,
@@ -896,6 +986,8 @@ export function rememberLatestTimelineSelection(
     decoded: null,
     epochSequenceStart: args.epochSequenceStart,
     generation: lookup.generation,
+    keptPageableRowBytes: kept?.keptPageableRowBytes ?? 0,
+    keptPageableRows: kept?.keptPageableRows ?? new Map(),
     maxSeq: args.maxSeq,
     selection: result.selection,
     threadId: args.threadId,
