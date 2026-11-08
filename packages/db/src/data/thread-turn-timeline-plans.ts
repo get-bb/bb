@@ -1,6 +1,7 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
-import { threadTurnTimelinePlans } from "../schema.js";
+import { events, threadTurnTimelinePlans } from "../schema.js";
+import { queryBuiltInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 export interface ThreadTurnTimelinePlanRecord {
   planJson: string;
@@ -13,22 +14,22 @@ export function listThreadTurnTimelinePlanRecords(
   db: DbConnection,
   args: { threadId: string; turnIds: readonly string[] },
 ): ThreadTurnTimelinePlanRecord[] {
-  if (args.turnIds.length === 0) return [];
-  return db
-    .select({
-      planJson: threadTurnTimelinePlans.planJson,
-      projectionKey: threadTurnTimelinePlans.projectionKey,
-      turnId: threadTurnTimelinePlans.turnId,
-      watermark: threadTurnTimelinePlans.watermark,
-    })
-    .from(threadTurnTimelinePlans)
-    .where(
-      and(
-        eq(threadTurnTimelinePlans.threadId, args.threadId),
-        inArray(threadTurnTimelinePlans.turnId, [...args.turnIds]),
+  return queryBuiltInSqliteVariableBatches(args.turnIds, (turnIds) =>
+    db
+      .select({
+        planJson: threadTurnTimelinePlans.planJson,
+        projectionKey: threadTurnTimelinePlans.projectionKey,
+        turnId: threadTurnTimelinePlans.turnId,
+        watermark: threadTurnTimelinePlans.watermark,
+      })
+      .from(threadTurnTimelinePlans)
+      .where(
+        and(
+          eq(threadTurnTimelinePlans.threadId, args.threadId),
+          inArray(threadTurnTimelinePlans.turnId, [...turnIds]),
+        ),
       ),
-    )
-    .all();
+  );
 }
 
 export function upsertThreadTurnTimelinePlanRecord(
@@ -58,41 +59,59 @@ export function getTimelineTurnPlanWatermark(
     turnId: string;
   },
 ): number {
-  const list = (values: readonly string[]) =>
-    sql.join(
-      values.map((value) => sql`${value}`),
-      sql`, `,
-    );
-  const parts = [
-    sql`SELECT MAX(sequence) AS sequence
-      FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
-      WHERE thread_id = ${args.threadId}
-        AND turn_id = ${args.turnId}
-        AND sequence <= ${args.maxSeq}`,
-  ];
-  if (args.delegatingItemIds.length > 0) {
-    parts.push(sql`SELECT MAX(sequence) AS sequence
-      FROM events INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
-      WHERE thread_id = ${args.threadId}
-        AND parent_tool_call_id IN (${list(args.delegatingItemIds)})
-        AND sequence <= ${args.maxSeq}`);
-  }
-  if (args.openItemIds.length > 0) {
-    parts.push(sql`SELECT MAX(sequence) AS sequence
-      FROM events INDEXED BY events_item_lifecycle_thread_item_sequence_idx
-      WHERE thread_id = ${args.threadId}
-        AND item_id IN (${list(args.openItemIds)})
-        AND type IN (
-          'item/started',
-          'item/completed',
-          'item/backgroundTask/completed'
+  const maxSequence = sql<number | null>`MAX(${events.sequence})`;
+  const turnSequences = db
+    .select({ sequence: maxSequence })
+    .from(sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.turnId, args.turnId),
+        lte(events.sequence, args.maxSeq),
+      ),
+    )
+    .all();
+  const childSequences = queryBuiltInSqliteVariableBatches(
+    args.delegatingItemIds,
+    (itemIds) =>
+      db
+        .select({ sequence: maxSequence })
+        .from(
+          sql`${events} INDEXED BY events_parent_tool_call_thread_parent_sequence_idx`,
         )
-        AND sequence <= ${args.maxSeq}`);
-  }
+        .where(
+          and(
+            eq(events.threadId, args.threadId),
+            inArray(events.parentToolCallId, [...itemIds]),
+            lte(events.sequence, args.maxSeq),
+          ),
+        ),
+  );
+  const openItemSequences = queryBuiltInSqliteVariableBatches(
+    args.openItemIds,
+    (itemIds) =>
+      db
+        .select({ sequence: maxSequence })
+        .from(
+          sql`${events} INDEXED BY events_item_lifecycle_thread_item_sequence_idx`,
+        )
+        .where(
+          and(
+            eq(events.threadId, args.threadId),
+            inArray(events.itemId, [...itemIds]),
+            sql`${events.type} IN (
+              'item/started',
+              'item/completed',
+              'item/backgroundTask/completed'
+            )`,
+            lte(events.sequence, args.maxSeq),
+          ),
+        ),
+  );
   return Math.max(
     0,
-    ...parts.map(
-      (part) => db.all<{ sequence: number | null }>(part)[0]?.sequence ?? 0,
+    ...[...turnSequences, ...childSequences, ...openItemSequences].map(
+      (row) => row.sequence ?? 0,
     ),
   );
 }
