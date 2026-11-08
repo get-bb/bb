@@ -678,7 +678,8 @@ function listPlannedTurnRows(
   });
 }
 
-const OMITTED_TURN_EVENT_SCAN_PAGE_SIZE = 256;
+const OMITTED_TURN_EVENT_SCAN_FIRST_PAGE_SIZE = 16;
+const OMITTED_TURN_EVENT_SCAN_MAX_PAGE_SIZE = 1_024;
 
 function latestPlannedMessageSequenceBefore(
   plans: ReadonlyMap<string, LoadedTimelineTurnPlan>,
@@ -762,6 +763,7 @@ function latestWindowedTurnRowSequenceBefore(
   };
   let scanStart = args.epochSequenceStart;
   let beforeSequence = args.sequenceStart;
+  let limit = OMITTED_TURN_EVENT_SCAN_FIRST_PAGE_SIZE;
   for (let page = 0; ; page += 1) {
     if (page === 1) {
       scanStart = Math.max(
@@ -780,7 +782,7 @@ function latestWindowedTurnRowSequenceBefore(
       beforeSequence,
       excludeDiagnosticEvents: args.excludeDiagnosticEvents,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-      limit: OMITTED_TURN_EVENT_SCAN_PAGE_SIZE,
+      limit,
       sequenceStart: scanStart,
       threadId: args.threadId,
     });
@@ -793,8 +795,9 @@ function latestWindowedTurnRowSequenceBefore(
         return ref.sequence;
       }
     }
-    if (refs.length < OMITTED_TURN_EVENT_SCAN_PAGE_SIZE) return null;
+    if (refs.length < limit) return null;
     beforeSequence = refs[refs.length - 1]!.sequence;
+    limit = Math.min(limit * 4, OMITTED_TURN_EVENT_SCAN_MAX_PAGE_SIZE);
   }
 }
 
@@ -844,8 +847,11 @@ function collectWindowedTurnItemsCrossingWindow(
     if (row.itemId === null) continue;
     if (row.type === "item/started") startedItemIds.add(row.itemId);
     if (row.turnId === null) {
+      if (args.windowedTurnIds.size === 0 || row.scopeKind !== "thread") {
+        continue;
+      }
       const key = scopedItemRefKey(storedEventRowItemRef(row));
-      if (row.scopeKind === "thread" && !args.closedItemKeys.has(key)) {
+      if (!args.closedItemKeys.has(key)) {
         args.closedItemKeys.add(key);
         threadItemIds.add(row.itemId);
       }
