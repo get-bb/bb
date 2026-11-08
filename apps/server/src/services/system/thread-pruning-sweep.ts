@@ -60,16 +60,21 @@ export function deferHistoryCompactedNoticeToSweep(
   if (!notices.has(threadId)) notices.set(threadId, Date.now());
 }
 
+function announceHistoryCompacted(
+  deps: Pick<AppDeps, "db" | "hub">,
+  threadId: string,
+): void {
+  deferredNotices(deps.db).delete(threadId);
+  deps.hub.notifyThread(threadId, ["history-compacted"]);
+}
+
 function flushOverdueHistoryCompactedNotices(
   deps: Pick<AppDeps, "db" | "hub">,
 ): void {
-  const notices = deferredNotices(deps.db);
   const now = Date.now();
-  for (const [threadId, deferredAt] of notices) {
-    if (now - deferredAt < DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS)
-      continue;
-    notices.delete(threadId);
-    deps.hub.notifyThread(threadId, ["history-compacted"]);
+  for (const [threadId, deferredAt] of deferredNotices(deps.db)) {
+    if (now - deferredAt >= DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS)
+      announceHistoryCompacted(deps, threadId);
   }
 }
 
@@ -118,8 +123,6 @@ export function threadPruningSweep(
       const pending = unannouncedRewrites(deps.db);
       const rewrittenThreadIds = new Set<string>();
       if (pending.has(itemKey)) rewrittenThreadIds.add(item.threadId);
-      if (deferredNotices(deps.db).delete(item.threadId))
-        rewrittenThreadIds.add(item.threadId);
       let passContinues = false;
       try {
         while (withinBudget()) {
@@ -148,7 +151,7 @@ export function threadPruningSweep(
         if (passContinues && rewrittenThreadIds.delete(item.threadId))
           pending.add(itemKey);
         for (const threadId of rewrittenThreadIds)
-          deps.hub.notifyThread(threadId, ["history-compacted"]);
+          announceHistoryCompacted(deps, threadId);
       }
     },
   });

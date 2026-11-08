@@ -492,16 +492,16 @@ describe("thread pruning sweep", () => {
     });
   });
 
-  it("sends a deferred turn-end notice once it is overdue when the sweep cannot visit the thread", async () => {
+  it("holds a turn-end notice through sweep visits that remove nothing and sends it once overdue", async () => {
     await withTestHarness(async (harness) => {
-      const thread = seedCompletingTurn(harness, 100);
+      const thread = seedCompletingTurn(harness, 20);
       const notify = vi
         .spyOn(harness.deps.hub, "notifyThread")
         .mockImplementation(() => {});
       completeTurn(harness, thread.id);
       const overdueAt =
         Date.now() + DEFERRED_HISTORY_COMPACTED_NOTICE_MAX_WAIT_MS;
-      setThreadStatus(harness, thread.id, "active");
+      expect(sequences(harness, thread.id)).toEqual([1, 21, 22]);
 
       await runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now());
       expect(compactionNotices(notify)).toEqual([]);
@@ -515,7 +515,6 @@ describe("thread pruning sweep", () => {
       expect(compactionNotices(notify)).toEqual([
         [thread.id, ["history-compacted"]],
       ]);
-      expect(sequences(harness, thread.id)).toHaveLength(70);
       notify.mockRestore();
     });
   });

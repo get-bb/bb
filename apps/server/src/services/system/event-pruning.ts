@@ -111,11 +111,8 @@ export function pruneThreadEventHistoryBestEffort(
     );
     return null;
   } finally {
-    if (getThreadEventRewriteGeneration(args.threadId) !== generation) {
-      if (args.mode === "active")
-        deps.hub.notifyThread(args.threadId, ["history-compacted"]);
-      else deferHistoryCompactedNoticeToSweep(deps.db, args.threadId);
-    }
+    if (getThreadEventRewriteGeneration(args.threadId) !== generation)
+      deferHistoryCompactedNoticeToSweep(deps.db, args.threadId);
   }
 }
 
