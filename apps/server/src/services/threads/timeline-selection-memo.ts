@@ -675,7 +675,9 @@ const TURN_CONTEXT_ROW_TYPES: ReadonlySet<ThreadEventType> = new Set([
   "provider/unhandled",
 ]);
 
-function isTurnContextRow(row: StoredEventRow): boolean {
+export function isTurnContextRow(
+  row: Pick<StoredEventRow, "itemKind" | "type">,
+): boolean {
   return (
     TURN_CONTEXT_ROW_TYPES.has(row.type) ||
     (row.itemKind === "contextCompaction" &&
@@ -1027,11 +1029,12 @@ function createTrimmedSelectionRowSource(
       );
     },
     listItemStartsBefore(query) {
-      const keys = new Set(query.items.map(scopedItemRefKey));
+      const itemIds = new Set(query.itemIds);
       return rows.flatMap((row) =>
         row.type === "item/started" &&
         row.sequence < query.beforeSequence &&
-        keys.has(storedRowItemKey(row))
+        row.itemId !== null &&
+        itemIds.has(row.itemId)
           ? [
               {
                 itemId: row.itemId!,

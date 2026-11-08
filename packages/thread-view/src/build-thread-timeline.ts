@@ -1280,17 +1280,17 @@ export function buildThreadTimelineFromProjection(
     : args.events;
   const { projection } = args;
 
+  const rowOptions: BuildTimelineRowsOptions = {
+    completedTurnDisplay: args.options.completedTurnDisplay,
+    includeNestedRows: args.options.includeNestedRows,
+    omitSettledDelegationChildRows: args.options.omitSettledDelegationChildRows,
+    rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
+    storedTurnPlans: args.options.storedTurnPlans,
+    summarizeShellCommands: args.options.summarizeShellCommands,
+    workspaceRoot: args.options.workspaceRoot,
+  };
   const rows = [
-    ...buildTimelineRows(projection, {
-      completedTurnDisplay: args.options.completedTurnDisplay,
-      includeNestedRows: args.options.includeNestedRows,
-      omitSettledDelegationChildRows:
-        args.options.omitSettledDelegationChildRows,
-      rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
-      storedTurnPlans: args.options.storedTurnPlans,
-      summarizeShellCommands: args.options.summarizeShellCommands,
-      workspaceRoot: args.options.workspaceRoot,
-    }),
+    ...buildTimelineRows(projection, rowOptions),
     ...buildPendingSteerMessagesFromEvents(
       args.acceptedClientRequestContext,
       args.events,
@@ -1352,6 +1352,7 @@ export function buildThreadTimelineFromProjection(
           projection,
           args.options.completedTurnDisplay,
           ROOT_TIMELINE_ROW_ID_PREFIX,
+          (message) => convertMessage(message, rowOptions).length > 0,
         )
       : new Map(),
   };
