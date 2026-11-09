@@ -1193,7 +1193,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const entry = manifest.plugins.find(
       (plugin) => plugin.id === row.catalogEntryId,
     );
-    if (entry === undefined) return { kind: "release" };
+    if (entry === undefined) return { kind: "none" };
     const range = catalogRangeForInstalledSource(entry, row);
     return range === null ? { kind: "none" } : { kind: "catalog", range };
   }

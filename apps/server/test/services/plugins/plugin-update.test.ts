@@ -1678,6 +1678,81 @@ describe.concurrent("plugin tagged release updates", () => {
   );
 
   taggedTest(
+    "refreshes the saved offer when the reviewed release changed before the update",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      await service.setEnabled("tagged", false);
+      const reviewedCommit = await releaseTag(tagged, "v2.0.0");
+      await service.checkForUpdates("tagged");
+      const newerCommit = await releaseTag(tagged, "v2.1.0");
+
+      await expect(
+        service.applyUpdate("tagged", {
+          range: "^2.0.0",
+          expectedVersion: reviewedCommit,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error:
+          "update refused: the release changed after you reviewed it; you reviewed 2.0.0, and bb now resolves 2.1.0. Review 2.1.0 before updating",
+      });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitRange: "^1.0.0",
+        sourceGitResolvedTag: "v1.0.0",
+      });
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState
+          .rangeUpgrade,
+      ).toMatchObject({
+        range: "^2.1.0",
+        candidate: { version: newerCommit, label: "2.1.0" },
+      });
+    },
+  );
+
+  taggedTest(
+    "offers no out-of-range release once the marketplace stops listing the plugin",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.installCatalogPlugin({
+        marketplace: "acme-plugins",
+        entryId: "tagged",
+        pluginId: "tagged",
+        source: `git:${tagged}@semver:^1.0.0`,
+        selection: { kind: "root" },
+      });
+      upsertPluginMarketplace(db, {
+        name: "acme-plugins",
+        sourceKind: "path",
+        manifestUrl: fixture.workDir,
+        sourceGitRef: null,
+        sourceGitSubdirectory: null,
+        sourceGitCommit: null,
+        statsJson: null,
+        manifestJson: JSON.stringify({
+          schemaVersion: 1,
+          name: "acme-plugins",
+          displayName: "Acme Plugins",
+          plugins: [],
+        }),
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: Date.now(),
+        lastAttemptedRefreshAt: Date.now(),
+        lastError: null,
+      });
+      await releaseTag(tagged, "v2.0.0");
+
+      const [result] = await service.checkForUpdates("tagged");
+      expect(result).toMatchObject({ id: "tagged", outcome: "current" });
+      expect(result?.rangeUpgrade).toBeUndefined();
+    },
+  );
+
+  taggedTest(
     "names a rolled-back release by its tag version",
     async ({ fixture }) => {
       const { service, taggedRepo } = fixture;

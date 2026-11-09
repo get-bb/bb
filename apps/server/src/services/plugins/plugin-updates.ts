@@ -236,6 +236,18 @@ export function createPluginUpdates(
     );
   }
 
+  function reviewedReleaseLabel(
+    row: InstalledPluginRow,
+    version: string,
+  ): string {
+    const persisted = parsePersistedUpdateEntry(row);
+    const reviewed = [
+      persisted?.candidate,
+      persisted?.rangeUpgrade?.candidate,
+    ].find((candidate) => candidate?.version === version);
+    return reviewed?.label ?? pluginVersionLabelForRow(row, version);
+  }
+
   function checkEntryFromResolution(
     row: InstalledPluginRow,
     installed: PluginResolvedUpdateVersion,
@@ -754,6 +766,13 @@ export function createPluginUpdates(
         if (range === undefined) {
           persistUpdateEntry(checkEntryFromResolution(row, from, resolution));
         }
+        const refuseRangeChange = async (
+          error: string,
+        ): Promise<PluginApplyUpdateOutcome> => {
+          const fresh = await resolveUpdateForRow({ row, npmRun });
+          persistUpdateEntry(checkEntryFromResolution(row, from, fresh));
+          return { ok: false, error };
+        };
 
         if (resolution.outcome === "pinned") {
           return {
@@ -779,10 +798,9 @@ export function createPluginUpdates(
             : from;
         if (resolution.outcome === "current") {
           if (range !== undefined) {
-            return {
-              ok: false,
-              error: `${range} admits no release newer than the installed ${from.label}; the range was not changed`,
-            };
+            return refuseRangeChange(
+              `${range} admits no release newer than the installed ${from.label}; the range was not changed`,
+            );
           }
           return {
             ok: true,
@@ -801,20 +819,19 @@ export function createPluginUpdates(
             candidateRelease === null ||
             !semver.gt(candidateRelease, installedRelease)
           ) {
-            return {
-              ok: false,
-              error: `${range} resolves to ${resolution.candidate.label}, which is not newer than the installed ${from.label}; bb does not downgrade plugins`,
-            };
+            return refuseRangeChange(
+              `${range} resolves to ${resolution.candidate.label}, which is not newer than the installed ${from.label}; bb does not downgrade plugins`,
+            );
           }
         }
         if (
           options.expectedVersion !== undefined &&
           options.expectedVersion !== resolution.candidate.version
         ) {
-          return {
-            ok: false,
-            error: `update refused: the release changed after you reviewed it; expected ${options.expectedVersion}, now ${resolution.candidate.display}. Check for updates and review it again`,
-          };
+          const error = `update refused: the release changed after you reviewed it; you reviewed ${reviewedReleaseLabel(row, options.expectedVersion)}, and bb now resolves ${resolution.candidate.label}. Review ${resolution.candidate.label} before updating`;
+          return range === undefined
+            ? { ok: false, error }
+            : refuseRangeChange(error);
         }
 
         try {

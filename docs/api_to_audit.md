@@ -4156,8 +4156,9 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 newer stable release sits outside a git semver or npm range source's saved
 range: `currentRange`, the proposed `range`, `basis` (`catalog` when the
 plugin's marketplace entry still lists the same repository or package and its
-current range admits the release, `release` for other installs, which get
-`^<version>`), the `candidate`, `breaking` (caret rule from the installed
+current range admits the release, `release` for installs from no marketplace
+or a removed one, which get `^<version>`; none is reported once the plugin's
+marketplace no longer lists it), the `candidate`, `breaking` (caret rule from the installed
 version), and `reasons` when the candidate fails engines on this bb.
 `applyUpdate` and `experimental_startUpdate` accept `range` to change the
 saved range in the same staged activation (refusing pinned sources, ranges

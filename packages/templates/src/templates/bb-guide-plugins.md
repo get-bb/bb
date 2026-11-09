@@ -331,9 +331,10 @@ bb saves a plugin's range at install and updates only within it; on 0.x a
 caret range admits patches only (`^0.2.0` stops before 0.3.0). Each update
 check also reports one newer release outside that range, for git semver and
 npm range sources. A plugin installed from a marketplace is offered only a
-release its entry's current range admits, and that range is proposed; other
-plugins are offered their newest stable release with `^<version>`. Pinned
-sources are never offered one. `bb plugin outdated` prints the release, the
+release its entry's current range admits, and that range is proposed; if the
+marketplace no longer lists the plugin, none is offered. Other plugins are
+offered their newest stable release with `^<version>`. Pinned sources are never
+offered one, and --range still takes any release you choose. `bb plugin outdated` prints the release, the
 proposed range, whether it may break (a new major, or a new minor on 0.x),
 and the command to take it:
 
