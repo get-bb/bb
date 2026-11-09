@@ -38,7 +38,7 @@ function fixture() {
   put("pnpm-workspace.yaml", "packages:\n  - apps/*\n  - packages/*\n");
   put(
     "pnpm-lock.yaml",
-    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n  packages/db: {}\n  apps/mobile: {}\n",
+    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n  apps/mobile: {}\n",
   );
   put(
     "turbo.json",
@@ -56,7 +56,6 @@ function fixture() {
     ["apps/app", "@bb/app", { "@bb/config": "workspace:*" }],
     ["packages/config", "@bb/config", {}],
     ["packages/text-utils", "@bb/text-utils", {}],
-    ["packages/db", "@bb/db", {}],
     ["apps/mobile", "@bb/mobile", {}],
   ]) {
     put(
@@ -154,7 +153,6 @@ it("selects app checks without provisioning unrelated Windows or package smoke j
   );
   expect(plan.packaging).toBe(false);
   expect(plan.foundation).toBe(false);
-  expect(plan.queryPlans).toBe(false);
   expect(plan.forks).toBe(false);
   expect(plan.staticFilters).toContain("--filter=@bb/app");
   expect(plan.staticFilters).not.toContain("@bb/text-utils");
@@ -210,13 +208,6 @@ it("keeps dependent app tests and Windows foundation checks for shared configura
   expect(plan.staticFilters).not.toContain("@bb/text-utils");
 }, 30_000);
 
-it("runs the query plan audit only when db or server tests are selected", () => {
-  expect(fixture().plan("packages/db/src/index.ts").queryPlans).toBe(true);
-  expect(fixture().plan("packages/text-utils/src/index.ts").queryPlans).toBe(
-    false,
-  );
-}, 30_000);
-
 it("retains Windows and package smokes for frontend build configuration", () => {
   const plan = fixture().plan("apps/app/vite.config.ts");
   expect(plan.packaging).toBe(true);
@@ -241,7 +232,6 @@ it("skips the matrix for CI documentation", () => {
   expect(plan.buildNeeded).toBe(false);
   expect(plan.staticNeeded).toBe(false);
   expect(plan.packaging).toBe(false);
-  expect(plan.queryPlans).toBe(false);
 }, 30_000);
 
 it.each([

@@ -284,9 +284,11 @@ server, the file comes from the module comments esbuild writes into
 from POSIX stack paths, so the audit logs nothing on Windows. Findings listed in
 `packages/db/src/query-plan-allowlist.ts` are not logged. The tests apply the
 same rules and fail on findings missing from the allowlist; see
-`packages/db/src/query-plan-guard.ts`. The `Query plan audit` CI job also
-requires every exported query function in `packages/db/src/data` to run in a
-`@bb/db` or `@bb/server` test; reproduce it with
+`packages/db/src/query-plan-guard.ts`. The nightly `Query Plan Audit` workflow
+(`.github/workflows/query-plan-audit.yml`, also runnable by hand) checks main
+for allowlist entries no test reports and for exported query functions in
+`packages/db/src/data` that no `@bb/db` or `@bb/server` test runs; reproduce it
+with
 `BB_QUERY_PLAN_REPORT=<file> pnpm exec turbo run test --filter=@bb/db --filter=@bb/server`
 followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
 

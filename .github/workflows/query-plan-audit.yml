@@ -1,0 +1,65 @@
+name: Query Plan Audit
+on:
+  schedule:
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: query-plan-audit
+  cancel-in-progress: true
+env:
+  PRIMARY_NODE_VERSION: "22.x"
+  PNPM_VERSION: "9.15.0"
+jobs:
+  audit:
+    name: Query plan audit (ubuntu-latest, Node 22.x)
+    if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup workspace tools
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache-prefix: query-plans
+          turbo-cache: "true"
+
+      - name: Restore pnpm cache
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
+
+      - name: Run db and server tests in report mode
+        env:
+          BB_QUERY_PLAN_REPORT: ${{ runner.temp }}/query-plans-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
+          VITEST_MAX_WORKERS: "4"
+        run: pnpm exec turbo run test --filter=@bb/db --filter=@bb/server --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=1
+
+      - name: Check the query plan report
+        run: pnpm --filter @bb/db check:query-plan-report "${{ runner.temp }}/query-plans-${{ github.run_id }}-${{ github.run_attempt }}.jsonl"
+
+      - name: Bound saved Turbo cache
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
+

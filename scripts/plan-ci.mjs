@@ -24,7 +24,6 @@ const full = {
     })),
   },
   foundation: true,
-  queryPlans: true,
   packaging: true,
   providers: true,
   forks: true,
@@ -83,7 +82,6 @@ function select() {
       tests: { include: [] },
       "windows-tests": { include: [] },
       foundation: false,
-      queryPlans: false,
       packaging: false,
       providers: false,
       forks: false,
@@ -170,7 +168,6 @@ function select() {
       shards.foundation.some((name) =>
         tasks.some((task) => task.package === name),
       ),
-    queryPlans: tests.has("@bb/db") || tests.has("@bb/server"),
     packaging,
     providers: paths.some((path) =>
       /^(?:plugins\/provider-|packages\/(?:agent-runtime|provider-bridge-))/u.test(
