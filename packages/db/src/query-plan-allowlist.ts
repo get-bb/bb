@@ -47,14 +47,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     `${EVENTS}#listThreadEventSuffixBackgroundSettlementRows`,
     "correlated settlement probes match only thread_id; 0.4-1.4 s per message edit on threads with 130-230 settlements (fix in #7287)",
   ),
-  knownSlow(
-    `${EVENTS}#listStoredItemLifecycleRowsByItems`,
-    "timeline backfill walks the whole thread instead of seeking turn and item; 10 ms per call on a 53k-event thread",
-  ),
-  knownSlow(
-    `${EVENTS}#listStoredBufferedTextDeltaRowsByItems`,
-    "timeline backfill walks the thread before the window instead of seeking turn and item; 10 ms per call on a 53k-event thread",
-  ),
   acceptedEventsIndex(
     `${EVENTS}#listCommandItemDataByItemIds`,
     "Measured faster than the type index (12.6 ms vs 21.6 ms): item ids are selective and both types are common",

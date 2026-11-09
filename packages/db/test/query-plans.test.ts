@@ -45,14 +45,17 @@ import {
   listLatestOpenBackgroundTaskStateRowsForThread,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
+  listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
   listStoredConversationOutlineEventRows,
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRows,
   listStoredEventRowsByParentToolCallIds,
+  listStoredItemLifecycleRowsByItems,
   listStoredTurnCompletedKeys,
   listThreadEventSuffixBackgroundSettlementRows,
   listTodoSnapshotEventRowsForThread,
+  type ScopedItemRef,
 } from "../src/data/events.js";
 import {
   MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
@@ -2357,6 +2360,58 @@ describe("slow query index plans", () => {
 
     db.$client.close();
   });
+
+  it.each([
+    {
+      name: "listStoredItemLifecycleRowsByItems",
+      run: (db: DbConnection, threadId: string, items: ScopedItemRef[]) =>
+        listStoredItemLifecycleRowsByItems(db, {
+          items,
+          maxInlineOutputChars: 100,
+          threadId,
+        }),
+      seek: "(thread_id=? AND turn_id=? AND type=? AND item_id=?)",
+    },
+    {
+      name: "listStoredBufferedTextDeltaRowsByItems",
+      run: (db: DbConnection, threadId: string, items: ScopedItemRef[]) =>
+        listStoredBufferedTextDeltaRowsByItems(db, {
+          beforeSequence: 10,
+          items,
+          threadId,
+        }),
+      seek: "(thread_id=? AND turn_id=? AND type=? AND item_id=? AND sequence<?)",
+    },
+  ])(
+    "$name seeks each item's turn instead of walking the thread",
+    ({ run, seek }) => {
+      const { db, thread } = setup();
+      const items: ScopedItemRef[] = [
+        { itemId: "item-1", scopeKind: "turn", turnId: "turn-1" },
+        { itemId: "item-2", scopeKind: "turn", turnId: "turn-2" },
+        { itemId: "item-3", scopeKind: "thread", turnId: null },
+      ];
+      try {
+        for (const scopedItems of [items.slice(0, 1), items]) {
+          const captured = captureStatements(db, () => {
+            run(db, thread.id, scopedItems);
+          });
+          expect(captured).toHaveLength(1);
+          const searches = queryPlanDetails({ db, ...captured[0]! })
+            .split("\n")
+            .filter((detail) => detail.startsWith("SEARCH"));
+          expect(searches).toEqual(
+            scopedItems.map(
+              () =>
+                `SEARCH events USING INDEX events_thread_turn_type_item_sequence_idx ${seek}`,
+            ),
+          );
+        }
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
 
   it("prunes stored provider model catalogs through the primary-key prefix", () => {
     const { db, host, logger } = setup();
