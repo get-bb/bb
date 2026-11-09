@@ -11,6 +11,7 @@
     "build:android:dev": "bash scripts/build-android-dev.sh",
     "prebuild": "expo prebuild",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "lint": "oxlint app src scripts plugins metro.config.js app.config.js",
     "test": "vitest run --config vitest.config.ts",
     "theme:generate": "node --conditions=source --import tsx scripts/generate-native-theme.ts",

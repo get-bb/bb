@@ -847,7 +847,7 @@ export function createManagedPluginArtifacts(
           },
           resetExisting: true,
         });
-        return registerInstalled({
+        return await registerInstalled({
           rootDir: stagedTargetRoot,
           source,
           ...stagedRegistrationIdentity,
@@ -998,7 +998,7 @@ export function createManagedPluginArtifacts(
             });
       const reusable = await reusableArtifact(existingArtifact, prefix);
       if (reusable !== undefined) {
-        return registerInstalled({
+        return await registerInstalled({
           rootDir,
           source,
           ...registrationIdentity,
@@ -1067,7 +1067,7 @@ export function createManagedPluginArtifacts(
           },
           resetExisting: true,
         });
-        return registerInstalled({
+        return await registerInstalled({
           rootDir,
           source,
           ...registrationIdentity,

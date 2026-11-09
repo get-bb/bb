@@ -98,9 +98,13 @@ describe("thread overflow submenus", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "More sections" }));
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Planning" })).toBeNull();
     expect(
@@ -135,7 +139,9 @@ describe("thread overflow submenus", () => {
     ).toBeNull();
 
     fireEvent.click(trigger);
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     expect(screen.getByRole("button", { name: "Planning" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
   });

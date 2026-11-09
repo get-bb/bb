@@ -51,9 +51,13 @@ describe("usePromptDraftStorage", () => {
 
     expect(result.current.text).toBe("large pending draft");
     expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
-    act(() => vi.advanceTimersByTime(249));
+    act(() => {
+      vi.advanceTimersByTime(249);
+    });
     expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
-    act(() => vi.advanceTimersByTime(1));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(window.localStorage.getItem(result.current.storageKey)).toBe(
       storedDraft("large pending draft"),
     );
@@ -76,7 +80,9 @@ describe("usePromptDraftStorage", () => {
     expect(window.localStorage.getItem(result.current.storageKey)).toBe(
       storedDraft("immediate replacement"),
     );
-    act(() => vi.advanceTimersByTime(250));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
     expect(window.localStorage.getItem(result.current.storageKey)).toBe(
       storedDraft("immediate replacement"),
     );

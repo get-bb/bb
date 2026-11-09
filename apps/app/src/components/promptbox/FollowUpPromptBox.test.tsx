@@ -1383,10 +1383,14 @@ describe("FollowUpPromptBox", () => {
           vi.advanceTimersByTime(20);
         });
         act(() => input.blur());
-        act(() => vi.advanceTimersByTime(550));
+        act(() => {
+          vi.advanceTimersByTime(550);
+        });
 
         fireEvent.pointerDown(control, { button: 0, pointerType: "touch" });
-        act(() => vi.advanceTimersByTime(300));
+        act(() => {
+          vi.advanceTimersByTime(300);
+        });
 
         expect(
           screen.getByTestId("prompt-box").getAttribute("data-compact"),
@@ -1421,13 +1425,17 @@ describe("FollowUpPromptBox", () => {
         act(() => input.focus());
         fireEvent.pointerDown(control);
         act(() => input.blur());
-        act(() => vi.advanceTimersByTime(20));
+        act(() => {
+          vi.advanceTimersByTime(20);
+        });
         expect(
           screen.getByTestId("prompt-box").getAttribute("data-compact"),
         ).toBe("false");
 
         fireEvent[releaseEvent](control);
-        act(() => vi.advanceTimersByTime(20));
+        act(() => {
+          vi.advanceTimersByTime(20);
+        });
         expect(
           screen.getByTestId("prompt-box").getAttribute("data-compact"),
         ).toBe("true");
@@ -1493,12 +1501,16 @@ describe("FollowUpPromptBox", () => {
         screen.getByTestId("prompt-box").getAttribute("data-compact"),
       ).toBe("false");
 
-      act(() => vi.advanceTimersByTime(700));
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
       expect(
         screen.getByTestId("prompt-box").getAttribute("data-compact"),
       ).toBe("false");
 
-      act(() => vi.advanceTimersByTime(100));
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
       expect(
         screen.getByTestId("prompt-box").getAttribute("data-compact"),
       ).toBe("true");

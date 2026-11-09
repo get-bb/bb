@@ -155,7 +155,10 @@ export async function startAccountApi(fixture: AccountFixture) {
           : null,
     };
   };
-  const server = http.createServer(async (request, response) => {
+  const handle = async (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+  ) => {
     const reply = (
       status: number,
       body: unknown,
@@ -238,6 +241,9 @@ export async function startAccountApi(fixture: AccountFixture) {
       return reply(400, { error: "invalid_request" });
     }
     reply(200, answerFor(body));
+  };
+  const server = http.createServer((request, response) => {
+    handle(request, response).catch((error) => response.destroy(error));
   });
   const port = await listen(server);
   return {
@@ -294,7 +300,10 @@ export async function startOrigin(options: OriginOptions) {
       nowSeconds: Math.floor(Date.now() / 1000),
     });
   };
-  const server = http.createServer(async (request, response) => {
+  const handle = async (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+  ) => {
     const chunks: Buffer[] = [];
     try {
       for await (const chunk of request) chunks.push(chunk as Buffer);
@@ -404,6 +413,9 @@ export async function startOrigin(options: OriginOptions) {
     }
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ ok: true, url: request.url }));
+  };
+  const server = http.createServer((request, response) => {
+    handle(request, response).catch((error) => response.destroy(error));
   });
   const sockets = new WebSocketServer({
     noServer: true,

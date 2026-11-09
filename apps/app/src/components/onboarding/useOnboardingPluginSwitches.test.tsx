@@ -50,15 +50,15 @@ function renderSwitches() {
   const view = renderHook(() => useOnboardingPluginSwitches(), { wrapper });
   const onFailed = vi.fn();
   const flip = (enabled: boolean, apply: PluginSwitchApply) =>
-    act(() =>
+    act(() => {
       view.result.current.set({
         pluginId: "workflows",
         enabled,
         serverEnabled: false,
         apply,
         onFailed,
-      }),
-    );
+      });
+    });
   const shown = () => view.result.current.shown("workflows", false);
   const flush = () => act(async () => {});
   return { queryClient, flip, shown, flush, onFailed };
@@ -70,11 +70,11 @@ describe("useOnboardingPluginSwitches", () => {
     const first = createDeferredPromise<string | null>();
     const apply = vi.fn<PluginSwitchApply>(() => first.promise);
 
-    await flip(true, apply);
+    flip(true, apply);
     expect(shown()).toBe(true);
-    await flip(false, apply);
-    await flip(true, apply);
-    await flip(false, apply);
+    flip(false, apply);
+    flip(true, apply);
+    flip(false, apply);
     expect(shown()).toBe(false);
     expect(apply).toHaveBeenCalledTimes(1);
 
@@ -90,7 +90,7 @@ describe("useOnboardingPluginSwitches", () => {
     const { flip, shown, flush, onFailed } = renderSwitches();
     const refused = new Error("offline");
 
-    await flip(true, () => Promise.reject(refused));
+    flip(true, () => Promise.reject(refused));
     await flush();
 
     expect(shown()).toBe(false);
@@ -104,9 +104,9 @@ describe("useOnboardingPluginSwitches", () => {
       enabled ? "job_1" : null,
     );
 
-    await flip(true, apply);
-    await flip(false, apply);
-    await flip(true, apply);
+    flip(true, apply);
+    flip(false, apply);
+    flip(true, apply);
     await flush();
     expect(apply).toHaveBeenCalledTimes(1);
     expect(shown()).toBe(true);

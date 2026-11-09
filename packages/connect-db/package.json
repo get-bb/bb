@@ -21,6 +21,7 @@
   "scripts": {
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {

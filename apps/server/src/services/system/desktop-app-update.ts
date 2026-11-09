@@ -308,11 +308,11 @@ export function createDesktopAppUpdateService(args: {
             args.notifyChanged();
           },
         );
-        return getStatus({ forceRefresh: false });
       } catch (error) {
         applying = false;
         throw error;
       }
+      return getStatus({ forceRefresh: false });
     },
     async acknowledgeResult({ id }) {
       await initialized;

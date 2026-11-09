@@ -46,12 +46,12 @@ function RemountableSidebarControlsHarness() {
       <button type="button" onClick={() => setMounted((value) => !value)}>
         toggle-controls
       </button>
-      <button type="button" onClick={() => navigate("/")}>
+      <button type="button" onClick={() => void navigate("/")}>
         go-home
       </button>
       {mounted ? <SidebarHistoryNavigationControls /> : null}
       {TOOL_ROUTE_SEQUENCE.map((path) => (
-        <button key={path} type="button" onClick={() => navigate(path)}>
+        <button key={path} type="button" onClick={() => void navigate(path)}>
           {path}
         </button>
       ))}
@@ -77,7 +77,7 @@ function PluginNavigationHarness() {
   return (
     <div>
       <div data-testid="path">{location.pathname}</div>
-      <button type="button" onClick={() => navigate(detailPath)}>
+      <button type="button" onClick={() => void navigate(detailPath)}>
         Open detail
       </button>
       <button
@@ -121,7 +121,7 @@ function PluginNavigationHarness() {
       >
         Exit edit
       </button>
-      <button type="button" onClick={() => navigate(-1)}>
+      <button type="button" onClick={() => void navigate(-1)}>
         Native back
       </button>
     </div>

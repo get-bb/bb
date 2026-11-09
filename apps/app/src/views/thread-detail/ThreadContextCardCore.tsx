@@ -34,7 +34,7 @@ function ParentThreadRow({ thread }: { thread: ThreadResponse }) {
       icon={parent.relationship === "fork" ? "Fork" : "UserRound"}
       label={`${parent.relationship === "fork" ? "Forked from" : "Parent"}: ${parent.parentThreadTitle}`}
       title={parent.parentThreadTitle}
-      onClick={() => navigate(parent.href)}
+      onClick={() => void navigate(parent.href)}
     />
   );
 }
@@ -69,7 +69,7 @@ function ChildThreadsSection({ threadId }: ExperimentalThreadContextCardProps) {
               title={title}
               trailing={<InfoRowTime timestamp={child.updatedAt} />}
               onClick={() =>
-                navigate(
+                void navigate(
                   getThreadRoutePath({
                     projectId: child.projectId,
                     threadId: child.id,

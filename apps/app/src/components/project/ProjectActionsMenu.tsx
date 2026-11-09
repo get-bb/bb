@@ -61,7 +61,7 @@ export function ProjectActionsMenuItems({
         surface={surface}
         icon="Settings"
         onSelect={() => {
-          navigate(getSettingsProjectRoutePath(project.id));
+          void navigate(getSettingsProjectRoutePath(project.id));
         }}
       >
         Project settings

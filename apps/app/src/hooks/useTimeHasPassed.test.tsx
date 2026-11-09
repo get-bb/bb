@@ -19,10 +19,14 @@ it("uses the current clock when an expiry arrives after mounting", () => {
     ({ atMs }: { atMs: number | null }) => useTimeHasPassed(atMs),
     { initialProps: { atMs: null } },
   );
-  act(() => vi.advanceTimersByTime(600_000));
+  act(() => {
+    vi.advanceTimersByTime(600_000);
+  });
   rerender({ atMs: 900_000 });
   expect(result.current).toBe(false);
-  act(() => vi.advanceTimersByTime(300_000));
+  act(() => {
+    vi.advanceTimersByTime(300_000);
+  });
   expect(result.current).toBe(true);
 });
 
@@ -31,11 +35,17 @@ it("recognizes an already expired replacement and cancels the old timer", () => 
     ({ atMs }: { atMs: number | null }) => useTimeHasPassed(atMs),
     { initialProps: { atMs: 900_000 } },
   );
-  act(() => vi.advanceTimersByTime(600_000));
+  act(() => {
+    vi.advanceTimersByTime(600_000);
+  });
   rerender({ atMs: 300_000 });
-  act(() => vi.advanceTimersByTime(0));
+  act(() => {
+    vi.advanceTimersByTime(0);
+  });
   expect(result.current).toBe(true);
   rerender({ atMs: null });
-  act(() => vi.advanceTimersByTime(900_000));
+  act(() => {
+    vi.advanceTimersByTime(900_000);
+  });
   expect(result.current).toBe(false);
 });

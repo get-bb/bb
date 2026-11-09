@@ -38,6 +38,7 @@
     "format:check": "oxfmt . --check",
     "storybook": "turbo run storybook --filter=@bb/app",
     "lint": "turbo run lint",
+    "lint:type-aware": "oxlint -c .oxlintrc.type-aware.json scripts .github ./*.ts",
     "check:plugin-forks": "node scripts/check-plugin-forks.mjs",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
@@ -53,6 +54,7 @@
     "drizzle-studio:prod": "cross-env NODE_ENV=production pnpm --filter @bb/db db:studio"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "@vitest/coverage-v8": "4.1.12",
     "@vitest/utils": "4.1.12",
     "cross-env": "^10.1.0",
@@ -61,6 +63,7 @@
     "http-proxy-3": "^1.23.3",
     "oxfmt": "^0.64.0",
     "oxlint": "^1.91.0",
+    "oxlint-tsgolint": "^7.0.2006",
     "rimraf": "^6.1.4",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "tsx": "^4.23.15",

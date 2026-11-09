@@ -315,8 +315,10 @@ export function startLiveHostCommand<
 ): void {
   const execution =
     args.execution ?? createLiveHostCommandExecution(args.hostId);
-  void runLiveHostCommand(deps, { ...args, execution })
-    .catch((error) => {
+  void (async () => {
+    try {
+      await runLiveHostCommand(deps, { ...args, execution });
+    } catch (error) {
       const normalized =
         error instanceof Error ? error : new Error(String(error));
       const handlerArgs: LiveHostCommandErrorHandlerArgs<TType> = {
@@ -338,8 +340,7 @@ export function startLiveHostCommand<
         return;
       }
       args.onError?.(handlerArgs);
-    })
-    .finally(async () => {
+    } finally {
       try {
         await args.onSettled?.();
       } catch (error) {
@@ -348,5 +349,6 @@ export function startLiveHostCommand<
           "Live command settled callback failed",
         );
       }
-    });
+    }
+  })();
 }

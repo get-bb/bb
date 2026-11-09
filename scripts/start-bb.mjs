@@ -31,6 +31,7 @@ export async function runBuildProcess(request) {
       timeoutMs: BUILD_TERMINATION_TIMEOUT_MS,
       killGraceMs: BUILD_KILL_GRACE_MS,
     });
+    return stopPromise;
   };
   const handleSigint = () => stopChild();
   const handleSigterm = () => stopChild();
@@ -47,7 +48,7 @@ export async function runBuildProcess(request) {
       stdio: "inherit",
     });
     const result = await waitForProcess(child);
-    await stopPromise;
+    if (stopPromise !== undefined) await stopChild();
     return result;
   } finally {
     process.off("SIGINT", handleSigint);

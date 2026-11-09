@@ -107,10 +107,13 @@ export async function startPerformanceDiagnostics(options: {
     if (!terminating || pending !== undefined)
       fail(new Error(`CPU profiling worker exited (${code})`));
   });
-  worker.on("message", async (value: unknown) => {
+  worker.on("message", (value: unknown) => {
     if (value === "disconnected") {
-      await setImmediate();
-      worker.postMessage("drained");
+      setImmediate()
+        .then(() => worker.postMessage("drained"))
+        .catch((error: unknown) =>
+          fail(error instanceof Error ? error : new Error(String(error))),
+        );
       return;
     }
     if (

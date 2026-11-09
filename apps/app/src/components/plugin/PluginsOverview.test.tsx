@@ -36,7 +36,9 @@ function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
     <button
       type="button"
       onClick={() =>
-        navigate(view === "browse" ? "/plugins" : "/plugins?view=installed")
+        void navigate(
+          view === "browse" ? "/plugins" : "/plugins?view=installed",
+        )
       }
     >
       {`switch-to-${view}`}

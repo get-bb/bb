@@ -1543,9 +1543,13 @@ export function createServerMoveCoordinator(
       current = move;
       notify();
       if (restored.kind === "ended") {
-        void abortTargetWhenReachable(move).finally(() =>
-          forgetRun(move).catch(() => undefined),
-        );
+        void (async () => {
+          try {
+            await abortTargetWhenReachable(move);
+          } finally {
+            await forgetRun(move).catch(() => undefined);
+          }
+        })();
         return;
       }
       move.frozen = true;

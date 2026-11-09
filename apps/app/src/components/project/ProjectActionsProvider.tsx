@@ -116,7 +116,7 @@ export function ProjectActionsProvider({
         onSuccess: () => {
           closeDeleteDialog();
           if (routeProjectId === projectId) {
-            navigate(getRootComposeRoutePath(), { replace: true });
+            void navigate(getRootComposeRoutePath(), { replace: true });
           }
         },
       });

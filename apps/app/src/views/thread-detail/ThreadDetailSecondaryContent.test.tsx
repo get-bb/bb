@@ -446,7 +446,7 @@ describe("ThreadDetailSecondaryContent", () => {
     if (panelBrowserDeck === undefined) return;
 
     const onFocusPane = vi.fn();
-    panelBrowserDeck("browser-split", {
+    void panelBrowserDeck("browser-split", {
       isFocused: true,
       isOpen: true,
       onFocusPane,
@@ -458,7 +458,7 @@ describe("ThreadDetailSecondaryContent", () => {
       onNativeFocus: onFocusPane,
     });
 
-    panelBrowserDeck("browser-split", {
+    void panelBrowserDeck("browser-split", {
       isFocused: false,
       isOpen: true,
       onFocusPane,

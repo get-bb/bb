@@ -143,7 +143,7 @@ function PluginThreadChatBody({
         paneNavigateInPane(target);
         return;
       }
-      navigate(getThreadRoutePath(target));
+      void navigate(getThreadRoutePath(target));
     },
     [navigate, paneNavigateInPane],
   );
@@ -215,7 +215,7 @@ function PluginThreadChatBody({
         const targetProjectId = resource.projectId ?? thread?.projectId;
         if (targetProjectId === undefined) return null;
         return () =>
-          navigate(
+          void navigate(
             getThreadRoutePath({
               projectId: targetProjectId,
               threadId: resource.threadId,
@@ -223,7 +223,8 @@ function PluginThreadChatBody({
           );
       }
       if (resource.kind === "project") {
-        return () => navigate(getProjectComposeRoutePath(resource.projectId));
+        return () =>
+          void navigate(getProjectComposeRoutePath(resource.projectId));
       }
       if (
         resource.kind === "path" &&

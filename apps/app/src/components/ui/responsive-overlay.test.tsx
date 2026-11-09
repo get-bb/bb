@@ -162,7 +162,9 @@ describe("ResponsiveDrawerShell", () => {
         <button type="button">Project option</button>
       </ResponsiveDrawerShell>,
     );
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     expect(screen.getByRole("button", { name: "Project option" })).toBeTruthy();
   });
 });
@@ -187,11 +189,15 @@ describe("responsive Popover", () => {
     );
 
     const view = render(content(focusRef));
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     expect(document.activeElement === focusRef.current).toBe(focused);
     view.rerender(content());
     view.rerender(content(focusRef));
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     expect(document.activeElement === focusRef.current).toBe(focused);
   });
 
@@ -214,7 +220,9 @@ describe("responsive Popover", () => {
       );
 
     const compactView = renderAt(true);
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     const sheet = screen.getByTestId("width-content");
     expect(sheet.style.width).toBe("auto");
     expect(sheet.style.minWidth).toBe("auto");
@@ -254,7 +262,9 @@ describe("responsive DropdownMenu", () => {
           </DropdownMenu>
         </CompactViewportOverrideProvider>,
       );
-      act(() => vi.advanceTimersByTime(120));
+      act(() => {
+        vi.advanceTimersByTime(120);
+      });
 
       const item = screen.getByRole("menuitem", { name: "Project settings" });
       expect(item.tagName).toBe("A");
@@ -285,7 +295,9 @@ describe("responsive DropdownMenu", () => {
         </DropdownMenu>
       </CompactViewportOverrideProvider>,
     );
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
 
     const sheet = screen.getByTestId("menu-content");
     expect(sheet.style.width).toBe("auto");
@@ -318,7 +330,9 @@ describe("responsive DropdownMenu", () => {
         </pluginCopy.DropdownMenuContent>
       </pluginCopy.DropdownMenu>,
     );
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Save draft" }));
     expect(onSelect).toHaveBeenCalledTimes(1);
@@ -452,13 +466,17 @@ describe("responsive Dialog", () => {
     );
 
     const view = render(renderAt("alpha"));
-    act(() => vi.advanceTimersByTime(120));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     expect(screen.getByText("Renaming alpha")).toBeTruthy();
 
     view.rerender(renderAt(null));
     expect(screen.getByText("Renaming alpha")).toBeTruthy();
 
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(screen.queryByText("Renaming alpha")).toBeNull();
 
     view.rerender(renderAt("beta"));

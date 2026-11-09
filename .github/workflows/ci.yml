@@ -514,7 +514,7 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Lint and typecheck
-        run: pnpm exec turbo run lint typecheck ${{ fromJSON(needs.plan.outputs.selection).staticFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+        run: pnpm exec turbo run lint lint:type-aware typecheck ${{ fromJSON(needs.plan.outputs.selection).staticFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024 --keep-run-summaries .turbo/runs

@@ -20,6 +20,7 @@
     "generate:test-bridges": "node ./scripts/build-test-bridges.mjs",
     "lint": "oxlint src",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },

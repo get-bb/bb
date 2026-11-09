@@ -657,7 +657,7 @@ export function QuestionForm({
           className={compactButtonClass}
           aria-keyshortcuts={actionShortcuts.get("cancel")?.ariaKeyshortcuts}
           disabled={cancelBlocked}
-          onClick={handleCancel}
+          onClick={() => void handleCancel()}
         >
           Cancel
         </Button>

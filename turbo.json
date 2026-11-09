@@ -438,6 +438,25 @@
         "$TURBO_ROOT$/scripts/oxlint-plugin.mjs"
       ]
     },
+    "lint:type-aware": {
+      "dependsOn": ["typecheck"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.oxlintrc.type-aware.json",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml"
+      ]
+    },
+    "//#lint:type-aware": {
+      "inputs": [
+        "scripts/**",
+        ".github/**",
+        "*.ts",
+        ".oxlintrc.type-aware.json",
+        "package.json",
+        "pnpm-lock.yaml"
+      ]
+    },
     "//#ensure-native-modules": {
       "cache": false,
       "inputs": [
@@ -1050,6 +1069,15 @@
       ]
     },
     "bb-plugin-composer-customization#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-agent-enrichment#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-content-script-example#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-slack-bot#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-plugin-api-docs#typecheck": {

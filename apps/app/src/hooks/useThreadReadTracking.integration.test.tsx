@@ -135,18 +135,20 @@ it("keeps a completed read and respects manual unread until new attention", asyn
   await act(async () => {
     await result.current.mutateAsync({ threadId: "A" });
   });
-  act(() => window.dispatchEvent(new Event("pageshow")));
+  act(() => {
+    window.dispatchEvent(new Event("pageshow"));
+  });
   expect(requests).toHaveLength(1);
   expect(
     queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey("A"))
       ?.lastReadAt,
   ).toBeNull();
-  act(() =>
+  act(() => {
     queryClient.setQueryData<ThreadWithRuntime>(
       threadQueryKey("A"),
       (thread) => thread && { ...thread, latestAttentionAt: 30 },
-    ),
-  );
+    );
+  });
   await waitFor(() => expect(requests).toHaveLength(2));
 });
 
@@ -171,7 +173,7 @@ it("does not undo a newer manual unread when an older read is cancelled", async 
 it("cancels every attention request without rolling back newer thread data", async () => {
   const { requests, queryClient, unmount } = setup();
   await waitFor(() => expect(requests).toHaveLength(1));
-  act(() =>
+  act(() => {
     queryClient.setQueryData<ThreadWithRuntime>(
       threadQueryKey("A"),
       (thread) =>
@@ -180,8 +182,8 @@ it("cancels every attention request without rolling back newer thread data", asy
           title: "New title",
           latestAttentionAt: Date.now() + 1000,
         },
-    ),
-  );
+    );
+  });
   await waitFor(() => expect(requests).toHaveLength(2));
   const attention = queryClient.getQueryData<ThreadWithRuntime>(
     threadQueryKey("A"),

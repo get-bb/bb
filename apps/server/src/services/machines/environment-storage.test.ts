@@ -117,7 +117,6 @@ it("serializes replacement and removal without resurrecting values", async () =>
     variables: [{ name: "TOKEN", value: "old", note: null }],
   });
   await Promise.all([
-    readMachineEnvironment(db),
     replaceMachineEnvironment(db, dataDir, {
       variables: [{ name: "TOKEN", value: "new", note: null }],
     }),

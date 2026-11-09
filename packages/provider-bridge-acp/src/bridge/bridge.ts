@@ -1061,7 +1061,7 @@ async function loadDeclaredSessionOptions(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
-      connection.kill();
+      void connection.kill();
       reject(
         new Error(
           `ACP option discovery timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
@@ -1175,7 +1175,7 @@ async function loadSessionDiscoveredModels(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
-      connection.kill();
+      void connection.kill();
       reject(
         new Error(
           `The agent did not answer within ${MODEL_LIST_TIMEOUT_MS / 1000} seconds while bb asked it for its models`,
@@ -1331,7 +1331,7 @@ async function discoverAcpNativeModelSupport(args: {
   >((resolve) => {
     timeout = setTimeout(() => {
       timedOut = true;
-      args.connection.kill();
+      void args.connection.kill();
       resolve(supportByModel);
     }, ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS);
   });

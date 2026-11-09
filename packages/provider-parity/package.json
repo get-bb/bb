@@ -14,6 +14,7 @@
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run --config vitest.config.ts",
     "parity": "node --conditions=source --import tsx src/cli.ts",
     "rerecord": "node --conditions=source --import tsx src/rerecord.ts"

@@ -2762,12 +2762,12 @@ export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 function killAllChildren(): void {
   for (const session of sessionsByBbThreadId.values()) {
     session.closing = true;
-    session.connection?.kill();
+    void session.connection?.kill();
     session.connection = null;
   }
   sessionsByBbThreadId.clear();
   for (const connection of maintenanceConnections) {
-    connection.kill();
+    void connection.kill();
   }
   maintenanceConnections.clear();
 }

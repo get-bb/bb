@@ -121,7 +121,7 @@ async function setup(options: {
       options.callHost ??
       ((call) => (call.method === "views" ? viewResults(call) : { ok: true })),
   });
-  await plugin(fake.bb);
+  plugin(fake.bb);
   return Object.assign(fake, { sdkCalls });
 }
 

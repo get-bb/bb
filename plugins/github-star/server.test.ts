@@ -24,7 +24,7 @@ function hostWithPrompts(count: number) {
 describe("GitHub Star claim", () => {
   it("waits until more than five prompts were sent", async () => {
     const { calls, host } = hostWithPrompts(5);
-    await plugin(host.bb);
+    plugin(host.bb);
 
     expect(await host.harness.callRpc("claim", null)).toEqual({
       outcome: "wait",
@@ -35,7 +35,7 @@ describe("GitHub Star claim", () => {
 
   it("lets exactly one concurrent caller show the prompt, then is done", async () => {
     const { host } = hostWithPrompts(6);
-    await plugin(host.bb);
+    plugin(host.bb);
 
     const outcomes = await Promise.all([
       host.harness.callRpc("claim", null),
@@ -50,7 +50,7 @@ describe("GitHub Star claim", () => {
   it("never asks again once it has asked, even across restarts", async () => {
     const { calls, host } = hostWithPrompts(100);
     await host.bb.storage.kv.set("asked", true);
-    await plugin(host.bb);
+    plugin(host.bb);
 
     expect(await host.harness.callRpc("claim", null)).toEqual({
       outcome: "done",

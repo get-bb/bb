@@ -16,7 +16,8 @@
     "app": "./app.tsx"
   },
   "scripts": {
-    "typecheck": "tsrs --noEmit"
+    "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../../.oxlintrc.type-aware.json"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",

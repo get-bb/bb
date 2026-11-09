@@ -648,13 +648,19 @@ it("warns about sustained silence without stopping and clears the warning as soo
     }),
   );
   await act(() => result.current.start());
-  act(() => vi.advanceTimersByTime(4900));
+  act(() => {
+    vi.advanceTimersByTime(4900);
+  });
   expect(result.current.microphoneWarning).toBeNull();
-  act(() => vi.advanceTimersByTime(200));
+  act(() => {
+    vi.advanceTimersByTime(200);
+  });
   expect(result.current.microphoneWarning).toContain("No audio detected");
   expect(result.current.state).toBe("recording");
   audio.amplitude = 0.02;
-  act(() => vi.advanceTimersByTime(100));
+  act(() => {
+    vi.advanceTimersByTime(100);
+  });
   expect(result.current.microphoneWarning).toBeNull();
 });
 
@@ -719,7 +725,9 @@ it("keeps the same recorder and captured audio when a microphone disconnects, an
     secondTrack.readyState = "ended";
     secondTrack.dispatchEvent(new Event("ended"));
   });
-  act(() => vi.advanceTimersByTime(1500));
+  act(() => {
+    vi.advanceTimersByTime(1500);
+  });
   await act(async () => result.current.stop("insert"));
   const lateStop = vi.fn();
   await act(async () => finish({ getTracks: () => [{ stop: lateStop }] }));

@@ -1511,13 +1511,13 @@ describe("loadPluginApp", () => {
     );
   });
 
-  it("invokes a captured messageAction run with a plugin-authored context", () => {
+  it("invokes a captured messageAction run with a plugin-authored context", async () => {
     const experimental_panel = makePanelController({
       openTab: () => true,
       toggleTab: () => true,
       close: () => true,
     });
-    app.messageActions[0]!.run({
+    await app.messageActions[0]!.run({
       threadId: "thr_main",
       message: {
         id: "msg_1",

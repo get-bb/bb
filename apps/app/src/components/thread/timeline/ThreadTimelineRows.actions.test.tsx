@@ -69,7 +69,7 @@ function SameThreadSearchNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          navigate("/thread", {
+          void navigate("/thread", {
             state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
           })
         }

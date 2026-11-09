@@ -538,7 +538,7 @@ async function deactivateCommittedGeneration(
   state.appliedHashes.delete(pluginId);
   if (removePublishedUi) {
     deps.removeRegistrations(pluginId);
-    deps.applyCss(pluginId, null);
+    void deps.applyCss(pluginId, null);
   }
   return failures;
 }
@@ -951,12 +951,12 @@ async function reconcileCandidate(
       await disposeGeneration(pluginId, activationResult.activation, deps);
     }
     deps.removeRegistrations(pluginId);
-    deps.applyCss(pluginId, null);
+    void deps.applyCss(pluginId, null);
     return;
   }
   if (!activationResult.ok) {
     deps.removeRegistrations(pluginId);
-    deps.applyCss(pluginId, null);
+    void deps.applyCss(pluginId, null);
     const failed: PluginFrontendRecord = {
       pluginId,
       status: "failed",
@@ -1016,7 +1016,7 @@ export async function disposePluginFrontends(
     }
     clearPluginThreadRowStatuses(pluginId);
     deps.removeRegistrations(pluginId);
-    deps.applyCss(pluginId, null);
+    void deps.applyCss(pluginId, null);
   }
   state.records.clear();
   state.appliedHashes.clear();
