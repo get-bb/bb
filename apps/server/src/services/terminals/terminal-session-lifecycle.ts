@@ -1569,6 +1569,9 @@ export class TerminalSessionLifecycle {
   detachBrowserTerminal(args: DetachBrowserTerminalArgs): void {
     this.options.hub.unregisterTerminalClient(args.terminalId, args.socket);
     this.outputFlow.removeClient(args.terminalId, args.socket);
+    if (!this.options.hub.hasTerminalClients(args.terminalId)) {
+      this.forwardedNextSeqByTerminalId.delete(args.terminalId);
+    }
     this.pendingAttaches.failAllMatching(
       (pending) =>
         pending.terminalId === args.terminalId &&
