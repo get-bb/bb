@@ -5,6 +5,7 @@ import { selectCandidates } from "./policy.js";
 
 const DEFAULT_POLICY: Policy = {
   archiveAfterDays: null,
+  saveAfterDays: null,
   deleteAfterDays: null,
   deleteStorageOnArchive: false,
   deleteDevDataOnCheckoutRemoval: false,
@@ -47,6 +48,7 @@ export function createService(bb: BbPluginApi) {
       new Set(groups.flatMap((group) => group.memberIds)).size;
     return {
       archiveCount: count(result.archive),
+      saveCount: count(result.save),
       deleteCount: count(result.delete),
     };
   }
@@ -61,22 +63,32 @@ export function createService(bb: BbPluginApi) {
     running = true;
     try {
       const policy = await readPolicy();
-      if (policy.archiveAfterDays === null && policy.deleteAfterDays === null)
+      if (
+        policy.archiveAfterDays === null &&
+        policy.saveAfterDays === null &&
+        policy.deleteAfterDays === null
+      )
         return;
       const selected = await candidates(policy);
       const run: Run = {
         ranAt: Date.now(),
         archivedCount: 0,
+        savedCount: 0,
         deletedCount: 0,
         failedCount: 0,
       };
-      for (const action of ["archive", "delete"] as const) {
+      const savingEnabled =
+        selected.save.length > 0 &&
+        (await bb.sdk.system.config()).experiments.savedThreads;
+      for (const action of ["archive", "save", "delete"] as const) {
+        if (action === "save" && !savingEnabled) continue;
         for (const candidate of selected[action].slice(0, BATCH_LIMIT)) {
           if (disposed) return;
           const current = await readPolicy();
           if (disposed) return;
           if (
             current.archiveAfterDays !== policy.archiveAfterDays ||
+            current.saveAfterDays !== policy.saveAfterDays ||
             current.deleteAfterDays !== policy.deleteAfterDays
           )
             break;
@@ -91,6 +103,11 @@ export function createService(bb: BbPluginApi) {
                 threadId: candidate.rootId,
               });
               run.archivedCount += result.archivedThreadIds.length;
+            } else if (action === "save") {
+              await bb.sdk.threads.experimental_save({
+                threadId: candidate.rootId,
+              });
+              run.savedCount += 1;
             } else {
               await bb.sdk.threads.delete({
                 threadId: candidate.rootId,

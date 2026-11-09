@@ -30,6 +30,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindingOverrides: [],
   performanceDiagnosticsAvailable: false,
   experiments: {
+    savedThreads: false,
     compactExpiredCache: false,
     dismissReadNotifications: false,
     narrowPluginCss: false,

@@ -103,6 +103,35 @@ Lifecycle:
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread
 
+  bb thread save [id]                      Save the thread to a file and remove it from bb
+    --self                                 Save current thread
+  bb thread saved list                     List saved threads, newest first
+    --project <id>                         Only one project
+    --search <text>                        Only titles containing the text
+    --limit <n>                            How many (default 50, at most 200)
+  bb thread saved restore <id>             Bring a saved thread back
+  bb thread saved delete <id>              Permanently delete a saved thread's file
+  bb thread export [id]                    Write the thread to a .jsonl.zst thread file
+    --self                                 Export current thread
+    -o, --output <path>                    Where to write it (default ./<id>.jsonl.zst)
+  bb thread import <file>                  Add a thread file back: merges into its thread,
+                                           or recreates it if it was deleted
+    --json                                 Machine-readable output (all of the above)
+
+  Saving, exporting and importing need the `savedThreads` experiment
+  (`bb settings experiment savedThreads true`); listing, restoring and
+  deleting saved threads always work. A save runs in the background at a
+  low duty cycle; to save archived threads automatically after a delay, use
+  the Storage & retention plugin (`bb storage retention --save-after 14
+  --save --yes`). A restored thread counts as archived from the moment it was
+  restored.
+  A saved thread is gone from the database, the archived list and search until
+  restored; restoring also restores a saved parent or source thread it links
+  to. A thread file is JSONL under zstd: a header line naming the thread,
+  title, project and provider, then the thread's rows, every event in sequence
+  order, and its attachments. `zstdcat <file> | jq` and `rg -z` read it
+  without bb. Import only accepts a file whose project is on this server.
+
   bb thread restore-environment [id]       Restore a destroyed workspace
     --self                                 Restore current thread
 

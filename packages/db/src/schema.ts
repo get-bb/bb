@@ -906,6 +906,35 @@ export const retainedEventOutputs = sqliteTable(
   ],
 );
 
+export type SavedThreadState = "saving" | "saved" | "restoring" | "restored";
+
+export const savedThreads = sqliteTable(
+  "saved_threads",
+  {
+    threadId: text("thread_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    state: text("state").$type<SavedThreadState>().notNull(),
+    title: text("title"),
+    providerId: text("provider_id").notNull(),
+    threadCreatedAt: integer("thread_created_at").notNull(),
+    archivedAt: integer("archived_at"),
+    formatVersion: integer("format_version").notNull(),
+    throughSequence: integer("through_sequence").notNull(),
+    rowCount: integer("row_count").notNull(),
+    rawBytes: integer("raw_bytes").notNull(),
+    packedBytes: integer("packed_bytes").notNull(),
+    savedAt: integer("saved_at"),
+    restoredAt: integer("restored_at"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("saved_threads_state_idx").on(table.state),
+    index("saved_threads_project_saved_idx").on(table.projectId, table.savedAt),
+  ],
+);
+
 export const threadPruningCursors = sqliteTable(
   "thread_pruning_cursors",
   {
