@@ -683,6 +683,10 @@ async function handleRequest(message) {
       return;
     }
     case "turn/steer":
+      if (script?.steerError) {
+        respondError(id, script.steerError.code, script.steerError.message);
+        return;
+      }
       respond(id, {});
       return;
     case "turn/interrupt": {
