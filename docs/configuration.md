@@ -1134,6 +1134,21 @@ either way.
   experiment is off, the schedule and automatic update routes return 403
   `update_when_idle_experiment_disabled`, the CLI commands print how to turn it
   on, and turning it off drops a waiting update. See `bb guide machines`.
+- `walCheckpointWorker` moves SQLite WAL checkpoints for `bb.db` and plugin
+  `data.db` files off the server's main thread. A background worker thread
+  opens its own connection to each database and runs `wal_checkpoint(PASSIVE)`
+  every 100 ms, and right away again while the WAL holds 4,096 frames or more
+  and is still growing; the server's own connections set
+  `wal_autocheckpoint=0`, so a commit no longer copies the WAL into the
+  database file and fsyncs it. If sustained writes grow the WAL past 16,384
+  frames across two worker passes, the server checkpoints the small remaining
+  tail itself between tasks and logs "Sustained writes outpaced the WAL
+  checkpoint worker". The hourly incremental vacuum waits for a worker pass
+  around each chunk instead of checkpointing inline. If the worker exits or
+  cannot open a database, those connections go back to checkpointing on
+  commit and bb logs a warning; a worker that had started restarts after
+  10 seconds. The experiment applies live: turning it off stops the worker
+  after a final checkpoint and restores `wal_autocheckpoint=1000`.
 
 ## Thread Timeline Window
 
