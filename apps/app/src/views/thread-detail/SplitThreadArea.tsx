@@ -686,7 +686,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     panes.length === 1 && firstPane !== undefined ? firstPane : null;
   const keepsSinglePane =
     singlePane !== null &&
-    (currentContent.kind === "thread" || currentContent.kind === "new-thread");
+    (currentContent.kind === "thread" ||
+      currentContent.kind === "new-thread" ||
+      currentContent.kind === "plugin-panel");
   if (!splitWorkspaceActive && !keepsSinglePane) {
     return (
       <StandalonePaneContent

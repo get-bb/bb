@@ -3141,6 +3141,77 @@ describe("SplitThreadArea", () => {
 });
 
 describe("SplitThreadArea compact breakpoint crossings", () => {
+  it.each([false, true])(
+    "keeps a plugin form mounted across crossings from compact=%s",
+    async (compact) => {
+      viewportState.compact = compact;
+      let mounts = 0;
+      function PluginForm() {
+        const [value, setValue] = useState("");
+        useEffect(() => {
+          mounts++;
+        }, []);
+        return (
+          <div data-testid="plugin-form-scroll">
+            <input
+              aria-label="Plugin form draft"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          </div>
+        );
+      }
+      setPluginSlotRegistrations(
+        "docs",
+        makePluginRegistrationSet({
+          navPanels: [
+            {
+              id: "docs",
+              title: "Docs",
+              icon: "FileText",
+              path: "docs",
+              component: PluginForm,
+            },
+          ],
+          threadPanelActions: [],
+          pendingInteractions: [],
+          sidebarFooterActions: [],
+          fileOpeners: [],
+        }),
+      );
+      const layout: SplitLayout = {
+        root: { type: "pane", paneId: "pane-docs", content: docsContent },
+        focusedPaneId: "pane-docs",
+      };
+      const store = renderSplitArea({
+        path: "/plugins/docs/docs",
+        layout,
+        routeAwareContent: true,
+      });
+      const input = await screen.findByRole<HTMLInputElement>("textbox", {
+        name: "Plugin form draft",
+      });
+      fireEvent.change(input, { target: { value: "unsaved plugin form" } });
+      input.focus();
+      input.setSelectionRange(2, 7);
+      const scroller = screen.getByTestId("plugin-form-scroll");
+      scroller.scrollTop = 40;
+      for (const next of [!compact, compact, !compact, compact]) {
+        setCompactViewport(next);
+        expect(screen.getByRole("textbox", { name: "Plugin form draft" })).toBe(
+          input,
+        );
+        expect(input.value).toBe("unsaved plugin form");
+        expect(document.activeElement).toBe(input);
+        expect([input.selectionStart, input.selectionEnd]).toEqual([2, 7]);
+        expect(screen.getByTestId("plugin-form-scroll")).toBe(scroller);
+        expect(scroller.scrollTop).toBe(40);
+      }
+      expect(mounts).toBe(1);
+      expect(store.get(splitLayoutAtom)).toEqual(layout);
+    },
+  );
+
   function singleThreadLayout(threadId = "thr-a"): SplitLayout {
     return {
       root: {
