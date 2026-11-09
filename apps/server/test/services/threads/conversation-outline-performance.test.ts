@@ -80,6 +80,7 @@ describe("thread conversation outline performance", () => {
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: cases.length,
     });
 
@@ -109,6 +110,7 @@ describe("thread conversation outline performance", () => {
     const first = loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 1,
       outlineSequence,
     });
@@ -117,11 +119,12 @@ describe("thread conversation outline performance", () => {
     const second = loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 2,
       outlineSequence,
     });
 
-    expect(second).toEqual({ items: first.items, maxSeq: 2 });
+    expect(second).toEqual({ complete: true, items: first.items, maxSeq: 2 });
     expect(queries.some((query) => query.sql.includes('from "events"'))).toBe(
       false,
     );
@@ -150,6 +153,7 @@ describe("thread conversation outline performance", () => {
     loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -166,6 +170,7 @@ describe("thread conversation outline performance", () => {
     loadThreadConversationOutline(db, renamedThread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -185,11 +190,12 @@ describe("thread conversation outline performance", () => {
     const rewound = loadThreadConversationOutline(db, renamedThread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 0,
       outlineSequence: 0,
     });
 
-    expect(rewound).toEqual({ items: [], maxSeq: 0 });
+    expect(rewound).toEqual({ complete: true, items: [], maxSeq: 0 });
     expect(queries.some((query) => query.sql.includes('from "events"'))).toBe(
       true,
     );
@@ -214,6 +220,7 @@ describe("thread conversation outline performance", () => {
     loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -263,6 +270,7 @@ describe("thread conversation outline performance", () => {
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 2,
     });
 
@@ -336,6 +344,7 @@ describe("thread conversation outline performance", () => {
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 4,
     });
 

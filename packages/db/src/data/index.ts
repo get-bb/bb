@@ -34,5 +34,6 @@ export * from "./thread-pruning.js";
 export * from "./thread-purges.js";
 export * from "./thread-sections.js";
 export * from "./thread-tabs.js";
+export * from "./thread-turn-summaries.js";
 export * from "./threads.js";
 export * from "./ui-preferences.js";

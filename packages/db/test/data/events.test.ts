@@ -2211,7 +2211,7 @@ describe("events", () => {
         sequenceStart: 0,
         threadId: thread.id,
       }).map((row) => row.sequence),
-    ).toEqual([1, 2, 6]);
+    ).toEqual([]);
   });
 
   it("omits redundant structural completions and unused payload fields", () => {

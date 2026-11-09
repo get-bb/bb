@@ -55,7 +55,9 @@ export {
   projectThreadTimelineEvents,
   startThreadTimelineProjectionFold,
   buildThreadTimelineTurnDetailsFromEvents,
+  summarizeCompletedTimelineTurns,
 } from "./build-thread-timeline.js";
+export type { TurnSummary, TurnSummaryItem } from "./timeline-row-plan.js";
 export { extractThreadTimelineActivePlanTurn } from "./active-prompt-mode-extraction.js";
 export {
   extractThreadExtensionStates,

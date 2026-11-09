@@ -369,6 +369,7 @@ describe("workflow progress snapshots across timeline pages", () => {
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: 0,
     });
     expect(outline.items.map((item) => item.role)).toEqual([
