@@ -194,6 +194,8 @@ async function startIntegrationServer(
   tmpRoot: string,
   options: CreateHarnessOptions,
 ): Promise<RunningTestServer> {
+  let lastServer = performance.now();
+  const serverPhase = (name: string) => { console.error("SERVER_PHASE", name, Math.round(performance.now() - lastServer)); lastServer = performance.now(); };
   const serverDataDir = path.join(tmpRoot, "server-data");
   await fs.mkdir(serverDataDir, { recursive: true });
   await copyBuiltinHostBuildRecords(serverDataDir);
@@ -203,6 +205,7 @@ async function startIntegrationServer(
     targetPath: builtinSkillsRootPath,
   });
 
+  serverPhase("copy-fixtures");
   const db = createMigratedConnection();
   const walCheckpointer = startWalCheckpointer({ logger: testLogger });
   ensurePersonalProject(db);
@@ -239,6 +242,7 @@ async function startIntegrationServer(
     logger: testLogger,
   });
   await machineAuth.ensureReady();
+  serverPhase("db-auth");
   const lifecycleDedupers = createLifecycleDedupers();
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
@@ -252,6 +256,7 @@ async function startIntegrationServer(
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
   await registerFakeProviders(providerRegistry, pluginHostArtifacts);
   await recordFirstPartyProviderBridgeArtifacts(pluginHostArtifacts);
+  serverPhase("providers");
   const aiServices = createAiServiceRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
@@ -395,10 +400,12 @@ async function startIntegrationServer(
     ...INTEGRATION_BUILTIN_PLUGINS,
     ...(options.builtinPlugins ?? []),
   ]);
+  serverPhase("service-setup");
   for (const name of builtinPlugins) {
     const entry = await pluginService.install(`builtin:${name}`, {
       kind: "root",
     });
+    serverPhase(name);
     if (entry.status !== "running") {
       throw new Error(
         `builtin plugin ${name} did not start: ${entry.statusDetail ?? entry.status}`,
@@ -491,6 +498,8 @@ async function startHarnessDaemon(
 export async function createIntegrationHarness(
   options: CreateHarnessOptions = {},
 ): Promise<IntegrationHarness> {
+  let lastPhase = performance.now();
+  const phase = (name: string) => { console.error("HARNESS_PHASE", name, Math.round(performance.now() - lastPhase)); lastPhase = performance.now(); };
   await loadProjectEnvFile();
   const tmpRoot = await fs.mkdtemp(path.join(tmpdir(), "bb-integration-"));
   await fs.writeFile(
@@ -506,6 +515,7 @@ export async function createIntegrationHarness(
     repoDir: path.join(reposRoot, "test-project"),
   });
 
+  phase("git-and-files");
   let server: RunningTestServer | null = null;
   let daemonResources: HarnessDaemonResources | null = null;
   let cleanedUp = false;
@@ -572,19 +582,25 @@ export async function createIntegrationHarness(
     }
     cleanedUp = true;
 
+    phase("test-body");
     await shutdownDaemon("integration-cleanup").catch(() => undefined);
+    phase("daemon-stop");
     await server?.close().catch(() => undefined);
+    phase("server-stop");
     await killProcessesReferencingPath(tmpRoot);
     await removePathWithRetry(tmpRoot);
+    phase("remove");
   }
 
   try {
     server = await startIntegrationServer(tmpRoot, options);
+    phase("server-start");
     const api = createPublicApiClient(server.baseUrl, {
       fetch: createIntegrationFetch(),
     });
     daemonResources = await startHarnessDaemon(daemonDataDir, server);
     await waitForHostConnected(api);
+    phase("daemon-start");
     await persistHostId({
       dataDir: server.config.dataDir,
       hostId: daemonResources.hostId,
