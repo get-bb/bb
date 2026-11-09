@@ -1122,7 +1122,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   agentCpuPriority: {
     label: "Lower agent CPU priority",
     description:
-      "Keep bb responsive when agents saturate the CPU. Agent processes, setup and teardown scripts, and the builds and tests they launch run at a lower CPU priority; on macOS the bb server and machine daemon also get app-level scheduling. Terminals keep normal priority. Takes full effect after restarting bb. Turning it off applies to agents started afterwards; processes already lowered stay lowered until they exit.",
+      "Keep bb responsive when agents saturate the CPU. Agent processes, setup and teardown scripts, and the builds and tests they launch run at a lower CPU priority; on macOS the bb server and machine daemon also get app-level scheduling. Terminals keep normal priority. Turning it on or off takes effect after restarting bb, including restarts for updates.",
   },
   compactExpiredCache: {
     label: "Compact before resuming expired sessions",

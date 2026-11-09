@@ -270,9 +270,10 @@ adopters) keeps bb responsive when agents saturate the CPU:
   class on Windows) on provider processes and environment lifecycle scripts as
   they start, and the builds and tests they launch inherit it. The server
   sends the value in the session handshake and in
-  `provider-session-policy.replace`. Turning it off affects only processes
-  started afterwards; already-lowered processes cannot be raised again.
-  Terminals keep normal priority.
+  `provider-session-policy.replace`, but a toggle takes effect only after
+  restarting bb: a running provider bridge worker keeps the priority it started
+  with while it serves new threads, and a lowered process cannot be raised
+  again. Terminals keep normal priority.
 - On macOS, where the scheduler ignores nice between processes, the launcher
   spawns the server and daemon through `/usr/sbin/taskpolicy -a` (application
   scheduling, not inherited by their children). The launcher reads the value

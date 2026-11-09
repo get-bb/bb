@@ -984,9 +984,9 @@ either way.
   setup and teardown scripts at nice 10 (below-normal on Windows), inherited by
   the builds and tests they run; terminals keep normal priority. On macOS the
   launcher also starts the server and daemon with application scheduling
-  (`taskpolicy -a`). The daemon half applies to processes started after a
-  toggle, and already-lowered processes stay lowered; the macOS half takes
-  effect after restarting bb. See
+  (`taskpolicy -a`). Turning it on or off takes effect after restarting bb,
+  including the restart an update performs: running provider processes serve
+  new threads too, and a lowered process cannot be raised again. See
   [slow database operations](debugging-and-qa.md#slow-database-operations).
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
