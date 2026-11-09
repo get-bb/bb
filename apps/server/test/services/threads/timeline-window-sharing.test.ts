@@ -3,9 +3,11 @@ import { defaultFeatureFlags, threadScope, turnScope } from "@bb/domain";
 import { getThread } from "@bb/db";
 import {
   isThreadTimelineDelta,
+  timelineRowChildren,
   type ThreadTimelineReadResponse,
   type ThreadTimelineResponse,
   type TimelinePaginationCursor,
+  type TimelineRow,
 } from "@bb/server-contract";
 import {
   createThreadTimelineWindows,
@@ -60,6 +62,23 @@ function full(response: ThreadTimelineReadResponse): ThreadTimelineResponse {
     throw new Error("expected a full timeline window");
   }
   return response;
+}
+
+function delegationChildRows(
+  response: ThreadTimelineResponse,
+): (number | null)[] {
+  const counts: (number | null)[] = [];
+  const visit = (rows: readonly TimelineRow[]) => {
+    for (const row of rows) {
+      if (row.kind === "work" && row.workKind === "delegation") {
+        counts.push(row.childRows === null ? null : row.childRows.length);
+      }
+      const children = timelineRowChildren(row);
+      if (children !== null) visit(children);
+    }
+  };
+  visit(response.rows);
+  return counts;
 }
 
 function stagesOfLastBuild(): Set<string> {
@@ -161,6 +180,60 @@ function seedTurn(
     },
   });
   return sequence;
+}
+
+function seedSettledDelegation(
+  harness: TestAppHarness,
+  args: {
+    environmentId: string;
+    firstSequence: number;
+    threadId: string;
+    turnId: string;
+  },
+): void {
+  const scope = {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: "provider-thread",
+    scope: turnScope(args.turnId),
+  };
+  const delegationId = `${args.turnId}-delegation`;
+  const delegation = (status: "pending" | "completed") => ({
+    item: {
+      type: "delegation" as const,
+      id: delegationId,
+      childRef: "child-thread",
+      label: "Audit",
+      status,
+      background: false,
+    },
+  });
+  let sequence = args.firstSequence;
+  seedEvent(harness.deps, {
+    ...scope,
+    sequence: sequence++,
+    type: "item/started",
+    data: delegation("pending"),
+  });
+  seedEvent(harness.deps, {
+    ...scope,
+    sequence: sequence++,
+    type: "item/completed",
+    data: {
+      item: {
+        type: "agentMessage",
+        id: `${args.turnId}-child-reply`,
+        text: "child reply",
+        parentToolCallId: delegationId,
+      },
+    },
+  });
+  seedEvent(harness.deps, {
+    ...scope,
+    sequence: sequence++,
+    type: "item/completed",
+    data: delegation("completed"),
+  });
 }
 
 function olderPageRequest(
@@ -322,13 +395,51 @@ describe("timeline window caches", () => {
       });
       const windows = createThreadTimelineWindows(harness.deps);
       full(windows.read(thread, desktop, undefined));
+      const rowShape = (request: ThreadTimelineWindowRequest) =>
+        `${request.includeNestedRows}:${request.deferContent}`;
+      const materializedShapes = new Set([rowShape(desktop)]);
       for (const [name, request] of Object.entries(variants)) {
         const response = full(windows.read(thread, request, undefined));
         const stages = stagesOfLastBuild();
         expect(stages.has("thread-view-projection"), name).toBe(false);
-        expect(stages.has("thread-view-rows"), name).toBe(name === "nested");
+        expect(stages.has("thread-view-rows"), name).toBe(
+          !materializedShapes.has(rowShape(request)),
+        );
+        materializedShapes.add(rowShape(request));
         expect(response, name).toEqual(freshRead(harness, thread.id, request));
       }
+    });
+  });
+
+  it("keeps settled subagent children in the CLI window built after the app window", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { providerId: "codex" },
+      });
+      seedUserMessages(harness, {
+        environmentId: environment.id,
+        sequences: [1],
+        threadId: thread.id,
+      });
+      const next = seedTurn(harness, {
+        environmentId: environment.id,
+        firstSequence: 2,
+        threadId: thread.id,
+        turnId: "turn-1",
+      });
+      seedSettledDelegation(harness, {
+        environmentId: environment.id,
+        firstSequence: next,
+        threadId: thread.id,
+        turnId: "turn-1",
+      });
+      const windows = createThreadTimelineWindows(harness.deps);
+      const app = full(windows.read(thread, desktop, undefined));
+      const cliLog = full(windows.read(thread, variants.cliLog!, undefined));
+      expect(stagesOfLastBuild().has("thread-view-projection")).toBe(false);
+      expect(delegationChildRows(app)).toEqual([null]);
+      expect(delegationChildRows(cliLog)).toEqual([1]);
+      expect(cliLog).toEqual(freshRead(harness, thread.id, variants.cliLog!));
     });
   });
 
