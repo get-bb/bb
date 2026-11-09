@@ -5,43 +5,44 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
-import { afterEach, describe, expect, it, onTestFailed } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
 
-describe("native plugin server loading", () => {
-  const tempDirs: string[] = [];
-
-  afterEach(async () => {
-    await Promise.all(
-      tempDirs
-        .splice(0)
-        .map((dir) => rm(dir, { recursive: true, force: true })),
-    );
-  });
-
-  it("resolves BB-provided externals in a native Node import", async () => {
+const nativeTest = it.extend<{ workDir: string }>({
+  workDir: async ({}, use) => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-native-plugin-load-"));
-    tempDirs.push(workDir);
-    const rootDir = join(workDir, "plugin");
-    await mkdir(join(rootDir, "dist"), { recursive: true });
-    await writeFile(
-      join(rootDir, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-native-externals",
-        version: "0.1.0",
-        bb: {
-          name: "Native externals fixture",
-          description: "Exercises native plugin server loading.",
-          branding: { icon: "Zap" },
-          server: "./server.ts",
-        },
-      }),
-    );
-    await writeFile(join(rootDir, "server.ts"), "throw new Error('source');");
-    await writeFile(
-      join(rootDir, "dist", "server.js"),
-      `import { defineRpcContract } from "@get-bb/plugin-sdk";
+    try {
+      await use(workDir);
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
+  },
+});
+
+describe.concurrent("native plugin server loading", () => {
+  nativeTest(
+    "resolves BB-provided externals in a native Node import",
+    async ({ workDir, onTestFailed }) => {
+      const rootDir = join(workDir, "plugin");
+      await mkdir(join(rootDir, "dist"), { recursive: true });
+      await writeFile(
+        join(rootDir, "package.json"),
+        JSON.stringify({
+          name: "bb-plugin-native-externals",
+          version: "0.1.0",
+          bb: {
+            name: "Native externals fixture",
+            description: "Exercises native plugin server loading.",
+            branding: { icon: "Zap" },
+            server: "./server.ts",
+          },
+        }),
+      );
+      await writeFile(join(rootDir, "server.ts"), "throw new Error('source');");
+      await writeFile(
+        join(rootDir, "dist", "server.js"),
+        `import { defineRpcContract } from "@get-bb/plugin-sdk";
 import Database from "better-sqlite3";
 export default function plugin() {
   const database = new Database(":memory:");
@@ -49,30 +50,33 @@ export default function plugin() {
   globalThis.__nativeExternalTypes = [typeof defineRpcContract, typeof Database];
 }
 `,
-    );
-    await writeFile(
-      join(rootDir, "dist", "server.meta.json"),
-      JSON.stringify({
-        sdkMajor: PLUGIN_SDK_MAJOR,
-        sdkVersion: PLUGIN_SDK_VERSION,
-      }),
-    );
-    const runtimeUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/plugins/plugin-service.ts",
-      ),
-    ).href;
-    const aiRegistryUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/ai/ai-service-registry.ts",
-      ),
-    ).href;
-    const telemetryUrl = pathToFileURL(
-      resolve(import.meta.dirname, "../../../src/services/system/telemetry.ts"),
-    ).href;
-    const script = `
+      );
+      await writeFile(
+        join(rootDir, "dist", "server.meta.json"),
+        JSON.stringify({
+          sdkMajor: PLUGIN_SDK_MAJOR,
+          sdkVersion: PLUGIN_SDK_VERSION,
+        }),
+      );
+      const runtimeUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/plugins/plugin-service.ts",
+        ),
+      ).href;
+      const aiRegistryUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/ai/ai-service-registry.ts",
+        ),
+      ).href;
+      const telemetryUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/system/telemetry.ts",
+        ),
+      ).href;
+      const script = `
 import pino from "pino";
 import { upsertInstalledPlugin } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
@@ -134,87 +138,91 @@ progress("stop-complete");
 process.stdout.write(JSON.stringify(result));
 `;
 
-    const startedAt = performance.now();
-    const execution = run(
-      process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        script,
-        rootDir,
-        join(workDir, "data"),
-      ],
-      { cwd: resolve(import.meta.dirname, "../../..") },
-    );
-    let progressOutput = "";
-    execution.child.stderr?.on("data", (chunk: Buffer | string) => {
-      progressOutput += chunk.toString();
-    });
-    onTestFailed(() => {
-      console.error("Native plugin child progress", {
-        elapsedMs: Math.round(performance.now() - startedAt),
-        pid: execution.child.pid,
-        exitCode: execution.child.exitCode,
-        signalCode: execution.child.signalCode,
-        progress: progressOutput,
+      const startedAt = performance.now();
+      const execution = run(
+        process.execPath,
+        [
+          "--conditions=source",
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "--eval",
+          script,
+          rootDir,
+          join(workDir, "data"),
+        ],
+        { cwd: resolve(import.meta.dirname, "../../..") },
+      );
+      let progressOutput = "";
+      execution.child.stderr?.on("data", (chunk: Buffer | string) => {
+        progressOutput += chunk.toString();
       });
-    });
-    const { stdout } = await execution;
+      onTestFailed(() => {
+        console.error("Native plugin child progress", {
+          elapsedMs: Math.round(performance.now() - startedAt),
+          pid: execution.child.pid,
+          exitCode: execution.child.exitCode,
+          signalCode: execution.child.signalCode,
+          progress: progressOutput,
+        });
+      });
+      const { stdout } = await execution;
 
-    expect(JSON.parse(stdout)).toEqual({
-      status: "running",
-      statusDetail: null,
-      types: ["function", "function"],
-    });
-  });
+      expect(JSON.parse(stdout)).toEqual({
+        status: "running",
+        statusDetail: null,
+        types: ["function", "function"],
+      });
+    },
+  );
 
-  it("loads a TypeScript source plugin through the cache in native Node", async () => {
-    const workDir = await mkdtemp(join(tmpdir(), "bb-native-source-load-"));
-    tempDirs.push(workDir);
-    const rootDir = join(workDir, "plugin");
-    await mkdir(rootDir, { recursive: true });
-    await writeFile(
-      join(rootDir, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-native-source",
-        version: "0.1.0",
-        bb: {
-          name: "Native source fixture",
-          description: "Exercises cached source plugin loading.",
-          branding: { icon: "Zap" },
-          server: "./server.ts",
-        },
-      }),
-    );
-    await writeFile(
-      join(rootDir, "server.ts"),
-      `import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+  nativeTest(
+    "loads a TypeScript source plugin through the cache in native Node",
+    async ({ workDir }) => {
+      const rootDir = join(workDir, "plugin");
+      await mkdir(rootDir, { recursive: true });
+      await writeFile(
+        join(rootDir, "package.json"),
+        JSON.stringify({
+          name: "bb-plugin-native-source",
+          version: "0.1.0",
+          bb: {
+            name: "Native source fixture",
+            description: "Exercises cached source plugin loading.",
+            branding: { icon: "Zap" },
+            server: "./server.ts",
+          },
+        }),
+      );
+      await writeFile(
+        join(rootDir, "server.ts"),
+        `import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 const value: string = "loaded";
 export default function plugin(bb: BbPluginApi) {
   void bb;
   globalThis.__nativeSourceResult = [value, typeof defineRpcContract];
 }
 `,
-    );
-    const serviceUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/plugins/plugin-service.ts",
-      ),
-    ).href;
-    const aiRegistryUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/ai/ai-service-registry.ts",
-      ),
-    ).href;
-    const telemetryUrl = pathToFileURL(
-      resolve(import.meta.dirname, "../../../src/services/system/telemetry.ts"),
-    ).href;
-    const script = `
+      );
+      const serviceUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/plugins/plugin-service.ts",
+        ),
+      ).href;
+      const aiRegistryUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/ai/ai-service-registry.ts",
+        ),
+      ).href;
+      const telemetryUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/system/telemetry.ts",
+        ),
+      ).href;
+      const script = `
 import pino from "pino";
 import { createMigratedConnection } from "@bb/db/testing";
 import { createPluginService } from ${JSON.stringify(serviceUrl)};
@@ -246,93 +254,97 @@ await service.stop();
 process.stdout.write(JSON.stringify(result));
 `;
 
-    const { stdout } = await run(
-      process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        script,
-        rootDir,
-        join(workDir, "data"),
-      ],
-      { cwd: resolve(import.meta.dirname, "../../..") },
-    );
+      const { stdout } = await run(
+        process.execPath,
+        [
+          "--conditions=source",
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "--eval",
+          script,
+          rootDir,
+          join(workDir, "data"),
+        ],
+        { cwd: resolve(import.meta.dirname, "../../..") },
+      );
 
-    expect(JSON.parse(stdout)).toEqual({
-      status: "running",
-      statusDetail: null,
-      value: ["loaded", "function"],
-    });
-  });
-
-  it("preserves cross-plugin dynamic imports across source reloads", async () => {
-    const workDir = await mkdtemp(join(tmpdir(), "bb-native-source-reload-"));
-    tempDirs.push(workDir);
-    const importedDir = join(workDir, "bb-plugin-imported");
-    const importerDir = join(workDir, "bb-plugin-importer");
-    await mkdir(importedDir, { recursive: true });
-    await mkdir(importerDir, { recursive: true });
-    const importedSharedSpecifier =
-      process.platform === "win32"
-        ? "../bb-plugin-imported/shared.js"
-        : join(importedDir, "shared.js");
-    const packageJson = (name: string) =>
-      JSON.stringify({
-        name,
-        version: "0.1.0",
-        type: "module",
-        bb: {
-          name,
-          description: "Native reload fixture.",
-          branding: { icon: "Zap" },
-          server: "./server.js",
-        },
+      expect(JSON.parse(stdout)).toEqual({
+        status: "running",
+        statusDetail: null,
+        value: ["loaded", "function"],
       });
-    await writeFile(
-      join(importedDir, "package.json"),
-      packageJson("bb-plugin-imported"),
-    );
-    await writeFile(
-      join(importerDir, "package.json"),
-      packageJson("bb-plugin-importer"),
-    );
-    await writeFile(
-      join(importedDir, "server.js"),
-      `export default function plugin() {}
+    },
+  );
+
+  nativeTest(
+    "preserves cross-plugin dynamic imports across source reloads",
+    async ({ workDir }) => {
+      const importedDir = join(workDir, "bb-plugin-imported");
+      const importerDir = join(workDir, "bb-plugin-importer");
+      await mkdir(importedDir, { recursive: true });
+      await mkdir(importerDir, { recursive: true });
+      const importedSharedSpecifier =
+        process.platform === "win32"
+          ? "../bb-plugin-imported/shared.js"
+          : join(importedDir, "shared.js");
+      const packageJson = (name: string) =>
+        JSON.stringify({
+          name,
+          version: "0.1.0",
+          type: "module",
+          bb: {
+            name,
+            description: "Native reload fixture.",
+            branding: { icon: "Zap" },
+            server: "./server.js",
+          },
+        });
+      await writeFile(
+        join(importedDir, "package.json"),
+        packageJson("bb-plugin-imported"),
+      );
+      await writeFile(
+        join(importerDir, "package.json"),
+        packageJson("bb-plugin-importer"),
+      );
+      await writeFile(
+        join(importedDir, "server.js"),
+        `export default function plugin() {}
 `,
-    );
-    await writeFile(
-      join(importedDir, "shared.js"),
-      `export const value = "before";
+      );
+      await writeFile(
+        join(importedDir, "shared.js"),
+        `export const value = "before";
 `,
-    );
-    await writeFile(
-      join(importerDir, "server.js"),
-      `export default function plugin() {
+      );
+      await writeFile(
+        join(importerDir, "server.js"),
+        `export default function plugin() {
   globalThis.__readImportedPlugin = async () =>
     (await import(${JSON.stringify(importedSharedSpecifier)})).value;
 }
 `,
-    );
-    const serviceUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/plugins/plugin-service.ts",
-      ),
-    ).href;
-    const aiRegistryUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/ai/ai-service-registry.ts",
-      ),
-    ).href;
-    const telemetryUrl = pathToFileURL(
-      resolve(import.meta.dirname, "../../../src/services/system/telemetry.ts"),
-    ).href;
-    const script = `
+      );
+      const serviceUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/plugins/plugin-service.ts",
+        ),
+      ).href;
+      const aiRegistryUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/ai/ai-service-registry.ts",
+        ),
+      ).href;
+      const telemetryUrl = pathToFileURL(
+        resolve(
+          import.meta.dirname,
+          "../../../src/services/system/telemetry.ts",
+        ),
+      ).href;
+      const script = `
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import pino from "pino";
@@ -367,22 +379,23 @@ await service.stop();
 process.stdout.write(JSON.stringify({ before, after }));
 `;
 
-    const { stdout } = await run(
-      process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        script,
-        importedDir,
-        importerDir,
-        join(workDir, "data"),
-      ],
-      { cwd: resolve(import.meta.dirname, "../../..") },
-    );
+      const { stdout } = await run(
+        process.execPath,
+        [
+          "--conditions=source",
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "--eval",
+          script,
+          importedDir,
+          importerDir,
+          join(workDir, "data"),
+        ],
+        { cwd: resolve(import.meta.dirname, "../../..") },
+      );
 
-    expect(JSON.parse(stdout)).toEqual({ before: "before", after: "after" });
-  });
+      expect(JSON.parse(stdout)).toEqual({ before: "before", after: "after" });
+    },
+  );
 });
