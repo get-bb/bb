@@ -280,7 +280,7 @@ describe("machine auth service", () => {
 
     expect(createdKey?.id).toBeTruthy();
 
-    await harness.db
+    harness.db
       .update(authApiKeys)
       .set({
         expiresAt: new Date(Date.now() - 1_000),
@@ -314,7 +314,7 @@ describe("machine auth service", () => {
     if (!systemUser) {
       throw new Error("Expected machine auth system user");
     }
-    await harness.db
+    harness.db
       .insert(authApiKeys)
       .values({
         id: "apikey_owner_cli_expired",

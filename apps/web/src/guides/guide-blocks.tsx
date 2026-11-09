@@ -75,7 +75,7 @@ export function useCopy(text: string, message: string) {
 function CodeCopy({ text }: { text: string }) {
   const { copied, copy } = useCopy(text, TEXT_COPIED);
   return (
-    <button type="button" className="gd-code-copy" onClick={copy}>
+    <button type="button" className="gd-code-copy" onClick={() => void copy()}>
       <HugeiconsIcon
         icon={copied ? Tick02Icon : Copy01Icon}
         className="gd-ic"
@@ -144,7 +144,7 @@ export function CopyPromptButton() {
       type="button"
       className="gd-inline-copy"
       onClick={() => {
-        copy();
+        void copy();
         trackLandingEvent({
           name: "guide_prompt_copied",
           properties: { guide, placement: "step" },

@@ -122,7 +122,7 @@ function select() {
       ),
     ].filter((name) => name !== "//");
   const buildPackages = packagesFor(["build"]);
-  const staticPackages = packagesFor(["lint", "typecheck"]);
+  const staticPackages = packagesFor(["lint", "lint:type-aware", "typecheck"]);
   const filtersFor = (packages) =>
     packages
       .sort()

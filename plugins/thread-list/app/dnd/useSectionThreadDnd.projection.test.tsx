@@ -800,14 +800,20 @@ describe("useSectionThreadDnd nest hover delay", () => {
 
     act(() => props().onDragStart?.(dragStart("dragged")));
     expect(collide(114, 48)).toEqual([]);
-    act(() => vi.advanceTimersByTime(NEST_HOVER_DELAY_MS - 1));
+    act(() => {
+      vi.advanceTimersByTime(NEST_HOVER_DELAY_MS - 1);
+    });
     expect(collide(114, 48)).toEqual([]);
-    act(() => vi.advanceTimersByTime(1));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(collide(114, 48)).toEqual([rowDroppableId]);
 
     expect(collide(140)).toEqual([]);
     expect(collide(114)).toEqual([]);
-    act(() => vi.advanceTimersByTime(NEST_HOVER_DELAY_MS));
+    act(() => {
+      vi.advanceTimersByTime(NEST_HOVER_DELAY_MS);
+    });
     expect(collide(114)).toEqual([rowDroppableId]);
 
     act(() =>

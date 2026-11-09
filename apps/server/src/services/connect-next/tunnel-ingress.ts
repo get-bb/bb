@@ -299,9 +299,12 @@ export function createTunnelIngressManager(
 
   async function listen(audience: string): Promise<Ingress> {
     const upgradedSockets = new Set<Duplex>();
-    const server = createServer(
-      getRequestListener((request, env) => handleHttp(audience, request, env)),
+    const listener = getRequestListener((request, env) =>
+      handleHttp(audience, request, env),
     );
+    const server = createServer((incoming, outgoing) => {
+      void listener(incoming, outgoing);
+    });
     const ingress: Ingress = {
       audience,
       baseUrl: "",

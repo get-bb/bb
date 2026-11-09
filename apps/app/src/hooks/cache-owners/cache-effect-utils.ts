@@ -6,7 +6,7 @@ export function invalidateQueryKeys({
   queryKeys,
 }: QueryKeysArg): void {
   for (const queryKey of queryKeys) {
-    queryClient.invalidateQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey });
   }
 }
 

@@ -286,7 +286,7 @@ describe("host enroll routes", () => {
       expect(issuedKey?.id).toBeTruthy();
       expect(issuedKey?.expiresAt?.getTime() ?? 0).toBeGreaterThan(Date.now());
 
-      await harness.db
+      harness.db
         .update(authApiKeys)
         .set({
           expiresAt: new Date(Date.now() - 1_000),

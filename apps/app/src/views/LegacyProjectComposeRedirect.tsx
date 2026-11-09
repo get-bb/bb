@@ -21,7 +21,7 @@ export function LegacyProjectComposeRedirect({
   useEffect(() => {
     setRootComposeProjectId(projectId);
     setPlacement(DEFAULT_THREAD_CREATION_PLACEMENT);
-    navigate(getRootComposeRoutePath(), {
+    void navigate(getRootComposeRoutePath(), {
       replace: true,
       state: location.state,
     });

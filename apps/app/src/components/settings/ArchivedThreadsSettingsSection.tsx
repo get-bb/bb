@@ -310,7 +310,7 @@ export function ArchivedThreadsSettingsSection() {
           variant="ghost"
           className="h-9 w-full text-sm font-normal text-muted-foreground"
           disabled={archivedThreadsQuery.isFetchingNextPage}
-          onClick={() => archivedThreadsQuery.fetchNextPage()}
+          onClick={() => void archivedThreadsQuery.fetchNextPage()}
         >
           {archivedThreadsQuery.isFetchingNextPage ? "Loading…" : "Load more"}
         </Button>

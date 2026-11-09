@@ -146,9 +146,13 @@ describe("usePluginFrontendBoot", () => {
       return usePluginFrontendsSettled();
     });
     expect(result.current).toBe(false);
-    act(() => vi.advanceTimersByTime(PLUGIN_FRONTEND_SETTLE_FLOOR_MS - 1));
+    act(() => {
+      vi.advanceTimersByTime(PLUGIN_FRONTEND_SETTLE_FLOOR_MS - 1);
+    });
     expect(result.current).toBe(false);
-    act(() => vi.advanceTimersByTime(1));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(result.current).toBe(true);
   });
 

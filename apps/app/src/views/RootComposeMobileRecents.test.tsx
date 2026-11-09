@@ -88,7 +88,7 @@ function TestProviders({
 
 function storeWithCollapsedThreads(threadIds: string[]) {
   const store = createStore();
-  store.set(mobileRecentsCollapsedThreadIdsAtom, threadIds);
+  void store.set(mobileRecentsCollapsedThreadIdsAtom, threadIds);
   return store;
 }
 
@@ -519,12 +519,16 @@ describe("RootComposeMobileRecents", () => {
       clientX: 100,
       clientY: 100,
     });
-    act(() => vi.advanceTimersByTime(700));
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
     fireEvent.pointerUp(link, { pointerId: 1, pointerType: "touch" });
     const click = new MouseEvent("click", { bubbles: true, cancelable: true });
     fireEvent(link, click);
     expect(click.defaultPrevented).toBe(true);
-    act(() => vi.advanceTimersByTime(500));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     const pin = screen.getByRole("menuitem", { name: "Pin" });
     fireEvent.pointerDown(pin, { pointerType: "touch" });
     fireEvent.click(pin);

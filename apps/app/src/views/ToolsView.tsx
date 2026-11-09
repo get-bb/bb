@@ -199,7 +199,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
     const params = new URLSearchParams(location.search);
     if (open) params.set("configure", detailKey);
     else params.delete("configure");
-    navigate({ pathname: location.pathname, search: params.toString() });
+    void navigate({ pathname: location.pathname, search: params.toString() });
   };
   const configurationParams = new URLSearchParams(location.search);
   configurationParams.set("configure", detailKey);
@@ -210,7 +210,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
     if (!routeOwnsDetail || location.hash !== "#configuration") return;
     const params = new URLSearchParams(location.search);
     params.set("configure", detailKey);
-    navigate(
+    void navigate(
       { pathname: location.pathname, search: params.toString() },
       { replace: true },
     );
@@ -266,7 +266,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         "catalog",
       );
       setDeleteTarget(null);
-      navigate(getToolsOwnedCollectionRoutePath("plugins"));
+      void navigate(getToolsOwnedCollectionRoutePath("plugins"));
       return listQuery.refetch();
     },
     onError: (error, plugin) => {
@@ -295,7 +295,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         : null;
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
-      navigate(getRootComposeRoutePath(), {
+      void navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
           initialPrompt: buildPluginEditThreadPrompt({
@@ -320,7 +320,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
   );
   const handleOpenCatalogPlugin = useCallback(
     (nextDetailKey: string) => {
-      navigate(pluginDetailLocation(nextDetailKey, location.search));
+      void navigate(pluginDetailLocation(nextDetailKey, location.search));
     },
     [location.search, navigate],
   );
@@ -570,7 +570,7 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
       openPluginDetail({ detailKey: nextDetailKey, title: nextDetailKey });
       const params = new URLSearchParams(location.search);
       params.delete("configure");
-      navigate(pluginDetailLocation(nextDetailKey, params.toString()));
+      void navigate(pluginDetailLocation(nextDetailKey, params.toString()));
     },
     [location.search, navigate, openPluginDetail],
   );
@@ -595,7 +595,10 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
     }));
     const params = new URLSearchParams(withoutPluginListing(location.search));
     params.delete("configure");
-    navigate({ pathname: getPluginsRoutePath(), search: params.toString() });
+    void navigate({
+      pathname: getPluginsRoutePath(),
+      search: params.toString(),
+    });
     restoreFocus();
   }, [location.search, navigate, restoreFocus, updatePanelState]);
   const closeTab = useCallback(

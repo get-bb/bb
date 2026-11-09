@@ -214,7 +214,7 @@ function PromptTitleEditor({
           <div className="mt-1 flex gap-2">
             <button
               type="button"
-              onClick={save}
+              onClick={() => void save()}
               disabled={saving}
               className="rounded px-2 py-1 text-xs hover:bg-state-hover"
             >
@@ -322,44 +322,44 @@ function PromptLibraryPopup() {
       setIsSearching(false);
       apply();
     };
-    const handle = window.setTimeout(
-      async () => {
-        setError(null);
-        setIsSearching(true);
-        timeout = window.setTimeout(
-          () => finish(() => setError("Loading prompts timed out. Try again.")),
-          SEARCH_TIMEOUT_MS,
+    const search = async () => {
+      setError(null);
+      setIsSearching(true);
+      timeout = window.setTimeout(
+        () => finish(() => setError("Loading prompts timed out. Try again.")),
+        SEARCH_TIMEOUT_MS,
+      );
+      try {
+        const next = await rpc.call("search", {
+          query,
+          scope,
+          projectId: targets.projectId,
+          threadId: targets.threadId,
+          composer: kind,
+          waitForHistory: false,
+          refreshHistory:
+            retryHistoryRef.current || pendingHistoryQueryRef.current !== query,
+        });
+        finish(() => {
+          retryHistoryRef.current = false;
+          pendingHistoryQueryRef.current = next.loading ? query : null;
+          setResult({ ...next, query });
+          if (next.historyError !== null)
+            setError(`History unavailable: ${next.historyError}`);
+          if (next.loading)
+            poll = window.setTimeout(
+              () => setReloadCount((count) => count + 1),
+              250,
+            );
+        });
+      } catch (cause: unknown) {
+        finish(() =>
+          setError(cause instanceof Error ? cause.message : String(cause)),
         );
-        try {
-          const next = await rpc.call("search", {
-            query,
-            scope,
-            projectId: targets.projectId,
-            threadId: targets.threadId,
-            composer: kind,
-            waitForHistory: false,
-            refreshHistory:
-              retryHistoryRef.current ||
-              pendingHistoryQueryRef.current !== query,
-          });
-          finish(() => {
-            retryHistoryRef.current = false;
-            pendingHistoryQueryRef.current = next.loading ? query : null;
-            setResult({ ...next, query });
-            if (next.historyError !== null)
-              setError(`History unavailable: ${next.historyError}`);
-            if (next.loading)
-              poll = window.setTimeout(
-                () => setReloadCount((count) => count + 1),
-                250,
-              );
-          });
-        } catch (cause: unknown) {
-          finish(() =>
-            setError(cause instanceof Error ? cause.message : String(cause)),
-          );
-        }
-      },
+      }
+    };
+    const handle = window.setTimeout(
+      () => void search(),
       query.length === 0 ? 0 : 60,
     );
     return () => {

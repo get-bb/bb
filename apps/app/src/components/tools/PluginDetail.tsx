@@ -520,13 +520,15 @@ export function PluginDetail({
             label={`${pluginName} settings`}
             tooltipLabel="Settings"
             icon="Settings"
-            onClick={() =>
-              onConfigure
-                ? onConfigure()
-                : navigate(
-                    getPluginConfigurationRoutePath({ pluginId: plugin.id }),
-                  )
-            }
+            onClick={() => {
+              if (onConfigure) {
+                onConfigure();
+                return;
+              }
+              void navigate(
+                getPluginConfigurationRoutePath({ pluginId: plugin.id }),
+              );
+            }}
           />
         ) : undefined
       }

@@ -128,7 +128,9 @@ describe.each<OrganizationMode>(["chronological", "project"])(
         ["thr_pinned_b", "thr_pinned_a"],
       ]) {
         rowCommits.clear();
-        act(() => slot.lifecycle.rerender(<Component {...props(to)} />));
+        act(() => {
+          slot.lifecycle.rerender(<Component {...props(to)} />);
+        });
         expect([...rowCommits.keys()].sort()).toEqual([from, to].sort());
       }
     });

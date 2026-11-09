@@ -608,7 +608,7 @@ export function MachineSettingsView() {
       <MachineRemoveDialog
         target={removeOpen ? host : null}
         onOpenChange={setRemoveOpen}
-        onRemoved={() => navigate(getSettingsRoutePath("machines"))}
+        onRemoved={() => void navigate(getSettingsRoutePath("machines"))}
       />
 
       <MachineReconnectDialog

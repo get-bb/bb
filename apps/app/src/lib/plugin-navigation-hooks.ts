@@ -74,7 +74,9 @@ export function useBbNavigate(): BbNavigate {
         if (options?.split) {
           openThreadInSplit({
             store,
-            navigate,
+            navigate: (route, navigateOptions) => {
+              void navigate(route, navigateOptions);
+            },
             projectId,
             threadId,
             isCompact,

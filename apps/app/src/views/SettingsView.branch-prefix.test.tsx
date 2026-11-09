@@ -16,7 +16,7 @@ function renderSection(overrides?: {
   onTerminalCopyOnSelectChange?: (enabled: boolean) => void;
   generalSettingsDisabled?: boolean;
   managedBranchPrefix?: string;
-  onManagedBranchPrefixChange?: (prefix: string) => void;
+  onManagedBranchPrefixChange?: (prefix: string) => Promise<void> | void;
 }) {
   return render(
     <GeneralSettingsSection

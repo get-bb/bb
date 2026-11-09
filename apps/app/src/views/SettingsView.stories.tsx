@@ -415,7 +415,7 @@ export function FullPage() {
       new URLSearchParams(window.location.hash.slice(1)).get("settingsPath") ??
       new URLSearchParams(window.location.search).get("settingsPath");
     if (storyPath?.startsWith("/settings") === true) {
-      navigate(storyPath, { replace: true });
+      void navigate(storyPath, { replace: true });
     }
   }, [navigate]);
 

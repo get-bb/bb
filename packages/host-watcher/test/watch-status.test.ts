@@ -460,7 +460,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       await waitForCallCount(() => calls.length, 1, WATCH_TEST_TIMEOUT_MS);
       expect(calls).toHaveLength(1);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -503,7 +503,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       expect(calls).toHaveLength(1);
       expect(calls[0] - firstEventAt).toBeLessThan(800);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -553,7 +553,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       expect(callbackCount).toBe(2);
       expect(watchErrors).toHaveLength(1);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -606,7 +606,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       expect(watchErrors).toHaveLength(0);
       expect(calls).toEqual([expectedChange, expectedChange]);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -669,7 +669,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       await ready;
       await ensureCallCountStays(() => calls.length, 0);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -730,7 +730,7 @@ describe.sequential("watchWorkspaceStatus", () => {
         "coverage",
       ]);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -818,7 +818,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       ]);
       await waitForCallCount(() => calls.length, 1, WATCH_TEST_TIMEOUT_MS);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -868,7 +868,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       });
       expect(branchOutput.stdout.trim()).toBe("feature");
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -908,7 +908,7 @@ describe.sequential("watchWorkspaceStatus", () => {
         WATCH_TEST_TIMEOUT_MS,
       );
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -952,7 +952,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       expect(watchErrors[0]).toContain("workspace subscription unavailable");
       expect(getWorkspaceSubscriptionAttemptCount()).toBeGreaterThan(1);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -1042,7 +1042,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       ]);
       await ensureCallCountStays(() => calls.length, 0);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -1114,7 +1114,7 @@ describe.sequential("watchWorkspaceStatus", () => {
       ]);
       await waitForCallCount(() => calls.length, 2, WATCH_TEST_TIMEOUT_MS);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -1164,7 +1164,7 @@ describe.sequential("watchWorkspaceStatus", () => {
         ]),
       );
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -1183,7 +1183,7 @@ describe.sequential("watchWorkspaceStatus", () => {
     });
 
     await ready;
-    stopWatching();
+    await stopWatching();
     await fs.writeFile(
       path.join(repoPath, "README.md"),
       "no callbacks\n",

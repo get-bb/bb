@@ -181,7 +181,7 @@ async function runProfileWorker(): Promise<void> {
       restart,
     );
   };
-  port.on("message", async (command: unknown) => {
+  const handleCommand = async (command: unknown) => {
     if (command === "drained") return;
     try {
       if (command === "start") await start();
@@ -210,6 +210,13 @@ async function runProfileWorker(): Promise<void> {
       await rm(pendingPath, { force: true }).catch(() => {});
       throw error;
     }
+  };
+  port.on("message", (command: unknown) => {
+    handleCommand(command).catch((error: unknown) => {
+      process.nextTick(() => {
+        throw error;
+      });
+    });
   });
 }
 

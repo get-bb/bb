@@ -43,5 +43,7 @@ export function invalidateCachedThreadTabs(
   queryClient: QueryClient,
   threadId: string,
 ): void {
-  queryClient.invalidateQueries({ queryKey: threadTabsQueryKey(threadId) });
+  void queryClient.invalidateQueries({
+    queryKey: threadTabsQueryKey(threadId),
+  });
 }

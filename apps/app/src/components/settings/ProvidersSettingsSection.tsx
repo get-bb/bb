@@ -264,7 +264,7 @@ function CompletedTurnDisplayRow({
         disabled={disabled}
         aria-label={`Collapse finished ${provider.displayName} turns`}
         onCheckedChange={(checked) =>
-          onGeneralSettingsChange(
+          void onGeneralSettingsChange(
             withProviderCompletedTurnDisplay(
               generalSettings,
               provider,
@@ -383,7 +383,7 @@ export function ProvidersSettingsSection({
               checked={generalSettings.allowFastServiceTier}
               disabled={disabled}
               onCheckedChange={(enabled) =>
-                onGeneralSettingsChange({
+                void onGeneralSettingsChange({
                   allowFastServiceTier: enabled,
                 })
               }
@@ -420,7 +420,7 @@ export function ProvidersSettingsSection({
                   <DropdownMenuItem
                     key={minutes}
                     onSelect={() =>
-                      onGeneralSettingsChange({
+                      void onGeneralSettingsChange({
                         idleProviderSessionTimeoutMinutes: minutes,
                       })
                     }

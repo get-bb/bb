@@ -185,27 +185,31 @@ describe("useLocalPathPicker", () => {
     expect(mocks.pickFolder).not.toHaveBeenCalled();
   });
 
-  it("drops a submit that carries no machine", () => {
+  it("drops a submit that carries no machine", async () => {
     const submit = vi.fn();
     const { result } = renderHook(() =>
       useLocalPathPicker({ isPending: false, submit }),
     );
 
-    act(() => {
-      result.current.submitProjectPath({ kind: "create" }, "/srv/thing", null);
+    await act(async () => {
+      await result.current.submitProjectPath(
+        { kind: "create" },
+        "/srv/thing",
+        null,
+      );
     });
 
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("submits on the machine the dialog reports", () => {
+  it("submits on the machine the dialog reports", async () => {
     const submit = vi.fn();
     const { result } = renderHook(() =>
       useLocalPathPicker({ isPending: false, submit }),
     );
 
-    act(() => {
-      result.current.submitProjectPath(
+    await act(async () => {
+      await result.current.submitProjectPath(
         { kind: "create" },
         "/srv/thing",
         "host_kunst",

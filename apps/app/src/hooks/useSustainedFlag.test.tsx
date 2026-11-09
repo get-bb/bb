@@ -19,10 +19,14 @@ it("reports a flag only after it has stayed on for the whole delay", () => {
     { initialProps: { flag: true } },
   );
 
-  act(() => vi.advanceTimersByTime(999));
+  act(() => {
+    vi.advanceTimersByTime(999);
+  });
   expect(result.current).toBe(false);
 
-  act(() => vi.advanceTimersByTime(1));
+  act(() => {
+    vi.advanceTimersByTime(1);
+  });
   expect(result.current).toBe(true);
 
   rerender({ flag: false });
@@ -34,19 +38,27 @@ it("restarts the delay each time the flag turns on again", () => {
     ({ flag }) => useSustainedFlag(flag, 1_000),
     { initialProps: { flag: true } },
   );
-  act(() => vi.advanceTimersByTime(1_000));
+  act(() => {
+    vi.advanceTimersByTime(1_000);
+  });
   expect(result.current).toBe(true);
 
   rerender({ flag: false });
   rerender({ flag: true });
   expect(result.current).toBe(false);
 
-  act(() => vi.advanceTimersByTime(600));
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
   rerender({ flag: false });
   rerender({ flag: true });
-  act(() => vi.advanceTimersByTime(600));
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
   expect(result.current).toBe(false);
 
-  act(() => vi.advanceTimersByTime(400));
+  act(() => {
+    vi.advanceTimersByTime(400);
+  });
   expect(result.current).toBe(true);
 });

@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "clean": "rimraf dist",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run"
   },
   "dependencies": {

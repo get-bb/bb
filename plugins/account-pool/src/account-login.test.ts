@@ -490,11 +490,10 @@ describe("Account Pooler logins", () => {
       label: "Metered",
       priority: 200,
     });
-    const apiKeyAccount = (
-      await z
-        .array(accountSummarySchema)
-        .parse(await pool.host.harness.behavior.callRpc("account.list", null))
-    ).find((account) => account.kind === "api-key");
+    const apiKeyAccount = z
+      .array(accountSummarySchema)
+      .parse(await pool.host.harness.behavior.callRpc("account.list", null))
+      .find((account) => account.kind === "api-key");
     const apiKeyLogin = await pool.host.harness.behavior.runCli([
       "account",
       "login",

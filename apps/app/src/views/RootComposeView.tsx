@@ -543,7 +543,7 @@ function RootComposeSurface({
     if (initialPrompt === null || searchInitialDraft === undefined) return;
     setPromptDraft(searchInitialDraft);
     if (!isPointerCoarse) window.requestAnimationFrame(focusPromptBox);
-    navigate(
+    void navigate(
       getRootComposeRoutePath() + stripInitialPromptFromSearch(location.search),
       { replace: true, state: location.state },
     );
@@ -588,7 +588,7 @@ function RootComposeSurface({
     if (shouldStartComposingFromLocationState(location.state)) {
       window.requestAnimationFrame(focusPromptBox);
     }
-    navigate(getRootComposeRoutePath() + location.search, {
+    void navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: null,
     });
@@ -613,7 +613,7 @@ function RootComposeSurface({
     } else {
       restorePromptDraftIfEmpty(nextDraft);
     }
-    navigate(getRootComposeRoutePath() + location.search, {
+    void navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: { focusPrompt: true },
     });
@@ -973,7 +973,7 @@ function RootComposeSurface({
     (resource) => {
       if (resource.kind === "thread") {
         return () =>
-          navigate(
+          void navigate(
             getThreadRoutePath({
               projectId: resource.projectId ?? projectId,
               threadId: resource.threadId,
@@ -981,7 +981,8 @@ function RootComposeSurface({
           );
       }
       if (resource.kind === "project") {
-        return () => navigate(getProjectComposeRoutePath(resource.projectId));
+        return () =>
+          void navigate(getProjectComposeRoutePath(resource.projectId));
       }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;

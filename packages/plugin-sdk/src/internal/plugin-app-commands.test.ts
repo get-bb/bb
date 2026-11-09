@@ -58,7 +58,7 @@ describe("app.commands.register", () => {
 
   it.each(entryPoints)(
     "preserves callbacks through the %s entry point",
-    (entryPoint) => {
+    async (entryPoint) => {
       const run = vi.fn();
       const isAvailable = vi.fn(() => true);
       const collected = collectPluginAppRegistrations({
@@ -84,7 +84,7 @@ describe("app.commands.register", () => {
       const command = collected.commandPaletteActions[0]!;
       if (command.target !== "app") throw new Error("expected an app command");
       expect(command.isAvailable?.(context)).toBe(true);
-      command.run(context);
+      await command.run(context);
       expect(isAvailable).toHaveBeenCalledWith(context);
       expect(run).toHaveBeenCalledWith(context);
       expect(collected.commandPaletteActions).toHaveLength(1);

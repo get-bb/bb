@@ -161,7 +161,8 @@
     "clean": "rimraf bundled-types dist tsconfig.tsbuildinfo",
     "prepack": "node --max-semi-space-size=128 --max-old-space-size=4096 scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsrs --noEmit"
+    "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.106.1",

@@ -156,7 +156,9 @@ describe("fixed panel tab server sync", () => {
     });
 
     expect(result.current.state).toBe(live);
-    act(() => result.current.close("detour"));
+    act(() => {
+      result.current.close("detour");
+    });
     expect(result.current.state.secondary.activeTabId).toBe(
       createTerminalFixedPanelTab({ terminalId: "source" }).id,
     );
@@ -655,7 +657,9 @@ describe("terminal activation history", () => {
           ),
         );
       }
-      act(() => result.current.close("closing-terminal"));
+      act(() => {
+        result.current.close("closing-terminal");
+      });
       expect(result.current.state.secondary.tabs).toEqual([]);
       expect(result.current.drawer.isDrawerVisible).toBe(false);
     },
@@ -693,7 +697,9 @@ describe("terminal activation history", () => {
       ),
     );
     act(() => result.current.activate("terminal-history"));
-    act(() => result.current.close("terminal-history"));
+    act(() => {
+      result.current.close("terminal-history");
+    });
     expect(result.current.state.secondary.activeTabId).toBe(source.id);
   });
 });

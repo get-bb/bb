@@ -642,21 +642,22 @@ export default async function plugin(bb: BbPluginApi) {
         if (signal.aborted) return;
         const dir = typeof raw?.dir === "string" ? raw.dir : null;
         if (!dir) return;
+        const publishChange = async () => {
+          try {
+            const next = await catalog();
+            bb.realtime.publish("theme-preview:changed", {
+              revision: next.revision,
+              at: Date.now(),
+            });
+          } catch (error) {
+            bb.log.warn(
+              `theme-preview: watch refresh failed: ${String(error)}`,
+            );
+          }
+        };
         const onChange = () => {
           if (timer) clearTimeout(timer);
-          timer = setTimeout(async () => {
-            try {
-              const next = await catalog();
-              bb.realtime.publish("theme-preview:changed", {
-                revision: next.revision,
-                at: Date.now(),
-              });
-            } catch (error) {
-              bb.log.warn(
-                `theme-preview: watch refresh failed: ${String(error)}`,
-              );
-            }
-          }, 120);
+          timer = setTimeout(() => void publishChange(), 120);
         };
         try {
           watcher = watch(dir, { recursive: true }, onChange);

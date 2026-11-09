@@ -135,10 +135,16 @@ describe("CompactLongPressMenu", () => {
     vi.useFakeTimers();
     const { row, onRename } = renderRow();
     touchPointerDown(row);
-    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
-    act(() => vi.advanceTimersByTime(500));
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     const item = screen.getByRole("menuitem", { name: "Rename" });
-    act(() => vi.advanceTimersByTime(2000));
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
     fireEvent.click(item);
     expect(onRename).not.toHaveBeenCalled();
     touchPointerDown(item);
@@ -150,7 +156,9 @@ describe("CompactLongPressMenu", () => {
     vi.useFakeTimers();
     const { row, onOpenChange } = renderRow();
     touchPointerDown(row);
-    act(() => vi.advanceTimersByTime(LONG_PRESS_MS + 500));
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS + 500);
+    });
     const backdrop = document.querySelector(
       "[data-persistent-drawer-backdrop][data-state='open']",
     );
@@ -325,7 +333,9 @@ describe("CompactLongPressMenu", () => {
     });
 
     rerender(renderMenu(true));
-    act(() => vi.advanceTimersByTime(800));
+    act(() => {
+      vi.advanceTimersByTime(800);
+    });
 
     expect(onOpenChange).not.toHaveBeenCalledWith(true);
   });

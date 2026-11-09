@@ -1553,8 +1553,8 @@ export function NewThreadComposer({
     [onProjectChange, projectId, promptDraft, snapshotDraftBeforeOptionChange],
   );
   const handleProjectChange = useCallback(
-    async (nextProjectId: string | null) => {
-      await changeProject(nextProjectId);
+    (nextProjectId: string | null) => {
+      void changeProject(nextProjectId);
     },
     [changeProject],
   );
@@ -1585,7 +1585,7 @@ export function NewThreadComposer({
       if (resource.kind === "thread") {
         const targetProjectId = resource.projectId ?? projectId;
         return () =>
-          navigate(
+          void navigate(
             getThreadRoutePath({
               projectId: targetProjectId,
               threadId: resource.threadId,
@@ -1593,7 +1593,8 @@ export function NewThreadComposer({
           );
       }
       if (resource.kind === "project") {
-        return () => navigate(getProjectComposeRoutePath(resource.projectId));
+        return () =>
+          void navigate(getProjectComposeRoutePath(resource.projectId));
       }
       return null;
     },
@@ -2097,7 +2098,9 @@ export function NewThreadComposer({
                       type="button"
                       size="sm"
                       className="h-8 shrink-0 px-3"
-                      onClick={() => navigate(getSettingsRoutePath("machines"))}
+                      onClick={() =>
+                        void navigate(getSettingsRoutePath("machines"))
+                      }
                     >
                       Set up machine access
                     </Button>
@@ -2113,7 +2116,7 @@ export function NewThreadComposer({
                       size="sm"
                       className="h-8 shrink-0 px-3"
                       onClick={() =>
-                        navigate(
+                        void navigate(
                           getPluginConfigurationRoutePath({
                             pluginId: setupRequiredProvider.pluginId,
                           }),

@@ -669,7 +669,7 @@ export class PiRpcSession {
     }
     const event = raw as PiRpcEvent;
     if (event.type === "agent_settled" && this.supportsSettlement) {
-      this.deliverInOrder(async () => {
+      void this.deliverInOrder(async () => {
         this.deliverSettlement(await this.takeAgentSettledLeaf());
       });
       return;
@@ -679,7 +679,7 @@ export class PiRpcSession {
     this.observeTerminalSteerSettlement(event);
     if (event.type === "agent_start" && this.supportsSettlement) {
       const runId = this.agentRunsStarted;
-      this.deliverInOrder(async () => {
+      void this.deliverInOrder(async () => {
         const report = await this.takeAgentStart();
         if (!report || report.runId !== runId) {
           this.failSettlementProtocol();
@@ -698,7 +698,7 @@ export class PiRpcSession {
       const runId = this.agentRunsStarted;
       const observedRun = this.runs.get(runId);
       if (observedRun) observedRun.end = event;
-      this.deliverInOrder(async () => {
+      void this.deliverInOrder(async () => {
         const leafId = await this.takeAgentEndLeaf();
         if (leafId !== null) this.lastKnownLeafId = leafId;
         const run = this.runs.get(runId) ?? {};
@@ -765,7 +765,7 @@ export class PiRpcSession {
       }
       return;
     }
-    this.deliverInOrder(() => {
+    void this.deliverInOrder(() => {
       this.onEvent(event);
     });
   }

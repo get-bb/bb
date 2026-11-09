@@ -274,7 +274,7 @@ function renderRegistrySkillRoute() {
 function NavigateButton({ to, label }: { to: string; label: string }) {
   const navigate = useNavigate();
   return (
-    <button type="button" onClick={() => navigate(to)}>
+    <button type="button" onClick={() => void navigate(to)}>
       {label}
     </button>
   );

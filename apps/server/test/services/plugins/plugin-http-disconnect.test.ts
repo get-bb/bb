@@ -11,7 +11,10 @@ describe("plugin HTTP disconnect cleanup", () => {
     "aborts the signal and cancels a late response when first accessed %s disconnect",
     async (access) => {
       const harness = await createTestAppHarness();
-      const server = createServer(getRequestListener(harness.app.fetch));
+      const listener = getRequestListener(harness.app.fetch);
+      const server = createServer((incoming, outgoing) => {
+        void listener(incoming, outgoing);
+      });
       const root = join(harness.config.dataDir, "disconnect-plugin");
       await mkdir(root);
       await writeFile(

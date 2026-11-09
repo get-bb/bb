@@ -137,12 +137,17 @@ export function createPluginToast(sonnerToast: SonnerToast): SonnerToast {
       if (title === undefined) appToast.dismiss(options.id);
       else toneMethod(tone)(title, options);
     };
-    void pending
-      .then(
-        (value) => settle("success", success, value),
-        (reason: unknown) => settle("error", error, reason),
-      )
-      .finally(() => onFinally?.());
+    const settlePending = async () => {
+      try {
+        await pending.then(
+          (value) => settle("success", success, value),
+          (reason: unknown) => settle("error", error, reason),
+        );
+      } finally {
+        await onFinally?.();
+      }
+    };
+    void settlePending();
     return { unwrap: () => pending };
   };
   return Object.assign(message, {

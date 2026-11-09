@@ -15,12 +15,12 @@ interface ChangePluginSafeModeArgs {
   queryClient: QueryClient;
 }
 
-export function changePluginSafeMode({
+export async function changePluginSafeMode({
   enabled,
   queryClient,
 }: ChangePluginSafeModeArgs): Promise<void> {
-  return setPluginSafeMode(fetch, enabled)
-    .then(
+  try {
+    await setPluginSafeMode(fetch, enabled).then(
       (result) => {
         applyPluginSafeMode({ queryClient, enabled: result.enabled });
         if (result.problems.length > 0) {
@@ -51,8 +51,10 @@ export function changePluginSafeMode({
           },
         );
       },
-    )
-    .finally(() => invalidatePluginList({ queryClient }));
+    );
+  } finally {
+    await invalidatePluginList({ queryClient });
+  }
 }
 
 export function usePluginSafeModeCommands(): void {

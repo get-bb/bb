@@ -310,10 +310,15 @@ function runTrackedOperation(args: {
     done: Promise.resolve(),
     cancellation: null,
   };
-  operation.done = args.run(controller.signal).finally(async () => {
-    await operation.cancellation;
-    if (args.map.get(args.key) === operation) args.map.delete(args.key);
-  });
+  const track = async () => {
+    try {
+      await args.run(controller.signal);
+    } finally {
+      await operation.cancellation;
+      if (args.map.get(args.key) === operation) args.map.delete(args.key);
+    }
+  };
+  operation.done = track();
   args.map.set(args.key, operation);
   return operation;
 }
@@ -2216,7 +2221,7 @@ export async function forgetHostEnvironments(
       .where(eq(environments.hostId, hostId))
       .all();
   await Promise.all(
-    listRows().map((row) => map.get(row.id)?.done.catch(() => {})),
+    listRows().flatMap((row) => map.get(row.id)?.done.catch(() => {}) ?? []),
   );
   const pending = listRows().filter(
     (row) => row.status !== "destroyed" || row.teardownStatus !== "removed",

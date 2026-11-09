@@ -239,7 +239,7 @@ function OpenThreadControls() {
               sidebarNavigationQueryKey(),
               sidebarNavigation(INBOX_THREADS),
             );
-            navigate("/");
+            void navigate("/");
           }}
         >
           Reset

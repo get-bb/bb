@@ -67,7 +67,7 @@ async function setup(
       },
     },
   });
-  await plugin(fake.bb);
+  plugin(fake.bb);
   const call = (method: string, input: unknown) =>
     fake.harness.behavior.callRpc(method, input);
   return { ...fake, history, list, call };
@@ -328,7 +328,7 @@ describe("prompt library server", () => {
       100,
       200,
     );
-    await plugin(bb);
+    plugin(bb);
     const result = await harness.behavior.runCli(["list", "--json"]);
     expect(JSON.parse(result.stdout ?? "")).toEqual([
       {
