@@ -81,7 +81,13 @@ jobs:
         env:
           VITEST_MAX_WORKERS: "2"
           BASE_SHA: ''
-        run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3
+        run: |
+          node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3 --keep | tee "$RUNNER_TEMP/fork-profile.log"
+          fork_dir=$(sed -n 's/^Work directory: //p' "$RUNNER_TEMP/fork-profile.log")
+          for pool in forks threads threads forks; do
+            echo "POOL $pool"
+            (cd "$fork_dir/provider-pi" && time npm test -- --pool="$pool")
+          done
 
       - name: Upload fork dependency evidence
         if: ${{ !cancelled() && steps.selection.outputs.count != '0' }}
