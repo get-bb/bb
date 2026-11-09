@@ -12,8 +12,6 @@ export interface TimelineProjection {
 }
 
 export interface TimelineProjectionCacheArgs {
-  contextWindowRows: readonly StoredEventRow[];
-  headStateRows: readonly StoredEventRow[];
   includeNestedRows: boolean;
   projectionKey: string;
   rows: readonly StoredEventRow[];
@@ -25,9 +23,7 @@ export interface BuiltTimelineProjection {
 }
 
 interface TimelineProjectionCacheEntry {
-  contextWindowRows: readonly StoredEventRow[];
   eventProjection: EventProjection;
-  headStateRows: readonly StoredEventRow[];
   projectionKey: string;
   projections: Map<boolean, TimelineProjection>;
 }
@@ -39,29 +35,13 @@ const projectionsBySelectedRows = new WeakMap<
   TimelineProjectionCacheEntry[]
 >();
 
-function sameStoredRows(
-  left: readonly StoredEventRow[],
-  right: readonly StoredEventRow[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (row, index) =>
-        row.id === right[index]!.id && row.data === right[index]!.data,
-    )
-  );
-}
-
 export function keepTimelineProjection(
   args: TimelineProjectionCacheArgs,
   build: (cached: EventProjection | null) => BuiltTimelineProjection,
 ): TimelineProjection {
   const entries = projectionsBySelectedRows.get(args.rows) ?? [];
   const entry = entries.find(
-    (candidate) =>
-      candidate.projectionKey === args.projectionKey &&
-      candidate.headStateRows === args.headStateRows &&
-      sameStoredRows(candidate.contextWindowRows, args.contextWindowRows),
+    (candidate) => candidate.projectionKey === args.projectionKey,
   );
   const cached = entry?.projections.get(args.includeNestedRows);
   if (cached !== undefined) return cached;
@@ -74,9 +54,7 @@ export function keepTimelineProjection(
     args.rows,
     [
       {
-        contextWindowRows: args.contextWindowRows,
         eventProjection: built.eventProjection,
-        headStateRows: args.headStateRows,
         projectionKey: args.projectionKey,
         projections: new Map([[args.includeNestedRows, built.projection]]),
       },

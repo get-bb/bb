@@ -131,11 +131,9 @@ export function registerSessionStateCommands(
       action(
         async (id: string | undefined, opts: SessionStateCommandOptions) => {
           const threadId = requireThreadIdOrSelf(id, opts);
-          const timeline = await createCliBbSdk(getUrl()).threads.timeline({
-            threadId,
-            summaryOnly: "true",
-          });
-          const commands = timeline.providerCommands;
+          const { providerCommands: commands } = await createCliBbSdk(
+            getUrl(),
+          ).threads.experimental_headState({ threadId });
           if (outputJson(opts, { commands })) return;
           for (const line of formatThreadProviderCommands(commands)) {
             console.log(line);
@@ -167,7 +165,7 @@ export function registerSessionStateCommands(
           const threadId = requireThreadIdOrSelf(id, opts);
           const sdk = createCliBbSdk(getUrl());
           const readOptions = async () =>
-            (await sdk.threads.timeline({ threadId, summaryOnly: "true" }))
+            (await sdk.threads.experimental_headState({ threadId }))
               .sessionOptions;
           let options = await readOptions();
           const set = opts.set ?? [];

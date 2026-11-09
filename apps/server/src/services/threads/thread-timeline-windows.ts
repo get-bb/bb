@@ -21,7 +21,6 @@ import {
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import type { ThreadTimelineSubscriber } from "../../ws/hub.js";
-import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { observeTimelinePushTrace } from "../system/turn-trace.js";
 import {
   buildThreadTimelineWithProfile,
@@ -40,7 +39,7 @@ import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
 import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
-import { isCompactionOfferEnabled } from "./compaction-offer.js";
+import { resolveThreadHeadStateOptions } from "./thread-head-state.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -56,7 +55,6 @@ export interface ThreadTimelineWindowRequest {
   deferContent: boolean;
   includeNestedRows: boolean;
   page: ThreadTimelinePageRequest;
-  summaryOnly: boolean;
 }
 
 const MAX_PUSH_PAUSE_MS = 1_000;
@@ -108,12 +106,9 @@ function latestWindowKey(
   request: ThreadTimelineWindowRequest,
   segmentLimit: number,
 ): string {
-  return [
-    segmentLimit,
-    request.deferContent,
-    request.includeNestedRows,
-    request.summaryOnly,
-  ].join("|");
+  return [segmentLimit, request.deferContent, request.includeNestedRows].join(
+    "|",
+  );
 }
 
 export function createThreadTimelineWindows(
@@ -150,20 +145,13 @@ export function createThreadTimelineWindows(
     );
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const surfaceOptions = {
-      compactionOfferEnabled: isCompactionOfferEnabled(deps, thread.providerId),
+      ...resolveThreadHeadStateOptions(deps, thread.providerId),
       completedTurnDisplay,
       deferContent: request.deferContent,
       includeClearedContextHistory,
       includeDiagnosticOperations,
       includeNestedRows: request.includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      planCommand: resolveProviderPlanCommand(
-        deps.providerRegistry,
-        thread.providerId,
-      ),
-      extensionStateKinds: Object.entries(
-        deps.providerRegistry.get(thread.providerId)?.info.extensionKinds ?? {},
-      ).flatMap(([kind, declared]) => (declared.state ? [kind] : [])),
       providerDisplayName,
       summarizeShellCommands: settings.summarizeShellCommands,
     };
@@ -172,7 +160,6 @@ export function createThreadTimelineWindows(
       buildThreadTimelineCacheKey({
         threadId: thread.id,
         page: request.page,
-        summaryOnly: request.summaryOnly,
         deferContent: request.deferContent,
         includeNestedRows: request.includeNestedRows,
       }),
@@ -194,7 +181,6 @@ export function createThreadTimelineWindows(
           eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
           maxSeq,
           page: request.page,
-          summaryOnly: request.summaryOnly,
         });
         slowTimelineBuildLogger.log({ cost, profile, threadId: thread.id });
         const window = shortenTimelineResponseOutputs(built, {
@@ -225,7 +211,6 @@ export function createThreadTimelineWindows(
       deferContent: target.deferContent,
       includeNestedRows: false,
       page: { kind: "latest", segmentLimit },
-      summaryOnly: false,
     };
     const windowKey = latestWindowKey(request, segmentLimit);
     const response = buildWindow(thread, request);

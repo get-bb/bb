@@ -4333,19 +4333,58 @@ export function getLatestThreadSystemErrorEventRow(
   );
 }
 
+const isProviderModelFallbackMessage = sql`COALESCE((
+  json_extract(${events.data}, '$.rawEvent.method') = 'sdk/message'
+  AND json_extract(${events.data}, '$.rawEvent.params.message.subtype')
+    IN ('model_fallback', 'model_refusal_fallback')
+  AND json_type(${events.data}, '$.rawEvent.params.message.original_model') = 'text'
+  AND length(json_extract(${events.data}, '$.rawEvent.params.message.original_model')) > 0
+  AND json_type(${events.data}, '$.rawEvent.params.message.fallback_model') = 'text'
+  AND length(json_extract(${events.data}, '$.rawEvent.params.message.fallback_model')) > 0
+), 0)`;
+
+export interface GetLatestModelFallbackRowSinceTurnRequestArgs {
+  threadId: string;
+}
+
+export function getLatestModelFallbackRowSinceTurnRequest(
+  db: DbQueryConnection,
+  args: GetLatestModelFallbackRowSinceTurnRequestArgs,
+): StoredEventRow | null {
+  const fallbackType = "provider/modelFallback" satisfies ThreadEventType;
+  const unhandledType = "provider/unhandled" satisfies ThreadEventType;
+  const requestType = "client/turn/requested" satisfies ThreadEventType;
+  return (
+    db
+      .select(storedEventRowSqlFields(null))
+      .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          inArray(events.type, [fallbackType, unhandledType]),
+          sql`${events.sequence} > COALESCE((
+            SELECT MAX(request.sequence)
+            FROM events request
+            WHERE request.thread_id = ${args.threadId}
+              AND request.type = ${requestType}
+          ), -1)`,
+          or(
+            eq(events.type, fallbackType),
+            isProviderModelFallbackMessage,
+          ),
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 const isNotDiagnosticEvent = sql`(
   ${events.type} <> 'provider.env-resolved'
   AND (
     ${events.type} <> 'provider/unhandled'
-    OR COALESCE((
-      json_extract(${events.data}, '$.rawEvent.method') = 'sdk/message'
-      AND json_extract(${events.data}, '$.rawEvent.params.message.subtype')
-        IN ('model_fallback', 'model_refusal_fallback')
-      AND json_type(${events.data}, '$.rawEvent.params.message.original_model') = 'text'
-      AND length(json_extract(${events.data}, '$.rawEvent.params.message.original_model')) > 0
-      AND json_type(${events.data}, '$.rawEvent.params.message.fallback_model') = 'text'
-      AND length(json_extract(${events.data}, '$.rawEvent.params.message.fallback_model')) > 0
-    ), 0)
+    OR ${isProviderModelFallbackMessage}
     OR CASE
       WHEN instr(${events.data}, '"imageGeneration"') = 0 THEN 0
       WHEN json_valid(${events.data}) THEN

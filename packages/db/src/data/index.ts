@@ -347,6 +347,7 @@ export {
   getStoredTurnRequestEventForTurn,
   getLatestStoredConversationOutlineSequence,
   getLatestCompletedThreadContextClearSequence,
+  getLatestModelFallbackRowSinceTurnRequest,
   getLatestThreadSystemErrorEventRow,
   getLatestThreadSequence,
   insertEvents,

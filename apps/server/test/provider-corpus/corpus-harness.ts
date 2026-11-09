@@ -191,7 +191,6 @@ export function buildRouteTimelinePage(
         args.registry,
         args.thread.providerId,
       ),
-      summaryOnly: false,
     },
   );
   const window = shortenTimelineResponseOutputs(response, {

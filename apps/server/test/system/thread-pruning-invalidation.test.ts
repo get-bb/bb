@@ -38,7 +38,6 @@ const LATEST: ThreadTimelineWindowRequest = {
   deferContent: false,
   includeNestedRows: false,
   page: { kind: "latest", segmentLimit: 20 },
-  summaryOnly: false,
 };
 
 const SMALL_WINDOW = {

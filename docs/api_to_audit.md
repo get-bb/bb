@@ -1096,6 +1096,30 @@ keys. Callers: the built-in thread list, which gates row metadata on
 2. **Plugin-owned experiments.** Decide whether plugins should declare their
    own experiments in Settings → Experiments rather than only read bb's.
 
+## `bb.sdk.threads.experimental_headState`
+
+`GET /threads/:id/head-state` returns the thread's head state:
+`{ activePromptMode, contextWindowUsage, extensionStates, modelFallback,
+pendingTodos, providerCommands, sessionOptions }`. `readThreadHeadState` reads
+each field from its latest stored state events, so the cost does not grow with
+turn or thread length. The latest timeline page embeds the same result instead
+of deriving these fields from its rows. `pendingTodos` and `activePromptMode`
+are null unless the thread is active. Core callers: the timeline build, `bb
+thread show`, `bb thread commands`, `bb thread options`, and `sdk.status`.
+It replaced the timeline's `summaryOnly` query, which built the whole latest
+page and dropped its rows; the server now ignores that parameter and returns
+the full page.
+
+Docs: `backend-sdk.md`, `docs/timeline-pagination.md`.
+
+**Audit before stabilizing.**
+
+1. **Page-derived fields.** Active thinking, active workflows, and active
+   background commands still come from projecting the latest page, so reading
+   them still needs a timeline page. Decide whether they become head state.
+2. **`threads.context`.** It returns `contextWindowUsage` alone through the
+   same read. Decide whether to keep it as a narrow read or retire it.
+
 ## `bb.sdk.threads.experimental_listAncestors`
 
 `POST /threads/ancestors` with `{ threadIds }` (1–200 ids) returns

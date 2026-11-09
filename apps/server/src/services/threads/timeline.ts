@@ -35,11 +35,6 @@ import {
   type EventProjection,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import {
-  THREAD_PROVIDER_COMMANDS_STATE_KIND,
-  THREAD_SESSION_OPTIONS_STATE_KIND,
-  THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
-} from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
 import type {
   ClientTurnRequestId,
@@ -75,7 +70,6 @@ import {
   getLatestCompletedThreadContextClearSequence,
   getThreadConversationOutlineRecord,
   getThreadEventRewriteGeneration,
-  listContextWindowUsageRows,
   isTimelineCursorSequencePresent,
   listStoredConversationOutlineEventRows,
   listStoredRootConversationOutlineEventRows,
@@ -90,13 +84,11 @@ import {
   getStoredItemLifecycleSequenceRange,
   listStoredItemLifecycleRowsByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
-  listLatestThreadStateEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
   listStoredTimelineTurnEventRows,
   listStoredTimelineThreadWindowEventRows,
   listTimelineRootWindowTurnIds,
-  listTodoSnapshotEventRowsForThread,
   listStoredDelegatingItemRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
@@ -120,7 +112,7 @@ import {
   type MainThreadCost,
 } from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
-import { withCompactionOffer } from "./compaction-offer.js";
+import { readThreadHeadState } from "./thread-head-state.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 import {
   keepTimelineProjection,
@@ -237,7 +229,6 @@ interface BuildThreadTimelineOptions extends ThreadTimelineSurfaceOptions {
   responseByteBudget?: number;
   maxSeq: number;
   page: ThreadTimelinePageRequest;
-  summaryOnly?: boolean;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
@@ -269,8 +260,7 @@ type ThreadTimelineBuildProfileStage =
   | "accepted-client-request-context-query"
   | "event-json-decode"
   | "summary-compaction"
-  | "context-window-query"
-  | "context-window-json-decode"
+  | "head-state"
   | "thread-view-projection"
   | "thread-view-rows"
   | "pagination-segmentation";
@@ -283,8 +273,6 @@ interface ThreadTimelineBuildProfileStageTiming {
 export interface ThreadTimelineBuildProfile {
   compactedEventCount: number;
   foldedEventCount: number;
-  contextWindowEventDataBytes: number;
-  contextWindowEventRowCount: number;
   decodedEventCount: number;
   eventDataBytes: number;
   eventRowCount: number;
@@ -308,8 +296,6 @@ interface BuildThreadTimelineInternalResult {
 interface ThreadTimelineBuildProfileAccumulator {
   compactedEventCount: number;
   foldedEventCount: number;
-  contextWindowEventDataBytes: number;
-  contextWindowEventRowCount: number;
   decodedEventCount: number;
   eventDataBytes: number;
   eventRowCount: number;
@@ -991,34 +977,6 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
   return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
-function listLatestTimelineHeadStateRows(
-  db: DbConnection,
-  threadId: string,
-  extensionStateKinds: readonly string[],
-): StoredEventRow[] {
-  return mergeStoredEventRowsById([
-    ...extensionStateKinds.flatMap((kind) =>
-      listLatestThreadStateEventRowsByThreadIds(db, {
-        threadIds: [threadId],
-        kind,
-      }),
-    ),
-    ...listLatestThreadStateEventRowsByThreadIds(db, {
-      threadIds: [threadId],
-      kind: THREAD_PROVIDER_COMMANDS_STATE_KIND,
-    }),
-    ...listLatestThreadStateEventRowsByThreadIds(db, {
-      threadIds: [threadId],
-      kind: THREAD_SESSION_OPTIONS_STATE_KIND,
-    }),
-    ...listLatestThreadStateEventRowsByThreadIds(db, {
-      threadIds: [threadId],
-      kind: THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
-    }),
-    ...listTodoSnapshotEventRowsForThread(db, { threadId }),
-  ]);
-}
-
 function selectStandardTimelineEventRows(
   db: DbConnection,
   thread: Thread,
@@ -1032,7 +990,6 @@ function selectStandardTimelineEventRows(
   knownBudgetFloor: TimelineBudgetFloor | null,
   profile: ThreadTimelineBuildProfileAccumulator,
   source: TimelineSelectionRowSource,
-  extensionStateKinds: readonly string[],
 ): StandardTimelineEventRowSelection {
   const decode: StoredEventDecoder = (row) =>
     decodeStoredEventRowCached(db, row);
@@ -1261,19 +1218,6 @@ function selectStandardTimelineEventRows(
     hints,
     fetchedTurnIds: fetchedTurns,
     selection: {
-      headStateRows:
-        page.kind === "latest"
-          ? measureThreadTimelineStage(profile, "group-context-query", () =>
-              listLatestTimelineHeadStateRows(
-                db,
-                thread.id,
-                extensionStateKinds,
-              ).filter(
-                (row) =>
-                  row.sequence <= maxSeq && !visibleSequences.has(row.sequence),
-              ),
-            )
-          : [],
       contextOnlyInterruptionSequences: new Set(
         interruptionRows
           .filter((row) => !visibleSequences.has(row.sequence))
@@ -1320,8 +1264,6 @@ function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfi
   return {
     compactedEventCount: 0,
     foldedEventCount: 0,
-    contextWindowEventDataBytes: 0,
-    contextWindowEventRowCount: 0,
     decodedEventCount: 0,
     eventDataBytes: 0,
     eventRowCount: 0,
@@ -1358,8 +1300,6 @@ function completeThreadTimelineBuildProfile(
   return {
     compactedEventCount: accumulator.compactedEventCount,
     foldedEventCount: accumulator.foldedEventCount,
-    contextWindowEventDataBytes: accumulator.contextWindowEventDataBytes,
-    contextWindowEventRowCount: accumulator.contextWindowEventRowCount,
     decodedEventCount: accumulator.decodedEventCount,
     eventDataBytes: accumulator.eventDataBytes,
     eventRowCount: accumulator.eventRowCount,
@@ -1435,7 +1375,6 @@ function buildThreadTimelineInternal(
       knownBudgetFloor,
       profile,
       source,
-      options.extensionStateKinds ?? [],
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
   const active = thread.status === "active";
@@ -1449,7 +1388,6 @@ function buildThreadTimelineInternal(
           epochSequenceStart: historySequenceStart,
           eventBudget: options.eventBudget,
           excludeDiagnosticEvents: !includeDiagnosticOperations,
-          extensionStateKinds: options.extensionStateKinds ?? [],
           maxInlineOutputChars,
           maxSeq: snapshot.maxSeq,
           page: options.page,
@@ -1497,32 +1435,27 @@ function buildThreadTimelineInternal(
         withRowMeta(row, decodeStoredEventRowCached(db, row)),
       ),
   );
-  profile.eventRowCount += eventSelection.headStateRows.length;
-  profile.eventDataBytes += byteLengthOfStoredEventRows(
-    eventSelection.headStateRows,
-  );
-  profile.decodedEventCount =
-    decodedRawEvents.length + eventSelection.headStateRows.length;
-  const contextWindowUsageRows = measureThreadTimelineStage(
-    profile,
-    "context-window-query",
-    () =>
-      listContextWindowUsageRows(db, {
-        sequenceStart: contextBoundarySeq ?? 0,
-        threadId: thread.id,
-      }),
-  );
-  profile.contextWindowEventDataBytes = byteLengthOfStoredEventRows(
-    contextWindowUsageRows,
-  );
-  profile.contextWindowEventRowCount = contextWindowUsageRows.length;
+  profile.decodedEventCount = decodedRawEvents.length;
+  const headState =
+    options.page.kind === "latest"
+      ? measureThreadTimelineStage(profile, "head-state", () =>
+          readThreadHeadState(
+            db,
+            { ...thread, status: snapshot.status },
+            {
+              compactionOfferEnabled: options.compactionOfferEnabled,
+              extensionStateKinds: options.extensionStateKinds ?? [],
+              planCommand: options.planCommand ?? null,
+            },
+            snapshot.maxSeq,
+          ),
+        )
+      : null;
   const projectionOptions = {
     completedTurnDisplay: options.completedTurnDisplay,
     includeDiagnosticOperations,
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
-    planCommand: options.planCommand,
-    extensionStateKinds: options.extensionStateKinds,
     summarizeShellCommands: options.summarizeShellCommands,
     threadStatus: snapshot.status,
     threadName: surface.threadName,
@@ -1533,26 +1466,10 @@ function buildThreadTimelineInternal(
   const project = (
     cachedEventProjection: EventProjection | null,
   ): BuiltTimelineProjection => {
-    const headStateEvents = measureThreadTimelineStage(
-      profile,
-      "event-json-decode",
-      () =>
-        eventSelection.headStateRows.map((row) =>
-          withRowMeta(row, decodeStoredEventRowCached(db, row)),
-        ),
-    );
     const decodedEvents = measureThreadTimelineStage(
       profile,
       "summary-compaction",
       () => compactThreadTimelineSummaryEvents(decodedRawEvents),
-    );
-    const contextWindowEvents = measureThreadTimelineStage(
-      profile,
-      "context-window-json-decode",
-      () =>
-        contextWindowUsageRows.map((row) =>
-          withRowMeta(row, decodeStoredEventRowCached(db, row)),
-        ),
     );
     const acceptedClientRequestContext: AcceptedClientRequestContext = {
       acceptedClientRequestEvents: [],
@@ -1599,8 +1516,7 @@ function buildThreadTimelineInternal(
       () =>
         buildThreadTimelineFromProjection({
           acceptedClientRequestContext,
-          contextWindowEvents,
-          headStateEvents,
+          contextWindowEvents: [],
           events: decodedEvents,
           options: timelineOptions,
           projection: eventProjection,
@@ -1631,8 +1547,6 @@ function buildThreadTimelineInternal(
       ? project(null).projection
       : keepTimelineProjection(
           {
-            contextWindowRows: contextWindowUsageRows,
-            headStateRows: eventSelection.headStateRows,
             includeNestedRows,
             projectionKey: JSON.stringify([
               projectionOptions,
@@ -1681,32 +1595,22 @@ function buildThreadTimelineInternal(
 
   const response: ThreadTimelineWindow = {
     maxSeq: snapshot.maxSeq,
-    rows: options.summaryOnly ? [] : paginatedTimeline.rows,
+    rows: paginatedTimeline.rows,
     contextBoundarySeq,
     completedTurnDisplay: options.completedTurnDisplay,
-    activePromptMode:
-      options.page.kind === "latest" ? timeline.activePromptMode : null,
+    activePromptMode: headState?.activePromptMode ?? null,
     activeThinking:
       options.page.kind === "latest" ? timeline.activeThinking : null,
     activeWorkflows:
       options.page.kind === "latest" ? timeline.activeWorkflows : [],
     activeBackgroundCommands:
       options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
-    pendingTodos: timeline.pendingTodos,
-    extensionStates: timeline.extensionStates,
-    providerCommands: timeline.providerCommands,
-    sessionOptions: timeline.sessionOptions,
-    modelFallback:
-      options.page.kind === "latest" ? timeline.modelFallback : null,
-    contextWindowUsage:
-      options.page.kind === "latest" && timeline.contextWindowUsage
-        ? withCompactionOffer(db, {
-            enabled: options.compactionOfferEnabled,
-            sequenceStart: contextBoundarySeq ?? 0,
-            threadId: thread.id,
-            usage: timeline.contextWindowUsage,
-          })
-        : undefined,
+    pendingTodos: headState?.pendingTodos ?? null,
+    extensionStates: headState?.extensionStates ?? {},
+    providerCommands: headState?.providerCommands ?? null,
+    sessionOptions: headState?.sessionOptions ?? null,
+    modelFallback: headState?.modelFallback ?? null,
+    contextWindowUsage: headState?.contextWindowUsage ?? undefined,
     timelinePage: {
       returnedSegmentCount: paginatedTimeline.returnedSegmentCount,
       olderCursor: bindTimelineCursor(
@@ -1716,9 +1620,7 @@ function buildThreadTimelineInternal(
       ),
       historySnapshot: timelineSnapshotKey(snapshot),
       olderRowsSourceSeqEnd: paginatedTimeline.olderRowsSourceSeqEnd,
-      olderRowUpdates: options.summaryOnly
-        ? undefined
-        : paginatedTimeline.olderRowUpdates,
+      olderRowUpdates: paginatedTimeline.olderRowUpdates,
     },
   };
   return {
@@ -1740,7 +1642,6 @@ export function buildThreadTimelineWithProfile(
     const started = startMainThreadCost();
     const built = db.transaction(() => {
       const result = buildThreadTimelineInternal(db, thread, options);
-      if (options.summaryOnly) return result;
       for (
         let skipped = 0;
         skipped < MAX_EMPTY_TIMELINE_WINDOWS;
@@ -1763,10 +1664,6 @@ export function buildThreadTimelineWithProfile(
         result.profile.decodedEventCount += older.profile.decodedEventCount;
         result.profile.compactedEventCount += older.profile.compactedEventCount;
         result.profile.foldedEventCount += older.profile.foldedEventCount;
-        result.profile.contextWindowEventRowCount +=
-          older.profile.contextWindowEventRowCount;
-        result.profile.contextWindowEventDataBytes +=
-          older.profile.contextWindowEventDataBytes;
         result.profile.projectedRowCount += older.profile.projectedRowCount;
         result.profile.responseRowCount = older.profile.responseRowCount;
         result.profile.returnedSegmentCount =
