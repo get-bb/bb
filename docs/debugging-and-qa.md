@@ -1140,8 +1140,7 @@ values receive the original CSS, so a tab retained across a server update
 keeps working with its old host styles. Compressed responses are cached
 separately for the original and stripped variants.
 
-While the `narrowPluginCss` experiment is on, the app also adds
-`css-scope=owned-root-v1`. When a plugin's `app.js` never sets
+The app also adds `css-scope=owned-root-v1`. When a plugin's `app.js` never sets
 `data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes then
 drop the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
 plugin's utility selectors, so its rules cannot match outside its own roots and

@@ -68,7 +68,6 @@ describe("experiments settings", () => {
         agentCpuPriority: false,
         compactExpiredCache: false,
         dismissReadNotifications: false,
-        narrowPluginCss: false,
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,
