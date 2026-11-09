@@ -3,6 +3,8 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
+  bindEnvironmentPath,
+  claimEnvironmentPath,
   createEnvironment,
   findProjectEnvironmentByHostPath,
   findProviderEnvironmentContainingPath,
@@ -10,6 +12,7 @@ import {
   markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
   recordProvisionedEnvironmentWorkspace,
+  reserveEnvironment,
   updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
 import { environments } from "../../src/schema.js";
@@ -397,6 +400,49 @@ describe("environment path claims", () => {
       },
     });
   }
+
+  it.each(["provisioning", "ready"] as const)(
+    "keeps a %s environment's setup state when a preparing environment binds to its path",
+    (status) => {
+      const fixture = setup();
+      const existing = seedClaim(fixture, {
+        environmentProviderId: "project-checkout",
+        path: "/tmp/shared-checkout",
+        providerOwnsPath: false,
+      });
+      fixture.db
+        .update(environments)
+        .set({ status, statusMessage: "Running setup", pendingLog: "output" })
+        .where(eq(environments.id, existing.id))
+        .run();
+      const preparing = reserveEnvironment(fixture.db, {
+        projectId: fixture.project.id,
+        hostId: fixture.host.id,
+        ownerThreadId: "thread-adopter",
+        providerOwnsPath: false,
+        status: "creating",
+        statusMessage: "Creating environment",
+      });
+      expect(
+        claimEnvironmentPath(fixture.db, preparing, "/tmp/shared-checkout"),
+      ).toBe(true);
+
+      const bound = bindEnvironmentPath(
+        fixture.db,
+        { ...preparing, claimPath: "/tmp/shared-checkout" },
+        "/tmp/shared-checkout",
+      );
+
+      expect(bound).toMatchObject({
+        id: existing.id,
+        status,
+        ownerThreadId: "thread-adopter",
+        claimPath: "/tmp/shared-checkout",
+        statusMessage:
+          status === "provisioning" ? "Running setup" : "Creating environment",
+      });
+    },
+  );
 
   it("claims a path only for a provider that owns the directory", () => {
     const fixture = setup();

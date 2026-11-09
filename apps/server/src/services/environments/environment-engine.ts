@@ -188,20 +188,28 @@ function writeEnvironment(
   deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
 }
 
+function currentProvisioningRow(
+  deps: Deps,
+  provisioning: EnvironmentRow,
+  phases: EnvironmentRow["status"][],
+): EnvironmentRow | null {
+  const row = getEnvironment(deps.db, provisioning.id);
+  return row !== null &&
+    row.attempt === provisioning.attempt &&
+    row.ownerThreadId === provisioning.ownerThreadId &&
+    phases.includes(row.status)
+    ? row
+    : null;
+}
+
 function mutateProvisioning(
   deps: Deps,
   provisioning: EnvironmentRow,
   phases: EnvironmentRow["status"][],
   change: (row: EnvironmentRow) => void,
 ): boolean {
-  const row = getEnvironment(deps.db, provisioning.id);
-  if (
-    row === null ||
-    row.attempt !== provisioning.attempt ||
-    row.ownerThreadId !== provisioning.ownerThreadId ||
-    !phases.includes(row.status)
-  )
-    return false;
+  const row = currentProvisioningRow(deps, provisioning, phases);
+  if (row === null) return false;
   const before = JSON.stringify(row);
   change(row);
   if (JSON.stringify(row) === before) return false;
@@ -513,7 +521,7 @@ async function runCreate(
       mutateProvisioning(
         deps,
         provisioning,
-        ["creating", "ready", "error"],
+        ["creating", "provisioning", "ready", "error"],
         (row) => {
           row.hostId = context.host.id;
           row.path = produced.path;
@@ -530,19 +538,25 @@ async function runCreate(
       );
       signal.throwIfAborted();
     }
-    changed = mutateProvisioning(
-      deps,
-      provisioning,
-      ["creating", "ready"],
-      (row) => {
-        if (result.status === "created") {
-          row.status = row.status === "ready" ? "ready" : "provisioning";
-        } else {
-          row.status = "error";
-          row.statusMessage = result.message;
-        }
-      },
-    );
+    changed =
+      result.status === "created" && provisioning.status === "provisioning"
+        ? currentProvisioningRow(deps, provisioning, [
+            "provisioning",
+            "ready",
+          ]) !== null
+        : mutateProvisioning(
+            deps,
+            provisioning,
+            ["creating", "ready"],
+            (row) => {
+              if (result.status === "created") {
+                row.status = row.status === "ready" ? "ready" : "provisioning";
+              } else {
+                row.status = "error";
+                row.statusMessage = result.message;
+              }
+            },
+          );
   } catch (error) {
     const current = getEnvironment(deps.db, provisioning.id);
     if (
@@ -597,20 +611,23 @@ export function markProviderEnvironmentAttached(
   db: DbConnection | DbTransaction,
   threadId: string,
   environmentId: string,
-): void {
+): boolean {
   const row = getPreparingEnvironment(db, threadId);
   if (row === null || (row.status !== "provisioning" && row.status !== "ready"))
-    return;
+    return false;
   if (row.id !== environmentId)
     throw new Error("Provisioning must attach its reserved environment");
-  db.update(environments)
-    .set({
-      ownerThreadId: null,
-      claimPath: null,
-      retireAt: null,
-    })
-    .where(eq(environments.id, row.id))
-    .run();
+  return (
+    db
+      .update(environments)
+      .set({
+        ownerThreadId: null,
+        claimPath: null,
+        retireAt: null,
+      })
+      .where(eq(environments.id, row.id))
+      .run().changes > 0
+  );
 }
 
 export async function cancelProviderEnvironmentCreation(
@@ -2148,7 +2165,8 @@ export async function advanceEnvironmentProvisioning(
           )
             return;
           updateThread(tx, deps.hub, threadId, { environmentId: target.id });
-          markProviderEnvironmentAttached(tx, threadId, target.id);
+          if (markProviderEnvironmentAttached(tx, threadId, target.id))
+            deps.hub.notifyEnvironment(target.id, ["metadata-changed"]);
           context.request.environmentIntent = {
             type: "reuse",
             environmentId: target.id,
