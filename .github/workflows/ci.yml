@@ -122,6 +122,9 @@ jobs:
           pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="%TURBO_CACHE_DIR%" --output-logs=new-only --summarize --concurrency=2
 
       - name: Compare guard overhead
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         shell: bash
         run: |
           node --input-type=module - <<'NODE'
