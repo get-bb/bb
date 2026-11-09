@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import {
@@ -8,6 +6,11 @@ import {
   type SetupGuideVariant,
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
+import {
+  evaluatePostHogFlag,
+  readAssignmentFile,
+  writeAssignmentFile,
+} from "./posthog-flags.js";
 import type {
   FeatureFlagIdentity,
   TelemetryEvent,
@@ -17,7 +20,6 @@ import type {
 const SETUP_GUIDE_FLAG_KEY = "setup-guide-redesign";
 export const SETUP_GUIDE_FLAG_TIMEOUT_MS = 3_000;
 export const SETUP_GUIDE_ASSIGNMENT_FILE_NAME = "setup-guide-assignment.json";
-const POSTHOG_FLAGS_URL = "https://us.i.posthog.com/flags?v=2";
 
 type SetupGuideAssignmentSource = "override" | "flag" | "default";
 
@@ -59,95 +61,13 @@ const persistedAssignmentsSchema = z.object({
 
 type PersistedAssignments = z.infer<typeof persistedAssignmentsSchema>;
 
-const flagsResponseSchema = z.object({
-  flags: z.record(z.string(), z.unknown()),
-});
-
-const flagDetailSchema = z.object({
-  enabled: z.boolean(),
-  variant: z.string().nullable().optional(),
-});
-
-function isSetupGuideTelemetryEvent(
+export function isSetupGuideTelemetryEvent(
   event: RecordTelemetryEventRequest,
 ): boolean {
   if (event.name === "recommendation") {
     return event.properties.surface === "onboarding";
   }
   return event.name.startsWith("onboarding_");
-}
-
-function parseJsonText(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
-function flagVariant(
-  flags: Record<string, unknown>,
-  key: string,
-): SetupGuideVariant | null {
-  const flag = flagDetailSchema.safeParse(flags[key]);
-  if (!flag.success || !flag.data.enabled) return null;
-  const variant = setupGuideVariantSchema.safeParse(flag.data.variant);
-  return variant.success ? variant.data : null;
-}
-
-function assignmentsFromFlagsResponse(body: unknown): SetupGuideAssignments {
-  const response = flagsResponseSchema.safeParse(body);
-  if (!response.success) {
-    return { guide: DEFAULT_GUIDE };
-  }
-  const guide = flagVariant(response.data.flags, SETUP_GUIDE_FLAG_KEY);
-  return {
-    guide: guide === null ? DEFAULT_GUIDE : { variant: guide, source: "flag" },
-  };
-}
-
-function persistedFromJson(json: unknown): PersistedAssignments | null {
-  const parsed = persistedAssignmentsSchema.safeParse(json);
-  return parsed.success ? parsed.data : null;
-}
-
-async function readPersistedAssignments(
-  path: string,
-  logger: ServerLogger,
-): Promise<PersistedAssignments | null> {
-  let text: string;
-  try {
-    text = await readFile(path, "utf8");
-  } catch (error) {
-    if (
-      !(error instanceof Error && "code" in error && error.code === "ENOENT")
-    ) {
-      logger.debug({ err: error }, "Setup guide assignment read failed");
-    }
-    return null;
-  }
-  const parsed = persistedFromJson(parseJsonText(text));
-  if (parsed === null) {
-    logger.debug({ path }, "Ignoring an invalid setup guide assignment file");
-  }
-  return parsed;
-}
-
-async function writePersistedAssignments(
-  path: string,
-  assignments: PersistedAssignments,
-): Promise<void> {
-  const tempPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
-  try {
-    await writeFile(tempPath, `${JSON.stringify(assignments)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    await rename(tempPath, path);
-  } catch (error) {
-    await rm(tempPath, { force: true });
-    throw error;
-  }
 }
 
 function persistedGuide(
@@ -162,7 +82,11 @@ export async function createSetupGuideExperiment(
   args: CreateSetupGuideExperimentArgs,
 ): Promise<SetupGuideExperiment> {
   const assignmentPath = join(args.dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME);
-  let persisted = await readPersistedAssignments(assignmentPath, args.logger);
+  let persisted = await readAssignmentFile({
+    path: assignmentPath,
+    schema: persistedAssignmentsSchema,
+    logger: args.logger,
+  });
   let resolution: Promise<SetupGuideAssignments> | null = null;
 
   function tagFlagVariant(guide: FlagAssignment | null): void {
@@ -181,28 +105,19 @@ export async function createSetupGuideExperiment(
   async function fetchFlagAssignments(
     identity: FeatureFlagIdentity,
   ): Promise<SetupGuideAssignments> {
-    try {
-      const response = await args.fetch(POSTHOG_FLAGS_URL, {
-        body: JSON.stringify({
-          api_key: identity.apiKey,
-          distinct_id: identity.distinctId,
-        }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-        signal: AbortSignal.timeout(args.flagTimeoutMs),
-      });
-      if (!response.ok) {
-        args.logger.debug(
-          { status: response.status },
-          "Setup guide flag evaluation failed",
-        );
-        return { guide: DEFAULT_GUIDE };
-      }
-      return assignmentsFromFlagsResponse(await response.json());
-    } catch (error) {
-      args.logger.debug({ err: error }, "Setup guide flag evaluation failed");
-      return { guide: DEFAULT_GUIDE };
-    }
+    const flag = await evaluatePostHogFlag({
+      fetch: args.fetch,
+      identity,
+      key: SETUP_GUIDE_FLAG_KEY,
+      logger: args.logger,
+      timeoutMs: args.flagTimeoutMs,
+    });
+    const variant = setupGuideVariantSchema.safeParse(flag?.variant);
+    return {
+      guide: variant.success
+        ? { variant: variant.data, source: "flag" }
+        : DEFAULT_GUIDE,
+    };
   }
 
   async function resolveAssignments(): Promise<SetupGuideAssignments> {
@@ -237,7 +152,7 @@ export async function createSetupGuideExperiment(
       };
       if (toPersist.guide !== (persisted?.guide ?? null)) {
         try {
-          await writePersistedAssignments(assignmentPath, toPersist);
+          await writeAssignmentFile(assignmentPath, toPersist);
           persisted = toPersist;
         } catch (error) {
           args.logger.warn(

@@ -8,6 +8,7 @@ import type {
   ServerAccessStatus,
   SetupGuideVariant,
   SystemProviderState,
+  SystemSetupGuideFeaturedPluginsResponse,
   SystemSetupGuideResponse,
 } from "@bb/server-contract";
 
@@ -33,6 +34,12 @@ export const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
   "agent-annotations",
   "ask-user-question",
 ];
+
+export function featuredPluginEntryIds(
+  response: SystemSetupGuideFeaturedPluginsResponse | undefined,
+): readonly string[] {
+  return response?.entryIds ?? ONBOARDING_PLUGIN_ENTRY_IDS;
+}
 
 export const CONNECT_PLUGIN_ID = "connect";
 

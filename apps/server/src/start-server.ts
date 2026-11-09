@@ -67,6 +67,7 @@ import {
   createSetupGuideExperiment,
   SETUP_GUIDE_FLAG_TIMEOUT_MS,
 } from "./services/system/setup-guide-experiment.js";
+import { createFeaturedPluginsExperiment } from "./services/system/featured-plugins-experiment.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerLogger, ServerRuntimeConfig } from "./types.js";
@@ -255,6 +256,13 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     override: serverConfig.BB_SETUP_GUIDE_VARIANT ?? null,
     telemetry,
   });
+  const featuredPluginsExperiment = await createFeaturedPluginsExperiment({
+    dataDir: serverConfig.BB_DATA_DIR,
+    fetch: globalThis.fetch,
+    flagTimeoutMs: SETUP_GUIDE_FLAG_TIMEOUT_MS,
+    logger,
+    telemetry,
+  });
 
   const machineAuth = await createMachineAuthService({
     dataDir: serverConfig.BB_DATA_DIR,
@@ -386,6 +394,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       bbAppManagedConfig,
       cliCommand,
       setupGuideExperiment,
+      featuredPluginsExperiment,
       config: runtimeConfig,
       db,
       hub,

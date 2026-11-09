@@ -50,6 +50,9 @@ vi.mock("@/hooks/queries/setup-guide-requests", () => ({
   fetchSetupGuideAssignment: vi.fn(() =>
     Promise.resolve({ variant: guide.variant }),
   ),
+  fetchSetupGuideFeaturedPlugins: vi.fn(() =>
+    Promise.resolve({ entryIds: null }),
+  ),
 }));
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 vi.mock("@/hooks/useRealtimeSubscription", () => ({

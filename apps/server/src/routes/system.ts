@@ -1,3 +1,4 @@
+import { featuredPluginsResponse } from "../services/system/featured-plugins-experiment.js";
 import { withReportedProviderId } from "../services/system/provider-telemetry.js";
 import { rememberPluginRecommendation } from "../services/plugins/plugin-use-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
@@ -352,6 +353,12 @@ export function registerSystemRoutes(
     return context.json({ variant: guide.variant });
   });
 
+  get(routes.setupGuideFeaturedPlugins, async (context) => {
+    return context.json(
+      featuredPluginsResponse(await deps.featuredPluginsExperiment.resolve()),
+    );
+  });
+
   post(routes.recordTelemetryEvent, async (context, payload) => {
     if (
       payload.name === "recommendation" &&
@@ -367,8 +374,24 @@ export function registerSystemRoutes(
       await deps.setupGuideExperiment.recordExposure(payload.properties.entry);
       return context.json({ ok: true });
     }
+    if (payload.name === "onboarding_featured_plugins_exposed") {
+      await deps.featuredPluginsExperiment.recordExposure(
+        payload.properties.entry,
+      );
+      return context.json({ ok: true });
+    }
+    const event = await deps.setupGuideExperiment.annotate(
+      withReportedProviderId(payload),
+    );
+    const featured =
+      await deps.featuredPluginsExperiment.variantProperties(payload);
     deps.telemetry.capture(
-      await deps.setupGuideExperiment.annotate(withReportedProviderId(payload)),
+      featured === null || !("properties" in event)
+        ? event
+        : {
+            name: payload.name,
+            properties: { ...event.properties, ...featured },
+          },
     );
     return context.json({ ok: true });
   });
