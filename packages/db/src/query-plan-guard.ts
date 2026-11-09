@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { getCallSites } from "node:util";
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -206,11 +207,23 @@ function captureStack(stackDepth: number): string {
   }
 }
 
+function captureTestStack(stackDepth: number): string {
+  return (
+    "Error\n" +
+    getCallSites(stackDepth, { sourceMap: false })
+      .map(
+        (frame) =>
+          `at ${frame.functionName || "<anonymous>"} (${frame.scriptName}:${frame.lineNumber}:${frame.columnNumber})`,
+      )
+      .join("\n")
+  );
+}
+
 export function captureQueryCallSite(
   stackDepth: number,
   scope: QueryCallSiteScope,
 ): QueryCallSite {
-  return sourceFrames(captureStack(stackDepth), scope);
+  return sourceFrames(captureTestStack(stackDepth), scope);
 }
 
 function sourceFrames(stack: string, scope: QueryCallSiteScope): QueryCallSite {
