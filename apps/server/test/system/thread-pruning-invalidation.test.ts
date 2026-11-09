@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { performance } from "node:perf_hooks";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   events,
   getThread,
@@ -188,6 +189,10 @@ function recordCompactions(harness: TestAppHarness, threadId: string) {
 }
 
 describe("pruning invalidation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("keeps an active thread's served window and announces nothing when live pruning removes only usage snapshots and turn diffs", async () => {
     await withTestHarness(async (harness) => {
       const script = createThreadScript(harness);
@@ -237,6 +242,7 @@ describe("pruning invalidation", () => {
       const usageBefore = countEvents(harness, threadId, usageTypes);
       const diffsBefore = countEvents(harness, threadId, diffTypes);
 
+      vi.spyOn(performance, "now").mockReturnValue(0);
       for (let call = 0; call < 24; call += 1)
         pruneThreadEventHistoryBestEffort(harness.deps, {
           mode: "active",

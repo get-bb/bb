@@ -1,5 +1,6 @@
+import { performance } from "node:perf_hooks";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
   LOCAL_WORKFLOW_TASK_TYPE,
@@ -711,7 +712,12 @@ function advanceSettledThreadPruning(
     .set({ status: "idle" })
     .where(eq(threads.id, testThread.thread.id))
     .run();
-  return advanceThreadPruning(testThread.db, policy);
+  const now = vi.spyOn(performance, "now").mockReturnValue(0);
+  try {
+    return advanceThreadPruning(testThread.db, policy);
+  } finally {
+    now.mockRestore();
+  }
 }
 
 function pruneUsageSnapshots(testThread: TestThread): void {

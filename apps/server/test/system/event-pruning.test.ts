@@ -2,7 +2,8 @@ import { getThread, listEvents, threadPruningCursors } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { describe, expect, it, vi } from "vitest";
+import { performance } from "node:perf_hooks";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
 import { pruneThreadEventHistoryBestEffort } from "../../src/services/system/event-pruning.js";
 import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
@@ -174,6 +175,10 @@ function seedResolvedAssistantMessage(
 }
 
 describe("thread event pruning", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("preserves context window usage when idle pruning removes old context-usage rows", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps);
@@ -450,6 +455,7 @@ describe("thread event pruning", () => {
           itemKind: null,
           data: {},
         });
+      vi.spyOn(performance, "now").mockReturnValue(0);
       const notify = vi
         .spyOn(harness.deps.hub, "notifyThread")
         .mockImplementation(() => {});
