@@ -4,10 +4,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
-  buildNodeEsmEntry,
+  buildNodeEsmEntry as originalBuildNodeEsmEntry,
   copyDirectory,
 } from "../../../scripts/build-utils.mjs";
 
+async function buildNodeEsmEntry(options) {
+  const started = performance.now();
+  await originalBuildNodeEsmEntry(options);
+  console.log('PROFILE bundle', options.outfile, performance.now() - started);
+}
 const execFileAsync = promisify(execFile);
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
@@ -24,16 +29,20 @@ async function assertPathExists(pathToCheck, label) {
 }
 
 async function copyBuildOutput({ from, label, to }) {
+  const started = performance.now();
   await assertPathExists(from, label);
   await copyDirectory({ from, to });
+  console.log("PROFILE copy", label, performance.now() - started);
 }
 
 async function buildPublicSdkDeclarations() {
+  const started = performance.now();
   await execFileAsync(
     "node",
     [resolve(scriptsDir, "build-public-sdk-dts.mjs")],
     { cwd: packageRoot },
   );
+  console.log("PROFILE declarations", performance.now() - started);
 }
 
 const entrypoints = [
