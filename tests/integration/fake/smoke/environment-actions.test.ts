@@ -26,7 +26,7 @@ import {
 
 describe.sequential("fake provider smoke environment integration", () => {
   it("reports workspace status, diff, and branches for a ready environment", () =>
-    withHarness(async (harness) => {
+    withHarness({ builtinPlugins: ["git"] }, async (harness) => {
       const project = await createProjectFixture(
         harness,
         "Workspace Status Smoke",
@@ -39,9 +39,18 @@ describe.sequential("fake provider smoke environment integration", () => {
         },
       });
 
-      const status = await getEnvironmentStatus(harness.api, harness.serverUrl, environment.id);
-      const diff = await getEnvironmentDiff(harness.api, harness.serverUrl, environment.id);
-      const branches = await getEnvironmentBranches(harness.serverUrl,
+      const status = await getEnvironmentStatus(
+        harness.api,
+        harness.serverUrl,
+        environment.id,
+      );
+      const diff = await getEnvironmentDiff(
+        harness.api,
+        harness.serverUrl,
+        environment.id,
+      );
+      const branches = await getEnvironmentBranches(
+        harness.serverUrl,
         environment.id,
       );
 
@@ -58,7 +67,7 @@ describe.sequential("fake provider smoke environment integration", () => {
     }));
 
   it("pages the diff through the Git plugin's files and patches reads for a ready environment", () =>
-    withHarness(async (harness) => {
+    withHarness({ builtinPlugins: ["git"] }, async (harness) => {
       const project = await createProjectFixture(
         harness,
         "Diff Pagination Smoke",
@@ -81,7 +90,10 @@ describe.sequential("fake provider smoke environment integration", () => {
         filePath: path.join(workspacePath, "feature.ts"),
       });
 
-      const files = await getEnvironmentDiffFiles(harness.serverUrl, environment.id);
+      const files = await getEnvironmentDiffFiles(
+        harness.serverUrl,
+        environment.id,
+      );
       expect(files.outcome).toBe("available");
       if (files.outcome !== "available") {
         throw new Error(`Expected diff files, received ${files.outcome}`);
@@ -95,7 +107,9 @@ describe.sequential("fake provider smoke environment integration", () => {
 
       if (entry === undefined) throw new Error("feature.ts is not changed");
       const patches = Object.values(
-        await getEnvironmentDiffPatches(harness.serverUrl, environment.id, [entry]),
+        await getEnvironmentDiffPatches(harness.serverUrl, environment.id, [
+          entry,
+        ]),
       );
       expect(patches).toHaveLength(1);
       const [patch] = patches;
@@ -107,7 +121,7 @@ describe.sequential("fake provider smoke environment integration", () => {
     }));
 
   it("commits dirty workspace changes through the environment actions route", () =>
-    withHarness(async (harness) => {
+    withHarness({ builtinPlugins: ["git"] }, async (harness) => {
       const project = await createProjectFixture(
         harness,
         "Workspace Commit Smoke",
@@ -130,7 +144,9 @@ describe.sequential("fake provider smoke environment integration", () => {
         filePath: path.join(workspacePath, "committed.txt"),
       });
 
-      const dirtyStatus = await getEnvironmentStatus(harness.api, harness.serverUrl,
+      const dirtyStatus = await getEnvironmentStatus(
+        harness.api,
+        harness.serverUrl,
         environment.id,
       );
       expect(dirtyStatus.outcome).toBe("available");
@@ -154,7 +170,9 @@ describe.sequential("fake provider smoke environment integration", () => {
       }
       expect(result.commitSha).toBeTruthy();
 
-      const cleanStatus = await getEnvironmentStatus(harness.api, harness.serverUrl,
+      const cleanStatus = await getEnvironmentStatus(
+        harness.api,
+        harness.serverUrl,
         environment.id,
       );
       expect(cleanStatus.outcome).toBe("available");
@@ -173,7 +191,7 @@ describe.sequential("fake provider smoke environment integration", () => {
     }));
 
   it("archives and unarchives a thread, blocking work while archived", () =>
-    withHarness(async (harness) => {
+    withHarness({ builtinPlugins: ["git"] }, async (harness) => {
       const project = await createProjectFixture(harness, "Archive Smoke");
       const { thread } = await createReadyThread(harness, {
         projectId: project.id,
@@ -215,7 +233,7 @@ describe.sequential("fake provider smoke environment integration", () => {
     }));
 
   it("deletes a thread after turn history has been created", () =>
-    withHarness(async (harness) => {
+    withHarness({ builtinPlugins: ["git"] }, async (harness) => {
       const project = await createProjectFixture(harness, "Delete Smoke");
       const { thread } = await createReadyThread(harness, {
         projectId: project.id,
