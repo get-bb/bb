@@ -135,6 +135,8 @@ jobs:
         shell: bash
         env:
           BB_CI_TEST_SHARD: ""
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: |
           cp apps/server/test/services/plugins/plugin-update.test.ts "$RUNNER_TEMP/candidate.ts"
           for variant in baseline candidate candidate baseline; do
