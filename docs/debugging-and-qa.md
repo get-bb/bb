@@ -263,6 +263,32 @@ inaccessible WAL files report a null size with a sample timestamp. WAL size
 can include space reused by earlier generations; it does not measure uncheckpointed backlog or identify
 checkpoint progress. Resource sampling is also disabled with the live gate.
 
+### Slow SQLite query plans
+
+With `BB_QUERY_PLAN_AUDIT=1` (the default for `pnpm dev`, `pnpm start:worktree`,
+and `pnpm desktop:worktree`) or the `performanceDiagnostics` experiment on, the
+server runs `EXPLAIN QUERY PLAN` once for each distinct statement and parameter
+shape it executes, after the statement returns, against a read-only connection
+to the same database. It logs a `Slow SQLite query plan` warning, once per
+process for each `rule`, `table`, and `caller`, when the plan:
+
+- walks `events`, `thread_search_segments`, `prompt_history_entries`, or
+  `terminal_sessions` through an index that matches fewer equality terms than
+  another index on that table (`weaker-index`);
+- scans one of those tables in full (`full-scan`); or
+- builds an automatic index (`automatic-index`).
+
+`caller` is the `src/` file and function that ran the query; in the built
+server, the file comes from the module comments esbuild writes into
+`apps/server/dist` bundles, so it needs an unminified bundle. Findings listed in
+`packages/db/src/query-plan-allowlist.ts` are not logged. The tests apply the
+same rules and fail on findings missing from the allowlist; see
+`packages/db/src/query-plan-guard.ts`. The `Query plan audit` CI job also
+requires every exported query function in `packages/db/src/data` to run in a
+`@bb/db` or `@bb/server` test; reproduce it with
+`BB_QUERY_PLAN_REPORT=<file> pnpm exec turbo run test --filter=@bb/db --filter=@bb/server`
+followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
+
 The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
 when agents saturate the CPU:
 
@@ -899,7 +925,8 @@ daemon. Leave it off for routine operation: profiling and extra logging add
 overhead.
 
 While on, the server logs database operations of at least 25 ms, API requests
-of at least 100 ms, and event-loop stalls of at least 100 ms. Every five
+of at least 100 ms, event-loop stalls of at least 100 ms, and
+[slow SQLite query plans](#slow-sqlite-query-plans). Every five
 seconds `Server performance sample` records process and main-thread CPU, loop
 utilization and delay, GC, and memory; CPU values are interval totals, not
 per-request attribution. Its `maxDelayMs` and `p99DelayMs` are gaps of the

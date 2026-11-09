@@ -450,6 +450,8 @@ Start with `bb-app --perf-diagnostics` or `BB_PERF_DIAGNOSTICS=1` (restart to
 change), then run `bb settings experiment performanceDiagnostics true|false`.
 Collection needs both; it adds overhead and writes CPU profiles every 30 seconds
 to `$BB_DATA_DIR/logs/performance/` (kept 12 hours), which contain local paths.
+It also logs `Slow SQLite query plan` warnings to the server log for queries
+whose plan walks a large table or picks a weaker index.
 Open a `.cpuprofile` in Chrome DevTools.
 
 Desktop Settings → Server → **Show This Mac** (or **Show This Computer** off macOS)

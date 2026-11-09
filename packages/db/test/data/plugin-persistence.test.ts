@@ -7,8 +7,10 @@ import {
   getInstalledPlugin,
   listPluginArtifacts,
   listPluginArtifactsAtOrUnderPath,
+  listPluginArtifactsInGitCheckout,
   listPluginArtifactsUnderPath,
   listPluginKvKeys,
+  setPluginArtifactGitCheckoutRoot,
   setPluginKvValue,
   upsertInstalledPlugin,
   type DbConnection,
@@ -170,6 +172,53 @@ describe("normalized plugin persistence", () => {
       sourceGitRequestedRef: "main",
       sourceGitRefKind: "branch",
     });
+  });
+
+  it("backfills a git artifact's checkout root only while it is missing", () => {
+    createPluginArtifact(db, {
+      id: "legacy-git",
+      pluginId: "notes",
+      sourceKind: "git",
+      npmResolvedVersion: null,
+      gitResolvedCommit: "abcdef1234567",
+      gitCheckoutRoot: "/cache/placeholder",
+      path: "/cache/repo/abcdef1234567/plugins/notes",
+      integrity: null,
+      contentHash: null,
+      validationResult: "valid",
+      validatedAt: 100,
+    });
+    createPluginArtifact(db, {
+      id: "npm-artifact",
+      pluginId: "notes",
+      sourceKind: "npm",
+      npmResolvedVersion: "1.0.0",
+      gitResolvedCommit: null,
+      gitCheckoutRoot: null,
+      path: "/cache/notes.tgz",
+      integrity: "sha512-example",
+      contentHash: null,
+      validationResult: "valid",
+      validatedAt: 100,
+    });
+    db.$client
+      .prepare("UPDATE plugin_artifacts SET git_checkout_root = NULL WHERE id = ?")
+      .run("legacy-git");
+
+    expect(
+      setPluginArtifactGitCheckoutRoot(db, "npm-artifact", "/cache/repo"),
+    ).toBe(false);
+    expect(
+      setPluginArtifactGitCheckoutRoot(db, "legacy-git", "/cache/repo"),
+    ).toBe(true);
+    expect(
+      setPluginArtifactGitCheckoutRoot(db, "legacy-git", "/cache/other"),
+    ).toBe(false);
+    expect(
+      listPluginArtifactsInGitCheckout(db, "/cache/repo").map(
+        (artifact) => artifact.id,
+      ),
+    ).toEqual(["legacy-git"]);
   });
 
   it("retains artifact records when a plugin registration is removed", () => {

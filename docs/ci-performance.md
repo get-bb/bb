@@ -27,7 +27,10 @@ Frontend build configuration retains Windows checks. Changes to desktop,
 packaged-app, SDK, template, or plugin-bundling code retain package smokes on
 PRs. Provider changes retain the live provider listing check. App/web-only
 changes skip standalone plugin fork checks; shared UI and plugin changes can
-still select them through the task graph. Selected checks remain blocking.
+still select them through the task graph. The query plan audit runs whenever
+`@bb/db` or `@bb/server` tests are selected: one unsharded run of both suites
+writes a report that `check:query-plan-report` compares against the allowlist
+and the exported query functions. Selected checks remain blocking.
 
 PRs changing only `docs/ci-performance.md`, `docs/windows-ci.md`,
 `docs/debugging-and-qa.md`, `docs/filing-issues.md`, or
