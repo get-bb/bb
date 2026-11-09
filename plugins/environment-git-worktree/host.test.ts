@@ -239,10 +239,16 @@ describe.concurrent("worktree host entry", () => {
       expect(
         (await git(sourcePath, "rev-parse", "bb/saved-state")).trim(),
       ).toBe((await git(created.path, "rev-parse", "HEAD")).trim());
+      const ownedBranch = {
+        name: "bb/saved-state",
+        repositoryPath: sourcePath,
+        baseBranch: created.baseBranch,
+      };
       const result = await harness.experimental_call("remove", {
         operationId: "remove-state",
         pathKey: "saved-state",
         path: created.path,
+        ownedBranch,
       });
       expect({
         status: result.status,
@@ -256,6 +262,7 @@ describe.concurrent("worktree host entry", () => {
       expect((await git(created.path, "rev-parse", state)).trim()).toBe(
         savedCommit,
       );
+      expect(await branchExists(sourcePath, "bb/saved-state")).toBe(true);
       if (state === "MERGE_HEAD") {
         await git(created.path, "merge", "--abort");
       } else {
@@ -266,9 +273,11 @@ describe.concurrent("worktree host entry", () => {
           operationId: "remove-resolved-state",
           pathKey: "saved-state",
           path: created.path,
+          ownedBranch,
         }),
       ).toEqual({ status: "removed" });
       expect(existsSync(created.path)).toBe(false);
+      expect(await branchExists(sourcePath, "bb/saved-state")).toBe(false);
     },
   );
 
