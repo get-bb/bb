@@ -6166,6 +6166,53 @@ describe("bridge", () => {
       }
     });
 
+    it("completes the turn on the first result from a CLI that reports no consumed prompts", async () => {
+      const threadId = "thread-steer-without-consumption-reports";
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const query = createControlledClaudeQuery();
+      queryMock.mockImplementation(() => query);
+      try {
+        await startBridgeThread({ bridge, threadId });
+        const call = getLatestQueryCall();
+        bridge.sendRequest(
+          2,
+          "turn/start",
+          canonicalTurnParams({
+            threadId,
+            input: [{ type: "text", text: "Reply one", mentions: [] }],
+          }),
+        );
+        await readNextPrompt(call);
+        await bridge.waitForResponse(2);
+        query.emit(assistantText("one"));
+        bridge.sendRequest(3, "turn/steer", {
+          ...canonicalTurnParams({
+            threadId,
+            expectedTurnId: "turn-1",
+            input: [{ type: "text", text: "Reply two", mentions: [] }],
+          }),
+          clientRequestId: "creq_abcdefghjm",
+        });
+        await readNextPrompt(call);
+        await bridge.waitForResponse(3);
+        query.emit(assistantText("two"));
+        query.emit(createSuccessfulResultMessage("session-1"));
+        await bridge.flushWork();
+
+        const { completed, started } = turnEvents(bridge);
+        expect(started).toHaveLength(1);
+        expect(completed).toEqual([
+          expect.objectContaining({
+            scope: started[0]?.scope,
+            status: "completed",
+          }),
+        ]);
+      } finally {
+        await stopBridgeThread({ bridge, queries: [query], threadId });
+        bridge.restore();
+      }
+    });
+
     it("completes the turn on the one result when the SDK folds the steer into the running turn", async () => {
       const threadId = "thread-steer-folded-into-sdk-turn";
       const { bridge, first, query, steer } = await startTurnAndSteer(threadId);

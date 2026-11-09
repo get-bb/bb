@@ -119,9 +119,6 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
   void (async () => {
     for await (const userMessage of call.prompt) {
       const text = String(userMessage.message.content);
-      push(
-        asSdkMessage({ ...userMessage, session_id: sessionId, isReplay: true }),
-      );
       if (text === FIRST_PROMPT_TEXT) {
         push(textDelta(sessionId, "checking the tree"));
         push(assistantText(sessionId, "msg_1", "checking the tree"));
@@ -453,7 +450,6 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "thread/contextWindowUsage/updated",
   "turn/started",
   "turn/input/accepted",
-  "provider/unhandled",
   "item/started:agentMessage",
   "item/agentMessage/delta",
   "thread/contextWindowUsage/updated",
@@ -466,7 +462,6 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "thread/contextWindowUsage/updated",
   "item/completed:reasoning",
   "turn/input/accepted",
-  "provider/unhandled",
   "thread/contextWindowUsage/updated",
   "item/completed:agentMessage",
   "thread/contextWindowUsage/updated",
@@ -474,7 +469,6 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "turn/completed",
   "turn/started",
   "turn/input/accepted",
-  "provider/unhandled",
   "item/started:agentMessage",
   "item/agentMessage/delta",
   "thread/contextWindowUsage/updated",
@@ -484,7 +478,6 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "turn/completed",
   "turn/started",
   "turn/input/accepted",
-  "provider/unhandled",
   "item/started:agentMessage",
   "item/agentMessage/delta",
   "thread/contextWindowUsage/updated",

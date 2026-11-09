@@ -1089,10 +1089,15 @@ export function createClaudeDeltaTranslator(
     }
   }
 
-  function settlePromptsForResult(
+  function hasQueuedPromptAfterResult(
     state: ClaudeThreadDialectState,
-    consumedPromptIds: readonly string[],
-  ): void {
+    consumedPromptIds: readonly string[] | undefined,
+  ): boolean {
+    if (consumedPromptIds === undefined) {
+      state.unconsumedPromptIds.clear();
+      state.promptConsumedSinceResult = false;
+      return false;
+    }
     for (const promptId of consumedPromptIds) {
       consumePrompt(state, promptId);
     }
@@ -1103,6 +1108,7 @@ export function createClaudeDeltaTranslator(
       }
     }
     state.promptConsumedSinceResult = false;
+    return state.unconsumedPromptIds.size > 0;
   }
 
   function translateResultMessage(
@@ -1115,7 +1121,10 @@ export function createClaudeDeltaTranslator(
       return unexpectedSdkEventDeltas(event, context);
     }
     const message = parsedMessage.data;
-    settlePromptsForResult(state, message.user_message_uuids ?? []);
+    const promptQueued = hasQueuedPromptAfterResult(
+      state,
+      message.user_message_uuids,
+    );
     const resultCanSettleBeforeResponse =
       message.origin === undefined || message.origin.kind === "human";
     if (
@@ -1196,7 +1205,7 @@ export function createClaudeDeltaTranslator(
       });
     }
     state.armedHardRateLimitRejection = undefined;
-    if (state.unconsumedPromptIds.size > 0) {
+    if (promptQueued) {
       return deltas;
     }
     if (!failed && hasCompletionBlockingClaudeTasks(state.tasksById)) {
