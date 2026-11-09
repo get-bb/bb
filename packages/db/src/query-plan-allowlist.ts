@@ -44,8 +44,12 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "walks the open turn instead of seeking the type; 2.4 ms vs 0.01 ms in a 20k-event turn",
   ),
   knownSlow(
-    `${EVENTS}#listThreadEventSuffixBackgroundSettlementRows`,
-    "correlated settlement probes match only thread_id, the getUnfinishedCommandItemData shape; unmeasured",
+    `${EVENTS}#listStoredItemLifecycleRowsByItems`,
+    "timeline backfill walks the whole thread instead of seeking turn and item; 10 ms per call on a 53k-event thread",
+  ),
+  knownSlow(
+    `${EVENTS}#listStoredBufferedTextDeltaRowsByItems`,
+    "timeline backfill walks the thread before the window instead of seeking turn and item; 10 ms per call on a 53k-event thread",
   ),
   acceptedEventsIndex(
     `${EVENTS}#listCommandItemDataByItemIds`,

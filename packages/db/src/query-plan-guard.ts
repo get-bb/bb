@@ -25,6 +25,15 @@ export interface QueryPlanViolation {
   plan: string[];
 }
 
+export interface QueryPlanReportRow extends QueryPlanViolation {
+  allowed: boolean;
+}
+
+export interface QueryPlanReportComparison {
+  unallowed: QueryPlanReportRow[];
+  unusedAllowlistEntries: QueryPlanAllowlistEntry[];
+}
+
 export interface QueryPlanGuard {
   takeViolations(): QueryPlanViolation[];
 }
@@ -81,6 +90,43 @@ function sourceCaller(stack: string | undefined): string | null {
   return null;
 }
 
+function allowlistKey(entry: {
+  rule: QueryPlanRule;
+  table: string;
+  caller: string;
+}): string {
+  return `${entry.rule}\u0000${entry.table}\u0000${entry.caller}`;
+}
+
+function partialIndexLiterals(sqlite: Database.Database): Set<string> {
+  const rows = sqlite
+    .prepare(
+      "SELECT sql FROM sqlite_schema WHERE type = 'index' AND sql LIKE '% WHERE %'",
+    )
+    .all() as Array<{ sql: string }>;
+  const literals = new Set<string>();
+  for (const row of rows) {
+    const predicate = row.sql.slice(row.sql.search(/ WHERE /i));
+    for (const match of predicate.matchAll(/'((?:''|[^'])*)'/g)) {
+      literals.add(match[1].replaceAll("''", "'"));
+    }
+  }
+  return literals;
+}
+
+function planSignature(
+  params: readonly unknown[],
+  literals: ReadonlySet<string>,
+): string {
+  return params
+    .map((param) =>
+      typeof param === "string" && literals.has(param)
+        ? `'${param}'`
+        : typeof param,
+    )
+    .join(",");
+}
+
 function isParameterList(params: unknown[]): params is QueryPlanParameter[] {
   return params.every(
     (param) =>
@@ -99,18 +145,22 @@ export function installQueryPlanGuard(
   const installed = BetterSqlite[INSTALLED];
   if (installed !== undefined) return installed;
 
-  const allowed = new Set(
-    QUERY_PLAN_ALLOWLIST.map(
-      (entry) => `${entry.rule}\u0000${entry.table}\u0000${entry.caller}`,
-    ),
-  );
+  const allowed = new Set(QUERY_PLAN_ALLOWLIST.map(allowlistKey));
   const audited = new Set<string>();
   let pending: QueryPlanViolation[] = [];
   let auditDb: Database.Database | null = null;
+  let literals: ReadonlySet<string> = new Set();
+
+  function openAuditDb(): Database.Database {
+    if (auditDb === null) {
+      auditDb = createMigratedConnection().$client;
+      literals = partialIndexLiterals(auditDb);
+    }
+    return auditDb;
+  }
 
   function audit(sql: string, caller: string, params: unknown[]): void {
-    auditDb ??= createMigratedConnection().$client;
-    const result = auditQueryPlan(auditDb, sql, {
+    const result = auditQueryPlan(openAuditDb(), sql, {
       largeTables: LARGE_TABLES,
       ...(isParameterList(params) ? { params } : {}),
     });
@@ -118,7 +168,7 @@ export function installQueryPlanGuard(
     for (const finding of result.findings) {
       if (!GUARDED_RULES.has(finding.rule)) continue;
       const isAllowed = allowed.has(
-        `${finding.rule}\u0000${finding.table}\u0000${caller}`,
+        allowlistKey({ rule: finding.rule, table: finding.table, caller }),
       );
       const violation: QueryPlanViolation = {
         rule: finding.rule,
@@ -148,8 +198,8 @@ export function installQueryPlanGuard(
     if (this === auditDb) return statement;
     const caller = sourceCaller(new Error().stack);
     if (caller === null) return statement;
+    openAuditDb();
     const key = `${caller}\u0000${source}`;
-    if (audited.has(key)) return statement;
     for (const method of ["run", "get", "all", "iterate"] as const) {
       const original = statement[method].bind(statement) as (
         ...params: unknown[]
@@ -158,8 +208,9 @@ export function installQueryPlanGuard(
         configurable: true,
         writable: true,
         value: (...params: unknown[]) => {
-          if (!audited.has(key)) {
-            audited.add(key);
+          const plannedKey = `${key}\u0000${planSignature(params, literals)}`;
+          if (!audited.has(plannedKey)) {
+            audited.add(plannedKey);
             audit(source, caller, params);
           }
           return original(...params);
@@ -194,4 +245,16 @@ export function formatQueryPlanViolations(
         `${violation.rule} on ${violation.table} in ${violation.caller}: ${violation.detail}\n  plan: ${violation.plan.join(" | ")}\n  sql: ${violation.sql.replace(/\s+/g, " ").slice(0, 400)}`,
     )
     .join("\n\n");
+}
+
+export function compareQueryPlanReport(
+  rows: readonly QueryPlanReportRow[],
+): QueryPlanReportComparison {
+  const reported = new Set(rows.map(allowlistKey));
+  return {
+    unallowed: rows.filter((row) => !row.allowed),
+    unusedAllowlistEntries: QUERY_PLAN_ALLOWLIST.filter(
+      (entry) => !reported.has(allowlistKey(entry)),
+    ),
+  };
 }
