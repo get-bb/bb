@@ -1057,7 +1057,7 @@ describe("editThreadMessage", () => {
     });
   });
 
-  it("keeps the settlement of background work started before the edited message", async () => {
+  it("keeps the settlements of background work and delegations started before the edited message", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness, {
         includeSecondTurn: false,
@@ -1099,26 +1099,78 @@ describe("editThreadMessage", () => {
             item: backgroundTask(args.id, args.taskStatus),
           },
         });
+      const seedDelegationEvent = (args: {
+        id: string;
+        sequence: number;
+        status: "inProgress" | "completed";
+      }) =>
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "provider-original",
+          sequence: args.sequence,
+          ...(args.status === "inProgress"
+            ? {
+                type: "item/started" as const,
+                scope: turnScope("turn-first"),
+              }
+            : {
+                type: "item/delegation/completed" as const,
+                scope: threadScope(),
+              }),
+          itemId: args.id,
+          itemKind: "delegation",
+          data: {
+            providerThreadId: "provider-original",
+            item: {
+              id: args.id,
+              type: "delegation",
+              childRef: `child-${args.id}`,
+              label: `Agent ${args.id}`,
+              status: args.status,
+              background: true,
+            },
+          },
+        });
       seedTaskEvent({ id: "task-before", sequence: 7, taskStatus: "running" });
+      seedDelegationEvent({
+        id: "delegation-before",
+        sequence: 8,
+        status: "inProgress",
+      });
       seedTurn(harness, {
         completionStatus: "interrupted",
         providerCheckpointId: "checkpoint-last",
         providerThreadId: "provider-original",
-        requestSequence: 8,
+        requestSequence: 9,
         text: "Original last message",
         threadId: thread.id,
         turnId: "turn-last",
       });
-      seedTaskEvent({ id: "task-before", sequence: 13, taskStatus: "stopped" });
-      seedTaskEvent({ id: "task-after", sequence: 14, taskStatus: "running" });
-      seedTaskEvent({ id: "task-after", sequence: 15, taskStatus: "stopped" });
+      seedDelegationEvent({
+        id: "delegation-before",
+        sequence: 14,
+        status: "completed",
+      });
+      seedTaskEvent({ id: "task-before", sequence: 15, taskStatus: "stopped" });
+      seedTaskEvent({ id: "task-after", sequence: 16, taskStatus: "running" });
+      seedTaskEvent({ id: "task-after", sequence: 17, taskStatus: "stopped" });
+      seedDelegationEvent({
+        id: "delegation-after",
+        sequence: 18,
+        status: "inProgress",
+      });
+      seedDelegationEvent({
+        id: "delegation-after",
+        sequence: 19,
+        status: "completed",
+      });
 
       const editPromise = editThreadMessage(harness.deps, {
         environment,
         thread,
         payload: {
           operationId: "edit-op-background-settlement",
-          expectedRequestSequence: 8,
+          expectedRequestSequence: 9,
           input: [{ type: "text", text: "Replacement", mentions: [] }],
         },
       });
@@ -1133,24 +1185,30 @@ describe("editThreadMessage", () => {
       await expect(editPromise).resolves.toEqual({
         ok: true,
         operationId: "edit-op-background-settlement",
-        requestSequence: 18,
+        requestSequence: 23,
       });
       const remaining = listEvents(harness.db, { threadId: thread.id });
       expect(
         remaining
-          .filter((event) => event.sequence >= 8)
+          .filter((event) => event.sequence >= 9)
           .map((event) => [event.sequence, event.type, event.itemId]),
       ).toEqual([
-        [16, "system/operation", null],
-        [17, "item/backgroundTask/completed", "task-before"],
-        [18, "client/turn/requested", null],
+        [20, "system/operation", null],
+        [21, "item/delegation/completed", "delegation-before"],
+        [22, "item/backgroundTask/completed", "task-before"],
+        [23, "client/turn/requested", null],
       ]);
-      const carried = remaining.at(-2);
-      expect(carried).toMatchObject({
-        providerThreadId: "provider-original",
-        scopeKind: "thread",
+      const [carriedDelegation, carriedTask] = remaining.slice(-3, -1);
+      for (const carried of [carriedDelegation, carriedTask]) {
+        expect(carried).toMatchObject({
+          providerThreadId: "provider-original",
+          scopeKind: "thread",
+        });
+      }
+      expect(JSON.parse(carriedDelegation?.data ?? "null")).toMatchObject({
+        item: { id: "delegation-before", status: "completed" },
       });
-      expect(JSON.parse(carried?.data ?? "null")).toMatchObject({
+      expect(JSON.parse(carriedTask?.data ?? "null")).toMatchObject({
         item: {
           id: "task-before",
           status: "interrupted",

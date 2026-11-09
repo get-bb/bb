@@ -51,6 +51,7 @@ import {
   listStoredEventRows,
   listStoredEventRowsByParentToolCallIds,
   listStoredTurnCompletedKeys,
+  listThreadEventSuffixBackgroundSettlementRows,
   listTodoSnapshotEventRowsForThread,
 } from "../src/data/events.js";
 import {
@@ -1151,6 +1152,82 @@ describe("slow query index plans", () => {
     expect(queryPlanDetails({ db, ...captured[0]! })).toContain(
       "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=? AND item_id=?)",
     );
+
+    db.$client.close();
+  });
+
+  it("seeks each carried settlement's item events by thread and item", () => {
+    const { db, thread } = setup();
+    const itemEvent = (args: {
+      sequence: number;
+      type:
+        | "item/started"
+        | "item/backgroundTask/completed"
+        | "item/delegation/completed";
+      itemId: string;
+      itemKind: "backgroundTask" | "delegation";
+    }) => ({
+      threadId: thread.id,
+      sequence: args.sequence,
+      type: args.type,
+      scope: threadScope(),
+      itemId: args.itemId,
+      itemKind: args.itemKind,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        providerThreadId: "provider-plan",
+        item: { type: args.itemKind, id: args.itemId },
+      }),
+    });
+    insertEvents(db, noopNotifier, [
+      itemEvent({
+        sequence: 1,
+        type: "item/started",
+        itemId: "task",
+        itemKind: "backgroundTask",
+      }),
+      itemEvent({
+        sequence: 2,
+        type: "item/started",
+        itemId: "delegation",
+        itemKind: "delegation",
+      }),
+      itemEvent({
+        sequence: 4,
+        type: "item/delegation/completed",
+        itemId: "delegation",
+        itemKind: "delegation",
+      }),
+      itemEvent({
+        sequence: 5,
+        type: "item/backgroundTask/completed",
+        itemId: "task",
+        itemKind: "backgroundTask",
+      }),
+    ]);
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listThreadEventSuffixBackgroundSettlementRows(db, {
+          threadId: thread.id,
+          cutoffSequence: 3,
+          oldMaxSequence: 5,
+        }).map((row) => row.sequence),
+      ).toEqual([4, 5]);
+    });
+
+    const plans = captured.map((query) => queryPlanDetails({ db, ...query }));
+    for (const details of plans) {
+      expectNoThreadOnlyEventSeek(details);
+    }
+    expect(plans).toEqual([
+      expect.stringContaining(
+        "events_background_task_thread_type_item_sequence_idx (thread_id=? AND type=? AND item_id=?",
+      ),
+      expect.stringContaining(
+        "events_delegating_item_lookup_idx (thread_id=? AND item_id=?",
+      ),
+    ]);
 
     db.$client.close();
   });
