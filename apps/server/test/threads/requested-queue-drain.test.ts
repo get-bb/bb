@@ -959,3 +959,56 @@ describe("queue recovery", () => {
     });
   });
 });
+
+describe("a thread-ready wake during a running drain", () => {
+  it("drains a message queued while the previous drain was finishing", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-drain-rerun",
+        status: "idle",
+      });
+      let wokeDuringDrain = false;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: (context) => {
+              const held = context.input.text === "held by the plugin";
+              if (held && !wokeDuringDrain) {
+                wokeDuringDrain = true;
+                seedQueuedMessage(harness.deps, {
+                  threadId: thread.id,
+                  content: textInput("queued during the drain"),
+                });
+                void runQueuedMessageDispatch(harness.deps, {
+                  kind: "thread-ready",
+                  threadId: thread.id,
+                });
+              }
+              return held
+                ? ({ action: "wait", reason: "full" } as const)
+                : ({ action: "proceed" } as const);
+            },
+          },
+        ],
+      });
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("held by the plugin"),
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+
+      expect(wokeDuringDrain).toBe(true);
+      expect(
+        turnRequests(harness, thread.id).map(
+          (event) =>
+            turnRequestEventDataSchema.parse(JSON.parse(event.data)).input,
+        ),
+      ).toContainEqual(textInput("queued during the drain"));
+    });
+  });
+});
