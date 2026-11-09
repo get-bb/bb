@@ -72,6 +72,11 @@ import {
 } from "@/components/ui/sidebar-hover-actions";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron.js";
+import {
+  DescendantActivityBadge,
+  descendantActivityLabel,
+} from "./DescendantActivityBadge.js";
+import { countWorkingDescendants } from "./descendant-activity.js";
 import { useSidebarRename } from "./SidebarInlineRename.js";
 import { SidebarRowControls } from "./SidebarRowControls.js";
 import {
@@ -450,6 +455,8 @@ function ThreadRowComponent({
     hasHiddenChildren && parentOptions
       ? parentOptions.hiddenThreads
       : NO_HIDDEN_THREADS;
+  const descendantThreads = parentOptions?.hiddenThreads ?? NO_HIDDEN_THREADS;
+  const workingDescendantCount = countWorkingDescendants(descendantThreads);
   const hiddenChildrenHaveDraft = useThreadsHaveDraft(hiddenThreads);
   const trailingStatus = experimental_resolveThreadStatus({
     thread,
@@ -772,6 +779,11 @@ function ThreadRowComponent({
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
             )}
           >
+            <DescendantActivityBadge
+              count={workingDescendantCount}
+              label={descendantActivityLabel(workingDescendantCount)}
+              className="mr-1"
+            />
             <span
               className={cn(
                 "relative shrink-0",
