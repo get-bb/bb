@@ -308,7 +308,7 @@ describe("thread notifications action", () => {
         { id: "thr_a" },
         { id: "thr_c" },
         { id: "thr_d", archivedAt: 1 },
-      ])!.run({ value: "input-only", requestRename: () => {} }),
+      ])!.run?.({ value: "input-only", requestRename: () => {} }),
     );
     expect(stored()).toMatchObject({
       thr_a: { own: "input-only" },
@@ -390,7 +390,7 @@ describe("thread notifications action", () => {
       "thr_top",
     ]);
     await waitFor(() => expect(summary()?.selected).toBe("inherit"));
-    await act(() => item()!.run({ value: "muted", requestRename: () => {} }));
+    await act(() => item()!.run?.({ value: "muted", requestRename: () => {} }));
     await waitFor(() => expect(summary()?.selected).toBe("muted"));
     restore({ thr_top: { own: "all", ancestorCap: null } });
     await view.behavior.experimental_invalidateRpc(["thread:thr_top"]);

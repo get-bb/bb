@@ -237,11 +237,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           'Add a button to the header of an open thread: a thread action with placement "header". With this, a plugin can:',
         bullets: [
-          "Show a labelled button after the workspace's Open button, only while it applies to the thread",
-          "Fold into the thread menu on phones and in narrow split panes",
-          "Load data only for the threads whose header is on screen",
+          "Show a button beside bb's Open workspace button, only while it applies to the thread",
+          "Draw it as an icon, a label, or both, with a toned count, short text, or dot",
+          "Open a list of choices, a split button, or your own component in a popover",
+          "Fold into the thread menu on phones and narrow split panes, loading data only for headers on screen",
         ],
-        apiSymbols: ["PluginThreadActionPlacement"],
+        apiSymbols: [
+          "PluginThreadActionPlacement",
+          "PluginThreadActionDisplay",
+          "PluginThreadActionPopoverProps",
+          "ExperimentalBadge",
+        ],
         firstParty: ["Git"],
         experimental: true,
       },

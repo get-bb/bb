@@ -91,9 +91,7 @@ export interface PluginSettingsSectionProps {
  * Internal to bb's bundled connect plugin; not part of the plugin API.
  */
 export type InternalDoNotUseSetupFailureStage =
-  | "sign_in"
-  | "pairing"
-  | "turn_on";
+  "sign_in" | "pairing" | "turn_on";
 
 /**
  * Props passed to an `experimental_appOverlay` component.
@@ -210,10 +208,7 @@ export interface ExperimentalQuestionShortcut {
  * `cancel` presses the form's Cancel button.
  */
 export type ExperimentalQuestionFormAction =
-  | "submit"
-  | "previous"
-  | "next"
-  | "cancel";
+  "submit" | "previous" | "next" | "cancel";
 
 /**
  * The keyboard shortcuts bb binds while a pending interaction is open. The
@@ -1081,8 +1076,7 @@ export interface ExperimentalThreadTabActionContext {
 
 /** Where a plugin tab belongs. Navigation panels are owned by the registering plugin. */
 export type ExperimentalTabContext =
-  | { kind: "thread" }
-  | { kind: "nav-panel"; panelId: string };
+  { kind: "thread" } | { kind: "nav-panel"; panelId: string };
 
 export interface ExperimentalTabReference {
   id: string;
@@ -1621,8 +1615,7 @@ export interface ExperimentalClipboardContent {
  * the page, plus the file name the user sees.
  */
 export type ExperimentalSaveFileRequest =
-  | { fileName: string; url: string }
-  | { fileName: string; blob: Blob };
+  { fileName: string; url: string } | { fileName: string; blob: Blob };
 
 /**
  * How {@link PluginSdkApp.experimental_saveFile} started. `started` means
@@ -2298,18 +2291,42 @@ export interface PluginThreadActionChoice {
 
 /**
  * A choice list instead of a direct action: a submenu in desktop menus, a step
- * with Back in the compact drawer, and a popover from a row's quick-action
- * button. `run` receives the picked choice's `id` as `value`.
+ * with Back in the compact drawer, a popover from a row's quick-action
+ * button, and a dropdown from a `"header"` action's button. `run` receives
+ * the picked choice's `id` as `value`.
  */
 export interface PluginThreadActionChoices {
   /**
-   * Title of the drawer step and the quick-action popover; defaults to the
-   * action's label. Desktop submenus show none: their trigger names them.
+   * Title of the drawer step, the quick-action popover, and the header
+   * dropdown's compact drawer; defaults to the action's label. Desktop
+   * submenus show none: their trigger names them.
    */
   heading?: string;
   /** Footnote below the choices, e.g. why the current value differs from the pick. */
   hint?: string;
   items: readonly PluginThreadActionChoice[];
+  /**
+   * `"header"` actions only: a split button. The button itself calls `run`
+   * with no `value`, and a chevron beside it opens the choices. Without it the
+   * whole button opens the choices. Menus show the choices either way.
+   */
+  split?: boolean;
+}
+
+/**
+ * How a `"header"` action's button shows it. `"label"` (the default) draws
+ * the label. `"icon"` draws only the icon, with the label as its tooltip and
+ * accessible name. `"iconAndLabel"` draws both. Menus always show the icon
+ * and the label.
+ */
+export type PluginThreadActionDisplay = "label" | "icon" | "iconAndLabel";
+
+/** What a thread action's `popover` component receives. */
+export interface PluginThreadActionPopoverProps {
+  /** The thread whose header showed the action. */
+  thread: PluginThreadActionTarget;
+  /** Closes the popover, e.g. after the user picks something in it. */
+  close(): void;
 }
 
 /** What a thread action's `run` receives. */
@@ -2337,11 +2354,30 @@ export interface PluginThreadAction {
   variant?: "default" | "destructive";
   disabled?: boolean;
   choices?: PluginThreadActionChoices;
+  /** How a `"header"` action's button shows it; see {@link PluginThreadActionDisplay}. */
+  display?: PluginThreadActionDisplay;
   /**
-   * Runs when the user activates the action or picks a choice. Errors (sync
-   * or async) are contained and logged; they never break the menu.
+   * A live count, short text, or dot drawn after the label on a `"header"`
+   * button and at the end of a menu row, colored by `tone`. Its `label` joins
+   * the action's tooltip and accessible name.
    */
-  run(input: PluginThreadActionRunInput): void | Promise<void>;
+  badge?: ExperimentalBadge;
+  /**
+   * `"header"` actions only: a component bb shows in a popover anchored to
+   * the button (a drawer at compact width) instead of calling `run`. Define
+   * it once at module level; it renders inside the plugin like a slot
+   * component. Folded into the thread menu, the row opens the same popover.
+   * Menus leave out a `"menu"` action that sets it, and an action that sets
+   * both `popover` and `choices` is dropped.
+   */
+  popover?: ComponentType<PluginThreadActionPopoverProps>;
+  /**
+   * Runs when the user activates the action or picks a choice. Required
+   * unless `popover` is set. While a returned promise is pending a header
+   * button is disabled and its icon shimmers. Errors (sync or async) are
+   * contained and logged; they never break the menu.
+   */
+  run?(input: PluginThreadActionRunInput): void | Promise<void>;
 }
 
 /** What a registration's `useData` receives. */
@@ -2447,15 +2483,17 @@ export interface PluginThreadActionRegistration<Data = undefined> {
  * Where a thread action shows.
  *
  * - `"menu"`: every thread actions menu and the quick-action picker.
- * - `"header"`: only the open thread's header, as an outline button labelled
- *   with the action's `label`, after the workspace's Open button. Several
- *   header actions share one split button, the first as its main action. At
- *   compact width and in narrow split panes the buttons fold into the
- *   header's thread menu as rows at its top, after Open. `group` and `order`
- *   sort header actions among themselves. Header actions never appear in
- *   other menus, selection menus, `experimental_useThreadActions`, or the
- *   quick-action picker, and an action that returns `choices` is left out
- *   of the header.
+ * - `"header"`: only the open thread's header, as an outline button drawn
+ *   as its `display` says, with its `badge`. An action with `choices` opens
+ *   them in a dropdown (or is a split button with `choices.split`), and one
+ *   with `popover` opens that. Plain label buttons (no icon display, badge,
+ *   choices or popover) share one split button, the first as its main
+ *   action. At compact width and in narrow split panes the buttons fold into
+ *   the header's thread menu as rows at its top. `group` and `order` sort
+ *   header actions among themselves; bb's Open workspace button is one, in
+ *   the `"0_workspace"` group. Header actions never appear in other menus,
+ *   selection menus, `experimental_useThreadActions`, or the quick-action
+ *   picker.
  */
 export type PluginThreadActionPlacement = "menu" | "header";
 
@@ -2862,10 +2900,7 @@ export interface ExperimentalComposerSearchQuery<Trigger extends string> {
 
 /** How a suggested thread relates to the thread being composed in. */
 export type ExperimentalComposerThreadRelation =
-  | "parent"
-  | "child"
-  | "same-parent"
-  | "same-environment";
+  "parent" | "child" | "same-parent" | "same-environment";
 
 type MentionTargetOf<Kind extends ExperimentalComposerMentionTarget["kind"]> =
   Extract<ExperimentalComposerMentionTarget, { kind: Kind }>;
@@ -3340,12 +3375,7 @@ export type ExperimentalComposerMenuEntryProps =
 export interface ExperimentalVoiceInputButtonProps extends ComponentPropsWithRef<"button"> {
   warning: string | null;
   variant?:
-    | "default"
-    | "destructive"
-    | "outline"
-    | "secondary"
-    | "ghost"
-    | "link";
+    "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
   size?: "default" | "sm" | "lg" | "icon";
   "data-promptbox-expanded-only"?: string;
   "data-promptbox-submit-action"?: string;
@@ -3693,10 +3723,7 @@ export interface PluginTimelineRowPresentation {
 }
 
 export type PluginTimelineRowStatus =
-  | "pending"
-  | "completed"
-  | "error"
-  | "interrupted";
+  "pending" | "completed" | "error" | "interrupted";
 
 /** The projected row a `experimental_timelineRenderer` component receives. */
 export interface PluginTimelineRendererRow {
@@ -3787,8 +3814,7 @@ export interface PluginEnvironmentProviderInputsProps {
 }
 
 export type PluginEnvironmentProviderInputsChange =
-  | { status: "ready"; value: JsonValue }
-  | { status: "blocked"; reason: string };
+  { status: "ready"; value: JsonValue } | { status: "blocked"; reason: string };
 
 /**
  * Supply the control for one of this plugin's environment providers that
@@ -3819,8 +3845,7 @@ export interface PluginMachineProviderInputsProps {
 }
 
 export type PluginMachineProviderInputsChange =
-  | { status: "ready"; value: JsonValue }
-  | { status: "blocked"; reason: string };
+  { status: "ready"; value: JsonValue } | { status: "blocked"; reason: string };
 
 /**
  * Supply the inputs control for one machine provider registered server-side
@@ -4193,9 +4218,7 @@ export interface PluginSettingsState {
 
 /** State of the app's shared realtime connection to the bb server. */
 export type PluginRealtimeConnectionState =
-  | "connecting"
-  | "connected"
-  | "reconnecting";
+  "connecting" | "connected" | "reconnecting";
 
 /** Where `useComposer()` writes. */
 export type PluginComposerScope =
@@ -4403,9 +4426,7 @@ export type ComposerMention = {
  * of the calling plugin's own mentions (`{ provider, id, label }`, no `kind`).
  */
 export type ComposerInsertPart =
-  | string
-  | ComposerMention
-  | PluginComposerMention;
+  string | ComposerMention | PluginComposerMention;
 
 /** What an @-mention pill points at: a {@link ComposerMention} without its place in the text. */
 export type ExperimentalComposerMentionTarget = ComposerMention extends infer M
@@ -5374,7 +5395,9 @@ export interface BbNavigate {
    */
   openUrl(url: string): boolean;
   /** Open a live file in this surface's shared BB preview panel. */
-  experimental_openFilePreview(options: ExperimentalFilePreviewOptions): boolean;
+  experimental_openFilePreview(
+    options: ExperimentalFilePreviewOptions,
+  ): boolean;
   /** Open a live file in this client's preferred external file target. */
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,

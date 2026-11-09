@@ -378,6 +378,51 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     });
   }
 
+  it("leaves out menu actions with a popover and draws a row's badge", async () => {
+    function Card() {
+      return <p>Card</p>;
+    }
+    renderSurface(
+      surface,
+      { thread: baseThread },
+      {
+        threadActions: [
+          {
+            ...pluginGroupAction,
+            id: "with-popover",
+            item: () => ({
+              label: "Spend card",
+              icon: "Flame",
+              popover: Card,
+            }),
+          },
+          {
+            ...pluginGroupAction,
+            id: "with-badge",
+            item: () => ({
+              label: "Review",
+              icon: "Eye",
+              badge: { count: 2, tone: "critical", label: "2 blockers" },
+              run: vi.fn(),
+            }),
+          },
+        ],
+      },
+    );
+    await surface.open();
+    const rows = await menuRows();
+
+    expect(rows).not.toContain("Spend card");
+    const review = screen.getByRole("menuitem", {
+      name: /^Review, 2 blockers/,
+    });
+    expect(
+      review
+        .querySelector("[data-thread-action-badge]")
+        ?.getAttribute("data-thread-action-badge-tone"),
+    ).toBe("critical");
+  });
+
   it.each([
     {
       state: "a top-level thread",
@@ -1364,9 +1409,13 @@ describe("header thread actions", () => {
     );
   }
 
-  it("evaluates only header registrations and leaves out ones with choices", async () => {
+  it("evaluates header registrations with choices and drops malformed ones", async () => {
     const [surface] = SURFACES;
     if (surface === undefined) throw new Error("no surface");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Card() {
+      return null;
+    }
     renderSurface(
       { ...surface, render: () => <HeaderLabels /> },
       { thread: baseThread },
@@ -1382,14 +1431,40 @@ describe("header thread actions", () => {
               run: vi.fn(),
             }),
           },
+          {
+            ...headerAction,
+            id: "both",
+            item: () => ({
+              label: "Popover and choices",
+              icon: "GitBranch",
+              popover: Card,
+              choices: { items: [{ id: "main", label: "main" }] },
+            }),
+          },
+          {
+            ...headerAction,
+            id: "bad-badge",
+            item: () => ({
+              label: "Bad badge",
+              icon: "GitBranch",
+              badge: { count: 0, label: "none" },
+              run: vi.fn(),
+            }),
+          },
+          {
+            ...headerAction,
+            id: "no-run",
+            item: () => ({ label: "No run", icon: "GitBranch" }),
+          },
         ],
       },
     );
     await waitFor(() =>
       expect(
         screen.getAllByRole("listitem").map((item) => item.textContent),
-      ).toEqual(["Commit"]),
+      ).toEqual(["Commit", "Pick branch"]),
     );
+    expect(errors).toHaveBeenCalledTimes(3);
   });
 });
 

@@ -3286,7 +3286,7 @@ Docs: `frontend-registration.md`, `frontend-pull-requests.md`.
 4. **Shape.** `useData` mirrors `experimental_threadAction`'s, but receives
    threads rather than ids. Decide whether the two should match.
 
-## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `PluginThreadActionRegistration.placement` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `PluginThreadActionRegistration.placement` / `PluginThreadAction.display` / `PluginThreadAction.badge` / `PluginThreadAction.popover` / `PluginThreadActionChoices.split` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, title, icon, group, order?, placement?, useData?, item }`.
 `useData` runs once per registration for the whole app and receives
@@ -3302,13 +3302,31 @@ throws when a menu `trigger` drops its props and ref.
 `placement` is `"menu"` (the default) or `"header"`. A header action is
 left out of every menu, selection menu, `experimental_useThreadActions`, and
 the quick-action picker. `ThreadDetailHeader` evaluates header actions through
-`useThreadHeaderActionEntries` and draws them after the workspace's Open
-button: one as an outline button, several as a split button. At compact width
-and in split panes narrower than 560 px they become rows at the top of the
-header's thread menu, after Open. An action that returns `choices` is left out
-of the header. A header registration's `useData` receives only the threads
-whose header is on screen, so per-thread reads scale with open panes, not
-sidebar rows. The Git plugin's Commit is the only header action.
+`useThreadHeaderActionEntries` and draws them with `ThreadHeaderActions`
+(`apps/app/src/views/thread-detail/ThreadHeaderActions.tsx`). `display` picks
+the button's content: `"label"` (the default), `"icon"` (icon only, label as
+tooltip and accessible name), or `"iconAndLabel"`. `badge` is the nav panel
+`ExperimentalBadge` (count, short text or dot, with a `neutral`, `warning` or
+`critical` tone and a required `label`), validated with the same schema
+(`apps/app/src/lib/experimental-badge.ts`); its label joins the button's
+accessible name and tooltip, and menu rows draw it too. `choices` open in a
+dropdown from the button; with `choices.split` the button calls `run` with no
+`value` and a chevron opens the choices. `popover` is a component bb renders
+in a popover from the button (the shared responsive drawer at compact width)
+with `{ thread, close }`, mounted in a `PluginSlotMount` like a slot so it gets
+the plugin's context and crash isolation. While a `run` promise is pending the
+button is disabled and its icon shimmers. Plain label actions (no icon display,
+badge, choices or popover) still share one split button; every other header
+action is its own control. At compact width and in split panes narrower than
+560 px every header action becomes a row at the top of the header's thread
+menu, where choices are a submenu or drawer step and a popover row opens the
+popover from the menu's trigger. `run` is optional when `popover` is set; an
+action with both `popover` and `choices`, an invalid `badge`, or neither
+`popover` nor `run` is dropped with a logged error. Menus leave out `"menu"`
+actions that set `popover`. A header registration's `useData` receives only
+the threads whose header is on screen, so per-thread reads scale with open
+panes, not sidebar rows. Header actions are bb's Open workspace (core, below)
+and the Git plugin's Commit.
 
 `experimental_bulkItem` is an optional pure function of
 `{ threads, data, sdk, navigate }` (two or more selected threads in list
@@ -3324,7 +3342,14 @@ takes `threadBulkActions` for the entries it lists.
 
 **Core callers.** bb's own actions are `CORE_THREAD_ACTIONS`
 (`apps/app/src/lib/thread-actions/core-thread-actions.ts`), registered under
-the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
+the reserved `bb--core` owner. Open workspace is one of them
+(`workspace-open-thread-action.tsx`): a `"header"` action with
+`display: "icon"`, the preferred app's icon, and split `choices` listing every
+app, replacing the old `ThreadWorkspaceOpenButton` and its separate folded
+rows. `ThreadDetailView` publishes each open thread's workspace path, targets
+and open functions to the action's store, and the target icons register in the
+shared icon registry's core layer (`setCoreIcons`) so choice rows resolve them
+by name. The header menu (`ThreadDetailView` →
 `ThreadDetailHeader`), `RootComposeMobileRecents`, and
 `PaneThreadActionCommandHandler` read the same registry, and the thread list's
 row menus and quick actions use the SDK exports. The contract table in
@@ -3361,11 +3386,21 @@ Docs: `frontend-registration.md`.
 4. **Inline items.** `inline` exists for surface-specific entries that are not
    about a thread. Confirm it should stay a component prop rather than a
    registration.
-5. **Header placement.** Header buttons honor `label` and `disabled` only;
-   `detail`, `variant`, and `choices` show nowhere on the button. Decide
-   whether header actions need choices (a split-button menu) or an icon-only
-   form before more plugins add one, and how many fit before the row needs
-   its own overflow.
+5. **Header placement.** Confirm `display`, `badge`, header `choices`
+   (`split`) and `popover` cover the plugins still on the retired
+   `experimental_threadHeaderAction` slot: icon buttons (agent-graph,
+   git-history, thread-namer), toned status chips with counts (taskboard,
+   linear, advisor, auto-compact), pickers (bots-sidebar) and popovers (the
+   t3sidebar and bb-sidebar children lists, burn). Not covered: a plugin's
+   own glyph per thread beyond registered icon names (avatars, colored
+   discs), a progress bar, moving a control out of the header (burn), and
+   slot mounts used only as per-thread lifecycle hooks (genui, whiteboard,
+   kitchen-sink, taskboard's auto-open). Decide whether `badge` should also
+   tone the whole button, whether `popover` needs a size hint, whether
+   header pending state should show for label-only buttons, and how many
+   standalone controls fit before the row needs its own overflow. `popover`
+   and `badge` have no first-party caller yet; Open workspace uses
+   `display` and split `choices`.
 6. **Bulk shape.** Decide whether `experimental_bulkItem` should
    stay a second function or `item` should take a target that is one thread
    or several, whether selection menus need a dropdown or compact-drawer
@@ -4411,8 +4446,10 @@ legacy slot alias (`legacySlotAliases` in
 typed by the internal `LegacyThreadHeaderActionRegistration`), so existing
 plugins, including ones that check `typeof app.slots.experimental_threadHeaderAction === "function"`
 first, still register, and `PluginThreadHeaderActions` still renders them in
-the header row before the workspace button, once per pane with
-`{ threadId, projectId, isCompactViewport }`, as before. `bb-plugin-build`
+the header row before the header thread actions, once per pane with
+`{ threadId, projectId, isCompactViewport }`, as before. Header thread actions
+now draw icons (`display`), toned counts or text (`badge`), choice pickers
+and popovers, so most of these plugins can move without losing their look. `bb-plugin-build`
 warns on any `.experimental_threadHeaderAction` reference with the
 replacement call: `bb plugin build` and `bb plugin dev` print it, and the
 server writes it to the plugin's log when it builds the plugin. Callers are

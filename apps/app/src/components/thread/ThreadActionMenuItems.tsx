@@ -29,6 +29,7 @@ import {
   useThreadActionEntries,
   useThreadBulkActionEntries,
 } from "@/lib/thread-actions/thread-action-registry";
+import { ThreadActionBadgeMark } from "./ThreadActionBadge";
 
 export type ThreadActionMenuSurface = "context" | "dropdown";
 
@@ -97,7 +98,7 @@ export function useThreadBulkActionMenuGroups({
   );
 }
 
-function ThreadActionChoiceRows({
+export function ThreadActionChoiceRows({
   entry,
   surface,
 }: {
@@ -128,7 +129,7 @@ function ThreadActionChoiceRows({
   ));
 }
 
-function ThreadActionChoicesHint({
+export function ThreadActionChoicesHint({
   entry,
   surface,
 }: {
@@ -147,15 +148,32 @@ function ThreadActionChoicesHint({
   );
 }
 
-function ThreadActionLabel({ action }: { action: PluginBoundThreadAction }) {
-  if (action.detail === undefined) return action.label;
+function ThreadActionRowBadge({ action }: { action: PluginBoundThreadAction }) {
+  if (action.badge === undefined) return null;
   return (
-    <span className="flex min-w-0 flex-1 flex-col">
-      <span className="truncate">{action.label}</span>
-      <span className="truncate text-2xs text-muted-foreground">
-        {action.detail}
+    <>
+      <span className="sr-only">, {action.badge.label}</span>
+      <ThreadActionBadgeMark badge={action.badge} className="ml-auto" />
+    </>
+  );
+}
+
+function ThreadActionLabel({ action }: { action: PluginBoundThreadAction }) {
+  if (action.detail === undefined && action.badge === undefined) {
+    return action.label;
+  }
+  return (
+    <>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate">{action.label}</span>
+        {action.detail === undefined ? null : (
+          <span className="truncate text-2xs text-muted-foreground">
+            {action.detail}
+          </span>
+        )}
       </span>
-    </span>
+      <ThreadActionRowBadge action={action} />
+    </>
   );
 }
 
@@ -165,12 +183,15 @@ function ThreadActionSubmenuLabel({
   action: PluginBoundThreadAction;
 }) {
   return (
-    <span className="min-w-0 flex-1 truncate">
-      {action.label}
-      {action.detail === undefined ? null : (
-        <span className="sr-only">, {action.detail}</span>
-      )}
-    </span>
+    <>
+      <span className="min-w-0 flex-1 truncate">
+        {action.label}
+        {action.detail === undefined ? null : (
+          <span className="sr-only">, {action.detail}</span>
+        )}
+      </span>
+      <ThreadActionRowBadge action={action} />
+    </>
   );
 }
 
