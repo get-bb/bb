@@ -979,9 +979,9 @@ either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
-- `agentCpuPriority` (on for early adopters) keeps bb responsive when agents
-  saturate the CPU. The host daemon starts provider processes and environment
-  setup and teardown scripts at nice 10 (below-normal on Windows), inherited by
+- `agentCpuPriority` keeps bb responsive when agents saturate the CPU. The
+  host daemon starts provider processes and environment setup and teardown
+  scripts at nice 10 (below-normal on Windows), inherited by
   the builds and tests they run; terminals keep normal priority. On macOS the
   launcher also starts the server and daemon with application scheduling
   (`taskpolicy -a`). Turning it on or off takes effect after restarting bb,

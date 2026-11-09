@@ -42,7 +42,7 @@ export const defaultExperiments: Experiments = {
 };
 
 export const earlyAdopterExperiments: Experiments = {
-  agentCpuPriority: true,
+  agentCpuPriority: false,
   compactExpiredCache: true,
   dismissReadNotifications: true,
   narrowPluginCss: true,

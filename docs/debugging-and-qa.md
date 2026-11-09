@@ -263,8 +263,8 @@ inaccessible WAL files report a null size with a sample timestamp. WAL size
 can include space reused by earlier generations; it does not measure uncheckpointed backlog or identify
 checkpoint progress. Resource sampling is also disabled with the live gate.
 
-The `agentCpuPriority` experiment (Settings → Experiments, on for early
-adopters) keeps bb responsive when agents saturate the CPU:
+The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
+when agents saturate the CPU:
 
 - While it is on, the host daemon sets nice 10 (the below-normal priority
   class on Windows) on provider processes and environment lifecycle scripts as
