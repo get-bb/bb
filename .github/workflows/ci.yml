@@ -88,7 +88,7 @@ jobs:
           PROFILE_LONG_FIRST: ${{ matrix.count == 2 && 'true' || 'false' }}
           BASE_SHA: ''
         run: |
-          for trial in 1 2; do
+          for trial in 1; do
             echo "TRIAL $trial"
             time node scripts/check-plugin-forks.mjs --shard=${{ matrix.shard }}/${{ matrix.count }} --concurrency=${{ matrix.concurrency }}
           done
