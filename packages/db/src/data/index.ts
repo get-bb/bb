@@ -18,6 +18,17 @@ export {
   getThreadConversationOutlineRecord,
   upsertThreadConversationOutlineRecord,
 } from "./thread-conversation-outlines.js";
+export {
+  listCompletedRootTurns,
+  listEventTurnRefsBetween,
+  listThreadTurnSummaryRecords,
+  markThreadTurnSummariesValidated,
+  upsertThreadTurnSummaryRecords,
+} from "./thread-turn-summaries.js";
+export type {
+  CompletedRootTurn,
+  EventTurnRef,
+} from "./thread-turn-summaries.js";
 
 export {
   createThreadSection,
@@ -381,6 +392,7 @@ export {
   scopedItemRefKey,
   listStoredTimelineWindowEventRows,
   listStoredTimelineTurnEventRows,
+  listStoredTimelineSummarizedTurnRows,
   listStoredTimelineThreadWindowEventRows,
   listTimelineRootWindowTurnIds,
   listStoredDelegatingItemRowsByItemIds,
@@ -437,6 +449,7 @@ export type {
   StoredEventRowMetadata,
   StoredThreadEventDataRow,
   TimelineWindowHint,
+  TimelineSummarizedTurnRead,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,
 } from "./events.js";

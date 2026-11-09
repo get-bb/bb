@@ -12,6 +12,7 @@ import {
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRowsByParentToolCallIds,
   listAppendedEventRows,
+  listStoredTimelineSummarizedTurnRows,
   listStoredTimelineTurnEventRows,
   listStoredTimelineWindowEventRows,
   listStoredTurnRejectedRowsByClientRequestIds,
@@ -29,6 +30,7 @@ import { measuredTimelineRowJsonBytes } from "./timeline-content-pagination.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 import type { DecodedTimelineRows } from "./timeline-selection-decode.js";
 import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
+import type { StoredTurnSummary } from "./timeline-turn-summaries.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
@@ -41,6 +43,9 @@ export interface TimelineEventRowSelection {
   paginationPage: ThreadTimelinePageRequest;
   rows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
+  spanTurnIds: ReadonlySet<string>;
+  turnSummaries: ReadonlyMap<string, StoredTurnSummary>;
+  wholeTurnIds: ReadonlySet<string>;
 }
 
 export interface StandardTimelineEventRowSelection {
@@ -63,6 +68,7 @@ export interface LatestTimelineSelectionMemoArgs {
   maxSeq: number;
   page: ThreadTimelinePageRequest;
   threadId: string;
+  turnSummaryKey: string | null;
 }
 
 export interface TimelineSelectionRowSource {
@@ -81,6 +87,9 @@ export interface TimelineSelectionRowSource {
   listRootWindowTurnIds(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
   ): string[];
+  listSummarizedTurnRows(
+    args: Parameters<typeof listStoredTimelineSummarizedTurnRows>[1],
+  ): StoredEventRow[];
   listThreadWindowRows(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
   ): StoredEventRow[];
@@ -98,6 +107,7 @@ export interface LatestTimelineSelectionLookup {
   generation: number;
   selection: TimelineEventRowSelection | null;
   trimSource: TimelineSelectionRowSource | null;
+  wholeTurnIds: ReadonlySet<string>;
 }
 
 interface KeptPageableRows {
@@ -123,6 +133,7 @@ interface TimelineSelectionMemoEntry {
   maxSeq: number;
   selection: TimelineEventRowSelection;
   threadId: string;
+  turnSummaryKey: string | null;
 }
 
 interface TimelineSelectionMemo {
@@ -338,7 +349,11 @@ function selectionMemoFamilyKey(args: LatestTimelineSelectionMemoArgs): string {
 }
 
 function selectionMemoKey(args: LatestTimelineSelectionMemoArgs): string {
-  return JSON.stringify([selectionMemoFamilyKey(args), args.page.segmentLimit]);
+  return JSON.stringify([
+    selectionMemoFamilyKey(args),
+    args.page.segmentLimit,
+    args.turnSummaryKey,
+  ]);
 }
 
 function findCurrentSibling(
@@ -356,6 +371,9 @@ function findCurrentSibling(
       entry.maxSeq === args.maxSeq &&
       entry.generation === lookup.generation &&
       entry.dataVersion === lookup.dataVersion &&
+      (entry.turnSummaryKey === args.turnSummaryKey ||
+        (args.turnSummaryKey === null &&
+          entry.selection.turnSummaries.size === 0)) &&
       matches(entry)
     ) {
       return entry;
@@ -378,6 +396,7 @@ function adoptSiblingSelection(
   };
   storeMemoEntry(memo, selectionMemoKey(args), {
     ...sibling,
+    turnSummaryKey: args.turnSummaryKey,
     active: args.active,
     budgetFloorSequence: budgetFloor.sequence,
     hints,
@@ -746,7 +765,7 @@ function listAppendableRows(
   db: DbConnection,
   args: LatestTimelineSelectionMemoArgs,
   entry: TimelineSelectionMemoEntry,
-): AppendedSelectionRows | null {
+): AppendedSelectionRows | { promotedTurnIds: Set<string> } | null {
   if (
     args.maxSeq < entry.maxSeq ||
     args.maxSeq - entry.maxSeq > TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS ||
@@ -761,12 +780,27 @@ function listAppendableRows(
     threadId: args.threadId,
     throughSequence: args.maxSeq,
   });
-  if (
-    appendedRows.length > TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS ||
-    appendedRows.some(changesSelection)
-  ) {
+  if (appendedRows.length > TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS) {
     return null;
   }
+  const summaryTurnByItemId = new Map(
+    [...entry.selection.turnSummaries].flatMap(([turnId, summary]) =>
+      summary.dependentItemIds.map((itemId) => [itemId, turnId] as const),
+    ),
+  );
+  const promotedTurnIds = new Set(
+    appendedRows.flatMap((row) =>
+      [
+        row.turnId !== null && entry.selection.turnSummaries.has(row.turnId)
+          ? row.turnId
+          : undefined,
+        summaryTurnByItemId.get(row.itemId ?? ""),
+        summaryTurnByItemId.get(row.parentToolCallId ?? ""),
+      ].filter((turnId) => turnId !== undefined),
+    ),
+  );
+  if (promotedTurnIds.size > 0) return { promotedTurnIds };
+  if (appendedRows.some(changesSelection)) return null;
   const scope: SelectionExtensionScope = {
     args,
     db,
@@ -888,6 +922,9 @@ function createTrimmedSelectionRowSource(
       }
       return [...turnIds];
     },
+    listSummarizedTurnRows() {
+      return trimFallback("summarized-turn");
+    },
     listThreadWindowRows(query) {
       const sequenceStart = expectLatestBounds(query);
       return rows.filter(
@@ -934,6 +971,7 @@ export function lookupLatestTimelineSelection(
     generation,
     selection: null,
     trimSource: null,
+    wholeTurnIds: new Set(),
   };
   const memo = selectionMemos.get(db);
   if (memo === undefined) return miss;
@@ -957,6 +995,9 @@ export function lookupLatestTimelineSelection(
   const appended = listAppendableRows(db, args, entry);
   if (appended === null) {
     return miss;
+  }
+  if ("promotedTurnIds" in appended) {
+    return { ...miss, wholeTurnIds: appended.promotedTurnIds };
   }
   const budgetFloor: TimelineBudgetFloor = {
     sequence:
@@ -1037,6 +1078,7 @@ export function lookupLatestTimelineSelection(
         ).orderingBoundarySequence
       : entry.selection.orderingBoundarySequence,
     ownedSequenceEnd: args.maxSeq + 1,
+    wholeTurnIds: appended.extension.appendableTurnIds,
     paginationPage: args.page,
     rows:
       appended.rows.length === 0
@@ -1153,5 +1195,6 @@ export function rememberLatestTimelineSelection(
     maxSeq: args.maxSeq,
     selection: result.selection,
     threadId: args.threadId,
+    turnSummaryKey: args.turnSummaryKey,
   });
 }

@@ -67,7 +67,6 @@ import {
   environments,
   events,
   promptHistoryEntries,
-  threadConversationOutlines,
   threadDynamicContextFileStates,
   threadSearchSegments,
   threads,
@@ -83,6 +82,7 @@ import {
   getDatabaseDataVersion,
   getThreadEventRewriteGeneration,
 } from "./event-rewrite-generation.js";
+import { deleteStoredThreadTimelineProjections } from "./thread-turn-summaries.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
   upsertThreadSearchSegments,
@@ -356,9 +356,7 @@ export function deleteThreadEventSuffixInTransaction(
     )
     .run();
   if (result.changes > 0) {
-    db.delete(threadConversationOutlines)
-      .where(eq(threadConversationOutlines.threadId, args.threadId))
-      .run();
+    deleteStoredThreadTimelineProjections(db, args.threadId);
     bumpThreadEventRewriteGeneration(args.threadId);
     rewindResolvedItemPruning(db, {
       threadId: args.threadId,
@@ -580,6 +578,7 @@ export function insertEvents(
           insertedInputIndexes.push(index);
           const highWaterMark = highWaterMarks[input.threadId];
           if (highWaterMark !== undefined && input.sequence <= highWaterMark) {
+            deleteStoredThreadTimelineProjections(tx, input.threadId);
             bumpThreadEventRewriteGeneration(input.threadId);
             rewindResolvedItemPruning(tx, {
               threadId: input.threadId,
@@ -3250,15 +3249,9 @@ const conversationOutlineItemKinds = [
   "agentMessage",
   "plan",
 ] satisfies ThreadEventItemType[];
-const conversationOutlineStructuralItemKinds = [
-  "backgroundTask",
-  "toolCall",
-] satisfies ThreadEventItemType[];
 const conversationOutlineStructuralLifecycleTypes = [
   "item/started",
   "item/completed",
-  "item/backgroundTask/progress",
-  "item/backgroundTask/completed",
 ] satisfies ThreadEventType[];
 
 function storedConversationOutlineLifecycleWhere(
@@ -3292,32 +3285,21 @@ function storedConversationOutlineStructuralWhere(
     eq(events.threadId, threadId),
     gte(events.sequence, sequenceStart),
     inArray(events.type, conversationOutlineStructuralLifecycleTypes),
-    inArray(events.itemKind, conversationOutlineStructuralItemKinds),
+    eq(events.itemKind, "toolCall"),
   )!;
 }
 
 function storedConversationOutlineStructuralEventRowFields() {
   return {
     ...storedEventRowFields,
-    data: sql<string>`CASE ${events.itemKind}
-      WHEN 'toolCall' THEN json_remove(
-        ${events.data},
-        '$.item.arguments',
-        '$.item.result',
-        '$.item.error',
-        '$.item.durationMs',
-        '$.item.truncation'
-      )
-      WHEN 'backgroundTask' THEN json_remove(
-        ${events.data},
-        '$.item.workflow',
-        '$.item.usage',
-        '$.item.summary',
-        '$.item.error',
-        '$.item.outputFile'
-      )
-      ELSE ${events.data}
-    END`,
+    data: sql<string>`json_remove(
+      ${events.data},
+      '$.item.arguments',
+      '$.item.result',
+      '$.item.error',
+      '$.item.durationMs',
+      '$.item.truncation'
+    )`,
   };
 }
 
@@ -3518,7 +3500,6 @@ function selectStoredConversationOutlineEventRows(
               AND earlier_structural_start.sequence < ${events.sequence}
           )`,
         ),
-        isNotSupersededBackgroundTaskProgress,
       ),
     );
 
@@ -4031,6 +4012,115 @@ export function listStoredTimelineTurnEventRows(
           inArray(events.turnId, [...turnIds]),
         ),
       ),
+  );
+}
+
+const TIMELINE_TURN_SUMMARY_CONTEXT_EVENT_TYPES = [
+  "turn/started",
+  "turn/input/accepted",
+  "turn/completed",
+  "thread/compacted",
+  "system/error",
+  "provider/error",
+  "provider/warning",
+  "provider/modelFallback",
+  "provider/unhandled",
+] as const satisfies readonly ThreadEventType[];
+const TIMELINE_TURN_SUMMARY_RANGES_PER_QUERY = 200;
+
+export interface TimelineSummarizedTurnRead {
+  itemIds: readonly string[];
+  ranges: readonly { end: number; start: number }[];
+  turnId: string;
+}
+
+export function listStoredTimelineSummarizedTurnRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs & {
+    turns: readonly TimelineSummarizedTurnRead[];
+  },
+): StoredEventRow[] {
+  const fields = storedEventRowAliasedSqlFields(args.maxInlineOutputChars);
+  const turnIndex = sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`;
+  const rowsById = new Map<string, StoredEventRow>();
+  const keep = (rows: readonly StoredEventRow[]) => {
+    for (const row of rows) rowsById.set(row.id, row);
+  };
+  keep(
+    allStoredEventRowsInVariableBatches(
+      db,
+      args.turns.map((turn) => turn.turnId),
+      (turnIds) =>
+        db
+          .select(fields)
+          .from(turnIndex)
+          .where(
+            and(
+              ...storedTimelineWindowConditions(args),
+              inArray(events.turnId, [...turnIds]),
+              inArray(events.type, [
+                ...TIMELINE_TURN_SUMMARY_CONTEXT_EVENT_TYPES,
+              ]),
+            ),
+          ),
+    ),
+  );
+  for (const { ranges, turnId } of args.turns) {
+    for (
+      let offset = 0;
+      offset < ranges.length;
+      offset += TIMELINE_TURN_SUMMARY_RANGES_PER_QUERY
+    ) {
+      keep(
+        allStoredEventRowsUnmapped(
+          db,
+          db
+            .select(fields)
+            .from(turnIndex)
+            .where(
+              and(
+                ...storedTimelineWindowConditions(args),
+                eq(events.turnId, turnId),
+                or(
+                  ...ranges
+                    .slice(
+                      offset,
+                      offset + TIMELINE_TURN_SUMMARY_RANGES_PER_QUERY,
+                    )
+                    .map(({ end, start }) =>
+                      and(
+                        gte(events.sequence, start),
+                        lte(events.sequence, end),
+                      ),
+                    ),
+                ),
+              ),
+            ),
+        ),
+      );
+    }
+  }
+  keep(
+    allStoredEventRowsInVariableBatches(
+      db,
+      args.turns.flatMap((turn) => turn.itemIds),
+      (itemIds) =>
+        db
+          .select(fields)
+          .from(
+            sql`${events} INDEXED BY events_item_lifecycle_thread_item_sequence_idx`,
+          )
+          .where(
+            and(
+              ...storedTimelineWindowConditions(args),
+              sql`${events.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
+              inArray(events.itemId, [...itemIds]),
+            ),
+          ),
+    ),
+  );
+  return [...rowsById.values()].sort(
+    (left, right) => left.sequence - right.sequence,
   );
 }
 

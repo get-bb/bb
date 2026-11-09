@@ -19,6 +19,7 @@ interface ConversationOutlineProjection {
 }
 
 export interface ConversationOutlineSelection {
+  complete: boolean;
   events: ThreadEventWithMeta[];
   project: () => ConversationOutlineProjection["items"];
 }
@@ -76,13 +77,6 @@ function parentItemId(event: ThreadEventWithMeta["event"]): string | null {
   return "parentToolCallId" in event ? (event.parentToolCallId ?? null) : null;
 }
 
-function backgroundItemId(event: ThreadEventWithMeta["event"]): string | null {
-  return "item" in event &&
-    (event.item.type === "backgroundTask" || event.item.type === "delegation")
-    ? event.item.id
-    : null;
-}
-
 function isThreadError(event: ThreadEventWithMeta["event"]): boolean {
   return (
     event.scope.kind === "thread" &&
@@ -104,7 +98,7 @@ function canReuse(
       return false;
     if (
       "item" in event &&
-      (event.item.type === "toolCall" || backgroundItemId(event) !== null) &&
+      event.item.type === "toolCall" &&
       checkpoint.parentItemIds.has(event.item.id)
     )
       return false;
@@ -176,10 +170,7 @@ function nextCheckpoint(
     if (event.scope.kind === "turn") turnIds.add(event.scope.turnId);
     const parentId = parentItemId(event);
     if (parentId !== null) parentItemIds.add(parentId);
-    if (
-      "item" in event &&
-      (event.item.type === "toolCall" || backgroundItemId(event) !== null)
-    )
+    if ("item" in event && event.item.type === "toolCall")
       parentItemIds.add(event.item.id);
     const requestId = referencedRequestId(event);
     if (requestId !== null) requestIds.add(requestId);
@@ -237,7 +228,7 @@ export function projectConversationOutlineIncrementally(args: {
     precedingAgentMessageDeltaCount: number,
     projectionState: ConversationOutlineProjectionState,
   ) => ConversationOutlineSelection;
-}): ThreadConversationOutlineItem[] {
+}): { complete: boolean; items: ThreadConversationOutlineItem[] } {
   let cache = caches.get(args.db);
   if (cache === undefined) {
     cache = { entries: new Map(), chars: 0 };
@@ -315,7 +306,7 @@ export function projectConversationOutlineIncrementally(args: {
     checkpoint,
     args.orderingBoundarySequence,
   );
-  if (next.sequenceStart > args.historySequenceStart) {
+  if (selection.complete && next.sequenceStart > args.historySequenceStart) {
     const chars =
       next === entry?.checkpoint
         ? entry.chars
@@ -345,5 +336,5 @@ export function projectConversationOutlineIncrementally(args: {
     cache.chars -= cache.entries.get(oldest)!.chars;
     cache.entries.delete(oldest);
   }
-  return items;
+  return { complete: selection.complete, items };
 }

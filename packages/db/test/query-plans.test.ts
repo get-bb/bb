@@ -1304,9 +1304,6 @@ describe("slow query index plans", () => {
       0,
       "item/started",
       "item/completed",
-      "item/backgroundTask/progress",
-      "item/backgroundTask/completed",
-      "backgroundTask",
       "toolCall",
       "item/started",
     ]);
@@ -1323,9 +1320,6 @@ describe("slow query index plans", () => {
     ).toHaveLength(2);
     expect(details).toMatch(
       /USING INDEX events_item_lifecycle_thread_item_sequence_idx/u,
-    );
-    expect(details).toMatch(
-      /USING COVERING INDEX events_background_task_thread_type_item_sequence_idx/u,
     );
     expect(details).not.toMatch(/SCAN events/u);
 

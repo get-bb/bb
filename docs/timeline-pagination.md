@@ -300,18 +300,69 @@ exactly as a first read does, and keeps that projection for the next read. A
 history rewrite, a compaction or a write from another connection drops the
 kept selection and projection. Dropping either only costs a fresh read.
 
+## Collapsed turn summaries
+
+Under the collapse display, every finished root turn is read through a stored
+summary (`thread_turn_summaries`, one row per turn): its "Worked for" rows with
+their counts, status and times, the external user boundaries that order rows
+after it, and the id and source range of each message it shows ungrouped. Those
+are the messages that stay visible: an agent message followed by another agent
+message, user messages, approvals and questions, and the final answer with
+anything after it. A page that touches the turn reads the turn's lifecycle,
+accepted-input, compaction, provider and error rows, the events of the messages
+it shows, its background tasks, delegations and still-open tool calls, and
+nested turns of its delegations, then takes the summary rows from the record.
+
+A page that has no summary for a finished turn reads that turn whole, including
+a turn the window only partly covers, and stores the summary from its own
+projection, so each turn is projected once. For a partly covered turn it also
+reads the thread-scoped approval, permission and question lifecycle rows inside
+the turn's span, which the summary needs. New turns get their summary when they
+finish (see below); older turns get theirs on the first page read that reaches
+them. Nothing fills summaries in the background.
+
+The conversation outline builds missing summaries for at most 2,000 sequences
+of turns per load and does not cache an outline that still has turns without
+one; those turns keep the outline's earlier rule, described under
+[Conversation outline caching](#conversation-outline-caching).
+
+Each summary records the thread sequence it was last validated through. A read
+checks only the events appended since then: a summary is stale when one of them
+belongs to the turn, or names one of its background tasks, delegations or open
+tool calls as its item or parent. Validated summaries are kept in memory per
+database connection (64 threads, 16 million characters). A summary is also
+stale when the context-clear boundary or diagnostic-events setting it was built
+under changed. Suffix rewrites and inserts below the thread's high-water mark
+delete the thread's summaries and stored outline in the same transaction, so a
+restart cannot serve them. Pruning does not touch them: it only removes rows the
+timeline never displays.
+
+When a watched turn completes, the selection kept for pushes already holds the
+whole turn. If it also holds every thread event in the turn's span, the push
+stores the summary from the projection it already made instead of reading the
+turn again. When an event arrives for a summarized turn, the next push selects
+afresh with that turn read whole, so later events for it extend the kept
+selection instead of rebuilding its summary.
+
+The flat display, running turns and `includeNestedRows` reads (whose summary
+rows embed every grouped row) read turns whole. Turn summary details also
+project the whole turn.
+
 ## Conversation outline caching
 
 The conversation outline returns the full list of message previews;
 `role=user` or `role=assistant` returns only that role's items, sharing one
 cache. The app requests user items while the table of contents is visible and
-assistant items only while its Agent messages tab is open. Active
-threads reuse completed outline items from a bounded in-memory cache (16 threads,
-8 million characters) and reproject only the tail; history rewrites, context
-clears, metadata or display changes, and writes from another database connection
-force a rebuild. Background tasks in the kept history do not prevent reuse, but
-a later event for one of them, like a child event of a kept tool call, forces a
-rebuild. Eviction only affects performance.
+assistant items only while its Agent messages tab is open. Under the collapse
+display it reads the same turn summaries as the timeline for finished turns, so
+it lists exactly the messages the collapsed timeline shows without reading the
+steps between them. For a finished turn that has no summary yet, it lists every
+agent message of that turn that is not followed by a tool call, as it did
+before summaries, until the turn is summarized. Active threads reuse completed outline items from a
+bounded in-memory cache (16 threads, 8 million characters) and reproject only
+the tail; history rewrites, context clears, metadata or display changes, and
+writes from another database connection force a rebuild. Eviction only affects
+performance.
 
 ## Catch-up feedback
 

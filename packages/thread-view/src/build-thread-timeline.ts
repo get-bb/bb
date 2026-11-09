@@ -61,7 +61,12 @@ import {
   parseRejectedUsersFromClientRequest,
 } from "./user-message-parsing.js";
 import { getOrderedThreadEvents } from "./group-event-projection-turns.js";
-import { planTimelineRows, type TimelineRowPlan } from "./timeline-row-plan.js";
+import {
+  planTimelineRows,
+  summarizeCompletedTurns,
+  type TimelineRowPlan,
+  type TurnSummary,
+} from "./timeline-row-plan.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
 import {
   extractThreadTimelineActivePromptMode,
@@ -93,6 +98,7 @@ interface ThreadTimelineFromEventsBaseOptions {
 interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
   includeNestedRows: boolean;
   omitSettledDelegationChildRows: boolean;
+  turnSummaries?: ReadonlyMap<string, TurnSummary>;
 }
 
 interface BuildThreadTimelineFromEventsArgs {
@@ -186,6 +192,7 @@ interface BuildTimelineRowsOptions {
   omitSettledDelegationChildRows: boolean;
   rowIdPrefix: string;
   summarizeShellCommands: boolean;
+  turnSummaries?: ReadonlyMap<string, TurnSummary>;
   workspaceRoot: string | null;
 }
 
@@ -1109,10 +1116,15 @@ function isRootOwnedHumanSteerRow(row: TimelineRow): boolean {
 
 function collectExternalUserBoundarySeqs(
   projection: EventProjection,
+  turnSummaries: ReadonlyMap<string, TurnSummary> | undefined,
 ): number[] {
-  const boundarySeqs = new Set<number>();
+  const boundarySeqs = new Set<number>(
+    [...(turnSummaries?.values() ?? [])].flatMap(
+      (summary) => summary.externalUserBoundarySeqs,
+    ),
+  );
   for (const entry of projection.entries) {
-    if (entry.kind !== "turn") {
+    if (entry.kind !== "turn" || turnSummaries?.has(entry.turn.turnId)) {
       continue;
     }
     for (const seq of entry.turn.externalUserBoundarySeqs ?? []) {
@@ -1219,13 +1231,14 @@ function buildTimelineRows(
     projection,
     options.completedTurnDisplay,
     options.rowIdPrefix,
+    options.turnSummaries,
   )) {
     appendRows(rows, materializeTimelinePlan(item, options));
   }
 
   return orderRowsAfterExternalUserBoundary(
     rows,
-    collectExternalUserBoundarySeqs(projection),
+    collectExternalUserBoundarySeqs(projection, options.turnSummaries),
   );
 }
 
@@ -1244,6 +1257,12 @@ export function projectThreadTimelineEvents(
         ),
       )
     : finishEventProjectionFold(args.fold, args.events);
+}
+
+export function summarizeCompletedTimelineTurns(
+  projection: EventProjection,
+): Map<string, Omit<TurnSummary, "startedSequence">> {
+  return summarizeCompletedTurns(projection, ROOT_TIMELINE_ROW_ID_PREFIX);
 }
 
 export function buildThreadTimelineFromEvents(
@@ -1270,6 +1289,7 @@ export function buildThreadTimelineFromProjection(
         args.options.omitSettledDelegationChildRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       summarizeShellCommands: args.options.summarizeShellCommands,
+      turnSummaries: args.options.turnSummaries,
       workspaceRoot: args.options.workspaceRoot,
     }),
     ...buildPendingSteerMessagesFromEvents(
