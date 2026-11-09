@@ -9,7 +9,7 @@ env:
   PNPM_VERSION: "9.15.0"
 jobs:
   plugin-forks:
-    name: Fork profile (${{ matrix.shard }}/${{ matrix.count }}, ${{ matrix.runner }})
+    name: Fork profile (${{ matrix.shard }}/${{ matrix.count }}, concurrency ${{ matrix.concurrency }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
 
@@ -20,8 +20,11 @@ jobs:
           - {shard: 1, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 4}
           - {shard: 2, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 4}
           - {shard: 3, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 4}
-          - {shard: 1, count: 2, runner: blacksmith-8vcpu-ubuntu-2404, concurrency: 8}
-          - {shard: 2, count: 2, runner: blacksmith-8vcpu-ubuntu-2404, concurrency: 8}
+          - {shard: 1, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
+          - {shard: 2, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
+          - {shard: 3, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
+          - {shard: 1, count: 2, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
+          - {shard: 2, count: 2, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
 
     steps:
       - name: Checkout repository
@@ -85,7 +88,7 @@ jobs:
         if: steps.selection.outputs.count != '0'
         env:
           VITEST_MAX_WORKERS: "2"
-          PROFILE_LONG_FIRST: ${{ matrix.count == 2 && 'true' || 'false' }}
+          PROFILE_LONG_FIRST: ${{ matrix.concurrency == 8 && 'true' || 'false' }}
           BASE_SHA: ''
         run: |
           for trial in 1; do
@@ -99,7 +102,7 @@ jobs:
         timeout-minutes: 1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: plugin-fork-evidence-${{ matrix.shard }}-${{ matrix.count }}
+          name: plugin-fork-evidence-${{ matrix.shard }}-${{ matrix.count }}-${{ matrix.concurrency }}
           path: ${{ runner.temp }}/plugin-fork-evidence
           retention-days: 7
           if-no-files-found: ignore
