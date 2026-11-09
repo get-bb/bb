@@ -21,27 +21,31 @@ function acceptedEventsIndex(
 export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
   knownSlow(
     `${EVENTS}#getUnfinishedCommandItemData`,
-    "the NOT EXISTS probe walks every event in the thread per started command; 2.7-5.6 s on real 190-command turns, 2-7 ms when it also matches turn_id",
+    "the NOT EXISTS probe walks every event in the thread per started command; 2.7-5.6 s on real 190-command turns, 2-7 ms when it also matches turn_id (fix in #7289)",
   ),
   knownSlow(
     `${EVENTS}#getLatestStoredThreadEventOfTypes`,
-    "walks the open turn instead of seeking the types; 2.8 ms vs 0.016 ms in a 20k-event turn",
+    "walks the open turn instead of seeking the types; 2.8 ms vs 0.016 ms in a 20k-event turn (fix in #7288)",
   ),
   knownSlow(
     `${EVENTS}#listStoredClientTurnRequestIdsInRange`,
-    "walks the sequence range instead of seeking the type; 0.95 ms vs 0.007 ms in a 20k-event turn",
+    "walks the sequence range instead of seeking the type; 0.95 ms vs 0.007 ms in a 20k-event turn (fix in #7288)",
   ),
   knownSlow(
     `${EVENTS}#findLastCompletedRootStoredTurn`,
-    "walks the thread instead of seeking turn/started; 2.6 ms vs 0.025 ms on a 73k-event thread",
+    "walks the thread instead of seeking turn/started; 2.6 ms vs 0.025 ms on a 73k-event thread (fix in #7288)",
   ),
   knownSlow(
     `${EVENTS}#isStoredTurnContextCompactionOnly`,
-    "reads every item/completed in the thread instead of the turn; 14.7 ms vs 0.9 ms",
+    "reads every item/completed in the thread instead of the turn; 14.7 ms vs 0.9 ms (fix in #7288)",
   ),
   knownSlow(
     "apps/server/src/internal/events.ts#getTurnInterruption",
-    "walks the open turn instead of seeking the type; 2.4 ms vs 0.01 ms in a 20k-event turn",
+    "walks the open turn instead of seeking the type; 2.4 ms vs 0.01 ms in a 20k-event turn (fix in #7288)",
+  ),
+  knownSlow(
+    `${EVENTS}#listThreadEventSuffixBackgroundSettlementRows`,
+    "correlated settlement probes match only thread_id; 0.4-1.4 s per message edit on threads with 130-230 settlements (fix in #7287)",
   ),
   knownSlow(
     `${EVENTS}#listStoredItemLifecycleRowsByItems`,
