@@ -41,6 +41,7 @@ export type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
 };
 export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { projects: ProjectsSdk };
+  server: Pick<BbPluginApi["server"], "loopbackBaseUrl">;
 };
 
 const sdkThreadSchema = z
@@ -261,7 +262,6 @@ interface ScriptRunArgs {
   run: AutomationRunRow;
   execution: Extract<AutomationExecution, { mode: "script" }>;
   onFailure: RunFailureHandler;
-  serverUrl: string;
   resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
   scriptRuns: ScriptRunScope;
 }
@@ -308,7 +308,7 @@ async function runScript(
       interpreter: args.execution.interpreter,
       timeoutMs: args.execution.timeoutMs,
       env: args.execution.env,
-      serverUrl: args.serverUrl,
+      serverUrl: bb.server.loopbackBaseUrl,
       workingDir,
       signal: args.scriptRuns.signal,
     });

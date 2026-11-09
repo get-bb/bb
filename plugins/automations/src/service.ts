@@ -72,6 +72,7 @@ import {
 } from "./working-directory.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  server: Pick<BbPluginApi["server"], "loopbackBaseUrl">;
   sdk: {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
@@ -613,10 +614,9 @@ export function createAutomationService(args: {
   bb: ServiceApi;
   db: Db;
   pluginDataDir: string;
-  serverUrl: string;
   scriptRuns: ScriptRunScope;
 }): AutomationService {
-  const { bb, db, pluginDataDir, serverUrl, scriptRuns } = args;
+  const { bb, db, pluginDataDir, scriptRuns } = args;
 
   return {
     async overview() {
@@ -952,7 +952,6 @@ export function createAutomationService(args: {
                 run,
                 execution,
                 onFailure: closeFailedRun,
-                serverUrl,
                 scriptRuns,
                 resolveWorkingDirectory: createScriptWorkingDirectoryResolver({
                   sdk: bb.sdk,
