@@ -131,6 +131,27 @@ jobs:
           if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
           pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }} -- --silent=false
 
+      - name: Compare lifecycle baseline and candidate
+        shell: bash
+        run: |
+          cp tests/integration/helpers/builtin-plugin-fixture.ts "$RUNNER_TEMP/candidate-fixture.ts"
+          for variant in baseline candidate candidate baseline; do
+            cp "$RUNNER_TEMP/candidate-fixture.ts" tests/integration/helpers/builtin-plugin-fixture.ts
+            if [ "$variant" = baseline ]; then
+              node --input-type=module - <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const p = 'tests/integration/helpers/builtin-plugin-fixture.ts';
+          let s = readFileSync(p, 'utf8');
+          s = s.replace('  PROJECT_CHECKOUT_BUILTIN_PLUGIN,', '  PROJECT_CHECKOUT_BUILTIN_PLUGIN, "git",');
+          s = s.replace('[...INTEGRATION_BUILTIN_PLUGINS, "git"]', 'INTEGRATION_BUILTIN_PLUGINS');
+          writeFileSync(p,s);
+          NODE
+            fi
+            echo "LIFECYCLE_COMPARISON $variant"
+            pnpm --filter @bb/integration-tests exec vitest run --config vitest.config.ts fake/smoke/lifecycle.test.ts --silent=false
+          done
+          cp "$RUNNER_TEMP/candidate-fixture.ts" tests/integration/helpers/builtin-plugin-fixture.ts
+
       - name: Upload test timings
         if: ${{ !cancelled() }}
         continue-on-error: true
