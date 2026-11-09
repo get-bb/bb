@@ -403,6 +403,8 @@ interface ClaudeThreadDialectState {
   heldSkillOpen: HeldSkillOpen | undefined;
   tasksById: ClaudeTaskMap;
   taskPlan: ClaudeTaskPlanState;
+  unconsumedPromptIds: Set<string>;
+  promptConsumedSinceResult: boolean;
 }
 
 function createThreadState(): ClaudeThreadDialectState {
@@ -422,6 +424,8 @@ function createThreadState(): ClaudeThreadDialectState {
     heldSkillOpen: undefined,
     tasksById: new Map(),
     taskPlan: new Map(),
+    unconsumedPromptIds: new Set(),
+    promptConsumedSinceResult: false,
   };
 }
 
@@ -1003,6 +1007,9 @@ export function createClaudeDeltaTranslator(
     const toolResults = extractToolResults(parsedMessage.data);
     if (toolResults.length === 0) {
       const message = parsedMessage.data;
+      if (message.uuid !== undefined) {
+        consumePrompt(state, message.uuid);
+      }
       if (
         message.uuid === undefined ||
         message.isSynthetic === true ||
@@ -1073,6 +1080,31 @@ export function createClaudeDeltaTranslator(
     return deltas;
   }
 
+  function consumePrompt(
+    state: ClaudeThreadDialectState,
+    promptId: string,
+  ): void {
+    if (state.unconsumedPromptIds.delete(promptId)) {
+      state.promptConsumedSinceResult = true;
+    }
+  }
+
+  function settlePromptsForResult(
+    state: ClaudeThreadDialectState,
+    consumedPromptIds: readonly string[],
+  ): void {
+    for (const promptId of consumedPromptIds) {
+      consumePrompt(state, promptId);
+    }
+    if (!state.promptConsumedSinceResult) {
+      const oldest = state.unconsumedPromptIds.values().next();
+      if (!oldest.done) {
+        state.unconsumedPromptIds.delete(oldest.value);
+      }
+    }
+    state.promptConsumedSinceResult = false;
+  }
+
   function translateResultMessage(
     event: unknown,
     state: ClaudeThreadDialectState,
@@ -1083,6 +1115,7 @@ export function createClaudeDeltaTranslator(
       return unexpectedSdkEventDeltas(event, context);
     }
     const message = parsedMessage.data;
+    settlePromptsForResult(state, message.user_message_uuids ?? []);
     const resultCanSettleBeforeResponse =
       message.origin === undefined || message.origin.kind === "human";
     if (
@@ -1163,6 +1196,9 @@ export function createClaudeDeltaTranslator(
       });
     }
     state.armedHardRateLimitRejection = undefined;
+    if (state.unconsumedPromptIds.size > 0) {
+      return deltas;
+    }
     if (!failed && hasCompletionBlockingClaudeTasks(state.tasksById)) {
       return [...deltas, ...holdTurnForBackgroundWork(state)];
     }
@@ -1380,6 +1416,10 @@ export function createClaudeDeltaTranslator(
     return [{ kind: "turn.open" }, { kind: "input.accepted", clientRequestId }];
   }
 
+  function trackPushedPrompt(threadId: string, promptId: string): void {
+    stateFor({ threadId }).unconsumedPromptIds.add(promptId);
+  }
+
   function buildSessionSettlementDeltas(threadId: string): ThreadDelta[] {
     const state = stateFor({ threadId });
     const deltas = releaseHeldSkillOpen(state, undefined);
@@ -1430,6 +1470,7 @@ export function createClaudeDeltaTranslator(
 
   return {
     acceptInput,
+    trackPushedPrompt,
     buildBackgroundTaskSettlementDeltas,
     buildSessionSettlementDeltas,
     configureInjectedTools,
