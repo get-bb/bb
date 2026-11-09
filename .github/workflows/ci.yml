@@ -30,66 +30,51 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
-      - name: Restore React Compiler cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-react-compiler
-
-      - name: Restore workspace caches
-        id: cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-workspace
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          cache-prefix: windows-app-smoke
-          turbo-cache: "true"
-          turbo-cache-max-size-mb: "256"
-
-      - name: Restore pnpm cache
-        if: runner.os == 'macOS'
-        id: pnpm-cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-pnpm
-
       - name: Install dependencies
         timeout-minutes: 5
         shell: bash
-        env:
-          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
-      - name: Build bb-app and boot it
-        shell: bash
-        run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
-
-      - name: Restore npm package downloads
-        id: npm-downloads
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-npm-downloads
-
-      - name: Smoke test the bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
-
-      - name: Read npm phase timings
-        if: always()
-        shell: bash
-        run: |
-          node --input-type=module - <<'NODE'
-          import { readdir, readFile } from 'node:fs/promises';
-          import { join } from 'node:path';
-          const dir=join(process.env.RUNNER_TEMP, 'bb-npm-profile');
-          for(const name of await readdir(dir).catch(()=>[])) {
-            if(!name.endsWith('timing.json')) continue;
-            const data=JSON.parse(await readFile(join(dir,name),'utf8'));
-            console.log('NPM_TIMING',name,JSON.stringify(data.timers));
-          }
-          NODE
-      - name: Inspect storage volumes
+      - name: Measure transparent NTFS compression
         shell: pwsh
         run: |
-          Get-Volume | Select-Object DriveLetter, FileSystem, Size, SizeRemaining
-          Get-PhysicalDisk | Select-Object FriendlyName, MediaType, BusType, Size
+          $ErrorActionPreference = 'Stop'
+          if (!(Test-Path 'P:\store')) { throw 'Expected dependency cache hit' }
+          $disk = Join-Path $env:RUNNER_TEMP 'bb-dependencies.vhdx'
+          $archive = Join-Path $env:RUNNER_TEMP 'baseline.tar.zst'
+          $tar = 'C:\Program Files\Git\usr\bin\tar.exe'
+          & .github/actions/windows-dependency-cache/disk.ps1 -Operation detach
+          $before = (Get-Item $disk).Length
+          & $tar --use-compress-program zstd -cf $archive -C $env:RUNNER_TEMP bb-dependencies.vhdx
+          if ($LASTEXITCODE -ne 0) { throw 'Archive failed' }
+          & .github/actions/windows-dependency-cache/disk.ps1 -Operation mount
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          & compact.exe /C /S:P:\store /I /Q
+          & compact.exe /C /S:P:\virtual-store /I /Q
+          Write-Host "NTFS compression seconds: $($watch.Elapsed.TotalSeconds)"
+          & .github/actions/windows-dependency-cache/disk.ps1 -Operation detach
+          @("select vdisk file=`"$disk`"", 'attach vdisk readonly', 'compact vdisk', 'detach vdisk') | Set-Content (Join-Path $env:RUNNER_TEMP 'compact.txt')
+          diskpart /s (Join-Path $env:RUNNER_TEMP 'compact.txt')
+          $after = (Get-Item $disk).Length
+          $candidate = Join-Path $env:RUNNER_TEMP 'compressed.tar.zst'
+          & $tar --use-compress-program zstd -cf $candidate -C $env:RUNNER_TEMP bb-dependencies.vhdx
+          if ($LASTEXITCODE -ne 0) { throw 'Archive failed' }
+          Write-Host "IMAGE_BYTES before=$before after=$after baseline_archive=$((Get-Item $archive).Length) compressed_archive=$((Get-Item $candidate).Length)"
+          foreach ($name in @('baseline', 'compressed', 'compressed', 'baseline')) {
+            $inputArchive = Join-Path $env:RUNNER_TEMP "$name.tar.zst"
+            Remove-Item $disk
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            & $tar --use-compress-program zstd -xf $inputArchive -C $env:RUNNER_TEMP
+            if ($LASTEXITCODE -ne 0) { throw 'Extract failed' }
+            Write-Host "EXTRACTION $name $($watch.Elapsed.TotalSeconds)"
+          }
+          Remove-Item $disk
+          & $tar --use-compress-program zstd -xf $candidate -C $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Extract failed' }
+          & .github/actions/windows-dependency-cache/disk.ps1 -Operation mount
+      - name: Verify compressed dependency install
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Build and smoke app from compressed dependency image
+        shell: bash
+        run: pnpm exec turbo run smoke:boot smoke:tarball --filter=bb-app --output-logs=new-only
