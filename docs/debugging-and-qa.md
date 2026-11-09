@@ -428,6 +428,17 @@ background lifecycle cleanup. Sends report `workspace_busy` with “Workspace cl
 is pending. Try again shortly.” until removal completes. Provider cleanup is never
 awaited by this admission repair, and startup does not scan for abandoned claims.
 
+A thread create that finds the path claimed by another create whose thread is still
+starting or stopping waits for that create to settle instead of failing. A provisioning
+thread that hits the same claim while attaching stays `starting` and resumes its
+provisioning when the claim settles, without holding up the command result that drove
+it. Both wake on changes to the claiming thread or its environment and re-run admission.
+After 15 minutes (the setup hook bound, which matches the checkout provider's own wait
+for a claimed path) they fail with the usual `workspace_busy` "Cannot checkout branch
+while another thread is using this workspace". Explicit reuse requests, sends, thread
+commands and directory changes still fail immediately. A create that adopts a workspace
+whose setup is still running joins that setup instead of running it again.
+
 ## Local Dev QA
 
 Run `pnpm dev` from this checkout and keep it running in a terminal. It prints
