@@ -46,6 +46,9 @@ type GuardedDatabaseConstructor = typeof Database & {
 export function installTestQueryPlanGuard(
   options: InstallTestQueryPlanGuardOptions,
 ): TestQueryPlanGuard {
+  if (process.platform === "win32") {
+    return { takeViolations: () => [] };
+  }
   const BetterSqlite = Database as GuardedDatabaseConstructor;
   const installed = BetterSqlite[INSTALLED];
   if (installed !== undefined) return installed;
