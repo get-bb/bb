@@ -2237,7 +2237,13 @@ async function handleThreadStop(
     session.codexThreadId,
     params.activeTurnId,
   );
-  if (interruptFailure !== null) {
+  const nativeStartTimedOut =
+    interruptFailure instanceof CodexAppServerRpcError &&
+    interruptFailure.code === -32600 &&
+    interruptFailure.message === "no active turn to interrupt" &&
+    session.responseOpenedTurns.get(params.activeTurnId)?.nativeStarted ===
+      false;
+  if (interruptFailure !== null && !nativeStartTimedOut) {
     sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
@@ -2245,11 +2251,13 @@ async function handleThreadStop(
     );
     return;
   }
-  const settled = await waitForCodexTurnSettlement(
-    session,
-    params.activeTurnId,
-    INTERRUPT_SETTLEMENT_TIMEOUT_MS,
-  );
+  const settled =
+    !nativeStartTimedOut &&
+    (await waitForCodexTurnSettlement(
+      session,
+      params.activeTurnId,
+      INTERRUPT_SETTLEMENT_TIMEOUT_MS,
+    ));
   if (!settled) {
     sendThreadDeltas(session, [
       {
