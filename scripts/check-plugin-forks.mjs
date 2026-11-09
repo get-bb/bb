@@ -129,6 +129,7 @@ async function step(log, label, command, commandArgs, options = {}) {
     log.push(
       `  ${label} … ok (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`,
     );
+    if (label === "test") log.push(result.stdout);
     return result.stdout;
   } catch (error) {
     log.push(`  ${label} … failed`);
