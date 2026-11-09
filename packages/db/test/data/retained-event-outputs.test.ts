@@ -488,6 +488,135 @@ describe("retained completed-event outputs", () => {
     db.$client.close();
   });
 
+  it("copies ordinary rows in a few statements and still truncates legacy oversized outputs", () => {
+    const now = 1_800_000_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const queries: SlowDbQueryLogFields[] = [];
+    const { db, source, target } = setup({
+      slowQueryLogger: {
+        info(fields) {
+          queries.push(fields);
+        },
+      },
+      slowQueryThresholdMs: 0,
+    });
+    const retainedOutput = "retained-" + "r".repeat(60_000);
+    const legacyOutput = "legacy-" + "l".repeat(60_000);
+    const command = (index: number, output: string) => ({
+      createdAt: now,
+      data: JSON.stringify({
+        item: {
+          aggregatedOutput: output,
+          id: `command-${index}`,
+          type: "commandExecution",
+        },
+      }),
+      itemId: `command-${index}`,
+      itemKind: "commandExecution" as const,
+      parentToolCallId: null,
+      scope: turnScope("turn-copy"),
+      sequence: index + 1,
+      threadId: source.id,
+      type: "item/completed" as const,
+    });
+    insertEvents(db, noopNotifier, [
+      ...Array.from({ length: 300 }, (_, index) =>
+        command(index, `output ${index}`),
+      ),
+      command(300, retainedOutput),
+    ]);
+    db.$client
+      .prepare(
+        `INSERT INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
+        VALUES ('evt_legacy', ?, NULL, 'turn', 'turn-copy', NULL, 302, 'item/completed', 'command-legacy', 'commandExecution', NULL, ?, ?)`,
+      )
+      .run(
+        source.id,
+        JSON.stringify({
+          item: {
+            aggregatedOutput: legacyOutput,
+            id: "command-legacy",
+            type: "commandExecution",
+          },
+        }),
+        now,
+      );
+    const sourceRows = listStoredEventRows(db, { threadId: source.id });
+    queries.length = 0;
+
+    db.transaction(
+      (tx) =>
+        copyStoredThreadEventsInTransaction(tx, {
+          rows: sourceRows,
+          targetEnvironmentId: null,
+          targetThreadId: target.id,
+        }),
+      { behavior: "immediate" },
+    );
+
+    expect(queries.length).toBeLessThan(20);
+    const targetRows = listStoredEventRows(db, { threadId: target.id });
+    const withoutIdentity = ({
+      id: _id,
+      threadId: _threadId,
+      ...row
+    }: (typeof targetRows)[number]) => row;
+    expect(targetRows.slice(0, -1).map(withoutIdentity)).toEqual(
+      sourceRows.slice(0, -1).map(withoutIdentity),
+    );
+    const legacy = targetRows.at(-1)!;
+    expect(legacy.data.length).toBeLessThan(10_000);
+    expect(
+      hydrateRetainedEventOutputRows(db, targetRows, now).map((row) =>
+        readOutput(row.data, "aggregatedOutput"),
+      ),
+    ).toEqual([
+      ...Array.from({ length: 300 }, (_, index) => `output ${index}`),
+      retainedOutput,
+      legacyOutput,
+    ]);
+    db.$client.close();
+  });
+
+  it("copies nothing when a source row is missing", () => {
+    const { db, source, target } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: 1,
+        data: JSON.stringify({
+          item: {
+            aggregatedOutput: "kept",
+            id: "kept",
+            type: "commandExecution",
+          },
+        }),
+        itemId: "kept",
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        scope: turnScope("turn-missing"),
+        sequence: 1,
+        threadId: source.id,
+        type: "item/completed",
+      },
+    ]);
+    const [row] = listStoredEventRows(db, { threadId: source.id });
+
+    expect(() =>
+      db.transaction(
+        (tx) =>
+          copyStoredThreadEventsInTransaction(tx, {
+            rows: [row!, { ...row!, id: "evt_missing", sequence: 2 }],
+            targetEnvironmentId: null,
+            targetThreadId: target.id,
+          }),
+        { behavior: "immediate" },
+      ),
+    ).toThrow("Expected copied event row to be inserted");
+    expect(listStoredEventRows(db, { threadId: target.id })).toEqual([]);
+    db.$client.close();
+  });
+
   it("deletes a bounded number of expired sidecars without deleting previews", () => {
     const now = 1_800_000_000_000;
     vi.useFakeTimers();

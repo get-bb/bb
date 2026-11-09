@@ -3,6 +3,7 @@ import {
   THREAD_PRUNING_SWEEP_LIMITS,
   type ThreadPruningSweepLimits,
 } from "./thread-pruning-sweep.js";
+import { discardInterruptedForkHistoryCopies } from "../threads/thread-create.js";
 import {
   PROJECT_ATTACHMENT_BACKFILL_LIMITS,
   projectAttachmentBackfillSweep,
@@ -870,6 +871,15 @@ export async function runStartupRecoverySweep(
       deps.db,
       PERIODIC_SWEEP_JOBS.map((job) => job.name),
     );
+  });
+  await runStartupRecoveryStep(deps, "interrupted-fork-history-copies", () => {
+    const discarded = discardInterruptedForkHistoryCopies(deps);
+    if (discarded > 0) {
+      deps.logger.info(
+        { discarded },
+        "Deleted forks whose history copy the previous server process left unfinished",
+      );
+    }
   });
   await runStartupRecoveryStep(deps, "release-queued-message-claims", () => {
     const releasedClaims = releaseOrphanedQueuedMessageDispatchClaims(
