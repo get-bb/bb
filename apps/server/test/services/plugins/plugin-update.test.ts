@@ -226,7 +226,7 @@ async function releaseTag(repoDir: string, tag: string): Promise<string> {
   return git(repoDir, ["rev-parse", "HEAD"]);
 }
 
-const taggedTest = it.extend<{
+const fixtureTest = it.extend<{
   fixture: Awaited<ReturnType<typeof createPluginUpdateFixture>>;
 }>({
   fixture: async ({}, use) => {
@@ -750,228 +750,6 @@ describe("plugin update service and routes", () => {
     expect(getInstalledPlugin(db, "updater")?.version).toBe("1.1.0");
   });
 
-  it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
-    await installUpdater();
-    db.$client
-      .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
-      .run("updater");
-    await restorePhaseOneCloneHistory({ db, workDir }, "updater", repo);
-    const nextCommit = await commitPlugin(repo, "1.1.0");
-    const checkedResponse = await app.request("/plugins/updates/check", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
-    expect(checkedResponse.status).toBe(200);
-    const checked: unknown = await checkedResponse.json();
-    expect(checked).toMatchObject({
-      results: [
-        {
-          id: "updater",
-          outcome: "update-available",
-          installed: { version: expect.stringMatching(/^[0-9a-f]{40}$/) },
-          candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
-        },
-      ],
-    });
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      sourceGitRefKind: "branch",
-    });
-
-    const persistedResponse = await app.request("/plugins/updates");
-    expect(persistedResponse.status).toBe(200);
-    expect(await persistedResponse.json()).toEqual(checked);
-
-    const updateResponse = await app.request("/plugins/updater/update", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
-    expect(updateResponse.status).toBe(200);
-    expect(await updateResponse.json()).toMatchObject({
-      applied: true,
-      to: { version: nextCommit },
-      outcome: "updated",
-    });
-
-    const sourceResponse = await app.request("/plugins/updater/source");
-    expect(sourceResponse.status).toBe(200);
-    expect(await sourceResponse.json()).toMatchObject({
-      requested: expect.any(String),
-      resolved: expect.any(String),
-      installedAt: expect.any(Number),
-      history: expect.arrayContaining([
-        { version: nextCommit, activatedAt: expect.any(Number) },
-      ]),
-    });
-  });
-
-  it("checks a git candidate without installing or building it", async () => {
-    await installUpdater();
-    const candidate = await commitPlugin(
-      repo,
-      "1.2.0",
-      undefined,
-      "export default function plugin(bb: any) { this is not valid typescript",
-    );
-
-    const results = await service.checkForUpdates("updater");
-
-    expect(results).toMatchObject([
-      {
-        id: "updater",
-        outcome: "update-available",
-        candidate: { version: candidate },
-      },
-    ]);
-
-    const applied = await service.applyUpdate("updater");
-    expect(applied.ok ? applied.result.outcome : "failed").not.toBe("updated");
-  });
-
-  it("checks for updates after marketplace removal converts provenance", async () => {
-    await service.installCatalogPlugin({
-      marketplace: "acme-plugins",
-      entryId: "updater",
-      pluginId: "updater",
-      source: `git:${repo}@main`,
-      selection: { kind: "root" },
-    });
-    upsertPluginMarketplace(db, {
-      name: "acme-plugins",
-      sourceKind: "path",
-      manifestUrl: workDir,
-      sourceGitRef: null,
-      sourceGitSubdirectory: null,
-      sourceGitCommit: null,
-      statsJson: null,
-      manifestJson: JSON.stringify({
-        schemaVersion: 1,
-        name: "acme-plugins",
-        displayName: "Acme Plugins",
-        plugins: [],
-      }),
-      etag: null,
-      lastModified: null,
-      lastSuccessfulRefreshAt: Date.now(),
-      lastAttemptedRefreshAt: Date.now(),
-      lastError: null,
-    });
-    const catalog = createPluginCatalogService({
-      db,
-      appVersion: "1.0.0",
-      marketplaceUrl: "https://marketplace.test/marketplace.json",
-      dataDir: join(workDir, "data"),
-      plugins: service,
-    });
-    const candidate = await commitPlugin(repo, "1.1.0");
-
-    const removed = await catalog.removeMarketplace("acme-plugins");
-    expect(removed.convertedPluginIds).toEqual(["updater"]);
-    expect(getInstalledPlugin(db, "updater")).toMatchObject({
-      provenance: "direct",
-      catalogEntryId: null,
-      catalogMarketplaceName: null,
-    });
-
-    await expect(service.checkForUpdates("updater")).resolves.toMatchObject([
-      {
-        id: "updater",
-        outcome: "update-available",
-        candidate: { version: candidate },
-      },
-    ]);
-  });
-
-  it("returns an actionable 422 and keeps the installed commit for an incompatible candidate", async () => {
-    await installUpdater();
-    const installedCommit = await git(repo, ["rev-parse", "HEAD"]);
-    const incompatibleCommit = await commitPlugin(repo, "2.0.0", {
-      bb: ">=99.0.0",
-    });
-    const checkResponse = await app.request("/plugins/updates/check", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: "updater" }),
-    });
-    expect(checkResponse.status).toBe(200);
-    expect(await checkResponse.json()).toMatchObject({
-      results: [
-        {
-          outcome: "incompatible",
-          blocked: {
-            version: incompatibleCommit,
-            reasons: [expect.stringContaining("requires bb >=99.0.0")],
-          },
-        },
-      ],
-    });
-
-    const updateResponse = await app.request("/plugins/updater/update", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
-    expect(updateResponse.status).toBe(422);
-    expect(await updateResponse.json()).toMatchObject({
-      error: expect.stringContaining("is incompatible"),
-    });
-    expect(
-      service.list().find((entry) => entry.id === "updater"),
-    ).toMatchObject({ version: "1.0.0", status: "running" });
-    expect(
-      service.listUpdateResults().find((entry) => entry.id === "updater"),
-    ).toMatchObject({
-      installed: { version: installedCommit },
-      blocked: { version: incompatibleCommit },
-    });
-  });
-
-  it("serializes two updates for one plugin so only one applies", async () => {
-    await installUpdater();
-    const before = getInstalledPluginRegistration(db, "updater");
-    if (before === undefined) throw new Error("missing installed updater");
-    const oldRoot = before.rootDir;
-    const nextCommit = await commitPlugin(repo, "1.1.0");
-    const results = await Promise.all([
-      service.applyUpdate("updater"),
-      service.applyUpdate("updater"),
-    ]);
-
-    expect(results).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          ok: true,
-          result: expect.objectContaining({ applied: true }),
-        }),
-        expect.objectContaining({
-          ok: true,
-          result: expect.objectContaining({
-            applied: false,
-            outcome: "current",
-          }),
-        }),
-      ]),
-    );
-    expect(service.listUpdateResults()).toMatchObject([
-      {
-        outcome: "current",
-        installed: { version: nextCommit },
-      },
-    ]);
-    expect(service.list()).toMatchObject([
-      { id: "updater", version: "1.1.0", status: "running" },
-    ]);
-    const updated = getInstalledPluginRegistration(db, "updater");
-    expect(updated).toMatchObject({
-      rootDir: expect.stringContaining(nextCommit),
-      activeArtifactId: expect.any(String),
-    });
-    expect(updated?.rootDir).not.toBe(oldRoot);
-    await expect(stat(oldRoot)).rejects.toMatchObject({ code: "ENOENT" });
-    expect(listPluginArtifacts(db, "updater")).toHaveLength(1);
-  });
-
   it("rolls back when a background service crashes during stabilization", async () => {
     await installUpdater();
     const installedCommit = getInstalledPluginRegistration(
@@ -1220,14 +998,6 @@ describe("plugin update service and routes", () => {
     });
   }
 
-  it("shares one in-flight full sweep between concurrent callers", async () => {
-    await installUpdater();
-    const first = service.checkForUpdates();
-    expect(service.checkForUpdates()).toBe(first);
-    await first;
-    expect(service.checkForUpdates()).not.toBe(first);
-  }, 60_000);
-
   it("keeps the guarded registry policy for catalog installs during a check", async () => {
     upsertNpmRow("listed", "https://127.0.0.1", {
       kind: "catalog",
@@ -1367,160 +1137,6 @@ describe("plugin update service and routes", () => {
       enabled: false,
     });
   });
-
-  it("uses isolated staging directories for concurrent check and update", async () => {
-    await installUpdater();
-    const nextCommit = await commitPlugin(repo, "1.1.0");
-    const [checked, applied] = await Promise.all([
-      service.checkForUpdates("updater"),
-      service.applyUpdate("updater"),
-    ]);
-
-    expect(checked).toHaveLength(1);
-    expect(applied).toMatchObject({ ok: true });
-    expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
-      gitResolvedCommit: nextCommit,
-      version: "1.1.0",
-    });
-  });
-
-  it("checks, updates, and rolls back a nested git plugin", async () => {
-    const nestedRoot = join(repo, "plugins", "nested");
-    const commitNested = async (
-      version: string,
-      serverSource?: string,
-    ): Promise<string> => {
-      await mkdir(nestedRoot, { recursive: true });
-      await writeFile(
-        join(nestedRoot, "package.json"),
-        JSON.stringify({
-          name: "bb-plugin-nested-updater",
-          version,
-          bb: {
-            name: "Nested updater fixture",
-            description: "Nested plugin update fixture.",
-            branding: { icon: "Zap" },
-            server: "./server.ts",
-          },
-        }),
-      );
-      await writeFile(
-        join(nestedRoot, "server.ts"),
-        serverSource ??
-          `export default function plugin(bb: any) { bb.log.info(${JSON.stringify(version)}); }`,
-      );
-      await git(repo, ["add", "-A"]);
-      await git(repo, ["commit", "-qm", `nested ${version}`]);
-      return git(repo, ["rev-parse", "HEAD"]);
-    };
-
-    await commitNested("1.0.0");
-    await service.install(`git:${repo}@main`, {
-      kind: "subdirectory",
-      path: "plugins/nested",
-    });
-    const nextCommit = await commitNested("1.1.0");
-
-    await expect(
-      service.checkForUpdates("nested-updater"),
-    ).resolves.toMatchObject([
-      {
-        outcome: "update-available",
-        candidate: { version: nextCommit },
-      },
-    ]);
-    await expect(service.applyUpdate("nested-updater")).resolves.toMatchObject({
-      ok: true,
-      result: { applied: true, outcome: "updated" },
-    });
-    expect(getInstalledPluginRegistration(db, "nested-updater")).toMatchObject({
-      sourceGitSubdirectory: "plugins/nested",
-      gitResolvedCommit: nextCommit,
-      version: "1.1.0",
-    });
-
-    await commitNested(
-      "1.2.0",
-      'export default function plugin() { throw new Error("nested activation failed"); }',
-    );
-    await expect(service.applyUpdate("nested-updater")).resolves.toMatchObject({
-      ok: true,
-      result: { applied: false, outcome: "rolled-back" },
-    });
-    expect(getInstalledPluginRegistration(db, "nested-updater")).toMatchObject({
-      sourceGitSubdirectory: "plugins/nested",
-      gitResolvedCommit: nextCommit,
-      version: "1.1.0",
-      lastFailureDetail: expect.stringContaining("nested activation failed"),
-    });
-  });
-
-  it("refuses a pinned git tag unless the source is changed explicitly", async () => {
-    await git(repo, ["tag", "v1"]);
-    await service.install(`git:${repo}@v1`, { kind: "root" });
-    const response = await app.request("/plugins/updater/update", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
-    expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({
-      error:
-        'plugin "updater" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates',
-    });
-  });
-
-  it("loads a legacy-layout plugin unchanged, then migrates lazily on update", async () => {
-    const legacyRoot = join(
-      workDir,
-      "data",
-      "plugins",
-      "git",
-      "legacy-updater",
-    );
-    await run("git", ["clone", "--quiet", repo, legacyRoot]);
-    const currentCommit = await git(repo, ["rev-parse", "HEAD"]);
-    upsertInstalledPlugin(db, {
-      id: "updater",
-      source: `git:${repo}@main`,
-      provenance: { kind: "direct" },
-      sourceIntent: {
-        kind: "git",
-        url: repo,
-        subdirectory: null,
-        selector: { kind: "ref", ref: "main", refKind: "branch" },
-      },
-      exactResolution: { kind: "git", commit: currentCommit },
-      updateState: {
-        lastCheckAt: null,
-        availableCompatibleVersion: null,
-        newestIncompatibleVersion: null,
-        statusDetail: null,
-      },
-      activeArtifactId: null,
-      rootDir: legacyRoot,
-      version: "1.0.0",
-      enabled: true,
-      enabledFollowsDefault: false,
-    });
-    await service.reload("updater");
-    expect(service.list()).toMatchObject([
-      { id: "updater", rootDir: legacyRoot, status: "running" },
-    ]);
-
-    const nextCommit = await commitPlugin(repo, "1.1.0");
-    const applied = await service.applyUpdate("updater");
-    expect(applied).toMatchObject({ ok: true, result: { applied: true } });
-    const migrated = getInstalledPluginRegistration(db, "updater");
-    expect(migrated).toMatchObject({
-      rootDir: expect.stringContaining(
-        join("plugins", "cache", "git", "local"),
-      ),
-      activeArtifactId: expect.any(String),
-      gitResolvedCommit: nextCommit,
-    });
-    await stat(join(legacyRoot, "package.json"));
-  });
   async function taggedRepo(): Promise<string> {
     const tagged = join(workDir, "tagged");
     cpSync(join(seedDir, "tagged"), tagged, { recursive: true });
@@ -1528,8 +1144,8 @@ describe("plugin update service and routes", () => {
   }
 });
 
-describe.concurrent("plugin tagged release updates", () => {
-  taggedTest(
+describe.concurrent("independent plugin update contracts", () => {
+  fixtureTest(
     "offers and applies a newer tag inside a git semver range",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1571,7 +1187,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "reports a release outside the saved range and changes the range only for the reviewed release",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1649,7 +1265,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "restores the saved range when the out-of-range release fails to activate",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1677,7 +1293,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "refreshes the saved offer when the reviewed release changed before the update",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1712,7 +1328,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "offers no out-of-range release once the marketplace stops listing the plugin",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1752,7 +1368,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "names a rolled-back release by its tag version",
     async ({ fixture }) => {
       const { service, taggedRepo } = fixture;
@@ -1777,7 +1393,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "labels update state saved before versions carried labels",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1810,7 +1426,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "refuses to resolve a release tag that was moved to another commit",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1844,7 +1460,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "protects an unclassified Phase 1 exact-tag row in a full update sweep",
     async ({ fixture }) => {
       const { db, service, taggedRepo, installUpdater } = fixture;
@@ -1889,7 +1505,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "refuses to turn a legacy tag pin into a same-name branch",
     async ({ fixture }) => {
       const { db, service, taggedRepo, workDir } = fixture;
@@ -1936,7 +1552,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "falls back to the newest compatible release in a range",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -1985,7 +1601,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "installs the newest compatible release from a git range",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
@@ -2016,7 +1632,7 @@ describe.concurrent("plugin tagged release updates", () => {
     },
   );
 
-  taggedTest(
+  fixtureTest(
     "refuses an exact-tag install whose tag moved",
     async ({ fixture }) => {
       const { service, taggedRepo } = fixture;
@@ -2038,6 +1654,440 @@ describe.concurrent("plugin tagged release updates", () => {
           detail: expect.stringContaining('git tag "v1.0.0"'),
         },
       ]);
+    },
+  );
+  fixtureTest(
+    "checks, reads persisted state, and updates through the exact HTTP contract",
+    async ({ fixture }) => {
+      const { db, workDir, repo, app, installUpdater } = fixture;
+      await installUpdater();
+      db.$client
+        .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
+        .run("updater");
+      await restorePhaseOneCloneHistory({ db, workDir }, "updater", repo);
+      const nextCommit = await commitPlugin(repo, "1.1.0");
+      const checkedResponse = await app.request("/plugins/updates/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(checkedResponse.status).toBe(200);
+      const checked: unknown = await checkedResponse.json();
+      expect(checked).toMatchObject({
+        results: [
+          {
+            id: "updater",
+            outcome: "update-available",
+            installed: { version: expect.stringMatching(/^[0-9a-f]{40}$/) },
+            candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
+          },
+        ],
+      });
+      expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+        sourceGitRefKind: "branch",
+      });
+
+      const persistedResponse = await app.request("/plugins/updates");
+      expect(persistedResponse.status).toBe(200);
+      expect(await persistedResponse.json()).toEqual(checked);
+
+      const updateResponse = await app.request("/plugins/updater/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(await updateResponse.json()).toMatchObject({
+        applied: true,
+        to: { version: nextCommit },
+        outcome: "updated",
+      });
+
+      const sourceResponse = await app.request("/plugins/updater/source");
+      expect(sourceResponse.status).toBe(200);
+      expect(await sourceResponse.json()).toMatchObject({
+        requested: expect.any(String),
+        resolved: expect.any(String),
+        installedAt: expect.any(Number),
+        history: expect.arrayContaining([
+          { version: nextCommit, activatedAt: expect.any(Number) },
+        ]),
+      });
+    },
+  );
+
+  fixtureTest(
+    "checks a git candidate without installing or building it",
+    async ({ fixture }) => {
+      const { repo, service, installUpdater } = fixture;
+      await installUpdater();
+      const candidate = await commitPlugin(
+        repo,
+        "1.2.0",
+        undefined,
+        "export default function plugin(bb: any) { this is not valid typescript",
+      );
+
+      const results = await service.checkForUpdates("updater");
+
+      expect(results).toMatchObject([
+        {
+          id: "updater",
+          outcome: "update-available",
+          candidate: { version: candidate },
+        },
+      ]);
+
+      const applied = await service.applyUpdate("updater");
+      expect(applied.ok ? applied.result.outcome : "failed").not.toBe(
+        "updated",
+      );
+    },
+  );
+
+  fixtureTest(
+    "checks for updates after marketplace removal converts provenance",
+    async ({ fixture }) => {
+      const { db, workDir, repo, service } = fixture;
+      await service.installCatalogPlugin({
+        marketplace: "acme-plugins",
+        entryId: "updater",
+        pluginId: "updater",
+        source: `git:${repo}@main`,
+        selection: { kind: "root" },
+      });
+      upsertPluginMarketplace(db, {
+        name: "acme-plugins",
+        sourceKind: "path",
+        manifestUrl: workDir,
+        sourceGitRef: null,
+        sourceGitSubdirectory: null,
+        sourceGitCommit: null,
+        statsJson: null,
+        manifestJson: JSON.stringify({
+          schemaVersion: 1,
+          name: "acme-plugins",
+          displayName: "Acme Plugins",
+          plugins: [],
+        }),
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: Date.now(),
+        lastAttemptedRefreshAt: Date.now(),
+        lastError: null,
+      });
+      const catalog = createPluginCatalogService({
+        db,
+        appVersion: "1.0.0",
+        marketplaceUrl: "https://marketplace.test/marketplace.json",
+        dataDir: join(workDir, "data"),
+        plugins: service,
+      });
+      const candidate = await commitPlugin(repo, "1.1.0");
+
+      const removed = await catalog.removeMarketplace("acme-plugins");
+      expect(removed.convertedPluginIds).toEqual(["updater"]);
+      expect(getInstalledPlugin(db, "updater")).toMatchObject({
+        provenance: "direct",
+        catalogEntryId: null,
+        catalogMarketplaceName: null,
+      });
+
+      await expect(service.checkForUpdates("updater")).resolves.toMatchObject([
+        {
+          id: "updater",
+          outcome: "update-available",
+          candidate: { version: candidate },
+        },
+      ]);
+    },
+  );
+
+  fixtureTest(
+    "returns an actionable 422 and keeps the installed commit for an incompatible candidate",
+    async ({ fixture }) => {
+      const { repo, service, app, installUpdater } = fixture;
+      await installUpdater();
+      const installedCommit = await git(repo, ["rev-parse", "HEAD"]);
+      const incompatibleCommit = await commitPlugin(repo, "2.0.0", {
+        bb: ">=99.0.0",
+      });
+      const checkResponse = await app.request("/plugins/updates/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "updater" }),
+      });
+      expect(checkResponse.status).toBe(200);
+      expect(await checkResponse.json()).toMatchObject({
+        results: [
+          {
+            outcome: "incompatible",
+            blocked: {
+              version: incompatibleCommit,
+              reasons: [expect.stringContaining("requires bb >=99.0.0")],
+            },
+          },
+        ],
+      });
+
+      const updateResponse = await app.request("/plugins/updater/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(updateResponse.status).toBe(422);
+      expect(await updateResponse.json()).toMatchObject({
+        error: expect.stringContaining("is incompatible"),
+      });
+      expect(
+        service.list().find((entry) => entry.id === "updater"),
+      ).toMatchObject({ version: "1.0.0", status: "running" });
+      expect(
+        service.listUpdateResults().find((entry) => entry.id === "updater"),
+      ).toMatchObject({
+        installed: { version: installedCommit },
+        blocked: { version: incompatibleCommit },
+      });
+    },
+  );
+
+  fixtureTest(
+    "serializes two updates for one plugin so only one applies",
+    async ({ fixture }) => {
+      const { db, repo, service, installUpdater } = fixture;
+      await installUpdater();
+      const before = getInstalledPluginRegistration(db, "updater");
+      if (before === undefined) throw new Error("missing installed updater");
+      const oldRoot = before.rootDir;
+      const nextCommit = await commitPlugin(repo, "1.1.0");
+      const results = await Promise.all([
+        service.applyUpdate("updater"),
+        service.applyUpdate("updater"),
+      ]);
+
+      expect(results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ok: true,
+            result: expect.objectContaining({ applied: true }),
+          }),
+          expect.objectContaining({
+            ok: true,
+            result: expect.objectContaining({
+              applied: false,
+              outcome: "current",
+            }),
+          }),
+        ]),
+      );
+      expect(service.listUpdateResults()).toMatchObject([
+        {
+          outcome: "current",
+          installed: { version: nextCommit },
+        },
+      ]);
+      expect(service.list()).toMatchObject([
+        { id: "updater", version: "1.1.0", status: "running" },
+      ]);
+      const updated = getInstalledPluginRegistration(db, "updater");
+      expect(updated).toMatchObject({
+        rootDir: expect.stringContaining(nextCommit),
+        activeArtifactId: expect.any(String),
+      });
+      expect(updated?.rootDir).not.toBe(oldRoot);
+      await expect(stat(oldRoot)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(listPluginArtifacts(db, "updater")).toHaveLength(1);
+    },
+  );
+
+  fixtureTest(
+    "shares one in-flight full sweep between concurrent callers",
+    async ({ fixture }) => {
+      const { service, installUpdater } = fixture;
+      await installUpdater();
+      const first = service.checkForUpdates();
+      expect(service.checkForUpdates()).toBe(first);
+      await first;
+      expect(service.checkForUpdates()).not.toBe(first);
+    },
+    60_000,
+  );
+
+  fixtureTest(
+    "uses isolated staging directories for concurrent check and update",
+    async ({ fixture }) => {
+      const { db, repo, service, installUpdater } = fixture;
+      await installUpdater();
+      const nextCommit = await commitPlugin(repo, "1.1.0");
+      const [checked, applied] = await Promise.all([
+        service.checkForUpdates("updater"),
+        service.applyUpdate("updater"),
+      ]);
+
+      expect(checked).toHaveLength(1);
+      expect(applied).toMatchObject({ ok: true });
+      expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+        gitResolvedCommit: nextCommit,
+        version: "1.1.0",
+      });
+    },
+  );
+
+  fixtureTest(
+    "checks, updates, and rolls back a nested git plugin",
+    async ({ fixture }) => {
+      const { db, repo, service } = fixture;
+      const nestedRoot = join(repo, "plugins", "nested");
+      const commitNested = async (
+        version: string,
+        serverSource?: string,
+      ): Promise<string> => {
+        await mkdir(nestedRoot, { recursive: true });
+        await writeFile(
+          join(nestedRoot, "package.json"),
+          JSON.stringify({
+            name: "bb-plugin-nested-updater",
+            version,
+            bb: {
+              name: "Nested updater fixture",
+              description: "Nested plugin update fixture.",
+              branding: { icon: "Zap" },
+              server: "./server.ts",
+            },
+          }),
+        );
+        await writeFile(
+          join(nestedRoot, "server.ts"),
+          serverSource ??
+            `export default function plugin(bb: any) { bb.log.info(${JSON.stringify(version)}); }`,
+        );
+        await git(repo, ["add", "-A"]);
+        await git(repo, ["commit", "-qm", `nested ${version}`]);
+        return git(repo, ["rev-parse", "HEAD"]);
+      };
+
+      await commitNested("1.0.0");
+      await service.install(`git:${repo}@main`, {
+        kind: "subdirectory",
+        path: "plugins/nested",
+      });
+      const nextCommit = await commitNested("1.1.0");
+
+      await expect(
+        service.checkForUpdates("nested-updater"),
+      ).resolves.toMatchObject([
+        {
+          outcome: "update-available",
+          candidate: { version: nextCommit },
+        },
+      ]);
+      await expect(
+        service.applyUpdate("nested-updater"),
+      ).resolves.toMatchObject({
+        ok: true,
+        result: { applied: true, outcome: "updated" },
+      });
+      expect(
+        getInstalledPluginRegistration(db, "nested-updater"),
+      ).toMatchObject({
+        sourceGitSubdirectory: "plugins/nested",
+        gitResolvedCommit: nextCommit,
+        version: "1.1.0",
+      });
+
+      await commitNested(
+        "1.2.0",
+        'export default function plugin() { throw new Error("nested activation failed"); }',
+      );
+      await expect(
+        service.applyUpdate("nested-updater"),
+      ).resolves.toMatchObject({
+        ok: true,
+        result: { applied: false, outcome: "rolled-back" },
+      });
+      expect(
+        getInstalledPluginRegistration(db, "nested-updater"),
+      ).toMatchObject({
+        sourceGitSubdirectory: "plugins/nested",
+        gitResolvedCommit: nextCommit,
+        version: "1.1.0",
+        lastFailureDetail: expect.stringContaining("nested activation failed"),
+      });
+    },
+  );
+
+  fixtureTest(
+    "refuses a pinned git tag unless the source is changed explicitly",
+    async ({ fixture }) => {
+      const { repo, service, app } = fixture;
+      await git(repo, ["tag", "v1"]);
+      await service.install(`git:${repo}@v1`, { kind: "root" });
+      const response = await app.request("/plugins/updater/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(response.status).toBe(422);
+      expect(await response.json()).toEqual({
+        error:
+          'plugin "updater" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates',
+      });
+    },
+  );
+
+  fixtureTest(
+    "loads a legacy-layout plugin unchanged, then migrates lazily on update",
+    async ({ fixture }) => {
+      const { db, workDir, repo, service } = fixture;
+      const legacyRoot = join(
+        workDir,
+        "data",
+        "plugins",
+        "git",
+        "legacy-updater",
+      );
+      await run("git", ["clone", "--quiet", repo, legacyRoot]);
+      const currentCommit = await git(repo, ["rev-parse", "HEAD"]);
+      upsertInstalledPlugin(db, {
+        id: "updater",
+        source: `git:${repo}@main`,
+        provenance: { kind: "direct" },
+        sourceIntent: {
+          kind: "git",
+          url: repo,
+          subdirectory: null,
+          selector: { kind: "ref", ref: "main", refKind: "branch" },
+        },
+        exactResolution: { kind: "git", commit: currentCommit },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: legacyRoot,
+        version: "1.0.0",
+        enabled: true,
+        enabledFollowsDefault: false,
+      });
+      await service.reload("updater");
+      expect(service.list()).toMatchObject([
+        { id: "updater", rootDir: legacyRoot, status: "running" },
+      ]);
+
+      const nextCommit = await commitPlugin(repo, "1.1.0");
+      const applied = await service.applyUpdate("updater");
+      expect(applied).toMatchObject({ ok: true, result: { applied: true } });
+      const migrated = getInstalledPluginRegistration(db, "updater");
+      expect(migrated).toMatchObject({
+        rootDir: expect.stringContaining(
+          join("plugins", "cache", "git", "local"),
+        ),
+        activeArtifactId: expect.any(String),
+        gitResolvedCommit: nextCommit,
+      });
+      await stat(join(legacyRoot, "package.json"));
     },
   );
 });
