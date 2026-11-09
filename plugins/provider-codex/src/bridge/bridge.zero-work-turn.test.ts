@@ -397,39 +397,55 @@ it("does not resurrect a response-opened turn settled before its turn/started ar
   ]);
 }, 30_000);
 
-it("interrupts a response-opened turn once codex reports it started", async () => {
-  const providerThreadId = await startSession();
-  harness.sendRequest(2, "turn/start", {
-    threadId: THREAD_ID,
-    providerThreadId,
-    input: [{ type: "text", text: "/late-start-interruptible", mentions: [] }],
-    clientRequestId: "creq_ntrptate23",
-    options: { ...FULL_ACCESS_SESSION_OPTIONS },
-  });
-  await harness.waitForResponse(2);
-  await waitForEvents((events) =>
-    events.some((event) => event.type === "turn/started"),
-  );
+it.each([350, 6_500])(
+  "interrupts a response-opened turn with native activation delayed %i ms",
+  async (lateStartDelayMs) => {
+    const scriptPath = join(workspaceDir, "script.json");
+    writeFileSync(scriptPath, JSON.stringify({ lateStartDelayMs }));
+    stubFakeCodexAppServer(scriptPath);
+    const providerThreadId = await startSession();
+    const dispatchedAt = Date.now();
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      input: [
+        { type: "text", text: "/late-start-interruptible", mentions: [] },
+      ],
+      clientRequestId: "creq_ntrptate23",
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
+    });
+    await harness.waitForResponse(2);
+    await waitForEvents((events) =>
+      events.some((event) => event.type === "turn/started"),
+    );
 
-  harness.sendRequest(3, "thread/stop", {
-    threadId: THREAD_ID,
-    providerThreadId,
-    intent: "interrupt",
-    activeTurnId: "turn-fx-1",
-  });
-  const stopped = await harness.waitForResponse(3);
-  expect(stopped.error).toBeUndefined();
+    harness.sendRequest(3, "thread/stop", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      intent: "interrupt",
+      activeTurnId: "turn-fx-1",
+    });
+    const stopped = await harness.waitForResponse(3);
+    await new Promise((resolve) =>
+      setTimeout(
+        resolve,
+        Math.max(0, lateStartDelayMs + 200 - (Date.now() - dispatchedAt)),
+      ),
+    );
+    expect(stopped.error).toBeUndefined();
 
-  const events = await waitForEvents((all) =>
-    all.some((event) => event.type === "turn/completed"),
-  );
-  expect(events.filter((event) => event.type === "turn/started")).toHaveLength(
-    1,
-  );
-  expect(events.filter((event) => event.type === "turn/completed")).toEqual([
-    expect.objectContaining({ status: "interrupted" }),
-  ]);
-}, 30_000);
+    const events = await waitForEvents((all) =>
+      all.some((event) => event.type === "turn/completed"),
+    );
+    expect(
+      events.filter((event) => event.type === "turn/started"),
+    ).toHaveLength(1);
+    expect(events.filter((event) => event.type === "turn/completed")).toEqual([
+      expect.objectContaining({ status: "interrupted" }),
+    ]);
+  },
+  30_000,
+);
 
 async function compactAndWaitForCompletion(
   clientRequestId: string,
@@ -608,7 +624,7 @@ it.each([
     delay: 0,
     script: { neverStart: true },
     attempts: 1,
-    succeeds: false,
+    succeeds: true,
   },
 ])(
   "bounds interrupt retry for $name",

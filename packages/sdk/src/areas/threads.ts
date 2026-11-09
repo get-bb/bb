@@ -56,6 +56,7 @@ import type {
   ThreadTimelineReadResponse,
   ThreadTimelineResponse,
   ThreadContextResponse,
+  ThreadHeadStateResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsResponse,
   ThreadOpenFile,
@@ -197,6 +198,7 @@ export type ThreadInteractionCancelResult = PendingInteraction;
 export type ThreadEventsListResult = ThreadEventRow[];
 export type ThreadEventWaitResult = ThreadEventRow | null;
 export type ThreadContextResult = ThreadContextResponse;
+export type ThreadHeadStateResult = ThreadHeadStateResponse;
 export type ThreadTimelineResult = ThreadTimelineResponse;
 export type ThreadTimelineReadResult = ThreadTimelineReadResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
@@ -737,6 +739,17 @@ export interface ThreadsArea {
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   context(args: ThreadStatusArgs): Promise<ThreadContextResult>;
+  /**
+   * The thread's head state: to-dos, provider slash commands, session options,
+   * extension states, plan prompt mode, model fallback, and context usage, as
+   * of its latest event. Read from the latest stored state events without
+   * building a timeline window; the latest timeline page embeds the same
+   * values. `pendingTodos` and `activePromptMode` are null unless the thread
+   * is active. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_headState(
+    args: ThreadStatusArgs,
+  ): Promise<ThreadHeadStateResult>;
   timeline(
     args: ThreadTimelineArgs & { afterTag?: undefined },
   ): Promise<ThreadTimelineResult>;
@@ -919,9 +932,6 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
       : {}),
     ...(args.includeNestedRows !== undefined
       ? { includeNestedRows: args.includeNestedRows }
-      : {}),
-    ...(args.summaryOnly !== undefined
-      ? { summaryOnly: args.summaryOnly }
       : {}),
     ...(args.segmentLimit !== undefined
       ? { segmentLimit: args.segmentLimit }
@@ -1640,6 +1650,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async context(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].context.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_headState(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["head-state"].$get(
           { param: { id: input.threadId } },
           ...signalRequestArgs(input.signal),
         ),

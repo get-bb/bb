@@ -50,10 +50,6 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
-import { appQueryClient } from "./app-query-client";
-import { defaultExperiments } from "@bb/domain";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
@@ -210,7 +206,7 @@ function cssHrefs(pluginId: string): Array<string | null> {
 }
 
 function pluginSheet(pluginId: string, version: string): string {
-  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
+  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
 }
 
 function fireLoad(link: Element | null | undefined): void {
@@ -1327,30 +1323,11 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
-    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
   const sheet = (hash: string) =>
-    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}`;
-
-  it.each([
-    [false, sheet("aaa")],
-    [true, `${sheet("aaa")}&css-scope=owned-root-v1`],
-  ])(
-    "requests the narrow stylesheet only when narrowPluginCss is %s",
-    (narrowPluginCss, href) => {
-      appQueryClient.setQueryData(
-        systemConfigQueryKey(),
-        makeSystemConfig({
-          experiments: { ...defaultExperiments, narrowPluginCss },
-        }),
-      );
-      retainPluginCss("hello");
-      applyPluginCss("hello", "/assets/app.css?h=aaa");
-      expect(cssHrefs("hello")[0]).toBe(href);
-    },
-  );
+    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
 
   it("keeps the same element for an unchanged URL and removes it on null", () => {
     retainPluginCss("hello");
@@ -1362,7 +1339,9 @@ describe("applyPluginCss", () => {
       document
         .querySelector("link[data-bb-plugin-css-prefetch]")
         ?.getAttribute("href"),
-    ).toBe(`/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}`);
+    ).toBe(
+      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+    );
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(cssLinks("hello")[0]).toBe(first);
 

@@ -65,9 +65,9 @@ describe("experiments settings", () => {
       const put = await putExperiments(harness, { updateWhenIdle: true });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        agentCpuPriority: false,
         compactExpiredCache: false,
         dismissReadNotifications: false,
-        narrowPluginCss: false,
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,
@@ -76,6 +76,7 @@ describe("experiments settings", () => {
         threadContextCard: false,
         threadRowMetadata: false,
         updateWhenIdle: true,
+        walCheckpointWorker: false,
       });
       expect(
         harness.db.$client

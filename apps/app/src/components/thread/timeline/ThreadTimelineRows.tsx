@@ -66,10 +66,6 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
-import {
-  MessageColumnWidthContext,
-  useMeasuredWidth,
-} from "./MessageActionBar.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
@@ -2186,19 +2182,9 @@ function TimelineRowsList({
     return keys;
   }, [items, rows, spacing, stableSearchExpandedRowIds, navigationTargetRowId]);
   const isTopLevelList = spacing === "top-level";
-  const { measureRef: messageColumnWidthSourceRef, width: messageColumnWidth } =
-    useMeasuredWidth({ enabled: isTopLevelList });
-  const messageColumnWidthValue = useMemo(
-    () => ({ width: messageColumnWidth }),
-    [messageColumnWidth],
-  );
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
-      <MessageColumnWidthContext.Provider
-        value={isTopLevelList ? messageColumnWidthValue : null}
-      >
         <div
-          ref={isTopLevelList ? messageColumnWidthSourceRef : undefined}
           className={cn(
             "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
             timelineRowsListGapClassName(spacing),
@@ -2269,7 +2255,6 @@ function TimelineRowsList({
             }}
           />
         </div>
-      </MessageColumnWidthContext.Provider>
     </TimelineSearchExpansionContext.Provider>
   );
 }

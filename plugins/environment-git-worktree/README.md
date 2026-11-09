@@ -10,6 +10,13 @@ Removal deletes the branch the plugin created (recorded in the environment resou
 
 The Plugin Guide documents the experimental environment-provider contract. Core owns durable launches, retries, cancellation, retirement, and teardown; this plugin owns resource creation and removal.
 
+Removal refuses worktrees with worktree-local refs under `refs/worktree/`,
+`refs/bisect/`, or `refs/rewritten/`, or unfinished merge, cherry-pick, revert,
+rebase, bisect, or sequencer state, even when Git status is clean. Preserve or
+delete those refs, or finish or abort the operation, before retrying retirement.
+These checks share bb's checkout and worktree metadata locks; they do not block
+unrelated external Git writers.
+
 Existing-worktree inputs (`{"kind":"existing","path":"/absolute/worktree"}`)
 reuse the project's recorded environment on the selected machine before running
 provider creation. Its ownership and cleanup behavior stay intact. When the path

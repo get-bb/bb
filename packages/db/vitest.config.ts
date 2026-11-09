@@ -8,6 +8,7 @@ export default defineWorkspaceTestConfig({
     silent: "passed-only",
     testTimeout: 15_000,
     globalSetup: ["test/setup/migrated-db-template.ts"],
+    setupFiles: ["test/setup/query-plan-guard.ts"],
     projects: sharedWorkerProjects({
       pkgDir: __dirname,
       name: "@bb/db",

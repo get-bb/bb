@@ -1132,7 +1132,10 @@ export async function recoverEnvironmentCleanup(
   }).done;
 }
 
-export function providerLifecycleSweep(deps: Deps): ItemSweep {
+export function providerLifecycleSweep(
+  deps: Deps,
+  options?: { background: true },
+): ItemSweep {
   return defineItemSweep({
     name: "environment-provider-lifecycle",
     concurrency: Number.POSITIVE_INFINITY,
@@ -1144,13 +1147,15 @@ export function providerLifecycleSweep(deps: Deps): ItemSweep {
         }),
       ),
     key: (row) => row.id,
-    process: (row) =>
-      sweepProviderEnvironment(deps, row.id).catch((error) => {
+    process: (row) => {
+      const removal = sweepProviderEnvironment(deps, row.id).catch((error) => {
         deps.logger.warn(
           { environmentId: row.id, error: errorMessage(error) },
           "Environment removal will retry",
         );
-      }),
+      });
+      if (options?.background !== true) return removal;
+    },
   });
 }
 

@@ -204,9 +204,15 @@ describe("startServerLink", () => {
     const staleAt =
       T0 - LINK_EXPIRED_ROW_RETENTION_MS - CONNECT_CODE_TTL_MS - 1;
     const stale = LINK_EXPIRED_ROW_PRUNE_LIMIT + 3;
-    for (let index = 0; index < stale; index += 1) {
-      expect((await startWith(`stale-${index}`, staleAt)).status).toBe(200);
-    }
+    await db.insert(connectCode).values(
+      Array.from({ length: stale }, (_, index) => ({
+        code: `stale-${index}`,
+        purpose: "server-link",
+        clientName: `stale-${index}`,
+        expiresAt: new Date(staleAt + CONNECT_CODE_TTL_MS),
+        createdAt: new Date(staleAt),
+      })),
+    );
     const approvedOld = await start(staleAt);
     await approveServerLink(
       deps,

@@ -3,7 +3,9 @@ import {
   summarizeStallWindows,
 } from "./stall-attribution.js";
 import {
+  parseProfileCodeOwners,
   parseStallWindowBatch,
+  type ProfileCodeOwner,
   type StallWindowBatch,
 } from "./stall-windows.js";
 import { parentPort, workerData } from "node:worker_threads";
@@ -120,7 +122,11 @@ async function runProfileWorker(): Promise<void> {
       "Server performance diagnostics enabled",
     );
   };
-  const capture = async (restart: boolean, stalls: StallWindowBatch) => {
+  const capture = async (
+    restart: boolean,
+    stalls: StallWindowBatch,
+    codeOwners: ProfileCodeOwner[],
+  ) => {
     const beginning = startedAt;
     const nextTitle = `bb-performance-${randomUUID()}`;
     if (restart) {
@@ -136,7 +142,7 @@ async function runProfileWorker(): Promise<void> {
     if (!profile) throw new Error("CPU profile completion was not received");
     title = nextTitle;
     const endedAt = new Date().toISOString();
-    for (const fields of summarizeStallWindows(profile, stalls)) {
+    for (const fields of summarizeStallWindows(profile, stalls, codeOwners)) {
       respond(fields, "Event loop stall attribution", "info", false);
     }
     const contents = JSON.stringify(profile);
@@ -184,11 +190,13 @@ async function runProfileWorker(): Promise<void> {
         command !== null &&
         "command" in command &&
         (command.command === "capture" || command.command === "stop") &&
-        "stalls" in command
+        "stalls" in command &&
+        "codeOwners" in command
       ) {
         await capture(
           command.command === "capture",
           parseStallWindowBatch(command.stalls),
+          parseProfileCodeOwners(command.codeOwners),
         );
         if (command.command === "stop") {
           await disconnect();

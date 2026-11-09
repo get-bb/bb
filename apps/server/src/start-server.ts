@@ -47,6 +47,7 @@ import { createAppVersionService } from "./services/system/app-version.js";
 import { createLauncherChannel } from "./services/system/launcher-channel.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startGatedPerformanceDiagnostics } from "./services/system/performance-diagnostics.js";
+import { startGatedWalCheckpointer } from "./services/system/wal-checkpoint-experiment.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
   runPeriodicSweeps,
@@ -176,6 +177,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         })
       : null;
   const hub = new NotificationHub();
+  const walCheckpointer = startGatedWalCheckpointer({ db, hub, logger });
+  walCheckpointer.attach(db.$client);
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
@@ -403,6 +406,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       terminalSessions,
       watchInterests,
       sharedPorts,
+      walCheckpointer,
     },
     {
       serverMove: {
@@ -437,6 +441,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   );
   const performanceDiagnostics = await startGatedPerformanceDiagnostics({
     allowed: serverConfig.BB_PERF_DIAGNOSTICS,
+    codeOwners: () => pluginService.listCodeOwners(),
     dataDir: serverConfig.BB_DATA_DIR,
     db,
     hub,
@@ -480,6 +485,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     plugins: pluginService,
     telemetry,
     terminalSessions,
+    walCheckpointer,
   };
   const providerModelCatalogPrewarm =
     pendingServerMove === null
@@ -589,6 +595,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       await tunnelIngress.closeAll();
       await closeWebSockets();
       await closeServer;
+      await walCheckpointer.stop();
     })();
     return shutdownPromise;
   };

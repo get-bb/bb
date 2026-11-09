@@ -1,5 +1,10 @@
 import { performance } from "node:perf_hooks";
-import { getAppSettings, getLatestThreadSequence, getThread } from "@bb/db";
+import {
+  getAppSettings,
+  getLatestThreadSequence,
+  getThread,
+  getThreadEventRewriteGeneration,
+} from "@bb/db";
 import {
   DEFAULT_COMPLETED_TURN_DISPLAY,
   type AppSettings,
@@ -16,7 +21,6 @@ import {
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import type { ThreadTimelineSubscriber } from "../../ws/hub.js";
-import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { observeTimelinePushTrace } from "../system/turn-trace.js";
 import {
   buildThreadTimelineWithProfile,
@@ -30,12 +34,13 @@ import {
   buildThreadTimelineCacheRevision,
   createThreadTimelineCache,
 } from "./timeline-cache.js";
-import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
+import { forgetTimelineGroupingContexts } from "./timeline-context-order.js";
 import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
 import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
-import { isCompactionOfferEnabled } from "./compaction-offer.js";
+import { resolveThreadHeadStateOptions } from "./thread-head-state.js";
+import { reuseUnchangedTimelineWindowParts } from "./timeline-window-reuse.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -51,7 +56,6 @@ export interface ThreadTimelineWindowRequest {
   deferContent: boolean;
   includeNestedRows: boolean;
   page: ThreadTimelinePageRequest;
-  summaryOnly: boolean;
 }
 
 const MAX_PUSH_PAUSE_MS = 1_000;
@@ -103,12 +107,9 @@ function latestWindowKey(
   request: ThreadTimelineWindowRequest,
   segmentLimit: number,
 ): string {
-  return [
-    segmentLimit,
-    request.deferContent,
-    request.includeNestedRows,
-    request.summaryOnly,
-  ].join("|");
+  return [segmentLimit, request.deferContent, request.includeNestedRows].join(
+    "|",
+  );
 }
 
 export function createThreadTimelineWindows(
@@ -145,20 +146,13 @@ export function createThreadTimelineWindows(
     );
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const surfaceOptions = {
-      compactionOfferEnabled: isCompactionOfferEnabled(deps, thread.providerId),
+      ...resolveThreadHeadStateOptions(deps, thread.providerId),
       completedTurnDisplay,
       deferContent: request.deferContent,
       includeClearedContextHistory,
       includeDiagnosticOperations,
       includeNestedRows: request.includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      planCommand: resolveProviderPlanCommand(
-        deps.providerRegistry,
-        thread.providerId,
-      ),
-      extensionStateKinds: Object.entries(
-        deps.providerRegistry.get(thread.providerId)?.info.extensionKinds ?? {},
-      ).flatMap(([kind, declared]) => (declared.state ? [kind] : [])),
       providerDisplayName,
       summarizeShellCommands: settings.summarizeShellCommands,
     };
@@ -167,33 +161,36 @@ export function createThreadTimelineWindows(
       buildThreadTimelineCacheKey({
         threadId: thread.id,
         page: request.page,
-        summaryOnly: request.summaryOnly,
         deferContent: request.deferContent,
         includeNestedRows: request.includeNestedRows,
       }),
       buildThreadTimelineCacheRevision({
         maxSeq,
+        page: request.page,
+        rewriteGeneration: getThreadEventRewriteGeneration(thread.id),
         status: thread.status,
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
       }),
-      () => {
-        const { profile, response: built } = buildThreadTimelineWithProfile(
-          deps.db,
-          thread,
-          {
-            ...surfaceOptions,
-            eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
-            maxSeq,
-            page: request.page,
-            summaryOnly: request.summaryOnly,
-          },
-        );
-        slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        const window = shortenTimelineResponseOutputs(built, {
-          maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-          preview: !request.includeNestedRows,
+      (previous) => {
+        const {
+          cost,
+          profile,
+          response: built,
+        } = buildThreadTimelineWithProfile(deps.db, thread, {
+          ...surfaceOptions,
+          eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
+          maxSeq,
+          page: request.page,
         });
+        slowTimelineBuildLogger.log({ cost, profile, threadId: thread.id });
+        const window = reuseUnchangedTimelineWindowParts(
+          shortenTimelineResponseOutputs(built, {
+            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+            preview: !request.includeNestedRows,
+          }),
+          previous,
+        );
         return { ...window, tag: timelineWindowTag(window) };
       },
     );
@@ -218,7 +215,6 @@ export function createThreadTimelineWindows(
       deferContent: target.deferContent,
       includeNestedRows: false,
       page: { kind: "latest", segmentLimit },
-      summaryOnly: false,
     };
     const windowKey = latestWindowKey(request, segmentLimit);
     const response = buildWindow(thread, request);
@@ -357,6 +353,7 @@ export function createThreadTimelineWindows(
     }
     if (message.changes.includes("thread-deleted")) {
       servedWindows.invalidateThread(message.id);
+      timelineCache.invalidateThread(message.id);
       const schedule = pushSchedulesByThreadId.get(message.id);
       if (schedule?.timer) {
         clearTimeout(schedule.timer);
@@ -377,7 +374,7 @@ export function createThreadTimelineWindows(
       return;
     }
     if (rewritten) {
-      clearTimelineOrderingContextCache(deps.db);
+      forgetTimelineGroupingContexts(deps.db, message.id);
     }
     forgetLatestTimelineSelections(deps.db, message.id);
     forgetTimelineProjectionFolds(deps.db, message.id);

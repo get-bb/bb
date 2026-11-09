@@ -263,6 +263,31 @@ inaccessible WAL files report a null size with a sample timestamp. WAL size
 can include space reused by earlier generations; it does not measure uncheckpointed backlog or identify
 checkpoint progress. Resource sampling is also disabled with the live gate.
 
+The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
+when agents saturate the CPU:
+
+- While it is on, the host daemon sets nice 10 (the below-normal priority
+  class on Windows) on provider processes and environment lifecycle scripts as
+  they start, and the builds and tests they launch inherit it. The server
+  sends the value in the session handshake and in
+  `provider-session-policy.replace`, but a toggle takes effect only after
+  restarting bb: a running provider bridge worker keeps the priority it started
+  with while it serves new threads, and a lowered process cannot be raised
+  again. Terminals keep normal priority.
+- On macOS, where the scheduler ignores nice between processes, the launcher
+  spawns the server and daemon through `/usr/sbin/taskpolicy -a` (application
+  scheduling, not inherited by their children). The launcher reads the value
+  from `<data dir>/agent-cpu-priority.json` at each spawn, so this half takes
+  effect after restarting bb. The server and the daemon both rewrite that file
+  when the value changes; a missing or unreadable file means off. Check with
+  `ps -axo pid,ppid,pri,ni,command`: the server and daemon show `PRI` 46,
+  their children 31.
+
+A slow-DB record whose `cpuDurationMs` is a small fraction of `durationMs`
+with many `involuntaryContextSwitches` means the server thread was waiting for
+a CPU rather than working; on Linux check that agent processes show `NI` 10 in
+`ps -o pid,ni,command`.
+
 ## Pending Question Drafts
 
 Native provider questions and Ask User Question plugin forms save partial
@@ -946,6 +971,29 @@ applied chunk.
    `Thread timeline build blocked the event loop` and its stage timings.
    `inFlightWorkAtObservation` can name an unrelated long poll; compare
    `longestSynchronousWork` and its wall/CPU times with the profile instead.
+   Measured synchronous work includes daemon WebSocket messages, timeline
+   builds, sweep steps, every transaction on bb.db (`db:transaction <mode>:`
+   followed by the first write statement, or the first statement when it only
+   reads), single statements that take at least 1 ms (`db:all`, `db:get`,
+   `db:run`, `db:exec` with redacted SQL), and the synchronous part of each API
+   request, plugin RPC or HTTP handler, plugin event handler, plugin load, and
+   plugin background service before its first `await`
+   (`<label> (until first await)`). When a measured child took at least half
+   of its parent's time, `longestSynchronousWork` names the chain, for example
+   `ws:daemon heartbeat > db:transaction deferred: update "host_daemon_sessions" ...`.
+   `longestSynchronousWorkCaller` names the request, plugin invocation, sweep,
+   or plugin load or service that was running the work, including callbacks
+   and timers a plugin scheduled while it loaded. Code a plugin runs after an
+   `await` is not measured here; it is only named by plugin id in the sampled
+   records below. `longestSynchronousWorkCpuMs` is main-thread CPU, and
+   `longestSynchronousWorkVoluntaryContextSwitches` and
+   `longestSynchronousWorkInvoluntaryContextSwitches` are process-wide counts
+   for the same interval: CPU far below wall time with many involuntary
+   switches means the thread was waiting for a core, and with many voluntary
+   switches it was waiting on a lock, disk, or another thread.
+   `Thread timeline build blocked the event loop` carries the same split as
+   `cpuDurationMs`, `voluntaryContextSwitches`, and
+   `involuntaryContextSwitches`.
    `stallAttribution` is `candidate`, with the operation in
    `stallCauseCandidate`, when a measured synchronous operation is long enough
    (within one 50 ms timer interval) to explain the maximum delay, and `unattributed`
@@ -961,7 +1009,10 @@ applied chunk.
    histogram's observation time is not the stall's end time.
    `stacks` ranks the top five sampled leaf stacks in each gap, with up to 12
    caller frames, including GC, plugin functions, native writes, and database
-   callers. Frame coordinates are one-based; cached Node source maps are used
+   callers. `owners` totals the window's sampled time per plugin
+   (`plugin:<id>`), counting a sample when any frame on its stack belongs to
+   that plugin's server code, and each ranked stack carries the same `owner`
+   (or `null`). Frame coordinates are one-based; cached Node source maps are used
    in the profile worker when available, otherwise coordinates refer to the
    generated code. Profile scanning and stack formatting run in that worker;
    the main thread only collects and transfers bounded timing windows.
@@ -1089,8 +1140,7 @@ values receive the original CSS, so a tab retained across a server update
 keeps working with its old host styles. Compressed responses are cached
 separately for the original and stripped variants.
 
-While the `narrowPluginCss` experiment is on, the app also adds
-`css-scope=owned-root-v1`. When a plugin's `app.js` never sets
+The app also adds `css-scope=owned-root-v1`. When a plugin's `app.js` never sets
 `data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes then
 drop the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
 plugin's utility selectors, so its rules cannot match outside its own roots and

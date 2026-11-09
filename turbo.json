@@ -695,7 +695,7 @@
       "passThroughEnv": ["UPDATE_PARITY_ROW_COUNTS"]
     },
     "test": {
-      "env": ["VITEST_MAX_WORKERS"],
+      "env": ["BB_QUERY_PLAN_REPORT", "VITEST_MAX_WORKERS"],
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
       // Re-pin knobs a suite reads to rewrite its own committed baseline.
@@ -733,7 +733,7 @@
     // bundling step — so the SDK dist must exist before the suite runs. The
     // marketplace parity suites read apps/web's published JSON schemas.
     "@bb/server#test": {
-      "env": ["BB_CI_TEST_SHARD", "VITEST_MAX_WORKERS"],
+      "env": ["BB_CI_TEST_SHARD", "BB_QUERY_PLAN_REPORT", "VITEST_MAX_WORKERS"],
       "dependsOn": [
         "@bb/agent-runtime#generate:test-bridges",
         "//#ensure-native-modules",

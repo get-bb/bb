@@ -9,6 +9,7 @@ import {
   type Thread,
 } from "@bb/domain";
 import type {
+  ThreadHeadStateResponse,
   ThreadTimelineResponse,
   TimelineRow,
   TimelineRowBase,
@@ -57,8 +58,16 @@ export function makeTimelineBase(args: TimelineBaseArgs): TimelineRowBase {
   };
 }
 
-export function makeEmptyTimelineGetMock() {
-  return vi.fn(async () => makeTimelineResponse([]));
+export function makeEmptyHeadStateGetMock() {
+  return vi.fn(async (): Promise<ThreadHeadStateResponse> => ({
+    activePromptMode: null,
+    contextWindowUsage: null,
+    extensionStates: {},
+    modelFallback: null,
+    pendingTodos: null,
+    providerCommands: null,
+    sessionOptions: null,
+  }));
 }
 
 export function makeTimelineResponse(

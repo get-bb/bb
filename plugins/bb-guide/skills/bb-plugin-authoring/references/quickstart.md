@@ -170,9 +170,9 @@ namespaces routes, storage, settings, and CLI commands.
 - Give every mount and portal your plugin id. Current `lib/portal-scope`
   and the shared overlays set `data-bb-plugin` next to `data-bb-plugin-root`.
   If `app.js` sets `data-bb-plugin-root` without it, as copies of
-  `lib/portal-scope` from before July 2026 do, `bb plugin build` warns. The
-  `narrowPluginCss` experiment then still serves that plugin the slower
-  stylesheet, whose utilities also match any id-less root. Refresh it with
+  `lib/portal-scope` from before July 2026 do, `bb plugin build` warns, and bb
+  serves that plugin the slower stylesheet, whose utilities also match any
+  id-less root. Refresh it with
   `npx shadcn add @bb/portal-scope`.
 - Runtime imports that bb does not shim belong in `dependencies`; validator
   imports such as Zod are ordinary runtime dependencies that the build

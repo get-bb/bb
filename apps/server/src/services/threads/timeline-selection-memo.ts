@@ -1,8 +1,10 @@
 import { THREAD_TIMELINE_EXCLUDED_EVENT_TYPES } from "@bb/thread-view";
 import type { ThreadEventItemType, ThreadEventType } from "@bb/domain";
+import type { TimelineRow } from "@bb/server-contract";
 import {
   advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
+  findUnprunableThreadEventSequence,
   getDatabaseDataVersion,
   getLatestThreadSequence,
   getThreadEventRewriteGeneration,
@@ -23,7 +25,10 @@ import {
   getTimelineGroupingContext,
   type TimelineGroupingContext,
 } from "./timeline-context-order.js";
+import { measuredTimelineRowJsonBytes } from "./timeline-content-pagination.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
+import type { DecodedTimelineRows } from "./timeline-selection-decode.js";
+import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
@@ -35,7 +40,6 @@ export interface TimelineEventRowSelection {
   hasOlderSegments: boolean;
   paginationPage: ThreadTimelinePageRequest;
   rows: StoredEventRow[];
-  headStateRows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
 }
 
@@ -55,7 +59,6 @@ export interface LatestTimelineSelectionMemoArgs {
   epochSequenceStart: number;
   eventBudget: number;
   excludeDiagnosticEvents: boolean;
-  extensionStateKinds: readonly string[];
   maxInlineOutputChars: number;
   maxSeq: number;
   page: ThreadTimelinePageRequest;
@@ -91,9 +94,15 @@ export class TimelineSelectionTrimFallback extends Error {}
 export interface LatestTimelineSelectionLookup {
   budgetFloor: TimelineBudgetFloor | null;
   dataVersion: number;
+  decodedPrefix: DecodedTimelineRows | null;
   generation: number;
   selection: TimelineEventRowSelection | null;
   trimSource: TimelineSelectionRowSource | null;
+}
+
+interface KeptPageableRows {
+  bytes: number;
+  rows: readonly TimelineRow[];
 }
 
 interface TimelineSelectionMemoEntry {
@@ -105,21 +114,26 @@ interface TimelineSelectionMemoEntry {
   missingParentToolCallIds: ReadonlySet<string>;
   dataChars: number;
   dataVersion: number;
+  decoded: DecodedTimelineRows | null;
   epochSequenceStart: number;
+  familyKey: string;
   generation: number;
+  keptPageableRowBytes: number;
+  keptPageableRows: Map<string, KeptPageableRows>;
   maxSeq: number;
   selection: TimelineEventRowSelection;
   threadId: string;
 }
 
 interface TimelineSelectionMemo {
-  dataChars: number;
   entries: Map<string, TimelineSelectionMemoEntry>;
+  retainedSize: number;
+  rowReferences: Map<readonly StoredEventRow[], number>;
 }
 
 export const TIMELINE_SELECTION_MEMO_MAX_ENTRIES = 16;
 export const TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES = 4;
-const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
+export const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
 const TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS = 512;
 
 const SELECTION_CHANGING_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
@@ -159,31 +173,71 @@ export function countTimelineSelectionMemoEntries(db: DbConnection): number {
   return selectionMemos.get(db)?.entries.size ?? 0;
 }
 
+export function readKeptLatestTimelinePageableRows(db: DbConnection): {
+  bytes: number;
+  rows: readonly TimelineRow[];
+  threadId: string;
+}[] {
+  const entries = [...(selectionMemos.get(db)?.entries.values() ?? [])];
+  return entries.flatMap(({ keptPageableRows, threadId }) =>
+    [...keptPageableRows.values()].map(({ bytes, rows }) => ({
+      bytes,
+      rows,
+      threadId,
+    })),
+  );
+}
+
+export function readDecodedLatestTimelineSelections(db: DbConnection): {
+  dataChars: number;
+  decoded: DecodedTimelineRows;
+  threadId: string;
+}[] {
+  const entries = [...(selectionMemos.get(db)?.entries.values() ?? [])];
+  return entries.flatMap(({ dataChars, decoded, threadId }) =>
+    decoded === null ? [] : [{ dataChars, decoded, threadId }],
+  );
+}
+
+export interface TimelineWindowStartArgs {
+  beforeSequence: number;
+  budgetFloorSequence: number | undefined;
+  epochSequenceStart: number;
+  hints: readonly TimelineWindowHint[];
+  segmentLimit: number;
+  threadId: string;
+}
+
 export function selectTimelineWindowStart(
-  hints: readonly TimelineWindowHint[],
-  budgetFloorSequence: number | undefined,
-  segmentLimit: number,
-  epochSequenceStart: number,
+  db: DbConnection,
+  args: TimelineWindowStartArgs,
 ): number {
+  const { budgetFloorSequence, hints, segmentLimit } = args;
   if (budgetFloorSequence === undefined && hints.length <= segmentLimit) {
-    return epochSequenceStart;
+    return args.epochSequenceStart;
   }
   const affordable = hints.filter(
     (hint) =>
       budgetFloorSequence === undefined || hint.sequence >= budgetFloorSequence,
   );
-  return (
+  const hintStart =
     affordable[Math.min(segmentLimit, affordable.length) - 1]?.sequence ??
-    hints[0]?.sequence ??
-    budgetFloorSequence ??
-    epochSequenceStart
+    hints[0]?.sequence;
+  if (hintStart !== undefined) return hintStart;
+  if (budgetFloorSequence === undefined) return args.epochSequenceStart;
+  return (
+    findUnprunableThreadEventSequence(db, {
+      beforeSequence: args.beforeSequence,
+      sequenceStart: budgetFloorSequence,
+      threadId: args.threadId,
+    }) ?? budgetFloorSequence
   );
 }
 
 function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
   let memo = selectionMemos.get(db);
   if (memo === undefined) {
-    memo = { dataChars: 0, entries: new Map() };
+    memo = { entries: new Map(), retainedSize: 0, rowReferences: new Map() };
     selectionMemos.set(db, memo);
   }
   return memo;
@@ -197,11 +251,23 @@ function dataCharsOfRows(rows: readonly StoredEventRow[]): number {
   return chars;
 }
 
+function retainedSizeOf(entry: TimelineSelectionMemoEntry): number {
+  return entry.dataChars + entry.keptPageableRowBytes;
+}
+
 function deleteMemoEntry(memo: TimelineSelectionMemo, key: string): void {
   const entry = memo.entries.get(key);
   if (entry === undefined) return;
   memo.entries.delete(key);
-  memo.dataChars -= entry.dataChars;
+  memo.retainedSize -= entry.keptPageableRowBytes;
+  const rows = entry.selection.rows;
+  const references = (memo.rowReferences.get(rows) ?? 1) - 1;
+  if (references > 0) {
+    memo.rowReferences.set(rows, references);
+    return;
+  }
+  memo.rowReferences.delete(rows);
+  memo.retainedSize -= entry.dataChars;
 }
 
 function deleteThreadMemoEntries(
@@ -236,12 +302,24 @@ function storeMemoEntry(
 ): void {
   deleteMemoEntry(memo, key);
   if (entry.dataChars > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS) return;
-  memo.entries.set(key, entry);
-  memo.dataChars += entry.dataChars;
-  if (!entry.active) deleteOldestIdleEntries(memo);
+  const stored =
+    retainedSizeOf(entry) > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
+      ? { ...entry, keptPageableRowBytes: 0, keptPageableRows: new Map() }
+      : entry;
+  memo.entries.set(key, stored);
+  memo.retainedSize += stored.keptPageableRowBytes;
+  const rows = stored.selection.rows;
+  const references = memo.rowReferences.get(rows) ?? 0;
+  memo.rowReferences.set(rows, references + 1);
+  if (references === 0) memo.retainedSize += stored.dataChars;
+  if (!stored.active) deleteOldestIdleEntries(memo);
+  deleteOldestEntriesOverBudget(memo);
+}
+
+function deleteOldestEntriesOverBudget(memo: TimelineSelectionMemo): void {
   while (
     memo.entries.size > TIMELINE_SELECTION_MEMO_MAX_ENTRIES ||
-    memo.dataChars > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
+    memo.retainedSize > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
   ) {
     const oldest = memo.entries.keys().next().value;
     if (oldest === undefined) break;
@@ -249,16 +327,120 @@ function storeMemoEntry(
   }
 }
 
-function selectionMemoKey(args: LatestTimelineSelectionMemoArgs): string {
+function selectionMemoFamilyKey(args: LatestTimelineSelectionMemoArgs): string {
   return JSON.stringify([
     args.threadId,
-    args.page.segmentLimit,
     args.eventBudget,
     args.maxInlineOutputChars,
     args.excludeDiagnosticEvents,
     args.epochSequenceStart,
-    args.extensionStateKinds,
   ]);
+}
+
+function selectionMemoKey(args: LatestTimelineSelectionMemoArgs): string {
+  return JSON.stringify([selectionMemoFamilyKey(args), args.page.segmentLimit]);
+}
+
+function findCurrentSibling(
+  memo: TimelineSelectionMemo,
+  args: LatestTimelineSelectionMemoArgs,
+  lookup: LatestTimelineSelectionLookup,
+  matches: (entry: TimelineSelectionMemoEntry) => boolean,
+): TimelineSelectionMemoEntry | undefined {
+  const key = selectionMemoKey(args);
+  const familyKey = selectionMemoFamilyKey(args);
+  for (const [entryKey, entry] of memo.entries) {
+    if (
+      entryKey !== key &&
+      entry.familyKey === familyKey &&
+      entry.maxSeq === args.maxSeq &&
+      entry.generation === lookup.generation &&
+      entry.dataVersion === lookup.dataVersion &&
+      matches(entry)
+    ) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
+function adoptSiblingSelection(
+  memo: TimelineSelectionMemo,
+  args: LatestTimelineSelectionMemoArgs,
+  lookup: LatestTimelineSelectionLookup,
+  sibling: TimelineSelectionMemoEntry,
+  budgetFloor: TimelineBudgetFloor,
+  hints: readonly TimelineWindowHint[],
+): LatestTimelineSelectionLookup {
+  const selection: TimelineEventRowSelection = {
+    ...sibling.selection,
+    paginationPage: args.page,
+  };
+  storeMemoEntry(memo, selectionMemoKey(args), {
+    ...sibling,
+    active: args.active,
+    budgetFloorSequence: budgetFloor.sequence,
+    hints,
+    keptPageableRowBytes: 0,
+    keptPageableRows: new Map(),
+    selection,
+  });
+  return { ...lookup, budgetFloor, selection };
+}
+
+function lookupFromWiderSibling(
+  db: DbConnection,
+  memo: TimelineSelectionMemo,
+  args: LatestTimelineSelectionMemoArgs,
+  miss: LatestTimelineSelectionLookup,
+  ownEntryIsCurrent: boolean,
+): LatestTimelineSelectionLookup | null {
+  const wider = findCurrentSibling(
+    memo,
+    args,
+    miss,
+    (entry) =>
+      entry.selection.paginationPage.segmentLimit >= args.page.segmentLimit,
+  );
+  if (
+    wider === undefined ||
+    getLatestThreadSequence(db, { threadId: args.threadId }) !== args.maxSeq
+  ) {
+    return null;
+  }
+  const budgetFloor: TimelineBudgetFloor = {
+    sequence: wider.budgetFloorSequence,
+  };
+  const hints = wider.hints.slice(0, args.page.segmentLimit + 1);
+  const sequenceStart = selectTimelineWindowStart(db, {
+    beforeSequence: args.maxSeq + 1,
+    budgetFloorSequence: budgetFloor.sequence,
+    epochSequenceStart: args.epochSequenceStart,
+    hints,
+    segmentLimit: args.page.segmentLimit,
+    threadId: args.threadId,
+  });
+  if (sequenceStart === wider.selection.ownedSequenceStart) {
+    return adoptSiblingSelection(memo, args, miss, wider, budgetFloor, hints);
+  }
+  if (ownEntryIsCurrent || sequenceStart < wider.selection.ownedSequenceStart) {
+    return null;
+  }
+  return {
+    ...miss,
+    budgetFloor,
+    trimSource: createTrimmedSelectionRowSource(
+      db,
+      args,
+      {
+        appendableTurnIds: new Set(wider.appendableTurnIds),
+        delegatingItemIds: new Set(wider.delegatingItemIds),
+        groupingContext: null,
+        missingParentToolCallIds: new Set(wider.missingParentToolCallIds),
+      },
+      wider.selection.rows,
+    ),
+  };
 }
 
 function isDelegatingRow(row: StoredEventRow): boolean {
@@ -656,11 +838,13 @@ function createTrimmedSelectionRowSource(
           trimFallback("unfetched-children");
         }
       }
+      const excludedTurnIds = new Set(query.excludedTurnIds);
       return rows.filter(
         (row) =>
           row.parentToolCallId !== null &&
           parents.has(row.parentToolCallId) &&
-          row.sequence >= args.epochSequenceStart,
+          row.sequence >= args.epochSequenceStart &&
+          (row.turnId === null || !excludedTurnIds.has(row.turnId)),
       );
     },
     listContextRows(query) {
@@ -746,19 +930,28 @@ export function lookupLatestTimelineSelection(
   const miss: LatestTimelineSelectionLookup = {
     budgetFloor: null,
     dataVersion,
+    decodedPrefix: null,
     generation,
     selection: null,
     trimSource: null,
   };
   const memo = selectionMemos.get(db);
+  if (memo === undefined) return miss;
   const key = selectionMemoKey(args);
-  const entry = memo?.entries.get(key);
-  if (
-    memo === undefined ||
-    entry === undefined ||
-    entry.generation !== generation ||
-    entry.dataVersion !== dataVersion
-  ) {
+  const entry = memo.entries.get(key);
+  const entryIsCurrent =
+    entry !== undefined &&
+    entry.generation === generation &&
+    entry.dataVersion === dataVersion;
+  const fromSibling = lookupFromWiderSibling(
+    db,
+    memo,
+    args,
+    miss,
+    entryIsCurrent,
+  );
+  if (fromSibling !== null) return fromSibling;
+  if (entry === undefined || !entryIsCurrent) {
     return miss;
   }
   const appended = listAppendableRows(db, args, entry);
@@ -792,12 +985,14 @@ export function lookupLatestTimelineSelection(
     appendedHints.length === 0
       ? entry.hints
       : [...appendedHints, ...entry.hints].slice(0, args.page.segmentLimit + 1);
-  const sequenceStart = selectTimelineWindowStart(
+  const sequenceStart = selectTimelineWindowStart(db, {
+    beforeSequence: args.maxSeq + 1,
+    budgetFloorSequence: budgetFloor.sequence,
+    epochSequenceStart: args.epochSequenceStart,
     hints,
-    budgetFloor.sequence,
-    args.page.segmentLimit,
-    args.epochSequenceStart,
-  );
+    segmentLimit: args.page.segmentLimit,
+    threadId: args.threadId,
+  });
   if (sequenceStart < entry.selection.ownedSequenceStart) {
     return { ...miss, budgetFloor };
   }
@@ -813,6 +1008,22 @@ export function lookupLatestTimelineSelection(
       ),
     };
   }
+  const sameWindow = findCurrentSibling(
+    memo,
+    args,
+    miss,
+    (sibling) => sibling.selection.ownedSequenceStart === sequenceStart,
+  );
+  if (sameWindow !== undefined) {
+    return adoptSiblingSelection(
+      memo,
+      args,
+      miss,
+      sameWindow,
+      budgetFloor,
+      hints,
+    );
+  }
   const selection: TimelineEventRowSelection = {
     ...entry.selection,
     orderingBoundarySequence: appended.groupingContextChanged
@@ -827,7 +1038,10 @@ export function lookupLatestTimelineSelection(
       : entry.selection.orderingBoundarySequence,
     ownedSequenceEnd: args.maxSeq + 1,
     paginationPage: args.page,
-    rows: entry.selection.rows.concat(appended.rows),
+    rows:
+      appended.rows.length === 0
+        ? entry.selection.rows
+        : entry.selection.rows.concat(appended.rows),
   };
   storeMemoEntry(memo, key, {
     ...entry,
@@ -837,11 +1051,70 @@ export function lookupLatestTimelineSelection(
     delegatingItemIds: appended.extension.delegatingItemIds,
     missingParentToolCallIds: appended.extension.missingParentToolCallIds,
     dataChars: entry.dataChars + dataCharsOfRows(appended.rows),
+    decoded: null,
     hints,
     maxSeq: args.maxSeq,
     selection,
   });
-  return { ...miss, budgetFloor, selection };
+  return { ...miss, budgetFloor, decodedPrefix: entry.decoded, selection };
+}
+
+export function rememberDecodedLatestTimelineSelection(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  rows: readonly StoredEventRow[],
+  decoded: DecodedTimelineRows,
+): void {
+  const entry = selectionMemos.get(db)?.entries.get(selectionMemoKey(args));
+  if (entry?.selection.rows === rows) entry.decoded = decoded;
+}
+
+export function reuseKeptLatestTimelinePageableRows(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  variant: string,
+  rows: TimelineRow[],
+): TimelineRow[] {
+  const previous = selectionMemos
+    .get(db)
+    ?.entries.get(selectionMemoKey(args))
+    ?.keptPageableRows.get(variant);
+  return previous === undefined
+    ? rows
+    : reuseUnchangedTimelineRows(rows, previous.rows);
+}
+
+export function keepLatestTimelinePageableRows(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  variant: string,
+  rows: readonly TimelineRow[],
+): void {
+  const memo = selectionMemos.get(db);
+  const entry = memo?.entries.get(selectionMemoKey(args));
+  if (memo === undefined || entry === undefined) return;
+  const measuredRows: TimelineRow[] = [];
+  let bytes = 0;
+  for (const row of rows) {
+    const rowBytes = measuredTimelineRowJsonBytes(row);
+    if (rowBytes === null) continue;
+    measuredRows.push(row);
+    bytes += rowBytes;
+  }
+  const previousBytes = entry.keptPageableRows.get(variant)?.bytes ?? 0;
+  entry.keptPageableRowBytes -= previousBytes;
+  memo.retainedSize -= previousBytes;
+  if (
+    measuredRows.length === 0 ||
+    retainedSizeOf(entry) + bytes > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS
+  ) {
+    entry.keptPageableRows.delete(variant);
+  } else {
+    entry.keptPageableRows.set(variant, { bytes, rows: measuredRows });
+    entry.keptPageableRowBytes += bytes;
+    memo.retainedSize += bytes;
+  }
+  deleteOldestEntriesOverBudget(memo);
 }
 
 export function rememberLatestTimelineSelection(
@@ -856,19 +1129,27 @@ export function rememberLatestTimelineSelection(
     args.threadId,
     (entry) => entry.epochSequenceStart === args.epochSequenceStart,
   );
-  storeMemoEntry(memo, selectionMemoKey(args), {
+  const key = selectionMemoKey(args);
+  const previous = memo.entries.get(key);
+  const kept =
+    previous !== undefined && previous.generation === lookup.generation
+      ? previous
+      : null;
+  storeMemoEntry(memo, key, {
     active: args.active,
     budgetFloorSequence: result.budgetFloorSequence,
     hints: result.hints,
     appendableTurnIds: result.fetchedTurnIds,
     delegatingItemIds: collectDelegatingItemIds(result.selection.rows),
     missingParentToolCallIds: new Set(),
-    dataChars:
-      dataCharsOfRows(result.selection.rows) +
-      dataCharsOfRows(result.selection.headStateRows),
+    dataChars: dataCharsOfRows(result.selection.rows),
     dataVersion: lookup.dataVersion,
+    decoded: null,
     epochSequenceStart: args.epochSequenceStart,
+    familyKey: selectionMemoFamilyKey(args),
     generation: lookup.generation,
+    keptPageableRowBytes: kept?.keptPageableRowBytes ?? 0,
+    keptPageableRows: kept?.keptPageableRows ?? new Map(),
     maxSeq: args.maxSeq,
     selection: result.selection,
     threadId: args.threadId,

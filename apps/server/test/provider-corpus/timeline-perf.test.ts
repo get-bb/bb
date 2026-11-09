@@ -52,9 +52,9 @@ const STAGES: readonly ThreadTimelineBuildProfileStage[] = [
   "accepted-client-request-context-query",
   "event-json-decode",
   "summary-compaction",
-  "context-window-query",
-  "context-window-json-decode",
+  "head-state",
   "thread-view-projection",
+  "thread-view-rows",
   "pagination-segmentation",
 ];
 

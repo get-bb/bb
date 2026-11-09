@@ -87,8 +87,6 @@ the same snapshot. Updates share the page byte budget
 with the returned rows. Updates that do not fit the remaining budget, and leaves
 omitted by a content cut, still count toward `olderRowsSourceSeqEnd`.
 
-`summaryOnly=true` returns head state without timeline rows or older-row updates.
-
 `completedTurnDisplay` reports whether the page projected finished turns as
 collapsed "Worked for" rows or flat rows. It is part of the display surface: a
 cursor from one display returns HTTP 400 under the other, and
@@ -120,9 +118,14 @@ The 4 MiB response target and event setting determine content-page boundaries
 after grouping. At least one indivisible row is returned, even if it exceeds
 the target. Complete-group queries and grouping work can exceed those budgets.
 
-Latest plan/todo and goal snapshots are head state, returned even when they
-fall outside the selected rows; they do not widen the page. The client merge
-guard describes omitted conversation rows, not head-state rows.
+Head state is the thread's current to-dos, provider commands, session options,
+extension states (such as goals), plan prompt mode, model fallback, and context
+usage. `readThreadHeadState` reads each from its latest stored state events, so
+its cost does not grow with the page or the turn. The latest page embeds that
+result; it is not derived from the selected rows and does not widen the page.
+`GET /threads/:id/head-state` returns the same values without building a page.
+Active thinking, active workflows, and active background commands are not head
+state: they come from projecting the latest page.
 
 `GET /api/v1/threads/:id/timeline/turn-summary-details` and
 `sdk.threads.timelineTurnSummaryDetails` retain the existing `turnId`,
@@ -131,7 +134,10 @@ guard describes omitted conversation rows, not head-state rows.
 older page. These pages have their own `historySnapshot` and use the same
 recursive merge. A page holds at most 200 leaves and targets 1 MiB. The app
 loads the newest page when a summary is expanded and requests older pages only
-when the user asks for earlier activity.
+when the user asks for earlier activity. The server projects a turn once per
+snapshot and inputs, and serves every page of that walk and a repeat expand
+from the kept projection (32 projections, 32 MiB, per database connection). A
+new event, a history rewrite or an expiring output preview projects it again.
 
 Without `itemId`, the response covers the whole turn and command and tool
 output longer than 4,000 characters is previewed. With `itemId`, pass the range
@@ -303,7 +309,9 @@ assistant items only while its Agent messages tab is open. Active
 threads reuse completed outline items from a bounded in-memory cache (16 threads,
 8 million characters) and reproject only the tail; history rewrites, context
 clears, metadata or display changes, and writes from another database connection
-force a rebuild. Eviction only affects performance.
+force a rebuild. Background tasks in the kept history do not prevent reuse, but
+a later event for one of them, like a child event of a kept tool call, forces a
+rebuild. Eviction only affects performance.
 
 ## Catch-up feedback
 

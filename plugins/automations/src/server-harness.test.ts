@@ -20,6 +20,30 @@ import {
   type AutomationRunResponse,
 } from "./rpc-types.js";
 
+function observeCompletedRun(host: FakePluginHost, automationId: string) {
+  const { harness } = host;
+  const publish = host.bb.realtime.publish.bind(host.bb.realtime);
+  const publishSpy = vi.spyOn(host.bb.realtime, "publish");
+  const completedRun = new Promise<AutomationRunResponse>((resolve, reject) => {
+    publishSpy.mockImplementation((...args) => {
+      publish(...args);
+      void harness
+        .callRpc("automations_runs", {
+          projectId: PROJECT_ID,
+          automationId,
+        })
+        .then((result) => {
+          const { runs } = automationRunListResponseSchema.parse(result);
+          if (runs[0] !== undefined && runs[0].status !== "running") {
+            resolve(runs[0]);
+          }
+        })
+        .catch(reject);
+    });
+  });
+  return { completedRun, stop: () => publishSpy.mockRestore() };
+}
+
 function storedScriptPathPattern(automationId: string): RegExp {
   const suffix = join(sep, "scripts", automationId, "script.sh");
   return new RegExp(`${suffix.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`);
@@ -140,9 +164,11 @@ async function bootAutomationsPlugin(
     "full",
   ],
   routedPermissionModes?: Array<"accept-edits" | "auto" | "full">,
+  loopbackBaseUrl?: string,
 ): Promise<FakePluginHost> {
   const host = createFakePluginHost({
     pluginId: "automations",
+    loopbackBaseUrl,
     sdk: {
       system: { config: async () => ({ primaryHostId: "host_fake" }) },
       projects: {
@@ -1474,7 +1500,6 @@ describe("automations server plugin harness", () => {
       bb: host.bb as never,
       db: host.bb.storage.database(),
       pluginDataDir: "/tmp/bb-automations-test",
-      serverUrl: "http://127.0.0.1:38886",
       scriptRuns: createScriptRunScope(),
     });
     await expect(
@@ -1769,27 +1794,7 @@ describe("automations server plugin harness", () => {
     let primaryHostId: string | null = null;
     harness.sdk.stub("system.config", () => ({ primaryHostId }));
     const initialCalls = harness.sdk.callsTo("system.config").length;
-    const publish = host.bb.realtime.publish.bind(host.bb.realtime);
-    const publishSpy = vi.spyOn(host.bb.realtime, "publish");
-    const completedRun = new Promise<AutomationRunResponse>(
-      (resolve, reject) => {
-        publishSpy.mockImplementation((...args) => {
-          publish(...args);
-          void harness
-            .callRpc("automations_runs", {
-              projectId: PROJECT_ID,
-              automationId: automation.id,
-            })
-            .then((result) => {
-              const { runs } = automationRunListResponseSchema.parse(result);
-              if (runs[0] !== undefined && runs[0].status !== "running") {
-                resolve(runs[0]);
-              }
-            })
-            .catch(reject);
-        });
-      },
-    );
+    const { completedRun, stop } = observeCompletedRun(host, automation.id);
     const service = harness.runService("automation-sweep");
     try {
       await vi.waitFor(() =>
@@ -1811,7 +1816,54 @@ describe("automations server plugin harness", () => {
     } finally {
       service.controller.abort();
       await service.done;
-      publishSpy.mockRestore();
+      stop();
+      await harness.dispose();
+    }
+  });
+
+  it("points a script's bb calls at the server the plugin runs in", async () => {
+    const host = await bootAutomationsPlugin(
+      undefined,
+      undefined,
+      "http://127.0.0.1:48886",
+    );
+    const { harness } = host;
+    const created = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Server URL",
+      "--in",
+      "1h",
+      "--script",
+      'printf "%s" "$BB_SERVER_URL"',
+      "--interpreter",
+      "sh",
+      "--working-directory",
+      "automation-storage",
+      "--json",
+    ]);
+    expect(created.exitCode).toBe(0);
+    const automation = automationDetailResponseSchema.parse(
+      JSON.parse(created.stdout!),
+    );
+
+    const { completedRun, stop } = observeCompletedRun(host, automation.id);
+    try {
+      const started = automationRunRpcResponseSchema.parse(
+        await harness.callRpc("automations_run", {
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+        }),
+      );
+      expect(await completedRun).toMatchObject({
+        id: started.run.id,
+        status: "succeeded",
+        output: expect.stringMatching(/(?:^|\n)http:\/\/127\.0\.0\.1:48886$/),
+      });
+    } finally {
+      stop();
       await harness.dispose();
     }
   });

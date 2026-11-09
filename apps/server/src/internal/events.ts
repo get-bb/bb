@@ -859,8 +859,10 @@ function getTurnInterruption(
   }
 
   const turnCompleted = deps.db
-    .select({ sequence: storedEvents.sequence })
-    .from(storedEvents)
+    .select({ sequence: sql<number>`${storedEvents.sequence}` })
+    .from(
+      sql`${storedEvents} INDEXED BY events_thread_turn_type_item_sequence_idx`,
+    )
     .where(
       and(
         eq(storedEvents.threadId, args.threadId),
@@ -874,8 +876,8 @@ function getTurnInterruption(
   if (!turnCompleted) return undefined;
 
   const interruption = deps.db
-    .select({ data: storedEvents.data })
-    .from(storedEvents)
+    .select({ data: sql<string>`${storedEvents.data}` })
+    .from(sql`${storedEvents} INDEXED BY events_thread_type_sequence_idx`)
     .where(
       and(
         eq(storedEvents.threadId, args.threadId),

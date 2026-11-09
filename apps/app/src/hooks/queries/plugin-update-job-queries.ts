@@ -1,5 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import type { PluginUpdateJob } from "@bb/server-contract";
+import type {
+  PluginApplyUpdateRequest,
+  PluginUpdateJob,
+} from "@bb/server-contract";
 import { createPluginsClient } from "./plugin-client";
 import { pluginUpdateJobsQueryKey } from "./query-keys";
 
@@ -16,6 +19,12 @@ export function usePluginUpdateJobs() {
   });
 }
 
-export function startPluginUpdate(pluginId: string): Promise<PluginUpdateJob> {
-  return createPluginsClient(fetch).experimental_startUpdate({ pluginId });
+export function startPluginUpdate(
+  pluginId: string,
+  request: PluginApplyUpdateRequest = {},
+): Promise<PluginUpdateJob> {
+  return createPluginsClient(fetch).experimental_startUpdate({
+    pluginId,
+    ...request,
+  });
 }

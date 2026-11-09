@@ -1,9 +1,9 @@
 import {
-  createContext,
   useCallback,
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
@@ -142,48 +142,57 @@ export function computeMessageActionRowLayout({
   return { inlineCount, overflowCount: actionCount - inlineCount };
 }
 
-export function useMeasuredWidth({
+function useMessageActionRowFit({
   enabled,
-  resolveTarget,
+  actionCount,
+  actionWidth,
 }: {
   enabled: boolean;
-  resolveTarget?: (node: HTMLElement) => Element | null;
+  actionCount: number;
+  actionWidth: number;
 }): {
-  measureRef: (node: HTMLElement | null) => void;
-  width: number | undefined;
+  slotRef: (node: HTMLElement | null) => void;
+  rowRef: RefObject<HTMLDivElement | null>;
+  inlineCount: number;
 } {
-  const [width, setWidth] = useState<number | undefined>(undefined);
+  const [measuredInlineCount, setMeasuredInlineCount] = useState<
+    number | null
+  >(null);
+  const rowRef = useRef<HTMLDivElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
-  const measureRef = useCallback(
+  const slotRef = useCallback(
     (node: HTMLElement | null) => {
       observerRef.current?.disconnect();
       observerRef.current = null;
       if (!enabled || node === null || typeof ResizeObserver === "undefined") {
         return;
       }
-      const target = resolveTarget ? resolveTarget(node) : node;
-      if (target === null) {
-        return;
-      }
       const observer = new ResizeObserver(([entry]) => {
-        const inlineSize =
-          entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
-        setWidth(Math.floor(inlineSize));
+        const availableWidth = Math.floor(
+          entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width,
+        );
+        if (rowRef.current !== null) {
+          rowRef.current.style.maxWidth = `${availableWidth}px`;
+        }
+        setMeasuredInlineCount(
+          computeMessageActionRowLayout({
+            actionCount,
+            availableWidth,
+            actionWidth,
+          }).inlineCount,
+        );
       });
-      observer.observe(target);
+      observer.observe(node);
       observerRef.current = observer;
     },
-    [enabled, resolveTarget],
+    [enabled, actionCount, actionWidth],
   );
-  return { measureRef, width };
+  return {
+    slotRef,
+    rowRef,
+    inlineCount: Math.min(measuredInlineCount ?? actionCount, actionCount),
+  };
 }
-
-export interface SharedMessageColumnWidth {
-  width: number | undefined;
-}
-
-export const MessageColumnWidthContext =
-  createContext<SharedMessageColumnWidth | null>(null);
 
 const ACTION_BUTTON_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
@@ -315,17 +324,7 @@ export function MessageActionBar({
     HTMLElement | undefined
   >();
   const isCompactTouch = isCompactViewport && isPointerCoarse;
-  const { measureRef, width: availableWidth } = useMeasuredWidth({
-    enabled: !(isCompactTouch && mobileActionDisplay === "overflow"),
-  });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const slotRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      measureRef(node);
-      setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
-    },
-    [measureRef],
-  );
   const mobileDirectActionClass =
     mobileActionDisplay === "inline"
       ? MOBILE_INLINE_ACTION_CLASS
@@ -394,17 +393,26 @@ export function MessageActionBar({
         ]
       : []),
   ];
-  const layout = computeMessageActionRowLayout({
+  const usesOverflowOnly = isCompactTouch && mobileActionDisplay === "overflow";
+  const {
+    slotRef: measureSlotRef,
+    rowRef,
+    inlineCount: fittedInlineCount,
+  } = useMessageActionRowFit({
+    enabled: !usesOverflowOnly,
     actionCount: inlineCandidates.length,
-    availableWidth,
     actionWidth: isCompactTouch
       ? TOUCH_ACTION_WIDTH_PX
       : DESKTOP_ACTION_WIDTH_PX,
   });
-  const inlineCount =
-    isCompactTouch && mobileActionDisplay === "overflow"
-      ? 0
-      : layout.inlineCount;
+  const slotRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      measureSlotRef(node);
+      setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
+    },
+    [measureSlotRef],
+  );
+  const inlineCount = usesOverflowOnly ? 0 : fittedInlineCount;
   const menuActions = [
     ...(onCopyLink
       ? [
@@ -441,14 +449,7 @@ export function MessageActionBar({
           data-menu-open={isMenuOpen ? "" : undefined}
         >
           {alignment === "end" ? metadata : null}
-          <div
-            className={ACTION_ROW_CLASS}
-            style={
-              availableWidth === undefined
-                ? undefined
-                : { maxWidth: availableWidth }
-            }
-          >
+          <div ref={rowRef} className={ACTION_ROW_CLASS}>
             {isCompactTouch ? (
               <MobileInlineActions
                 actions={inlineCandidates.slice(0, inlineCount)}

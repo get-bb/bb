@@ -12,6 +12,8 @@ import {
 import { gitSelectorForRow } from "./git-source-intent.js";
 import {
   gitArtifactCacheDir,
+  gitRangeSourceSpec,
+  gitSemverTagVersion,
   parsePluginSource,
   runInstallCommand,
 } from "./install-sources.js";
@@ -29,6 +31,7 @@ import {
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
   type PluginUpdateResolution,
+  type RangeUpgradeBasis,
 } from "./update-resolver.js";
 import { PluginActivationRolledBackError } from "./plugin-activation.js";
 import type { SafeModeActivationRefusalArgs } from "./plugin-runtime.js";
@@ -59,6 +62,11 @@ const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 const persistedResolvedVersionSchema = pluginResolvedVersionSchema.extend({
   label: z.string().optional(),
 });
+
+export interface PluginApplyUpdateOptions {
+  range?: string;
+  expectedVersion?: string;
+}
 
 const persistedUpdateCheckEntrySchema = pluginUpdateCheckEntrySchema.extend({
   installed: persistedResolvedVersionSchema,
@@ -126,7 +134,10 @@ export interface PluginUpdates {
   stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceDetail | undefined>;
-  applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
+  applyUpdate(
+    id: string,
+    options?: PluginApplyUpdateOptions,
+  ): Promise<PluginApplyUpdateOutcome>;
 }
 
 interface PluginUpdatesContext {
@@ -139,6 +150,7 @@ interface PluginUpdatesContext {
     row: InstalledPluginRow,
   ) => PluginResolvedUpdateVersion;
   npmIntentForRow: (row: InstalledPluginRow) => NpmSourceIntentForResolution;
+  rangeUpgradeBasisForRow: (row: InstalledPluginRow) => RangeUpgradeBasis;
   managedArtifacts: Pick<
     ReturnType<typeof createManagedPluginArtifacts>,
     "applyNpmCandidate" | "stageGitCandidate"
@@ -160,6 +172,7 @@ export function createPluginUpdates(
     notifyPluginsChanged,
     installedUpdateVersion,
     npmIntentForRow,
+    rangeUpgradeBasisForRow,
     managedArtifacts: { applyNpmCandidate, stageGitCandidate },
     runArtifactGc,
     safeModeActivationRefusal,
@@ -171,11 +184,77 @@ export function createPluginUpdates(
     return problems.map((problem) => problem.message);
   }
 
+  function savedRangeForRow(row: InstalledPluginRow): string | null {
+    if (row.sourceKind === "git") return row.sourceGitRange;
+    if (row.sourceKind === "npm" && row.sourceNpmSpecKind === "range") {
+      return row.sourceNpmRequestedSpec;
+    }
+    return null;
+  }
+
+  function rangeChangeProblem(
+    row: InstalledPluginRow,
+    range: string,
+  ): string | null {
+    if (semver.validRange(range) === null) {
+      return `"${range}" is not a valid semver range`;
+    }
+    if (savedRangeForRow(row) === null) {
+      return `plugin "${row.id}" does not follow a version range, so bb cannot change its range; remove and reinstall it with an npm range or a git semver range`;
+    }
+    return null;
+  }
+
+  function installedReleaseVersion(row: InstalledPluginRow): string | null {
+    if (row.sourceKind === "npm") return row.npmResolvedVersion;
+    if (row.sourceGitResolvedTag === null || row.sourceGitTagPrefix === null) {
+      return null;
+    }
+    return gitSemverTagVersion(
+      row.sourceGitResolvedTag,
+      row.sourceGitTagPrefix,
+    );
+  }
+
+  function candidateReleaseVersion(
+    row: InstalledPluginRow,
+    resolution: Extract<
+      PluginUpdateResolution,
+      { outcome: "update-available" }
+    >,
+  ): string | null {
+    if (row.sourceKind === "npm") return resolution.candidate.version;
+    if (
+      resolution.candidateGitTag === undefined ||
+      row.sourceGitTagPrefix === null
+    ) {
+      return null;
+    }
+    return gitSemverTagVersion(
+      resolution.candidateGitTag,
+      row.sourceGitTagPrefix,
+    );
+  }
+
+  function reviewedReleaseLabel(
+    row: InstalledPluginRow,
+    version: string,
+  ): string {
+    const persisted = parsePersistedUpdateEntry(row);
+    const reviewed = [
+      persisted?.candidate,
+      persisted?.rangeUpgrade?.candidate,
+    ].find((candidate) => candidate?.version === version);
+    return reviewed?.label ?? pluginVersionLabelForRow(row, version);
+  }
+
   function checkEntryFromResolution(
-    id: string,
+    row: InstalledPluginRow,
     installed: PluginResolvedUpdateVersion,
     resolution: PluginUpdateResolution,
   ): PluginUpdateCheckEntry {
+    const id = row.id;
+    const savedRange = savedRangeForRow(row);
     const dev = resolution.devMode ? { devMode: true as const } : {};
     const packagedDetail =
       resolution.packagedBuildProblems !== undefined &&
@@ -196,12 +275,24 @@ export function createPluginUpdates(
               reasons: problemMessages(resolution.blocked.reasons),
             }
           : undefined;
+    const rangeUpgrade =
+      resolution.rangeUpgrade === undefined || savedRange === null
+        ? undefined
+        : {
+            currentRange: savedRange,
+            range: resolution.rangeUpgrade.range,
+            basis: resolution.rangeUpgrade.basis,
+            candidate: resolution.rangeUpgrade.candidate,
+            breaking: resolution.rangeUpgrade.breaking,
+            reasons: problemMessages(resolution.rangeUpgrade.reasons),
+          };
     const common = {
       id,
       outcome: resolution.outcome,
       installed,
       ...dev,
       ...(blocked ? { blocked } : {}),
+      ...(rangeUpgrade ? { rangeUpgrade } : {}),
       ...(packagedDetail ? { detail: packagedDetail } : {}),
     };
     if (resolution.outcome === "update-available") {
@@ -264,8 +355,21 @@ export function createPluginUpdates(
     return "unknown";
   }
 
+  function npmIntentWithRange(
+    row: InstalledPluginRow,
+    range: string | undefined,
+  ): NpmSourceIntentForResolution {
+    const intent = npmIntentForRow(row);
+    if (range === undefined) return intent;
+    if (intent.specKind !== "range") {
+      throw new Error(`plugin "${row.id}" does not follow an npm range`);
+    }
+    return { ...intent, requestedSpec: range };
+  }
+
   async function classifiedGitIntentForRow(
     row: InstalledPluginRow,
+    range?: string,
   ): Promise<
     | { outcome: "resolved"; url: string; selector: PluginGitSelector }
     | { outcome: "unavailable"; detail: string }
@@ -275,6 +379,12 @@ export function createPluginUpdates(
     }
     const url = row.sourceGitUrl;
     const selector = gitSelectorForRow(row);
+    if (range !== undefined) {
+      if (selector?.kind !== "range") {
+        throw new Error(`plugin "${row.id}" does not follow a git range`);
+      }
+      return { outcome: "resolved", url, selector: { ...selector, range } };
+    }
     if (selector !== null) return { outcome: "resolved", url, selector };
     if (row.sourceGitRequestedRef === null) {
       throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
@@ -331,6 +441,7 @@ export function createPluginUpdates(
   async function resolveUpdateForRow(args: {
     row: InstalledPluginRow;
     npmRun: NpmResolverRun;
+    range?: string;
   }): Promise<PluginUpdateResolution> {
     const installed = installedUpdateVersion(args.row);
     if (args.row.sourceKind === "path" || args.row.sourceKind === "builtin") {
@@ -346,12 +457,17 @@ export function createPluginUpdates(
           "installed from the retired remote marketplace — remove it and reinstall from Plugins → Browse plugins to switch to the bundled copy",
       };
     }
+    const rangeUpgradeBasis: RangeUpgradeBasis =
+      args.range === undefined
+        ? rangeUpgradeBasisForRow(args.row)
+        : { kind: "none" };
     if (args.row.sourceKind === "npm") {
       return resolveNpmUpdate({
-        intent: npmIntentForRow(args.row),
+        intent: npmIntentWithRange(args.row, args.range),
         current: installed,
         appVersion: deps.appVersion,
         run: args.npmRun,
+        rangeUpgradeBasis,
       });
     }
     if (args.row.gitResolvedCommit === null) {
@@ -359,7 +475,7 @@ export function createPluginUpdates(
         `plugin "${args.row.id}" has corrupt normalized git state`,
       );
     }
-    const intent = await classifiedGitIntentForRow(args.row);
+    const intent = await classifiedGitIntentForRow(args.row, args.range);
     if (intent.outcome === "unavailable") return intent;
     const row = args.row;
     const probeGitCandidate: GitCandidateProbe = async (candidate) => {
@@ -395,6 +511,7 @@ export function createPluginUpdates(
       intent: intent.selector,
       currentCommit: args.row.gitResolvedCommit,
       probeCandidate: probeGitCandidate,
+      rangeUpgradeBasis,
     });
     if (remote.outcome !== "update-available") return remote;
     if (intent.selector.kind === "range") return remote;
@@ -500,7 +617,7 @@ export function createPluginUpdates(
             };
           }
           const checked = checkEntryFromResolution(
-            current.id,
+            current,
             installedUpdateVersion(current),
             resolution,
           );
@@ -615,7 +732,7 @@ export function createPluginUpdates(
       };
     },
 
-    async applyUpdate(id) {
+    async applyUpdate(id, options = {}) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return { ok: false, error: `unknown plugin "${id}"` };
@@ -629,16 +746,33 @@ export function createPluginUpdates(
         if (safeModeRefusal !== null) {
           return { ok: false, error: safeModeRefusal };
         }
+        const range =
+          options.range === undefined || options.range === savedRangeForRow(row)
+            ? undefined
+            : options.range;
+        if (range !== undefined) {
+          const problem = rangeChangeProblem(row, range);
+          if (problem !== null) return { ok: false, error: problem };
+        }
         const from = installedUpdateVersion(row);
         const npmRun = npmRunForRow(row);
         const selectionNpmIntent =
-          row.sourceKind === "npm" ? npmIntentForRow(row) : undefined;
+          row.sourceKind === "npm" ? npmIntentWithRange(row, range) : undefined;
         const resolution = await resolveUpdateForRow({
           row,
           npmRun,
+          ...(range === undefined ? {} : { range }),
         });
-        const checked = checkEntryFromResolution(id, from, resolution);
-        persistUpdateEntry(checked);
+        if (range === undefined) {
+          persistUpdateEntry(checkEntryFromResolution(row, from, resolution));
+        }
+        const refuseRangeChange = async (
+          error: string,
+        ): Promise<PluginApplyUpdateOutcome> => {
+          const fresh = await resolveUpdateForRow({ row, npmRun });
+          persistUpdateEntry(checkEntryFromResolution(row, from, fresh));
+          return { ok: false, error };
+        };
 
         if (resolution.outcome === "pinned") {
           return {
@@ -663,6 +797,11 @@ export function createPluginUpdates(
             ? resolution.candidate
             : from;
         if (resolution.outcome === "current") {
+          if (range !== undefined) {
+            return refuseRangeChange(
+              `${range} admits no release newer than the installed ${from.label}; the range was not changed`,
+            );
+          }
           return {
             ok: true,
             result: {
@@ -671,6 +810,28 @@ export function createPluginUpdates(
               outcome: "current",
             },
           };
+        }
+        if (range !== undefined) {
+          const installedRelease = installedReleaseVersion(row);
+          const candidateRelease = candidateReleaseVersion(row, resolution);
+          if (
+            installedRelease === null ||
+            candidateRelease === null ||
+            !semver.gt(candidateRelease, installedRelease)
+          ) {
+            return refuseRangeChange(
+              `${range} resolves to ${resolution.candidate.label}, which is not newer than the installed ${from.label}; bb does not downgrade plugins`,
+            );
+          }
+        }
+        if (
+          options.expectedVersion !== undefined &&
+          options.expectedVersion !== resolution.candidate.version
+        ) {
+          const error = `update refused: the release changed after you reviewed it; you reviewed ${reviewedReleaseLabel(row, options.expectedVersion)}, and bb now resolves ${resolution.candidate.label}. Review ${resolution.candidate.label} before updating`;
+          return range === undefined
+            ? { ok: false, error }
+            : refuseRangeChange(error);
         }
 
         try {
@@ -707,7 +868,10 @@ export function createPluginUpdates(
             if (activationRow === undefined) {
               throw new Error(`plugin "${id}" disappeared before activation`);
             }
-            const intent = await classifiedGitIntentForRow(activationRow);
+            const intent = await classifiedGitIntentForRow(
+              activationRow,
+              range,
+            );
             if (intent.outcome === "unavailable") {
               return { ok: false, error: intent.detail };
             }
@@ -720,6 +884,15 @@ export function createPluginUpdates(
                 candidateCommit: resolution.candidate.version,
                 candidateTag: resolution.candidateGitTag,
               }),
+              ...(range === undefined || intent.selector.kind !== "range"
+                ? {}
+                : {
+                    activationSource: gitRangeSourceSpec({
+                      url: intent.url,
+                      range,
+                      tagPrefix: intent.selector.tagPrefix,
+                    }),
+                  }),
             });
             if (staged.outcome !== "valid") {
               const detail =
@@ -757,11 +930,14 @@ export function createPluginUpdates(
         }
         const updatedVersion = installedUpdateVersion(updatedRow);
         persistUpdateEntry(
-          checkEntryFromResolution(id, updatedVersion, {
+          checkEntryFromResolution(updatedRow, updatedVersion, {
             outcome: "current",
             current: updatedVersion,
             ...(semver.coerce(deps.appVersion)?.version === "0.0.0"
               ? { devMode: true }
+              : {}),
+            ...(range === undefined && resolution.rangeUpgrade !== undefined
+              ? { rangeUpgrade: resolution.rangeUpgrade }
               : {}),
           }),
         );

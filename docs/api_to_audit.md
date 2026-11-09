@@ -1096,6 +1096,30 @@ keys. Callers: the built-in thread list, which gates row metadata on
 2. **Plugin-owned experiments.** Decide whether plugins should declare their
    own experiments in Settings → Experiments rather than only read bb's.
 
+## `bb.sdk.threads.experimental_headState`
+
+`GET /threads/:id/head-state` returns the thread's head state:
+`{ activePromptMode, contextWindowUsage, extensionStates, modelFallback,
+pendingTodos, providerCommands, sessionOptions }`. `readThreadHeadState` reads
+each field from its latest stored state events, so the cost does not grow with
+turn or thread length. The latest timeline page embeds the same result instead
+of deriving these fields from its rows. `pendingTodos` and `activePromptMode`
+are null unless the thread is active. Core callers: the timeline build, `bb
+thread show`, `bb thread commands`, `bb thread options`, and `sdk.status`.
+It replaced the timeline's `summaryOnly` query, which built the whole latest
+page and dropped its rows; the server now ignores that parameter and returns
+the full page.
+
+Docs: `backend-sdk.md`, `docs/timeline-pagination.md`.
+
+**Audit before stabilizing.**
+
+1. **Page-derived fields.** Active thinking, active workflows, and active
+   background commands still come from projecting the latest page, so reading
+   them still needs a timeline page. Decide whether they become head state.
+2. **`threads.context`.** It returns `contextWindowUsage` alone through the
+   same read. Decide whether to keep it as a narrow read or retire it.
+
 ## `bb.sdk.threads.experimental_listAncestors`
 
 `POST /threads/ancestors` with `{ threadIds }` (1–200 ids) returns
@@ -4149,6 +4173,26 @@ be cancelled during activation or rollback.
 
 Stabilization requires exercising reconnect/reload, concurrent deduplication,
 rollback delivery, missing jobs after restart, and CLI/SDK parity.
+
+## `PluginApplyUpdateArgs.range`, `expectedVersion`, and `rangeUpgrade` on update checks
+
+`checkUpdates` and `listUpdateResults` entries carry `rangeUpgrade` when a
+newer stable release sits outside a git semver or npm range source's saved
+range: `currentRange`, the proposed `range`, `basis` (`catalog` when the
+plugin's marketplace entry still lists the same repository or package and its
+current range admits the release, `release` for installs from no marketplace
+or a removed one, which get `^<version>`; none is reported once the plugin's
+marketplace no longer lists it), the `candidate`, `breaking` (caret rule from the installed
+version), and `reasons` when the candidate fails engines on this bb.
+`applyUpdate` and `experimental_startUpdate` accept `range` to change the
+saved range in the same staged activation (refusing pinned sources, ranges
+with nothing newer, and downgrades) and `expectedVersion` to refuse a
+candidate other than the one reviewed. Core callers: the plugin details
+Review action and `UpdatePluginDialog` through `startPluginUpdate`, and
+`bb plugin update <id> --range`. Stabilize after the rollback of a range
+change, catalog-range adoption, and npm range changes have been exercised on
+released builds, and once a later decision on following non-breaking catalog
+range widenings automatically is made.
 
 ## `PluginBbSdk.system.experimental_recordTelemetryEvent`
 

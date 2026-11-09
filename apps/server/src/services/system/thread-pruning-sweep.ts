@@ -28,7 +28,7 @@ function pruningItemKey(item: ThreadPruningItem): string {
 }
 
 export function threadPruningSweep(
-  deps: Pick<AppDeps, "db" | "hub" | "logger">,
+  deps: Pick<AppDeps, "db" | "logger">,
   limits: ThreadPruningSweepLimits,
 ): ItemSweep {
   const startedAt = performance.now();
@@ -67,30 +67,23 @@ export function threadPruningSweep(
     },
     key: pruningItemKey,
     process: async (item) => {
-      let removed = 0;
-      try {
-        while (withinBudget()) {
-          const advanceStartedAt = performance.now();
-          const result = advanceThreadPruning(deps.db, item.policy);
-          const advanceElapsedMs = performance.now() - advanceStartedAt;
-          advances += 1;
-          removed += result.removed;
-          if (advanceElapsedMs >= 50)
-            deps.logger.warn(
-              { ...result, advanceElapsedMs },
-              "Slow thread pruning advance",
-            );
-          deps.logger.debug(
+      while (withinBudget()) {
+        const advanceStartedAt = performance.now();
+        const result = advanceThreadPruning(deps.db, item.policy);
+        const advanceElapsedMs = performance.now() - advanceStartedAt;
+        advances += 1;
+        if (advanceElapsedMs >= 50)
+          deps.logger.warn(
             { ...result, advanceElapsedMs },
-            "Thread pruning policy advanced",
+            "Slow thread pruning advance",
           );
-          if (result.threadId !== item.threadId || result.action !== "advanced")
-            return;
-          await new Promise<void>((resolve) => setImmediate(resolve));
-        }
-      } finally {
-        if (removed > 0)
-          deps.hub.notifyThread(item.threadId, ["history-compacted"]);
+        deps.logger.debug(
+          { ...result, advanceElapsedMs },
+          "Thread pruning policy advanced",
+        );
+        if (result.threadId !== item.threadId || result.action !== "advanced")
+          return;
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
     },
   });

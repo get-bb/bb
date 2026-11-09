@@ -191,6 +191,87 @@ function progressText(harness: ReturnType<typeof createHarness>): string {
 }
 
 describe.concurrent("worktree host entry", () => {
+  it.for([
+    "refs/worktree/saved",
+    "refs/bisect/saved",
+    "refs/rewritten/saved",
+    "MERGE_HEAD",
+  ])(
+    "keeps clean worktrees with local Git state: %s",
+    async (state, { onTestFinished }) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const harness = createHarness(dataDir);
+      onTestFinished(() => harness.experimental_dispose());
+      const created = await harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "create-state",
+          sourcePath,
+          pathKey: "saved-state",
+          branchName: "bb/saved-state",
+        }),
+      );
+      if (created.status !== "created") throw new Error(created.message);
+      const savedCommit = (
+        await git(
+          created.path,
+          "commit-tree",
+          "HEAD^{tree}",
+          "-p",
+          "HEAD",
+          "-m",
+          "saved",
+        )
+      ).trim();
+      if (state === "MERGE_HEAD") {
+        await git(created.path, "merge", "--no-ff", "--no-commit", savedCommit);
+      } else {
+        await git(created.path, "update-ref", state, savedCommit);
+      }
+      const gitDir = (
+        await git(created.path, "rev-parse", "--absolute-git-dir")
+      ).trim();
+      expect(await git(created.path, "status", "--porcelain")).toBe("");
+      expect((await git(created.path, "rev-parse", state)).trim()).toBe(
+        savedCommit,
+      );
+      expect(
+        (await git(sourcePath, "rev-parse", "bb/saved-state")).trim(),
+      ).toBe((await git(created.path, "rev-parse", "HEAD")).trim());
+      const result = await harness.experimental_call("remove", {
+        operationId: "remove-state",
+        pathKey: "saved-state",
+        path: created.path,
+      });
+      expect({
+        status: result.status,
+        worktreeExists: existsSync(created.path),
+        metadataExists: existsSync(gitDir),
+      }).toEqual({
+        status: "failed",
+        worktreeExists: true,
+        metadataExists: true,
+      });
+      expect((await git(created.path, "rev-parse", state)).trim()).toBe(
+        savedCommit,
+      );
+      if (state === "MERGE_HEAD") {
+        await git(created.path, "merge", "--abort");
+      } else {
+        await git(created.path, "update-ref", "-d", state);
+      }
+      expect(
+        await harness.experimental_call("remove", {
+          operationId: "remove-resolved-state",
+          pathKey: "saved-state",
+          path: created.path,
+        }),
+      ).toEqual({ status: "removed" });
+      expect(existsSync(created.path)).toBe(false);
+    },
+  );
+
   it.for(["main", "release", "origin/main", "refs/heads/main"])(
     "resolves and fetches a stale named base %s",
     async (base, { onTestFinished }) => {

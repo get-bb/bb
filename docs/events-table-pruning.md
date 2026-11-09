@@ -40,8 +40,45 @@ before pruning it, so if a step fails, the sweep records the failure in
 `sweep_item_failures` under `<policy>:<thread id>` and the next pick moves past
 that thread while the other threads keep going; it is picked again once its
 retry time (1 minute, doubling to 1 hour) passes. A new policy, or
-a policy whose version changes, queues every thread for that policy. Committed
-deletions invalidate cached timelines and publish a history-compacted
-notification to viewers of the thread. Archiving a thread runs one live step and
-then drops the thread's live progress; the background sweep finishes archived
-threads.
+a policy whose version changes, queues every thread for that policy. Archiving a
+thread runs one live step and then drops the thread's live progress; the
+background sweep finishes archived threads.
+
+## Cache invalidation and cursors
+
+Pruning never sends a history-compacted notification. The rows it deletes are
+never displayed: the timeline shows a completed item from its completion event,
+not its deltas, and reads usage, turn-diff and rate-limit state from the kept
+snapshots. A viewer's loaded timeline therefore stays correct after pruning.
+
+Timeline reads never load usage or turn-diff snapshots beyond the kept ones, so
+deleting them keeps the thread's cached timelines. Rate-limit snapshots, deltas
+and background-task progress still count toward a timeline window's event
+budget, so deleting them can let a fresh window reach further back. Those
+commits advance the thread's rewrite generation, and every server-side timeline
+cache for the thread rebuilds on its next read. A viewer that does not refetch
+keeps its shorter window until it reloads the thread.
+
+A timeline window starts at a `client/turn/requested` row, or, when its range
+has none, at the first row at or after the event-budget floor that pruning
+never deletes (`PRUNABLE_THREAD_EVENT_TYPES` in
+`packages/db/src/data/thread-pruning.ts`). The window's older-page cursor
+anchors on that row, so pruning cannot invalidate a cursor a client already
+holds.
+
+## Pass bounds and resumption
+
+Each call works for about 20 ms, then commits and records where it stopped.
+Deletes run in chunks of 16 rows, so one call stays well under 50 ms even when
+deletes are slow.
+
+A pass over a thread's deltas or background-task progress ends at the event
+before the thread's latest one. The next pass starts from that bound instead of
+the first event. It reaches back below the bound only for items that gained a
+completion (deltas) or newer progress or completion (background tasks) since the
+last pass, starting at that item's earliest candidate. Everything else below the
+bound was either pruned or is kept for good: the first delta of an item, a delta
+without a turn or item, or a candidate whose deciding row has not arrived yet,
+which the reach-back covers once it does. Deleting a thread's event suffix, or
+inserting an event at or below the thread's latest sequence, moves the bound back
+before that sequence.

@@ -22,6 +22,7 @@ describe("performance diagnostics", () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-test-"));
     const warnings: unknown[] = [];
     const monitor = await startPerformanceDiagnostics({
+      codeOwners: () => [],
       dataDir,
       logger: {
         info: () => {},
@@ -68,6 +69,12 @@ describe("performance diagnostics", () => {
     const records: object[] = [];
     const warnings: object[] = [];
     const monitor = await startPerformanceDiagnostics({
+      codeOwners: () => [
+        {
+          location: "performance-diagnostics.test.ts",
+          owner: "plugin:probe",
+        },
+      ],
       dataDir,
       logger: {
         info: (fields, message) => {
@@ -95,6 +102,9 @@ describe("performance diagnostics", () => {
         expect.arrayContaining([
           expect.objectContaining({
             stallAttribution: "sampled",
+            owners: expect.arrayContaining([
+              { owner: "plugin:probe", sampledMs: expect.any(Number) },
+            ]),
             stacks: expect.arrayContaining([
               expect.objectContaining({
                 frames: expect.arrayContaining([
@@ -102,6 +112,7 @@ describe("performance diagnostics", () => {
                     functionName: "unwrappedPluginBlocker",
                   }),
                 ]),
+                owner: "plugin:probe",
                 sampledMs: expect.any(Number),
               }),
             ]),
@@ -127,6 +138,7 @@ describe("performance diagnostics", () => {
     const warnings: unknown[] = [];
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const monitor = await startPerformanceDiagnostics({
+      codeOwners: () => [],
       dataDir,
       logger: {
         info: (fields, message) => {
@@ -200,6 +212,7 @@ describe("performance diagnostics", () => {
     await writeFile(join(directory, "profile.pending"), "interrupted write");
     const warnings: unknown[] = [];
     const options = {
+      codeOwners: () => [],
       dataDir,
       logger: {
         info: () => {},
@@ -244,6 +257,7 @@ describe("performance diagnostics", () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-save-failure-"));
     const warnings: unknown[] = [];
     const monitor = await startPerformanceDiagnostics({
+      codeOwners: () => [],
       dataDir,
       logger: {
         info: () => {},
@@ -271,6 +285,7 @@ describe("performance diagnostics", () => {
     try {
       await writeFile(join(dataDir, "logs"), "not a directory");
       const monitor = await startPerformanceDiagnostics({
+        codeOwners: () => [],
         dataDir,
         logger: {
           info: () => {},

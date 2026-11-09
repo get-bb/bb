@@ -717,6 +717,47 @@ async function removeDirectoryIfEmpty(pathToRemove: string): Promise<void> {
   }
 }
 
+async function assertNoWorktreeLocalState(
+  workspacePath: string,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const options = { cwd: workspacePath, ...signalOptions(signal) };
+  const localRefs = await runGit(
+    [
+      "for-each-ref",
+      "--format=%(refname)",
+      "refs/worktree/",
+      "refs/bisect/",
+      "refs/rewritten/",
+    ],
+    options,
+  );
+  if (localRefs.stdout.trim()) {
+    throw new WorkspaceError(
+      "worktree_local_refs",
+      `Cannot remove ${workspacePath}: preserve or delete its worktree-local Git refs first.`,
+    );
+  }
+  const gitDir = await runGit(["rev-parse", "--absolute-git-dir"], options);
+  const entries = new Set(await fs.readdir(gitDir.stdout.trim()));
+  const operation = [
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "REVERT_HEAD",
+    "REBASE_HEAD",
+    "BISECT_START",
+    "rebase-merge",
+    "rebase-apply",
+    "sequencer",
+  ].find((entry) => entries.has(entry));
+  if (operation) {
+    throw new WorkspaceError(
+      "worktree_git_operation",
+      `Cannot remove ${workspacePath}: finish or abort the Git operation (${operation}) first.`,
+    );
+  }
+}
+
 export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   throwIfProvisionAborted(args.signal);
   const workspacePath = path.resolve(args.path);
@@ -744,11 +785,12 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
       workspacePath,
       commonDirResult.stdout.trim(),
     );
-    await tryWithCheckoutMutationLock(
+    const removal = await tryWithCheckoutMutationLock(
       workspacePath,
       () =>
-        withWorktreeMetadataLock(commonDir, () =>
-          runGit(
+        withWorktreeMetadataLock(commonDir, async () => {
+          await assertNoWorktreeLocalState(workspacePath, args.signal);
+          return runGit(
             [
               "--git-dir",
               commonDir,
@@ -762,11 +804,17 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
               ...(args.signal !== undefined ? { signal: args.signal } : {}),
               allowFailure: true,
             },
-          ),
-        ),
+          );
+        }),
       args.signal,
       signalOptions(args.signal),
     );
+    if (removal === null) {
+      throw new WorkspaceError(
+        "worktree_git_unavailable",
+        `Cannot inspect Git state for ${workspacePath}; refusing removal.`,
+      );
+    }
   }
 
   throwIfProvisionAborted(args.signal);

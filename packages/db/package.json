@@ -13,6 +13,11 @@
       "types": "./src/internal-environment-lifecycle.ts",
       "default": "./src/internal-environment-lifecycle.ts"
     },
+    "./query-plan-guard": {
+      "source": "./src/query-plan-guard.ts",
+      "types": "./src/query-plan-guard.ts",
+      "default": "./src/query-plan-guard.ts"
+    },
     "./testing": {
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",
@@ -28,7 +33,8 @@
     "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "check:query-plan-allowlist": "tsx scripts/check-query-plan-allowlist.ts"
   },
   "dependencies": {
     "@bb/config": "workspace:*",
