@@ -131,10 +131,10 @@ jobs:
           if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
           pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }}
 
-      - name: Compare plugin update fixtures
+      - name: Compare full server shard
         shell: bash
         env:
-          BB_CI_TEST_SHARD: ""
+          BB_CI_TEST_SHARD: "3/3"
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: |
@@ -145,8 +145,8 @@ jobs:
             else
               cp "$RUNNER_TEMP/candidate.ts" apps/server/test/services/plugins/plugin-update.test.ts
             fi
-            echo "PLUGIN_COMPARISON $variant"
-            pnpm --filter @bb/server exec vitest run --config vitest.config.ts test/services/plugins/plugin-update.test.ts
+            echo "SHARD_COMPARISON $variant"
+            pnpm --filter @bb/server exec vitest run --config vitest.config.ts
           done
           cp "$RUNNER_TEMP/candidate.ts" apps/server/test/services/plugins/plugin-update.test.ts
 
