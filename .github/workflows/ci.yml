@@ -124,6 +124,15 @@ jobs:
       - name: Compare guard overhead
         shell: bash
         run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const file='packages/db/src/query-plan-test-guard.ts';
+          let source=readFileSync(file,'utf8');
+          source=source.replace('  function guardedPrepare(', '  let observedPrepares = 0; let attributedPrepares = 0;\n  function guardedPrepare(');
+          source=source.replace('    if (caller === null) return statement;', '    observedPrepares++; if (caller !== null) attributedPrepares++;\n    if (caller === null) return statement;');
+          source=source.replace('      auditor.flush();', '      console.log("GUARD COUNTS", {observedPrepares, attributedPrepares});\n      auditor.flush();');
+          writeFileSync(file,source);
+          NODE
           cp packages/db/src/query-plan-test-guard.ts "$RUNNER_TEMP/guard-original.ts"
           for variant in baseline candidate candidate baseline; do
             cp "$RUNNER_TEMP/guard-original.ts" packages/db/src/query-plan-test-guard.ts
