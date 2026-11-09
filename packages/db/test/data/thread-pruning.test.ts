@@ -12,7 +12,6 @@ import { createProject } from "../../src/data/projects.js";
 import { archiveThread, createThread, unarchiveThread } from "../../src/data/threads.js";
 import {
   advanceThreadPruning,
-  findUnprunableThreadEventSequence,
   getNextThreadPruningPolicy,
   PRUNABLE_THREAD_EVENT_TYPES,
   THREAD_PRUNING_POLICIES,
@@ -600,16 +599,6 @@ describe("thread pruning", () => {
       expect([...deletedTypes].sort()).toEqual(
         [...PRUNABLE_THREAD_EVENT_TYPES].sort(),
       );
-      const firstDelta = seeded.find(
-        (row) => row.type === "item/agentMessage/delta",
-      )!;
-      expect(
-        findUnprunableThreadEventSequence(f.db, {
-          beforeSequence: seeded.length + 1,
-          sequenceStart: 1,
-          threadId: f.thread.id,
-        }),
-      ).toBe(firstDelta.sequence - 1);
     } finally {
       f.db.$client.close();
     }

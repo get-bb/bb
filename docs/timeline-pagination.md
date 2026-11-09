@@ -33,6 +33,43 @@ empty page with a usable older cursor. Latest-page head state is retained while
 skipping. Context loading and complete-group reconstruction can exceed the
 initial event budget.
 
+When no visible segment start fits the event budget inside a running turn, the
+window starts on a grid of half the event budget at or below the budget floor,
+moved back to the first event of the item the grid lands in. A long running
+turn is then paged in windows of one to two budgets, and the latest window
+start moves only once per half budget of appended events. The grid is not used
+when the turn has at most one budget of events before the cut, or inside a
+finished turn, so pages over finished history keep their boundaries.
+
+A window whose segments ran out of budget before `segmentLimit` and hold fewer
+than half the event budget is filled from the next older segment, so a short
+turn after a long one does not leave a page too thin to fill the client's
+viewport. Under the flat display the window starts on the same grid, inside a
+finished turn too. When the grid finds no cut, the older turn has at most one
+budget of events before the cut, or the turn is finished under the collapsed
+display, the window takes that whole segment instead.
+
+A page reads a turn that starts inside its window, or has at most 256 events
+outside it, whole. Otherwise a turn whose rows render flat, meaning a running
+turn or any turn under the flat display, is read only inside the window. The
+page adds the complete events of items that cross the window edges (also an
+item that started in the turn and completes in the window at thread scope), the
+delegation parents of rows it reads, the children of delegations it owns (on
+the latest page, of every delegation it reads), and the turn's lifecycle,
+accepted input, compaction and provider events.
+
+A finished turn of at least 1,000 events under the collapsed display stores its
+row plan in `thread_turn_timeline_plans` the first time a page reads it whole:
+the summary rows, and the id and source range of each message it shows
+ungrouped. Later pages take the summary rows from the plan and read only the
+events of the ungrouped messages they show, plus the turn's context events. A
+plan is keyed by a projection version, the in-process rewrite generation, the
+thread status and the display settings that change the output, and is used
+only while the greatest sequence of the turn's events, its delegations'
+children and its open items is unchanged. Rewriting the thread's history
+suffix deletes its plans. Pages with `includeNestedRows`, which
+`bb thread log --format verbose` uses, read the turn whole.
+
 Content cuts continue inside the same window bounds, reconstructing the same
 group so leaf offsets remain meaningful. The current cursor format is v3;
 previous versions return the existing 400 reload response because their group
@@ -52,8 +89,12 @@ and display surface. A walk excludes subsequent appends. Earlier events can
 change grouping even after a turn completed. `timelinePage.olderRowsSourceSeqEnd`
 is the greatest `sourceSeqEnd` among rows the snapshot projected before the
 page's returned rows but did not return: older conversation groups, and the
-leaves a content cut omitted from the page's oldest group. It is `null` when the
-snapshot projected no such rows. When a new latest snapshot's window reaches
+leaves a content cut omitted from the page's oldest group. A page that reads a
+turn only in part reports the value a whole read of the turn would: a planned
+turn adds the `sourceSeqEnd` of its stored ungrouped messages that end before
+the window, and a turn read only inside the window adds its latest event before
+the window that is not a context event and whose row does not reach into the
+window. It is `null` when the snapshot projected no such rows. When a new latest snapshot's window reaches
 the loaded tip and this value does not exceed it, `mergeLoadedTimelineWithLatest`
 keeps loaded older pages and replaces the rows the latest page covers, so
 streaming does not unload history. Otherwise a later event changed a row the

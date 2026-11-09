@@ -20,6 +20,93 @@ interface TimelineSummaryPlan {
 
 export type TimelineRowPlan = TimelineMessagePlan | TimelineSummaryPlan;
 
+export type StoredTimelineTurnPlanItem =
+  | {
+      kind: "message";
+      messageId: string;
+      sourceSeqEnd: number;
+      sourceSeqStart: number;
+    }
+  | { kind: "summary"; row: TimelineTurnRow };
+
+export interface StoredTimelineTurnPlan {
+  externalUserBoundarySeqs: number[];
+  items: StoredTimelineTurnPlanItem[];
+}
+
+function isCollapsedTurn(
+  turn: EventProjectionTurn,
+  completedTurnDisplay: CompletedTurnDisplay,
+): boolean {
+  return (
+    turn.status !== "pending" &&
+    turn.completedAt !== null &&
+    completedTurnDisplay !== "flat"
+  );
+}
+
+function planStoredTurn(
+  turn: EventProjectionTurn,
+  stored: StoredTimelineTurnPlan,
+): TimelineRowPlan[] {
+  const messagesById = new Map<string, EventProjectionMessage[]>();
+  for (const message of turn.messages ?? []) {
+    const messages = messagesById.get(message.id);
+    if (messages === undefined) messagesById.set(message.id, [message]);
+    else messages.push(message);
+  }
+  return stored.items.flatMap((item): TimelineRowPlan[] => {
+    if (item.kind === "summary") {
+      return [{ kind: "summary", row: item.row, messages: [] }];
+    }
+    const messages = messagesById.get(item.messageId) ?? [];
+    const index = messages.findIndex(
+      (message) =>
+        message.sourceSeqStart === item.sourceSeqStart &&
+        message.sourceSeqEnd === item.sourceSeqEnd,
+    );
+    return index === -1 ? [] : [messagePlan(messages.splice(index, 1)[0]!)];
+  });
+}
+
+export function captureTimelineTurnPlans(
+  projection: EventProjection,
+  completedTurnDisplay: CompletedTurnDisplay,
+  rowIdPrefix: string,
+  rendersRow: (message: EventProjectionMessage) => boolean,
+): Map<string, StoredTimelineTurnPlan> {
+  const plans = new Map<string, StoredTimelineTurnPlan>();
+  for (const entry of projection.entries) {
+    if (
+      entry.kind !== "turn" ||
+      !isCollapsedTurn(entry.turn, completedTurnDisplay)
+    ) {
+      continue;
+    }
+    plans.set(entry.turn.turnId, {
+      externalUserBoundarySeqs: [
+        ...(entry.turn.externalUserBoundarySeqs ?? []),
+      ],
+      items: planTurn(entry.turn, completedTurnDisplay, rowIdPrefix).flatMap(
+        (item): StoredTimelineTurnPlanItem[] =>
+          item.kind === "summary"
+            ? [{ kind: "summary", row: item.row }]
+            : rendersRow(item.message)
+              ? [
+                  {
+                    kind: "message",
+                    messageId: item.message.id,
+                    sourceSeqEnd: item.message.sourceSeqEnd,
+                    sourceSeqStart: item.message.sourceSeqStart,
+                  },
+                ]
+              : [],
+      ),
+    });
+  }
+  return plans;
+}
+
 function messagePlan(message: EventProjectionMessage): TimelineMessagePlan {
   return { kind: "message", message };
 }
@@ -29,11 +116,7 @@ function planTurn(
   completedTurnDisplay: CompletedTurnDisplay,
   rowIdPrefix: string,
 ): TimelineRowPlan[] {
-  if (
-    turn.status === "pending" ||
-    turn.completedAt === null ||
-    completedTurnDisplay === "flat"
-  ) {
+  if (!isCollapsedTurn(turn, completedTurnDisplay)) {
     return (turn.messages ?? []).map(messagePlan);
   }
 
@@ -99,10 +182,14 @@ export function planTimelineRows(
   projection: EventProjection,
   completedTurnDisplay: CompletedTurnDisplay,
   rowIdPrefix: string,
+  storedTurnPlans?: ReadonlyMap<string, StoredTimelineTurnPlan>,
 ): TimelineRowPlan[] {
-  return projection.entries.flatMap((entry) =>
-    entry.kind === "projected-message"
-      ? [messagePlan(entry.message)]
-      : planTurn(entry.turn, completedTurnDisplay, rowIdPrefix),
-  );
+  return projection.entries.flatMap((entry) => {
+    if (entry.kind === "projected-message") return [messagePlan(entry.message)];
+    const stored = storedTurnPlans?.get(entry.turn.turnId);
+    return stored !== undefined &&
+      isCollapsedTurn(entry.turn, completedTurnDisplay)
+      ? planStoredTurn(entry.turn, stored)
+      : planTurn(entry.turn, completedTurnDisplay, rowIdPrefix);
+  });
 }

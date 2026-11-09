@@ -6,7 +6,7 @@ import {
   emptyResolvedItemPruningProbe,
 } from "./resolved-item-pruning.js";
 import { pruneRateLimitSnapshotWindow } from "./rate-limit-pruning.js";
-import { and, eq, gt, gte, inArray, lt, notInArray, sql, type SQLWrapper } from "drizzle-orm";
+import { and, eq, gt, inArray, notInArray, sql, type SQLWrapper } from "drizzle-orm";
 import type { ThreadEventType } from "@bb/domain";
 import type { DbConnection, DbQueryConnection, DbTransaction } from "../connection.js";
 import {
@@ -579,6 +579,13 @@ function advanceThreadPruningTransaction(
           ),
         )
         .run();
+      if (
+        removed > 0 &&
+        threadId !== null &&
+        !TIMELINE_PRESERVING_POLICIES.has(policy)
+      ) {
+        bumpThreadEventRewriteGeneration(tx, threadId);
+      }
       return {
         policy,
         action,
@@ -591,33 +598,7 @@ function advanceThreadPruningTransaction(
     },
     { behavior: "immediate" },
   );
-  if (
-    result.removed > 0 &&
-    result.threadId !== null &&
-    !TIMELINE_PRESERVING_POLICIES.has(policy)
-  )
-    bumpThreadEventRewriteGeneration(result.threadId);
   return result;
-}
-
-export function findUnprunableThreadEventSequence(
-  db: DbQueryConnection,
-  args: { beforeSequence: number; sequenceStart: number; threadId: string },
-): number | undefined {
-  return db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gte(events.sequence, args.sequenceStart),
-        lt(events.sequence, args.beforeSequence),
-        notInArray(events.type, [...PRUNABLE_THREAD_EVENT_TYPES]),
-      ),
-    )
-    .orderBy(events.sequence)
-    .limit(1)
-    .get()?.sequence;
 }
 
 export function advanceThreadPruning(

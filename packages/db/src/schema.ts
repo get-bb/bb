@@ -779,6 +779,30 @@ export const threadConversationOutlines = sqliteTable(
   },
 );
 
+export const threadEventRewriteGenerations = sqliteTable(
+  "thread_event_rewrite_generations",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    generation: integer("generation").notNull(),
+  },
+);
+
+export const threadTurnTimelinePlans = sqliteTable(
+  "thread_turn_timeline_plans",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    turnId: text("turn_id").notNull(),
+    projectionKey: text("projection_key").notNull(),
+    watermark: integer("watermark").notNull(),
+    planJson: text("plan_json").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.turnId] })],
+);
+
 export const threadDynamicContextFileStates = sqliteTable(
   "thread_dynamic_context_file_states",
   {
