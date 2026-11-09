@@ -263,6 +263,31 @@ inaccessible WAL files report a null size with a sample timestamp. WAL size
 can include space reused by earlier generations; it does not measure uncheckpointed backlog or identify
 checkpoint progress. Resource sampling is also disabled with the live gate.
 
+The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
+when agents saturate the CPU:
+
+- While it is on, the host daemon sets nice 10 (the below-normal priority
+  class on Windows) on provider processes and environment lifecycle scripts as
+  they start, and the builds and tests they launch inherit it. The server
+  sends the value in the session handshake and in
+  `provider-session-policy.replace`, but a toggle takes effect only after
+  restarting bb: a running provider bridge worker keeps the priority it started
+  with while it serves new threads, and a lowered process cannot be raised
+  again. Terminals keep normal priority.
+- On macOS, where the scheduler ignores nice between processes, the launcher
+  spawns the server and daemon through `/usr/sbin/taskpolicy -a` (application
+  scheduling, not inherited by their children). The launcher reads the value
+  from `<data dir>/agent-cpu-priority.json` at each spawn, so this half takes
+  effect after restarting bb. The server and the daemon both rewrite that file
+  when the value changes; a missing or unreadable file means off. Check with
+  `ps -axo pid,ppid,pri,ni,command`: the server and daemon show `PRI` 46,
+  their children 31.
+
+A slow-DB record whose `cpuDurationMs` is a small fraction of `durationMs`
+with many `involuntaryContextSwitches` means the server thread was waiting for
+a CPU rather than working; on Linux check that agent processes show `NI` 10 in
+`ps -o pid,ni,command`.
+
 ## Pending Question Drafts
 
 Native provider questions and Ask User Question plugin forms save partial

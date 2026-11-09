@@ -33,6 +33,7 @@ describe("general settings", () => {
         ).toContainEqual({
           type: "provider-session-policy.replace",
           idleProviderSessionTimeoutMinutes: minutes,
+          agentCpuPriority: false,
         });
         const config = systemConfigResponseSchema.parse(
           await readJson(await harness.app.request("/api/v1/system/config")),
@@ -57,6 +58,7 @@ describe("general settings", () => {
       ).toContainEqual({
         type: "provider-session-policy.replace",
         idleProviderSessionTimeoutMinutes: 0,
+        agentCpuPriority: false,
       });
 
       for (const invalid of [-1, 17, null, "never"]) {
