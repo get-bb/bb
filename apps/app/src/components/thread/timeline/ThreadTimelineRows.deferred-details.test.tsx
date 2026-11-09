@@ -145,6 +145,74 @@ describe("deferred timeline details", () => {
     expect(screen.queryByText("Load earlier activity")).toBeNull();
   });
 
+  it.each([
+    { deferredChildren: false, retainedOutput: false },
+    { deferredChildren: true, retainedOutput: false },
+    { deferredChildren: false, retainedOutput: true },
+    { deferredChildren: true, retainedOutput: true },
+  ])(
+    "loads subagent command details in the enclosing delegation scope: %j",
+    async ({ deferredChildren, retainedOutput }) => {
+      const loaded = commandRow({
+        callId: "child-command",
+        command: "inspect-child",
+        output: "SUBAGENT COMMAND OUTPUT",
+        sourceSeqStart: 20,
+        sourceSeqEnd: 22,
+        threadId: "thr_main",
+        turnId: "child-turn",
+      });
+      const child: TimelineRow = retainedOutput
+        ? {
+            ...loaded,
+            output: "preview",
+            outputPreview: {
+              experimental_fullOutputAvailability: "available",
+              totalChars: loaded.output.length,
+            },
+          }
+        : { ...loaded, output: "", contentDeferred: true };
+      const delegation = delegationRow({
+        callId: "agent-call",
+        childRows: [child],
+        sourceSeqStart: 12,
+        sourceSeqEnd: 30,
+        threadId: "thr_main",
+        turnId: "parent-turn",
+      });
+      timelineTurnSummaryDetails.mockImplementation(async (input) => ({
+        olderCursor: null,
+        rows: input.itemId === "agent-call" ? [delegation] : [loaded],
+      }));
+
+      renderExpandedRow(
+        deferredChildren ? { ...delegation, childRows: null } : delegation,
+      );
+      const header = await screen.findByText(/inspect-child/);
+      fireEvent.pointerDown(header);
+
+      await vi.waitFor(() => {
+        expect(timelineTurnSummaryDetails).toHaveBeenCalledWith(
+          expect.objectContaining({
+            itemId: loaded.callId,
+            sourceSeqEnd: "30",
+            sourceSeqStart: "12",
+            threadId: "thr_main",
+            turnId: "parent-turn",
+          }),
+        );
+      });
+      fireEvent.click(header);
+
+      expect(await screen.findByText(/SUBAGENT COMMAND OUTPUT/)).toBeTruthy();
+      expect(
+        timelineTurnSummaryDetails.mock.calls.filter(
+          ([input]) => input.itemId === loaded.callId,
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
   it("loads a deferred command's output by item when it is expanded", async () => {
     const loaded = commandRow({
       id: "cmd-deferred",
