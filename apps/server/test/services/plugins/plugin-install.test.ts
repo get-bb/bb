@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import {
+  cp,
   mkdtemp,
   mkdir,
   readFile,
@@ -20,7 +21,16 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   deleteInstalledPlugin,
   getInstalledPlugin,
@@ -155,10 +165,22 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout.trim();
 }
 
+let gitSeed: string;
+
+beforeAll(async () => {
+  if (!hasGit) return;
+  gitSeed = await mkdtemp(join(tmpdir(), "bb-plugin-install-git-seed-"));
+  await git(gitSeed, ["init", "-q", "-b", "main"]);
+  await git(gitSeed, ["config", "user.email", "test@example.com"]);
+  await git(gitSeed, ["config", "user.name", "Test"]);
+});
+
+afterAll(async () => {
+  if (hasGit) await rm(gitSeed, { recursive: true, force: true });
+});
+
 async function initGitRepo(repoDir: string): Promise<void> {
-  await git(repoDir, ["init", "-q", "-b", "main"]);
-  await git(repoDir, ["config", "user.email", "test@example.com"]);
-  await git(repoDir, ["config", "user.name", "Test"]);
+  await cp(join(gitSeed, ".git"), join(repoDir, ".git"), { recursive: true });
 }
 
 async function commitAll(repoDir: string, message: string): Promise<string> {
