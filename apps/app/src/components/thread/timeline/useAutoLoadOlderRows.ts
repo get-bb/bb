@@ -8,6 +8,7 @@ import {
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 
 const AUTO_LOAD_OLDER_ROWS_PREFETCH_MARGIN_PX = 600;
+const AUTO_LOAD_OLDER_ROWS_PREFETCH_SCREENS = 3;
 
 interface UseAutoLoadOlderRowsArgs {
   hasOlderTimelineRows: boolean;
@@ -30,9 +31,12 @@ function isSentinelWithinPrefetchRange({
 }): boolean {
   const scrollRect = scrollElement.getBoundingClientRect();
   const sentinelRect = sentinel.getBoundingClientRect();
+  const margin = Math.max(
+    AUTO_LOAD_OLDER_ROWS_PREFETCH_MARGIN_PX,
+    scrollRect.height * AUTO_LOAD_OLDER_ROWS_PREFETCH_SCREENS,
+  );
   return (
-    sentinelRect.bottom >=
-      scrollRect.top - AUTO_LOAD_OLDER_ROWS_PREFETCH_MARGIN_PX &&
+    sentinelRect.bottom >= scrollRect.top - margin &&
     sentinelRect.top <= scrollRect.bottom
   );
 }
