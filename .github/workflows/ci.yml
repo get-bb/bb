@@ -36,6 +36,7 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
       - name: Measure transparent NTFS compression
+        timeout-minutes: 10
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -50,7 +51,6 @@ jobs:
           & .github/actions/windows-dependency-cache/disk.ps1 -Operation mount
           $watch = [Diagnostics.Stopwatch]::StartNew()
           & compact.exe /C /S:P:\store /I /Q
-          & compact.exe /C /S:P:\virtual-store /I /Q
           Write-Host "NTFS compression seconds: $($watch.Elapsed.TotalSeconds)"
           & .github/actions/windows-dependency-cache/disk.ps1 -Operation detach
           @("select vdisk file=`"$disk`"", 'attach vdisk readonly', 'compact vdisk', 'detach vdisk') | Set-Content (Join-Path $env:RUNNER_TEMP 'compact.txt')
