@@ -13,6 +13,11 @@
       "types": "./src/internal-environment-lifecycle.ts",
       "default": "./src/internal-environment-lifecycle.ts"
     },
+    "./query-plan-guard": {
+      "source": "./src/query-plan-guard.ts",
+      "types": "./src/query-plan-guard.ts",
+      "default": "./src/query-plan-guard.ts"
+    },
     "./testing": {
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",

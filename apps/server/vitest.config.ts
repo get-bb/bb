@@ -11,6 +11,7 @@ export default defineWorkspaceTestConfig({
     setupFiles: [
       "test/setup/stored-event-decode-freeze.ts",
       "test/setup/warm-test-harness.ts",
+      "test/setup/query-plan-guard.ts",
     ],
     env: {
       BB_DATA_DIR: "/tmp/bb-server-test",
