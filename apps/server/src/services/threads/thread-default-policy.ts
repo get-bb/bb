@@ -401,10 +401,6 @@ export async function resolveCreateThreadEnvironment(
     if (!parentThread.environmentId) {
       throw new Error("Personal parent thread is missing an environment");
     }
-    const parentEnvironment = getEnvironment(
-      deps.db,
-      parentThread.environmentId,
-    );
     const requestedEnvironment = args.requestedEnvironment;
     const requestedMachine: ProviderEnvironmentArgs["machine"] =
       requestedEnvironment.type === "provider"
@@ -414,13 +410,10 @@ export async function resolveCreateThreadEnvironment(
           ? { type: "existing", hostId: requestedEnvironment.hostId }
           : undefined;
     if (
-      parentEnvironment?.status === "ready" &&
-      parentEnvironment.projectId === PERSONAL_PROJECT_ID &&
-      parentEnvironment.environmentProviderId !== null &&
-      parentEnvironment.teardownStatus === null &&
-      (requestedMachine === undefined ||
-        (requestedMachine.type === "existing" &&
-          parentEnvironment.hostId === requestedMachine.hostId))
+      requestedMachine === undefined ||
+      (requestedMachine.type === "existing" &&
+        getEnvironment(deps.db, parentThread.environmentId)?.hostId ===
+          requestedMachine.hostId)
     ) {
       return { type: "reuse", environmentId: parentThread.environmentId };
     }

@@ -747,8 +747,6 @@ export async function createThreadFromRequest(
     requestedEnvironment.type === "provider"
       ? null
       : resolveStableThreadRequestEnvironment(deps, {
-          allowUnmanagedPersonalProjectReuseEnvironmentId:
-            forkSourceEnvironmentId,
           environment: requestedEnvironment,
           projectId: request.projectId,
         });
@@ -805,12 +803,6 @@ export async function createThreadFromRequest(
 
   const { environmentId, environmentIntent } =
     await resolveThreadEnvironmentPlacement(deps, {
-      ...(forkSourceEnvironmentId !== undefined
-        ? {
-            allowUnmanagedPersonalProjectReuseEnvironmentId:
-              forkSourceEnvironmentId,
-          }
-        : {}),
       projectId: request.projectId,
       requestedEnvironment: request.environment,
     });
