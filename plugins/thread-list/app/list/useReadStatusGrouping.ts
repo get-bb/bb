@@ -13,6 +13,7 @@ import {
 } from "../model/read-status-grouping.js";
 import {
   collapsedThreadIdsAtom,
+  revealThreadIdsAtom,
   sidebarGroupByReadStatusAtom,
 } from "../preferences/atoms.js";
 
@@ -94,16 +95,12 @@ export function useReadStatusGrouping({
 
 export function useExpandThreadAncestors() {
   const groupByReadStatus = useAtomValue(sidebarGroupByReadStatusAtom);
-  const setCollapsedThreadIdList = useSetAtom(collapsedThreadIdsAtom);
+  const revealThreadIds = useSetAtom(revealThreadIdsAtom);
   const setExpandedWhileGrouped = useSetAtom(threadsExpandedWhileGroupedAtom);
   return useCallback(
     (threadIds: ReadonlySet<string>, fromNavigation: boolean) => {
       if (!groupByReadStatus) {
-        setCollapsedThreadIdList((current) =>
-          current.some((id) => threadIds.has(id))
-            ? current.filter((id) => !threadIds.has(id))
-            : current,
-        );
+        revealThreadIds(threadIds);
       } else if (fromNavigation) {
         setExpandedWhileGrouped((current) =>
           [...threadIds].every((id) => current.includes(id))
@@ -112,6 +109,6 @@ export function useExpandThreadAncestors() {
         );
       }
     },
-    [groupByReadStatus, setCollapsedThreadIdList, setExpandedWhileGrouped],
+    [groupByReadStatus, revealThreadIds, setExpandedWhileGrouped],
   );
 }
