@@ -284,7 +284,12 @@ server, the file comes from the module comments esbuild writes into
 from POSIX stack paths, so the audit logs nothing on Windows. Findings listed in
 `packages/db/src/query-plan-allowlist.ts` are not logged. The tests apply the
 same rules and fail on findings missing from the allowlist; see
-`packages/db/src/query-plan-guard.ts`. The nightly `Query Plan Audit` workflow
+`packages/db/src/query-plan-guard.ts`. On pull requests, the Linux test shards
+set `BB_QUERY_PLAN_EXECUTED`, so `@bb/db` and `@bb/server` record the query
+functions they run in `.query-plan/executed.jsonl` (a Turbo test output, so
+cached runs restore it). The `Query functions run in tests` job then fails when
+an exported query function in a `packages/db/src/data` file the PR changed never
+ran. The nightly `Query Plan Audit` workflow
 (`.github/workflows/query-plan-audit.yml`, also runnable by hand) checks main
 for allowlist entries no test reports and for exported query functions in
 `packages/db/src/data` that no `@bb/db` or `@bb/server` test runs; reproduce it

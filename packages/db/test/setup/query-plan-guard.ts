@@ -6,6 +6,7 @@ import {
 
 const guard = installTestQueryPlanGuard({
   reportPath: process.env.BB_QUERY_PLAN_REPORT ?? null,
+  executedFunctionsPath: process.env.BB_QUERY_PLAN_EXECUTED ?? null,
 });
 
 afterAll(() => {

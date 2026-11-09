@@ -27,7 +27,11 @@ Frontend build configuration retains Windows checks. Changes to desktop,
 packaged-app, SDK, template, or plugin-bundling code retain package smokes on
 PRs. Provider changes retain the live provider listing check. App/web-only
 changes skip standalone plugin fork checks; shared UI and plugin changes can
-still select them through the task graph. Selected checks remain blocking.
+still select them through the task graph. After the Linux test shards finish,
+`Query functions run in tests` reads the query functions `@bb/db` and
+`@bb/server` tests recorded and checks the ones in data files the PR changed;
+it installs nothing and runs only on pull requests. Selected checks remain
+blocking.
 
 PRs changing only `docs/ci-performance.md`, `docs/windows-ci.md`,
 `docs/debugging-and-qa.md`, `docs/filing-issues.md`, or

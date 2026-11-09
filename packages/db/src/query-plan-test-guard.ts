@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   allowlistKey,
@@ -29,6 +30,7 @@ export interface TestQueryPlanGuard {
 
 export interface InstallTestQueryPlanGuardOptions {
   reportPath: string | null;
+  executedFunctionsPath: string | null;
 }
 
 const DATA_FILE = /^packages\/db\/src\/data\//;
@@ -49,6 +51,14 @@ export function installTestQueryPlanGuard(
   if (installed !== undefined) return installed;
 
   const reportPath = options.reportPath;
+  const executedFunctionsPath =
+    reportPath ??
+    (options.executedFunctionsPath === null
+      ? null
+      : resolve(options.executedFunctionsPath));
+  if (executedFunctionsPath !== null) {
+    mkdirSync(dirname(executedFunctionsPath), { recursive: true });
+  }
   let pending: QueryPlanViolation[] = [];
   const reportedFunctions = new Set<string>();
   const report = (row: QueryPlanReportRow) => {
@@ -65,13 +75,16 @@ export function installTestQueryPlanGuard(
       reportedFunctions.add(name);
       functions.push(name);
     }
-    if (functions.length > 0) report({ kind: "executed", functions });
+    if (functions.length > 0 && executedFunctionsPath !== null) {
+      const row: QueryPlanReportRow = { kind: "executed", functions };
+      appendFileSync(executedFunctionsPath, `${JSON.stringify(row)}\n`);
+    }
   };
 
   const originalPrepare = BetterSqlite.prototype.prepare;
   const auditDatabase = createMigratedConnection().$client;
   const stackDepth =
-    reportPath === null ? DEFAULT_STACK_DEPTH : REPORT_STACK_DEPTH;
+    executedFunctionsPath === null ? DEFAULT_STACK_DEPTH : REPORT_STACK_DEPTH;
   const auditor = createQueryPlanAuditor({
     auditDatabase,
     bundle: null,
@@ -96,7 +109,7 @@ export function installTestQueryPlanGuard(
       root: REPO_ROOT,
       bundle: null,
     });
-    if (reportPath !== null) recordExecutedFunctions(frames);
+    if (executedFunctionsPath !== null) recordExecutedFunctions(frames);
     if (caller === null) return statement;
     for (const method of ["run", "get", "all", "iterate"] as const) {
       const original = statement[method].bind(statement) as (
