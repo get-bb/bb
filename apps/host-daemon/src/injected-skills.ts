@@ -161,6 +161,46 @@ interface CreateCatalogFileArgs {
 const MAX_COLLECTED_TREE_MEMOS = 256;
 const MAX_COLLECTED_TREE_MEMO_FILES = 16_384;
 const MAX_STAGE_ATTEMPTS = 3;
+const MAX_CONCURRENT_SKILL_TREE_PULLS = 6;
+
+interface SkillTreePullSlots {
+  active: number;
+  waiting: (() => void)[];
+}
+
+const skillTreePullSlots = new Map<string, SkillTreePullSlots>();
+
+async function withSkillTreePullSlot<T>(
+  dataDir: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const slots = skillTreePullSlots.get(dataDir) ?? { active: 0, waiting: [] };
+  skillTreePullSlots.set(dataDir, slots);
+  if (slots.active >= MAX_CONCURRENT_SKILL_TREE_PULLS) {
+    await new Promise<void>((resolve) => slots.waiting.push(resolve));
+  } else {
+    slots.active += 1;
+  }
+  try {
+    return await work();
+  } finally {
+    const next = slots.waiting.shift();
+    if (next !== undefined) {
+      next();
+    } else {
+      slots.active -= 1;
+      if (slots.active === 0) skillTreePullSlots.delete(dataDir);
+    }
+  }
+}
+
+async function settleSkillTreeWork<T>(work: Promise<T>[]): Promise<T[]> {
+  const results = await Promise.allSettled(work);
+  return results.map((result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  });
+}
 
 const collectedTreeMemos = new Map<string, SkillTreeCollectionState>();
 const scheduledSkillStoreGcs = new Set<string>();
@@ -649,18 +689,22 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
 
   try {
     await fs.mkdir(path.join(tempRootPath, "skills"), { recursive: true });
-    for (const tree of args.trees) {
-      if (tree.source.kind === "tree") {
-        if (args.skillTreeTransport === undefined) {
-          throw new Error("Skill tree fetch transport is unavailable");
+    await settleSkillTreeWork(
+      args.trees.map(async (tree) => {
+        if (tree.source.kind === "tree") {
+          if (args.skillTreeTransport === undefined) {
+            throw new Error("Skill tree fetch transport is unavailable");
+          }
+          await ensureStoredSkillTree({
+            dataDir: args.dataDir,
+            logger: args.logger,
+            skillTreeTransport: args.skillTreeTransport,
+            treeHash: tree.source.treeHash,
+          });
         }
-        await ensureStoredSkillTree({
-          dataDir: args.dataDir,
-          logger: args.logger,
-          skillTreeTransport: args.skillTreeTransport,
-          treeHash: tree.source.treeHash,
-        });
-      }
+      }),
+    );
+    for (const tree of args.trees) {
       await copyCollectedTree({
         skillDirectoryPath: path.join(tempRootPath, "skills", tree.source.name),
         tree,
@@ -973,7 +1017,6 @@ async function pullTreeIntoStore(args: {
     `.tmp-${args.treeHash}-${process.pid}-${Date.now()}-${randomUUID()}`,
   );
   const contentRootPath = path.join(tempRootPath, STORE_CONTENT_DIR);
-  const storedFiles = await indexStoredFilesBySha256(args.dataDir);
   const downloads: HostDaemonSkillTreeFile[] = [];
   const downloadShas = new Set<string>();
   const duplicates: HostDaemonSkillTreeFile[] = [];
@@ -981,36 +1024,39 @@ async function pullTreeIntoStore(args: {
   let reusedFiles = 0;
   try {
     await fs.mkdir(contentRootPath, { recursive: true });
-    for (const file of files) {
-      const destinationPath = path.join(
-        contentRootPath,
-        ...file.path.split("/"),
-      );
-      await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-      const storedPath = storedFiles.get(file.sha256);
-      if (storedPath !== undefined && !pulledFiles.has(file.sha256)) {
-        try {
-          await copyVerifiedFile({
-            destinationPath,
-            expected: storedFileExpectation(file),
-            label: `Stored skill file ${file.path}`,
-            mode: file.mode,
-            sourcePath: storedPath,
-          });
-          pulledFiles.set(file.sha256, destinationPath);
-          reusedFiles += 1;
-          continue;
-        } catch (error) {
-          if (!isRecoverableLocalCopyError(error)) throw error;
+    await runInSerialLane(skillStoreQueues, args.dataDir, async () => {
+      const storedFiles = await indexStoredFilesBySha256(args.dataDir);
+      for (const file of files) {
+        const destinationPath = path.join(
+          contentRootPath,
+          ...file.path.split("/"),
+        );
+        await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+        const storedPath = storedFiles.get(file.sha256);
+        if (storedPath !== undefined && !pulledFiles.has(file.sha256)) {
+          try {
+            await copyVerifiedFile({
+              destinationPath,
+              expected: storedFileExpectation(file),
+              label: `Stored skill file ${file.path}`,
+              mode: file.mode,
+              sourcePath: storedPath,
+            });
+            pulledFiles.set(file.sha256, destinationPath);
+            reusedFiles += 1;
+            continue;
+          } catch (error) {
+            if (!isRecoverableLocalCopyError(error)) throw error;
+          }
         }
+        if (pulledFiles.has(file.sha256) || downloadShas.has(file.sha256)) {
+          duplicates.push(file);
+          continue;
+        }
+        downloads.push(file);
+        downloadShas.add(file.sha256);
       }
-      if (pulledFiles.has(file.sha256) || downloadShas.has(file.sha256)) {
-        duplicates.push(file);
-        continue;
-      }
-      downloads.push(file);
-      downloadShas.add(file.sha256);
-    }
+    });
     if (downloads.length > 0) {
       await downloadTreeFiles({
         contentRootPath,
@@ -1047,10 +1093,13 @@ async function pullTreeIntoStore(args: {
       path.join(tempRootPath, STORE_COMPLETE_MARKER),
       "complete\n",
     );
-    await publishDirectory({
-      destinationPath: treeRootPath,
-      isComplete: isStoredTreeComplete,
-      tempRootPath,
+    await runInSerialLane(skillStoreQueues, args.dataDir, async () => {
+      await publishDirectory({
+        destinationPath: treeRootPath,
+        isComplete: isStoredTreeComplete,
+        tempRootPath,
+      });
+      await touchStoredTree(treeRootPath);
     });
   } finally {
     await fs.rm(tempRootPath, { recursive: true, force: true });
@@ -1067,7 +1116,6 @@ async function pullTreeIntoStore(args: {
     },
     "Pulled injected skill tree",
   );
-  await touchStoredTree(treeRootPath);
   return path.join(treeRootPath, STORE_CONTENT_DIR);
 }
 
@@ -1082,14 +1130,25 @@ export async function ensureStoredSkillTree(args: {
   if (pending) {
     return pending;
   }
-  const pull = runInSerialLane(skillStoreQueues, args.dataDir, async () => {
-    const treeRootPath = resolveStoredTreeRootPath(args.dataDir, args.treeHash);
-    if (await isStoredTreeComplete(treeRootPath)) {
-      await touchStoredTree(treeRootPath);
-      return path.join(treeRootPath, STORE_CONTENT_DIR);
-    }
-    return pullTreeIntoStore(args);
-  }).finally(() => pendingSkillTreePulls.delete(key));
+  const pull = (async () => {
+    const stored = await runInSerialLane(
+      skillStoreQueues,
+      args.dataDir,
+      async () => {
+        const treeRootPath = resolveStoredTreeRootPath(
+          args.dataDir,
+          args.treeHash,
+        );
+        if (!(await isStoredTreeComplete(treeRootPath))) return null;
+        await touchStoredTree(treeRootPath);
+        return path.join(treeRootPath, STORE_CONTENT_DIR);
+      },
+    );
+    return (
+      stored ??
+      withSkillTreePullSlot(args.dataDir, () => pullTreeIntoStore(args))
+    );
+  })().finally(() => pendingSkillTreePulls.delete(key));
   pendingSkillTreePulls.set(key, pull);
   return pull;
 }
@@ -1098,89 +1157,87 @@ async function collectInjectedSkillTrees(
   args: StageInjectedSkillSourcesArgs,
   logger: InjectedSkillsLogger,
   sortedSources: readonly HostDaemonInjectedSkillSource[],
-): Promise<{ pulledStoredTree: boolean; trees: CollectedSkillTree[] }> {
-  const trees: CollectedSkillTree[] = [];
-  let pulledStoredTree = false;
-  for (const source of sortedSources) {
-    if (source.kind === "tree") {
-      const memoKey = storedTreeMemoKey(args.dataDir, source);
-      const remembered = recallCollectedTree(memoKey);
-      if (remembered !== null) {
-        trees.push(toCollectedSkillTree(source, remembered));
-        continue;
+  onStoredTreePull: () => void,
+): Promise<CollectedSkillTree[]> {
+  const collected = await settleSkillTreeWork(
+    sortedSources.map(async (source): Promise<CollectedSkillTree | null> => {
+      if (source.kind === "tree") {
+        const memoKey = storedTreeMemoKey(args.dataDir, source);
+        const remembered = recallCollectedTree(memoKey);
+        if (remembered !== null) {
+          return toCollectedSkillTree(source, remembered);
+        }
+        try {
+          if (args.skillTreeTransport === undefined) {
+            throw new Error("Skill tree fetch transport is unavailable");
+          }
+          onStoredTreePull();
+          const sourceRootPath = await ensureStoredSkillTree({
+            dataDir: args.dataDir,
+            logger,
+            skillTreeTransport: args.skillTreeTransport,
+            treeHash: source.treeHash,
+          });
+          const skillFilePath = path.resolve(sourceRootPath, source.entryPath);
+          if (!isPathWithinDirectory(sourceRootPath, skillFilePath)) {
+            throw new Error(
+              `Injected skill entry path escapes tree: ${source.entryPath}`,
+            );
+          }
+          const tree = await collectSkillTree({
+            boundaryPath: sourceRootPath,
+            source,
+            sourceRootPath,
+            skillFilePath,
+          });
+          rememberCollectedTree(memoKey, tree);
+          return tree;
+        } catch (error) {
+          logger.warn(
+            {
+              name: source.name,
+              treeHash: source.treeHash,
+              sourceType: source.sourceType,
+              reason:
+                error instanceof Error && error.message.trim().length > 0
+                  ? error.message
+                  : "Unable to pull injected skill tree",
+            },
+            "Failed to pull required injected skill tree",
+          );
+          throw error;
+        }
       }
       try {
-        if (args.skillTreeTransport === undefined) {
-          throw new Error("Skill tree fetch transport is unavailable");
-        }
-        pulledStoredTree = true;
-        const sourceRootPath = await ensureStoredSkillTree({
-          dataDir: args.dataDir,
-          logger,
-          skillTreeTransport: args.skillTreeTransport,
-          treeHash: source.treeHash,
-        });
-        const skillFilePath = path.resolve(sourceRootPath, source.entryPath);
-        if (!isPathWithinDirectory(sourceRootPath, skillFilePath)) {
-          throw new Error(
-            `Injected skill entry path escapes tree: ${source.entryPath}`,
-          );
-        }
-        const tree = await collectSkillTree({
-          boundaryPath: sourceRootPath,
-          source,
-          sourceRootPath,
-          skillFilePath,
-        });
-        rememberCollectedTree(memoKey, tree);
-        trees.push(tree);
-      } catch (error) {
-        logger.warn(
-          {
-            name: source.name,
-            treeHash: source.treeHash,
-            sourceType: source.sourceType,
-            reason:
-              error instanceof Error && error.message.trim().length > 0
-                ? error.message
-                : "Unable to pull injected skill tree",
-          },
-          "Failed to pull required injected skill tree",
-        );
-        throw error;
-      }
-      continue;
-    }
-    try {
-      const project =
-        source.sourceType === "project" ||
-        source.sourceType === "shared-project";
-      if (project && args.workspacePath === null)
-        throw new Error("Project skill staging requires a workspace");
-      trees.push(
-        await collectSkillTree({
+        const project =
+          source.sourceType === "project" ||
+          source.sourceType === "shared-project";
+        if (project && args.workspacePath === null)
+          throw new Error("Project skill staging requires a workspace");
+        return await collectSkillTree({
           boundaryPath: project ? args.workspacePath : null,
           source,
           sourceRootPath: source.sourceRootPath,
           skillFilePath: source.skillFilePath,
-        }),
-      );
-    } catch (error) {
-      logger.warn(
-        {
-          name: source.name,
-          sourceRootPath: source.sourceRootPath,
-          sourceType: source.sourceType,
-          reason:
-            error instanceof Error && error.message.trim().length > 0
-              ? error.message
-              : "Unable to stage injected skill",
-        },
-        "Skipping injected skill during staging",
-      );
-    }
-  }
-  return { pulledStoredTree, trees };
+        });
+      } catch (error) {
+        logger.warn(
+          {
+            name: source.name,
+            sourceRootPath: source.sourceRootPath,
+            sourceType: source.sourceType,
+            reason:
+              error instanceof Error && error.message.trim().length > 0
+                ? error.message
+                : "Unable to stage injected skill",
+          },
+          "Skipping injected skill during staging",
+        );
+        return null;
+      }
+    }),
+  );
+  return collected.filter((tree) => tree !== null);
 }
 
 async function stageCollectedTrees(
@@ -1256,10 +1313,12 @@ export async function stageInjectedSkillSources(
         args,
         logger,
         sortedSources,
+        () => {
+          pulledStoredTree = true;
+        },
       );
-      pulledStoredTree ||= collected.pulledStoredTree;
       try {
-        return await stageCollectedTrees(args, logger, collected.trees);
+        return await stageCollectedTrees(args, logger, collected);
       } catch (error) {
         if (attempt >= MAX_STAGE_ATTEMPTS || !isSourceChangedDuringStage(error))
           throw error;

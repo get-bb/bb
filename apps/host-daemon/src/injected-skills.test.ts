@@ -13,7 +13,7 @@ import {
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { makeTempDir } from "@bb/test-helpers";
+import { createDeferredPromise, makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type {
@@ -25,6 +25,7 @@ import type { SkillTreeTransport } from "./skill-trees.js";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
+  ensureStoredSkillTree,
   MAX_SKILL_STORE_TREES,
   stageInjectedSkillSources,
 } from "./injected-skills.js";
@@ -735,6 +736,243 @@ describe("injected skill staging", () => {
     expect(new Set(stages.map((stage) => stage.catalogHash)).size).toBe(1);
     expect(skillTreeTransport.fetchManifest).toHaveBeenCalledTimes(1);
     expect(skillTreeTransport.fetchContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds distinct pulls across concurrent stages and preserves the serial catalog", async () => {
+    const dataDir = await makeTempDir();
+    const serialDataDir = await makeTempDir();
+    const payloads = Array.from({ length: 18 }, (_, index) =>
+      createTreePayload(`parallel-${String(index).padStart(2, "0")}`),
+    );
+    const sources = payloads
+      .map((payload, index) =>
+        createTreeSource(
+          `parallel-${String(index).padStart(2, "0")}`,
+          payload.treeHash,
+        ),
+      )
+      .reverse();
+    const transport = createTransport(...payloads);
+    let active = 0;
+    let peak = 0;
+    const release = createDeferredPromise<void>();
+    const skillTreeTransport: SkillTreeTransport = {
+      ...transport,
+      fetchContent: async (hash, paths) => {
+        const content = await transport.fetchContent(hash, paths);
+        return (async function* () {
+          active += 1;
+          peak = Math.max(peak, active);
+          try {
+            await release.promise;
+            yield* content;
+          } finally {
+            active -= 1;
+          }
+        })();
+      },
+    };
+    const stages = Promise.all(
+      [sources, sources.slice(3)].map((injectedSkillSources) =>
+        stageInjectedSkillSources({
+          dataDir,
+          workspacePath: null,
+          injectedSkillSources,
+          skillTreeTransport,
+        }),
+      ),
+    );
+    try {
+      await vi.waitFor(() => expect(active).toBe(6));
+      expect(transport.fetchManifest).toHaveBeenCalledTimes(6);
+    } finally {
+      release.resolve();
+      await stages;
+    }
+    expect(peak).toBe(6);
+    expect(transport.fetchManifest).toHaveBeenCalledTimes(payloads.length);
+    expect(transport.fetchContent).toHaveBeenCalledTimes(payloads.length);
+    for (const payload of payloads)
+      await seedStoredTree(serialDataDir, payload);
+    const serial = await stageInjectedSkillSources({
+      dataDir: serialDataDir,
+      workspacePath: null,
+      injectedSkillSources: sources,
+      skillTreeTransport: createTransport(...payloads),
+    });
+    const [parallel] = await stages;
+    if (parallel === undefined) throw new Error("Expected parallel stage");
+    expect(parallel.catalogHash).toBe(serial.catalogHash);
+    const parallelRoot = requireSkillRoot(parallel.skillRoots);
+    const serialRoot = requireSkillRoot(serial.skillRoots);
+    expect(parallelRoot.skills).toEqual(serialRoot.skills);
+    for (const source of sources) {
+      for (const relativePath of ["SKILL.md", "scripts/run.sh"]) {
+        const actual = path.join(parallelRoot.path, source.name, relativePath);
+        const expected = path.join(serialRoot.path, source.name, relativePath);
+        expect(await readFile(actual)).toEqual(await readFile(expected));
+        expect((await lstat(actual)).mode).toBe((await lstat(expected)).mode);
+      }
+    }
+    const parallelCatalog = JSON.parse(
+      await readFile(
+        path.join(path.dirname(parallelRoot.path), "catalog.json"),
+        "utf8",
+      ),
+    );
+    const serialCatalog = JSON.parse(
+      await readFile(
+        path.join(path.dirname(serialRoot.path), "catalog.json"),
+        "utf8",
+      ),
+    );
+    expect(parallelCatalog).toEqual({
+      ...serialCatalog,
+      generatedAt: parallelCatalog.generatedAt,
+    });
+  });
+
+  it("bounds direct ensures and dedupes callers while their hash is queued", async () => {
+    const dataDir = await makeTempDir();
+    const payloads = Array.from({ length: 12 }, (_, index) =>
+      createTreePayload(`direct-${index}`),
+    );
+    const warm = createTreePayload("warm-during-pulls");
+    await seedStoredTree(dataDir, warm);
+    const transport = createTransport(...payloads, warm);
+    const release = createDeferredPromise<void>();
+    let active = 0;
+    let peak = 0;
+    const skillTreeTransport: SkillTreeTransport = {
+      ...transport,
+      fetchManifest: async (hash) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        try {
+          await release.promise;
+          return await transport.fetchManifest(hash);
+        } finally {
+          active -= 1;
+        }
+      },
+    };
+    const logger = { debug() {}, warn() {} };
+    const pulls = Promise.all(
+      [...payloads, ...payloads].map((payload) =>
+        ensureStoredSkillTree({
+          dataDir,
+          treeHash: payload.treeHash,
+          skillTreeTransport,
+          logger,
+        }),
+      ),
+    );
+    try {
+      await vi.waitFor(() => expect(active).toBe(6));
+      let warmFinished = false;
+      const warmPull = ensureStoredSkillTree({
+        dataDir,
+        treeHash: warm.treeHash,
+        skillTreeTransport,
+        logger,
+      }).then(() => {
+        warmFinished = true;
+      });
+      await vi.waitFor(() => expect(warmFinished).toBe(true));
+      await warmPull;
+    } finally {
+      release.resolve();
+      await pulls;
+    }
+    expect(peak).toBe(6);
+    expect(transport.fetchManifest).toHaveBeenCalledTimes(payloads.length);
+    expect(transport.fetchContent).toHaveBeenCalledTimes(payloads.length);
+    expect((await pulls).slice(0, 12)).toEqual((await pulls).slice(12));
+  });
+
+  it("drains sibling pulls before failing a stage and retries an incomplete tree", async () => {
+    const dataDir = await makeTempDir();
+    const bad = createTreePayload("a-failed");
+    const siblings = Array.from(
+      { length: MAX_SKILL_STORE_TREES + 1 },
+      (_, index) => createTreePayload(`b-blocked-${index}`),
+    );
+    const transport = createTransport(bad, ...siblings);
+    const release = createDeferredPromise<void>();
+    const blocked = createDeferredPromise<void>();
+    const failed = createDeferredPromise<void>();
+    let settled = false;
+    const skillTreeTransport: SkillTreeTransport = {
+      ...transport,
+      fetchContent: async (hash, paths) => {
+        if (hash === bad.treeHash) {
+          await blocked.promise;
+          return (async function* () {
+            yield Buffer.from("truncated");
+            failed.resolve();
+            throw new Error("broken stream");
+          })();
+        }
+        blocked.resolve();
+        const content = await transport.fetchContent(hash, paths);
+        return (async function* () {
+          await release.promise;
+          yield* content;
+        })();
+      },
+    };
+    const sources = [
+      createTreeSource("a-failed", bad.treeHash),
+      ...siblings.map((sibling, index) =>
+        createTreeSource(`b-blocked-${index}`, sibling.treeHash),
+      ),
+    ];
+    const stage = stageInjectedSkillSources({
+      dataDir,
+      workspacePath: null,
+      injectedSkillSources: sources,
+      skillTreeTransport,
+    });
+    const observed = stage.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    try {
+      await failed.promise;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(settled).toBe(false);
+    } finally {
+      release.resolve();
+      await observed;
+    }
+    await expect(stage).rejects.toThrow("broken stream");
+    const storeRoot = path.join(dataDir, "runtime", "skill-store");
+    expect(transport.fetchContent).toHaveBeenCalledTimes(siblings.length);
+    await expect(
+      access(path.join(storeRoot, bad.treeHash, ".complete")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await vi.waitFor(async () =>
+      expect(await countStoredTrees(dataDir)).toBe(MAX_SKILL_STORE_TREES),
+    );
+    expect(
+      (await readdir(storeRoot)).some((entry) => entry.startsWith(".tmp-")),
+    ).toBe(false);
+    await stageInjectedSkillSources({
+      dataDir,
+      workspacePath: null,
+      injectedSkillSources: [createTreeSource("a-failed", bad.treeHash)],
+      skillTreeTransport: transport,
+    });
+    await expect(
+      access(path.join(storeRoot, bad.treeHash, ".complete")),
+    ).resolves.toBeUndefined();
+    await vi.waitFor(async () =>
+      expect(await countStoredTrees(dataDir)).toBe(MAX_SKILL_STORE_TREES),
+    );
   });
 
   it("garbage-collects the least-recently-used trees beyond the store cap", async () => {
