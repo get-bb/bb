@@ -55,7 +55,6 @@ export interface ThreadTimelineWindowRequest {
   deferContent: boolean;
   includeNestedRows: boolean;
   page: ThreadTimelinePageRequest;
-  summaryOnly: boolean;
 }
 
 const MAX_PUSH_PAUSE_MS = 1_000;
@@ -107,12 +106,9 @@ function latestWindowKey(
   request: ThreadTimelineWindowRequest,
   segmentLimit: number,
 ): string {
-  return [
-    segmentLimit,
-    request.deferContent,
-    request.includeNestedRows,
-    request.summaryOnly,
-  ].join("|");
+  return [segmentLimit, request.deferContent, request.includeNestedRows].join(
+    "|",
+  );
 }
 
 export function createThreadTimelineWindows(
@@ -164,7 +160,6 @@ export function createThreadTimelineWindows(
       buildThreadTimelineCacheKey({
         threadId: thread.id,
         page: request.page,
-        summaryOnly: request.summaryOnly,
         deferContent: request.deferContent,
         includeNestedRows: request.includeNestedRows,
       }),
@@ -186,7 +181,6 @@ export function createThreadTimelineWindows(
           eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
           maxSeq,
           page: request.page,
-          summaryOnly: request.summaryOnly,
         });
         slowTimelineBuildLogger.log({ cost, profile, threadId: thread.id });
         const window = shortenTimelineResponseOutputs(built, {
@@ -217,7 +211,6 @@ export function createThreadTimelineWindows(
       deferContent: target.deferContent,
       includeNestedRows: false,
       page: { kind: "latest", segmentLimit },
-      summaryOnly: false,
     };
     const windowKey = latestWindowKey(request, segmentLimit);
     const response = buildWindow(thread, request);

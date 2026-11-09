@@ -1201,9 +1201,6 @@ describe("timeline event budget", () => {
           }
           previous = live;
           expect(live.timelinePage.olderRowUpdates?.length).toBeGreaterThan(0);
-          const summary = await read("summaryOnly=true");
-          expect(summary.rows).toEqual([]);
-          expect(summary.timelinePage.olderRowUpdates).toBeUndefined();
           current = mergeLoadedTimelineWithLatest({
             current,
             latestTimeline: live,

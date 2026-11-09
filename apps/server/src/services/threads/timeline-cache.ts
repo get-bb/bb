@@ -95,7 +95,6 @@ export function createThreadTimelineCache(
 export interface ThreadTimelineCacheKeyArgs {
   threadId: string;
   page: ThreadTimelinePageRequest;
-  summaryOnly: boolean;
   deferContent: boolean;
   includeNestedRows: boolean;
 }
@@ -120,7 +119,6 @@ export function buildThreadTimelineCacheKey(
   return [
     args.threadId,
     pageKeyPart(args.page),
-    args.summaryOnly ? "1" : "0",
     args.deferContent ? "1" : "0",
     args.includeNestedRows ? "1" : "0",
   ].join("|");

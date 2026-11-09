@@ -444,18 +444,9 @@ export interface ThreadEventWaitArgs {
   waitMs: string;
 }
 
-export interface ThreadTimelineArgs extends Omit<
-  ThreadTimelineQuery,
-  "summaryOnly"
-> {
+export interface ThreadTimelineArgs extends ThreadTimelineQuery {
   signal?: AbortSignal;
   threadId: string;
-  /**
-   * @deprecated Still builds the whole latest page and only drops its rows.
-   * Read `threads.experimental_headState` for to-dos, commands, session
-   * options, extension states, prompt mode, model fallback, and context usage.
-   */
-  summaryOnly?: ThreadTimelineQuery["summaryOnly"];
 }
 
 export interface ThreadOutputArgs {
@@ -941,9 +932,6 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
       : {}),
     ...(args.includeNestedRows !== undefined
       ? { includeNestedRows: args.includeNestedRows }
-      : {}),
-    ...(args.summaryOnly !== undefined
-      ? { summaryOnly: args.summaryOnly }
       : {}),
     ...(args.segmentLimit !== undefined
       ? { segmentLimit: args.segmentLimit }

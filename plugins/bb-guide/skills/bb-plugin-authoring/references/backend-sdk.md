@@ -264,8 +264,7 @@ To read a thread's current to-dos, slash commands, session options, extension
 states, plan prompt mode, model fallback, or context usage, use
 `threads.experimental_headState({ threadId })`: it reads their latest stored
 state without building a timeline window, so it stays cheap on threads with
-long turns. `threads.timeline`'s `summaryOnly` still builds the whole page and
-is deprecated.
+long turns.
 For raw history, `threads.events.list` defaults to ascending order and supports
 exclusive `afterSeq` / `beforeSeq` cursors, `order: "asc" | "desc"`, and a
 non-empty typed `types` array. Combine `order: "desc"` with `beforeSeq` to page

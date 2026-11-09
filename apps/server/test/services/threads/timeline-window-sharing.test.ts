@@ -45,14 +45,12 @@ const desktop: ThreadTimelineWindowRequest = {
   deferContent: true,
   includeNestedRows: false,
   page: { kind: "latest", segmentLimit: 20 },
-  summaryOnly: false,
 };
 const phone: ThreadTimelineWindowRequest = {
   ...desktop,
   page: { kind: "latest", segmentLimit: 8 },
 };
 const variants: Record<string, ThreadTimelineWindowRequest> = {
-  summaryOnly: { ...desktop, deferContent: false, summaryOnly: true },
   cliLog: { ...desktop, deferContent: false },
   nested: { ...desktop, deferContent: false, includeNestedRows: true },
 };

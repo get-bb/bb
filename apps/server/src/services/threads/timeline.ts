@@ -229,7 +229,6 @@ interface BuildThreadTimelineOptions extends ThreadTimelineSurfaceOptions {
   responseByteBudget?: number;
   maxSeq: number;
   page: ThreadTimelinePageRequest;
-  summaryOnly?: boolean;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
@@ -1594,7 +1593,7 @@ function buildThreadTimelineInternal(
 
   const response: ThreadTimelineWindow = {
     maxSeq: snapshot.maxSeq,
-    rows: options.summaryOnly ? [] : paginatedTimeline.rows,
+    rows: paginatedTimeline.rows,
     contextBoundarySeq,
     completedTurnDisplay: options.completedTurnDisplay,
     activePromptMode: headState?.activePromptMode ?? null,
@@ -1619,9 +1618,7 @@ function buildThreadTimelineInternal(
       ),
       historySnapshot: timelineSnapshotKey(snapshot),
       olderRowsSourceSeqEnd: paginatedTimeline.olderRowsSourceSeqEnd,
-      olderRowUpdates: options.summaryOnly
-        ? undefined
-        : paginatedTimeline.olderRowUpdates,
+      olderRowUpdates: paginatedTimeline.olderRowUpdates,
     },
   };
   return {
@@ -1643,7 +1640,6 @@ export function buildThreadTimelineWithProfile(
     const started = startMainThreadCost();
     const built = db.transaction(() => {
       const result = buildThreadTimelineInternal(db, thread, options);
-      if (options.summaryOnly) return result;
       for (
         let skipped = 0;
         skipped < MAX_EMPTY_TIMELINE_WINDOWS;

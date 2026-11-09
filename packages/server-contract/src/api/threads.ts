@@ -1068,7 +1068,6 @@ export const threadTimelineQuerySchema = z
     segmentLimit: z.string().regex(/^\d+$/),
     beforeAnchorSeq: z.string().regex(/^(0|[1-9]\d*)$/),
     beforeAnchorId: z.string().min(1),
-    summaryOnly: z.enum(["true", "false"]),
     afterTag: z.string().min(1),
     deferContent: z.enum(["true", "false"]),
   })

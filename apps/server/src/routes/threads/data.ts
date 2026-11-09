@@ -244,7 +244,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           deferContent: query.deferContent === "true",
           includeNestedRows: query.includeNestedRows === "true",
           page: parseThreadTimelinePage(query),
-          summaryOnly: query.summaryOnly === "true",
         },
         query.afterTag,
       ),

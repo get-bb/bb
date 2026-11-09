@@ -60,7 +60,6 @@ const latestPage: ThreadTimelinePageRequest = {
 const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   threadId: "thr_x",
   page: latestPage,
-  summaryOnly: false,
   deferContent: false,
   includeNestedRows: false,
 };
@@ -236,7 +235,6 @@ describe("buildThreadTimelineCacheKey", () => {
     const base = buildThreadTimelineCacheKey(baseKeyArgs);
     const variants: ThreadTimelineCacheKeyArgs[] = [
       { ...baseKeyArgs, threadId: "thr_y" },
-      { ...baseKeyArgs, summaryOnly: true },
       { ...baseKeyArgs, deferContent: true },
       { ...baseKeyArgs, includeNestedRows: true },
       {

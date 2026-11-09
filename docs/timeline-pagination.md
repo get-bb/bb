@@ -87,11 +87,6 @@ the same snapshot. Updates share the page byte budget
 with the returned rows. Updates that do not fit the remaining budget, and leaves
 omitted by a content cut, still count toward `olderRowsSourceSeqEnd`.
 
-`summaryOnly=true` returns the latest page's fields without timeline rows or
-older-row updates. It still selects and projects the whole latest page, so it
-is deprecated in the SDK. Read head state from `GET /threads/:id/head-state`
-instead.
-
 `completedTurnDisplay` reports whether the page projected finished turns as
 collapsed "Worked for" rows or flat rows. It is part of the display surface: a
 cursor from one display returns HTTP 400 under the other, and
