@@ -5382,6 +5382,7 @@ export function getUnfinishedCommandItemData(
             .where(
               and(
                 eq(finished.threadId, events.threadId),
+                eq(finished.turnId, events.turnId),
                 eq(finished.itemId, events.itemId),
                 eq(finished.type, completedType),
               ),

@@ -27,6 +27,7 @@ import {
   getFirstParentedTimelineBoundarySequence,
   getLatestModelFallbackRowSinceTurnRequest,
   getTimelineGroupingContextChangesInRange,
+  getUnfinishedCommandItemData,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
   listStoredEventRowsInSequenceRange,
@@ -1099,6 +1100,53 @@ describe("slow query index plans", () => {
     for (const query of captured) {
       expectNoThreadOnlyEventSeek(queryPlanDetails({ db, ...query }));
     }
+
+    db.$client.close();
+  });
+
+  it("probes each started command's completion through the turn index", () => {
+    const { db, thread } = setup();
+    const commandEvent = (args: {
+      sequence: number;
+      type: "item/started" | "item/completed";
+      itemId: string;
+    }) => ({
+      threadId: thread.id,
+      sequence: args.sequence,
+      type: args.type,
+      scope: turnScope("turn-commands"),
+      itemId: args.itemId,
+      itemKind: "commandExecution" as const,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        item: { type: "commandExecution", id: args.itemId },
+      }),
+    });
+    insertEvents(db, noopNotifier, [
+      commandEvent({ sequence: 1, type: "item/started", itemId: "cmd-open" }),
+      commandEvent({ sequence: 2, type: "item/started", itemId: "cmd-done" }),
+      commandEvent({ sequence: 3, type: "item/completed", itemId: "cmd-done" }),
+    ]);
+
+    const captured = captureStatements(db, () => {
+      expect(
+        getUnfinishedCommandItemData(db, {
+          afterSequence: 0,
+          threadId: thread.id,
+        }),
+      ).toContain("cmd-open");
+    });
+    expect(
+      getUnfinishedCommandItemData(db, {
+        afterSequence: 1,
+        threadId: thread.id,
+      }),
+    ).toBeNull();
+
+    expect(captured).toHaveLength(1);
+    expect(queryPlanDetails({ db, ...captured[0]! })).toContain(
+      "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=? AND item_id=?)",
+    );
 
     db.$client.close();
   });
