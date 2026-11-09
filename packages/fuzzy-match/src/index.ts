@@ -824,7 +824,10 @@ export function fuzzyMatchPaths<T>(
     }));
   }
 
-  const normalizedQuery = args.query.replaceAll("\\", "/");
+  const pathQuery = args.query.replaceAll("\\", "/");
+  const normalizedQuery = /[A-Z]/.test(pathQuery)
+    ? pathQuery
+    : pathQuery.toLowerCase();
   if (normalizedQuery.length > FUZZY_MATCH_QUERY_MAX_LENGTH) {
     return [];
   }
