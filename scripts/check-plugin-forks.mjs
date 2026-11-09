@@ -361,6 +361,7 @@ try {
     await cp(sdkTarball, join(evidenceDir, basename(sdkTarball)));
   }
   const longRunningPlugins = new Set(["plugins/provider-pi", "plugins/tasks"]);
+  if (process.env.PROFILE_LONG_FIRST === "true") longRunningPlugins.add("plugins/provider-codex");
   const queue = [...pluginDirs].sort(
     (a, b) =>
       Number(longRunningPlugins.has(b)) - Number(longRunningPlugins.has(a)),
