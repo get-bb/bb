@@ -24,7 +24,9 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   appendDaemonEventsInTransaction,
+  findLastCompletedRootStoredTurn,
   getFirstParentedTimelineBoundarySequence,
+  getLatestStoredThreadEventOfTypes,
   getLatestModelFallbackRowSinceTurnRequest,
   getTimelineGroupingContextChangesInRange,
   hasStoredSpawnAgentToolCall,
@@ -32,6 +34,7 @@ import {
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
   insertEvents,
+  isStoredTurnContextCompactionOnly,
   isStoredTurnProviderCompactionRunning,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
@@ -41,6 +44,7 @@ import {
   listLatestOpenBackgroundTaskStateRowsForThread,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
+  listStoredClientTurnRequestIdsInRange,
   listStoredConversationOutlineEventRows,
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRows,
@@ -1243,6 +1247,70 @@ describe("slow query index plans", () => {
 
     db.$client.close();
   });
+
+  it.each([
+    {
+      name: "getLatestStoredThreadEventOfTypes",
+      run: (db: DbConnection, threadId: string) =>
+        getLatestStoredThreadEventOfTypes(db, {
+          afterSequence: 0,
+          threadId,
+          types: ["system/thread/interrupted", "turn/started"],
+        }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>?)",
+      ],
+    },
+    {
+      name: "listStoredClientTurnRequestIdsInRange",
+      run: (db: DbConnection, threadId: string) =>
+        listStoredClientTurnRequestIdsInRange(db, {
+          seqEnd: 10,
+          seqStart: 1,
+          threadId,
+        }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>? AND sequence<?)",
+      ],
+    },
+    {
+      name: "findLastCompletedRootStoredTurn",
+      run: (db: DbConnection, threadId: string) =>
+        findLastCompletedRootStoredTurn(db, { threadId }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=?)",
+        "SEARCH completed USING COVERING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+      ],
+    },
+    {
+      name: "isStoredTurnContextCompactionOnly",
+      run: (db: DbConnection, threadId: string) =>
+        isStoredTurnContextCompactionOnly(db, { threadId, turnId: "turn-1" }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+      ],
+    },
+  ])(
+    "$name seeks its event types instead of walking the thread",
+    (testCase) => {
+      const { db, thread } = setup();
+
+      const captured = captureStatements(db, () => {
+        testCase.run(db, thread.id);
+      });
+      expect(captured).toHaveLength(1);
+      const [query] = captured;
+      if (!query) {
+        throw new Error(`Expected the ${testCase.name} SQL`);
+      }
+      const details = queryPlanDetails({ db, ...query }).split("\n");
+      expect(
+        details.filter((line) => !line.startsWith("USE TEMP B-TREE")),
+      ).toEqual(testCase.plan);
+
+      db.$client.close();
+    },
+  );
 
   it("resolves open background-task state without per-row subqueries", () => {
     const { db, logger, thread } = setup();
