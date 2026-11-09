@@ -128,7 +128,7 @@ jobs:
         shell: bash
         run: |
           cp apps/server/test/services/plugins/plugin-install.test.ts "$RUNNER_TEMP/candidate.ts"
-          git fetch --depth=1 origin 7d57800665
+          git fetch --depth=1 origin 7d57800665179cc13d3dabe3f7147e6cfea68140
           git show FETCH_HEAD:apps/server/test/services/plugins/plugin-install.test.ts > "$RUNNER_TEMP/baseline.ts"
           for variant in baseline candidate candidate baseline; do
             cp "$RUNNER_TEMP/$variant.ts" apps/server/test/services/plugins/plugin-install.test.ts
