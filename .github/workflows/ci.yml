@@ -131,7 +131,7 @@ jobs:
           if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
           pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }} -- --silent=false
 
-      - name: Compare lifecycle baseline and candidate
+      - name: Compare full suite baseline and candidate
         shell: bash
         run: |
           cp tests/integration/helpers/builtin-plugin-fixture.ts "$RUNNER_TEMP/candidate-fixture.ts"
@@ -147,8 +147,8 @@ jobs:
           writeFileSync(p,s);
           NODE
             fi
-            echo "LIFECYCLE_COMPARISON $variant"
-            pnpm --filter @bb/integration-tests exec vitest run --config vitest.config.ts fake/smoke/lifecycle.test.ts --silent=false
+            echo "FULL_SUITE_COMPARISON $variant"
+            pnpm --filter @bb/integration-tests exec vitest run --config vitest.config.ts --silent=false
           done
           cp "$RUNNER_TEMP/candidate-fixture.ts" tests/integration/helpers/builtin-plugin-fixture.ts
 
