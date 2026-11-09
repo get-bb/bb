@@ -169,6 +169,7 @@ function resolveLaunch(command, args) {
 }
 
 async function runCommand({ args, command, cwd = tempRoot, env = {}, label }) {
+  if (command === "npm" || command === "npx") env = { ...env, npm_config_timing: "true", npm_config_logs_dir: join(process.env.RUNNER_TEMP, "bb-npm-profile") };
   const launch = resolveLaunch(command, args);
   const childProcess = spawn(launch.command, launch.args, {
     windowsVerbatimArguments: launch.windowsVerbatimArguments === true,
