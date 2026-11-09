@@ -255,9 +255,6 @@ describe("thread pruning sweep", () => {
       ].sort((a, b) => a.id.localeCompare(b.id));
       if (!thread || !other) throw new Error("Missing pruning fixtures");
       const generation = getThreadEventRewriteGeneration(thread.id);
-      const notify = vi
-        .spyOn(harness.deps.hub, "notifyThread")
-        .mockImplementation(() => {});
       const debug = vi
         .spyOn(harness.deps.logger, "debug")
         .mockImplementation((fields, message) => {
@@ -274,11 +271,6 @@ describe("thread pruning sweep", () => {
       debug.mockRestore();
       expect(sequences(harness, thread.id)).toHaveLength(1136);
       expect(sequences(harness, other.id)).toEqual([1200]);
-      expect(notify.mock.calls).toEqual([
-        [thread.id, ["history-compacted"]],
-        [other.id, ["history-compacted"]],
-      ]);
-      notify.mockRestore();
 
       setThreadStatus(harness, thread.id, "idle");
       await runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now());
@@ -286,12 +278,9 @@ describe("thread pruning sweep", () => {
     });
   });
 
-  it("keeps notifications for earlier commits when the next transaction fails, then resumes", async () => {
+  it("keeps earlier commits when the next transaction fails, then resumes", async () => {
     await withTestHarness(async (harness) => {
-      const thread = seed(harness, 1200, "rate-limits");
-      const notify = vi
-        .spyOn(harness.deps.hub, "notifyThread")
-        .mockImplementation(() => {});
+      seed(harness, 1200, "rate-limits");
       const debug = vi
         .spyOn(harness.deps.logger, "debug")
         .mockImplementation((fields, message) => {
@@ -307,12 +296,8 @@ describe("thread pruning sweep", () => {
         runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now()),
       ).rejects.toThrow("next batch failed");
       debug.mockRestore();
-      expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
-        "history-compacted",
-      ]);
       expect(harness.db.select().from(events).all()).toHaveLength(1136);
       harness.db.run(sql`DROP TRIGGER fail_next_prune`);
-      notify.mockRestore();
       for (let i = 0; i < 3; i++)
         await runPruning(harness, UNTIMED_SWEEP_LIMITS, Date.now() + 60_000);
       expect(
@@ -325,7 +310,7 @@ describe("thread pruning sweep", () => {
     });
   });
 
-  it("notifies one history compaction per thread and brings every earlier viewer to the compacted timeline", async () => {
+  it("brings every earlier viewer to the compacted timeline without notifying them", async () => {
     await withTestHarness(async (harness) => {
       const thread = seed(harness, 2400, "rate-limits");
       harness.db
@@ -357,9 +342,7 @@ describe("thread pruning sweep", () => {
             removedEvents(fields),
         ).length,
       ).toBeGreaterThan(1);
-      expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
-        "history-compacted",
-      ]);
+      expect(notify).not.toHaveBeenCalled();
       expect(harness.db.select().from(events).all().length).toBeLessThan(2401);
       const cold = await getTimeline(harness, thread.id);
       const firstViewer = await getTimeline(harness, thread.id, before);

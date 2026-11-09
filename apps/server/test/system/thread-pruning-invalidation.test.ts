@@ -176,23 +176,16 @@ function countEvents(
 }
 
 function recordCompactions(harness: TestAppHarness, threadId: string) {
-  const runs: number[] = [];
-  let run = 0;
+  let notices = 0;
   const stop = harness.deps.hub.onChangedMessage((message) => {
     if (
       message.entity === "thread" &&
       message.id === threadId &&
       message.changes.includes("history-compacted")
     )
-      runs.push(run);
+      notices += 1;
   });
-  return {
-    runs,
-    nextRun: () => {
-      run += 1;
-    },
-    stop,
-  };
+  return { notices: () => notices, stop };
 }
 
 describe("pruning invalidation", () => {
@@ -257,7 +250,7 @@ describe("pruning invalidation", () => {
       expect(countEvents(harness, threadId, diffTypes)).toBeLessThan(
         diffsBefore - 32,
       );
-      expect(compactions.runs).toEqual([]);
+      expect(compactions.notices()).toBe(0);
       expect(getThreadEventRewriteGeneration(threadId)).toBe(generation);
       expect(windows.read(loadThread(), LATEST, undefined)).toBe(served);
       expect(freshLatest(harness, threadId)).toEqual(served);
@@ -265,7 +258,7 @@ describe("pruning invalidation", () => {
     });
   });
 
-  it("announces a settled sweep pass that spans several runs once, at its end, and serves the compacted window after every run", async () => {
+  it("serves the compacted window after every run of a sweep pass that spans several runs, without notifying viewers", async () => {
     await withTestHarness(SMALL_WINDOW, async (harness) => {
       const script = createThreadScript(harness);
       const first = script.startTurn(1);
@@ -299,18 +292,13 @@ describe("pruning invalidation", () => {
         removedByRun.push(remaining - rateLimitRows());
         const served = full(windows.read(loadThread(), LATEST, undefined));
         expect(served).toEqual(freshLatest(harness, threadId));
-        compactions.nextRun();
       }
 
       expect(rateLimitRows()).toBe(1);
       expect(
         removedByRun.filter((removed) => removed > 0).length,
       ).toBeGreaterThan(1);
-      const finishingRun = removedByRun.reduce(
-        (last, removed, run) => (removed > 0 ? run : last),
-        -1,
-      );
-      expect(compactions.runs).toEqual([finishingRun]);
+      expect(compactions.notices()).toBe(0);
       const compacted = full(windows.read(loadThread(), LATEST, undefined));
       expect(JSON.stringify(compacted.rows)).toContain("User message 1");
       compactions.stop();
@@ -348,6 +336,59 @@ describe("pruning invalidation", () => {
       expect(
         getTimelineGroupingContext(harness.db, args(rewritten.thread)),
       ).not.toBe(rewrittenContext);
+    });
+  });
+
+  it("keeps a window's older cursor usable after pruning deletes the rows around it", async () => {
+    await withTestHarness(SMALL_WINDOW, async (harness) => {
+      const script = createThreadScript(harness);
+      const turnId = "turn-without-request";
+      script.append("turn/started", turnScope(turnId), {});
+      for (let step = 0; step < 15; step += 1) {
+        const item = { type: "agentMessage", id: `message-${step}` };
+        script.append("item/started", turnScope(turnId), {
+          item: { ...item, text: "" },
+        });
+        script.append("provider/rateLimits/updated", threadScope(), {
+          rateLimits: RATE_LIMITS,
+        });
+        script.append("item/completed", turnScope(turnId), {
+          item: { ...item, text: `Step ${step} is done.` },
+        });
+      }
+      script.append("turn/completed", turnScope(turnId), {
+        status: "completed",
+      });
+      const threadId = script.thread.id;
+      const windows = createThreadTimelineWindows(harness.deps);
+      const loadThread = () => getThread(harness.db, threadId)!;
+      const cursor = full(windows.read(loadThread(), LATEST, undefined))
+        .timelinePage.olderCursor;
+      if (cursor === null) throw new Error("expected an older cursor");
+      const compactions = recordCompactions(harness, threadId);
+
+      for (let run = 0; run < 10; run += 1)
+        await threadPruningSweep(harness.deps, {
+          elapsedBudgetMs: Number.POSITIVE_INFINITY,
+          maxAdvances: 64,
+        }).run(harness.deps, Date.now());
+
+      expect(
+        countEvents(harness, threadId, ["provider/rateLimits/updated"]),
+      ).toBe(1);
+      const older = full(
+        windows.read(
+          loadThread(),
+          {
+            ...LATEST,
+            page: { kind: "older", segmentLimit: 20, beforeCursor: cursor },
+          },
+          undefined,
+        ),
+      );
+      expect(JSON.stringify(older.rows)).toContain("Step 0 is done.");
+      expect(compactions.notices()).toBe(0);
+      compactions.stop();
     });
   });
 });
