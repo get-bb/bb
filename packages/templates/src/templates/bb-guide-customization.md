@@ -218,6 +218,9 @@ request number. It defaults on for early adopters.
 Settings → Updates (`bb updates app auto on|off`) that has bb check for updates
 every hour and restart into a new version once no thread is running, and
 enables `bb updates app apply --when-idle`; see `bb guide machines`. It defaults on for early adopters.
+`walCheckpointWorker` copies recent writes into bb's SQLite database files on a
+background thread instead of during a commit, so heavy writing does not stall
+the server. It applies live.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `compactExpiredCache`, `dismissReadNotifications`, `narrowPluginCss`,

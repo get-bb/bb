@@ -77,6 +77,7 @@ describe("experiments settings", () => {
         threadContextCard: false,
         threadRowMetadata: false,
         updateWhenIdle: true,
+        walCheckpointWorker: false,
       });
       expect(
         harness.db.$client

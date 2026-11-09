@@ -42,6 +42,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     threadContextCard: false,
     threadRowMetadata: false,
     updateWhenIdle: false,
+    walCheckpointWorker: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

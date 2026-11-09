@@ -27,7 +27,6 @@ import {
   setSkippedAppUpdate,
   listRunningThreads,
   setAppSettings,
-  startWalCheckpointer,
 } from "@bb/db";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
@@ -48,6 +47,7 @@ import { createAppVersionService } from "./services/system/app-version.js";
 import { createLauncherChannel } from "./services/system/launcher-channel.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startGatedPerformanceDiagnostics } from "./services/system/performance-diagnostics.js";
+import { startGatedWalCheckpointer } from "./services/system/wal-checkpoint-experiment.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
   runPeriodicSweeps,
@@ -145,8 +145,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
   });
-  const walCheckpointer = startWalCheckpointer({ logger });
-  walCheckpointer.attach(db.$client);
   const serverImport = await applyServerImportAtBoot({
     dataDir: serverConfig.BB_DATA_DIR,
     db,
@@ -179,6 +177,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         })
       : null;
   const hub = new NotificationHub();
+  const walCheckpointer = startGatedWalCheckpointer({ db, hub, logger });
+  walCheckpointer.attach(db.$client);
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();

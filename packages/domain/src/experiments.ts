@@ -13,6 +13,7 @@ export const experimentKeys = [
   "threadContextCard",
   "threadRowMetadata",
   "updateWhenIdle",
+  "walCheckpointWorker",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -39,6 +40,7 @@ export const defaultExperiments: Experiments = {
   threadContextCard: false,
   threadRowMetadata: false,
   updateWhenIdle: false,
+  walCheckpointWorker: false,
 };
 
 export const earlyAdopterExperiments: Experiments = {
@@ -54,4 +56,5 @@ export const earlyAdopterExperiments: Experiments = {
   threadContextCard: false,
   threadRowMetadata: true,
   updateWhenIdle: true,
+  walCheckpointWorker: false,
 };

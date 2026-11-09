@@ -226,15 +226,16 @@ async function runChunkedIncrementalVacuum(
     vacuumedPages += DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES
   ) {
     if (last !== null) {
-      await walCheckpointer.checkpoint(client);
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
+    await walCheckpointer.checkpoint(client);
     last = runIncrementalVacuum(client, {
       maxPages: Math.min(
         DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES,
         DATABASE_INCREMENTAL_VACUUM_MAX_PAGES - vacuumedPages,
       ),
     });
+    await walCheckpointer.checkpoint(client);
     first ??= last;
     if (last.after.freelistCount === 0) {
       break;
