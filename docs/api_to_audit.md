@@ -1061,6 +1061,36 @@ Docs: `backend-foundation.md`.
    should tolerate unknown fields so a hint degrades to the one-line input on
    an older client instead of failing the whole settings view.
 
+## `PluginSettingDescriptor.experimental_link`
+
+Any descriptor may carry `{ url, label? }`: a validated absolute URL the
+settings form renders as an anchor under the field's description, so a value
+the user has to fetch from another site is one click away. `label` defaults to
+the URL. It is deliberately not markdown, and `description` is never
+autolinked, so rendering an anchor on user-visible settings text stays
+explicit and reviewable. No plugin ships it yet: Voice Mode was the
+motivating case but took the `settingsSection` route, which renders beneath
+the form and needs no client release.
+
+Docs: `backend-foundation.md`.
+
+**Audit before stabilizing.**
+
+1. **Name and shape.** Decide whether a link belongs on the descriptor at all
+   or whether the stable answer is the `settingsSection` slot, which already
+   renders arbitrary plugin UI below the settings form and can carry several
+   links plus prose. If descriptors keep one, decide whether it grows past a
+   single URL (a list, or `{ description, link }` as one field), and whether
+   `label` should be required so the anchor text is never a raw URL.
+2. **Placement.** The anchor currently always sits under the description. On
+   `boolean` fields `controlPlacement` is `trailing`, so the link lands in the
+   left column while the switch sits right; confirm that reads as intended
+   next to a toggle, or whether a toggle's link belongs beside its label.
+3. **Unknown descriptor fields.** Shares the gap recorded under
+   `experimental_multiline`: the strict client schema makes every new
+   presentation hint a client release. A plugin shipping this against an older
+   client fails the whole settings view rather than dropping to plain text.
+
 ## `bb.sdk.threads.experimental_listPluginMetadata`
 
 `POST /threads/plugin-metadata` with `{ pluginId, threadIds }` (1–200 ids)

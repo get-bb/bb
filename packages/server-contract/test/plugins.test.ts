@@ -26,6 +26,54 @@ describe("plugin contracts", () => {
     ).toBe(false);
   });
 
+  it("keeps an experimental_link on both string and select descriptors", () => {
+    const link = { url: "https://example.com/docs", label: "Docs" };
+    expect(
+      pluginSettingDescriptorSchema.parse({
+        type: "string",
+        label: "API key",
+        experimental_link: link,
+      }),
+    ).toEqual({ type: "string", label: "API key", experimental_link: link });
+    expect(
+      pluginSettingDescriptorSchema.parse({
+        type: "select",
+        label: "Mode",
+        options: ["a", "b"],
+        experimental_link: { url: "https://example.com/docs" },
+      }),
+    ).toEqual({
+      type: "select",
+      label: "Mode",
+      options: ["a", "b"],
+      experimental_link: { url: "https://example.com/docs" },
+    });
+  });
+
+  it("rejects a non-URL or unknown key inside experimental_link", () => {
+    expect(
+      pluginSettingDescriptorSchema.safeParse({
+        type: "string",
+        label: "API key",
+        experimental_link: { url: "not a url" },
+      }).success,
+    ).toBe(false);
+    expect(
+      pluginSettingDescriptorSchema.safeParse({
+        type: "string",
+        label: "API key",
+        experimental_link: { url: "https://example.com", target: "_blank" },
+      }).success,
+    ).toBe(false);
+    expect(
+      pluginSettingDescriptorSchema.safeParse({
+        type: "string",
+        label: "API key",
+        experimental_link: { url: "https://example.com", label: "" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts catalog install coordinates without marketplace nesting", () => {
     expect(
       pluginCatalogInstallRequestSchema.parse({

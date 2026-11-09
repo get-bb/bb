@@ -109,6 +109,21 @@ descriptors accept finite numbers and render a numeric input; use
 stored values, defaults, `get()`, and `bb plugin config` keep using the option
 values, and a label keyed by anything outside `options` is refused.
 
+Any descriptor accepts `experimental_link: { url, label? }` — a validated
+absolute URL rendered as an anchor under the setting's description, so docs a
+user must open are one click away instead of dead text. It is not markdown and
+the description itself is never autolinked.
+
+```ts
+apiKey: {
+  type: "string",
+  label: "API key",
+  description: "Create one in the dashboard.",
+  experimental_link: { url: "https://example.com/keys", label: "Open dashboard" },
+  secret: true,
+}
+```
+
 `experimental_schema` accepts a synchronous, non-transforming Standard Schema
 validator; Zod schemas qualify. It runs on the server for settings-page
 autosaves, `bb plugin config`, `experimental_set`, and fake-host writes. The

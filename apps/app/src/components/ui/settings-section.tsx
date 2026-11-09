@@ -122,6 +122,11 @@ interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: ReactNode;
+  /**
+   * Opt-in link rendered under the description. Structured rather than
+   * markdown so rendering an anchor here stays explicit and auditable.
+   */
+  experimentalLink?: { url: string; label?: string };
   controlPlacement?: SettingsControlPlacement;
   children: ReactNode;
 }
@@ -138,11 +143,13 @@ export function SettingsWithControl({
   label,
   labelBadge,
   description,
+  experimentalLink,
   controlPlacement = "inline",
   children,
 }: SettingsWithControlProps) {
   const inline = controlPlacement === "inline";
   const trailing = controlPlacement === "trailing";
+  const annotated = Boolean(description) || experimentalLink !== undefined;
   return (
     <div
       data-settings-anchor={label}
@@ -154,11 +161,11 @@ export function SettingsWithControl({
           trailing
             ? "flex flex-row justify-between gap-5"
             : "flex flex-col gap-2.5",
-          trailing && (description ? "items-start" : "items-center"),
+          trailing && (annotated ? "items-start" : "items-center"),
           inline &&
             "has-[[role=switch]]:flex-row has-[[role=switch]]:justify-between has-[[role=switch]]:gap-5 @min-[36rem]/settings:flex-row @min-[36rem]/settings:justify-between @min-[36rem]/settings:gap-5",
           inline &&
-            (description
+            (annotated
               ? "has-[[role=switch]]:items-start @min-[36rem]/settings:items-start"
               : "has-[[role=switch]]:items-center @min-[36rem]/settings:items-center"),
         )}
@@ -173,6 +180,18 @@ export function SettingsWithControl({
           {description ? (
             <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
               {description}
+            </p>
+          ) : null}
+          {experimentalLink ? (
+            <p className="mt-0.5 text-xs leading-snug">
+              <a
+                href={experimentalLink.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-subtle-foreground underline underline-offset-2"
+              >
+                {experimentalLink.label ?? experimentalLink.url}
+              </a>
             </p>
           ) : null}
         </div>

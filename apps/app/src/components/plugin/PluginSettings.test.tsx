@@ -415,6 +415,55 @@ describe("PluginSettingsForm", () => {
     });
   });
 
+  it("renders an experimental_link as an external anchor beside the description", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        labelled: {
+          type: "string",
+          label: "Custom agents",
+          description: "A JSON array of agents.",
+          experimental_link: {
+            url: "https://example.com/agents",
+            label: "Agent docs",
+          },
+        },
+        unlabelled: {
+          type: "string",
+          label: "Fallback",
+          experimental_link: { url: "https://example.com/fallback" },
+        },
+      },
+      values: { labelled: "[]", unlabelled: "" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk(view)),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    await screen.findByLabelText("Custom agents");
+    const labelled = screen.getByRole("link", { name: "Agent docs" });
+    expect(labelled.getAttribute("href")).toBe("https://example.com/agents");
+    expect(labelled.getAttribute("target")).toBe("_blank");
+    expect(labelled.getAttribute("rel")).toBe("noopener noreferrer");
+    // The anchor sits in the annotated column, after the description.
+    const column = labelled.closest(".flex-1");
+    expect(column).not.toBeNull();
+    expect(column?.textContent).toBe(
+      "Custom agentsA JSON array of agents.Agent docs",
+    );
+
+    const unlabelled = screen.getByRole("link", {
+      name: "https://example.com/fallback",
+    });
+    expect(unlabelled.getAttribute("href")).toBe(
+      "https://example.com/fallback",
+    );
+  });
+
   it("shows a server validator error beneath the field and retries on blur", async () => {
     const view = {
       ok: true,

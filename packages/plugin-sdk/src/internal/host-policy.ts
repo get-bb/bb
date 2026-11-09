@@ -191,6 +191,10 @@ export const SETTING_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const settingsBaseFields = {
   label: z.string().min(1),
   description: z.string().min(1).optional(),
+  experimental_link: z
+    .object({ url: z.string().url(), label: z.string().min(1).optional() })
+    .strict()
+    .optional(),
 };
 
 const stringSettingSchemaSchema = z.custom<StandardSchemaV1<string, string>>(

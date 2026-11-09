@@ -599,6 +599,24 @@ describe("settings", () => {
     ).not.toThrow();
     expect(() =>
       bb.settings.define({
+        docs: {
+          type: "string",
+          label: "Docs",
+          experimental_link: { url: "https://example.com/docs" },
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      bb.settings.define({
+        badLink: {
+          type: "string",
+          label: "Bad link",
+          experimental_link: { url: "not a url" },
+        },
+      }),
+    ).toThrow('invalid descriptor for setting "badLink"');
+    expect(() =>
+      bb.settings.define({
         invalidRetries: {
           type: "number",
           label: "Retries",

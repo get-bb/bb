@@ -414,6 +414,9 @@ function AutosavingPluginSetting({
       {...(descriptor.description !== undefined
         ? { description: descriptor.description }
         : {})}
+      {...(descriptor.experimental_link !== undefined
+        ? { experimentalLink: descriptor.experimental_link }
+        : {})}
     >
       <div className="space-y-1">
         <PluginSettingField
