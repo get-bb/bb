@@ -80,8 +80,9 @@ function UpdatePluginDialogContent({
 
   const fromLine = `Currently ${plugin.version}`;
   const failure = state.lastFailure;
+  const rangeUpgrade = reviewableRangeUpgrade(plugin);
 
-  if (failure !== null) {
+  if (failure !== null && rangeUpgrade === null) {
     const retryVersion = state.availableLabel;
     return (
       <>
@@ -204,8 +205,7 @@ function UpdatePluginDialogContent({
     );
   }
 
-  const rangeUpgrade = reviewableRangeUpgrade(plugin);
-  if (failure === null && rangeUpgrade !== null) {
+  if (rangeUpgrade !== null) {
     const candidate = rangeUpgrade.candidate.label;
     return (
       <>
