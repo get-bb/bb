@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Close pull requests older than fourteen days
+      - name: Close pull requests open for more than fourteen days
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -38,8 +38,16 @@ jobs:
               )
               return json.loads(result.stdout)
 
+          def timestamp(value):
+              return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
           def created_at(pull):
-              return datetime.datetime.fromisoformat(pull["created_at"].replace("Z", "+00:00"))
+              return timestamp(pull["created_at"])
+
+          def open_since(pull):
+              pages = api(f"repos/{repo}/issues/{pull['number']}/events?per_page=100", "--paginate", "--slurp")
+              reopens = [timestamp(event["created_at"]) for page in pages for event in page if event["event"] == "reopened"]
+              return max([created_at(pull), *reopens])
 
           def protected(pull):
               return any(label["name"] == "dont-close" for label in pull["labels"])
@@ -59,6 +67,9 @@ jobs:
                   pull = api(endpoint)
                   if pull["state"] != "open" or created_at(pull) >= cutoff:
                       print(f"Skipped changed pull request: {pull['html_url']}")
+                      continue
+                  if open_since(pull) >= cutoff:
+                      print(f"Recently reopened: {pull['html_url']}")
                       continue
                   if protected(pull):
                       print(f"Protected by dont-close: {pull['html_url']}")
