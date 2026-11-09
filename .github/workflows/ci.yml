@@ -43,11 +43,15 @@ jobs:
             time tar -cf "$variant.tar.zst" --use-compress-program 'zstd -T0' "$variant.vhdx"
             ls -l "$variant.vhdx" "$variant.tar.zst"
           done
+          echo "COMPRESS sparse baseline"
+          time tar --sparse --hole-detection=raw -cf sparse.tar.zst --use-compress-program 'zstd -T0' baseline.vhdx
+          ls -l sparse.tar.zst
           mkdir image-extract
-          for variant in baseline compact compact baseline; do
+          for variant in baseline compact sparse sparse compact baseline; do
             echo "EXTRACT $variant"
             time tar -xf "$variant.tar.zst" -C image-extract --use-compress-program 'zstd -d --long=31'
-            rm "image-extract/$variant.vhdx"
+            sha256sum image-extract/*.vhdx
+            rm image-extract/*.vhdx
           done
       - name: Remount and validate frozen installation
         if: steps.dependencies.outputs.active == 'true'
