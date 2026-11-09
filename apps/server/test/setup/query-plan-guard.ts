@@ -1,11 +1,12 @@
 import { afterAll } from "vitest";
 import {
   formatQueryPlanViolations,
-  installQueryPlanGuard,
-} from "@bb/db/query-plan-guard";
+  installTestQueryPlanGuard,
+} from "@bb/db/query-plan-test-guard";
 
-const guard = installQueryPlanGuard({
+const guard = installTestQueryPlanGuard({
   reportPath: process.env.BB_QUERY_PLAN_REPORT ?? null,
+  executedFunctionsPath: process.env.BB_QUERY_PLAN_EXECUTED ?? null,
 });
 
 afterAll(() => {

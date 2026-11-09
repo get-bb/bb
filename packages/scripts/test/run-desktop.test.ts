@@ -73,6 +73,7 @@ describe("desktop launch environment", () => {
       BB_DESKTOP_USER_DATA_DIR: join(config.dataDir, "desktop"),
       BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),
       BB_SERVER_PORT: String(config.ports.serverPort),
+      BB_QUERY_PLAN_AUDIT: "1",
       BB_SKIP_ONBOARDING: "1",
       BB_TELEMETRY: "false",
       NODE_ENV: "production",

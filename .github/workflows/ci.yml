@@ -702,12 +702,33 @@ jobs:
       - name: Test
         env:
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
+          BB_QUERY_PLAN_EXECUTED: .query-plan/executed.jsonl
           VITEST_MAX_WORKERS: ${{ (startsWith(matrix.shard, 'server-') || matrix.shard == 'integration') && '4' || '2' }}
         run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       - name: Test native browser address interactions
         if: ${{ contains(matrix.filter, '--filter=@bb/desktop') }}
         run: xvfb-run -a pnpm exec turbo run smoke:browser-address --filter=@bb/desktop --output-logs=new-only
+
+      - name: List query functions
+        if: ${{ contains(matrix.filter, '--filter=@bb/db') }}
+        run: |
+          mkdir -p packages/db/.query-plan
+          pnpm --filter @bb/db --silent list:query-functions > packages/db/.query-plan/query-functions.json
+
+      - name: Upload executed query functions
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: query-functions-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: |
+            packages/db/.query-plan/
+            apps/server/.query-plan/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload test timings
         if: ${{ !cancelled() }}
@@ -723,6 +744,33 @@ jobs:
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
+
+  query-functions:
+    name: Query functions run in tests
+    needs: [plan, tests]
+    if: ${{ github.event_name == 'pull_request' && needs.tests.result == 'success' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch comparison base
+        env:
+          BASE_SHA: ${{ needs.plan.outputs.base }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
+
+      - name: Download executed query functions
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: query-functions-*
+          path: ${{ runner.temp }}/query-functions
+
+      - name: Check query functions in changed files
+        env:
+          BASE_SHA: ${{ needs.plan.outputs.base }}
+        run: node scripts/check-pr-query-functions.mjs --base "$BASE_SHA" --artifacts "$RUNNER_TEMP/query-functions"
 
   # Every other suite mocks the Agent SDK, so an upstream CLI release that
   # breaks the model probe passes CI silently. This runs it against a real,
