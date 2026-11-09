@@ -74,9 +74,9 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron.js";
 import {
   DescendantActivityBadge,
-  descendantActivityLabel,
+  type DescendantActivityItem,
 } from "./DescendantActivityBadge.js";
-import { countWorkingDescendants } from "./descendant-activity.js";
+import { getWorkingDescendants } from "./descendant-activity.js";
 import { useSidebarRename } from "./SidebarInlineRename.js";
 import { SidebarRowControls } from "./SidebarRowControls.js";
 import {
@@ -456,7 +456,15 @@ function ThreadRowComponent({
       ? parentOptions.hiddenThreads
       : NO_HIDDEN_THREADS;
   const descendantThreads = parentOptions?.hiddenThreads ?? NO_HIDDEN_THREADS;
-  const workingDescendantCount = countWorkingDescendants(descendantThreads);
+  const workingDescendants = getWorkingDescendants(descendantThreads);
+  const workingDescendantItems = useMemo<DescendantActivityItem[]>(
+    () =>
+      workingDescendants.map((descendant) => ({
+        id: descendant.id,
+        label: descendant.displayTitle,
+      })),
+    [workingDescendants],
+  );
   const hiddenChildrenHaveDraft = useThreadsHaveDraft(hiddenThreads);
   const trailingStatus = experimental_resolveThreadStatus({
     thread,
@@ -780,8 +788,8 @@ function ThreadRowComponent({
             )}
           >
             <DescendantActivityBadge
-              count={workingDescendantCount}
-              label={descendantActivityLabel(workingDescendantCount)}
+              items={workingDescendantItems}
+              onSelect={openThreadInSplit}
               className="mr-1"
             />
             <span

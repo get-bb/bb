@@ -1379,9 +1379,9 @@ describe("ThreadRow", () => {
         isCollapsed: false,
         childCount: 3,
         hiddenThreads: [
-          createThread({ runtimeStatus: "active" }),
-          createThread({ runtimeStatus: "idle" }),
-          createThread({ runtimeStatus: "error" }),
+          createThread({ id: "a", runtimeStatus: "active" }),
+          createThread({ id: "b", runtimeStatus: "idle" }),
+          createThread({ id: "c", runtimeStatus: "error" }),
         ],
         onToggleCollapsed: vi.fn(),
       },
@@ -1406,8 +1406,11 @@ describe("ThreadRow", () => {
         isCollapsed: true,
         childCount: 2,
         hiddenThreads: [
-          createThread({ runtimeStatus: "active" }),
-          createThread({ activity: activity({ backgroundAgents: 1 }) }),
+          createThread({ id: "a", runtimeStatus: "active" }),
+          createThread({
+            id: "b",
+            activity: activity({ backgroundAgents: 1 }),
+          }),
         ],
         onToggleCollapsed: vi.fn(),
       },
@@ -1431,8 +1434,8 @@ describe("ThreadRow", () => {
         isCollapsed: false,
         childCount: 2,
         hiddenThreads: [
-          createThread({ runtimeStatus: "idle" }),
-          createThread({ runtimeStatus: "error" }),
+          createThread({ id: "a", runtimeStatus: "idle" }),
+          createThread({ id: "b", runtimeStatus: "error" }),
         ],
         onToggleCollapsed: vi.fn(),
       },
@@ -1449,6 +1452,40 @@ describe("ThreadRow", () => {
     expect(
       container.querySelector("[data-sidebar-descendant-activity]"),
     ).toBeNull();
+  });
+
+  it("lists working descendants and opens the chosen thread in split", () => {
+    const slot = renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 2,
+        hiddenThreads: [
+          createThread({
+            id: "child-a",
+            displayTitle: "First worker",
+            runtimeStatus: "active",
+          }),
+          createThread({
+            id: "child-b",
+            displayTitle: "Second worker",
+            runtimeStatus: "starting",
+          }),
+        ],
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "2 descendant threads working" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Second worker/ }));
+
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: "child-b", options: { split: true } },
+    ]);
   });
 
   it("keeps the parent-thread disclosure caret visible on mobile", () => {

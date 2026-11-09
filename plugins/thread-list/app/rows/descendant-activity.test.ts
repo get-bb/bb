@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  countWorkingDescendants,
+  getWorkingDescendants,
   isWorkingThread,
 } from "./descendant-activity.js";
 
 function thread(
+  id: string,
   overrides: Partial<{
     runtimeStatus:
       | "active"
@@ -22,6 +23,7 @@ function thread(
   }> = {},
 ) {
   return {
+    id,
     runtimeStatus: overrides.runtimeStatus ?? "idle",
     activity: {
       workflows: overrides.workflows ?? 0,
@@ -36,14 +38,14 @@ describe("isWorkingThread", () => {
   it.each(["active", "provisioning", "starting", "stopping"] as const)(
     "counts a %s runtime as working",
     (runtimeStatus) => {
-      expect(isWorkingThread(thread({ runtimeStatus }))).toBe(true);
+      expect(isWorkingThread(thread("a", { runtimeStatus }))).toBe(true);
     },
   );
 
   it.each(["error", "idle", "pending", "waiting-for-host"] as const)(
     "does not count a %s runtime as working",
     (runtimeStatus) => {
-      expect(isWorkingThread(thread({ runtimeStatus }))).toBe(false);
+      expect(isWorkingThread(thread("a", { runtimeStatus }))).toBe(false);
     },
   );
 
@@ -53,40 +55,47 @@ describe("isWorkingThread", () => {
     "backgroundCommands",
     "planMode",
   ] as const)("counts idle %s activity as working", (activity) => {
-    expect(isWorkingThread(thread({ [activity]: 1 }))).toBe(true);
+    expect(isWorkingThread(thread("a", { [activity]: 1 }))).toBe(true);
   });
 
   it("does not count a failed thread as working", () => {
-    expect(isWorkingThread(thread({ runtimeStatus: "error" }))).toBe(false);
+    expect(isWorkingThread(thread("a", { runtimeStatus: "error" }))).toBe(
+      false,
+    );
+  });
+
+  it("does not count a thread blocked on the user as working", () => {
+    expect(
+      isWorkingThread(thread("a", { runtimeStatus: "waiting-for-host" })),
+    ).toBe(false);
   });
 });
 
-describe("countWorkingDescendants", () => {
-  it("returns zero for a leaf", () => {
-    expect(countWorkingDescendants([])).toBe(0);
+describe("getWorkingDescendants", () => {
+  it("returns nothing for a leaf", () => {
+    expect(getWorkingDescendants([])).toEqual([]);
   });
 
-  it("counts only the working threads in a subtree", () => {
+  it("keeps only the working threads in a subtree", () => {
+    const working = thread("b", { runtimeStatus: "active" });
+    const alsoWorking = thread("c", { workflows: 2 });
     expect(
-      countWorkingDescendants([
-        thread(),
-        thread({ runtimeStatus: "active" }),
-        thread({ workflows: 2 }),
-        thread({ runtimeStatus: "error" }),
+      getWorkingDescendants([
+        thread("a"),
+        working,
+        alsoWorking,
+        thread("d", { runtimeStatus: "error" }),
       ]),
-    ).toBe(2);
+    ).toEqual([working, alsoWorking]);
   });
 
-  it("counts every working thread when they all are", () => {
-    expect(
-      countWorkingDescendants([
-        thread({ runtimeStatus: "active" }),
-        thread({ runtimeStatus: "starting" }),
-      ]),
-    ).toBe(2);
+  it("preserves the subtree order", () => {
+    const first = thread("first", { runtimeStatus: "active" });
+    const second = thread("second", { runtimeStatus: "starting" });
+    expect(getWorkingDescendants([first, second])).toEqual([first, second]);
   });
 
-  it("counts nothing when a subtree is entirely idle", () => {
-    expect(countWorkingDescendants([thread(), thread()])).toBe(0);
+  it("returns nothing when a subtree is entirely idle", () => {
+    expect(getWorkingDescendants([thread("a"), thread("b")])).toEqual([]);
   });
 });
