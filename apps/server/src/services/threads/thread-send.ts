@@ -72,6 +72,10 @@ import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js
 import { clearThreadContext } from "./thread-context-clear.js";
 import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
 import {
+  settleInFlightSteer,
+  trackInFlightSteer,
+} from "../../internal/turn-completed-events.js";
+import {
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
   resolveDeferredFirstTurnContext,
@@ -832,6 +836,7 @@ async function sendThreadMessageWithoutContextClear(
     target,
     thread,
   });
+  trackInFlightSteer(thread.id);
   deps.hub.notifyThread(
     thread.id,
     queuedRequest.request.notificationChanges,
@@ -847,6 +852,7 @@ async function sendThreadMessageWithoutContextClear(
         "Live turn submit command failed",
       );
     },
+    onSettled: () => settleInFlightSteer(deps, thread.id),
   });
   if (shouldCaptureUserMessageSent) {
     captureUserMessageSentTelemetry(deps, {

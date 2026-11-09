@@ -41,6 +41,7 @@ import {
 import { assertNever } from "@bb/core-ui";
 import {
   COMPETING_TURN_ERROR_CODE,
+  STALE_TURN_ERROR_CODE,
   STEER_UNCONFIRMED_ERROR_CODE,
   TURN_START_UNCONFIRMED_ERROR_CODE,
 } from "@bb/host-daemon-contract";
@@ -104,7 +105,12 @@ import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
+  startLiveHostCommand,
 } from "../hosts/live-command.js";
+import {
+  settleInFlightSteer,
+  trackInFlightSteer,
+} from "../../internal/turn-completed-events.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
@@ -992,9 +998,58 @@ export function settleThreadStartCommandResult(
   return { postCommitActions };
 }
 
+function redeliverStaleSteer(
+  args: SettleTurnSubmitCommandResultArgs,
+): CommandResultSideEffectsResult | null {
+  const { command } = args;
+  if (
+    args.report.ok ||
+    args.report.errorCode !== STALE_TURN_ERROR_CODE ||
+    command.target.mode === "start"
+  ) {
+    return null;
+  }
+  const thread = getThread(args.deps.db, command.threadId);
+  if (
+    thread?.status !== "active" ||
+    thread.deletedAt !== null ||
+    hasTerminalClientTurnRequestEvent(args.deps, command)
+  ) {
+    return null;
+  }
+  return {
+    postCommitActions: [
+      {
+        run: (deps) => {
+          trackInFlightSteer(command.threadId);
+          startLiveHostCommand(deps, {
+            command: {
+              ...command,
+              target: { mode: "auto", expectedTurnId: null },
+            },
+            hostId: args.execution.hostId,
+            timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+            onError: ({ error }) => {
+              deps.logger.warn(
+                { err: error, threadId: command.threadId },
+                "Live turn submit command failed",
+              );
+            },
+            onSettled: () => settleInFlightSteer(deps, command.threadId),
+          });
+        },
+      },
+    ],
+  };
+}
+
 export function settleTurnSubmitCommandResult(
   args: SettleTurnSubmitCommandResultArgs,
 ): CommandResultSideEffectsResult {
+  const redelivered = redeliverStaleSteer(args);
+  if (redelivered !== null) {
+    return redelivered;
+  }
   if (!args.report.ok) {
     return settleThreadCommandFailure({
       command: args.command,

@@ -4,7 +4,10 @@ import { turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { performance } from "node:perf_hooks";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
+import {
+  applyTurnCompletedEvent,
+  readTurnCompletion,
+} from "../../src/internal/turn-completed-events.js";
 import { pruneThreadEventHistoryBestEffort } from "../../src/services/system/event-pruning.js";
 import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
 import {
@@ -295,11 +298,14 @@ describe("thread event pruning", () => {
       });
 
       applyTurnCompletedEvent(harness.deps, {
-        type: "turn/completed",
-        threadId: thread.id,
-        providerThreadId: "provider-thread-1",
-        scope: turnScope("turn-1"),
-        status: "completed",
+        afterIdle: null,
+        payload: {
+          type: "turn/completed",
+          threadId: thread.id,
+          providerThreadId: "provider-thread-1",
+          scope: turnScope("turn-1"),
+          status: "completed",
+        },
       });
 
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
@@ -357,16 +363,20 @@ describe("thread event pruning", () => {
         },
       });
 
-      const result = applyTurnCompletedEvent(harness.deps, {
-        type: "turn/completed",
+      const payload = {
+        type: "turn/completed" as const,
         threadId: thread.id,
         providerThreadId: "provider-thread-1",
         scope: turnScope("turn-1"),
-        status: "completed",
-      });
+        status: "completed" as const,
+      };
 
-      expect(result.isRootTurnCompletion).toBe(true);
-      expect(result.nextStatus).toBeNull();
+      expect(
+        readTurnCompletion(harness.deps, payload).isRootTurnCompletion,
+      ).toBe(true);
+      expect(
+        applyTurnCompletedEvent(harness.deps, { afterIdle: null, payload }),
+      ).toEqual({ kind: "settled", nextStatus: null });
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
   });

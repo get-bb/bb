@@ -5,6 +5,7 @@ import { flattenPromptInputGroups } from "@bb/domain";
 import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import {
   COMPETING_TURN_ERROR_CODE,
+  STALE_TURN_ERROR_CODE,
   STEER_UNCONFIRMED_ERROR_CODE,
   TURN_START_UNCONFIRMED_ERROR_CODE,
   type HostDaemonCommandResult,
@@ -407,7 +408,7 @@ async function steerSubmittedTurn(
   }
 
   throw new CommandDispatchError(
-    "stale_turn",
+    STALE_TURN_ERROR_CODE,
     `Expected active turn ${targetTurnId} for thread ${command.threadId}, but active turn is ${activeTurnId ?? "none"}`,
   );
 }
