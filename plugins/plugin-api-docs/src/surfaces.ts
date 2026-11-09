@@ -1594,6 +1594,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads attributed to the plugin, send messages, and manage projects and machines",
           "Start plugin updates in the background and follow their progress or rollback",
+          "Find plugin releases outside the saved version range and change the range to take one",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [

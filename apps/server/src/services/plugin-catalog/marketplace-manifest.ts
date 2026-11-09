@@ -13,6 +13,7 @@ import {
   ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginSourceSelection,
 } from "@bb/server-contract";
+import type { InstalledPluginRow } from "@bb/db";
 import semver from "semver";
 import { z } from "zod";
 import {
@@ -732,4 +733,33 @@ export function resolvedEntrySource(
         ? ROOT_PLUGIN_SOURCE_SELECTION
         : { kind: "subdirectory", path: git.subdir },
   };
+}
+
+export function catalogRangeForInstalledSource(
+  entry: MarketplaceEntry,
+  row: Pick<
+    InstalledPluginRow,
+    | "sourceKind"
+    | "sourceNpmPackage"
+    | "sourceGitUrl"
+    | "sourceGitSubdirectory"
+    | "sourceGitTagPrefix"
+  >,
+): string | null {
+  if ("npm" in entry.source) {
+    return row.sourceKind === "npm" &&
+      entry.source.npm.package === row.sourceNpmPackage
+      ? (entry.source.npm.range ?? null)
+      : null;
+  }
+  if (!("git" in entry.source) || row.sourceKind !== "git") return null;
+  const git = entry.source.git;
+  if (!("range" in git)) return null;
+  const subdirectory =
+    git.subdir === undefined ? null : normalizePluginSubdirectory(git.subdir);
+  return git.url === row.sourceGitUrl &&
+    subdirectory === row.sourceGitSubdirectory &&
+    (git.tagPrefix ?? "") === row.sourceGitTagPrefix
+    ? git.range
+    : null;
 }

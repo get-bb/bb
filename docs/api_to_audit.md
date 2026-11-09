@@ -4150,6 +4150,26 @@ be cancelled during activation or rollback.
 Stabilization requires exercising reconnect/reload, concurrent deduplication,
 rollback delivery, missing jobs after restart, and CLI/SDK parity.
 
+## `PluginApplyUpdateArgs.range`, `expectedVersion`, and `rangeUpgrade` on update checks
+
+`checkUpdates` and `listUpdateResults` entries carry `rangeUpgrade` when a
+newer stable release sits outside a git semver or npm range source's saved
+range: `currentRange`, the proposed `range`, `basis` (`catalog` when the
+plugin's marketplace entry still lists the same repository or package and its
+current range admits the release, `release` for installs from no marketplace
+or a removed one, which get `^<version>`; none is reported once the plugin's
+marketplace no longer lists it), the `candidate`, `breaking` (caret rule from the installed
+version), and `reasons` when the candidate fails engines on this bb.
+`applyUpdate` and `experimental_startUpdate` accept `range` to change the
+saved range in the same staged activation (refusing pinned sources, ranges
+with nothing newer, and downgrades) and `expectedVersion` to refuse a
+candidate other than the one reviewed. Core callers: the plugin details
+Review action and `UpdatePluginDialog` through `startPluginUpdate`, and
+`bb plugin update <id> --range`. Stabilize after the rollback of a range
+change, catalog-range adoption, and npm range changes have been exercised on
+released builds, and once a later decision on following non-breaking catalog
+range widenings automatically is made.
+
 ## `PluginBbSdk.system.experimental_recordTelemetryEvent`
 
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,

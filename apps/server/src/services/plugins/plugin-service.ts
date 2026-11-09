@@ -56,6 +56,7 @@ import {
 } from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
+  CURATED_PLUGIN_MARKETPLACE_NAME,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
   type PluginCapabilitySummary,
@@ -82,6 +83,7 @@ import {
   pluginScheduleKey,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
+  getPluginMarketplace,
   listPluginMarketplaces,
   listPluginSchedules,
   listThreadPluginMetadataRows,
@@ -102,6 +104,7 @@ import {
   isBundledMarketplaceEntry,
   marketplaceEntryCollections,
   marketplaceRowIconBase,
+  catalogRangeForInstalledSource,
   parseStoredMarketplaceManifest,
   type MarketplaceManifest,
 } from "../plugin-catalog/marketplace-manifest.js";
@@ -123,6 +126,7 @@ import {
   parsePluginSource,
   recoverInterruptedGitPluginPromotion,
 } from "./install-sources.js";
+import type { RangeUpgradeBasis } from "./update-resolver.js";
 import {
   prunePluginCache,
   removeUnusedPluginArtifacts,
@@ -183,6 +187,7 @@ import {
   createPluginUpdates,
   parsePersistedUpdateEntry,
   pluginVersionLabelForRow,
+  type PluginApplyUpdateOptions,
 } from "./plugin-updates.js";
 
 import type {
@@ -314,7 +319,10 @@ export interface PluginService {
   stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceDetail | undefined>;
-  applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
+  applyUpdate(
+    id: string,
+    options?: PluginApplyUpdateOptions,
+  ): Promise<PluginApplyUpdateOutcome>;
   remove(id: string): Promise<boolean>;
   pruneCache(args: { dryRun: boolean }): Promise<PluginCachePruneResponse>;
   setEnabled(
@@ -818,6 +826,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     notifyPluginsChanged,
     installedUpdateVersion,
     npmIntentForRow,
+    rangeUpgradeBasisForRow,
     managedArtifacts: managedPluginArtifacts,
     runArtifactGc,
   });
@@ -1006,6 +1015,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             blockedLabel: persisted.blocked.label,
             blockedReasons: persisted.blocked.reasons,
           }),
+      ...(persisted?.rangeUpgrade === undefined
+        ? {}
+        : { rangeUpgrade: persisted.rangeUpgrade }),
       ...(row.lastUpdateCheckAt === null
         ? {}
         : { lastCheckAt: row.lastUpdateCheckAt }),
@@ -1168,6 +1180,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     | "publishedAt"
     | "updatedAt"
   >;
+
+  function rangeUpgradeBasisForRow(row: InstalledPluginRow): RangeUpgradeBasis {
+    if (row.provenance !== "catalog" || row.catalogEntryId === null) {
+      return { kind: "release" };
+    }
+    const marketplace = getPluginMarketplace(
+      deps.db,
+      row.catalogMarketplaceName ?? CURATED_PLUGIN_MARKETPLACE_NAME,
+    );
+    if (marketplace === undefined) return { kind: "release" };
+    const manifest = cachedMarketplaceManifest(marketplace);
+    if (manifest === null) return { kind: "none" };
+    const entry = manifest.plugins.find(
+      (plugin) => plugin.id === row.catalogEntryId,
+    );
+    if (entry === undefined) return { kind: "none" };
+    const range = catalogRangeForInstalledSource(entry, row);
+    return range === null ? { kind: "none" } : { kind: "catalog", range };
+  }
 
   function cachedMarketplaceManifest(
     marketplace: PluginMarketplaceRow,

@@ -1572,6 +1572,187 @@ describe.concurrent("plugin tagged release updates", () => {
   );
 
   taggedTest(
+    "reports a release outside the saved range and changes the range only for the reviewed release",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      await service.setEnabled("tagged", false);
+      const majorCommit = await releaseTag(tagged, "v2.0.0");
+
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        {
+          id: "tagged",
+          outcome: "current",
+          rangeUpgrade: {
+            currentRange: "^1.0.0",
+            range: "^2.0.0",
+            basis: "release",
+            candidate: { version: majorCommit, label: "2.0.0" },
+            breaking: true,
+            reasons: [],
+          },
+        },
+      ]);
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState,
+      ).toMatchObject({
+        outcome: "current",
+        rangeUpgrade: { range: "^2.0.0", candidate: { label: "2.0.0" } },
+      });
+
+      await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+        ok: true,
+        result: { applied: false, outcome: "current" },
+      });
+      await expect(
+        service.applyUpdate("tagged", {
+          range: "^2.0.0",
+          expectedVersion: "0".repeat(40),
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: expect.stringContaining("changed after you reviewed it"),
+      });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitRange: "^1.0.0",
+        sourceGitResolvedTag: "v1.0.0",
+      });
+
+      await expect(
+        service.applyUpdate("tagged", {
+          range: "^2.0.0",
+          expectedVersion: majorCommit,
+        }),
+      ).resolves.toMatchObject({
+        ok: true,
+        result: { applied: true, outcome: "updated", to: { label: "2.0.0" } },
+      });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        source: `git:${tagged}@semver:^2.0.0`,
+        sourceGitRange: "^2.0.0",
+        sourceGitResolvedTag: "v2.0.0",
+        gitResolvedCommit: majorCommit,
+        enabled: false,
+      });
+
+      await expect(
+        service.applyUpdate("tagged", { range: "^1.0.0" }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: expect.stringContaining("bb does not downgrade plugins"),
+      });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitRange: "^2.0.0",
+        gitResolvedCommit: majorCommit,
+      });
+    },
+  );
+
+  taggedTest(
+    "restores the saved range when the out-of-range release fails to activate",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      const before = getInstalledPluginRegistration(db, "tagged");
+      await writeFile(
+        join(tagged, "server.ts"),
+        'export default function plugin() { throw new Error("major activation failed"); }',
+      );
+      await releaseTag(tagged, "v2.0.0");
+
+      await expect(
+        service.applyUpdate("tagged", { range: "^2.0.0" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        result: { applied: false, outcome: "rolled-back" },
+      });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        source: before?.source,
+        sourceGitRange: "^1.0.0",
+        sourceGitResolvedTag: "v1.0.0",
+        gitResolvedCommit: before?.gitResolvedCommit,
+      });
+    },
+  );
+
+  taggedTest(
+    "refreshes the saved offer when the reviewed release changed before the update",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      await service.setEnabled("tagged", false);
+      const reviewedCommit = await releaseTag(tagged, "v2.0.0");
+      await service.checkForUpdates("tagged");
+      const newerCommit = await releaseTag(tagged, "v2.1.0");
+
+      await expect(
+        service.applyUpdate("tagged", {
+          range: "^2.0.0",
+          expectedVersion: reviewedCommit,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error:
+          "update refused: the release changed after you reviewed it; you reviewed 2.0.0, and bb now resolves 2.1.0. Review 2.1.0 before updating",
+      });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitRange: "^1.0.0",
+        sourceGitResolvedTag: "v1.0.0",
+      });
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState
+          .rangeUpgrade,
+      ).toMatchObject({
+        range: "^2.1.0",
+        candidate: { version: newerCommit, label: "2.1.0" },
+      });
+    },
+  );
+
+  taggedTest(
+    "offers no out-of-range release once the marketplace stops listing the plugin",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.installCatalogPlugin({
+        marketplace: "acme-plugins",
+        entryId: "tagged",
+        pluginId: "tagged",
+        source: `git:${tagged}@semver:^1.0.0`,
+        selection: { kind: "root" },
+      });
+      upsertPluginMarketplace(db, {
+        name: "acme-plugins",
+        sourceKind: "path",
+        manifestUrl: fixture.workDir,
+        sourceGitRef: null,
+        sourceGitSubdirectory: null,
+        sourceGitCommit: null,
+        statsJson: null,
+        manifestJson: JSON.stringify({
+          schemaVersion: 1,
+          name: "acme-plugins",
+          displayName: "Acme Plugins",
+          plugins: [],
+        }),
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: Date.now(),
+        lastAttemptedRefreshAt: Date.now(),
+        lastError: null,
+      });
+      await releaseTag(tagged, "v2.0.0");
+
+      const [result] = await service.checkForUpdates("tagged");
+      expect(result).toMatchObject({ id: "tagged", outcome: "current" });
+      expect(result?.rangeUpgrade).toBeUndefined();
+    },
+  );
+
+  taggedTest(
     "names a rolled-back release by its tag version",
     async ({ fixture }) => {
       const { service, taggedRepo } = fixture;

@@ -29,8 +29,21 @@ export interface PluginResolvedUpdateVersion {
   display: string;
 }
 
+export type RangeUpgradeBasis =
+  { kind: "catalog"; range: string } | { kind: "release" } | { kind: "none" };
+
+export interface PluginRangeUpgrade {
+  range: string;
+  basis: "catalog" | "release";
+  candidate: PluginResolvedUpdateVersion;
+  candidateGitTag?: string;
+  breaking: boolean;
+  reasons: CompatibilityProblem[];
+}
+
 interface ResolutionFlags {
   devMode?: true;
+  rangeUpgrade?: PluginRangeUpgrade;
   blocked?: {
     version: PluginResolvedUpdateVersion;
     reasons: CompatibilityProblem[];
@@ -366,11 +379,85 @@ export async function selectNpmCandidate(args: {
   };
 }
 
+const MAX_RANGE_UPGRADE_PROBES = 3;
+
+export function rangeUpgradeCandidates<T extends { version: string }>(args: {
+  releases: readonly T[];
+  installedVersion: string;
+  savedRange: string;
+  basis: RangeUpgradeBasis;
+}): Array<T & { range: string }> {
+  const basis = args.basis;
+  if (basis.kind === "none" || semver.valid(args.installedVersion) === null) {
+    return [];
+  }
+  return args.releases
+    .filter(
+      (release) =>
+        semver.valid(release.version) !== null &&
+        semver.prerelease(release.version) === null &&
+        semver.gt(release.version, args.installedVersion) &&
+        !semver.satisfies(release.version, args.savedRange) &&
+        (basis.kind === "release" ||
+          semver.satisfies(release.version, basis.range)),
+    )
+    .sort((left, right) => semver.rcompare(left.version, right.version))
+    .map((release) => ({
+      ...release,
+      range: basis.kind === "catalog" ? basis.range : `^${release.version}`,
+    }));
+}
+
+export function isBreakingUpgrade(from: string, to: string): boolean {
+  return !semver.satisfies(to, `^${from}`);
+}
+
+async function npmRangeUpgrade(args: {
+  intent: NpmSourceIntentForResolution;
+  installedVersion: string;
+  basis: RangeUpgradeBasis;
+  appVersion: string;
+  run: NpmResolverRun;
+}): Promise<PluginRangeUpgrade | undefined> {
+  if (args.intent.specKind !== "range" || args.basis.kind === "none") {
+    return undefined;
+  }
+  const packument = await args.run.getPackument(args.intent);
+  const candidates = rangeUpgradeCandidates({
+    releases: Object.values(packument.versions),
+    installedVersion: args.installedVersion,
+    savedRange: args.intent.requestedSpec,
+    basis: args.basis,
+  });
+  let blocked: PluginRangeUpgrade | undefined;
+  for (const candidate of candidates.slice(0, MAX_RANGE_UPGRADE_PROBES)) {
+    const upgrade = {
+      range: candidate.range,
+      basis: args.basis.kind,
+      candidate: {
+        version: candidate.version,
+        label: candidate.version,
+        display: npmDisplay(args.intent.packageName, candidate.version),
+      },
+      breaking: isBreakingUpgrade(args.installedVersion, candidate.version),
+    };
+    const problems = evaluateCompatibility({
+      bbRange: candidate.engines?.bb,
+      sdkRange: candidate.engines?.bbPluginSdk,
+      appVersion: args.appVersion,
+    }).effective;
+    if (problems.length === 0) return { ...upgrade, reasons: [] };
+    blocked ??= { ...upgrade, reasons: problems };
+  }
+  return blocked;
+}
+
 export async function resolveNpmUpdate(args: {
   intent: NpmSourceIntentForResolution;
   current: PluginResolvedUpdateVersion;
   appVersion: string;
   run: NpmResolverRun;
+  rangeUpgradeBasis: RangeUpgradeBasis;
 }): Promise<PluginUpdateResolution> {
   const devMode = semver.coerce(args.appVersion)?.version === "0.0.0";
   if (args.intent.specKind === "exact") {
@@ -388,16 +475,32 @@ export async function resolveNpmUpdate(args: {
     return { outcome: "unavailable", detail: selected.detail, ...flags };
   }
   if (selected.outcome === "incompatible") {
+    const rangeUpgrade = await npmRangeUpgrade({
+      intent: args.intent,
+      installedVersion: args.current.version,
+      basis: args.rangeUpgradeBasis,
+      appVersion: args.appVersion,
+      run: args.run,
+    });
     return {
       outcome: "incompatible",
       current: args.current,
       newest: selected.newest,
       reasons: selected.reasons,
       ...flags,
+      ...(rangeUpgrade === undefined ? {} : { rangeUpgrade }),
     };
   }
+  const rangeUpgrade = await npmRangeUpgrade({
+    intent: args.intent,
+    installedVersion: args.current.version,
+    basis: args.rangeUpgradeBasis,
+    appVersion: args.appVersion,
+    run: args.run,
+  });
   const extra = {
     ...flags,
+    ...(rangeUpgrade === undefined ? {} : { rangeUpgrade }),
     ...(selected.blocked
       ? {
           blocked: {
@@ -615,17 +718,83 @@ export type GitCandidateProbe = (
 
 const MAX_GIT_CANDIDATE_PROBES = 10;
 
+async function gitRangeUpgrade(args: {
+  url: string;
+  intent: Extract<GitUpdateIntent, { kind: "range" }>;
+  tags: readonly GitSemverTag[];
+  basis: RangeUpgradeBasis;
+  probeCandidate: GitCandidateProbe;
+}): Promise<PluginRangeUpgrade | undefined> {
+  const installedVersion = gitSemverTagVersion(
+    args.intent.resolvedTag,
+    args.intent.tagPrefix,
+  );
+  if (installedVersion === null || args.basis.kind === "none") {
+    return undefined;
+  }
+  const candidates = rangeUpgradeCandidates({
+    releases: args.tags,
+    installedVersion,
+    savedRange: args.intent.range,
+    basis: args.basis,
+  });
+  let blocked: PluginRangeUpgrade | undefined;
+  for (const candidate of candidates.slice(0, MAX_RANGE_UPGRADE_PROBES)) {
+    const probed = await args.probeCandidate(candidate);
+    if (probed.outcome === "invalid") continue;
+    const upgrade = {
+      range: candidate.range,
+      basis: args.basis.kind,
+      candidate: gitResolvedVersion({
+        url: args.url,
+        ref: candidate.tag,
+        tagPrefix: args.intent.tagPrefix,
+        commit: candidate.commit,
+      }),
+      candidateGitTag: candidate.tag,
+      breaking: isBreakingUpgrade(installedVersion, candidate.version),
+    };
+    if (probed.outcome === "compatible") return { ...upgrade, reasons: [] };
+    blocked ??= { ...upgrade, reasons: probed.reasons };
+  }
+  return blocked;
+}
+
 async function resolveGitRangeUpdate(args: {
   url: string;
   intent: Extract<GitUpdateIntent, { kind: "range" }>;
   current: PluginResolvedUpdateVersion;
   currentCommit: string;
   probeCandidate: GitCandidateProbe;
+  rangeUpgradeBasis: RangeUpgradeBasis;
 }): Promise<PluginUpdateResolution> {
   const tags = await listGitSemverTags({
     url: args.url,
     tagPrefix: args.intent.tagPrefix,
   });
+  const resolution = await resolveGitRangeWithinTags({ ...args, tags });
+  if (resolution.outcome === "unavailable") return resolution;
+  const rangeUpgrade = await gitRangeUpgrade({
+    url: args.url,
+    intent: args.intent,
+    tags,
+    basis: args.rangeUpgradeBasis,
+    probeCandidate: args.probeCandidate,
+  });
+  return rangeUpgrade === undefined
+    ? resolution
+    : { ...resolution, rangeUpgrade };
+}
+
+async function resolveGitRangeWithinTags(args: {
+  url: string;
+  intent: Extract<GitUpdateIntent, { kind: "range" }>;
+  current: PluginResolvedUpdateVersion;
+  currentCommit: string;
+  probeCandidate: GitCandidateProbe;
+  tags: readonly GitSemverTag[];
+}): Promise<PluginUpdateResolution> {
+  const tags = args.tags;
   const recorded = tags.find((tag) => tag.tag === args.intent.resolvedTag);
   if (recorded === undefined) {
     return {
@@ -718,6 +887,7 @@ export async function resolveGitUpdate(args: {
   intent: GitUpdateIntent;
   currentCommit: string;
   probeCandidate: GitCandidateProbe;
+  rangeUpgradeBasis: RangeUpgradeBasis;
 }): Promise<PluginUpdateResolution> {
   const current = gitResolvedVersion({
     url: args.url,
@@ -733,6 +903,7 @@ export async function resolveGitUpdate(args: {
       current,
       currentCommit: args.currentCommit,
       probeCandidate: args.probeCandidate,
+      rangeUpgradeBasis: args.rangeUpgradeBasis,
     });
   }
   if (args.intent.refKind === "commit") return { outcome: "pinned", current };

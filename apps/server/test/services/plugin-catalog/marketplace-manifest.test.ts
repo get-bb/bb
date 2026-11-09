@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  catalogRangeForInstalledSource,
   entryOverview,
   entryScreenshotUrls,
   entryRepositoryUrl,
@@ -468,6 +469,41 @@ describe("marketplace manifest schema", () => {
             }),
           ]),
         ).toThrow(/git ref/);
+      }
+    });
+
+    it("follows a catalog range only for the installed repository, subdirectory, and tag prefix", () => {
+      const ranged = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://github.com/acme/plugins.git",
+              range: ">=0.2.0 <0.4.0",
+              tagPrefix: "widgets/",
+              subdir: "./plugins/widgets",
+            },
+          },
+        }),
+      ]);
+      const installed = {
+        sourceKind: "git" as const,
+        sourceNpmPackage: null,
+        sourceGitUrl: "https://github.com/acme/plugins.git",
+        sourceGitSubdirectory: "plugins/widgets",
+        sourceGitTagPrefix: "widgets/",
+      };
+
+      expect(catalogRangeForInstalledSource(ranged, installed)).toBe(
+        ">=0.2.0 <0.4.0",
+      );
+      for (const moved of [
+        { sourceGitUrl: "https://github.com/someone-else/plugins.git" },
+        { sourceGitSubdirectory: "plugins/other" },
+        { sourceGitTagPrefix: "" },
+      ]) {
+        expect(
+          catalogRangeForInstalledSource(ranged, { ...installed, ...moved }),
+        ).toBeNull();
       }
     });
 

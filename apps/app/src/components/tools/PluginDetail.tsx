@@ -25,6 +25,7 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { useNavigate } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { reviewableRangeUpgrade } from "@/components/plugin/management/plugin-status";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -444,11 +445,14 @@ export function PluginDetail({
         ? "Loading…"
         : "Install date unavailable";
   const hasReleaseControl =
-    hasUpdateManagement && plugin.updateState.availableVersion !== null;
+    hasUpdateManagement &&
+    (plugin.updateState.availableVersion !== null ||
+      reviewableRangeUpgrade(plugin) !== null);
   const hasReleaseUpdate =
     hasUpdateManagement &&
     (plugin.updateState.availableVersion !== null ||
       plugin.updateState.blockedVersion !== null ||
+      plugin.updateState.rangeUpgrade !== null ||
       plugin.updateState.lastFailure !== null);
   const hasConfiguration =
     plugin.hasSettings ||

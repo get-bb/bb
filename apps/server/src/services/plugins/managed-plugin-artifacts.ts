@@ -1106,6 +1106,7 @@ export function createManagedPluginArtifacts(
     commit: string;
     promote: boolean;
     activationSelector?: PluginGitSelector;
+    activationSource?: string;
     artifactLocked?: boolean;
   }): Promise<
     | {
@@ -1185,7 +1186,7 @@ export function createManagedPluginArtifacts(
         row: args.row,
         rootDir: targetRoot,
         manifest,
-        source: args.row.source,
+        source: args.activationSource ?? args.row.source,
         sourceIntent: {
           kind: "git",
           url,
@@ -1303,7 +1304,7 @@ export function createManagedPluginArtifacts(
           row: args.row,
           rootDir: targetRoot,
           manifest,
-          source: args.row.source,
+          source: args.activationSource ?? args.row.source,
           sourceIntent: {
             kind: "git",
             url,
