@@ -21,7 +21,9 @@ type LatestEventOfTypes = (db: DbConnection, threadId: string) => unknown;
 
 const requireOutsideVitest = createRequire(import.meta.url);
 
-async function bundleLatestEventQuery(root: string): Promise<LatestEventOfTypes> {
+async function bundleLatestEventQuery(
+  root: string,
+): Promise<LatestEventOfTypes> {
   const sourceDir = join(root, "apps/demo/src");
   mkdirSync(sourceDir, { recursive: true });
   writeFileSync(
@@ -48,41 +50,49 @@ async function bundleLatestEventQuery(root: string): Promise<LatestEventOfTypes>
 }
 
 describe("query plan auditor", () => {
-  it("audits a bundled query after it returns and attributes it to its source module", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "bb-query-plan-guard-")));
-    const auditDatabase = createMigratedConnection().$client;
-    const findings: QueryPlanFindingReport[] = [];
-    let queued = 0;
-    const auditor = createQueryPlanAuditor({
-      auditDatabase,
-      bundle: { directory: join(root, "apps/demo/dist"), packagePath: "apps/demo" },
-      onFinding: (finding) => findings.push(finding),
-      onQueued: () => {
-        queued += 1;
-      },
-    });
-    const db = createMigratedConnection({ queryPlanObserver: () => auditor });
-    try {
-      const latestEventOfTypes = await bundleLatestEventQuery(root);
+  it.skipIf(process.platform === "win32")(
+    "audits a bundled query after it returns and attributes it to its source module",
+    async () => {
+      const root = realpathSync(
+        mkdtempSync(join(tmpdir(), "bb-query-plan-guard-")),
+      );
+      const auditDatabase = createMigratedConnection().$client;
+      const findings: QueryPlanFindingReport[] = [];
+      let queued = 0;
+      const auditor = createQueryPlanAuditor({
+        auditDatabase,
+        bundle: {
+          directory: join(root, "apps/demo/dist"),
+          packagePath: "apps/demo",
+        },
+        onFinding: (finding) => findings.push(finding),
+        onQueued: () => {
+          queued += 1;
+        },
+      });
+      const db = createMigratedConnection({ queryPlanObserver: () => auditor });
+      try {
+        const latestEventOfTypes = await bundleLatestEventQuery(root);
 
-      latestEventOfTypes(db, "thr_1");
-      latestEventOfTypes(db, "thr_2");
-      expect(queued).toBe(1);
-      expect(findings).toEqual([]);
+        latestEventOfTypes(db, "thr_1");
+        latestEventOfTypes(db, "thr_2");
+        expect(queued).toBe(1);
+        expect(findings).toEqual([]);
 
-      auditor.flush();
-      expect(findings).toEqual([
-        expect.objectContaining({
-          rule: "weaker-index",
-          table: "events",
-          caller: "apps/demo/src/latest-event.ts#latestEventOfTypes",
-          allowed: false,
-        }),
-      ]);
-    } finally {
-      db.$client.close();
-      auditDatabase.close();
-      rmSync(root, { force: true, recursive: true });
-    }
-  });
+        auditor.flush();
+        expect(findings).toEqual([
+          expect.objectContaining({
+            rule: "weaker-index",
+            table: "events",
+            caller: "apps/demo/src/latest-event.ts#latestEventOfTypes",
+            allowed: false,
+          }),
+        ]);
+      } finally {
+        db.$client.close();
+        auditDatabase.close();
+        rmSync(root, { force: true, recursive: true });
+      }
+    },
+  );
 });

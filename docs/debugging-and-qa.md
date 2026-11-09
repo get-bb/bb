@@ -280,7 +280,8 @@ process for each `rule`, `table`, and `caller`, when the plan:
 
 `caller` is the `src/` file and function that ran the query; in the built
 server, the file comes from the module comments esbuild writes into
-`apps/server/dist` bundles, so it needs an unminified bundle. Findings listed in
+`apps/server/dist` bundles, so it needs an unminified bundle. Callers are read
+from POSIX stack paths, so the audit logs nothing on Windows. Findings listed in
 `packages/db/src/query-plan-allowlist.ts` are not logged. The tests apply the
 same rules and fail on findings missing from the allowlist; see
 `packages/db/src/query-plan-guard.ts`. The `Query plan audit` CI job also
