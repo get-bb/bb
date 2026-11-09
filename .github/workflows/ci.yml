@@ -71,3 +71,34 @@ jobs:
           for trial in 1 2 3; do
             node packages/bb-app/scripts/build.mjs
           done
+      - name: Compare native Windows SDK compiler
+        shell: bash
+        env:
+          SDK_PROFILE_COMPILER: ${{ runner.temp }}/sdk-compiler/node_modules/@typescript/native-preview/bin/tsgo
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sdk-compiler" --no-audit --no-fund --ignore-scripts --package-lock=false @typescript/native-preview@7.0.0-dev.20260707.2
+          mkdir -p "$RUNNER_TEMP/sdk-evidence"
+          cp packages/bb-app/scripts/build-public-sdk-dts.mjs "$RUNNER_TEMP/sdk-evidence/baseline.mjs"
+          cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/baseline.d.ts"
+          node --input-type=module - <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const file = 'packages/bb-app/scripts/build-public-sdk-dts.mjs';
+          let text = readFileSync(file, 'utf8');
+          text = text.replace('const compiler = fileURLToPath(', 'const compiler = process.env.SDK_PROFILE_COMPILER || fileURLToPath(');
+          text = text.replace('const supportsNativeCompiler =', 'const supportsNativeCompiler = process.platform === "win32" ||');
+          writeFileSync(file, text);
+          NODE
+          node packages/bb-app/scripts/build-public-sdk-dts.mjs
+          cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/candidate.d.ts"
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const baseline = readFileSync(join(process.env.RUNNER_TEMP, 'sdk-evidence/baseline.d.ts'));
+          const candidate = readFileSync(join(process.env.RUNNER_TEMP, 'sdk-evidence/candidate.d.ts'));
+          console.log('Declarations byte identical:', baseline.equals(candidate), 'bytes:', baseline.length, candidate.length);
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sdk-compiler-profile
+          path: ${{ runner.temp }}/sdk-evidence
