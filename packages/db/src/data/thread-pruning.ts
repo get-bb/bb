@@ -5,7 +5,8 @@ import {
   emptyResolvedItemPruningProbe,
 } from "./resolved-item-pruning.js";
 import { pruneRateLimitSnapshotWindow } from "./rate-limit-pruning.js";
-import { and, eq, gt, inArray, notInArray, sql, type SQLWrapper } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, notInArray, sql, type SQLWrapper } from "drizzle-orm";
+import type { ThreadEventType } from "@bb/domain";
 import type { DbConnection, DbQueryConnection, DbTransaction } from "../connection.js";
 import {
   events,
@@ -38,6 +39,17 @@ const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
   "turn-diffs": 1,
   "resolved-items": 1,
 };
+export const PRUNABLE_THREAD_EVENT_TYPES = [
+  "provider/rateLimits/updated",
+  "thread/tokenUsage/updated",
+  "thread/contextWindowUsage/updated",
+  "turn/diff/updated",
+  "item/agentMessage/delta",
+  "item/commandExecution/outputDelta",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+  "item/backgroundTask/progress",
+] as const satisfies readonly ThreadEventType[];
 const TIMELINE_PRESERVING_POLICIES: ReadonlySet<ThreadPruningPolicy> = new Set([
   "usage",
   "turn-diffs",
@@ -554,13 +566,33 @@ function advanceThreadPruningTransaction(
     },
     { behavior: "immediate" },
   );
-  const rewrittenThreadId =
-    result.removed > 0 && !TIMELINE_PRESERVING_POLICIES.has(policy)
-      ? result.threadId
-      : null;
-  if (rewrittenThreadId !== null)
-    bumpThreadEventRewriteGeneration(rewrittenThreadId);
-  return { ...result, rewroteHistory: rewrittenThreadId !== null };
+  if (
+    result.removed > 0 &&
+    result.threadId !== null &&
+    !TIMELINE_PRESERVING_POLICIES.has(policy)
+  )
+    bumpThreadEventRewriteGeneration(result.threadId);
+  return result;
+}
+
+export function findUnprunableThreadEventSequence(
+  db: DbQueryConnection,
+  args: { beforeSequence: number; sequenceStart: number; threadId: string },
+): number | undefined {
+  return db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.sequenceStart),
+        lt(events.sequence, args.beforeSequence),
+        notInArray(events.type, [...PRUNABLE_THREAD_EVENT_TYPES]),
+      ),
+    )
+    .orderBy(events.sequence)
+    .limit(1)
+    .get()?.sequence;
 }
 
 export function advanceThreadPruning(

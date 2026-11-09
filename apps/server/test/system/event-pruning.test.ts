@@ -425,7 +425,7 @@ describe("thread event pruning", () => {
     });
   });
 
-  it("notifies only after a committed live advance and reports its bounded work", async () => {
+  it("reports a live advance's bounded work without notifying viewers", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -462,15 +462,12 @@ describe("thread event pruning", () => {
         scanned: 32,
         totalRemoved: 32,
       });
-      expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
-        "history-compacted",
-      ]);
+      expect(notify).not.toHaveBeenCalled();
       const second = pruneThreadEventHistoryBestEffort(harness.deps, {
         threadId: thread.id,
         mode: "active",
       });
       expect(second).toMatchObject({ policy: "usage", totalRemoved: 0 });
-      expect(notify).toHaveBeenCalledTimes(1);
       notify.mockRestore();
     });
   });

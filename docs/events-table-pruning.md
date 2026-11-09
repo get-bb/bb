@@ -44,14 +44,24 @@ a policy whose version changes, queues every thread for that policy. Archiving a
 thread runs one live step and then drops the thread's live progress; the
 background sweep finishes archived threads.
 
-## Cache invalidation and notifications
+## Cache invalidation and cursors
+
+Pruning never sends a history-compacted notification. The rows it deletes are
+never displayed: the timeline shows a completed item from its completion event,
+not its deltas, and reads usage, turn-diff and rate-limit state from the kept
+snapshots. A viewer's loaded timeline therefore stays correct after pruning.
 
 Timeline reads never load usage or turn-diff snapshots beyond the kept ones, so
-deleting them keeps the thread's cached timelines and sends nothing to viewers.
-Deleting rate-limit snapshots, deltas or background-task progress can change a
-timeline window, so the commit advances the thread's rewrite generation and
-every cached timeline for that thread rebuilds on its next read. Viewers of the
-thread then receive one history-compacted notification: after the live step, or
-when the background sweep finishes its pass over the thread for that policy.
-A sweep pass can span several ten-second runs and still sends a single
-notification.
+deleting them keeps the thread's cached timelines. Rate-limit snapshots, deltas
+and background-task progress still count toward a timeline window's event
+budget, so deleting them can let a fresh window reach further back. Those
+commits advance the thread's rewrite generation, and every server-side timeline
+cache for the thread rebuilds on its next read. A viewer that does not refetch
+keeps its shorter window until it reloads the thread.
+
+A timeline window starts at a `client/turn/requested` row, or, when its range
+has none, at the first row at or after the event-budget floor that pruning
+never deletes (`PRUNABLE_THREAD_EVENT_TYPES` in
+`packages/db/src/data/thread-pruning.ts`). The window's older-page cursor
+anchors on that row, so pruning cannot invalidate a cursor a client already
+holds.

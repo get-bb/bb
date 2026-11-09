@@ -564,6 +564,7 @@ export * from "./machines.js";
 export {
   advanceThreadPruning,
   deleteThreadScopedPruningCursors,
+  findUnprunableThreadEventSequence,
   getNextThreadPruningPolicy,
   pickThreadPruningThread,
   THREAD_PRUNING_POLICIES,

@@ -1073,12 +1073,14 @@ function selectStandardTimelineEventRows(
   const sequenceStart =
     contentCursor !== undefined && page.kind === "older"
       ? page.beforeCursor.anchorSeq
-      : selectTimelineWindowStart(
-          hints,
-          budgetFloor,
-          page.segmentLimit,
+      : selectTimelineWindowStart(db, {
+          beforeSequence,
+          budgetFloorSequence: budgetFloor,
           epochSequenceStart,
-        );
+          hints,
+          segmentLimit: page.segmentLimit,
+          threadId: thread.id,
+        });
   const hasOlder =
     sequenceStart > epochSequenceStart &&
     findTimelineWindowBudgetFloorSequence(db, {

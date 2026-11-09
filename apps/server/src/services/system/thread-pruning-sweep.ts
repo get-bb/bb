@@ -3,7 +3,6 @@ import {
   advanceThreadPruning,
   getNextThreadPruningPolicy,
   pickThreadPruningThread,
-  type DbConnection,
   type THREAD_PRUNING_POLICIES,
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
@@ -28,19 +27,8 @@ function pruningItemKey(item: ThreadPruningItem): string {
   return `${item.policy}:${item.threadId}`;
 }
 
-const unannouncedRewritesByDb = new WeakMap<DbConnection, Set<string>>();
-
-function unannouncedRewrites(db: DbConnection): Set<string> {
-  let keys = unannouncedRewritesByDb.get(db);
-  if (keys === undefined) {
-    keys = new Set();
-    unannouncedRewritesByDb.set(db, keys);
-  }
-  return keys;
-}
-
 export function threadPruningSweep(
-  deps: Pick<AppDeps, "db" | "hub" | "logger">,
+  deps: Pick<AppDeps, "db" | "logger">,
   limits: ThreadPruningSweepLimits,
 ): ItemSweep {
   const startedAt = performance.now();
@@ -79,39 +67,23 @@ export function threadPruningSweep(
     },
     key: pruningItemKey,
     process: async (item) => {
-      const itemKey = pruningItemKey(item);
-      const pending = unannouncedRewrites(deps.db);
-      const rewrittenThreadIds = new Set<string>();
-      if (pending.has(itemKey)) rewrittenThreadIds.add(item.threadId);
-      let passContinues = false;
-      try {
-        while (withinBudget()) {
-          const advanceStartedAt = performance.now();
-          const result = advanceThreadPruning(deps.db, item.policy);
-          const advanceElapsedMs = performance.now() - advanceStartedAt;
-          advances += 1;
-          if (result.rewroteHistory && result.threadId !== null)
-            rewrittenThreadIds.add(result.threadId);
-          if (advanceElapsedMs >= 50)
-            deps.logger.warn(
-              { ...result, advanceElapsedMs },
-              "Slow thread pruning advance",
-            );
-          deps.logger.debug(
+      while (withinBudget()) {
+        const advanceStartedAt = performance.now();
+        const result = advanceThreadPruning(deps.db, item.policy);
+        const advanceElapsedMs = performance.now() - advanceStartedAt;
+        advances += 1;
+        if (advanceElapsedMs >= 50)
+          deps.logger.warn(
             { ...result, advanceElapsedMs },
-            "Thread pruning policy advanced",
+            "Slow thread pruning advance",
           );
-          if (result.threadId !== item.threadId || result.action !== "advanced")
-            return;
-          await new Promise<void>((resolve) => setImmediate(resolve));
-        }
-        passContinues = true;
-      } finally {
-        pending.delete(itemKey);
-        if (passContinues && rewrittenThreadIds.delete(item.threadId))
-          pending.add(itemKey);
-        for (const threadId of rewrittenThreadIds)
-          deps.hub.notifyThread(threadId, ["history-compacted"]);
+        deps.logger.debug(
+          { ...result, advanceElapsedMs },
+          "Thread pruning policy advanced",
+        );
+        if (result.threadId !== item.threadId || result.action !== "advanced")
+          return;
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
     },
   });
