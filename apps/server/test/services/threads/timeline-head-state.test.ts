@@ -18,10 +18,8 @@ import {
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
-import {
-  buildThreadTimelineWithProfile,
-  readThreadHeadState,
-} from "../../../src/services/threads/timeline.js";
+import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
+import { readThreadHeadState } from "../../../src/services/threads/thread-head-state.js";
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -423,6 +421,34 @@ function insertAgentMessages(
   );
 }
 
+const headStateOptions = {
+  compactionOfferEnabled: false,
+  extensionStateKinds: [CODEX_GOAL_KIND],
+  planCommand: null,
+} as const;
+
+function insertThreadEvent(
+  db: DbConnection,
+  thread: Thread,
+  type: "client/turn/requested" | "provider/modelFallback",
+  data: Record<string, unknown>,
+): void {
+  insertEvents(db, noopNotifier, [
+    {
+      threadId: thread.id,
+      sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
+      type,
+      scope:
+        type === "provider/modelFallback" ? turnScope("turn-1") : threadScope(),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify(data),
+    },
+  ]);
+}
+
 describe("readThreadHeadState", () => {
   function seedHeadState(db: DbConnection, thread: Thread): void {
     seedThreadWithEarlyHeadState(db, thread, 1, 0, false);
@@ -457,23 +483,12 @@ describe("readThreadHeadState", () => {
     insertAgentMessages(db, thread, 800);
   }
 
-  it("matches the latest timeline window's todos, commands, and options", () => {
+  it("reads the latest state far behind a long turn", () => {
     const { db, thread } = setup();
     seedHeadState(db, thread);
 
-    const latest = buildThreadTimelineWithProfile(db, thread, {
-      ...baseOptions,
-      completedTurnDisplay: "collapse",
-      eventBudget: 100,
-      summaryOnly: true,
-    }).response;
-    const headState = readThreadHeadState(db, thread);
+    const headState = readThreadHeadState(db, thread, headStateOptions);
 
-    expect(headState).toEqual({
-      pendingTodos: latest.pendingTodos,
-      providerCommands: latest.providerCommands,
-      sessionOptions: latest.sessionOptions,
-    });
     expect(headState.pendingTodos?.items.map((item) => item.text)).toEqual([
       "Shipping the thing",
       "Write the docs",
@@ -484,13 +499,61 @@ describe("readThreadHeadState", () => {
     expect(headState.sessionOptions).toMatchObject([
       { id: "effort", value: "medium", pendingValue: "high" },
     ]);
+    expect(headState.extensionStates[CODEX_GOAL_KIND]).toMatchObject({
+      objective: "Land the timeline fix",
+    });
+    expect(
+      readThreadHeadState(db, thread, {
+        ...headStateOptions,
+        extensionStateKinds: [],
+      }).extensionStates,
+    ).toEqual({});
+    db.$client.close();
+  });
+
+  it("reports a model fallback until the next turn is requested", () => {
+    const { db, thread } = setup();
+    seedThreadWithEarlyHeadState(db, thread, 1, 0, false);
+    insertThreadEvent(db, thread, "provider/modelFallback", {
+      threadId: thread.id,
+      providerThreadId,
+      originalModel: "opus",
+      fallbackModel: "sonnet",
+      reason: "provider",
+      message: "Switched to sonnet.",
+    });
+    insertAgentMessages(db, thread, 50);
+
+    expect(
+      readThreadHeadState(db, thread, headStateOptions).modelFallback,
+    ).toMatchObject({ originalModel: "opus", fallbackModel: "sonnet" });
+
+    insertThreadEvent(db, thread, "client/turn/requested", {
+      direction: "outbound",
+      source: "tell",
+      initiator: "user",
+      request: { method: "turn/start", params: {} },
+      requestId: requestId(2),
+      senderThreadId: null,
+      input: [{ type: "text", text: "Next", mentions: [] }],
+      target: { kind: "new-turn" },
+      execution,
+    });
+
+    expect(
+      readThreadHeadState(db, thread, headStateOptions).modelFallback,
+    ).toBeNull();
     db.$client.close();
   });
 
   it("reports no todos once the thread is no longer active", () => {
     const { db, thread } = setup();
     seedHeadState(db, thread);
-    const headState = readThreadHeadState(db, { ...thread, status: "idle" });
+    const headState = readThreadHeadState(
+      db,
+      { ...thread, status: "idle" },
+      headStateOptions,
+    );
 
     expect(headState.pendingTodos).toBeNull();
     expect(headState.providerCommands).not.toBeNull();

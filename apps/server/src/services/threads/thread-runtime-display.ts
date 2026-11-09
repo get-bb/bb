@@ -4,12 +4,9 @@ import {
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestClosedSessionsForHosts,
   listLatestThreadStateEventRowsByThreadIds,
-  listOpenTurnInputAcceptedRowsByThreadIds,
-  listStoredClientTurnRequestRowsByKeys,
   type DbConnection,
   type HostDaemonSessionRow,
   type StoredEventRow,
-  type ThreadClientTurnRequestKey,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
 import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
@@ -40,6 +37,7 @@ import {
   canThreadEditMessages,
   type ThreadMessageEditPolicyDeps,
 } from "./thread-message-edit-policy.js";
+import { listOpenTurnRequestRows } from "./thread-head-state.js";
 import { toThreadEventWithMeta } from "./timeline.js";
 import { intendedThreadHostId } from "./dispatch-attempt.js";
 
@@ -387,26 +385,11 @@ function listPromptBannerActivityCandidateRows(
   deps: ThreadPromptBannerDeps,
   threads: readonly Thread[],
 ): StoredEventRow[] {
-  const openAcceptedRows = listOpenTurnInputAcceptedRowsByThreadIds(deps.db, {
-    threadIds: threads
+  return listOpenTurnRequestRows(
+    deps.db,
+    threads
       .filter((thread) => canThreadShowActivePlanMode(deps, thread))
       .map((thread) => thread.id),
-  });
-  const openAcceptedEvents = openAcceptedRows.map(toThreadEventWithMeta);
-  const requestKeys: ThreadClientTurnRequestKey[] = openAcceptedEvents.flatMap(
-    ({ event }) =>
-      event.type === "turn/input/accepted"
-        ? [{ requestId: event.clientRequestId, threadId: event.threadId }]
-        : [],
-  );
-  const requestRows = listStoredClientTurnRequestRowsByKeys(deps.db, {
-    keys: requestKeys,
-  });
-
-  return [...openAcceptedRows, ...requestRows].sort(
-    (left, right) =>
-      left.threadId.localeCompare(right.threadId) ||
-      left.sequence - right.sequence,
   );
 }
 

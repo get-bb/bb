@@ -1325,6 +1325,10 @@ export type ThreadTimelineReadResponse = z.infer<
 >;
 
 export const threadHeadStateResponseSchema = z.object({
+  activePromptMode: threadTimelineWindowFieldsShape.activePromptMode,
+  contextWindowUsage: threadContextWindowUsageSchema.nullable(),
+  extensionStates: threadTimelineWindowFieldsShape.extensionStates,
+  modelFallback: threadTimelineWindowFieldsShape.modelFallback,
   pendingTodos: threadTimelineWindowFieldsShape.pendingTodos,
   providerCommands: threadTimelineWindowFieldsShape.providerCommands,
   sessionOptions: threadTimelineWindowFieldsShape.sessionOptions,

@@ -260,10 +260,12 @@ of a set of threads still exist.
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
-To read only the thread's to-do list, slash commands, or session options, use
+To read a thread's current to-dos, slash commands, session options, extension
+states, plan prompt mode, model fallback, or context usage, use
 `threads.experimental_headState({ threadId })`: it reads their latest stored
 state without building a timeline window, so it stays cheap on threads with
-long turns. `threads.context({ threadId })` does the same for context usage.
+long turns. `threads.timeline`'s `summaryOnly` still builds the whole page and
+is deprecated.
 For raw history, `threads.events.list` defaults to ascending order and supports
 exclusive `afterSeq` / `beforeSeq` cursors, `order: "asc" | "desc"`, and a
 non-empty typed `types` array. Combine `order: "desc"` with `beforeSeq` to page

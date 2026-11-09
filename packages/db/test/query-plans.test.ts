@@ -25,6 +25,7 @@ import {
 import {
   appendDaemonEventsInTransaction,
   getFirstParentedTimelineBoundarySequence,
+  getLatestModelFallbackRowSinceTurnRequest,
   getTimelineGroupingContextChangesInRange,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
@@ -1212,6 +1213,33 @@ describe("slow query index plans", () => {
     expect(
       queryPlanDetails({ db, params: query.params, sql: query.sql }),
     ).toContain("events_plan_steps_thread_sequence_idx");
+
+    db.$client.close();
+  });
+
+  it("seeks the latest model fallback through the type index instead of walking the turn", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        getLatestModelFallbackRowSinceTurnRequest(db, { threadId: thread.id }),
+      ).toBeNull();
+    });
+    const query = captured.find((entry) =>
+      entry.sql.includes("model_refusal_fallback"),
+    );
+    if (!query) {
+      throw new Error("Expected the model fallback SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toContain(
+      "USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>?)",
+    );
+    expect(details).not.toContain("events_thread_sequence_idx");
 
     db.$client.close();
   });

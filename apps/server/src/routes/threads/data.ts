@@ -1,11 +1,8 @@
-import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import {
   getAppSettings,
   getDatabaseDataVersion,
   getThreadPluginMetadata,
   patchThreadPluginMetadata,
-  getLatestCompletedThreadContextClearSequence,
-  listContextWindowUsageRows,
   getLatestThreadSequence,
   getLatestStoredConversationOutlineSequence,
   listQueuedThreadMessages,
@@ -32,17 +29,17 @@ import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import { requireThreadStorageTarget } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
+import { isCompactionOfferEnabled } from "../../services/threads/compaction-offer.js";
 import {
-  isCompactionOfferEnabled,
-  withCompactionOffer,
-} from "../../services/threads/compaction-offer.js";
+  readThreadContextWindowUsage,
+  readThreadHeadState,
+  resolveThreadHeadStateOptions,
+} from "../../services/threads/thread-head-state.js";
 import {
-  toThreadEventWithMeta,
   buildThreadConversationOutlineProjectionKey,
   getThreadMessage,
   buildTimelineTurnSummaryDetails,
   loadThreadConversationOutline,
-  readThreadHeadState,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
 } from "../../services/threads/timeline.js";
@@ -216,33 +213,26 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.context, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const sequenceStart =
-      getLatestCompletedThreadContextClearSequence(deps.db, {
-        threadId: thread.id,
-      }) ?? 0;
-    const rows = listContextWindowUsageRows(deps.db, {
-      threadId: thread.id,
-      sequenceStart,
-    });
-    const usage = extractThreadContextWindowUsage(
-      rows.map(toThreadEventWithMeta),
-    );
     return context.json({
-      usage:
-        usage === null
-          ? null
-          : withCompactionOffer(deps.db, {
-              enabled: isCompactionOfferEnabled(deps, thread.providerId),
-              sequenceStart,
-              threadId: thread.id,
-              usage,
-            }),
+      usage: readThreadContextWindowUsage(deps.db, {
+        compactionOfferEnabled: isCompactionOfferEnabled(
+          deps,
+          thread.providerId,
+        ),
+        threadId: thread.id,
+      }),
     });
   });
 
   get(routes.headState, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(readThreadHeadState(deps.db, thread));
+    return context.json(
+      readThreadHeadState(
+        deps.db,
+        thread,
+        resolveThreadHeadStateOptions(deps, thread.providerId),
+      ),
+    );
   });
 
   get(routes.timeline, (context, query) => {

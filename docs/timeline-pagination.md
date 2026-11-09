@@ -87,11 +87,10 @@ the same snapshot. Updates share the page byte budget
 with the returned rows. Updates that do not fit the remaining budget, and leaves
 omitted by a content cut, still count toward `olderRowsSourceSeqEnd`.
 
-`summaryOnly=true` returns head state without timeline rows or older-row updates.
-It still selects and projects the latest page. Callers that need only the
-to-do list, provider commands, or session options read
-`GET /threads/:id/head-state` instead, which decodes only the latest state
-events (`readThreadHeadState`).
+`summaryOnly=true` returns the latest page's fields without timeline rows or
+older-row updates. It still selects and projects the whole latest page, so it
+is deprecated in the SDK. Read head state from `GET /threads/:id/head-state`
+instead.
 
 `completedTurnDisplay` reports whether the page projected finished turns as
 collapsed "Worked for" rows or flat rows. It is part of the display surface: a
@@ -124,9 +123,14 @@ The 4 MiB response target and event setting determine content-page boundaries
 after grouping. At least one indivisible row is returned, even if it exceeds
 the target. Complete-group queries and grouping work can exceed those budgets.
 
-Latest plan/todo and goal snapshots are head state, returned even when they
-fall outside the selected rows; they do not widen the page. The client merge
-guard describes omitted conversation rows, not head-state rows.
+Head state is the thread's current to-dos, provider commands, session options,
+extension states (such as goals), plan prompt mode, model fallback, and context
+usage. `readThreadHeadState` reads each from its latest stored state events, so
+its cost does not grow with the page or the turn. The latest page embeds that
+result; it is not derived from the selected rows and does not widen the page.
+`GET /threads/:id/head-state` returns the same values without building a page.
+Active thinking, active workflows, and active background commands are not head
+state: they come from projecting the latest page.
 
 `GET /api/v1/threads/:id/timeline/turn-summary-details` and
 `sdk.threads.timelineTurnSummaryDetails` retain the existing `turnId`,

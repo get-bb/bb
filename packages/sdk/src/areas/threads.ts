@@ -444,9 +444,18 @@ export interface ThreadEventWaitArgs {
   waitMs: string;
 }
 
-export interface ThreadTimelineArgs extends ThreadTimelineQuery {
+export interface ThreadTimelineArgs extends Omit<
+  ThreadTimelineQuery,
+  "summaryOnly"
+> {
   signal?: AbortSignal;
   threadId: string;
+  /**
+   * @deprecated Still builds the whole latest page and only drops its rows.
+   * Read `threads.experimental_headState` for to-dos, commands, session
+   * options, extension states, prompt mode, model fallback, and context usage.
+   */
+  summaryOnly?: ThreadTimelineQuery["summaryOnly"];
 }
 
 export interface ThreadOutputArgs {
@@ -740,10 +749,12 @@ export interface ThreadsArea {
   tabs: ThreadTabsArea;
   context(args: ThreadStatusArgs): Promise<ThreadContextResult>;
   /**
-   * The thread's to-do list, provider slash commands, and session options,
-   * read from their latest stored state events without building a timeline
-   * window. `pendingTodos` is null unless the thread is active.
-   * Experimental: see docs/api_to_audit.md.
+   * The thread's head state: to-dos, provider slash commands, session options,
+   * extension states, plan prompt mode, model fallback, and context usage, as
+   * of its latest event. Read from the latest stored state events without
+   * building a timeline window; the latest timeline page embeds the same
+   * values. `pendingTodos` and `activePromptMode` are null unless the thread
+   * is active. Experimental: see docs/api_to_audit.md.
    */
   experimental_headState(
     args: ThreadStatusArgs,

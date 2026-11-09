@@ -4,8 +4,6 @@ import type { ThreadTimelineBuildProfile } from "../../../src/services/threads/t
 
 const SLOW_PROFILE: ThreadTimelineBuildProfile = {
   compactedEventCount: 0,
-  contextWindowEventDataBytes: 0,
-  contextWindowEventRowCount: 0,
   decodedEventCount: 7_496,
   eventDataBytes: 11_500_000,
   eventRowCount: 7_496,

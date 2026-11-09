@@ -21,7 +21,6 @@ import {
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import type { ThreadTimelineSubscriber } from "../../ws/hub.js";
-import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { observeTimelinePushTrace } from "../system/turn-trace.js";
 import {
   buildThreadTimelineWithProfile,
@@ -40,7 +39,7 @@ import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
 import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
-import { isCompactionOfferEnabled } from "./compaction-offer.js";
+import { resolveThreadHeadStateOptions } from "./thread-head-state.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -150,20 +149,13 @@ export function createThreadTimelineWindows(
     );
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const surfaceOptions = {
-      compactionOfferEnabled: isCompactionOfferEnabled(deps, thread.providerId),
+      ...resolveThreadHeadStateOptions(deps, thread.providerId),
       completedTurnDisplay,
       deferContent: request.deferContent,
       includeClearedContextHistory,
       includeDiagnosticOperations,
       includeNestedRows: request.includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      planCommand: resolveProviderPlanCommand(
-        deps.providerRegistry,
-        thread.providerId,
-      ),
-      extensionStateKinds: Object.entries(
-        deps.providerRegistry.get(thread.providerId)?.info.extensionKinds ?? {},
-      ).flatMap(([kind, declared]) => (declared.state ? [kind] : [])),
       providerDisplayName,
       summarizeShellCommands: settings.summarizeShellCommands,
     };

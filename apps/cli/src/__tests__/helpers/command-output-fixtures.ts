@@ -60,6 +60,10 @@ export function makeTimelineBase(args: TimelineBaseArgs): TimelineRowBase {
 
 export function makeEmptyHeadStateGetMock() {
   return vi.fn(async (): Promise<ThreadHeadStateResponse> => ({
+    activePromptMode: null,
+    contextWindowUsage: null,
+    extensionStates: {},
+    modelFallback: null,
     pendingTodos: null,
     providerCommands: null,
     sessionOptions: null,

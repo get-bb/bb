@@ -104,7 +104,15 @@ describe("fetchThreadPendingTodos", () => {
   function makeHeadStateResponse(
     pendingTodos: ThreadTimelinePendingTodos | null,
   ): ThreadHeadStateResponse {
-    return { pendingTodos, providerCommands: null, sessionOptions: null };
+    return {
+      activePromptMode: null,
+      contextWindowUsage: null,
+      extensionStates: {},
+      modelFallback: null,
+      pendingTodos,
+      providerCommands: null,
+      sessionOptions: null,
+    };
   }
 
   interface SdkOverHttpBoundary {

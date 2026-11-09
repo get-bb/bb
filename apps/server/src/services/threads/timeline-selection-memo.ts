@@ -35,7 +35,6 @@ export interface TimelineEventRowSelection {
   hasOlderSegments: boolean;
   paginationPage: ThreadTimelinePageRequest;
   rows: StoredEventRow[];
-  headStateRows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
 }
 
@@ -55,7 +54,6 @@ export interface LatestTimelineSelectionMemoArgs {
   epochSequenceStart: number;
   eventBudget: number;
   excludeDiagnosticEvents: boolean;
-  extensionStateKinds: readonly string[];
   maxInlineOutputChars: number;
   maxSeq: number;
   page: ThreadTimelinePageRequest;
@@ -268,7 +266,6 @@ function selectionMemoFamilyKey(args: LatestTimelineSelectionMemoArgs): string {
     args.maxInlineOutputChars,
     args.excludeDiagnosticEvents,
     args.epochSequenceStart,
-    args.extensionStateKinds,
   ]);
 }
 
@@ -1005,9 +1002,7 @@ export function rememberLatestTimelineSelection(
     appendableTurnIds: result.fetchedTurnIds,
     delegatingItemIds: collectDelegatingItemIds(result.selection.rows),
     missingParentToolCallIds: new Set(),
-    dataChars:
-      dataCharsOfRows(result.selection.rows) +
-      dataCharsOfRows(result.selection.headStateRows),
+    dataChars: dataCharsOfRows(result.selection.rows),
     dataVersion: lookup.dataVersion,
     epochSequenceStart: args.epochSequenceStart,
     familyKey: selectionMemoFamilyKey(args),
