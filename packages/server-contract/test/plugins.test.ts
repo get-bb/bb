@@ -74,6 +74,97 @@ describe("plugin contracts", () => {
     ).toBe(false);
   });
 
+  const issuesForLink = (link: unknown) => {
+    const result = pluginSettingDescriptorSchema.safeParse({
+      type: "string",
+      label: "API key",
+      experimental_link: link,
+    });
+    return result.success ? [] : result.error.issues;
+  };
+
+  it("allows only http and https in experimental_link urls", () => {
+    for (const url of [
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "file:///etc/passwd",
+      "vbscript:msgbox(1)",
+      "//evil.com",
+      "https://getbb.app@evil.example/keys",
+    ]) {
+      expect(issuesForLink({ url }).length, url).toBeGreaterThan(0);
+    }
+    for (const url of ["http://example.com/a", "https://example.com/a"]) {
+      expect(issuesForLink({ url }), url).toEqual([]);
+    }
+  });
+
+  it("reports why an experimental_link url failed", () => {
+    const urlIssues = (url: string) =>
+      issuesForLink({ url }).map((issue) => ({
+        code: issue.code,
+        path: issue.path,
+      }));
+    expect(urlIssues("javascript:alert(1)")).toContainEqual({
+      code: "invalid_format",
+      path: ["experimental_link", "url"],
+    });
+    expect(
+      urlIssues(`https://${["user", "pw"].join(":")}@example.com/`),
+    ).toEqual([{ code: "custom", path: ["experimental_link", "url"] }]);
+    expect(urlIssues(`https://example.com/${"a".repeat(2100)}`)).toEqual([
+      { code: "too_big", path: ["experimental_link", "url"] },
+    ]);
+    expect(
+      issuesForLink({ url: "https://example.com", target: "_blank" }).map(
+        (issue) => issue.code,
+      ),
+    ).toEqual(["unrecognized_keys"]);
+    expect(issuesForLink({ url: "https://example.com/a" })).toEqual([]);
+  });
+
+  it("bounds and de-spoofs the experimental_link label", () => {
+    const labelCodes = (label: string) =>
+      issuesForLink({ url: "https://example.com", label }).map(
+        (issue) => issue.code,
+      );
+    expect(labelCodes("x".repeat(200_000))).toEqual(["too_big"]);
+    expect(labelCodes("Open \u202eelpmas")).toEqual(["invalid_format"]);
+    expect(labelCodes("Open dashboard")).toEqual([]);
+    expect(labelCodes("Docs \ud83d\udcda")).toEqual([]);
+  });
+
+  it("refuses experimental_link on a secret setting", () => {
+    const result = pluginSettingDescriptorSchema.safeParse({
+      type: "string",
+      label: "Key",
+      secret: true,
+      experimental_link: { url: "https://example.com" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toMatchObject([
+      {
+        code: "custom",
+        message: "a secret setting cannot be experimental_link",
+        path: ["experimental_link"],
+      },
+    ]);
+    expect(
+      pluginSettingDescriptorSchema.safeParse({
+        type: "string",
+        label: "Key",
+        experimental_link: { url: "https://example.com" },
+      }).success,
+    ).toBe(true);
+    expect(
+      pluginSettingDescriptorSchema.safeParse({
+        type: "string",
+        label: "Key",
+        secret: true,
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts catalog install coordinates without marketplace nesting", () => {
     expect(
       pluginCatalogInstallRequestSchema.parse({

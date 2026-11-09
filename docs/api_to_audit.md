@@ -1090,6 +1090,14 @@ Docs: `backend-foundation.md`.
    `experimental_multiline`: the strict client schema makes every new
    presentation hint a client release. A plugin shipping this against an older
    client fails the whole settings view rather than dropping to plain text.
+4. **CLI.** `bb plugin config <id>` neither parses nor prints the link. Its
+   local `pluginSettingDescriptorSchema`
+   (`apps/cli/src/commands/plugin.ts:132-140`) has no `experimental_link`
+   field, so parsing the settings response at `:145` drops it, and
+   `printSettings` (`:788-819`) prints the type, the `secret` marker, the
+   options and the `label`/`description` text, but never the link. That is
+   deliberate for now; the consequence is that terminal output for a linked
+   setting is indistinguishable from one without a link.
 
 ## `bb.sdk.threads.experimental_listPluginMetadata`
 

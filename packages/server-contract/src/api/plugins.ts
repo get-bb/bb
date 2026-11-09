@@ -4,6 +4,7 @@ import {
   pluginMarketplaceCategorySchema,
   pluginMarketplaceCollectionIdSchema,
   pluginMarketplaceCollectionPluginIdSchema,
+  pluginSettingLinkSchema,
 } from "@bb/domain";
 import { z } from "zod";
 
@@ -392,14 +393,7 @@ export type PluginReloadResponse = z.infer<typeof pluginReloadResponseSchema>;
 export const pluginRemoveResponseSchema = z.object({ ok: z.literal(true) });
 export type PluginRemoveResponse = z.infer<typeof pluginRemoveResponseSchema>;
 
-/**
- * An opt-in, schema-validated link rendered beside a setting's description.
- * Deliberately not markdown or autolinking: rendering an anchor on
- * user-visible settings text stays explicit and auditable.
- */
-export const pluginSettingExperimentalLinkSchema = z
-  .object({ url: z.string().url(), label: z.string().min(1).optional() })
-  .strict();
+export const pluginSettingExperimentalLinkSchema = pluginSettingLinkSchema;
 export type PluginSettingExperimentalLink = z.infer<
   typeof pluginSettingExperimentalLinkSchema
 >;
@@ -419,7 +413,15 @@ export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
       experimental_multiline: z.boolean().optional(),
       default: z.string().optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (descriptor) =>
+        !(descriptor.secret === true && descriptor.experimental_link),
+      {
+        message: "a secret setting cannot be experimental_link",
+        path: ["experimental_link"],
+      },
+    ),
   z
     .object({
       ...pluginSettingBaseSchema,
