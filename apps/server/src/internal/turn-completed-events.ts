@@ -40,7 +40,7 @@ interface DeferredTurnCompletion {
   lifecycleEvent: ThreadLifecycleEvent;
 }
 
-const inFlightSteerCountByThreadId = new Map<string, number>();
+const inFlightTurnRequestCountByThreadId = new Map<string, number>();
 const deferredTurnCompletionByThreadId = new Map<
   string,
   DeferredTurnCompletion
@@ -104,7 +104,7 @@ export function applyTurnCompletedEvent(
 ): TurnCompletedTransition {
   rejectUnconfirmedSteersAfterTurnCompleted(deps, payload.threadId);
   const lifecycleEvent = lifecycleEventForTurnCompletion(payload.status);
-  if (inFlightSteerCountByThreadId.has(payload.threadId)) {
+  if (inFlightTurnRequestCountByThreadId.has(payload.threadId)) {
     deferredTurnCompletionByThreadId.set(payload.threadId, {
       afterIdle,
       lifecycleEvent,
@@ -117,23 +117,23 @@ export function applyTurnCompletedEvent(
   };
 }
 
-export function trackInFlightSteer(threadId: string): void {
-  inFlightSteerCountByThreadId.set(
+export function trackInFlightTurnRequest(threadId: string): void {
+  inFlightTurnRequestCountByThreadId.set(
     threadId,
-    (inFlightSteerCountByThreadId.get(threadId) ?? 0) + 1,
+    (inFlightTurnRequestCountByThreadId.get(threadId) ?? 0) + 1,
   );
 }
 
-export async function settleInFlightSteer(
+export async function settleInFlightTurnRequest(
   deps: TurnCompletionDeps,
   threadId: string,
 ): Promise<void> {
-  const count = inFlightSteerCountByThreadId.get(threadId) ?? 0;
+  const count = inFlightTurnRequestCountByThreadId.get(threadId) ?? 0;
   if (count > 1) {
-    inFlightSteerCountByThreadId.set(threadId, count - 1);
+    inFlightTurnRequestCountByThreadId.set(threadId, count - 1);
     return;
   }
-  inFlightSteerCountByThreadId.delete(threadId);
+  inFlightTurnRequestCountByThreadId.delete(threadId);
   const completion = deferredTurnCompletionByThreadId.get(threadId);
   if (completion === undefined) {
     return;

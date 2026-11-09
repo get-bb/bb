@@ -108,8 +108,8 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import {
-  settleInFlightSteer,
-  trackInFlightSteer,
+  settleInFlightTurnRequest,
+  trackInFlightTurnRequest,
 } from "../../internal/turn-completed-events.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
@@ -1021,7 +1021,7 @@ function redeliverStaleSteer(
     postCommitActions: [
       {
         run: (deps) => {
-          trackInFlightSteer(command.threadId);
+          trackInFlightTurnRequest(command.threadId);
           startLiveHostCommand(deps, {
             command: {
               ...command,
@@ -1035,7 +1035,7 @@ function redeliverStaleSteer(
                 "Live turn submit command failed",
               );
             },
-            onSettled: () => settleInFlightSteer(deps, command.threadId),
+            onSettled: () => settleInFlightTurnRequest(deps, command.threadId),
           });
         },
       },
