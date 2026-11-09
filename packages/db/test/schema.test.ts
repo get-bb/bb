@@ -1,5 +1,6 @@
 import { createMigratedConnection } from "../src/testing.js";
 import { eq } from "drizzle-orm";
+import { getTableConfig, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import {
   createEnvironmentId,
@@ -24,6 +25,7 @@ import {
   threadDynamicContextFileStates,
   threads,
 } from "../src/index.js";
+import * as schema from "../src/schema.js";
 
 interface ColumnNameRow {
   name: string;
@@ -39,7 +41,35 @@ interface TableColumnRow {
   name: string;
 }
 
+interface IndexNameRow {
+  name: string;
+}
+
+function declaredIndexNames(): string[] {
+  return Object.values(schema)
+    .filter((value) => value instanceof SQLiteTable)
+    .flatMap((table) =>
+      getTableConfig(table).indexes.map((index) => index.config.name),
+    )
+    .sort();
+}
+
 describe("db rebuild schema", () => {
+  it("declares every index a migrated database has", () => {
+    const db = createMigratedConnection();
+
+    const migratedIndexNames = db.$client
+      .prepare<[], IndexNameRow>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name",
+      )
+      .all()
+      .map((index) => index.name);
+
+    expect(migratedIndexNames).toEqual(declaredIndexNames());
+
+    closeConnection(db);
+  });
+
   it("does not retain the derived host daemon heartbeat column", () => {
     const db = createMigratedConnection();
 
