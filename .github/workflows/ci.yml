@@ -97,6 +97,27 @@ jobs:
           const candidate = readFileSync(join(process.env.RUNNER_TEMP, 'sdk-evidence/candidate.d.ts'));
           console.log('Declarations byte identical:', baseline.equals(candidate), 'bytes:', baseline.length, candidate.length);
           NODE
+      - name: Compare existing TypeScript pre-emission
+        shell: bash
+        run: |
+          cp "$RUNNER_TEMP/sdk-evidence/baseline.mjs" packages/bb-app/scripts/build-public-sdk-dts.mjs
+          node --input-type=module - <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const file = 'packages/bb-app/scripts/build-public-sdk-dts.mjs';
+          let text = readFileSync(file, 'utf8');
+          text = text.replace('new URL("./bin/tsrs", import.meta.resolve("tsrs/package.json"))', 'new URL("./bin/tsc", import.meta.resolve("typescript/package.json"))');
+          text = text.replace('const supportsNativeCompiler =', 'const supportsNativeCompiler = process.platform === "win32" ||');
+          writeFileSync(file, text);
+          NODE
+          for trial in 1 2 3; do
+            time node packages/bb-app/scripts/build-public-sdk-dts.mjs
+            cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/tsc-$trial.d.ts"
+          done
+          cp "$RUNNER_TEMP/sdk-evidence/baseline.mjs" packages/bb-app/scripts/build-public-sdk-dts.mjs
+          for trial in 1 2 3; do
+            time node packages/bb-app/scripts/build-public-sdk-dts.mjs
+            cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/source-$trial.d.ts"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
