@@ -4,7 +4,8 @@ import {
   listProviderLifecycleEnvironments,
   releaseFinishedEnvironmentPreparationOwners,
 } from "../src/data/environments.js";
-import { describe, expect, it } from "vitest";
+import { performance } from "node:perf_hooks";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -275,6 +276,10 @@ function expectNoThreadOnlyEventSeek(details: string): void {
 }
 
 describe("slow query index plans", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("checks spawn-agent history without reading unrelated event payloads", () => {
     const { db, thread } = setup();
     try {
@@ -1620,6 +1625,7 @@ describe("slow query index plans", () => {
             type: sequence === 3 ? "item/completed" : deltaType,
           })),
         );
+        vi.spyOn(performance, "now").mockReturnValue(0);
         const statements = captureStatements(db, () => {
           expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
         });
@@ -2141,6 +2147,7 @@ describe("slow query index plans", () => {
     ]);
     logger.clear();
 
+    vi.spyOn(performance, "now").mockReturnValue(0);
     const statements = captureStatements(db, () => {
       expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
     });

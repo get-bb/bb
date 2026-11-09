@@ -2,7 +2,8 @@ import { markThreadPruningWork } from "../../src/data/thread-pruning-work.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { performance } from "node:perf_hooks";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { createConnection } from "../../src/connection.js";
 import { events, threadPruningCursors, threadPruningWork, threads } from "../../src/schema.js";
@@ -90,6 +91,14 @@ function sequences(f: Fixture) {
 }
 
 describe("thread pruning", () => {
+  beforeEach(() => {
+    vi.spyOn(performance, "now").mockReturnValue(0);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("queues archive changes for every owned thread and rolls them back together", () => {
     const f = setup();
     try {
