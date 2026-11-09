@@ -243,31 +243,7 @@ type AcpDeferredStartEmitter = (
   rawUpdate?: unknown,
 ) => void;
 
-type ForkHandoffSession = {
-  session: AcpThreadSession;
-  providerThreadId?: string;
-  pending: Array<{ method: string; params: unknown }>;
-};
-
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
-const forkHandoffSessions = new Map<AcpAgentConnection, ForkHandoffSession>();
-const forkHandoffLocks = new Map<AcpAgentConnection, Promise<unknown>>();
-
-async function withForkHandoffLock<T>(
-  connection: AcpAgentConnection,
-  work: () => Promise<T>,
-): Promise<T> {
-  const previous = forkHandoffLocks.get(connection) ?? Promise.resolve();
-  const result = previous.catch(() => {}).then(work);
-  const settled = result.finally(() => {
-    if (forkHandoffLocks.get(connection) === settled) {
-      forkHandoffLocks.delete(connection);
-    }
-  });
-  forkHandoffLocks.set(connection, settled);
-  return settled;
-}
-
 const agentConnections = new Set<AcpAgentConnection>();
 let shuttingDown = false;
 
@@ -2388,7 +2364,7 @@ async function startAgentSession(
     ],
     onResponse: (method, result) => noteAgentResponse(session, method, result),
     onNotification: (method, notificationParams) =>
-      routeAgentNotification(session, method, notificationParams),
+      handleAgentNotification(session, method, notificationParams),
     onRequest: (method, requestParams, responder) =>
       handleAgentRequest(session, method, requestParams, responder),
     onExit: (info) => {
@@ -2497,102 +2473,62 @@ async function startAgentSession(
     let createdFreshSession = false;
     let forkHandoffProviderThreadId: string | undefined;
     if (request.kind === "fork") {
-      const source = getSessionByProviderThreadId(request.sourceProviderThreadId);
-      const useSourceHandoff =
+      const source = getSessionByProviderThreadId(
+        request.sourceProviderThreadId,
+      );
+      const handoffSource =
         source !== undefined &&
         !source.stopping &&
         !source.connection.exited &&
         source.capabilities?.session.fork === true &&
-        source.capabilities?.session.close === true &&
-        (capabilities.session.resume || supportsLoadSession);
-      const forkConnection = useSourceHandoff ? source.connection : connection;
-      const notificationHandoff: ForkHandoffSession | undefined =
-        useSourceHandoff ? { session, pending: [] } : undefined;
-      await withForkHandoffLock(forkConnection, async () => {
-        if (notificationHandoff !== undefined) {
-          forkHandoffSessions.set(forkConnection, notificationHandoff);
-        }
-        try {
-        const forkedSession = await forkConnection.request({
-          method: "session/fork",
-          params: {
-            sessionId: request.sourceProviderThreadId,
-            cwd: params.cwd,
-            mcpServers,
-            ...additionalSessionDirectories(params, capabilities),
-          },
-          resultSchema: acpSessionForkResultSchema,
-          timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
-          ...(notificationHandoff === undefined
-            ? {}
-            : {
-                onResponse: (method, result) => {
-                  const sessionId = isJsonObject(result)
-                    ? result.sessionId
-                    : undefined;
-                  if (typeof sessionId === "string") {
-                    notificationHandoff.providerThreadId = sessionId;
-                  }
-                  noteAgentResponse(session, method, result);
-                  if (typeof sessionId === "string") {
-                    for (const pending of notificationHandoff.pending) {
-                      if (
-                        isJsonObject(pending.params) &&
-                        pending.params.sessionId === sessionId
-                      ) {
-                        handleAgentNotification(
-                          session,
-                          pending.method,
-                          pending.params,
-                        );
-                      }
-                    }
-                    notificationHandoff.pending.length = 0;
-                  }
-                },
-              }),
-        });
-        if (
-          forkedSession.sessionId === request.sourceProviderThreadId ||
-          getSessionByProviderThreadId(forkedSession.sessionId) !== undefined
-        ) {
-          throw new Error(
-            `ACP agent "${agentLabel}" returned an active session ID for session/fork.`,
-          );
-        }
-        if (useSourceHandoff) {
-          forkHandoffProviderThreadId = forkedSession.sessionId;
-          loadedConfigOptions = forkedSession.configOptions;
-          loadedModels = forkedSession.models;
-          await source.connection.request({
-            method: "session/close",
-            params: { sessionId: forkedSession.sessionId },
-            resultSchema: z.unknown(),
-            timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
-          });
-        } else {
-          sessionId = forkedSession.sessionId;
-          loadedConfigOptions = forkedSession.configOptions;
-          loadedModels = forkedSession.models;
-          rememberGrokContextWindow(session, forkedSession.models);
-        }
-        } finally {
-          if (notificationHandoff !== undefined) {
-            forkHandoffSessions.delete(forkConnection);
-          }
-        }
+        source.capabilities.session.close === true &&
+        (capabilities.session.resume || supportsLoadSession)
+          ? source
+          : undefined;
+      const forkedSession = await (
+        handoffSource?.connection ?? connection
+      ).request({
+        method: "session/fork",
+        params: {
+          sessionId: request.sourceProviderThreadId,
+          cwd: params.cwd,
+          mcpServers: handoffSource === undefined ? mcpServers : [],
+          ...additionalSessionDirectories(params, capabilities),
+        },
+        resultSchema: acpSessionForkResultSchema,
+        timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
       });
+      if (
+        forkedSession.sessionId === request.sourceProviderThreadId ||
+        getSessionByProviderThreadId(forkedSession.sessionId) !== undefined
+      ) {
+        throw new Error(
+          `ACP agent "${agentLabel}" returned an active session ID for session/fork.`,
+        );
+      }
+      loadedConfigOptions = forkedSession.configOptions;
+      loadedModels = forkedSession.models;
+      if (handoffSource === undefined) {
+        sessionId = forkedSession.sessionId;
+        rememberGrokContextWindow(session, forkedSession.models);
+      } else {
+        forkHandoffProviderThreadId = forkedSession.sessionId;
+        await handoffSource.connection.request({
+          method: "session/close",
+          params: { sessionId: forkedSession.sessionId },
+          resultSchema: z.unknown(),
+          timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
+        });
+      }
     }
+    const resumeProviderThreadId =
+      request.kind === "resume"
+        ? request.resumeProviderThreadId
+        : forkHandoffProviderThreadId;
     if (
-      request.kind === "fork"
-        ? forkHandoffProviderThreadId !== undefined
-        : request.kind === "resume" &&
-          (capabilities.session.resume || supportsLoadSession)
+      resumeProviderThreadId !== undefined &&
+      (capabilities.session.resume || supportsLoadSession)
     ) {
-      const resumeProviderThreadId =
-        request.kind === "resume"
-          ? request.resumeProviderThreadId
-          : forkHandoffProviderThreadId!;
       const restoreMethod = capabilities.session.resume
         ? "session/resume"
         : "session/load";
@@ -3010,11 +2946,7 @@ function noteAgentResponse(
     case "session/load":
     case "session/resume":
     case "session/fork":
-      if (
-        !("configOptions" in result) &&
-        !("models" in result) &&
-        !("modes" in result)
-      ) {
+      if (session.providerThreadId !== "") {
         return;
       }
       publishSessionStateEvents(
@@ -3611,27 +3543,6 @@ function handleDialectRequest(
     );
   }
   responder.result(outcome.result);
-}
-
-function routeAgentNotification(
-  session: AcpThreadSession,
-  method: string,
-  params: unknown,
-): void {
-  const handoff = forkHandoffSessions.get(session.connection);
-  if (handoff !== undefined && isJsonObject(params)) {
-    const sessionId = params["sessionId"];
-    if (handoff.providerThreadId === undefined) {
-      if (sessionId !== session.providerThreadId) {
-        handoff.pending.push({ method, params });
-        return;
-      }
-    } else if (sessionId === handoff.providerThreadId) {
-      handleAgentNotification(handoff.session, method, params);
-      return;
-    }
-  }
-  handleAgentNotification(session, method, params);
 }
 
 function handleAgentNotification(

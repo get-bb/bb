@@ -382,9 +382,12 @@ function extensionStatePayloadsFor(
   extensionKind: string,
 ): unknown[] {
   return messagesForThread(threadId).flatMap((message) => {
-    const deltas = (message.params as {
-      deltas?: Array<Record<string, unknown>>;
-    }).deltas ?? [];
+    const deltas =
+      (
+        message.params as {
+          deltas?: Array<Record<string, unknown>>;
+        }
+      ).deltas ?? [];
     return deltas
       .filter(
         (delta) =>
@@ -4167,8 +4170,12 @@ describe("acp bridge", () => {
     expect(response.error).toBeUndefined();
     expect(providerThreadIdOf(response)).not.toBe(source.providerThreadId);
     const requests = loggedAcpRequests(requestLog);
-    expect(requests.filter((request) => request.method === "session/fork")).toHaveLength(1);
-    expect(requests.filter((request) => request.method === "session/close")).toHaveLength(0);
+    expect(
+      requests.filter((request) => request.method === "session/fork"),
+    ).toHaveLength(1);
+    expect(
+      requests.filter((request) => request.method === "session/close"),
+    ).toHaveLength(0);
   });
 
   it("preserves source session options for an ID-only fork response", async () => {
@@ -4190,44 +4197,13 @@ describe("acp bridge", () => {
       sourceProviderThreadId: source.providerThreadId,
     });
     expect((await waitForResponse(forkId)).error).toBeUndefined();
-    expect(extensionStatePayloadsFor(source.bbThreadId, "bb/session-options").at(-1))
-      .toMatchObject({
-        options: expect.arrayContaining([
-          expect.objectContaining({ id: "approach" }),
-        ]),
-      });
-  });
-
-  it("routes fork setup state and notifications to the destination", async () => {
-    const forkThreadId = "thread-destination-fork-state";
-    const envVars = {
-      FAKE_ACP_FORK_SESSION: "1",
-      FAKE_ACP_RESUME_SESSION: "1",
-      FAKE_ACP_CLOSE_SESSION: "1",
-      FAKE_ACP_SESSION_OPTIONS: "1",
-      FAKE_ACP_RESUME_ID_ONLY: "1",
-      FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE: "1",
-    };
-    const source = await startThread({ envVars });
-    const forkId = sendRequest("thread/fork", {
-      threadId: forkThreadId,
-      cwd: workspaceDir,
-      instructionMode: "append",
-      options: executionOptions({
-        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
-      }),
-      sourceProviderThreadId: source.providerThreadId,
+    expect(
+      extensionStatePayloadsFor(source.bbThreadId, "bb/session-options").at(-1),
+    ).toMatchObject({
+      options: expect.arrayContaining([
+        expect.objectContaining({ id: "approach" }),
+      ]),
     });
-    expect((await waitForResponse(forkId)).error).toBeUndefined();
-    expect(extensionStatePayloadsFor(forkThreadId, "bb/session-options").at(-1))
-      .toMatchObject({
-        options: expect.arrayContaining([
-          expect.objectContaining({ id: "approach" }),
-        ]),
-      });
-    expect(contextWindowDeltasFor(forkThreadId)).toEqual([
-      { used: 12_345, size: 200_000 },
-    ]);
   });
 
   it("uses the target fork path when the source lacks fork support", async () => {
@@ -4275,68 +4251,17 @@ describe("acp bridge", () => {
       sourceProviderThreadId: source.providerThreadId,
     });
     expect((await waitForResponse(forkId)).error).toBeUndefined();
-    const forkedProviderThreadId = providerThreadIdOf(await waitForResponse(forkId));
+    const forkedProviderThreadId = providerThreadIdOf(
+      await waitForResponse(forkId),
+    );
     bbThreadIdByProviderThreadId.set(forkedProviderThreadId, forkThreadId);
     await expect(
-      completeTurnWith(forkedProviderThreadId, "echo-selected-model", executionOptions({})),
+      completeTurnWith(
+        forkedProviderThreadId,
+        "echo-selected-model",
+        executionOptions({}),
+      ),
     ).resolves.toBe("selected-model:fake/strong");
-  });
-
-  it("applies modes-only setup and subsequent legacy mode updates", async () => {
-    const { bbThreadId, providerThreadId } = await startThread({
-      envVars: { FAKE_ACP_LEGACY_MODES: "1" },
-    });
-    expect(extensionStatePayloadsFor(bbThreadId, "bb/session-options").at(-1))
-      .toMatchObject({
-        options: expect.arrayContaining([
-          expect.objectContaining({ id: "_bb/legacy-mode" }),
-        ]),
-      });
-    await completeTurnWith(providerThreadId, "switch-legacy-mode", {
-      ...executionOptions({}),
-      sessionOptions: { "_bb/legacy-mode": "plan" },
-    });
-    expect(extensionStatePayloadsFor(bbThreadId, "bb/session-options").at(-1))
-      .toMatchObject({
-        options: expect.arrayContaining([
-          expect.objectContaining({ id: "_bb/legacy-mode", value: "plan" }),
-        ]),
-      });
-  });
-
-  it("isolates setup notifications for concurrent handoffs on one source", async () => {
-    const envVars = {
-      FAKE_ACP_FORK_SESSION: "1",
-      FAKE_ACP_RESUME_SESSION: "1",
-      FAKE_ACP_CLOSE_SESSION: "1",
-      FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE: "1",
-      FAKE_ACP_FORK_DELAY_MS: "40",
-    };
-    const source = await startThread({ envVars });
-    const requestFork = (threadId: string) =>
-      sendRequest("thread/fork", {
-        threadId,
-        cwd: workspaceDir,
-        instructionMode: "append",
-        options: executionOptions({
-          providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
-        }),
-        sourceProviderThreadId: source.providerThreadId,
-      });
-    const firstId = requestFork("thread-concurrent-fork-a");
-    const secondId = requestFork("thread-concurrent-fork-b");
-    const [first, second] = await Promise.all([
-      waitForResponse(firstId),
-      waitForResponse(secondId),
-    ]);
-    expect(first.error).toBeUndefined();
-    expect(second.error).toBeUndefined();
-    expect(contextWindowDeltasFor("thread-concurrent-fork-a")).toEqual([
-      { used: 12_345, size: 200_000 },
-    ]);
-    expect(contextWindowDeltasFor("thread-concurrent-fork-b")).toEqual([
-      { used: 12_345, size: 200_000 },
-    ]);
   });
 
   it("hands a live source fork to a new ACP process through close and resume", async () => {
@@ -4363,15 +4288,27 @@ describe("acp bridge", () => {
     expect(forkedProviderThreadId).not.toBe(source.providerThreadId);
 
     const requests = loggedAcpRequests(requestLog);
-    const forkIndex = requests.findIndex((request) => request.method === "session/fork");
-    const closeIndex = requests.findIndex((request) => request.method === "session/close");
-    const resumeIndex = requests.findIndex((request) => request.method === "session/resume");
+    const forkIndex = requests.findIndex(
+      (request) => request.method === "session/fork",
+    );
+    const closeIndex = requests.findIndex(
+      (request) => request.method === "session/close",
+    );
+    const resumeIndex = requests.findIndex(
+      (request) => request.method === "session/resume",
+    );
     expect(forkIndex).toBeGreaterThan(-1);
     expect(closeIndex).toBeGreaterThan(forkIndex);
     expect(resumeIndex).toBeGreaterThan(closeIndex);
-    expect(requests.filter((request) => request.method === "session/fork")).toHaveLength(1);
-    expect(requests[closeIndex]?.params).toMatchObject({ sessionId: forkedProviderThreadId });
-    expect(requests[resumeIndex]?.params).toMatchObject({ sessionId: forkedProviderThreadId });
+    expect(
+      requests.filter((request) => request.method === "session/fork"),
+    ).toHaveLength(1);
+    expect(requests[closeIndex]?.params).toMatchObject({
+      sessionId: forkedProviderThreadId,
+    });
+    expect(requests[resumeIndex]?.params).toMatchObject({
+      sessionId: forkedProviderThreadId,
+    });
   });
 
   it("forks an advertised ACP session with the target cwd and MCP servers", async () => {
