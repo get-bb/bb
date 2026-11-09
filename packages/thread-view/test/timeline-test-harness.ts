@@ -1520,6 +1520,7 @@ export function renderTimelineFixture(
     options: {
       ...commonProjectionOptions,
       includeNestedRows,
+      omitSettledDelegationChildRows: false,
     },
   });
   const rows = timeline.rows;

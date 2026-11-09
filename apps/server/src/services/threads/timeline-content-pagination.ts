@@ -17,6 +17,57 @@ function children(row: TimelineRow): readonly TimelineRow[] | null {
   return nested?.length ? nested : null;
 }
 
+const rowJsonBytes = new WeakMap<TimelineRow, number>();
+const rowShellJsonBytes = new WeakMap<TimelineRow, number>();
+
+function jsonBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value));
+}
+
+function timelineRowShellJsonBytes(row: TimelineRow): number {
+  let bytes = rowShellJsonBytes.get(row);
+  if (bytes === undefined) {
+    bytes = jsonBytes(withTimelineRowChildren(row, []));
+    rowShellJsonBytes.set(row, bytes);
+  }
+  return bytes;
+}
+
+function timelineRowJsonBytes(row: TimelineRow): number {
+  let bytes = rowJsonBytes.get(row);
+  if (bytes === undefined) {
+    const nested = children(row);
+    bytes =
+      nested === null
+        ? jsonBytes(row)
+        : timelineRowShellJsonBytes(row) + timelineRowsJsonBytes(nested) - 2;
+    rowJsonBytes.set(row, bytes);
+  }
+  return bytes;
+}
+
+export function measuredTimelineRowJsonBytes(row: TimelineRow): number | null {
+  const cached = rowJsonBytes.get(row);
+  if (cached !== undefined) return cached;
+  const nested = children(row);
+  const shell = rowShellJsonBytes.get(row);
+  if (nested === null || shell === undefined) return null;
+  let bytes = shell + nested.length - 1;
+  for (const child of nested) {
+    const childBytes = measuredTimelineRowJsonBytes(child);
+    if (childBytes === null) return null;
+    bytes += childBytes;
+  }
+  rowJsonBytes.set(row, bytes);
+  return bytes;
+}
+
+export function timelineRowsJsonBytes(rows: readonly TimelineRow[]): number {
+  let bytes = 2 + Math.max(0, rows.length - 1);
+  for (const row of rows) bytes += timelineRowJsonBytes(row);
+  return bytes;
+}
+
 export function paginateTimelineContents(
   rows: readonly TimelineRow[],
   before: number | undefined,
@@ -31,13 +82,8 @@ export function paginateTimelineContents(
     for (const row of items) {
       const nested = children(row);
       if (nested === null)
-        costs.push(Buffer.byteLength(JSON.stringify(row)) + ancestorBytes);
-      else
-        measure(
-          nested,
-          ancestorBytes +
-            Buffer.byteLength(JSON.stringify(withTimelineRowChildren(row, []))),
-        );
+        costs.push(timelineRowJsonBytes(row) + ancestorBytes);
+      else measure(nested, ancestorBytes + timelineRowShellJsonBytes(row));
     }
   };
   measure(rows, 0);

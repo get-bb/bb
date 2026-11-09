@@ -766,7 +766,37 @@ function parseThreadTellSegment(
   return { threadId, message };
 }
 
+const THREAD_TELL_CACHE_MAX_ENTRIES = 16_384;
+const THREAD_TELL_CACHE_MAX_COMMAND_CHARS = 8_000_000;
+const threadTellCache = new Map<string, ThreadTellCommand | null>();
+let threadTellCacheCommandChars = 0;
+
 export function parseThreadTellCommand(
+  command: string,
+): ThreadTellCommand | null {
+  const cached = threadTellCache.get(command);
+  if (cached !== undefined) {
+    return cached === null ? null : { ...cached };
+  }
+  const parsed = parseUncachedThreadTellCommand(command);
+  if (command.length <= THREAD_TELL_CACHE_MAX_COMMAND_CHARS) {
+    while (
+      threadTellCache.size >= THREAD_TELL_CACHE_MAX_ENTRIES ||
+      threadTellCacheCommandChars + command.length >
+        THREAD_TELL_CACHE_MAX_COMMAND_CHARS
+    ) {
+      const oldest = threadTellCache.keys().next().value;
+      if (oldest === undefined) break;
+      threadTellCache.delete(oldest);
+      threadTellCacheCommandChars -= oldest.length;
+    }
+    threadTellCache.set(command, parsed);
+    threadTellCacheCommandChars += command.length;
+  }
+  return parsed === null ? null : { ...parsed };
+}
+
+function parseUncachedThreadTellCommand(
   command: string,
 ): ThreadTellCommand | null {
   if (!THREAD_TELL_HINT.test(command)) return null;

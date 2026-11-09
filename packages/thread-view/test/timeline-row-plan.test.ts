@@ -28,6 +28,7 @@ function timeline(events: ThreadEventRow[], includeNestedRows: boolean) {
     options: {
       ...options,
       includeNestedRows,
+      omitSettledDelegationChildRows: false,
     },
   });
 }

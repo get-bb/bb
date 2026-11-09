@@ -136,6 +136,16 @@ describe("parseSentThreadMessage", () => {
     });
   });
 
+  it("returns a fresh result each time a command repeats", () => {
+    const command = 'bb thread tell thr_wrkr234567 "Repeat me"';
+    const first = sent(command);
+    first!.message = "mutated";
+    expect(sent(command)).toEqual({
+      threadId: "thr_wrkr234567",
+      message: "Repeat me",
+    });
+  });
+
   it("reads a long message written to a heredoc variable", () => {
     const command = [
       "MSG=$(cat <<'EOF'",

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ThreadEventRow } from "@bb/domain";
 import {
   buildThreadTimelineFromEvents,
@@ -17,6 +17,7 @@ const options = {
   includeDiagnosticOperations: false,
   includeNestedRows: true,
   isLatestPage: true,
+  omitSettledDelegationChildRows: false,
   summarizeShellCommands: true,
   threadName: "",
   threadStatus: "active",
@@ -36,7 +37,9 @@ function build(
   });
 }
 
-function streamingTurn(interruptFirstTurn: boolean): {
+type FirstTurnEnd = "completed" | "interrupted" | "interrupted-settled";
+
+function streamingTurn(firstTurnEnd: FirstTurnEnd): {
   events: ThreadEventWithMeta[];
   resumableFrom: number;
 } {
@@ -53,8 +56,19 @@ function streamingTurn(interruptFirstTurn: boolean): {
       itemId: "command-1",
       turnId: "turn-1",
     }),
+    ...(firstTurnEnd === "interrupted-settled"
+      ? [
+          event.commandCompleted({
+            aggregatedOutput: "a\n",
+            command: "ls",
+            exitCode: 0,
+            itemId: "command-1",
+            turnId: "turn-1",
+          }),
+        ]
+      : []),
     event.turnCompleted({
-      status: interruptFirstTurn ? "interrupted" : "completed",
+      status: firstTurnEnd === "completed" ? "completed" : "interrupted",
       turnId: "turn-1",
     }),
     event.turnStarted({ turnId: "turn-2" }),
@@ -110,12 +124,16 @@ function streamingTurn(interruptFirstTurn: boolean): {
 
 describe("event projection fold", () => {
   it.each([
-    { interruptFirstTurn: false, label: "completed earlier turn" },
-    { interruptFirstTurn: true, label: "interrupted earlier turn" },
-  ])(
+    { firstTurnEnd: "completed", label: "completed earlier turn" },
+    { firstTurnEnd: "interrupted", label: "interrupted earlier turn" },
+    {
+      firstTurnEnd: "interrupted-settled",
+      label: "interrupted earlier turn with nothing pending",
+    },
+  ] as const)(
     "matches a cold build after every resumed event ($label)",
-    ({ interruptFirstTurn }) => {
-      const { events, resumableFrom } = streamingTurn(interruptFirstTurn);
+    ({ firstTurnEnd }) => {
+      const { events, resumableFrom } = streamingTurn(firstTurnEnd);
       for (let start = resumableFrom; start < events.length; start += 1) {
         const fold = startThreadTimelineProjectionFold({
           acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
@@ -138,6 +156,25 @@ describe("event projection fold", () => {
       }
     },
   );
+
+  it("finishes without deep-copying the fold once an interrupted turn has nothing pending", () => {
+    const { events, resumableFrom } = streamingTurn("interrupted-settled");
+    const fold = startThreadTimelineProjectionFold({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      events: events.slice(0, resumableFrom),
+      options,
+    });
+    expect(resumeEventProjectionFold(fold, events.slice(resumableFrom))).toBe(
+      true,
+    );
+    const clone = vi.spyOn(globalThis, "structuredClone");
+    try {
+      expect(build(events, fold)).toEqual(build(events));
+      expect(clone).not.toHaveBeenCalled();
+    } finally {
+      clone.mockRestore();
+    }
+  });
 
   it("refuses events that change the fold's request and turn lookups", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
