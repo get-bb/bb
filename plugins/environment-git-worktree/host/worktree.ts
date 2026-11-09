@@ -523,6 +523,25 @@ async function removeCreateTarget(args: CreateWorktreeArgs): Promise<void> {
   });
 }
 
+async function abandonCreateTarget(
+  args: CreateWorktreeArgs,
+  ownsBranch: boolean,
+): Promise<void> {
+  await removeCreateTarget(args);
+  if (!ownsBranch) return;
+  try {
+    await deleteOwnedBranch({
+      repositoryPath: args.sourcePath,
+      branchName: args.branchName,
+      baseBranch: args.baseBranch?.ref ?? null,
+      onProgress: args.onProgress,
+      signal: args.signal,
+    });
+  } catch {
+    return;
+  }
+}
+
 export async function createWorktree(
   args: CreateWorktreeArgs,
 ): Promise<{ path: string; ownsBranch: boolean }> {
@@ -546,7 +565,7 @@ export async function createWorktree(
       await finishWorktreeSetup(args);
       return existing;
     } catch (error) {
-      await removeCreateTarget(args);
+      await abandonCreateTarget(args, existing.ownsBranch);
       throw error;
     }
   }
@@ -676,7 +695,7 @@ export async function createWorktree(
         metadata: { durationMs: Date.now() - worktreeStartedAt },
       });
     }
-    await removeCreateTarget(args);
+    await abandonCreateTarget(args, ownsBranch);
     throw error;
   }
 }
@@ -829,16 +848,10 @@ async function readPatchId(
 
 async function isSquashMergedInto(args: {
   tipOid: string;
-  baseBranch: string;
+  baseOid: string;
   gitOptions: RunGitOptions;
 }): Promise<boolean> {
-  const { gitOptions } = args;
-  const base = await runGit(
-    ["rev-parse", "--verify", "--quiet", `${args.baseBranch}^{commit}`],
-    { ...gitOptions, allowFailure: true },
-  );
-  const baseOid = base.stdout.trim();
-  if (base.exitCode !== 0 || baseOid === "") return false;
+  const { baseOid, gitOptions } = args;
   const mergeBase = await runGit(["merge-base", args.tipOid, baseOid], {
     ...gitOptions,
     allowFailure: true,
@@ -911,29 +924,38 @@ export type OwnedBranchCleanup =
 
 async function hasCommitsOnlyOnBranch(args: {
   tipOid: string;
-  branchName: string;
   baseBranch: string | null;
   gitOptions: RunGitOptions;
 }): Promise<boolean> {
+  const base =
+    args.baseBranch === null
+      ? null
+      : await runGit(
+          ["rev-parse", "--verify", "--quiet", `${args.baseBranch}^{commit}`],
+          { ...args.gitOptions, allowFailure: true },
+        );
+  const baseOid =
+    base !== null && base.exitCode === 0 && base.stdout.trim() !== ""
+      ? base.stdout.trim()
+      : null;
   const unique = await runGit(
     [
       "rev-list",
       "--count",
       args.tipOid,
       "--not",
-      `--exclude=${args.branchName}`,
-      "--branches",
       "--tags",
       "--remotes",
+      ...(baseOid === null ? [] : [baseOid]),
     ],
     args.gitOptions,
   );
   if (Number(unique.stdout.trim()) === 0) return false;
   return (
-    args.baseBranch === null ||
+    baseOid === null ||
     !(await isSquashMergedInto({
       tipOid: args.tipOid,
-      baseBranch: args.baseBranch,
+      baseOid,
       gitOptions: args.gitOptions,
     }))
   );
@@ -949,7 +971,7 @@ function ownedBranchCleanupMessage(
     case "checked-out":
       return `Kept branch ${branchName} because another worktree has it checked out`;
     case "unpushed-commits":
-      return `Kept branch ${branchName} because it has commits that are on no remote, tag, or other branch and were not squash-merged into its base`;
+      return `Kept branch ${branchName} because it has commits that are on no remote or tag, not in its base, and not squash-merged into its base`;
     case "missing":
     case "repository-missing":
       return null;
@@ -1004,7 +1026,6 @@ async function cleanUpOwnedBranch(args: {
   if (
     await hasCommitsOnlyOnBranch({
       tipOid,
-      branchName: args.branchName,
       baseBranch: args.baseBranch,
       gitOptions,
     })

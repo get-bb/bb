@@ -148,8 +148,8 @@ Making your repo work with bb:
   process, background jobs it left behind, and also shells, editors, or
   servers you started there yourself), removes the worktree, and records the
   environment as destroyed. It deletes the branch bb created only when no
-  other worktree has it checked out and every commit is on a remote, tag, or
-  other branch, or squash-merged into its base; otherwise the branch is kept.
+  other worktree has it checked out and every commit is on a remote, a tag, or
+  its base, or squash-merged into its base; otherwise the branch is kept.
   Branches you created yourself are never deleted. Unarchiving a thread inside
   the grace window cancels the teardown. Move your own shells out of the
   worktree first if you want to keep them. Deleting the last thread, or an

@@ -1129,9 +1129,54 @@ describe.concurrent("worktree host entry", () => {
         (await git(clone, "rev-parse", "refs/heads/bb/unpushed-thr_3")).trim(),
       ).toBe(head);
       expect(progressText(owned.harness)).toContain(
-        "Kept branch bb/unpushed-thr_3 because it has commits that are on no remote, tag, or other branch and were not squash-merged into its base",
+        "Kept branch bb/unpushed-thr_3 because it has commits that are on no remote or tag, not in its base, and not squash-merged into its base",
       );
       await owned.harness.experimental_dispose();
+    });
+
+    it("keeps a branch whose commits survive only on another local branch", async ({
+      onTestFinished,
+    }) => {
+      const { clone, dataDir } = await createClonedRepository(onTestFinished);
+      const owned = await createOwned(clone, dataDir, "bb/copied-thr_9");
+      const head = await commitIn(owned.path, "copied.txt");
+      await git(clone, "branch", "my-copy", head);
+      expect(await owned.remove()).toEqual({ status: "removed" });
+      expect(
+        (await git(clone, "rev-parse", "refs/heads/bb/copied-thr_9")).trim(),
+      ).toBe(head);
+      await owned.harness.experimental_dispose();
+    });
+
+    it("deletes the branch it created when a post-checkout hook fails the create", async ({
+      onTestFinished,
+    }) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      await writeFile(
+        join(sourcePath, ".git", "hooks", "post-checkout"),
+        "#!/bin/sh\nexit 1\n",
+        { mode: 0o755 },
+      );
+      const harness = createHarness(dataDir);
+      onTestFinished(() => harness.experimental_dispose());
+      const created = await harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "create",
+          sourcePath,
+          pathKey: "thr_10",
+          branchName: "bb/failed-thr_10",
+        }),
+      );
+      expect(created).toMatchObject({ status: "failed" });
+      expect(
+        await git(sourcePath, "worktree", "list", "--porcelain"),
+      ).not.toContain("bb/failed-thr_10");
+      expect(await branchExists(sourcePath, "bb/failed-thr_10")).toBe(false);
+      expect(progressText(harness)).toContain(
+        "Deleted branch bb/failed-thr_10",
+      );
     });
 
     it.for([

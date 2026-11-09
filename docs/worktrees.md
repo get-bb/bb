@@ -140,9 +140,10 @@ and the directory is deleted.
 
 bb then deletes the branch it created for the worktree, but only when nothing
 would be lost: no other worktree has it checked out, and every commit on it is
-on a remote, a tag, or another branch, or the branch was squash-merged into the
-base it started from. Otherwise the branch is kept, so work you committed but
-never pushed survives the worktree. Branches you check out or create yourself
+on a remote, a tag, or the base it started from, or the branch was
+squash-merged into that base. Otherwise the branch is kept, so work you
+committed but never pushed survives the worktree, even if another local branch
+also has it. Branches you check out or create yourself
 inside a worktree are never deleted, and neither are the branches of worktrees
 bb did not create. Restoring an archived thread whose branch was deleted
 recreates it from the remote branch when one exists, or from the base. If you
