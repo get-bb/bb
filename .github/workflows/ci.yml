@@ -105,7 +105,7 @@ jobs:
           import { readFileSync, writeFileSync } from 'node:fs';
           const file = 'packages/bb-app/scripts/build-public-sdk-dts.mjs';
           let text = readFileSync(file, 'utf8');
-          text = text.replace('new URL("./bin/tsrs", import.meta.resolve("tsrs/package.json"))', 'new URL("./bin/tsc", import.meta.resolve("typescript/package.json"))');
+          text = text.replace('new URL("./bin/tsrs", import.meta.resolve("tsrs/package.json"))', 'new URL("./bin/tsc6", import.meta.resolve("typescript/package.json"))');
           text = text.replace('const supportsNativeCompiler =', 'const supportsNativeCompiler = process.platform === "win32" ||');
           writeFileSync(file, text);
           NODE
