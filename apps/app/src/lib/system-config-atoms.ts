@@ -33,7 +33,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     agentCpuPriority: false,
     compactExpiredCache: false,
     dismissReadNotifications: false,
-    narrowPluginCss: false,
     serverMove: false,
     performanceDiagnostics: false,
     pluginUpdates: false,

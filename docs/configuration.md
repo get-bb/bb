@@ -973,8 +973,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `agentCpuPriority`, `compactExpiredCache`, `dismissReadNotifications`,
-`narrowPluginCss`, `pluginUpdates`, `skipFocusedThreadNotifications`,
-`threadRowMetadata`, and `updateWhenIdle`) turn on, and the rest stay off. An experiment you set yourself keeps your value
+`pluginUpdates`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
+`updateWhenIdle`) turn on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -1006,14 +1006,6 @@ either way.
   the background task; an older Android app in the foreground would list the
   silent push as a blank notification.
   The plugin reads it on each delivery and read, so a toggle applies live.
-- `narrowPluginCss` (on for early adopters) makes the app request each plugin's
-  stylesheet with `css-scope=owned-root-v1`. bb then serves utilities that
-  match only inside that plugin's own roots, not inside any root without a
-  plugin id, which makes style recalculation cheaper with many plugins. A
-  bundle whose `app.js` sets `data-bb-plugin-root` without `data-bb-plugin`
-  keeps the slower stylesheet either way. The app reads the experiment when it
-  loads a plugin's stylesheet, so a toggle applies after a reload. See
-  [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel

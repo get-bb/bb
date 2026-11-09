@@ -1134,11 +1134,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When you read a thread on any device, remove its notifications from your phones and tablets and from open bb windows and tabs. Phones need an app version that supports it.",
   },
-  narrowPluginCss: {
-    label: "Faster plugin styles",
-    description:
-      "Load each plugin's stylesheet so it only matches that plugin's own UI, which makes style updates cheaper on pages with many plugins. Plugins built with an old portal-scope helper keep the slower stylesheet. Applies after a reload.",
-  },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
     description:
