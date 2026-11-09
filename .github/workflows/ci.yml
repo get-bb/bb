@@ -45,7 +45,7 @@ jobs:
           $tar = 'C:\Program Files\Git\usr\bin\tar.exe'
           & .github/actions/windows-dependency-cache/disk.ps1 -Operation detach
           $before = (Get-Item $disk).Length
-          & $tar --use-compress-program zstd -cf $archive -C $env:RUNNER_TEMP bb-dependencies.vhdx
+          & $tar --force-local --use-compress-program zstd -cf $archive -C $env:RUNNER_TEMP bb-dependencies.vhdx
           if ($LASTEXITCODE -ne 0) { throw 'Archive failed' }
           & .github/actions/windows-dependency-cache/disk.ps1 -Operation mount
           $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -57,19 +57,19 @@ jobs:
           diskpart /s (Join-Path $env:RUNNER_TEMP 'compact.txt')
           $after = (Get-Item $disk).Length
           $candidate = Join-Path $env:RUNNER_TEMP 'compressed.tar.zst'
-          & $tar --use-compress-program zstd -cf $candidate -C $env:RUNNER_TEMP bb-dependencies.vhdx
+          & $tar --force-local --use-compress-program zstd -cf $candidate -C $env:RUNNER_TEMP bb-dependencies.vhdx
           if ($LASTEXITCODE -ne 0) { throw 'Archive failed' }
           Write-Host "IMAGE_BYTES before=$before after=$after baseline_archive=$((Get-Item $archive).Length) compressed_archive=$((Get-Item $candidate).Length)"
           foreach ($name in @('baseline', 'compressed', 'compressed', 'baseline')) {
             $inputArchive = Join-Path $env:RUNNER_TEMP "$name.tar.zst"
             Remove-Item $disk
             $watch = [Diagnostics.Stopwatch]::StartNew()
-            & $tar --use-compress-program zstd -xf $inputArchive -C $env:RUNNER_TEMP
+            & $tar --force-local --use-compress-program zstd -xf $inputArchive -C $env:RUNNER_TEMP
             if ($LASTEXITCODE -ne 0) { throw 'Extract failed' }
             Write-Host "EXTRACTION $name $($watch.Elapsed.TotalSeconds)"
           }
           Remove-Item $disk
-          & $tar --use-compress-program zstd -xf $candidate -C $env:RUNNER_TEMP
+          & $tar --force-local --use-compress-program zstd -xf $candidate -C $env:RUNNER_TEMP
           if ($LASTEXITCODE -ne 0) { throw 'Extract failed' }
           & .github/actions/windows-dependency-cache/disk.ps1 -Operation mount
       - name: Verify compressed dependency install
