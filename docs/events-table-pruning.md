@@ -40,8 +40,18 @@ before pruning it, so if a step fails, the sweep records the failure in
 `sweep_item_failures` under `<policy>:<thread id>` and the next pick moves past
 that thread while the other threads keep going; it is picked again once its
 retry time (1 minute, doubling to 1 hour) passes. A new policy, or
-a policy whose version changes, queues every thread for that policy. Committed
-deletions invalidate cached timelines and publish a history-compacted
-notification to viewers of the thread. Archiving a thread runs one live step and
-then drops the thread's live progress; the background sweep finishes archived
-threads.
+a policy whose version changes, queues every thread for that policy. Archiving a
+thread runs one live step and then drops the thread's live progress; the
+background sweep finishes archived threads.
+
+## Cache invalidation and notifications
+
+Timeline reads never load usage or turn-diff snapshots beyond the kept ones, so
+deleting them keeps the thread's cached timelines and sends nothing to viewers.
+Deleting rate-limit snapshots, deltas or background-task progress can change a
+timeline window, so the commit advances the thread's rewrite generation and
+every cached timeline for that thread rebuilds on its next read. Viewers of the
+thread then receive one history-compacted notification: after the live step, or
+when the background sweep finishes its pass over the thread for that policy.
+A sweep pass can span several ten-second runs and still sends a single
+notification.
