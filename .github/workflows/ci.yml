@@ -65,16 +65,48 @@ jobs:
         shell: bash
         run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
-      - name: Profile bb-app assembly
+      - name: Profile SDK declaration stages
         shell: bash
         run: |
+          mkdir -p dts-profile
           node --input-type=module - <<'NODE'
           import { readFileSync, writeFileSync } from 'node:fs';
-          const p='packages/bb-app/scripts/build.mjs';
+          const p='packages/bb-app/scripts/build-public-sdk-dts.mjs';
           let s=readFileSync(p,'utf8');
-          let i=0;
-          s=s.replace(/^(await |for \(const \[|const pruneRun =)/gm, match => `console.log('BUILD_PHASE', ${++i}, performance.now());\n${match}`);
-          s += "\nconsole.log('BUILD_DONE', performance.now());\n";
+          s=s.replace('const here =', `const totals = {};
+          function timedDts(options) {
+            const plugin=dts(options);
+            for(const key of Object.keys(plugin)) {
+              const entry=plugin[key];
+              const handler=typeof entry==='function' ? entry : entry?.handler;
+              if(typeof handler !== 'function') continue;
+              const wrapped=function(...args) {
+                const start=performance.now();
+                const finish=()=>{const x=totals[key]??={calls:0,ms:0}; x.calls++; x.ms+=performance.now()-start;};
+                try {
+                  const result=handler.apply(this,args);
+                  if(result && typeof result.then==='function') return result.finally(finish);
+                  finish(); return result;
+                } catch(error) { finish(); throw error; }
+              };
+              plugin[key]=typeof entry==='function' ? wrapped : {...entry,handler:wrapped};
+            }
+            return plugin;
+          }
+          console.log('DTS_START',performance.now());
+          const here =`);
+          s=s.replace('      dts({','      timedDts({');
+          s=s.replace('  const build = await rollup({', "  console.log('DTS_ROLLUP_START',performance.now());\n  const build = await rollup({");
+          s=s.replace('    await build.write({', "    console.log('DTS_WRITE_START',performance.now());\n    await build.write({");
+          s=s.replace('    await build.close();', "    console.log('DTS_CLOSE_START',performance.now());\n    await build.close();");
+          s+="\nconsole.log('DTS_DONE',performance.now(),JSON.stringify(totals));\n";
           writeFileSync(p,s);
           NODE
-          node packages/bb-app/scripts/build.mjs
+          node --cpu-prof --cpu-prof-dir=dts-profile packages/bb-app/scripts/build-public-sdk-dts.mjs
+
+      - name: Upload SDK CPU profile
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-dts-profile
+          path: dts-profile
