@@ -122,10 +122,6 @@ interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: ReactNode;
-  /**
-   * Opt-in link rendered under the description. Structured rather than
-   * markdown so rendering an anchor here stays explicit and auditable.
-   */
   experimentalLink?: { url: string; label?: string };
   controlPlacement?: SettingsControlPlacement;
   children: ReactNode;

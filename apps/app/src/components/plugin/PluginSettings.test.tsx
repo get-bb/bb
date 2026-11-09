@@ -449,7 +449,6 @@ describe("PluginSettingsForm", () => {
     expect(labelled.getAttribute("href")).toBe("https://example.com/agents");
     expect(labelled.getAttribute("target")).toBe("_blank");
     expect(labelled.getAttribute("rel")).toBe("noopener noreferrer");
-    // The anchor sits in the annotated column, after the description.
     const column = labelled.closest(".flex-1");
     expect(column).not.toBeNull();
     expect(column?.textContent).toBe(
