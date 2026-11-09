@@ -65,42 +65,11 @@ jobs:
         shell: bash
         run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
-      - name: Profile repeated assembly
+      - name: Compare Windows TypeScript pre-emission
         shell: bash
         run: |
-          for trial in 1 2 3; do
-            node packages/bb-app/scripts/build.mjs
-          done
-      - name: Compare native Windows SDK compiler
-        shell: bash
-        env:
-          SDK_PROFILE_COMPILER: ${{ runner.temp }}/sdk-compiler/node_modules/@typescript/native-preview/bin/tsgo
-        run: |
-          npm install --prefix "$RUNNER_TEMP/sdk-compiler" --no-audit --no-fund --ignore-scripts --package-lock=false @typescript/native-preview@7.0.0-dev.20260707.2
           mkdir -p "$RUNNER_TEMP/sdk-evidence"
-          cp packages/bb-app/scripts/build-public-sdk-dts.mjs "$RUNNER_TEMP/sdk-evidence/baseline.mjs"
-          cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/baseline.d.ts"
-          node --input-type=module - <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-          const file = 'packages/bb-app/scripts/build-public-sdk-dts.mjs';
-          let text = readFileSync(file, 'utf8');
-          text = text.replace('const compiler = fileURLToPath(', 'const compiler = process.env.SDK_PROFILE_COMPILER || fileURLToPath(');
-          text = text.replace('const supportsNativeCompiler =', 'const supportsNativeCompiler = process.platform === "win32" ||');
-          writeFileSync(file, text);
-          NODE
-          node packages/bb-app/scripts/build-public-sdk-dts.mjs
-          cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/candidate.d.ts"
-          node --input-type=module - <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import { join } from 'node:path';
-          const baseline = readFileSync(join(process.env.RUNNER_TEMP, 'sdk-evidence/baseline.d.ts'));
-          const candidate = readFileSync(join(process.env.RUNNER_TEMP, 'sdk-evidence/candidate.d.ts'));
-          console.log('Declarations byte identical:', baseline.equals(candidate), 'bytes:', baseline.length, candidate.length);
-          NODE
-      - name: Compare existing TypeScript pre-emission
-        shell: bash
-        run: |
-          cp "$RUNNER_TEMP/sdk-evidence/baseline.mjs" packages/bb-app/scripts/build-public-sdk-dts.mjs
+          cp packages/bb-app/scripts/build-public-sdk-dts.mjs packages/bb-app/scripts/build-public-sdk-dts-source-probe.mjs
           node --input-type=module - <<'NODE'
           import { readFileSync, writeFileSync } from 'node:fs';
           const file = 'packages/bb-app/scripts/build-public-sdk-dts.mjs';
@@ -109,15 +78,23 @@ jobs:
           text = text.replace('const supportsNativeCompiler =', 'const supportsNativeCompiler = process.platform === "win32" ||');
           writeFileSync(file, text);
           NODE
-          for trial in 1 2 3; do
-            time node packages/bb-app/scripts/build-public-sdk-dts.mjs
-            cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/tsc-$trial.d.ts"
+          trial=0
+          for variant in source tsc tsc source source tsc tsc source; do
+            trial=$((trial + 1))
+            echo "SDK comparison $trial $variant"
+            if [ "$variant" = source ]; then
+              time node packages/bb-app/scripts/build-public-sdk-dts-source-probe.mjs
+            else
+              time node packages/bb-app/scripts/build-public-sdk-dts.mjs
+            fi
+            cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/$trial-$variant.d.ts"
           done
-          cp "$RUNNER_TEMP/sdk-evidence/baseline.mjs" packages/bb-app/scripts/build-public-sdk-dts.mjs
-          for trial in 1 2 3; do
-            time node packages/bb-app/scripts/build-public-sdk-dts.mjs
-            cp packages/bb-app/dist/index.d.ts "$RUNNER_TEMP/sdk-evidence/source-$trial.d.ts"
-          done
+          rm packages/bb-app/scripts/build-public-sdk-dts-source-probe.mjs
+      - name: Build and validate installed TS6 tarball
+        shell: bash
+        run: |
+          git show b3ccd831b7b76041f0286daf5b29425c7ea0a6d3:packages/bb-app/scripts/build.mjs > packages/bb-app/scripts/build.mjs
+          pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
       - uses: actions/upload-artifact@v4
         if: always()
         with:
