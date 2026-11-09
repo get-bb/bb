@@ -6,6 +6,28 @@ export interface StallWindowBatch {
   windows: { startedAt: number; endedAt: number }[];
 }
 
+export interface ProfileCodeOwner {
+  location: string;
+  owner: string;
+}
+
+export function parseProfileCodeOwners(value: unknown): ProfileCodeOwner[] {
+  if (!Array.isArray(value)) throw new Error("Invalid profile code owners");
+  return value.map((entry: unknown) => {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !("location" in entry) ||
+      typeof entry.location !== "string" ||
+      entry.location.length === 0 ||
+      !("owner" in entry) ||
+      typeof entry.owner !== "string"
+    )
+      throw new Error("Invalid profile code owner");
+    return { location: entry.location, owner: entry.owner };
+  });
+}
+
 export function parseStallWindowBatch(value: unknown): StallWindowBatch {
   if (
     typeof value !== "object" ||

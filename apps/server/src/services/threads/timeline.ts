@@ -110,7 +110,12 @@ import type {
 } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { roundDurationMs } from "@bb/process-utils";
-import { runEventLoopWorkSync } from "../system/event-loop-work.js";
+import {
+  finishMainThreadCost,
+  runEventLoopWorkSync,
+  startMainThreadCost,
+  type MainThreadCost,
+} from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { withCompactionOffer } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
@@ -1653,9 +1658,14 @@ export function buildThreadTimelineWithProfile(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadTimelineOptions,
-): { profile: ThreadTimelineBuildProfile; response: ThreadTimelineWindow } {
-  return runEventLoopWorkSync(`timeline-build ${thread.id}`, () =>
-    db.transaction(() => {
+): {
+  cost: MainThreadCost;
+  profile: ThreadTimelineBuildProfile;
+  response: ThreadTimelineWindow;
+} {
+  return runEventLoopWorkSync(`timeline-build ${thread.id}`, () => {
+    const started = startMainThreadCost();
+    const built = db.transaction(() => {
       const result = buildThreadTimelineInternal(db, thread, options);
       if (options.summaryOnly) return result;
       for (
@@ -1694,8 +1704,9 @@ export function buildThreadTimelineWithProfile(
         );
       }
       return result;
-    }),
-  );
+    });
+    return { ...built, cost: finishMainThreadCost(started) };
+  });
 }
 
 interface BuildThreadConversationOutlineOptions {

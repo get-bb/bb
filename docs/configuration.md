@@ -1143,8 +1143,8 @@ that is still running or has no answer puts it above the first row after your
 read point, and the divider never lands on your own message.
 
 Timeline builds slower than 150 ms log `Thread timeline build blocked the event
-loop`, and event-loop stalls over 500 ms log `Event loop stalled`, both at
-`info`.
+loop` with main-thread CPU time and context-switch counts, and event-loop
+stalls over 500 ms log `Event loop stalled`, both at `info`.
 
 ## Plugins
 

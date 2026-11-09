@@ -343,6 +343,71 @@ describe("createConnection", () => {
     db.$client.close();
   });
 
+  it("names transactions by their first write and reports slow statements to the work tracker", () => {
+    const runs: string[] = [];
+    const records: { durationMs: number; label: string }[] = [];
+    const db = createConnection(":memory:", {
+      synchronousWorkTracker: {
+        run(label, work) {
+          const result = work();
+          runs.push(label());
+          return result;
+        },
+        record(label, durationMs) {
+          records.push({ durationMs, label: label() });
+        },
+      },
+    });
+    migrate(db);
+    const signal = new Int32Array(new SharedArrayBuffer(4));
+    db.$client.function("wait_ms", (ms) => {
+      Atomics.wait(signal, 0, 0, Number(ms));
+      return 0;
+    });
+    runs.length = 0;
+    records.length = 0;
+
+    try {
+      db.transaction(
+        (tx) => {
+          tx.select().from(hosts).where(eq(hosts.id, "host-secret")).all();
+          tx.insert(hosts)
+            .values({
+              createdAt: 1,
+              id: "host-secret",
+              name: "Tracked Host",
+              type: "persistent",
+              updatedAt: 1,
+            })
+            .run();
+        },
+        { behavior: "immediate" },
+      );
+      db.transaction((tx) => {
+        tx.select().from(hosts).all();
+      });
+      db.$client.prepare("SELECT wait_ms(20) AS value").get();
+
+      expect(runs).toHaveLength(2);
+      expect(runs[0]).toMatch(
+        /^db:transaction immediate: insert into "hosts" \(/u,
+      );
+      expect(runs[0]!.length).toBeLessThanOrEqual(
+        "db:transaction immediate: ".length + 120,
+      );
+      expect(runs[1]).toMatch(/^db:transaction deferred: select /u);
+      expect(runs.join("\n")).not.toContain("host-secret");
+      const slow = records.find((record) => record.label.includes("wait_ms"));
+      expect(slow?.label).toBe("db:get SELECT wait_ms(20) AS value");
+      expect(slow?.durationMs).toBeGreaterThanOrEqual(15);
+      expect(
+        records.filter((record) => record.label.startsWith("db:transaction")),
+      ).toEqual([]);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("applies the hot-path sqlite pragmas on a file database", () => {
     const directory = mkdtempSync(join(tmpdir(), "bb-db-pragmas-"));
     const db = createConnection(join(directory, "bb.db"));
