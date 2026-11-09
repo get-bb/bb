@@ -432,7 +432,6 @@ export async function validateProviderSelection(
 }
 
 export interface ResolveThreadEnvironmentPlacementArgs {
-  allowUnmanagedPersonalProjectReuseEnvironmentId?: string;
   projectId: string;
   requestedEnvironment: EnvironmentArgs | ProviderEnvironmentArgs;
 }
@@ -516,12 +515,6 @@ export async function resolveThreadEnvironmentPlacement(
     });
   }
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
-    ...(args.allowUnmanagedPersonalProjectReuseEnvironmentId !== undefined
-      ? {
-          allowUnmanagedPersonalProjectReuseEnvironmentId:
-            args.allowUnmanagedPersonalProjectReuseEnvironmentId,
-        }
-      : {}),
     environment: args.requestedEnvironment,
     projectId: args.projectId,
   });

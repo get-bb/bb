@@ -942,6 +942,105 @@ describe("environment providers are asked inside provisioning", () => {
     });
   });
 
+  it.each([
+    { type: "project-default" as const },
+    {
+      type: "host" as const,
+      workspace: { type: "personal" as const },
+    },
+    {
+      type: "provider" as const,
+      environmentProviderId: "personal-workspace",
+      machine: {
+        type: "existing" as const,
+        hostId: "host-attached-personal-parent",
+      },
+      inputs: null,
+    },
+  ])(
+    "shares an attached-directory parent's environment with a $type child",
+    async (environment) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-attached-personal-parent",
+        });
+        seedPrimaryHost(harness.deps, host.id);
+        ensurePersonalProject(harness.db);
+        const attachedEnvironment = createEnvironment(harness.db, harness.hub, {
+          hostId: host.id,
+          projectId: PERSONAL_PROJECT_ID,
+          path: "/tmp/attached-personal-parent",
+          providerOwnsPath: false,
+          status: "ready",
+          environmentProvider: null,
+        });
+        const parent = seedThread(harness.deps, {
+          environmentId: attachedEnvironment.id,
+          projectId: PERSONAL_PROJECT_ID,
+          status: "idle",
+        });
+
+        const child = await createThreadFromRequest(harness.deps, {
+          environment,
+          input: textInput("Start child"),
+          origin: "cli",
+          parentThreadId: parent.id,
+          projectId: PERSONAL_PROJECT_ID,
+          providerId: "codex",
+          model: "requested-model",
+          startedOnBehalfOf: null,
+        });
+
+        expect(getThread(harness.db, child.id)).toMatchObject({
+          environmentId: attachedEnvironment.id,
+          parentThreadId: parent.id,
+        });
+      });
+    },
+  );
+
+  it("rejects a standard project thread that reuses a personal workspace", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-standard-reuses-personal",
+      });
+      ensurePersonalProject(harness.db);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const personalWorkspace = createEnvironment(harness.db, harness.hub, {
+        hostId: host.id,
+        projectId: PERSONAL_PROJECT_ID,
+        path: "/tmp/personal-workspace-reused-by-standard",
+        providerOwnsPath: true,
+        status: "ready",
+        environmentProvider: {
+          environmentProviderId: "personal-workspace",
+          instanceKey: null,
+          selection: {
+            machine: { type: "existing", hostId: host.id },
+            inputs: null,
+          },
+        },
+      });
+
+      await expect(
+        createThreadFromRequest(harness.deps, {
+          environment: { type: "reuse", environmentId: personalWorkspace.id },
+          input: textInput("Reuse a personal workspace"),
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          model: "requested-model",
+          startedOnBehalfOf: null,
+        }),
+      ).rejects.toMatchObject({
+        body: { message: "Environment belongs to a different project" },
+        status: 409,
+      });
+    });
+  });
+
   it("opens the workspace-setup block and parks the thread starting on a wait", async () => {
     await withTestHarness(async (harness) => {
       const contexts: TestEnvironmentProviderContext[] = [];
