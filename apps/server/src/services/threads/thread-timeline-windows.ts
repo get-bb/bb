@@ -175,6 +175,7 @@ export function createThreadTimelineWindows(
       (previous) => {
         const {
           cost,
+          expiresAt,
           profile,
           response: built,
         } = buildThreadTimelineWithProfile(deps.db, thread, {
@@ -191,7 +192,10 @@ export function createThreadTimelineWindows(
           }),
           previous,
         );
-        return { ...window, tag: timelineWindowTag(window) };
+        return {
+          expiresAt,
+          response: { ...window, tag: timelineWindowTag(window) },
+        };
       },
     );
   }
