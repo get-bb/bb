@@ -1,5 +1,10 @@
 import { performance } from "node:perf_hooks";
-import { getAppSettings, getLatestThreadSequence, getThread } from "@bb/db";
+import {
+  getAppSettings,
+  getLatestThreadSequence,
+  getThread,
+  getThreadEventRewriteGeneration,
+} from "@bb/db";
 import {
   DEFAULT_COMPLETED_TURN_DISPLAY,
   type AppSettings,
@@ -173,23 +178,25 @@ export function createThreadTimelineWindows(
       }),
       buildThreadTimelineCacheRevision({
         maxSeq,
+        page: request.page,
+        rewriteGeneration: getThreadEventRewriteGeneration(thread.id),
         status: thread.status,
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
       }),
       () => {
-        const { profile, response: built } = buildThreadTimelineWithProfile(
-          deps.db,
-          thread,
-          {
-            ...surfaceOptions,
-            eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
-            maxSeq,
-            page: request.page,
-            summaryOnly: request.summaryOnly,
-          },
-        );
-        slowTimelineBuildLogger.log({ profile, threadId: thread.id });
+        const {
+          cost,
+          profile,
+          response: built,
+        } = buildThreadTimelineWithProfile(deps.db, thread, {
+          ...surfaceOptions,
+          eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
+          maxSeq,
+          page: request.page,
+          summaryOnly: request.summaryOnly,
+        });
+        slowTimelineBuildLogger.log({ cost, profile, threadId: thread.id });
         const window = shortenTimelineResponseOutputs(built, {
           maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
           preview: !request.includeNestedRows,
@@ -357,6 +364,7 @@ export function createThreadTimelineWindows(
     }
     if (message.changes.includes("thread-deleted")) {
       servedWindows.invalidateThread(message.id);
+      timelineCache.invalidateThread(message.id);
       const schedule = pushSchedulesByThreadId.get(message.id);
       if (schedule?.timer) {
         clearTimeout(schedule.timer);

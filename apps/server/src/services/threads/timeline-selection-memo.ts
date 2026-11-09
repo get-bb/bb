@@ -106,6 +106,7 @@ interface TimelineSelectionMemoEntry {
   dataChars: number;
   dataVersion: number;
   epochSequenceStart: number;
+  familyKey: string;
   generation: number;
   maxSeq: number;
   selection: TimelineEventRowSelection;
@@ -115,6 +116,7 @@ interface TimelineSelectionMemoEntry {
 interface TimelineSelectionMemo {
   dataChars: number;
   entries: Map<string, TimelineSelectionMemoEntry>;
+  rowReferences: Map<readonly StoredEventRow[], number>;
 }
 
 export const TIMELINE_SELECTION_MEMO_MAX_ENTRIES = 16;
@@ -183,7 +185,7 @@ export function selectTimelineWindowStart(
 function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
   let memo = selectionMemos.get(db);
   if (memo === undefined) {
-    memo = { dataChars: 0, entries: new Map() };
+    memo = { dataChars: 0, entries: new Map(), rowReferences: new Map() };
     selectionMemos.set(db, memo);
   }
   return memo;
@@ -201,6 +203,13 @@ function deleteMemoEntry(memo: TimelineSelectionMemo, key: string): void {
   const entry = memo.entries.get(key);
   if (entry === undefined) return;
   memo.entries.delete(key);
+  const rows = entry.selection.rows;
+  const references = (memo.rowReferences.get(rows) ?? 1) - 1;
+  if (references > 0) {
+    memo.rowReferences.set(rows, references);
+    return;
+  }
+  memo.rowReferences.delete(rows);
   memo.dataChars -= entry.dataChars;
 }
 
@@ -237,7 +246,10 @@ function storeMemoEntry(
   deleteMemoEntry(memo, key);
   if (entry.dataChars > TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS) return;
   memo.entries.set(key, entry);
-  memo.dataChars += entry.dataChars;
+  const rows = entry.selection.rows;
+  const references = memo.rowReferences.get(rows) ?? 0;
+  memo.rowReferences.set(rows, references + 1);
+  if (references === 0) memo.dataChars += entry.dataChars;
   if (!entry.active) deleteOldestIdleEntries(memo);
   while (
     memo.entries.size > TIMELINE_SELECTION_MEMO_MAX_ENTRIES ||
@@ -249,16 +261,117 @@ function storeMemoEntry(
   }
 }
 
-function selectionMemoKey(args: LatestTimelineSelectionMemoArgs): string {
+function selectionMemoFamilyKey(args: LatestTimelineSelectionMemoArgs): string {
   return JSON.stringify([
     args.threadId,
-    args.page.segmentLimit,
     args.eventBudget,
     args.maxInlineOutputChars,
     args.excludeDiagnosticEvents,
     args.epochSequenceStart,
     args.extensionStateKinds,
   ]);
+}
+
+function selectionMemoKey(args: LatestTimelineSelectionMemoArgs): string {
+  return JSON.stringify([selectionMemoFamilyKey(args), args.page.segmentLimit]);
+}
+
+function findCurrentSibling(
+  memo: TimelineSelectionMemo,
+  args: LatestTimelineSelectionMemoArgs,
+  lookup: LatestTimelineSelectionLookup,
+  matches: (entry: TimelineSelectionMemoEntry) => boolean,
+): TimelineSelectionMemoEntry | undefined {
+  const key = selectionMemoKey(args);
+  const familyKey = selectionMemoFamilyKey(args);
+  for (const [entryKey, entry] of memo.entries) {
+    if (
+      entryKey !== key &&
+      entry.familyKey === familyKey &&
+      entry.maxSeq === args.maxSeq &&
+      entry.generation === lookup.generation &&
+      entry.dataVersion === lookup.dataVersion &&
+      matches(entry)
+    ) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
+function adoptSiblingSelection(
+  memo: TimelineSelectionMemo,
+  args: LatestTimelineSelectionMemoArgs,
+  lookup: LatestTimelineSelectionLookup,
+  sibling: TimelineSelectionMemoEntry,
+  budgetFloor: TimelineBudgetFloor,
+  hints: readonly TimelineWindowHint[],
+): LatestTimelineSelectionLookup {
+  const selection: TimelineEventRowSelection = {
+    ...sibling.selection,
+    paginationPage: args.page,
+  };
+  storeMemoEntry(memo, selectionMemoKey(args), {
+    ...sibling,
+    active: args.active,
+    budgetFloorSequence: budgetFloor.sequence,
+    hints,
+    selection,
+  });
+  return { ...lookup, budgetFloor, selection };
+}
+
+function lookupFromWiderSibling(
+  db: DbConnection,
+  memo: TimelineSelectionMemo,
+  args: LatestTimelineSelectionMemoArgs,
+  miss: LatestTimelineSelectionLookup,
+  ownEntryIsCurrent: boolean,
+): LatestTimelineSelectionLookup | null {
+  const wider = findCurrentSibling(
+    memo,
+    args,
+    miss,
+    (entry) =>
+      entry.selection.paginationPage.segmentLimit >= args.page.segmentLimit,
+  );
+  if (
+    wider === undefined ||
+    getLatestThreadSequence(db, { threadId: args.threadId }) !== args.maxSeq
+  ) {
+    return null;
+  }
+  const budgetFloor: TimelineBudgetFloor = {
+    sequence: wider.budgetFloorSequence,
+  };
+  const hints = wider.hints.slice(0, args.page.segmentLimit + 1);
+  const sequenceStart = selectTimelineWindowStart(
+    hints,
+    budgetFloor.sequence,
+    args.page.segmentLimit,
+    args.epochSequenceStart,
+  );
+  if (sequenceStart === wider.selection.ownedSequenceStart) {
+    return adoptSiblingSelection(memo, args, miss, wider, budgetFloor, hints);
+  }
+  if (ownEntryIsCurrent || sequenceStart < wider.selection.ownedSequenceStart) {
+    return null;
+  }
+  return {
+    ...miss,
+    budgetFloor,
+    trimSource: createTrimmedSelectionRowSource(
+      db,
+      args,
+      {
+        appendableTurnIds: new Set(wider.appendableTurnIds),
+        delegatingItemIds: new Set(wider.delegatingItemIds),
+        groupingContext: null,
+        missingParentToolCallIds: new Set(wider.missingParentToolCallIds),
+      },
+      wider.selection.rows,
+    ),
+  };
 }
 
 function isDelegatingRow(row: StoredEventRow): boolean {
@@ -656,11 +769,13 @@ function createTrimmedSelectionRowSource(
           trimFallback("unfetched-children");
         }
       }
+      const excludedTurnIds = new Set(query.excludedTurnIds);
       return rows.filter(
         (row) =>
           row.parentToolCallId !== null &&
           parents.has(row.parentToolCallId) &&
-          row.sequence >= args.epochSequenceStart,
+          row.sequence >= args.epochSequenceStart &&
+          (row.turnId === null || !excludedTurnIds.has(row.turnId)),
       );
     },
     listContextRows(query) {
@@ -751,14 +866,22 @@ export function lookupLatestTimelineSelection(
     trimSource: null,
   };
   const memo = selectionMemos.get(db);
+  if (memo === undefined) return miss;
   const key = selectionMemoKey(args);
-  const entry = memo?.entries.get(key);
-  if (
-    memo === undefined ||
-    entry === undefined ||
-    entry.generation !== generation ||
-    entry.dataVersion !== dataVersion
-  ) {
+  const entry = memo.entries.get(key);
+  const entryIsCurrent =
+    entry !== undefined &&
+    entry.generation === generation &&
+    entry.dataVersion === dataVersion;
+  const fromSibling = lookupFromWiderSibling(
+    db,
+    memo,
+    args,
+    miss,
+    entryIsCurrent,
+  );
+  if (fromSibling !== null) return fromSibling;
+  if (entry === undefined || !entryIsCurrent) {
     return miss;
   }
   const appended = listAppendableRows(db, args, entry);
@@ -813,6 +936,22 @@ export function lookupLatestTimelineSelection(
       ),
     };
   }
+  const sameWindow = findCurrentSibling(
+    memo,
+    args,
+    miss,
+    (sibling) => sibling.selection.ownedSequenceStart === sequenceStart,
+  );
+  if (sameWindow !== undefined) {
+    return adoptSiblingSelection(
+      memo,
+      args,
+      miss,
+      sameWindow,
+      budgetFloor,
+      hints,
+    );
+  }
   const selection: TimelineEventRowSelection = {
     ...entry.selection,
     orderingBoundarySequence: appended.groupingContextChanged
@@ -827,7 +966,10 @@ export function lookupLatestTimelineSelection(
       : entry.selection.orderingBoundarySequence,
     ownedSequenceEnd: args.maxSeq + 1,
     paginationPage: args.page,
-    rows: entry.selection.rows.concat(appended.rows),
+    rows:
+      appended.rows.length === 0
+        ? entry.selection.rows
+        : entry.selection.rows.concat(appended.rows),
   };
   storeMemoEntry(memo, key, {
     ...entry,
@@ -868,6 +1010,7 @@ export function rememberLatestTimelineSelection(
       dataCharsOfRows(result.selection.headStateRows),
     dataVersion: lookup.dataVersion,
     epochSequenceStart: args.epochSequenceStart,
+    familyKey: selectionMemoFamilyKey(args),
     generation: lookup.generation,
     maxSeq: args.maxSeq,
     selection: result.selection,

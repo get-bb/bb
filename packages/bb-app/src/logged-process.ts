@@ -1,17 +1,65 @@
-import { spawnHostProcess as spawn } from "@bb/process-utils";
+import { hostToolchain, spawnHostProcess as spawn } from "@bb/process-utils";
 import type { ChildProcess } from "node:child_process";
-import { closeSync, mkdirSync, openSync, renameSync, statSync } from "node:fs";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  mkdirSync,
+  openSync,
+  renameSync,
+  statSync,
+} from "node:fs";
 import { join } from "node:path";
 
 const MAX_STDIO_LOG_BYTES_AT_SPAWN = 10 * 1024 * 1024;
+const MACOS_TASKPOLICY_PATH = "/usr/sbin/taskpolicy";
 
 interface SpawnLoggedProcessArgs {
+  appScheduling: boolean;
   args: string[];
   command: string;
   env: NodeJS.ProcessEnv;
   ipc?: boolean;
   logDir: string;
   logName: "server" | "host-daemon";
+}
+
+interface ProcessLaunch {
+  args: string[];
+  command: string;
+  env: NodeJS.ProcessEnv;
+}
+
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveLoggedProcessLaunch(
+  args: SpawnLoggedProcessArgs,
+): ProcessLaunch {
+  const direct = { command: args.command, args: args.args, env: args.env };
+  if (
+    !args.appScheduling ||
+    process.platform !== "darwin" ||
+    !isExecutable(MACOS_TASKPOLICY_PATH)
+  ) {
+    return direct;
+  }
+  const launch = hostToolchain.command(args.command, args.args, {
+    cwd: process.cwd(),
+    env: args.env,
+  });
+  if (!isExecutable(launch.command)) return direct;
+  return {
+    command: MACOS_TASKPOLICY_PATH,
+    args: ["-a", launch.command, ...launch.args],
+    env: launch.env,
+  };
 }
 
 export function spawnLoggedProcess(args: SpawnLoggedProcessArgs): ChildProcess {
@@ -23,11 +71,12 @@ export function spawnLoggedProcess(args: SpawnLoggedProcessArgs): ChildProcess {
   ) {
     renameSync(logPath, join(args.logDir, `${args.logName}-stdio.1.log`));
   }
+  const launch = resolveLoggedProcessLaunch(args);
   const fd = openSync(logPath, "a", 0o600);
   try {
-    return spawn(args.command, args.args, {
+    return spawn(launch.command, launch.args, {
       cwd: process.cwd(),
-      env: args.env,
+      env: launch.env,
       stdio: args.ipc === true ? ["ignore", fd, fd, "ipc"] : ["ignore", fd, fd],
     });
   } finally {

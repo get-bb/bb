@@ -186,6 +186,10 @@ Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
 experiment (Settings → Experiments). Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
+`agentCpuPriority` runs agent processes and setup and teardown scripts at a
+lower CPU priority (and, on macOS, the bb server and daemon with application
+scheduling) so bb stays responsive under heavy agent load; it takes full effect
+after restarting bb, and terminals keep normal priority.
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.

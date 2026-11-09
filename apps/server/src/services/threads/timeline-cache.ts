@@ -5,7 +5,7 @@ import { timelineWindowJsonLength } from "./timeline-window-tag.js";
 
 const DEFAULT_MAX_ENTRIES = 512;
 const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
-const DEFAULT_MAX_ENTRY_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MAX_ENTRY_BYTES = 8 * 1024 * 1024;
 
 interface ThreadTimelineCacheOptions {
   maxEntries?: number;
@@ -102,6 +102,8 @@ export interface ThreadTimelineCacheKeyArgs {
 
 export interface ThreadTimelineCacheRevisionArgs {
   maxSeq: number;
+  page: ThreadTimelinePageRequest;
+  rewriteGeneration: number;
   status: ThreadStatus;
   surface: string;
 }
@@ -127,5 +129,9 @@ export function buildThreadTimelineCacheKey(
 export function buildThreadTimelineCacheRevision(
   args: ThreadTimelineCacheRevisionArgs,
 ): string {
-  return JSON.stringify([args.maxSeq, args.status, args.surface]);
+  return JSON.stringify(
+    args.page.kind === "older"
+      ? [args.rewriteGeneration, args.surface]
+      : [args.rewriteGeneration, args.maxSeq, args.status, args.surface],
+  );
 }

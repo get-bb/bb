@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { PluginApplyUpdateRequest } from "@bb/server-contract";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -16,6 +17,7 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import { reviewableRangeUpgrade } from "./plugin-status";
 import {
   DetailsDisclosure,
   formatAbsoluteDate,
@@ -62,7 +64,8 @@ function UpdatePluginDialogContent({
   const state = plugin.updateState;
   const update = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: () => startPluginUpdate(plugin.id),
+    mutationFn: (request: PluginApplyUpdateRequest) =>
+      startPluginUpdate(plugin.id, request),
     onSuccess: (job) => {
       applyPluginUpdateJob({ queryClient, job });
       onOpenChange(false);
@@ -133,7 +136,7 @@ function UpdatePluginDialogContent({
               disabled={update.isPending}
               aria-busy={update.isPending}
               aria-label={`Retry update to ${retryVersion}`}
-              onClick={() => update.mutate()}
+              onClick={() => update.mutate({})}
             >
               {update.isPending ? (
                 <Icon name="Spinner" className="animate-spin" />
@@ -187,7 +190,7 @@ function UpdatePluginDialogContent({
             type="button"
             disabled={update.isPending}
             aria-busy={update.isPending}
-            onClick={() => update.mutate()}
+            onClick={() => update.mutate({})}
           >
             {update.isPending ? (
               <Icon name="Spinner" className="animate-spin" />
@@ -195,6 +198,92 @@ function UpdatePluginDialogContent({
               <Icon name={UPDATE_ACTION_ICON} aria-hidden />
             )}
             Update
+          </Button>
+        </DialogFooter>
+      </>
+    );
+  }
+
+  const rangeUpgrade = reviewableRangeUpgrade(plugin);
+  if (failure === null && rangeUpgrade !== null) {
+    const candidate = rangeUpgrade.candidate.label;
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>
+            Update {name} to {candidate}?
+          </DialogTitle>
+          <DialogDescription>
+            {fromLine}. {candidate} is outside the version range{" "}
+            {rangeUpgrade.currentRange} that {name} follows, so updating changes
+            it to {rangeUpgrade.range}.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {rangeUpgrade.breaking ? (
+            <div className="flex items-start gap-2 text-sm">
+              <Icon
+                name="AlertTriangle"
+                className="mt-0.5 size-4 shrink-0 text-warning"
+                aria-hidden
+              />
+              <span>
+                {candidate} may include breaking changes. Check its release
+                notes before updating.
+              </span>
+            </div>
+          ) : null}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium" style={SUCCESS_TEXT_STYLE}>
+              ✓
+            </span>
+            <span>Compatible with your bb and plugin SDK</span>
+          </div>
+          <DetailsDisclosure summary="Details — source, versions, range">
+            <KeyValueGrid
+              entries={[
+                { key: "Source", value: plugin.sourceDisplay },
+                { key: "Current", value: plugin.version },
+                { key: "Candidate", value: candidate },
+                { key: "Current range", value: rangeUpgrade.currentRange },
+                {
+                  key: "New range",
+                  value:
+                    rangeUpgrade.basis === "catalog"
+                      ? `${rangeUpgrade.range} (listed by the marketplace)`
+                      : rangeUpgrade.range,
+                },
+              ]}
+            />
+          </DetailsDisclosure>
+          <RollbackNote fromVersion={plugin.version} toVersion={candidate} />
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={update.isPending}
+            onClick={() => onOpenChange(false)}
+          >
+            Not now
+          </Button>
+          <Button
+            type="button"
+            disabled={update.isPending}
+            aria-busy={update.isPending}
+            onClick={() =>
+              update.mutate({
+                range: rangeUpgrade.range,
+                expectedVersion: rangeUpgrade.candidate.version,
+              })
+            }
+          >
+            {update.isPending ? (
+              <Icon name="Spinner" className="animate-spin" />
+            ) : (
+              <Icon name={UPDATE_ACTION_ICON} aria-hidden />
+            )}
+            Update to {candidate}
           </Button>
         </DialogFooter>
       </>

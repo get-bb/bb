@@ -107,7 +107,11 @@ const results = cases.map(({ name, command }) => {
     projectionMs: summary(
       samples.map((sample) =>
         sample.profile.stageTimings
-          .filter((stage) => stage.stage === "thread-view-projection")
+          .filter(
+            (stage) =>
+              stage.stage === "thread-view-projection" ||
+              stage.stage === "thread-view-rows",
+          )
           .reduce((sum, stage) => sum + stage.durationMs, 0),
       ),
     ),

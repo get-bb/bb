@@ -777,6 +777,40 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("keeps the parent index when the parented read excludes loaded turns", () => {
+    const { db, thread } = setup();
+
+    const [query] = captureStatements(db, () => {
+      listStoredEventRowsByParentToolCallIds(db, {
+        beforeSequence: 10_000,
+        excludeDiagnosticEvents: true,
+        excludedTurnIds: Array.from(
+          { length: 300 },
+          (_, index) => `turn-${index}`,
+        ),
+        excludedTypes: ["thread/contextWindowUsage/updated"],
+        maxInlineOutputChars: 32_000,
+        parentToolCallIds: ["parent-a", "parent-b"],
+        sequenceStart: 0,
+        threadId: thread.id,
+      });
+    });
+    if (!query) {
+      throw new Error("Expected the parented timeline row lookup SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toMatch(
+      /SEARCH events USING INDEX events_parent_tool_call_thread_parent_sequence_idx \(thread_id=\? AND parent_tool_call_id=\? AND sequence>\? AND sequence<\?\)/u,
+    );
+    expect(details).not.toMatch(/\bSCAN events\b/u);
+
+    db.$client.close();
+  });
+
   it("seeks each missing delegating parent through the thread-and-item index", () => {
     const { db, thread } = setup();
     const lifecycle = [

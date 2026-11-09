@@ -517,6 +517,25 @@ const UPDATE_STATUS_LABELS: Record<PluginUpdateResult["outcome"], string> = {
   unavailable: "unavailable",
 };
 
+function rangeUpgradeCommand(id: string, range: string): string {
+  return `bb plugin update ${id} --range '${range}'`;
+}
+
+function rangeUpgradeNote(result: PluginUpdateResult): string | null {
+  const upgrade = result.rangeUpgrade;
+  if (upgrade === undefined) return null;
+  const outside = `${result.id}: ${upgrade.candidate.label} is outside your saved range ${upgrade.currentRange}`;
+  if (upgrade.reasons.length > 0) {
+    return `${outside}, but it does not run on this bb: ${upgrade.reasons.join("; ")}.`;
+  }
+  const listed =
+    upgrade.basis === "catalog"
+      ? `; its marketplace now lists ${upgrade.range}`
+      : "";
+  const breaking = upgrade.breaking ? " It may include breaking changes." : "";
+  return `${outside}${listed}.${breaking} Review it with \`${rangeUpgradeCommand(result.id, upgrade.range)}\`.`;
+}
+
 function blockedSummary(result: PluginUpdateResult): string {
   if (!result.blocked) return "—";
   return `${result.blocked.label}: ${result.blocked.reasons.join("; ")}`;
@@ -543,6 +562,67 @@ async function confirmPluginAction(
     console.log("Aborted.");
     process.exit(1);
   }
+}
+
+async function changePluginRange(args: {
+  sdk: ReturnType<typeof createCliBbSdk>;
+  id: string;
+  range: string;
+  yes: boolean;
+  wait: boolean;
+}): Promise<void> {
+  const [result] = await args.sdk.plugins.checkUpdates({ pluginId: args.id });
+  const offered =
+    result?.rangeUpgrade?.range === args.range
+      ? result.rangeUpgrade
+      : undefined;
+  if (offered !== undefined && offered.reasons.length > 0) {
+    exitWithError({
+      error: `${args.id}: ${offered.candidate.label} does not run on this bb: ${offered.reasons.join("; ")}`,
+    });
+  }
+  const installed = result?.installed.display ?? args.id;
+  console.log(
+    offered === undefined
+      ? `${args.id}: change the saved range to ${args.range} and install the newest compatible release it admits (installed: ${installed}). Plugins are full-trust code.`
+      : `${args.id}: ${installed} → ${offered.candidate.display}, changing the saved range ${offered.currentRange} → ${offered.range}. Plugins are full-trust code.`,
+  );
+  if (offered?.breaking === true) {
+    console.log(
+      `${offered.candidate.label} may include breaking changes. Settings, secrets, schedules, and data are kept, and bb restores the previous release and range if it fails to start.`,
+    );
+  }
+  await confirmPluginAction(
+    "Change the range and update?",
+    "Refusing to change the range without confirmation — re-run with --yes.",
+    args.yes,
+  );
+  const request = {
+    pluginId: args.id,
+    range: args.range,
+    ...(offered === undefined
+      ? {}
+      : { expectedVersion: offered.candidate.version }),
+  };
+  if (!args.wait) {
+    const job = await args.sdk.plugins.experimental_startUpdate(request);
+    console.log(
+      `Updating ${job.displayName} in the background (job ${job.id}).`,
+    );
+    console.log(`Follow it with \`bb plugin update-jobs ${job.id}\`.`);
+    return;
+  }
+  let mutation: PluginApplyUpdateResult;
+  try {
+    mutation = await args.sdk.plugins.applyUpdate(request);
+  } catch (error) {
+    exitWithError({ error: sdkErrorMessage(error) });
+  }
+  console.log(
+    mutation.applied
+      ? `${args.id}: now follows ${args.range}; updated and activated ${mutation.from.display} → ${mutation.to?.display ?? args.range}.`
+      : `${args.id}: ${mutation.outcome}${mutation.detail ? ` — ${mutation.detail}` : ""}; the saved range is unchanged.`,
+  );
 }
 
 function outputMutationJson(
@@ -1341,7 +1421,7 @@ export function registerPluginCommands(
           result.installed.display,
           result.candidate?.display ?? "—",
           blockedSummary(result),
-          `${UPDATE_STATUS_LABELS[result.outcome]}${result.devMode ? " [dev build: engines.bb not enforced]" : ""}`,
+          `${UPDATE_STATUS_LABELS[result.outcome]}${result.rangeUpgrade === undefined ? "" : ` · ${result.rangeUpgrade.candidate.label} outside range`}${result.devMode ? " [dev build: engines.bb not enforced]" : ""}`,
         ]);
         console.log(
           renderBorderlessTable(
@@ -1359,6 +1439,10 @@ export function registerPluginCommands(
             rows,
           ),
         );
+        const notes = results
+          .map(rangeUpgradeNote)
+          .filter((note) => note !== null);
+        if (notes.length > 0) console.log(`\n${notes.join("\n")}`);
       }),
     );
 
@@ -1415,6 +1499,10 @@ export function registerPluginCommands(
     )
     .option("--no-wait", "Start background updates and return their job IDs")
     .option("--all", "Update every plugin with a compatible update")
+    .option(
+      "--range <range>",
+      "Change one plugin's saved version range and install the newest compatible release it admits; bb refuses ranges that would downgrade",
+    )
     .option("--yes", "Skip confirmation prompts")
     .action(
       action(
@@ -1422,6 +1510,7 @@ export function registerPluginCommands(
           id: string | undefined,
           opts: {
             all?: boolean;
+            range?: string;
             yes?: boolean;
             wait?: boolean;
           },
@@ -1431,6 +1520,20 @@ export function registerPluginCommands(
             process.exit(1);
           }
           const sdk = createCliBbSdk(getUrl());
+          if (opts.range !== undefined) {
+            if (id === undefined) {
+              console.error("--range changes one plugin; pass its id.");
+              process.exit(1);
+            }
+            await changePluginRange({
+              sdk,
+              id,
+              range: opts.range,
+              yes: opts.yes === true,
+              wait: opts.wait !== false,
+            });
+            return;
+          }
           const results = await sdk.plugins.checkUpdates(
             id === undefined ? {} : { pluginId: id },
           );
@@ -1464,6 +1567,8 @@ export function registerPluginCommands(
                   `${result.id}: current (${result.installed.display}).`,
                 );
               }
+              const note = rangeUpgradeNote(result);
+              if (note !== null) console.log(note);
               continue;
             }
 

@@ -227,6 +227,64 @@ describe("UpdatePluginDialog", () => {
     expect(getNotifications()).toHaveLength(0);
   });
 
+  it("changes the range only for the reviewed release outside it", async () => {
+    const fetchMock = vi.fn(async (_input: string, _init?: RequestInit) =>
+      Response.json(
+        {
+          job: {
+            id: "update-1",
+            pluginId: "linear",
+            displayName: "Linear",
+            state: "running",
+            phase: "preparing",
+          },
+        },
+        { status: 202 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper } = createDialogTestHarness();
+    const onOpenChange = vi.fn();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({
+          outcome: "current",
+          rangeUpgrade: {
+            currentRange: "^1.6.0",
+            range: "^2.0.0",
+            basis: "catalog",
+            candidate: {
+              version: "2.0.0",
+              label: "2.0.0",
+              display: "@example/linear@2.0.0",
+            },
+            breaking: true,
+            reasons: [],
+          },
+        })}
+        open
+        onOpenChange={onOpenChange}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByText("Update Linear to 2.0.0?")).toBeTruthy();
+    expect(
+      screen.getByText(/so updating changes it to \^2\.0\.0/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/2\.0\.0 may include breaking changes/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Update to 2.0.0" }));
+
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      range: "^2.0.0",
+      expectedVersion: "2.0.0",
+    });
+  });
+
   it("records one alert when an update request fails", async () => {
     vi.stubGlobal(
       "fetch",
