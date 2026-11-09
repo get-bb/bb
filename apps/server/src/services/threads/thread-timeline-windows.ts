@@ -1,5 +1,10 @@
 import { performance } from "node:perf_hooks";
-import { getAppSettings, getLatestThreadSequence, getThread } from "@bb/db";
+import {
+  getAppSettings,
+  getLatestThreadSequence,
+  getThread,
+  getThreadEventRewriteGeneration,
+} from "@bb/db";
 import {
   DEFAULT_COMPLETED_TURN_DISPLAY,
   type AppSettings,
@@ -173,6 +178,8 @@ export function createThreadTimelineWindows(
       }),
       buildThreadTimelineCacheRevision({
         maxSeq,
+        page: request.page,
+        rewriteGeneration: getThreadEventRewriteGeneration(thread.id),
         status: thread.status,
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
@@ -357,6 +364,7 @@ export function createThreadTimelineWindows(
     }
     if (message.changes.includes("thread-deleted")) {
       servedWindows.invalidateThread(message.id);
+      timelineCache.invalidateThread(message.id);
       const schedule = pushSchedulesByThreadId.get(message.id);
       if (schedule?.timer) {
         clearTimeout(schedule.timer);
