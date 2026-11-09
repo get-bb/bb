@@ -642,7 +642,7 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
     background: false,
-    sweep: providerLifecycleSweep,
+    sweep: (deps) => providerLifecycleSweep(deps, { background: true }),
   },
   {
     cadenceMs: 0,
