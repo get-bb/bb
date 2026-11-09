@@ -436,8 +436,8 @@ export async function createRealThread(args: CreateRealThreadArgs) {
   await assertProviderPrerequisites(args.providerId);
   const harness = await createIntegrationHarness(
     args.workspace.type === "managed-worktree"
-      ? { builtinPlugins: ["environment-git-worktree"] }
-      : {},
+      ? { builtinPlugins: ["git", "environment-git-worktree"] }
+      : { builtinPlugins: ["git"] },
   );
   const project = await createProjectFixture(harness, {
     name: `Real Provider ${args.providerId}`,
