@@ -9,22 +9,14 @@ env:
   PNPM_VERSION: "9.15.0"
 jobs:
   plugin-forks:
-    name: Fork profile (${{ matrix.shard }}/${{ matrix.count }}, concurrency ${{ matrix.concurrency }})
-    runs-on: ${{ matrix.runner }}
+    name: Fork concurrency sweep (${{ matrix.shard }})
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
 
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {shard: 1, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 4}
-          - {shard: 2, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 4}
-          - {shard: 3, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 4}
-          - {shard: 1, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
-          - {shard: 2, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
-          - {shard: 3, count: 3, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
-          - {shard: 1, count: 2, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
-          - {shard: 2, count: 2, runner: blacksmith-4vcpu-ubuntu-2404, concurrency: 8}
+        shard: [1, 2, 3]
 
     steps:
       - name: Checkout repository
@@ -40,7 +32,7 @@ jobs:
           if [[ -n "$BASE_SHA" ]]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA" || true
           fi
-          selection=$(node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/${{ matrix.count }} --list)
+          selection=$(node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3 --list)
           echo "count=$(node -e 'console.log(JSON.parse(process.argv[1]).length)' "$selection")" >> "$GITHUB_OUTPUT"
           echo "Forkable plugins: $selection" >> "$GITHUB_STEP_SUMMARY"
 
@@ -88,12 +80,11 @@ jobs:
         if: steps.selection.outputs.count != '0'
         env:
           VITEST_MAX_WORKERS: "2"
-          PROFILE_LONG_FIRST: ${{ matrix.concurrency == 8 && 'true' || 'false' }}
           BASE_SHA: ''
         run: |
-          for trial in 1; do
-            echo "TRIAL $trial"
-            time node scripts/check-plugin-forks.mjs --shard=${{ matrix.shard }}/${{ matrix.count }} --concurrency=${{ matrix.concurrency }}
+          for concurrency in 4 6 8 8 6 4; do
+            echo "CONCURRENCY $concurrency"
+            PROFILE_LONG_FIRST=$([[ "$concurrency" == 4 ]] && echo false || echo true) time node scripts/check-plugin-forks.mjs --shard=${{ matrix.shard }}/3 --concurrency="$concurrency"
           done
 
       - name: Upload fork dependency evidence
@@ -102,7 +93,7 @@ jobs:
         timeout-minutes: 1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: plugin-fork-evidence-${{ matrix.shard }}-${{ matrix.count }}-${{ matrix.concurrency }}
+          name: plugin-fork-evidence-${{ matrix.shard }}
           path: ${{ runner.temp }}/plugin-fork-evidence
           retention-days: 7
           if-no-files-found: ignore
