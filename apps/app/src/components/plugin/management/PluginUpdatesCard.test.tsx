@@ -123,6 +123,46 @@ describe("PluginDetailReleaseControl", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("allows reviewing a newer range upgrade after an earlier activation failure", () => {
+    const wrapper = ({ children }: { children: import("react").ReactNode }) => (
+      <MemoryRouter>
+        {createQueryClientTestHarness().wrapper({ children })}
+      </MemoryRouter>
+    );
+    render(
+      <PluginDetailReleaseControl
+        plugin={plugin({
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            lastFailure: {
+              version: "2.0.0",
+              label: "2.0.0",
+              at: null,
+              detail: "activation failed",
+            },
+            rangeUpgrade: {
+              currentRange: "^1.6.0",
+              range: "^2.0.0",
+              basis: "catalog",
+              candidate: { version: "2.1.0", label: "2.1.0", display: "2.1.0" },
+              breaking: true,
+              reasons: [],
+            },
+          },
+        })}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Review the update of Linear to 2.1.0",
+      }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Update Linear to 2.1.0?" }),
+    ).toBeTruthy();
+  });
+
   it("offers a release outside the saved range for review and never one that cannot run here", () => {
     const rangeUpgrade = {
       currentRange: "^1.6.0",

@@ -61,7 +61,7 @@ export function PluginDetailReleaseControl({
   if (!pluginHasUpdateSurfaces(plugin)) return null;
   const rangeUpgrade = reviewableRangeUpgrade(plugin);
   if (availableVersion === null) {
-    if (rangeUpgrade === null || failure !== null) return null;
+    if (rangeUpgrade === null) return null;
     return (
       <>
         <Button
