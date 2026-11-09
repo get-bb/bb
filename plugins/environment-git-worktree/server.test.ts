@@ -1,3 +1,4 @@
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import type {
   PluginEnvironmentProviderCreateContext,
   PluginEnvironmentProviderProgress,
@@ -42,6 +43,9 @@ async function setup(
         status: "created",
         path: WORKTREE_PATH,
         baseBranch: "main",
+        ownsBranch:
+          worktreeHostContract.create.input.parse(call.input).branchMode ===
+          "reset",
       };
     }
     if (call.method === "remove") return { status: "removed" };
@@ -133,13 +137,20 @@ describe("worktree resource operations", () => {
     expect(provider.policy.pathKeys).toBe("per-attempt");
   });
 
-  it("runs one long host create and returns its path and base branch", async () => {
+  it("runs one long host create and returns its path, base branch, and owned branch", async () => {
     const fixture = await setup();
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "created",
       path: WORKTREE_PATH,
       ownsPath: true,
       mergeBaseBranch: "main",
+      resource: {
+        ownedBranch: {
+          name: "bb/test",
+          repositoryPath: SOURCE_PATH,
+          baseBranch: "main",
+        },
+      },
     });
     expect(fixture.harness.experimental_hostRpcCalls[0]).toMatchObject({
       method: "create",
@@ -157,10 +168,11 @@ describe("worktree resource operations", () => {
 
   it("restores on the destroyed environment's branch, keeping its commits", async () => {
     const fixture = await setup();
-    await fixture.restore({
+    const restored = await fixture.restore({
       ...restoreContext(fixture.context, "bb/original-thread"),
       inputs: { branch: { kind: "named", name: "release" } },
     });
+    expect(restored).not.toHaveProperty("resource");
     expect(fixture.harness.experimental_hostRpcCalls[0]?.input).toMatchObject({
       branchName: "bb/original-thread",
       baseBranch: { kind: "named", name: "release" },
@@ -206,7 +218,12 @@ describe("worktree resource operations", () => {
     });
     expect(fixture.steps).toEqual(["Creating worktree"]);
     expect(fixture.logs).toEqual(["cloning"]);
-    finish({ status: "created", path: WORKTREE_PATH, baseBranch: null });
+    finish({
+      status: "created",
+      path: WORKTREE_PATH,
+      baseBranch: null,
+      ownsBranch: true,
+    });
     await expect(creating).resolves.toMatchObject({ status: "created" });
   });
 
@@ -245,7 +262,40 @@ describe("worktree resource operations", () => {
     expect(worktreeHostContract.remove.input.parse(call?.input)).toMatchObject({
       pathKey: THREAD_ID,
       path: null,
+      ownedBranch: null,
     });
+  });
+
+  it("asks the host to delete only the branch recorded as its own", async () => {
+    const fixture = await setup();
+    const ownedBranch = {
+      name: "bb/test",
+      repositoryPath: SOURCE_PATH,
+      baseBranch: "origin/main",
+    };
+    const resources: JsonValue[] = [
+      { ownedBranch },
+      null,
+      { unexpected: true },
+    ];
+    for (const resource of resources) {
+      await fixture.provider.remove({
+        environment: null,
+        hostId: HOST_ID,
+        path: WORKTREE_PATH,
+        pathKey: THREAD_ID,
+        resource,
+        attempt: 1,
+        report: fixture.report,
+        signal: fixture.signal,
+      });
+    }
+    expect(
+      fixture.harness.experimental_hostRpcCalls.map(
+        (call) =>
+          worktreeHostContract.remove.input.parse(call.input).ownedBranch,
+      ),
+    ).toEqual([ownedBranch, null, null]);
   });
 });
 
