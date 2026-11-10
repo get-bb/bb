@@ -1,20 +1,33 @@
 import http from "node:http";
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, it } from "vitest";
-import { addAccountModels } from "../model-list.js";
+import { buildClaudeCodeModels } from "../../model-list.js";
+import { listAccountModels, preferAccountModels } from "../model-list.js";
 
 const cliModels: ModelInfo[] = [
   {
     value: "default",
     resolvedModel: "claude-opus-5-5",
-    displayName: "Default",
+    displayName: "Default (recommended)",
     description: "Opus 5.5",
+  },
+  {
+    value: "opus",
+    resolvedModel: "claude-opus-5-5",
+    displayName: "Opus",
+    description: "For complex work and everyday tasks",
   },
   {
     value: "claude-fable-5-1[1m]",
     resolvedModel: "claude-fable-5-1",
     displayName: "Fable",
     description: "Fable 5.1",
+  },
+  {
+    value: "claude-retired-4[1m]",
+    resolvedModel: "claude-retired-4",
+    displayName: "Retired",
+    description: "Retired 4",
   },
 ];
 
@@ -54,31 +67,35 @@ async function serveModels(
   };
 }
 
-function apiModel(id: string, efforts: Record<string, boolean> = {}) {
+function apiModel(id: string, efforts: string[] = []) {
   return {
     id,
     display_name: id,
     capabilities: {
       effort: Object.fromEntries(
-        Object.entries(efforts).map(([level, supported]) => [
+        ["low", "medium", "high", "xhigh", "max"].map((level) => [
           level,
-          { supported },
+          { supported: efforts.includes(level) },
         ]),
       ),
     },
   };
 }
 
-describe("addAccountModels", () => {
-  it("adds every page of the pooled accounts' models the CLI did not list", async () => {
+function pooledEnv(url: string): NodeJS.ProcessEnv {
+  return { BB_CLAUDE_MODELS_URL: url, ANTHROPIC_AUTH_TOKEN: "hub-token" };
+}
+
+describe("pooled Claude account models", () => {
+  it("lists the accounts' models newest first, default first, and keeps Claude Code's aliases", async () => {
     const hub = await serveModels((url) =>
       url.searchParams.get("after_id") === null
         ? {
             status: 200,
             body: {
               data: [
-                apiModel("claude-fable-5-2", { high: true, xhigh: true }),
-                apiModel("claude-opus-5-5", { high: true }),
+                apiModel("claude-fable-5-2", ["high", "xhigh"]),
+                apiModel("claude-opus-5-5", ["high"]),
               ],
               has_more: true,
               last_id: "claude-opus-5-5",
@@ -87,25 +104,35 @@ describe("addAccountModels", () => {
         : {
             status: 200,
             body: {
-              data: [apiModel("claude-fable-5-1"), apiModel("claude-haiku-4")],
+              data: [apiModel("claude-fable-5-1", ["low"])],
               has_more: false,
-              last_id: "claude-haiku-4",
+              last_id: "claude-fable-5-1",
             },
           },
     );
 
-    const models = await addAccountModels(cliModels, {
-      BB_CLAUDE_MODELS_URL: hub.url,
-      ANTHROPIC_AUTH_TOKEN: "hub-token",
-    });
+    const accountModels = await listAccountModels(pooledEnv(hub.url));
+    if (accountModels === null) throw new Error("Expected account models");
+    const { models, selectedOnlyModels } = buildClaudeCodeModels(
+      preferAccountModels(cliModels, accountModels),
+    );
 
-    expect(models.map((model) => model.value)).toEqual([
-      "default",
-      "claude-fable-5-1[1m]",
-      "claude-fable-5-2",
-      "claude-haiku-4",
+    expect(
+      models.map((model) => [model.model, model.isDefault, model.description]),
+    ).toEqual([
+      ["claude-opus-5-5", true, "For complex work and everyday tasks"],
+      ["claude-fable-5-2", false, "claude-fable-5-2"],
+      ["claude-fable-5-1", false, "Fable 5.1"],
     ]);
-    expect(models[2]?.supportedEffortLevels).toEqual(["high", "xhigh"]);
+    expect(
+      models[1]?.supportedReasoningEfforts.map(
+        (effort) => effort.reasoningEffort,
+      ),
+    ).toEqual(["high", "xhigh", "ultracode"]);
+    expect(selectedOnlyModels.map((model) => model.model)).toEqual([
+      "opus",
+      "claude-fable-5-1[1m]",
+    ]);
     expect(hub.requests).toEqual([
       {
         url: "/hub/claude/v1/models?limit=1000",
@@ -118,25 +145,27 @@ describe("addAccountModels", () => {
     ]);
   });
 
-  it("keeps the CLI list when the hub has no Claude model route", async () => {
+  it("leaves Claude Code's list in place when the hub has no Claude model route", async () => {
     const hub = await serveModels(() => ({ status: 404 }));
 
-    await expect(
-      addAccountModels(cliModels, {
-        BB_CLAUDE_MODELS_URL: hub.url,
-        ANTHROPIC_AUTH_TOKEN: "hub-token",
-      }),
-    ).resolves.toEqual(cliModels);
+    await expect(listAccountModels(pooledEnv(hub.url))).resolves.toBeNull();
   });
 
-  it("fails instead of publishing a partial list when the hub errors", async () => {
-    const hub = await serveModels(() => ({ status: 503 }));
+  it.each([
+    { status: 503, body: {}, message: "HTTP 503" },
+    {
+      status: 200,
+      body: { data: [], has_more: false, last_id: null },
+      message: "returned no models",
+    },
+  ])(
+    "fails instead of publishing a partial list on $message",
+    async ({ status, body, message }) => {
+      const hub = await serveModels(() => ({ status, body }));
 
-    await expect(
-      addAccountModels(cliModels, {
-        BB_CLAUDE_MODELS_URL: hub.url,
-        ANTHROPIC_AUTH_TOKEN: "hub-token",
-      }),
-    ).rejects.toThrow("HTTP 503");
-  });
+      await expect(listAccountModels(pooledEnv(hub.url))).rejects.toThrow(
+        message,
+      );
+    },
+  );
 });

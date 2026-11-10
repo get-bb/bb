@@ -32,19 +32,15 @@ const claudeModelPageSchema = z.object({
   last_id: z.string().nullable(),
 });
 
-export async function addAccountModels(
-  discovered: readonly ModelInfo[],
+export async function listAccountModels(
   env: NodeJS.ProcessEnv,
-): Promise<ModelInfo[]> {
+): Promise<ModelInfo[] | null> {
   const endpoint = env[CLAUDE_MODELS_URL_ENV];
   const token = env.ANTHROPIC_AUTH_TOKEN;
   if (!endpoint || !token) {
-    return [...discovered];
+    return null;
   }
-  const models = [...discovered];
-  const listed = new Set(
-    discovered.map((model) => model.resolvedModel ?? model.value),
-  );
+  const models: ModelInfo[] = [];
   const signal = AbortSignal.timeout(CLAUDE_MODELS_TIMEOUT_MS);
   const url = new URL(endpoint);
   url.searchParams.set("limit", "1000");
@@ -58,7 +54,7 @@ export async function addAccountModels(
     });
     if (response.status === 404) {
       await response.body?.cancel();
-      return [...discovered];
+      return null;
     }
     if (!response.ok) {
       await response.body?.cancel();
@@ -68,10 +64,6 @@ export async function addAccountModels(
     }
     const page = claudeModelPageSchema.parse(await response.json());
     for (const model of page.data) {
-      if (listed.has(model.id)) {
-        continue;
-      }
-      listed.add(model.id);
       models.push({
         value: model.id,
         displayName: model.display_name,
@@ -86,10 +78,41 @@ export async function addAccountModels(
       page.last_id === null ||
       page.last_id === url.searchParams.get("after_id")
     ) {
+      if (models.length === 0) {
+        throw new Error(
+          `Listing Claude models from ${url.origin}${url.pathname} returned no models.`,
+        );
+      }
       return models;
     }
     url.searchParams.set("after_id", page.last_id);
   }
+}
+
+export function preferAccountModels(
+  cliModels: readonly ModelInfo[],
+  accountModels: readonly ModelInfo[],
+): ModelInfo[] {
+  const available = new Set(accountModels.map((model) => model.value));
+  const defaultModel = cliModels.find(
+    (model) => model.value === "default",
+  )?.resolvedModel;
+  const descriptions = new Map(
+    cliModels
+      .filter((model) => model.value !== "default")
+      .map((model) => [model.resolvedModel ?? model.value, model.description]),
+  );
+  const rows = accountModels.map((model) => ({
+    ...model,
+    description: descriptions.get(model.value) ?? model.description,
+  }));
+  return [
+    ...rows.filter((model) => model.value === defaultModel),
+    ...rows.filter((model) => model.value !== defaultModel),
+    ...cliModels.filter((model) =>
+      available.has(model.resolvedModel ?? model.value),
+    ),
+  ];
 }
 
 async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
@@ -103,8 +126,11 @@ async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   if (initialization.models.length === 0) {
     throw new Error("Claude Code reported no models.");
   }
+  const accountModels = await listAccountModels(env);
   return buildClaudeCodeModels(
-    await addAccountModels(initialization.models, env),
+    accountModels === null
+      ? initialization.models
+      : preferAccountModels(initialization.models, accountModels),
   );
 }
 
