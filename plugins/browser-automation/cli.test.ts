@@ -255,11 +255,15 @@ describe("CLI boundaries", () => {
     ]);
   });
 
-  it("reports a failed --json run as JSON on stdout and text on stderr", async () => {
+  it.each([
+    "Session stopped or expired; open a new session",
+    "Session stopped, expired, or worker restarted; open a new session",
+    "Session expired; open a new session",
+    "Session does not belong to this thread",
+    "Browser work cancelled or timed out",
+  ])("reports recovery guidance for %s in JSON and text", async (message) => {
     const execute = vi.fn(async (): Promise<PluginCliResult> => {
-      throw browserCliFailure(
-        new Error("Session stopped or expired; open a new session"),
-      );
+      throw browserCliFailure(new Error(message));
     });
     const registration = createBrowserAutomationCli({ execute });
     const json = await registration.run(["pages", id, "--json"], {
@@ -270,16 +274,24 @@ describe("CLI boundaries", () => {
       ok: false,
       error: {
         code: "session_unavailable",
-        message: "Session stopped or expired; open a new session",
+        message,
         hint: expect.stringContaining("bb browser-automation open"),
       },
     });
-    expect(json.stderr).toContain("Session stopped or expired");
+    expect(json.stderr).toContain(message);
+    expect(json.stderr).toContain("bb browser-automation open");
 
     const text = await registration.run(["pages", id], { threadId: "thread" });
     expect(text.exitCode).toBe(1);
     expect(text.stdout).toBeUndefined();
-    expect(text.stderr).toContain("Session stopped or expired");
+    expect(text.stderr).toContain(message);
+    expect(text.stderr).toContain("bb browser-automation open");
+    if (message === "Browser work cancelled or timed out") {
+      expect(JSON.parse(json.stdout ?? "").error.hint).toContain("--timeout");
+      expect(JSON.parse(json.stdout ?? "").error.hint).toContain("120 seconds");
+      expect(text.stderr).toContain("--timeout");
+      expect(text.stderr).toContain("120 seconds");
+    }
   });
 
   it("classifies capture-limit failures", () => {
