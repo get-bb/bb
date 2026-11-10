@@ -149,6 +149,34 @@ describe("buildBridgeInjectionScript", () => {
     await expect(promise).rejects.toThrow("share sheet unavailable");
   });
 
+  it.each(["share", "clipboard"])(
+    "rejects a %s request immediately when the native transport throws",
+    async (kind) => {
+      vi.useFakeTimers();
+      try {
+        const { native, fakeWindow } = installBridge();
+        fakeWindow.ReactNativeWebView.postMessage = () => {
+          throw new Error("transport disconnected");
+        };
+        const rejected = vi.fn();
+        const promise = native.request(kind, { text: "hello" });
+        void promise.catch(rejected);
+        await Promise.resolve();
+        expect(rejected).toHaveBeenCalledWith(expect.any(Error));
+        await expect(promise).rejects.toThrow(
+          "native message could not be sent",
+        );
+        expect(vi.getTimerCount()).toBe(0);
+        expect(() =>
+          native.post({ type: "haptic", kind: "selection" }),
+        ).not.toThrow();
+      } finally {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("times out a request the shell never answers", async () => {
     vi.useFakeTimers();
     try {
