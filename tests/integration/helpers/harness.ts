@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import { sweepProviderLifecycles } from "../../../apps/server/src/services/environments/environment-engine.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -194,15 +195,18 @@ async function startIntegrationServer(
   tmpRoot: string,
   options: CreateHarnessOptions,
 ): Promise<RunningTestServer> {
+  let phase = performance.now();
   const serverDataDir = path.join(tmpRoot, "server-data");
   await fs.mkdir(serverDataDir, { recursive: true });
   await copyBuiltinHostBuildRecords(serverDataDir);
+  phase = phaseMark("server-host-record-copy", phase);
   const builtinSkillsRootPath = path.join(serverDataDir, "builtin-skills");
   await copyBuiltinSkills({
     skillsRootPath: resolveBuiltinSkillsRootPath(),
     targetPath: builtinSkillsRootPath,
   });
 
+  phase = phaseMark("server-skills-copy", phase);
   const db = createMigratedConnection();
   const walCheckpointer = startWalCheckpointer({ logger: testLogger });
   ensurePersonalProject(db);
@@ -239,6 +243,7 @@ async function startIntegrationServer(
     logger: testLogger,
   });
   await machineAuth.ensureReady();
+  phase = phaseMark("server-db-and-auth", phase);
   const lifecycleDedupers = createLifecycleDedupers();
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
@@ -249,9 +254,12 @@ async function startIntegrationServer(
   const skillTreeRegistry = new SkillTreeRegistry();
   const providerRegistry = createProviderRegistryService({});
   await registerFirstPartyProviders(providerRegistry);
+  phase = phaseMark("server-provider-registration", phase);
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
   await registerFakeProviders(providerRegistry, pluginHostArtifacts);
+  phase = phaseMark("server-fake-artifact", phase);
   await recordFirstPartyProviderBridgeArtifacts(pluginHostArtifacts);
+  phase = phaseMark("server-real-artifacts", phase);
   const aiServices = createAiServiceRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
@@ -395,6 +403,7 @@ async function startIntegrationServer(
     ...INTEGRATION_BUILTIN_PLUGINS,
     ...(options.builtinPlugins ?? []),
   ]);
+  phase = phaseMark("server-services-start", phase);
   for (const name of builtinPlugins) {
     const entry = await pluginService.install(`builtin:${name}`, {
       kind: "root",
@@ -406,6 +415,7 @@ async function startIntegrationServer(
     }
   }
 
+  phaseMark("server-install-plugins", phase);
   return {
     sweepEnvironments: () => sweepProviderLifecycles(serverDeps),
     baseUrl,
@@ -572,19 +582,27 @@ export async function createIntegrationHarness(
     }
     cleanedUp = true;
 
+    let cleanupPhase = performance.now();
     await shutdownDaemon("integration-cleanup").catch(() => undefined);
+    cleanupPhase = phaseMark("cleanup-daemon", cleanupPhase);
     await server?.close().catch(() => undefined);
+    cleanupPhase = phaseMark("cleanup-server", cleanupPhase);
     await killProcessesReferencingPath(tmpRoot);
     await removePathWithRetry(tmpRoot);
+    phaseMark("cleanup-files", cleanupPhase);
   }
 
   try {
+    let setupPhase = performance.now();
     server = await startIntegrationServer(tmpRoot, options);
+    setupPhase = phaseMark("harness-server", setupPhase);
     const api = createPublicApiClient(server.baseUrl, {
       fetch: createIntegrationFetch(),
     });
     daemonResources = await startHarnessDaemon(daemonDataDir, server);
+    setupPhase = phaseMark("harness-daemon-start", setupPhase);
     await waitForHostConnected(api);
+    phaseMark("harness-daemon-connect", setupPhase);
     await persistHostId({
       dataDir: server.config.dataDir,
       hostId: daemonResources.hostId,
@@ -634,4 +652,9 @@ export async function withHarness<T>(
   } finally {
     await harness.cleanup();
   }
+}
+
+function phaseMark(label: string, start: number): number {
+  appendFileSync(process.env.BB_PHASE_LOG!, JSON.stringify({ label, ms: performance.now() - start }) + "\n");
+  return performance.now();
 }
