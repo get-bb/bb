@@ -896,7 +896,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       });
       expect(
         fetchMock.mock.calls.some(
-          ([input]) => requestPath(input) === "/api/v1/skills-registry/install",
+          ([input]) =>
+            requestPath(input).startsWith("/api/v1/skills-registry/install"),
         ),
       ).toBe(false);
     },
