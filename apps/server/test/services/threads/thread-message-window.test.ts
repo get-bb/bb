@@ -113,7 +113,8 @@ function streamedAnswer(turnId: string, name: string): RowSpec[] {
 function backgroundTask(
   turnId: string | null,
   taskId: string,
-  status: "pending" | "completed",
+  status: "pending" | "completed" | "failed",
+  parentToolCallId: string | null = null,
 ): RowSpec {
   return {
     type:
@@ -121,6 +122,7 @@ function backgroundTask(
     turnId,
     itemId: taskId,
     itemKind: "backgroundTask",
+    parentToolCallId,
     data: {
       providerThreadId: "provider-memo",
       item: {
@@ -132,6 +134,26 @@ function backgroundTask(
         taskStatus: status === "pending" ? "running" : status,
         skipTranscript: false,
         foreground: false,
+        ...(parentToolCallId === null ? {} : { parentToolCallId }),
+      },
+    },
+  };
+}
+
+function delegation(turnId: string, itemId: string): RowSpec {
+  return {
+    type: "item/started",
+    turnId,
+    itemId,
+    itemKind: "delegation",
+    data: {
+      item: {
+        id: itemId,
+        type: "delegation",
+        childRef: "child-thread",
+        label: "Investigate",
+        status: "pending",
+        background: true,
       },
     },
   };
@@ -258,6 +280,17 @@ const crossBoundaryHistories: { name: string; rows: RowSpec[] }[] = [
       ...turn("bg", [backgroundTask("turn-bg", "task-1", "pending")]),
       ...turns("mid", 2),
       backgroundTask(null, "task-1", "completed"),
+    ],
+  },
+  {
+    name: "a delegated background task that fails several turns later",
+    rows: [
+      ...turn("delegating", [
+        delegation("turn-delegating", "delegation-1"),
+        backgroundTask("turn-delegating", "task-2", "pending", "delegation-1"),
+      ]),
+      ...turns("waiting", 2),
+      backgroundTask(null, "task-2", "failed", "delegation-1"),
     ],
   },
   {
