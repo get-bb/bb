@@ -68,6 +68,11 @@ routed threads; use `bb pool bypass <thread-id>` for a thread that needs them.
 Claude Code removes `ANTHROPIC_AUTH_TOKEN` from tool subprocesses in this mode,
 so route a nested `claude` explicitly with
 `ANTHROPIC_AUTH_TOKEN="$BB_ACCOUNT_POOL_PARENT_TOKEN" claude ...`.
+Claude Code skips its served model catalog behind the pool and lists only the
+models it cached under a personal login, so the pool also contributes
+`BB_CLAUDE_MODELS_URL`. bb adds the models that pooled accounts can use,
+including newly released ones, from that hub route to the Claude Code model
+picker.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies them as in-memory app-server config.
 Codex image generation and editing use the same authenticated pool route.
