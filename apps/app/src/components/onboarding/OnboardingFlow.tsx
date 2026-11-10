@@ -670,12 +670,15 @@ function AgentStepContainer({
         });
 
   const agentReady = hasReadyAgent(states);
-  const agentBlocked = agents === null ? statesQuery.isError : !agentReady;
+  const agentBlocked =
+    agents === null
+      ? statesQuery.isError || hostWaitFailure !== null
+      : !agentReady;
   const statesLoadFailed =
     redesign &&
-    hostId !== null &&
     states === undefined &&
-    (statesQuery.isError || statesLoad.timedOut);
+    (hostWaitFailure !== null ||
+      (hostId !== null && (statesQuery.isError || statesLoad.timedOut)));
   return (
     <OnboardingLayout
       {...chrome}
@@ -725,6 +728,7 @@ function ProjectsStepContainer({
   redesign,
   entry,
   hostId,
+  hostWaitFailure,
   projectIdsAtOpen,
   onBack,
   onContinue,
@@ -734,6 +738,7 @@ function ProjectsStepContainer({
   redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
+  hostWaitFailure: HostWaitFailure | null;
   projectIdsAtOpen: ReadonlySet<string> | null;
   onBack: () => void;
   onContinue: () => void;
@@ -859,7 +864,10 @@ function ProjectsStepContainer({
     void importProjects(hostId, chosen);
   };
 
-  const scanning = hostId === null || reposQuery.isPending || rescanning;
+  const hostNeverConnected = hostId === null && hostWaitFailure !== null;
+  const scanning =
+    !hostNeverConnected &&
+    (hostId === null || reposQuery.isPending || rescanning);
   const copy = stepCopy(redesign, "projects");
   return (
     <OnboardingLayout
@@ -893,12 +901,15 @@ function ProjectsStepContainer({
         status={
           scanning
             ? { kind: "scanning" }
-            : reposQuery.isError
+            : hostNeverConnected || reposQuery.isError
               ? {
                   kind: "error",
                   message: "bb couldn't scan this computer for git repos.",
                 }
-              : { kind: "results", truncated: reposQuery.data.truncated }
+              : {
+                  kind: "results",
+                  truncated: reposQuery.data?.truncated ?? false,
+                }
         }
         repos={repos}
         selectedIds={selectedPaths}
@@ -1487,6 +1498,7 @@ export function OnboardingFlow({
           redesign={redesign}
           entry={entry}
           hostId={hostId}
+          hostWaitFailure={hostWaitFailure}
           projectIdsAtOpen={projectIdsAtOpen}
           onBack={goTo(-1)}
           onContinue={advance("completed")}

@@ -23,6 +23,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
 import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
+import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -104,13 +105,15 @@ function renderFlow({
       <MemoryRouter>
         <NavigateProbe />
         <TooltipProvider>
-          <OnboardingFlow
-            initialStep={initialStep}
-            entry="first_run"
-            setupGuide={{ variant }}
-            closing={closing}
-            onClose={onClose}
-          />
+          <QuickCreateProjectProvider>
+            <OnboardingFlow
+              initialStep={initialStep}
+              entry="first_run"
+              setupGuide={{ variant }}
+              closing={closing}
+              onClose={onClose}
+            />
+          </QuickCreateProjectProvider>
         </TooltipProvider>
       </MemoryRouter>
     </QueryClientProvider>
@@ -274,6 +277,51 @@ describe("OnboardingFlow", () => {
       expect(repoScanRequests()).toBe(1);
       expect(providerStateRequests()).toBeGreaterThan(0);
       expect(screen.getByText("On bee")).toBeTruthy();
+    },
+  );
+
+  it.each(["new", "control"] as const)(
+    "offers the %s guide's way forward when this computer never connects, then recovers",
+    async (variant) => {
+      vi.useFakeTimers();
+      const { queryClient } = renderFlow({
+        initialStep: "agent",
+        variant,
+        hostStatus: "disconnected",
+      });
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+
+      if (variant === "new") {
+        expect(
+          screen.getByText("Provider readiness could not be checked."),
+        ).toBeTruthy();
+        expect(button(/^Continue/u).disabled).toBe(false);
+      } else {
+        expect(button(/Skip for now/u).disabled).toBe(false);
+      }
+      expect(agentLoadFailures()).toEqual(["host_unavailable"]);
+
+      fireEvent.click(
+        variant === "new" ? button(/^Continue/u) : button(/Skip for now/u),
+      );
+      expect(
+        screen.getByText("bb couldn't scan this computer for git repos."),
+      ).toBeTruthy();
+      expect(button(/^Continue/u).disabled).toBe(false);
+      expect(repoScanRequests()).toBe(0);
+
+      await act(async () => {
+        queryClient.setQueryData(hostsQueryOptions(false).queryKey, [
+          makeHost({ id: "host_1", name: "bee", status: "connected" }),
+        ]);
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(repoScanRequests()).toBe(1);
+      expect(
+        screen.queryByText("bb couldn't scan this computer for git repos."),
+      ).toBeNull();
     },
   );
 
