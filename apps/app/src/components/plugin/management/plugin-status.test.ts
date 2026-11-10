@@ -5,7 +5,7 @@ import {
   type PluginUpdateState,
 } from "@/hooks/queries/plugin-settings-queries";
 import {
-  pluginRowSignal,
+  pluginRowSignals,
   pluginRuntimeStatusPresentation,
 } from "./plugin-status";
 import { makePluginListItem } from "@/test/fixtures/plugins";
@@ -29,37 +29,34 @@ function plugin(
   });
 }
 
-describe("pluginRowSignal (the one-signal rule)", () => {
+describe("pluginRowSignals", () => {
   it("badges an available compatible update", () => {
     expect(
-      pluginRowSignal(
+      pluginRowSignals(
         plugin({ availableVersion: "1.7.0", availableLabel: "1.7.0" }),
       ),
-    ).toEqual({
-      kind: "update",
-      version: "1.7.0",
-    });
+    ).toEqual({ status: null, update: { kind: "update", version: "1.7.0" } });
   });
 
   it("never badges a newer-but-incompatible release", () => {
     expect(
-      pluginRowSignal(
+      pluginRowSignals(
         plugin({
           blockedVersion: "1.9.0",
           blockedLabel: "1.9.0",
           blockedReasons: ["requires bb >= 0.15"],
         }),
       ),
-    ).toBeNull();
+    ).toEqual({ status: null, update: null });
   });
 
   it("never badges a pinned/quiet plugin", () => {
-    expect(pluginRowSignal(plugin())).toBeNull();
+    expect(pluginRowSignals(plugin())).toEqual({ status: null, update: null });
   });
 
   it("surfaces an update-source security refusal", () => {
     expect(
-      pluginRowSignal(
+      pluginRowSignals(
         plugin({
           outcome: "unavailable",
           detail:
@@ -67,17 +64,21 @@ describe("pluginRowSignal (the one-signal rule)", () => {
         }),
       ),
     ).toEqual({
-      kind: "status",
-      icon: "AlertTriangle",
-      label: "Needs attention",
-      tone: "warning",
-      detail: "The cached checkout does not prove that this ref was a branch.",
+      status: {
+        kind: "status",
+        icon: "AlertTriangle",
+        label: "Needs attention",
+        tone: "warning",
+        detail:
+          "The cached checkout does not prove that this ref was a branch.",
+      },
+      update: null,
     });
   });
 
   it("names a rolled-back update and lets it outrank an available update", () => {
     expect(
-      pluginRowSignal(
+      pluginRowSignals(
         plugin({
           availableVersion: "1.7.0",
           availableLabel: "1.7.0",
@@ -90,11 +91,14 @@ describe("pluginRowSignal (the one-signal rule)", () => {
         }),
       ),
     ).toEqual({
-      kind: "status",
-      icon: "RotateCcw",
-      label: "Update failed",
-      tone: "error",
-      detail: "boom",
+      status: {
+        kind: "status",
+        icon: "RotateCcw",
+        label: "Update failed",
+        tone: "error",
+        detail: "boom",
+      },
+      update: null,
     });
   });
 
@@ -108,35 +112,62 @@ describe("pluginRowSignal (the one-signal rule)", () => {
     "names the %s runtime status instead of collapsing it into attention",
     (status, icon, label, tone) => {
       expect(
-        pluginRowSignal(
+        pluginRowSignals(
           plugin(
             {},
             { status, statusDetail: `${status} detail from the server` },
           ),
         ),
       ).toEqual({
-        kind: "status",
-        icon,
-        label,
-        tone,
-        detail: `${status} detail from the server`,
+        status: {
+          kind: "status",
+          icon,
+          label,
+          tone,
+          detail: `${status} detail from the server`,
+        },
+        update: null,
       });
     },
   );
 
+  it("badges a reviewable release outside the range next to an earlier failure", () => {
+    expect(
+      pluginRowSignals(
+        plugin({
+          lastFailure: { version: "2.0.0", label: "2.0.0", at: 1, detail: "" },
+          rangeUpgrade: {
+            currentRange: "^1.6.0",
+            range: "^2.0.0",
+            basis: "catalog",
+            candidate: { version: "2.1.0", label: "2.1.0", display: "2.1.0" },
+            breaking: true,
+            reasons: [],
+          },
+        }),
+      ),
+    ).toMatchObject({
+      status: { kind: "status", label: "Update failed" },
+      update: { kind: "update", version: "2.1.0" },
+    });
+  });
+
   it("provides a useful rollback explanation when the server has no detail", () => {
     expect(
-      pluginRowSignal(
+      pluginRowSignals(
         plugin({
           lastFailure: { version: "1.7.0", label: "1.7.0", at: 1, detail: "" },
         }),
       ),
     ).toEqual({
-      kind: "status",
-      icon: "RotateCcw",
-      label: "Update failed",
-      tone: "error",
-      detail: "Update to 1.7.0 failed and was rolled back.",
+      status: {
+        kind: "status",
+        icon: "RotateCcw",
+        label: "Update failed",
+        tone: "error",
+        detail: "Update to 1.7.0 failed and was rolled back.",
+      },
+      update: null,
     });
   });
 });

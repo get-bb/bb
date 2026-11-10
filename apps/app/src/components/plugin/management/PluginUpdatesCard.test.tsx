@@ -203,43 +203,52 @@ describe("PluginDetailReleaseControl", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginDetailReleaseControl
-        plugin={plugin({
-          version: "3.4.1",
-          source: "npm:@example/linear@^3.4.0",
-          provenance: "catalog",
-          updateState: {
-            ...EMPTY_PLUGIN_UPDATE_STATE,
-            outcome: "current",
-            lastFailure: {
-              version: "4.0.0",
-              label: "4.0.0",
-              at: null,
-              detail:
-                "Activation failed and the previous version was restored.",
-            },
-            rangeUpgrade: {
-              currentRange: "^3.4.0",
-              range: "^4.0.0",
-              basis: "catalog",
-              candidate: {
-                version: "4.2.0",
-                label: "4.2.0",
-                display: "4.2.0",
-              },
-              breaking: true,
-              reasons: [],
-            },
+    const failedThenOffered = plugin({
+      version: "3.4.1",
+      source: "npm:@example/linear@^3.4.0",
+      provenance: "catalog",
+      updateState: {
+        ...EMPTY_PLUGIN_UPDATE_STATE,
+        outcome: "current",
+        lastFailure: {
+          version: "4.0.0",
+          label: "4.0.0",
+          at: null,
+          detail: "Activation failed and the previous version was restored.",
+        },
+        rangeUpgrade: {
+          currentRange: "^3.4.0",
+          range: "^4.0.0",
+          basis: "catalog",
+          candidate: {
+            version: "4.2.0",
+            label: "4.2.0",
+            display: "4.2.0",
           },
-        })}
-      />,
+          breaking: true,
+          reasons: [],
+        },
+      },
+    });
+    render(
+      <>
+        <PluginDetailReleaseControl plugin={failedThenOffered} />
+        <PluginDetailReleaseStatus plugin={failedThenOffered} />
+      </>,
       {
         wrapper: ({ children }) => (
           <MemoryRouter>{wrapper({ children })}</MemoryRouter>
         ),
       },
     );
+
+    expect(
+      screen.getByRole("status", { name: "Update failed" }).textContent,
+    ).toContain("bb couldn’t activate 4.0.0.");
+    expect(
+      screen.getByRole("status", { name: "Update outside the version range" })
+        .textContent,
+    ).toContain("4.2.0 is available outside the version range ^3.4.0");
 
     fireEvent.click(
       screen.getByRole("button", {

@@ -1778,6 +1778,43 @@ describe.concurrent("plugin tagged release updates", () => {
   );
 
   taggedTest(
+    "keeps a rolled-back range release's tag version after newer releases appear",
+    async ({ fixture }) => {
+      const { service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      await writeFile(
+        join(tagged, "server.ts"),
+        'export default function plugin() { throw new Error("major activation failed"); }',
+      );
+      const brokenCommit = await releaseTag(tagged, "v2.0.0");
+      await expect(
+        service.applyUpdate("tagged", {
+          range: "^2.0.0",
+          expectedVersion: brokenCommit,
+        }),
+      ).resolves.toMatchObject({
+        ok: true,
+        result: { applied: false, outcome: "rolled-back" },
+      });
+      await writeFile(
+        join(tagged, "server.ts"),
+        'export default function plugin(bb: any) { bb.log.info("fixed"); }',
+      );
+      const fixedCommit = await releaseTag(tagged, "v2.1.0");
+
+      await service.checkForUpdates("tagged");
+
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState,
+      ).toMatchObject({
+        rangeUpgrade: { candidate: { version: fixedCommit, label: "2.1.0" } },
+        lastFailure: { version: brokenCommit, label: "2.0.0" },
+      });
+    },
+  );
+
+  taggedTest(
     "labels update state saved before versions carried labels",
     async ({ fixture }) => {
       const { db, service, taggedRepo } = fixture;
