@@ -26,13 +26,20 @@ function streamToolCallResponse(
   result: Promise<ToolCallResponse>,
   abortController: AbortController,
 ): Response {
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
   const body = new ReadableStream<Uint8Array>({
     cancel() {
+      clearInterval(heartbeat);
       abortController.abort();
     },
     start(controller) {
+      heartbeat = setInterval(() => {
+        controller.enqueue(textEncoder.encode(" "));
+      }, 30_000);
+      heartbeat.unref();
       void result.then(
         (response) => {
+          clearInterval(heartbeat);
           try {
             controller.enqueue(textEncoder.encode(JSON.stringify(response)));
             controller.close();
@@ -40,12 +47,18 @@ function streamToolCallResponse(
             controller.error(error);
           }
         },
-        (error) => controller.error(error),
+        (error) => {
+          clearInterval(heartbeat);
+          controller.error(error);
+        },
       );
     },
   });
   return new Response(body, {
-    headers: { "content-type": "application/json; charset=UTF-8" },
+    headers: {
+      "content-type": "application/json; charset=UTF-8",
+      "cache-control": "no-transform",
+    },
   });
 }
 
