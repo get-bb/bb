@@ -584,6 +584,40 @@ it("stores the summary of a turn the first page only partly covers from that pag
   );
 });
 
+it("records a summary's validation once more than 1,024 later events have been checked", async () => {
+  const { db, thread } = setup();
+  const next = insertAt(db, thread, 1, [
+    ...turnStart(),
+    agentMessage("start", "Looking into it."),
+    ...command("cmd-1"),
+    agentMessage("answer", "Here is the fix."),
+    turnCompleted(),
+  ]);
+  walk(await freshTimeline(), db, thread);
+  const validatedThrough = () =>
+    db.$client
+      .prepare(
+        "SELECT validated_through AS value FROM thread_turn_summaries WHERE turn_id = ?",
+      )
+      .get(TURN_ID) as { value: number };
+  expect(validatedThrough().value).toBe(next - 1);
+
+  const last = insertAt(db, thread, next, [
+    ...followUpTurn(2, "turn-2"),
+    ...inTurn(
+      [
+        ...Array.from({ length: 520 }, (_, item) =>
+          command(`late-${item}`),
+        ).flat(),
+        turnCompleted(),
+      ],
+      "turn-2",
+    ),
+  ]);
+  walk(await freshTimeline(), db, thread);
+  expect(validatedThrough().value).toBe(last - 1);
+});
+
 it("absorbs late events into a finished turn's kept selection", async () => {
   const { db, thread } = setup();
   const active: Thread = { ...thread, status: "active" };
