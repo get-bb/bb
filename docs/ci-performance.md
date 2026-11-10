@@ -626,13 +626,11 @@ The build job builds and checks the plugin SDK's published version before the
 remaining build tasks. Those later tasks reuse its Turbo outputs. A version
 mismatch therefore fails earlier without relaxing the published-content guard.
 
-The AppImage FUSE installer (`.github/actions/install-appimage-fuse`) skips an
-already-installed runtime and otherwise uses isolated apt indexes without
-rewriting the runner's global apt configuration. It requires a successful index
-refresh and tries Ubuntu's archive and then the kernel.org mirror on
-amd64/i386, or Ubuntu Ports on other architectures. Index and download failures
-move to the next mirror; exhausting them is a blocking failure. Desktop and
-release packaging use the same installer.
+AppImage toolset `1.0.3` supplies a static runtime, so CI and release packaging
+use the runner's existing FUSE device without installing legacy FUSE 2 packages.
+The AppImage lifecycle smoke still requires real mounts and disables extraction
+fallback. Avoid restoring the obsolete apt setup: downloading full Ubuntu indexes
+added minutes to packaging and could time out before any build started.
 
 The boot smoke waits for the host daemon to connect after the server and plugins
 are ready; these are independent startup milestones. It clears its shutdown
