@@ -133,9 +133,12 @@ const MODEL_SEARCH_MIN_OPTIONS = 5;
 const HANDOFF_DRAWER_TOP_CLASS_NAME =
   "[&>[data-persistent-drawer-handle]]:w-full [&>[data-persistent-drawer-handle]]:rounded-t-xl [&>[data-persistent-drawer-handle]]:bg-background";
 
+export type MoreModelsOpenedBy = "hover" | "activation";
+
 export type ModelNavRow =
   | { kind: "model"; option: ModelPickerOption }
-  | { kind: "more-toggle" };
+  | { kind: "more-toggle" }
+  | { kind: "more-submenu" };
 
 export function buildModelNavRows({
   modelOptions,
@@ -161,15 +164,17 @@ export function buildModelNavRows({
     return rows;
   }
 
-  if (isCompactViewport) {
-    rows.push({ kind: "more-toggle" });
-    if (showMoreModels) {
-      for (const option of moreModelOptions) {
-        rows.push({ kind: "model", option });
-      }
-    }
+  if (!isCompactViewport) {
+    rows.push({ kind: "more-submenu" });
+    return rows;
   }
 
+  rows.push({ kind: "more-toggle" });
+  if (showMoreModels) {
+    for (const option of moreModelOptions) {
+      rows.push({ kind: "model", option });
+    }
+  }
   return rows;
 }
 
@@ -260,7 +265,8 @@ export function ModelReasoningPicker({
     null,
   );
   const [showMoreModels, setShowMoreModels] = useState(false);
-  const [moreModelsOpen, setMoreModelsOpen] = useState(false);
+  const [moreModelsOpenedBy, setMoreModelsOpenedBy] =
+    useState<MoreModelsOpenedBy | null>(null);
   const [trackedSelectedProviderId, setTrackedSelectedProviderId] =
     useState(selectedProviderId);
   const [browsingHandoff, setHandoffMode] = useState(false);
@@ -279,7 +285,7 @@ export function ModelReasoningPicker({
     setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
-    setMoreModelsOpen(false);
+    setMoreModelsOpenedBy(null);
     setSearchQuery("");
     setActiveIndex(-1);
   }
@@ -560,7 +566,7 @@ export function ModelReasoningPicker({
     setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
-    setMoreModelsOpen(false);
+    setMoreModelsOpenedBy(null);
     setSearchQuery("");
     setActiveIndex(-1);
   }, []);
@@ -589,11 +595,11 @@ export function ModelReasoningPicker({
             (isPreviewing ? previewSelection?.reasoningLevel : undefined) ??
             reasoningValue,
         });
-        setMoreModelsOpen(false);
+        setMoreModelsOpenedBy(null);
         return;
       }
       onModelChange(model);
-      setMoreModelsOpen(false);
+      setMoreModelsOpenedBy(null);
       setPreviewProviderId(null);
     },
     [
@@ -617,7 +623,7 @@ export function ModelReasoningPicker({
       );
       setHandoffReasoningLevel(null);
       setShowMoreModels(false);
-      setMoreModelsOpen(false);
+      setMoreModelsOpenedBy(null);
       setSearchQuery("");
       setActiveIndex(-1);
     },
@@ -676,7 +682,7 @@ export function ModelReasoningPicker({
       }
       onReasoningChange(level);
       setPreviewProviderId(null);
-      setMoreModelsOpen(false);
+      setMoreModelsOpenedBy(null);
     },
     [
       handoffMode,
@@ -876,16 +882,31 @@ export function ModelReasoningPicker({
         return;
       }
 
+      const row = highlightedIndex >= 0 ? navRows[highlightedIndex] : undefined;
+      if (!row) return;
+
+      if (
+        row.kind === "more-submenu" &&
+        event.key === "ArrowRight" &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        setMoreModelsOpenedBy("activation");
+        return;
+      }
+
       if (event.key === "Enter") {
-        if (highlightedIndex < 0) return;
-        const row = navRows[highlightedIndex];
-        if (!row) return;
         event.preventDefault();
         if (row.kind === "model") {
           if (row.option.disabled === true) return;
           handleModelSelect(row.option.value);
-        } else {
+        } else if (row.kind === "more-toggle") {
           toggleShowMoreModels();
+        } else {
+          setMoreModelsOpenedBy("activation");
         }
       }
     },
@@ -1133,8 +1154,8 @@ export function ModelReasoningPicker({
           showMoreModels={showMoreModels}
           onToggleMoreModels={toggleShowMoreModels}
           moreModelOptions={filteredMoreModelOptions}
-          moreModelsOpen={moreModelsOpen}
-          onMoreModelsOpenChange={setMoreModelsOpen}
+          moreModelsOpenedBy={moreModelsOpenedBy}
+          onMoreModelsOpenedByChange={setMoreModelsOpenedBy}
           isPreviewing={isPreviewing}
           modelValue={modelValue}
           selectionBlocked={previewSelectionBlocked}
