@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import type {
   AvailableModel,
@@ -362,21 +363,77 @@ describe("ModelReasoningPicker", () => {
     expect(document.activeElement).toBe(model);
   });
 
-  it("does not change reasoning when the submenu handles an arrow", () => {
-    const { onReasoningChange } = renderPicker({
+  it.each(["Enter", " ", "Spacebar", "ArrowRight"])(
+    "opens the submenu with %s without pointer hover or reasoning changes",
+    async (key) => {
+      const { onReasoningChange } = renderPicker({
+        moreModelOptions: [{ value: "legacy", label: "Legacy" }],
+      });
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Provider, model and reasoning",
+        }),
+      );
+      const moreModels = screen.getByRole("button", { name: "More models" });
+      act(() => moreModels.focus());
+      fireEvent.keyDown(moreModels, {
+        key,
+      });
+      expect(onReasoningChange).not.toHaveBeenCalled();
+      expect(moreModels.getAttribute("aria-expanded")).toBe("true");
+      await waitFor(() => {
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: "Legacy" }),
+        );
+      });
+      fireEvent.keyDown(screen.getByRole("button", { name: "Legacy" }), {
+        key: "ArrowLeft",
+      });
+      expect(moreModels.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(moreModels);
+    },
+  );
+
+  it("opens the submenu on click without a preceding hover and selects a model", () => {
+    const { onModelChange } = renderPicker({
+      moreModelOptions: [{ value: "legacy", label: "Legacy" }],
+    });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    fireEvent.click(trigger);
+    const moreModels = screen.getByRole("button", { name: "More models" });
+    fireEvent.click(moreModels);
+    expect(moreModels.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Legacy" }));
+    expect(onModelChange).toHaveBeenCalledExactlyOnceWith("legacy");
+    expect(moreModels.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("dismisses a hover-opened submenu and switches to keyboard opening", async () => {
+    renderPicker({
       moreModelOptions: [{ value: "legacy", label: "Legacy" }],
     });
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Provider, model and reasoning",
-      }),
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
     const moreModels = screen.getByRole("button", { name: "More models" });
+    fireEvent.pointerEnter(moreModels);
+    expect(moreModels.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "5.5" }));
+    expect(moreModels.getAttribute("aria-expanded")).toBe("false");
     act(() => moreModels.focus());
-    fireEvent.keyDown(moreModels, {
-      key: "ArrowRight",
+    fireEvent.keyDown(moreModels, { key: "Enter" });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Legacy" }),
+      );
     });
-    expect(onReasoningChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Legacy" }), {
+      key: "Escape",
+    });
+    expect(moreModels.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(moreModels);
   });
 
   it("keeps submenu ArrowRight navigation from changing reasoning", async () => {

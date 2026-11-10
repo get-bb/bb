@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -535,6 +536,7 @@ function MoreModelsSubmenu({
   onSelect: (value: string) => void;
 }) {
   const { isLastHovered, hoverProps } = useMenuItemHover();
+  const [openedByHover, setOpenedByHover] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const focusFirstSubItem = useCallback(() => {
@@ -544,10 +546,10 @@ function MoreModelsSubmenu({
   }, []);
 
   useEffect(() => {
-    if (open && !isLastHovered) {
+    if (open && openedByHover && !isLastHovered) {
       onOpenChange(false);
     }
-  }, [open, isLastHovered, onOpenChange]);
+  }, [open, openedByHover, isLastHovered, onOpenChange]);
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -557,8 +559,12 @@ function MoreModelsSubmenu({
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
-          onClick={openSub}
+          onClick={() => {
+            setOpenedByHover(false);
+            openSub();
+          }}
           onPointerEnter={(event) => {
+            setOpenedByHover(true);
             hoverProps.onPointerEnter(event);
             openSub();
           }}
@@ -572,6 +578,7 @@ function MoreModelsSubmenu({
               event.key === "ArrowRight"
             ) {
               event.preventDefault();
+              setOpenedByHover(false);
               openSub();
               focusFirstSubItem();
               return;
