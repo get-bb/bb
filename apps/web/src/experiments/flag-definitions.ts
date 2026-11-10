@@ -56,6 +56,7 @@ export function createFlagDefinitionsSource(
   const now = config.now ?? Date.now;
   let entry: Entry | null = null;
   let refreshing: Promise<void> | null = null;
+  let lastAttemptAt = -Infinity;
 
   async function readShared(): Promise<Entry | null> {
     try {
@@ -152,10 +153,16 @@ export function createFlagDefinitionsSource(
     });
   }
 
-  function startRefresh(): Promise<void> {
-    refreshing ??= refresh().finally(() => {
-      refreshing = null;
-    });
+  function startRefresh(): Promise<void> | null {
+    if (refreshing === null && now() - lastAttemptAt < FRESH_MS) {
+      return null;
+    }
+    if (refreshing === null) {
+      lastAttemptAt = now();
+      refreshing = refresh().finally(() => {
+        refreshing = null;
+      });
+    }
     return refreshing;
   }
 
@@ -171,8 +178,9 @@ export function createFlagDefinitionsSource(
         }
       }
       const age = entry === null ? Infinity : now() - entry.fetchedAt;
-      if (age >= FRESH_MS) {
-        waitUntil(startRefresh());
+      const pending = age >= FRESH_MS ? startRefresh() : null;
+      if (pending !== null) {
+        waitUntil(pending);
       }
       return entry !== null && age < MAX_STALE_MS ? entry.definitions : null;
     },

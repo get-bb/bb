@@ -48,7 +48,12 @@ function readPercentage(value: unknown): number | null | undefined {
 }
 
 function readCondition(value: unknown): Condition | null {
-  if (!isRecord(value) || !isEmpty(value.properties)) {
+  if (
+    !isRecord(value) ||
+    !isEmpty(value.properties) ||
+    (value.aggregation_group_type_index !== undefined &&
+      value.aggregation_group_type_index !== null)
+  ) {
     return null;
   }
   const rolloutPercentage = readPercentage(value.rollout_percentage);

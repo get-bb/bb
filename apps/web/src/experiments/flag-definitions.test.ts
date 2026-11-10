@@ -153,6 +153,22 @@ describe("flag definitions source", () => {
     expect(second.requests).toHaveLength(0);
   });
 
+  it("retries a failing fetch at most every 30 seconds", async () => {
+    const harness = setup({
+      respond: async () => new Response("unauthorized", { status: 401 }),
+    });
+    for (let index = 0; index < 5; index += 1) {
+      expect(await harness.read()).toBeNull();
+      await harness.settle();
+      harness.advance(1000);
+    }
+    expect(harness.requests).toHaveLength(1);
+    harness.advance(30_000);
+    await harness.read();
+    await harness.settle();
+    expect(harness.requests).toHaveLength(2);
+  });
+
   it.each([
     [
       "an invalid body",

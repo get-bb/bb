@@ -211,6 +211,21 @@ describe("local flag evaluation", () => {
       ],
     ],
     [
+      "a group-targeted condition",
+      [
+        flag({
+          groups: [
+            {
+              properties: [],
+              rollout_percentage: 100,
+              aggregation_group_type_index: 0,
+            },
+          ],
+          multivariate: SPLIT,
+        }),
+      ],
+    ],
+    [
       "early access enrollment",
       [
         flag({
