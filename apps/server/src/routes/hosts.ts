@@ -21,6 +21,7 @@ import type { AppDeps } from "../types.js";
 import {
   getProviderInstallations,
   invalidateProviderInstallationStatus,
+  settleUnneededProviderInstallation,
 } from "../services/system/provider-installations.js";
 import { createJobRegistry } from "../services/lib/job-registry.js";
 import { resolveBridgeLaunchForProviderId } from "../services/system/provider-bridge-launch.js";
@@ -510,8 +511,15 @@ export function registerHostRoutes(
             bridgeLaunch,
           },
         });
+        const events = await settleUnneededProviderInstallation(deps, {
+          hostId,
+          providerId: payload.provider,
+          action: payload.actionKind,
+          bridgeLaunch,
+          events: result.events,
+        });
         if (
-          result.events.some(
+          events.some(
             (event) => event.type === "completed" && event.success,
           )
         ) {
@@ -529,7 +537,7 @@ export function registerHostRoutes(
           ...job,
           state: "completed",
           finishedAt: Date.now(),
-          events: result.events,
+          events,
         };
       },
     });

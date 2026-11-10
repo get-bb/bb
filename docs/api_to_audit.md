@@ -4185,8 +4185,12 @@ up to two minutes of the server being unreachable. Starting the same provider
 on the same machine while a job runs returns that job. Jobs survive client
 disconnects, stay ten minutes after finishing, and live in memory only, so a
 server restart answers `provider_cli_install_job_not_found`. Installs on one
-machine run one at a time. `installProviderCli` keeps its events contract by
-starting a job and waiting on it. Core callers: the Updates settings section,
+machine run one at a time. When the machine refuses an action that is no
+longer needed and a fresh status shows the provider installed (install) or
+current (update), the job completes with one successful `completed` event
+whose `exitCode` and `signal` are null, instead of the refusal.
+`installProviderCli` keeps its events contract by starting a job and waiting
+on it. Core callers: the Updates settings section,
 the sidebar updates badge and the setup guide through
 `provider-cli-install-store`, which also follows jobs started elsewhere
 (another device or before a reload), and `bb updates apply` and

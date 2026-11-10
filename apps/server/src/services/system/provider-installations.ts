@@ -1,5 +1,8 @@
 import { createAsyncTtlMemo, type AsyncTtlMemo } from "@bb/async-cache";
 import type {
+  HostDaemonBridgeLaunch,
+  ProviderCliInstallActionKind,
+  ProviderCliInstallEvent,
   ProviderCliStatus,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
@@ -190,4 +193,49 @@ export function invalidateProviderInstallationStatus(
   providerStatusCache(deps).invalidateWhere((key) =>
     key.startsWith(`${hostId} `),
   );
+}
+
+export async function settleUnneededProviderInstallation(
+  deps: WorkSessionDeps,
+  args: {
+    hostId: string;
+    providerId: string;
+    action: ProviderCliInstallActionKind;
+    bridgeLaunch: HostDaemonBridgeLaunch;
+    events: ProviderCliInstallEvent[];
+  },
+): Promise<ProviderCliInstallEvent[]> {
+  const refused =
+    args.events.some((event) => event.type === "error") &&
+    !args.events.some((event) => event.type === "completed");
+  if (!refused) return args.events;
+  let status: ProviderInstallationStatus;
+  try {
+    status = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "provider.installation.status",
+        providerId: args.providerId,
+        bridgeLaunch: args.bridgeLaunch,
+      },
+    });
+  } catch {
+    return args.events;
+  }
+  const current =
+    args.action === "install"
+      ? status.installed
+      : status.installed && !status.needsUpdate && !status.versionUnsupported;
+  return current
+    ? [
+        {
+          type: "completed",
+          provider: args.providerId,
+          exitCode: null,
+          signal: null,
+          success: true,
+        },
+      ]
+    : args.events;
 }

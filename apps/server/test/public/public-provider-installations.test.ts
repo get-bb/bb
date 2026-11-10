@@ -631,6 +631,74 @@ describe("public provider installation routes", () => {
     });
   });
 
+  it("completes an update the machine no longer needs once its status shows it current", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-already-current-host",
+      });
+      let current = true;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle(request) {
+          const { command } = request;
+          if (command.type === "provider.installation.run") {
+            return {
+              ok: true as const,
+              result: {
+                events: [
+                  {
+                    type: "error" as const,
+                    provider: command.providerId,
+                    message: "Codex update is no longer available on this host.",
+                  },
+                ],
+              },
+            };
+          }
+          if (command.type === "provider.installation.status") {
+            return {
+              ok: true as const,
+              result: {
+                ...installationStatus(command.providerId),
+                currentVersion: current ? "1.1.0" : "1.0.0",
+                needsUpdate: !current,
+                installAction: current
+                  ? null
+                  : installationStatus(command.providerId).installAction,
+              },
+            };
+          }
+          return handleProviderInstallationRpc(request);
+        },
+      });
+      const install = async () =>
+        harness.app.request(`${API}/hosts/${host.id}/provider-clis/install`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider: "codex", actionKind: "update" }),
+        });
+      try {
+        expect(await (await install()).text()).toBe(
+          `${JSON.stringify({
+            type: "completed",
+            provider: "codex",
+            exitCode: null,
+            signal: null,
+            success: true,
+          })}\n`,
+        );
+
+        current = false;
+        expect(await (await install()).text()).toContain(
+          '"type":"error","provider":"codex","message":"Codex update is no longer available on this host."',
+        );
+      } finally {
+        responder.unregister();
+      }
+    });
+  });
+
   it("records a failed install job when the machine cannot run it", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
