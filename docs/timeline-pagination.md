@@ -313,6 +313,25 @@ force a rebuild. Background tasks in the kept history do not prevent reuse, but
 a later event for one of them, like a child event of a kept tool call, forces a
 rebuild. Eviction only affects performance.
 
+## Message lookups
+
+`GET /threads/:id/messages/:seq` (`bb thread log --message`, `sdk.threads.message`)
+projects a window of whole root turns around the message instead of the whole
+history. The window starts one completed root turn before the message and ends
+one after it, and doubles on the side that needs more `before` or `after`
+context. It is projected only when nothing outside it can change its
+conversation rows: every turn, request and item it references starts inside
+it, its turns finish and its requests are accepted inside it, and no later
+event belongs to its turns, completes its non-background items, nests under its
+tool calls or is a thread error that would attach to its last turn. A
+background task finishing later only updates its own work row. A window that
+does not start at the beginning of the history orders its rows from the
+thread's ordering boundary, like a timeline page. Rejected requests and
+unaccepted steers render after every other row, so a window that holds one, or
+a slice that reaches the end while one exists earlier, uses the full history.
+So do lookups whose window would cover more than half the history and
+messages the window does not contain, including missing ones.
+
 ## Catch-up feedback
 
 Event-append notifications carry `metadata.timelineSequence`, the thread's

@@ -44,6 +44,7 @@ import type {
   Thread,
   ThreadEvent,
   ThreadEventItemType,
+  ThreadEventType,
 } from "@bb/domain";
 import type {
   ThreadConversationOutlineItem,
@@ -72,8 +73,14 @@ import {
   getThreadConversationOutlineRecord,
   getThreadEventRewriteGeneration,
   isTimelineCursorSequencePresent,
+  hasStoredAgentMessageDeltaCount,
+  hasStoredEventReferencesFromSequence,
+  hasStoredStructuralItemRowsInRange,
+  hasStoredTimelineTailRequestsInRange,
   listStoredConversationOutlineEventRows,
+  listStoredConversationOutlineEventRowsInRange,
   listStoredRootConversationOutlineEventRows,
+  listStoredRootTurnSpansAround,
   getStoredConversationOutlineProjectionState,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRows,
@@ -1775,10 +1782,6 @@ function toConversationOutlineAttachmentSummary(
   return { imageCount, fileCount };
 }
 
-interface BuildThreadConversationRowsOptions extends BuildThreadConversationOutlineOptions {
-  includeNestedRows: boolean;
-}
-
 function collectConversationRows(
   rows: readonly TimelineRow[],
   conversationRows: TimelineConversationRow[],
@@ -1806,58 +1809,55 @@ function resolveConversationHistorySequenceStart(
   );
 }
 
-function buildThreadConversationRows(
+function projectThreadConversationRows(
   db: DbConnection,
   thread: Thread,
-  options: BuildThreadConversationRowsOptions,
+  options: BuildThreadConversationOutlineOptions,
+  rawEventRows: readonly StoredEventRow[],
+  decodedRawEvents: ThreadEventWithMeta[],
+  precedingAgentMessageDeltaCount: number,
+  orderingBoundarySequence: number | null,
 ): TimelineConversationRow[] {
-  return runEventLoopWorkSync(`conversation-rows ${thread.id}`, () => {
-    const rawEventRows = listStoredConversationOutlineEventRows(db, {
-      sequenceStart: resolveConversationHistorySequenceStart(
-        db,
-        thread,
-        options,
-      ),
-      threadId: thread.id,
-    });
-    const decodedRawEvents = rawEventRows.map((row) =>
-      toThreadEventWithMeta(row),
-    );
-    const decodedEvents = compactThreadTimelineSummaryEvents(decodedRawEvents);
-    const clientRequestContextRows = selectClientRequestContextRows(db, {
-      rows: rawEventRows,
-      threadId: thread.id,
-    });
-    const acceptedClientRequestContext: AcceptedClientRequestContext = {
-      acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
-        (row) => toThreadEventWithMeta(row),
-      ),
-      rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
-        (row) => toThreadEventWithMeta(row),
-      ),
-    };
-    const timeline = buildThreadTimelineFromEvents({
-      acceptedClientRequestContext,
-      contextWindowEvents: [],
-      events: decodedEvents,
-      options: {
-        completedTurnDisplay: options.completedTurnDisplay,
-        includeNestedRows: options.includeNestedRows,
-        omitSettledDelegationChildRows: false,
-        includeDiagnosticOperations: false,
-        isLatestPage: true,
-        providerDisplayName: options.providerDisplayName,
-        providerId: thread.providerId,
-        summarizeShellCommands: true,
-        threadName: thread.title ?? thread.titleFallback ?? "",
-        threadStatus: thread.status,
-        workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
-      },
-    });
-    const conversationRows: TimelineConversationRow[] = [];
-    collectConversationRows(timeline.rows, conversationRows);
-    return conversationRows;
+  const decodedEvents = compactThreadTimelineSummaryEvents(
+    decodedRawEvents,
+    precedingAgentMessageDeltaCount,
+  );
+  const clientRequestContextRows = selectClientRequestContextRows(db, {
+    rows: rawEventRows,
+    threadId: thread.id,
   });
+  const acceptedClientRequestContext: AcceptedClientRequestContext = {
+    acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
+      (row) => toThreadEventWithMeta(row),
+    ),
+    rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
+      (row) => toThreadEventWithMeta(row),
+    ),
+  };
+  const timeline = buildThreadTimelineFromEvents({
+    acceptedClientRequestContext,
+    contextWindowEvents: [],
+    events: decodedEvents,
+    options: {
+      completedTurnDisplay: options.completedTurnDisplay,
+      includeNestedRows: true,
+      omitSettledDelegationChildRows: false,
+      includeDiagnosticOperations: false,
+      isLatestPage: true,
+      providerDisplayName: options.providerDisplayName,
+      providerId: thread.providerId,
+      summarizeShellCommands: true,
+      threadName: thread.title ?? thread.titleFallback ?? "",
+      threadStatus: thread.status,
+      workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+    },
+  });
+  const conversationRows: TimelineConversationRow[] = [];
+  collectConversationRows(
+    orderTimelineRowsUsingContext(timeline.rows, orderingBoundarySequence),
+    conversationRows,
+  );
+  return conversationRows;
 }
 
 function selectThreadConversationOutline(
@@ -1975,29 +1975,307 @@ interface GetThreadMessageOptions extends BuildThreadConversationOutlineOptions 
   after: number;
 }
 
+interface ThreadMessageWindow {
+  beforeSequence: number | null;
+  nextTurnStartedSequence: number | null;
+  sequenceStart: number;
+}
+
+const THREAD_ERROR_EVENT_TYPES = new Set<ThreadEventType>([
+  "system/error",
+  "provider/error",
+  "system/thread/interrupted",
+]);
+
 export function getThreadMessage(
   db: DbConnection,
   thread: Thread,
   options: GetThreadMessageOptions,
 ): ThreadMessageResponse {
-  const rows = buildThreadConversationRows(db, thread, {
-    ...options,
-    includeNestedRows: true,
-  });
-  const index = rows.findIndex((row) => row.messageSeq === options.seq);
-  const message = rows[index];
-  if (message === undefined) {
+  const response = runEventLoopWorkSync(
+    `conversation-rows ${thread.id}`,
+    () => {
+      const historySequenceStart = resolveConversationHistorySequenceStart(
+        db,
+        thread,
+        options,
+      );
+      const windowed = findThreadMessageInWindow(
+        db,
+        thread,
+        options,
+        historySequenceStart,
+      );
+      if (windowed !== undefined) return windowed;
+      const rawEventRows = listStoredConversationOutlineEventRows(db, {
+        sequenceStart: historySequenceStart,
+        threadId: thread.id,
+      });
+      return sliceThreadMessage(
+        projectThreadConversationRows(
+          db,
+          thread,
+          options,
+          rawEventRows,
+          rawEventRows.map((row) => toThreadEventWithMeta(row)),
+          0,
+          null,
+        ),
+        options,
+      );
+    },
+  );
+  if (response === null) {
     throw new ApiError(
       404,
       "message_not_found",
       `Thread ${thread.id} has no message ${options.seq}; an edit may have removed it or a context clear hidden it`,
     );
   }
+  return response;
+}
+
+function sliceThreadMessage(
+  rows: readonly TimelineConversationRow[],
+  options: GetThreadMessageOptions,
+): ThreadMessageResponse | null {
+  const index = rows.findIndex((row) => row.messageSeq === options.seq);
+  const message = rows[index];
+  if (message === undefined) return null;
   return {
     message,
     before: rows.slice(Math.max(0, index - options.before), index),
     after: rows.slice(index + 1, index + 1 + options.after),
   };
+}
+
+function findThreadMessageInWindow(
+  db: DbConnection,
+  thread: Thread,
+  options: GetThreadMessageOptions,
+  historySequenceStart: number,
+): ThreadMessageResponse | undefined {
+  if (options.seq < historySequenceStart || options.seq > options.maxSeq) {
+    return undefined;
+  }
+  let precedingAgentMessageDeltaCount: number | undefined;
+  let turnsBefore = 1;
+  let turnsAfter = 1;
+  for (;;) {
+    const window = resolveThreadMessageWindow(
+      db,
+      thread.id,
+      options.seq,
+      historySequenceStart,
+      turnsBefore,
+      turnsAfter,
+    );
+    const reachesStart = window.sequenceStart === historySequenceStart;
+    const reachesEnd = window.beforeSequence === null;
+    const windowSpan =
+      (window.beforeSequence ?? options.maxSeq + 1) - window.sequenceStart;
+    if (
+      windowSpan * 2 > options.maxSeq + 1 - historySequenceStart ||
+      hasStoredTimelineTailRequestsInRange(db, {
+        beforeSequence: window.beforeSequence ?? options.maxSeq + 1,
+        sequenceStart:
+          reachesEnd && options.after > 0
+            ? historySequenceStart
+            : window.sequenceStart,
+        threadId: thread.id,
+      })
+    ) {
+      return undefined;
+    }
+    const rawEventRows = listStoredConversationOutlineEventRowsInRange(db, {
+      beforeSequence: window.beforeSequence,
+      sequenceStart: window.sequenceStart,
+      threadId: thread.id,
+    });
+    const decodedRawEvents = rawEventRows.map((row) =>
+      toThreadEventWithMeta(row),
+    );
+    const separable = checkThreadMessageWindowSeparable(
+      db,
+      thread.id,
+      historySequenceStart,
+      window,
+      rawEventRows,
+      decodedRawEvents,
+    );
+    const prefixOk = reachesStart || separable.prefix;
+    const suffixOk = reachesEnd || separable.suffix;
+    if (!prefixOk || !suffixOk) {
+      if (!prefixOk) turnsBefore *= 2;
+      if (!suffixOk) turnsAfter *= 2;
+      continue;
+    }
+    precedingAgentMessageDeltaCount ??= hasStoredAgentMessageDeltaCount(db, {
+      count: MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
+      sequenceStart: historySequenceStart,
+      threadId: thread.id,
+    })
+      ? MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION
+      : 0;
+    const rows = projectThreadConversationRows(
+      db,
+      thread,
+      options,
+      rawEventRows,
+      decodedRawEvents,
+      precedingAgentMessageDeltaCount,
+      reachesStart
+        ? null
+        : getTimelineGroupingContext(db, {
+            maxSeq: options.maxSeq,
+            sequenceStart: historySequenceStart,
+            threadId: thread.id,
+          }).orderingBoundarySequence,
+    );
+    const index = rows.findIndex((row) => row.messageSeq === options.seq);
+    if (index < 0) return undefined;
+    const missingBefore = reachesStart ? 0 : options.before - index;
+    const missingAfter = reachesEnd
+      ? 0
+      : options.after - (rows.length - index - 1);
+    if (missingBefore <= 0 && missingAfter <= 0) {
+      return sliceThreadMessage(rows, options) ?? undefined;
+    }
+    const turnsPerRow = (turnsBefore + turnsAfter) / Math.max(rows.length, 1);
+    if (missingBefore > 0) {
+      turnsBefore += Math.max(
+        turnsBefore,
+        Math.ceil(missingBefore * turnsPerRow),
+      );
+    }
+    if (missingAfter > 0) {
+      turnsAfter += Math.max(turnsAfter, Math.ceil(missingAfter * turnsPerRow));
+    }
+  }
+}
+
+function resolveThreadMessageWindow(
+  db: DbConnection,
+  threadId: string,
+  seq: number,
+  historySequenceStart: number,
+  turnsBefore: number,
+  turnsAfter: number,
+): ThreadMessageWindow {
+  const before = listStoredRootTurnSpansAround(db, {
+    direction: "before",
+    limit: turnsBefore + 1,
+    sequence: seq,
+    sequenceStart: historySequenceStart,
+    threadId,
+  });
+  const after = listStoredRootTurnSpansAround(db, {
+    direction: "after",
+    limit: turnsAfter + 1,
+    sequence: seq,
+    sequenceStart: historySequenceStart,
+    threadId,
+  });
+  const startCompletion = before[turnsBefore]?.completedSequence ?? null;
+  const endCompletion = after[turnsAfter - 1]?.completedSequence ?? null;
+  return {
+    sequenceStart:
+      startCompletion === null
+        ? historySequenceStart
+        : Math.max(historySequenceStart, startCompletion + 1),
+    beforeSequence: endCompletion === null ? null : endCompletion + 1,
+    nextTurnStartedSequence: after[turnsAfter]?.startedSequence ?? null,
+  };
+}
+
+function checkThreadMessageWindowSeparable(
+  db: DbConnection,
+  threadId: string,
+  historySequenceStart: number,
+  window: ThreadMessageWindow,
+  rows: readonly StoredEventRow[],
+  events: readonly ThreadEventWithMeta[],
+): { prefix: boolean; suffix: boolean } {
+  const startedTurnIds = new Set<string>();
+  const completedTurnIds = new Set<string>();
+  const startedItemIds = new Set<string>();
+  const itemIds = new Set<string>();
+  const parentItemIds = new Set<string>();
+  const requestIds = new Set<string>();
+  const acceptedRequestIds = new Set<string>();
+  for (const [index, row] of rows.entries()) {
+    const { event } = events[index]!;
+    if (row.turnId !== null && event.type === "turn/started") {
+      startedTurnIds.add(row.turnId);
+    }
+    if (row.turnId !== null && event.type === "turn/completed") {
+      completedTurnIds.add(row.turnId);
+    }
+    if (row.itemId !== null) {
+      parentItemIds.add(row.itemId);
+      if (row.itemKind !== "backgroundTask") itemIds.add(row.itemId);
+      if (event.type === "item/started") startedItemIds.add(row.itemId);
+    }
+    if (event.type === "client/turn/requested") requestIds.add(event.requestId);
+    if (event.type === "turn/input/accepted") {
+      acceptedRequestIds.add(event.clientRequestId);
+    }
+  }
+  const unstartedItemIds = new Set<string>();
+  let seenTurnStart = false;
+  const local = rows.every((row, index) => {
+    const { event } = events[index]!;
+    if (event.type === "turn/started") seenTurnStart = true;
+    if (
+      row.parentToolCallId !== null &&
+      !startedItemIds.has(row.parentToolCallId)
+    ) {
+      unstartedItemIds.add(row.parentToolCallId);
+    }
+    if (
+      row.itemId !== null &&
+      (row.itemKind === "toolCall" || row.itemKind === "backgroundTask") &&
+      !startedItemIds.has(row.itemId)
+    ) {
+      unstartedItemIds.add(row.itemId);
+    }
+    return !(
+      (row.turnId !== null && !startedTurnIds.has(row.turnId)) ||
+      (event.type === "turn/input/accepted" &&
+        !requestIds.has(event.clientRequestId)) ||
+      (event.type === "client/turn/requested" &&
+        "expectedTurnId" in event.target &&
+        event.target.expectedTurnId !== null &&
+        !startedTurnIds.has(event.target.expectedTurnId)) ||
+      (!seenTurnStart &&
+        row.scopeKind === "thread" &&
+        THREAD_ERROR_EVENT_TYPES.has(event.type))
+    );
+  });
+  const prefix =
+    local &&
+    (unstartedItemIds.size === 0 ||
+      !hasStoredStructuralItemRowsInRange(db, {
+        beforeSequence: window.sequenceStart,
+        itemIds: [...unstartedItemIds],
+        sequenceStart: historySequenceStart,
+        threadId,
+      }));
+  if (window.beforeSequence === null) {
+    return { prefix, suffix: true };
+  }
+  const suffix =
+    [...startedTurnIds].every((turnId) => completedTurnIds.has(turnId)) &&
+    [...requestIds].every((requestId) => acceptedRequestIds.has(requestId)) &&
+    !hasStoredEventReferencesFromSequence(db, {
+      itemIds: [...itemIds],
+      parentItemIds: [...parentItemIds],
+      sequence: window.beforeSequence,
+      threadErrorBeforeSequence: window.nextTurnStartedSequence,
+      threadId,
+      turnIds: [...startedTurnIds],
+    });
+  return { prefix, suffix };
 }
 
 export function buildThreadConversationOutlineProjectionKey(
