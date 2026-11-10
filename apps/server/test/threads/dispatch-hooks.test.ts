@@ -1177,6 +1177,84 @@ describe("message.dispatch grouped authors", () => {
 });
 
 describe("message.dispatch hooks on the queue drain", () => {
+  it.each(["submission", "durable", "unowned", "released"] as const)(
+    "keeps the waiting plugin owner for %s messages",
+    async (ownership) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedRunnableThread(harness, {
+          hostId: "host-wait-ownership",
+          status: "idle",
+        });
+        const registry = emptyRegistry();
+        registry["message.dispatch"].push(
+          {
+            pluginId: "limiter",
+            handler: () => ({ action: "wait", reason: "Capacity" }) as const,
+          },
+          {
+            pluginId: "drafts",
+            handler: () =>
+              ownership === "released"
+                ? ({ action: "proceed" } as const)
+                : ({ action: "wait", reason: "Draft" } as const),
+          },
+        );
+        installHooks(registry);
+
+        if (ownership === "durable" || ownership === "released") {
+          createQueuedThreadMessage(harness.db, harness.deps.hub, {
+            threadId: thread.id,
+            content: textInput("held work"),
+            senderThreadId: null,
+            model: "test-model",
+            reasoningLevel: "medium",
+            permissionMode: "auto",
+            serviceTier: "default",
+            payload: { kind: "inline" },
+            waitingOn: { kind: "plugin", pluginId: "drafts", reason: "Draft" },
+            sendAt: null,
+            systemNotice: null,
+          });
+          await runQueuedMessageDispatch(harness.deps, {
+            kind: "plugin-recheck",
+          });
+        } else {
+          await acceptThreadSendRequest(harness.deps, {
+            payload: {
+              input: textInput("new work"),
+              mode: "auto",
+              ...(ownership === "submission"
+                ? { pluginSubmission: { pluginId: "drafts", data: {} } }
+                : {}),
+            },
+            thread,
+          });
+        }
+
+        const ownerId =
+          ownership === "submission" || ownership === "durable"
+            ? "drafts"
+            : "limiter";
+        const queued = onlyQueuedRow(harness, thread.id);
+        expect(queued.waitingOn).toEqual({
+          kind: "plugin",
+          pluginId: ownerId,
+          reason:
+            ownerId === "drafts"
+              ? "Draft (also waiting on limiter: Capacity)"
+              : ownership === "released"
+                ? "Capacity"
+                : "Capacity (also waiting on drafts: Draft)",
+        });
+        expect(
+          listQueuedThreadMessagesForApi(harness.db, {
+            waitHolder: `plugin:${ownerId}`,
+          }).map((row) => row.id),
+        ).toEqual([queued.id]);
+      });
+    },
+  );
+
   it("uses the durable plugin wait after submission data expires", async () => {
     await withTestHarness(async (harness) => {
       const seen: unknown[] = [];

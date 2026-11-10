@@ -448,20 +448,23 @@ export async function runMessageDispatchHookPass(
       }
     }
 
-    const waiter = waits[0];
+    const queuedOwner = request.queuedMessages[0]?.waitingOn;
+    const preferredPlugin =
+      queuedOwner?.kind === "plugin"
+        ? queuedOwner.pluginId
+        : request.pluginSubmission?.pluginId;
+    const preferredWaitIndex = waits.findIndex(
+      (entry) => entry.pluginId === preferredPlugin,
+    );
+    const [waiter] = waits.splice(Math.max(0, preferredWaitIndex), 1);
     if (waiter === undefined) {
       await request.continueAfterHooks?.();
       return { kind: "proceed" };
     }
-    return { kind: "wait", waiter, additionalWaiters: waits.slice(1) };
+    return { kind: "wait", waiter, additionalWaiters: waits };
   });
 }
 
-/**
- * The wait reason for a pass, naming every plugin that voted to wait. The
- * first waiter owns the row, so its reason leads; the rest are appended so the
- * user sees the whole picture on one card rather than one card per plugin.
- */
 export function dispatchWaitReasonForPass(
   outcome: Extract<MessageDispatchHookPassOutcome, { kind: "wait" }>,
 ): string {
