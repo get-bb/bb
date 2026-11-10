@@ -1465,15 +1465,67 @@ function requestThreadStop(
       return;
     }
   }
-  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
-    return;
-  }
-
   dispatchThreadStopCommand(deps, args);
 }
 
 export const TURN_START_DEADLINE_MS = 5 * 60_000;
 export const TURN_START_DEADLINE_RECONNECT_GRACE_MS = 60_000;
+
+function isAwaitingTurnStartPastDeadline(deadline: number) {
+  return and(
+    eq(threads.status, "active"),
+    isNull(threads.deletedAt),
+    lte(threads.statusChangedAt, deadline),
+    sql`NOT EXISTS (
+      SELECT 1 FROM ${events}
+      WHERE ${events.threadId} = ${threads.id}
+        AND ${events.type} = 'turn/completed'
+        AND ${events.createdAt} > ${deadline}
+    )`,
+  );
+}
+
+interface TurnStartDeadlineCandidate {
+  environmentId: string;
+  hostId: string;
+  threadId: string;
+}
+
+function markTurnStartDeadlineStopInTransaction(
+  deps: ThreadLifecycleTransactionDeps,
+  args: { candidate: TurnStartDeadlineCandidate; deadline: number },
+): boolean {
+  const { candidate } = args;
+  const stillAwaiting = deps.db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.id, candidate.threadId),
+        isAwaitingTurnStartPastDeadline(args.deadline),
+      ),
+    )
+    .get();
+  if (stillAwaiting === undefined) {
+    return false;
+  }
+  if (
+    !markThreadStoppingWithEventInTransaction(deps, {
+      reason: "provider-turn-idle",
+      threadId: candidate.threadId,
+    })
+  ) {
+    return false;
+  }
+  appendSystemErrorEventInTransaction(deps, {
+    threadId: candidate.threadId,
+    environmentId: candidate.environmentId,
+    code: "provider_turn_start_deadline",
+    message: `The provider did not start the turn within ${TURN_START_DEADLINE_MS / 60_000} minutes, so bb stopped it. Send a message to try again.`,
+    scope: threadScope(),
+  });
+  return true;
+}
 
 export function turnStartDeadlineSweep(
   deps: CommandResultSideEffectsDeps,
@@ -1483,7 +1535,7 @@ export function turnStartDeadlineSweep(
   return defineItemSweep({
     name: "turn-start-deadline",
     concurrency: 1,
-    list: () =>
+    list: (): TurnStartDeadlineCandidate[] =>
       deps.db
         .select({
           environmentId: environments.id,
@@ -1492,24 +1544,12 @@ export function turnStartDeadlineSweep(
         })
         .from(threads)
         .innerJoin(environments, eq(threads.environmentId, environments.id))
-        .where(
-          and(
-            eq(threads.status, "active"),
-            isNull(threads.deletedAt),
-            lte(threads.statusChangedAt, deadline),
-            sql`NOT EXISTS (
-          SELECT 1 FROM ${events}
-          WHERE ${events.threadId} = ${threads.id}
-            AND ${events.type} = 'turn/completed'
-            AND ${events.createdAt} > ${deadline}
-        )`,
-          ),
-        )
+        .where(isAwaitingTurnStartPastDeadline(deadline))
         .all(),
-    key: (thread) => thread.threadId,
-    process: (thread) => {
+    key: (candidate) => candidate.threadId,
+    process: (candidate) => {
       const daemonConnectedAt = deps.hub.getDaemonConnectedAtForHost(
-        thread.hostId,
+        candidate.hostId,
       );
       if (
         daemonConnectedAt === null ||
@@ -1517,33 +1557,38 @@ export function turnStartDeadlineSweep(
       ) {
         return;
       }
-      if (getActiveTurnId(deps, thread.threadId) !== null) return;
-      deps.logger.warn(
-        { threadId: thread.threadId },
-        "Stopping a run whose turn never started",
-      );
+      if (getActiveTurnId(deps, candidate.threadId) !== null) return;
       const notificationBuffer = new NotificationBuffer();
-      deps.db.transaction(
+      const stopping = deps.db.transaction(
         (tx) =>
-          appendSystemErrorEventInTransaction(
-            { db: tx, hub: notificationBuffer },
-            {
-              threadId: thread.threadId,
-              environmentId: thread.environmentId,
-              code: "provider_turn_start_deadline",
-              message: `The provider did not start the turn within ${TURN_START_DEADLINE_MS / 60_000} minutes, so bb stopped it. Send a message to try again.`,
-              scope: threadScope(),
-            },
+          markTurnStartDeadlineStopInTransaction(
+            { ...deps, db: tx, hub: notificationBuffer },
+            { candidate, deadline },
           ),
         { behavior: "immediate" },
       );
       notificationBuffer.flushInto(deps.hub);
-      requestThreadStop(deps, {
-        environmentId: thread.environmentId,
-        hostId: thread.hostId,
+      if (!stopping) return;
+      deps.logger.warn(
+        { threadId: candidate.threadId },
+        "Stopping a run whose turn never started",
+      );
+      dispatchThreadStopCommand(deps, {
+        environmentId: candidate.environmentId,
+        hostId: candidate.hostId,
         interruptionReason: "provider-turn-idle",
-        threadId: thread.threadId,
+        threadId: candidate.threadId,
       });
+      const thread = getThread(deps.db, candidate.threadId);
+      if (thread && isParentNotifiableChildThread(thread, "failed")) {
+        void queueChildThreadTurnNotificationBestEffort(deps, {
+          childThread: thread,
+          parentThreadId: thread.parentThreadId,
+          turnStatus: "failed",
+          turnId: null,
+          failureContext: `was stopped by bb because its provider did not start the turn within ${TURN_START_DEADLINE_MS / 60_000} minutes`,
+        });
+      }
     },
   });
 }
@@ -1579,6 +1624,7 @@ function dispatchThreadStopCommand(
   deps: CommandResultSideEffectsDeps,
   args: RequestThreadStopArgs,
 ): void {
+  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) return;
   void runLiveHostCommand(deps, {
     command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
     hostId: args.hostId,
@@ -1629,8 +1675,7 @@ export function resendStopsAwaitingDaemon(
       hasStoredTurnRequestEventSince(deps.db, {
         since: awaiting.sentAt,
         threadId,
-      }) ||
-      !inFlightThreadRpcGuard.claim(threadId, "thread.stop")
+      })
     ) {
       continue;
     }
@@ -2461,14 +2506,12 @@ export async function reconcileDaemonReportedThreads(
       continue;
     }
     if (stoppedWhileAwayThreadIds.has(thread.id)) {
-      if (inFlightThreadRpcGuard.claim(thread.id, "thread.stop")) {
-        dispatchThreadStopCommand(deps, {
-          environmentId: thread.environmentId,
-          hostId: args.hostId,
-          interruptionReason: "manual-stop",
-          threadId: thread.id,
-        });
-      }
+      dispatchThreadStopCommand(deps, {
+        environmentId: thread.environmentId,
+        hostId: args.hostId,
+        interruptionReason: "manual-stop",
+        threadId: thread.id,
+      });
       continue;
     }
     applyLoggedThreadLifecycleEvent(deps, {
