@@ -1844,6 +1844,13 @@ describe("Account Pool plugin", () => {
         reason: "Account Pooler hub token for this machine",
       },
       {
+        name: "BB_CLAUDE_MODEL_CATALOG_URL",
+        value: {
+          serverPath: "/api/v1/plugins/account-pool/http/claude/v1/models",
+        },
+        reason: "Discover Claude models using the routed account",
+      },
+      {
         name: "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
         value: "1",
         reason:
@@ -3930,9 +3937,7 @@ describe("Account Pool plugin", () => {
     const upstreamKey = (init: RequestInit | undefined) => {
       const headers = new Headers(init?.headers);
       return (
-        headers.get("x-api-key") ??
-        headers.get("authorization")?.slice(7) ??
-        ""
+        headers.get("x-api-key") ?? headers.get("authorization")?.slice(7) ?? ""
       );
     };
 
@@ -5282,10 +5287,10 @@ describe("Account Pool plugin", () => {
               : reason === "network error"
                 ? ["sk-first", "sk-first", "sk-first", "sk-first"]
                 : [
-                  "sk-first",
-                  "sk-second",
-                  reason === "family quota" ? "sk-first" : "sk-second",
-                ],
+                    "sk-first",
+                    "sk-second",
+                    reason === "family quota" ? "sk-first" : "sk-second",
+                  ],
           );
         } finally {
           finishOld();
@@ -6401,7 +6406,10 @@ describe("sequential pool recovery", () => {
         fetch: async (_input, init) => {
           attempts.push(new Headers(init?.headers).get("x-api-key"));
           return outage
-            ? Response.json({}, { status: 503, headers: { "retry-after": "0" } })
+            ? Response.json(
+                {},
+                { status: 503, headers: { "retry-after": "0" } },
+              )
             : Response.json({});
         },
       },
@@ -7722,6 +7730,7 @@ describe("Account Pool nested proxy", () => {
       "ANTHROPIC_BASE_URL",
       "ANTHROPIC_AUTH_TOKEN",
       "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+      "BB_CLAUDE_MODEL_CATALOG_URL",
     ],
     codex: ["CODEX_OPENAI_BASE_URL", "CODEX_POOL_AUTH_TOKEN"],
   } as const;
@@ -7795,6 +7804,7 @@ describe("Account Pool nested proxy", () => {
     expect(envNames(entries)).toEqual([
       "ANTHROPIC_BASE_URL",
       "ANTHROPIC_AUTH_TOKEN",
+      "BB_CLAUDE_MODEL_CATALOG_URL",
       "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
       "ENABLE_TOOL_SEARCH",
       "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
@@ -7879,5 +7889,48 @@ describe("Account Pool nested proxy", () => {
     );
     expect(allowed.status).toBe(200);
     expect(await allowed.json()).toEqual({ claude: true, codex: false });
+  });
+});
+
+describe("Claude pooled model catalog", () => {
+  it("authenticates catalog discovery and forwards pagination with account credentials", async () => {
+    const requests: Array<{
+      url: string | undefined;
+      auth: string | undefined;
+    }> = [];
+    const catalog = {
+      data: [{ id: "claude-fable-5-2", display_name: "Claude Fable 5.2" }],
+      has_more: false,
+      last_id: "claude-fable-5-2",
+    };
+    const upstream = await startUpstream(async (request, response) => {
+      requests.push({ url: request.url, auth: request.headers.authorization });
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(catalog));
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      source: "oauth",
+    });
+    const denied = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/claude/v1/models",
+    );
+    expect(denied.status).toBe(401);
+    expect(requests).toEqual([]);
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/claude/v1/models?limit=100&after_id=previous",
+      { headers: authHeaders(fixture.key) },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(catalog);
+    expect(requests).toEqual([
+      {
+        url: "/v1/models?limit=100&after_id=previous",
+        auth: "Bearer oauth-access",
+      },
+    ]);
   });
 });

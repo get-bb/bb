@@ -33,6 +33,14 @@ flags, and stray arguments are rejected with the nearest suggestion rather than
 ignored, and a failing invocation that carries `--json` also prints
 `{"ok":false,"error":{"code","message","hint"}}` on stdout.
 
+With Claude routing enabled, `bb provider models claude-code` and the picker
+supplement Claude Code's initialization models with Anthropic's authenticated
+`/v1/models` catalog through the pool. This discovers newly released models
+without requiring a separate host login. Discovery retains the CLI default
+and existing model metadata; new models use the API's effort capabilities.
+If catalog discovery fails, the CLI models remain available. Nested pools
+forward discovery to their parent, which must also support this route.
+
 Claude `--login` starts a PKCE session, prints a browser URL and session ID,
 then exits. Pipe the manual callback code to `account login-complete` with that
 session ID within ten minutes. Codex `--login` prints a device verification

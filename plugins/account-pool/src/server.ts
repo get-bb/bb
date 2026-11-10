@@ -75,6 +75,7 @@ const PROVIDER_ROUTING_ENV: Record<PoolProvider, readonly string[]> = {
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
     "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+    "BB_CLAUDE_MODEL_CATALOG_URL",
   ],
   codex: ["CODEX_OPENAI_BASE_URL", "CODEX_POOL_AUTH_TOKEN"],
 };
@@ -368,6 +369,11 @@ export function createAccountPoolPlugin(
           reason: "Account Pooler hub token for this machine",
         },
         {
+          name: "BB_CLAUDE_MODEL_CATALOG_URL",
+          value: { serverPath: `${HUB_BASE_PATH}/claude/v1/models` },
+          reason: "Discover Claude models using the routed account",
+        },
+        {
           name: "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
           value: "1",
           reason:
@@ -458,6 +464,12 @@ export function createAccountPoolPlugin(
         { auth: "none" },
       );
     }
+    bb.http.route(
+      "GET",
+      "/claude/v1/models",
+      (context) => hub.handle(context.req.raw, "claude", "/claude/v1/models"),
+      { auth: "none" },
+    );
     bb.http.route(
       "GET",
       "/v1/models",

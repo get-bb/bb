@@ -63,7 +63,7 @@ export function createClaudeAdapter(options: {
       };
     },
     upstreamUrl: (request, settings) =>
-      mountedUpstreamUrl(request, settings.anthropicUpstreamBaseUrl),
+      mountedUpstreamUrl(request, settings.anthropicUpstreamBaseUrl, "claude/"),
     requestHeaders(inbound, _account, secret) {
       const headers = filterRequestHeaders(
         inbound,

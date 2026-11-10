@@ -1,6 +1,7 @@
 import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
 import { buildClaudeCodeModels } from "../model-list.js";
 import { probeClaudeInitialization } from "./initialization-probe.js";
+import { supplementPooledClaudeModels } from "./pooled-models.js";
 
 async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   models: AvailableModel[];
@@ -13,7 +14,9 @@ async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   if (initialization.models.length === 0) {
     throw new Error("Claude Code reported no models.");
   }
-  return buildClaudeCodeModels(initialization.models);
+  return buildClaudeCodeModels(
+    await supplementPooledClaudeModels(initialization.models, env),
+  );
 }
 
 export async function listClaudeCodeBridgeModels(
@@ -35,7 +38,9 @@ export async function listClaudeCodeBridgeModels(
 }
 
 interface ClaudeCodeBridgeModelListMemoOptions {
-  list?: () => ReturnType<typeof listClaudeCodeBridgeModels>;
+  list?: (
+    env: NodeJS.ProcessEnv,
+  ) => ReturnType<typeof listClaudeCodeBridgeModels>;
   now?: () => number;
   ttlMs: number;
 }
@@ -44,31 +49,35 @@ export function createClaudeCodeBridgeModelListMemo({
   list = listClaudeCodeBridgeModels,
   now = Date.now,
   ttlMs,
-}: ClaudeCodeBridgeModelListMemoOptions): () => ReturnType<
-  typeof listClaudeCodeBridgeModels
-> {
+}: ClaudeCodeBridgeModelListMemoOptions): (
+  env?: NodeJS.ProcessEnv,
+) => ReturnType<typeof listClaudeCodeBridgeModels> {
   type Catalog = Awaited<ReturnType<typeof listClaudeCodeBridgeModels>>;
-  let settled: { catalog: Catalog; expiresAt: number } | null = null;
-  let pending: Promise<Catalog> | null = null;
-  return () => {
-    if (settled !== null && settled.expiresAt > now()) {
+  let settled: { key: string; catalog: Catalog; expiresAt: number } | null =
+    null;
+  let pending: { key: string; probe: Promise<Catalog> } | null = null;
+  return (env = process.env) => {
+    const key = JSON.stringify(
+      Object.entries(env).sort(([left], [right]) => left.localeCompare(right)),
+    );
+    if (settled !== null && settled.key === key && settled.expiresAt > now()) {
       return Promise.resolve(settled.catalog);
     }
     settled = null;
-    if (pending !== null) {
-      return pending;
+    if (pending !== null && pending.key === key) {
+      return pending.probe;
     }
-    const probe = list()
+    const probe = list(env)
       .then((catalog) => {
-        settled = { catalog, expiresAt: now() + ttlMs };
+        settled = { key, catalog, expiresAt: now() + ttlMs };
         return catalog;
       })
       .finally(() => {
-        if (pending === probe) {
+        if (pending?.probe === probe) {
           pending = null;
         }
       });
-    pending = probe;
+    pending = { key, probe };
     return probe;
   };
 }

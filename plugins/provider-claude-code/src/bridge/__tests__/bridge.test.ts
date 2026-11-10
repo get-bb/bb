@@ -1193,6 +1193,46 @@ describe("bridge", () => {
     }
   });
 
+  it("applies model discovery routing variables and invalidates the memo when they change", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    queryMock.mockReturnValue({
+      initializationResult: vi
+        .fn()
+        .mockResolvedValue({
+          models: [
+            {
+              value: "claude-opus-5-5",
+              displayName: "Opus",
+              description: "Opus",
+            },
+          ],
+        }),
+      close: vi.fn(),
+    });
+    try {
+      for (const [id, token] of [
+        [901, "first-hub-token"],
+        [902, "second-hub-token"],
+      ] as const) {
+        bridge.sendRequest(id, "model/list", {
+          envVars: {
+            ANTHROPIC_AUTH_TOKEN: token,
+            CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
+          },
+        });
+        const response = await bridge.waitForResponse(id);
+        expect(response.error).toBeUndefined();
+        expect(queryMock.mock.calls.at(-1)?.[0].options.env).toMatchObject({
+          ANTHROPIC_AUTH_TOKEN: token,
+          CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
+        });
+      }
+      expect(queryMock).toHaveBeenCalledTimes(2);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("answers model/list with the missing-executable code when the Claude CLI is absent", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     queryMock.mockReturnValue({

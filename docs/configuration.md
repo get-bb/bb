@@ -1242,6 +1242,12 @@ skills.
 
 ### Claude Code provider
 
+Account Pooler supplies `BB_CLAUDE_MODEL_CATALOG_URL` internally when routing
+Claude. The provider authenticates to this endpoint with the machine's pool
+token to supplement CLI model discovery; users do not need to set it.
+Disabling or isolating routing removes this contribution along with the
+other pool routing variables.
+
 | Setting                      | Default | Effect                                                                                                                                                                                                                                                                |
 | ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `subagentsDisabled`          | `false` | Removes native Agent, Task, and ListAgents tools from the model context. Changes restart Claude before the next turn, preserving the conversation.                                                                                                                    |
