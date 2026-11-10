@@ -51,7 +51,7 @@ jobs:
             New-Item -ItemType Directory -Path $target | Out-Null
             $clock = [Diagnostics.Stopwatch]::StartNew()
             if ($sample.StartsWith('gnu')) {
-              & $gnu -xf $archive --force-local --use-compress-program zstd -C $target
+              & $gnu -xf $archive --force-local --use-compress-program zstd -C ($target.Replace('\', '/'))
             } else {
               & $native -xf $archive -C $target
             }
