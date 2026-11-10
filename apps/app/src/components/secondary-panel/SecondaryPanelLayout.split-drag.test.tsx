@@ -29,6 +29,7 @@ const context: PaneContextValue = {
 
 afterEach(() => {
   fireEvent(window, new Event("pointercancel"));
+  fireEvent.click(document.body);
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

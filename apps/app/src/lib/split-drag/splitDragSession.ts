@@ -214,16 +214,17 @@ export function beginSplitDrag(config: SplitDragConfig): void {
 }
 
 function swallowNextClick(): void {
+  const release = (): void => {
+    window.clearTimeout(releaseTimeout);
+    window.removeEventListener("click", swallow, true);
+  };
   const swallow = (event: MouseEvent): void => {
     event.stopPropagation();
     event.preventDefault();
-    window.removeEventListener("click", swallow, true);
+    release();
   };
   window.addEventListener("click", swallow, true);
-  window.setTimeout(
-    () => window.removeEventListener("click", swallow, true),
-    300,
-  );
+  const releaseTimeout = window.setTimeout(release, 300);
 }
 
 function paneElementAt(clientX: number, clientY: number): HTMLElement | null {
