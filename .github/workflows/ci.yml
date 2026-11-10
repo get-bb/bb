@@ -30,48 +30,49 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
-      - name: Install dependencies
-        timeout-minutes: 5
-        shell: bash
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
-
-      - name: Measure transparent NTFS compression
-        timeout-minutes: 10
+      - name: Preserve baseline and create compressed volume
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if (!(Test-Path 'P:\store')) { throw 'Expected dependency cache hit' }
-          $disk = Join-Path $env:RUNNER_TEMP 'bb-dependencies.vhdx'
-          $archive = Join-Path $env:RUNNER_TEMP 'baseline.tar.zst'
+          if (!(Test-Path 'P:\store')) { throw 'Expected cache hit' }
+          $diskScript = Join-Path $env:GITHUB_WORKSPACE '.github/actions/windows-dependency-cache/disk.ps1'
+          & $diskScript -Operation detach
+          Set-Location $env:RUNNER_TEMP
           $tar = 'C:\Program Files\Git\usr\bin\tar.exe'
-          & .github/actions/windows-dependency-cache/disk.ps1 -Operation detach
-          $before = (Get-Item $disk).Length
-          & $tar --force-local --use-compress-program zstd -cf $archive -C $env:RUNNER_TEMP bb-dependencies.vhdx
+          & $tar --use-compress-program zstd -cf baseline.tar.zst bb-dependencies.vhdx
           if ($LASTEXITCODE -ne 0) { throw 'Archive failed' }
-          & .github/actions/windows-dependency-cache/disk.ps1 -Operation mount
-          $watch = [Diagnostics.Stopwatch]::StartNew()
-          & compact.exe /C /S:P:\store /I /Q
-          Write-Host "NTFS compression seconds: $($watch.Elapsed.TotalSeconds)"
-          & .github/actions/windows-dependency-cache/disk.ps1 -Operation detach
-          @("select vdisk file=`"$disk`"", 'attach vdisk readonly', 'compact vdisk', 'detach vdisk') | Set-Content (Join-Path $env:RUNNER_TEMP 'compact.txt')
-          diskpart /s (Join-Path $env:RUNNER_TEMP 'compact.txt')
-          $after = (Get-Item $disk).Length
-          $candidate = Join-Path $env:RUNNER_TEMP 'compressed.tar.zst'
-          & $tar --force-local --use-compress-program zstd -cf $candidate -C $env:RUNNER_TEMP bb-dependencies.vhdx
+          Write-Host "BASELINE_IMAGE $((Get-Item bb-dependencies.vhdx).Length) $((Get-Item baseline.tar.zst).Length)"
+          Remove-Item bb-dependencies.vhdx
+          $candidateScript = Join-Path $env:RUNNER_TEMP 'compressed-disk.ps1'
+          (Get-Content $diskScript -Raw).Replace('format fs=ntfs quick label=bb-dependencies', 'format fs=ntfs quick compress label=bb-dependencies') | Set-Content $candidateScript
+          & $candidateScript -Operation create
+          if (!(Test-Path 'P:\')) { throw 'Expected compressed volume' }
+      - name: Populate fresh compressed dependency image
+        timeout-minutes: 5
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Compare exact image extraction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $diskScript = Join-Path $env:GITHUB_WORKSPACE '.github/actions/windows-dependency-cache/disk.ps1'
+          & $diskScript -Operation detach
+          Set-Location $env:RUNNER_TEMP
+          $tar = 'C:\Program Files\Git\usr\bin\tar.exe'
+          & $tar --use-compress-program zstd -cf compressed.tar.zst bb-dependencies.vhdx
           if ($LASTEXITCODE -ne 0) { throw 'Archive failed' }
-          Write-Host "IMAGE_BYTES before=$before after=$after baseline_archive=$((Get-Item $archive).Length) compressed_archive=$((Get-Item $candidate).Length)"
+          Write-Host "COMPRESSED_IMAGE $((Get-Item bb-dependencies.vhdx).Length) $((Get-Item compressed.tar.zst).Length)"
           foreach ($name in @('baseline', 'compressed', 'compressed', 'baseline')) {
-            $inputArchive = Join-Path $env:RUNNER_TEMP "$name.tar.zst"
-            Remove-Item $disk
+            Remove-Item bb-dependencies.vhdx
             $watch = [Diagnostics.Stopwatch]::StartNew()
-            & $tar --force-local --use-compress-program zstd -xf $inputArchive -C $env:RUNNER_TEMP
+            & $tar --use-compress-program zstd -xf "$name.tar.zst"
             if ($LASTEXITCODE -ne 0) { throw 'Extract failed' }
             Write-Host "EXTRACTION $name $($watch.Elapsed.TotalSeconds)"
           }
-          Remove-Item $disk
-          & $tar --force-local --use-compress-program zstd -xf $candidate -C $env:RUNNER_TEMP
+          Remove-Item bb-dependencies.vhdx
+          & $tar --use-compress-program zstd -xf compressed.tar.zst
           if ($LASTEXITCODE -ne 0) { throw 'Extract failed' }
-          & .github/actions/windows-dependency-cache/disk.ps1 -Operation mount
+          & $diskScript -Operation mount
       - name: Verify compressed dependency install
         shell: bash
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
