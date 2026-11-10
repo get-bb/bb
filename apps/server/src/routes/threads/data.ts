@@ -1,6 +1,7 @@
 import {
   getAppSettings,
   getDatabaseDataVersion,
+  getThreadEventRewriteGeneration,
   getThreadPluginMetadata,
   patchThreadPluginMetadata,
   getLatestThreadSequence,
@@ -168,6 +169,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         thread.providerId,
       ),
       includeClearedContextHistory: settings.keepHistoryAfterContextClear,
+      includeDiagnosticOperations: settings.showDiagnosticEvents,
       maxSeq: getLatestThreadSequence(deps.db, { threadId: thread.id }),
       ...(providerDisplayName === undefined ? {} : { providerDisplayName }),
     };
@@ -266,6 +268,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const cacheKey = JSON.stringify([
       thread.id,
       getDatabaseDataVersion(deps.db),
+      getThreadEventRewriteGeneration(thread.id),
       buildThreadConversationOutlineProjectionKey(
         thread,
         outlineSequence,
@@ -278,15 +281,18 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       conversationOutlineCache.set(thread.id, cached);
       return context.json({ items: selectItems(cached.items), maxSeq });
     }
-    const response = loadThreadConversationOutline(deps.db, thread, {
-      ...outlineOptions,
-      outlineSequence,
-    });
+    const { complete, ...response } = loadThreadConversationOutline(
+      deps.db,
+      thread,
+      { ...outlineOptions, outlineSequence },
+    );
     conversationOutlineCache.delete(thread.id);
-    conversationOutlineCache.set(thread.id, {
-      key: cacheKey,
-      items: response.items,
-    });
+    if (complete) {
+      conversationOutlineCache.set(thread.id, {
+        key: cacheKey,
+        items: response.items,
+      });
+    }
     while (
       conversationOutlineCache.size > CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES
     ) {

@@ -3876,7 +3876,7 @@ describe("migrate", () => {
         .prepare<DeleteMigrationParameters>(
           `
             DELETE FROM __drizzle_migrations
-            WHERE created_at = ?
+            WHERE created_at >= ?
           `,
         )
         .run(projectSourcesDefaultIndexMigrationWhen);

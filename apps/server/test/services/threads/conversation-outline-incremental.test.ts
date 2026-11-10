@@ -202,14 +202,24 @@ function load(
   completedTurnDisplay: CompletedTurnDisplay = "collapse",
 ) {
   const threadId = testThread.thread.id;
-  return loadThreadConversationOutline(testThread.db, testThread.thread, {
-    completedTurnDisplay,
-    includeClearedContextHistory: false,
-    maxSeq: getLatestThreadSequence(testThread.db, { threadId }),
-    outlineSequence: getLatestStoredConversationOutlineSequence(testThread.db, {
-      threadId,
-    }),
-  });
+  const { complete, ...outline } = loadThreadConversationOutline(
+    testThread.db,
+    testThread.thread,
+    {
+      completedTurnDisplay,
+      includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
+      maxSeq: getLatestThreadSequence(testThread.db, { threadId }),
+      outlineSequence: getLatestStoredConversationOutlineSequence(
+        testThread.db,
+        {
+          threadId,
+        },
+      ),
+    },
+  );
+  expect(complete).toBe(true);
+  return outline;
 }
 
 function expectMatchesFull(
@@ -221,6 +231,7 @@ function expectMatchesFull(
     buildThreadConversationOutline(testThread.coldDb, testThread.thread, {
       completedTurnDisplay,
       includeClearedContextHistory: false,
+      includeDiagnosticOperations: false,
       maxSeq: result.maxSeq,
     }),
   );
@@ -376,10 +387,19 @@ describe("incremental conversation outlines", () => {
             },
             delta("live", " Root update"),
           ]);
-          const selected = countSelectedEventRows(testThread, () =>
-            expectMatchesFull(testThread, display),
-          );
+          let result: ReturnType<typeof load> | undefined;
+          const selected = countSelectedEventRows(testThread, () => {
+            result = load(testThread, display);
+          });
           expect(selected).toBeLessThan(25);
+          expect(result).toEqual(
+            buildThreadConversationOutline(testThread.db, testThread.thread, {
+              completedTurnDisplay: display,
+              includeClearedContextHistory: false,
+              includeDiagnosticOperations: false,
+              maxSeq: result!.maxSeq,
+            }),
+          );
         }
       });
     },

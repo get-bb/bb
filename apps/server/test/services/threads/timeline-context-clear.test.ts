@@ -259,6 +259,7 @@ describe("timeline context-clear epochs", () => {
       buildThreadConversationOutline(db, thread, {
         completedTurnDisplay: "collapse",
         includeClearedContextHistory: false,
+        includeDiagnosticOperations: false,
         maxSeq: 6,
       }).items.map((item) => item.preview),
     ).toEqual(["Newest response"]);
@@ -441,6 +442,7 @@ describe("timeline context-clear epochs", () => {
     const outlineOptions = {
       completedTurnDisplay: "collapse" as const,
       includeClearedContextHistory: true,
+      includeDiagnosticOperations: false,
       maxSeq: 4,
     };
     expect(

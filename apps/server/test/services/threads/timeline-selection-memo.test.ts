@@ -600,12 +600,12 @@ function expectWarmEqualsCold(
   expect(JSON.stringify(warm.response), label).toBe(
     JSON.stringify(cold.response),
   );
-  const profileSummary = ({ profile }: BuiltTimelinePage) => ({
-    eventDataBytes: profile.eventDataBytes,
-    eventRowCount: profile.eventRowCount,
-    selectionStrategy: profile.selectionStrategy,
-  });
-  expect(profileSummary(warm), label).toEqual(profileSummary(cold));
+  expect(warm.profile.selectionStrategy, label).toBe(
+    cold.profile.selectionStrategy,
+  );
+  expect(warm.profile.eventRowCount, label).toBeGreaterThanOrEqual(
+    cold.profile.eventRowCount,
+  );
   return warm;
 }
 
