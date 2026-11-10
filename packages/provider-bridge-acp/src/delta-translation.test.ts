@@ -508,6 +508,83 @@ describe("acp delta translation (bridge-shared invariants)", () => {
 });
 
 describe("acp delta translation (moved from the legacy adapter suite)", () => {
+  it.each(
+    [
+      { method: "error", status: "failed" },
+      { method: ACP_TURN_STARTED_METHOD, status: "interrupted" },
+      { method: ACP_COMPACTION_STARTED_METHOD, status: "interrupted" },
+    ].flatMap((boundary) => [
+      {
+        ...boundary,
+        stream: "agent_message_chunk",
+        item: { type: "agentMessage", text: "Partial response" },
+      },
+      {
+        ...boundary,
+        stream: "agent_thought_chunk",
+        item: { type: "reasoning", content: ["Partial response"] },
+      },
+    ]),
+  )(
+    "settles open work before $method with $stream",
+    ({ method, status, stream, item }) => {
+      const harness = createHarness();
+      harness.translate(turnStartedEvent());
+      const turnId = harness.openTurnId();
+      const commandEvents = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "running-command",
+          title: "Long command",
+          kind: "execute",
+          status: "in_progress",
+          rawInput: { command: "sleep 30" },
+        }),
+      );
+      const textEvents = harness.translate(
+        updateEvent({
+          sessionUpdate: stream,
+          content: { type: "text", text: "Partial response" },
+        }),
+      );
+      const commandStarted = commandEvents.find(
+        (event) => event.type === "item/started",
+      );
+      const textStarted = textEvents.find(
+        (event) => event.type === "item/started",
+      );
+      expect(commandStarted).toBeDefined();
+      expect(textStarted).toBeDefined();
+
+      const events = harness.translate({
+        jsonrpc: "2.0",
+        method,
+        params: { threadId: THREAD_ID, message: "Connection lost" },
+      });
+
+      expect(events.slice(0, 2)).toMatchObject([
+        {
+          type: "item/completed",
+          scope: turnScope(turnId),
+          item: { ...item, id: textStarted?.item.id },
+        },
+        {
+          type: "item/completed",
+          scope: turnScope(turnId),
+          item: {
+            type: "commandExecution",
+            id: commandStarted?.item.id,
+            command: "sleep 30",
+            status,
+          },
+        },
+      ]);
+      expect(
+        completedItems(harness.translate(turnCompletedEvent("end_turn"))),
+      ).toEqual([]);
+    },
+  );
+
   function compactionStartedEvent(): ProviderRuntimeEvent {
     return {
       jsonrpc: "2.0",

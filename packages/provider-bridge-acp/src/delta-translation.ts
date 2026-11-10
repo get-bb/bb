@@ -943,8 +943,10 @@ export function createAcpDeltaTranslator(
   ): ThreadDelta[] {
     const errorEnvelope = errorEnvelopeSchema.safeParse(event);
     if (errorEnvelope.success) {
+      const closed = flushOpenTurnWork(context, "failed");
       clearThreadCalls(context);
       return [
+        ...closed,
         {
           kind: "provider.error",
           message: "Provider error",
@@ -967,9 +969,10 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
+        const closed = flushOpenTurnWork(context, "interrupted");
         clearThreadCalls(context);
         filesAddedThisTurn.clear();
-        return [{ kind: "turn.open" }];
+        return [...closed, { kind: "turn.open" }];
       }
 
       case ACP_PROMPT_INTERRUPTED_METHOD: {
@@ -999,8 +1002,10 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
+        const closed = flushOpenTurnWork(context, "interrupted");
         clearThreadCalls(context);
         return [
+          ...closed,
           { kind: "turn.open" },
           {
             kind: "item.open",
