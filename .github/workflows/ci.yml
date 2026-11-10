@@ -990,20 +990,12 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/cache-pnpm
 
-      - parallel:
-          - name: Install dependencies
-            timeout-minutes: 5
-            env:
-              TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-              PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-            run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
-
-          - name: Install AppImage FUSE runtime
-            if: ${{ runner.os == 'Linux' }}
-            uses: ./.github/actions/install-appimage-fuse
-            timeout-minutes: 5
-            with:
-              package: libfuse2t64
+      - name: Install dependencies
+        timeout-minutes: 5
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
 
       - name: Smoke bb-app tarball
         if: ${{ runner.os != 'Linux' }}
