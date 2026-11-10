@@ -326,6 +326,11 @@ function writeUnreachableUserBus(fixture: Fixture, init: string): void {
 
 afterEach(async () => {
   for (const directory of createdDirectories.splice(0)) {
+    const daemonLog = join(directory, "data/install-daemon.log");
+    if (existsSync(daemonLog)) {
+      const log = readFileSync(daemonLog, "utf8");
+      if (log.trim()) console.error("INSTALLER_DAEMON_LOG", directory, log);
+    }
     await killProcessesReferencingPath(directory);
     rmSync(directory, { force: true, recursive: true });
   }
