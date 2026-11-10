@@ -81,3 +81,27 @@ export const registrySkillInstallResponseSchema = z.object({
 export type RegistrySkillInstallResponse = z.infer<
   typeof registrySkillInstallResponseSchema
 >;
+
+const registrySkillInstallJobFields = {
+  id: z.string().min(1),
+  registrySkillId: z.string().min(1),
+};
+export const registrySkillInstallJobSchema = z.discriminatedUnion("state", [
+  z.object({ ...registrySkillInstallJobFields, state: z.literal("running") }),
+  z.object({
+    ...registrySkillInstallJobFields,
+    state: z.literal("completed"),
+    filePath: z.string().min(1),
+  }),
+  z.object({
+    ...registrySkillInstallJobFields,
+    state: z.literal("failed"),
+    error: z.string(),
+  }),
+]);
+export type RegistrySkillInstallJob = z.infer<
+  typeof registrySkillInstallJobSchema
+>;
+export const registrySkillInstallJobResponseSchema = z.object({
+  job: registrySkillInstallJobSchema,
+});

@@ -12,12 +12,18 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  type ProviderCliInstallActionKind,
+} from "@bb/host-daemon-contract";
+import type { HostProviderCliInstallJob } from "@bb/server-contract";
 import type { AppDeps } from "../types.js";
 import {
   getProviderInstallations,
-  serializeProviderInstallation,
+  invalidateProviderInstallationStatus,
+  settleUnneededProviderInstallation,
 } from "../services/system/provider-installations.js";
+import { createJobRegistry } from "../services/lib/job-registry.js";
 import { resolveBridgeLaunchForProviderId } from "../services/system/provider-bridge-launch.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
@@ -441,8 +447,26 @@ export function registerHostRoutes(
     return context.json(result);
   });
 
-  post(routes.providerCliInstall, async (context, payload) => {
-    const hostId = context.req.param("id");
+  const installJobs = createJobRegistry<HostProviderCliInstallJob>({
+    isActive: (job) => job.state === "running",
+    fail: ({ id, hostId, provider, actionKind, startedAt }, error) => ({
+      id,
+      hostId,
+      provider,
+      actionKind,
+      startedAt,
+      state: "failed",
+      finishedAt: Date.now(),
+      error: error instanceof Error ? error.message : String(error),
+    }),
+    notifyChanged: (job) =>
+      deps.hub.notifyHost(job.hostId, ["provider-cli-install-jobs-changed"]),
+  });
+
+  const startInstallJob = async (
+    hostId: string,
+    payload: { provider: string; actionKind: ProviderCliInstallActionKind },
+  ) => {
     assertUsableHostId(deps, { hostId });
     await deps.providerRegistry.whenProviderRegistered(payload.provider);
     const registration = deps.providerRegistry.get(payload.provider);
@@ -464,35 +488,95 @@ export function registerHostRoutes(
         `Provider bridge is unavailable for ${payload.provider}`,
       );
     }
-    const result = await serializeProviderInstallation(deps, hostId, () =>
-      callHostOnlineRpcForWork(deps, {
+    return installJobs.start({
+      key: `${hostId} ${payload.provider}`,
+      lane: hostId,
+      create: (id) => ({
+        id,
         hostId,
-        timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,
-        command: {
-          type: "provider.installation.run",
+        provider: payload.provider,
+        actionKind: payload.actionKind,
+        startedAt: Date.now(),
+        state: "running",
+      }),
+      run: async ({ job }) => {
+        invalidateProviderInstallationStatus(deps, hostId);
+        const result = await callHostOnlineRpcForWork(deps, {
+          hostId,
+          timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,
+          command: {
+            type: "provider.installation.run",
+            providerId: payload.provider,
+            action: payload.actionKind,
+            bridgeLaunch,
+          },
+        });
+        const events = await settleUnneededProviderInstallation(deps, {
+          hostId,
           providerId: payload.provider,
           action: payload.actionKind,
           bridgeLaunch,
-        },
-      }),
-    );
-    if (
-      result.events.some((event) => event.type === "completed" && event.success)
-    ) {
-      deps.providerRegistry.forgetInstalledKey({
-        hostId,
-        providerId: payload.provider,
-      });
-      deps.lifecycleDedupers.providerModelCatalogs.clearFailure(
-        hostId,
-        payload.provider,
-      );
-    }
-    return new Response(providerCliInstallEventsToNdjson(result.events), {
+          events: result.events,
+        });
+        if (
+          events.some(
+            (event) => event.type === "completed" && event.success,
+          )
+        ) {
+          deps.providerRegistry.forgetInstalledKey({
+            hostId,
+            providerId: payload.provider,
+          });
+          deps.lifecycleDedupers.providerModelCatalogs.clearFailure(
+            hostId,
+            payload.provider,
+          );
+        }
+        invalidateProviderInstallationStatus(deps, hostId);
+        return {
+          ...job,
+          state: "completed",
+          finishedAt: Date.now(),
+          events,
+        };
+      },
+    });
+  };
+
+  post(routes.providerCliInstall, async (context, payload) => {
+    const job = await startInstallJob(context.req.param("id"), payload);
+    const outcome = await installJobs.settled(job.id);
+    if (outcome?.job.state !== "completed") throw outcome?.error;
+    return new Response(providerCliInstallEventsToNdjson(outcome.job.events), {
       headers: {
         "content-type": "application/x-ndjson; charset=utf-8",
         "cache-control": "no-store",
       },
     });
+  });
+
+  post(routes.providerCliInstallJobStart, async (context, payload) => {
+    const job = await startInstallJob(context.req.param("id"), payload);
+    return context.json({ job }, 202);
+  });
+
+  get(routes.providerCliInstallJobList, (context) => {
+    const hostId = context.req.param("id");
+    assertUsableHostId(deps, { hostId });
+    return context.json({
+      jobs: installJobs.list().filter((job) => job.hostId === hostId),
+    });
+  });
+
+  get(routes.providerCliInstallJobGet, (context) => {
+    const job = installJobs.get(context.req.param("jobId"));
+    if (job?.hostId !== context.req.param("id")) {
+      throw new ApiError(
+        404,
+        "provider_cli_install_job_not_found",
+        "Unknown provider install job; the server may have restarted",
+      );
+    }
+    return context.json({ job });
   });
 }

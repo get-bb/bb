@@ -69,7 +69,9 @@ import {
   threadStorageLocationQueryKey,
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
+  allHostProviderCliInstallJobsQueryKeyPrefix,
   allHostProviderCliStatusQueryKeyPrefix,
+  hostProviderCliInstallJobsQueryKey,
   hostProviderCliStatusQueryKey,
 } from "../queries/query-keys";
 import { systemEnvironmentProvidersQueryKey } from "../queries/environment-provider-queries";
@@ -534,6 +536,9 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
   },
   "provider-cli-status-changed": {
     dirty: [dirtyHostProviderCliStatusQueries],
+  },
+  "provider-cli-install-jobs-changed": {
+    dirty: [dirtyHostProviderCliInstallJobQueries],
   },
 } satisfies HostChangeRegistry;
 
@@ -1156,6 +1161,16 @@ function dirtyHostSystemExecutionOptionQueries({
 }: HostRealtimeDirtyContext): QueryKey[] | void {
   if (hostId === undefined) return [allSystemExecutionOptionsQueryKeyPrefix()];
   void invalidateSystemExecutionOptions({ hostId, queryClient });
+}
+
+function dirtyHostProviderCliInstallJobQueries({
+  hostId,
+}: HostRealtimeDirtyContext): QueryKey[] {
+  return [
+    hostId === undefined
+      ? allHostProviderCliInstallJobsQueryKeyPrefix()
+      : hostProviderCliInstallJobsQueryKey(hostId),
+  ];
 }
 
 function dirtyHostProviderCliStatusQueries({

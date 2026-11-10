@@ -1,24 +1,10 @@
-import { randomUUID } from "node:crypto";
 import type {
   InstalledPlugin,
   PluginInstallJob,
   PluginInstallJobTarget,
 } from "@bb/server-contract";
+import { createJobRegistry } from "../lib/job-registry.js";
 import { runCancellableInstall } from "./install-cancellation.js";
-
-const FINISHED_JOB_RETENTION_MS = 10 * 60_000;
-
-type ActiveState = "queued" | "running" | "cancelling";
-
-interface JobEntry {
-  job: PluginInstallJob;
-  key: string;
-  run: () => Promise<InstalledPlugin>;
-  controller: AbortController;
-  finishedAt: number | null;
-  settled: Promise<PluginInstallJob>;
-  settle: (job: PluginInstallJob) => void;
-}
 
 export interface PluginInstallJobs {
   start(args: {
@@ -38,130 +24,50 @@ function targetKey(target: PluginInstallJobTarget): string {
     : `source:${target.source}:${JSON.stringify(target.selection)}`;
 }
 
-function isActive(
-  job: PluginInstallJob,
-): job is Extract<PluginInstallJob, { state: ActiveState }> {
-  return (
-    job.state === "queued" ||
-    job.state === "running" ||
-    job.state === "cancelling"
-  );
+function jobBase({ id, target, displayName }: PluginInstallJob) {
+  return { id, target, displayName };
 }
 
 export function createPluginInstallJobs(deps: {
   notifyChanged: () => void;
   now?: () => number;
 }): PluginInstallJobs {
-  const now = deps.now ?? Date.now;
-  const entries = new Map<string, JobEntry>();
-  let current: JobEntry | null = null;
-
-  function pruneFinished(): void {
-    const cutoff = now() - FINISHED_JOB_RETENTION_MS;
-    for (const [id, entry] of entries) {
-      if (entry.finishedAt !== null && entry.finishedAt <= cutoff) {
-        entries.delete(id);
-      }
-    }
-  }
-
-  function update(entry: JobEntry, job: PluginInstallJob): void {
-    entry.job = job;
-    if (!isActive(job)) {
-      entry.finishedAt = now();
-      entry.settle(job);
-    }
-    deps.notifyChanged();
-  }
-
-  function pump(): void {
-    if (current !== null) return;
-    const next = [...entries.values()].find(
-      (entry) => entry.job.state === "queued",
-    );
-    if (next === undefined) return;
-    current = next;
-    const base = {
-      id: next.job.id,
-      target: next.job.target,
-      displayName: next.job.displayName,
-    };
-    update(next, { ...base, state: "running" });
-    void runCancellableInstall(next.controller.signal, next.run)
-      .then(
-        (plugin) => update(next, { ...base, state: "succeeded", plugin }),
-        (error: unknown) =>
-          update(
-            next,
-            next.controller.signal.aborted
-              ? { ...base, state: "cancelled" }
-              : {
-                  ...base,
-                  state: "failed",
-                  error: error instanceof Error ? error.message : String(error),
-                },
-          ),
-      )
-      .finally(() => {
-        current = null;
-        pump();
-      });
-  }
-
+  const jobs = createJobRegistry<PluginInstallJob>({
+    isActive: (job) =>
+      job.state === "queued" ||
+      job.state === "running" ||
+      job.state === "cancelling",
+    fail: (job, error, signal) =>
+      signal.aborted
+        ? { ...jobBase(job), state: "cancelled" }
+        : {
+            ...jobBase(job),
+            state: "failed",
+            error: error instanceof Error ? error.message : String(error),
+          },
+    notifyChanged: deps.notifyChanged,
+    now: deps.now,
+  });
   return {
-    start({ target, displayName, run }) {
-      pruneFinished();
-      const key = targetKey(target);
-      const duplicate = [...entries.values()].find(
-        (entry) => entry.key === key && isActive(entry.job),
-      );
-      if (duplicate !== undefined) return duplicate.job;
-      let settle: (job: PluginInstallJob) => void = () => {};
-      const settled = new Promise<PluginInstallJob>((resolve) => {
-        settle = resolve;
-      });
-      const entry: JobEntry = {
-        job: { id: randomUUID(), target, displayName, state: "queued" },
-        key,
-        run,
-        controller: new AbortController(),
-        finishedAt: null,
-        settled,
-        settle,
-      };
-      entries.set(entry.job.id, entry);
-      deps.notifyChanged();
-      pump();
-      return entry.job;
-    },
-    settled(id) {
-      return entries.get(id)?.settled;
-    },
-    get(id) {
-      pruneFinished();
-      return entries.get(id)?.job;
-    },
-    list() {
-      pruneFinished();
-      return [...entries.values()].map((entry) => entry.job);
-    },
-    cancel(id) {
-      const entry = entries.get(id);
-      if (entry === undefined) return undefined;
-      const { job } = entry;
-      if (job.state === "queued") {
-        entry.controller.abort();
-        update(entry, {
-          id: job.id,
-          target: job.target,
-          displayName: job.displayName,
-          state: "cancelled",
-        });
-      } else if (job.state === "running") {
-        entry.controller.abort();
-        update(entry, { ...job, state: "cancelling" });
-      }
-      return entry.job;
-    },
+    start: ({ target, displayName, run }) =>
+      jobs.start({
+        key: targetKey(target),
+        lane: "plugin-install",
+        create: (id) => ({ id, target, displayName, state: "queued" }),
+        run: async ({ job, set, signal }) => {
+          set({ ...jobBase(job), state: "running" });
+          const plugin = await runCancellableInstall(signal, run);
+          return { ...jobBase(job), state: "succeeded", plugin };
+        },
+      }),
+    settled: (id) => jobs.settled(id)?.then((outcome) => outcome.job),
+    get: (id) => jobs.get(id),
+    list: () => jobs.list(),
+    cancel: (id) =>
+      jobs.cancel(id, {
+        queued: (job) => ({ ...jobBase(job), state: "cancelled" }),
+        running: (job) =>
+          job.state === "running" ? { ...job, state: "cancelling" } : job,
+      }),
   };
 }

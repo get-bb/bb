@@ -190,38 +190,43 @@ describe("bb updates command output", () => {
   });
 
   it("bb updates apply runs each available provider update", async () => {
-    const install = vi.fn(
-      async () =>
-        new Response(
-          [
-            JSON.stringify({
-              type: "started",
-              provider: "codex",
-              actionKind: "update",
-              command: "codex update",
-            }),
-            JSON.stringify({
-              type: "completed",
-              provider: "codex",
-              success: true,
-              exitCode: 0,
-              signal: null,
-            }),
-          ].join("\n"),
-          { status: 200 },
-        ),
-    );
+    const job = {
+      id: "job_1",
+      hostId: hosts[0].id,
+      provider: "codex",
+      actionKind: "update",
+      startedAt: 1,
+    };
+    const start = vi.fn(async () => ({ job: { ...job, state: "running" } }));
+    const get = vi.fn(async () => ({
+      job: {
+        ...job,
+        state: "completed",
+        finishedAt: 2,
+        events: [
+          { type: "started", provider: "codex", command: "codex update" },
+          {
+            type: "completed",
+            provider: "codex",
+            success: true,
+            exitCode: 0,
+            signal: null,
+          },
+        ],
+      },
+    }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),
       "v1.hosts.:id.provider-clis.status.$get": vi.fn(async () =>
         providerStatus({ codexNeedsUpdate: true }),
       ),
-      "v1.hosts.:id.provider-clis.install.$post": install,
+      "v1.hosts.:id.provider-clis.install-jobs.$post": start,
+      "v1.hosts.:id.provider-clis.install-jobs.:jobId.$get": get,
     });
 
     await runCommand(["updates", "apply"], register);
 
-    expect(install).toHaveBeenCalledOnce();
+    expect(start).toHaveBeenCalledOnce();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Codex on workstation: running update…",
       "Codex on workstation: done",

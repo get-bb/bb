@@ -50,10 +50,14 @@ describe("bb skill commands", () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(
         JSON.stringify({
-          ok: true,
-          filePath: "/home/user/.bb/skills/review/SKILL.md",
+          job: {
+            id: "job_1",
+            registrySkillId: "owner/repo/review",
+            state: "completed",
+            filePath: "/home/user/.bb/skills/review/SKILL.md",
+          },
         }),
-        { status: 200, headers: { "content-type": "application/json" } },
+        { status: 202, headers: { "content-type": "application/json" } },
       ),
     );
 
@@ -63,7 +67,9 @@ describe("bb skill commands", () => {
     );
 
     const [input, init] = vi.mocked(globalThis.fetch).mock.calls[0] ?? [];
-    expect(String(input)).toBe("http://server/api/v1/skills-registry/install");
+    expect(String(input)).toBe(
+      "http://server/api/v1/skills-registry/install-jobs",
+    );
     expect(JSON.parse(String(init?.body))).toEqual({
       registrySkillId: "owner/repo/review",
     });
