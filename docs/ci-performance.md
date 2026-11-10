@@ -1,7 +1,7 @@
 # CI performance
 
 The main CI workflow keeps build, lint/typecheck, two server test shards, eight app test
-shards, integration tests, three package test groups, two plugin test groups, three fork
+shards, integration tests, three package test groups, two plugin test groups, two fork
 check shards, and package smokes independent. Node 24/26 compatibility smokes run on
 main and manual runs. Windows runs the nine host packages, an app smoke, a desktop
 smoke, and thirteen test shards that cover the remaining suites; see
@@ -62,11 +62,11 @@ merge's first parent; pushes fetch all branches and tags.
 
 ## Fork checks
 
-The Plugin Fork Check runs in three shards. On pull requests it checks only
-the forkable plugins a change touches. Within each shard, Pi and Tasks start
-first because their longer checks otherwise extend the tail after shorter
-forks finish. CI caps each fork's Vitest at two workers while retaining
-four concurrent forks; see
+The Plugin Fork Check runs in two shards on 8-vCPU Linux runners. On pull
+requests it checks only the forkable plugins a change touches. Within each
+shard, Pi, Tasks, and Codex start first because their longer checks otherwise
+extend the tail after shorter forks finish. CI caps each fork's Vitest at
+two workers while running up to eight concurrent forks; see
 [forkable-plugins.md](forkable-plugins.md) for selection and local commands.
 
 Each selected fork resolves a fresh package lock with lifecycle scripts
