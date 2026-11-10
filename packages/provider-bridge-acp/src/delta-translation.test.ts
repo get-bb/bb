@@ -1913,6 +1913,81 @@ describe("acp delta translation (raw payloads and real results)", () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    { status: "in_progress", output: undefined },
+    { status: "in_progress", output: "building\n" },
+    { status: "pending", output: undefined },
+    { status: undefined, output: undefined },
+  ])(
+    "refreshes a command announced before its input (status=$status, output=$output)",
+    ({ status, output }) => {
+      const harness = startedHarness();
+      const opened = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "deferred-command",
+          title: "Terminal",
+          kind: "execute",
+          status: "pending",
+          rawInput: {},
+        }),
+      );
+      const initial = opened.find((event) => event.type === "item/started");
+      expect(initial?.item).toMatchObject({
+        type: "commandExecution",
+        command: "Terminal",
+      });
+
+      const update = {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "deferred-command",
+        status,
+        rawInput: { command: "pnpm build" },
+        ...(output === undefined ? {} : { rawOutput: output }),
+      };
+      const refreshed = harness.translate(updateEvent(update));
+      expect(refreshed).toEqual([
+        expect.objectContaining({
+          type: "item/started",
+          item: expect.objectContaining({
+            id: initial?.item.id,
+            type: "commandExecution",
+            command: "pnpm build",
+            presentation: expect.objectContaining({ title: "pnpm build" }),
+          }),
+        }),
+        ...(output === undefined
+          ? []
+          : [
+              expect.objectContaining({
+                type: "item/commandExecution/outputDelta",
+                itemId: initial?.item.id,
+                delta: output.trim(),
+              }),
+            ]),
+      ]);
+      expect(harness.translate(updateEvent(update))).toEqual([]);
+
+      expect(
+        harness.translate(
+          updateEvent({
+            sessionUpdate: "tool_call_update",
+            toolCallId: "deferred-command",
+            status: "completed",
+          }),
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "item/completed",
+          item: expect.objectContaining({
+            id: initial?.item.id,
+            command: "pnpm build",
+          }),
+        }),
+      );
+    },
+  );
+
   it("streams nothing when a running command's envelope names no stream", () => {
     const harness = startedHarness();
     harness.translate(
