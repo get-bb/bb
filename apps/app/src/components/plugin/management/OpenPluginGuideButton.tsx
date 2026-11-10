@@ -32,7 +32,7 @@ export function OpenPluginGuideButton() {
   useEffect(() => {
     if (installJob === null || isActivePluginInstallJob(installJob)) return;
     setInstallJobId(null);
-    if (installJob.state === "succeeded") navigate(PLUGIN_GUIDE_PATH);
+    if (installJob.state === "succeeded") void navigate(PLUGIN_GUIDE_PATH);
   }, [installJob, navigate]);
   const open = useMutation({
     meta: { showErrorToast: false },
@@ -80,7 +80,7 @@ export function OpenPluginGuideButton() {
         onClick={() =>
           open.mutate(undefined, {
             onSuccess: (initial) => {
-              if (initial === null) navigate(PLUGIN_GUIDE_PATH);
+              if (initial === null) void navigate(PLUGIN_GUIDE_PATH);
               else setInstallTarget(initial);
             },
           })

@@ -232,13 +232,19 @@ describe("compact Select nested in a compact Dialog", () => {
     type("w");
     type("o");
     expect(document.activeElement).toBe(option("Work"));
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     type("h");
     expect(document.activeElement).toBe(option("Personal"));
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     type("a");
     expect(document.activeElement).toBe(option("Personal"));
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     type("n");
     expect(document.activeElement).toBe(option("New folder…"));
     type("n");
@@ -247,7 +253,9 @@ describe("compact Select nested in a compact Dialog", () => {
     expect(screen.getByRole("listbox", { name: "Folder" })).toBe(listbox);
     expect(trigger.textContent).toBe("No folder");
 
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     type("h");
     type("Enter");
     runFrames();

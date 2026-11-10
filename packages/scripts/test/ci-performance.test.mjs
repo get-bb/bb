@@ -197,7 +197,7 @@ it("partitions fork checks without losing plugins and rejects invalid shards", (
       }),
     );
   const plugins = list();
-  for (const count of [1, 3, plugins.length + 1]) {
+  for (const count of [1, 2, 3, plugins.length + 1]) {
     const shards = Array.from({ length: count }, (_, index) =>
       list(`--shard=${index + 1}/${count}`),
     );

@@ -164,7 +164,9 @@ it("pages mobile panes without using annotation selection as navigation", () => 
       current().querySelector('[data-guide-mobile-scene="navigation"]'),
     ).not.toBeNull();
     openAnnotation("nav-panel");
-    act(() => vi.advanceTimersByTime(400));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(navigate).not.toHaveBeenCalled();
     expect(visiblePage()).toBe("Sidebar");
@@ -198,21 +200,21 @@ it("pages mobile panes without using annotation selection as navigation", () => 
       if (name !== "Theme Preview") act(() => nextExample().click());
     }
     expect(nextExample().disabled).toBe(true);
-    act(() =>
+    act(() => {
       previousExample().dispatchEvent(
         new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }),
-      ),
-    );
+      );
+    });
     expect(examples().textContent).toContain("Tasks");
     expect(visiblePage()).toBe("Sidebar");
     expect(navigate).not.toHaveBeenCalled();
-    act(() =>
+    act(() => {
       container
         .querySelector('[role="dialog"] button')!
         .dispatchEvent(
           new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
-        ),
-    );
+        );
+    });
     expect(navigate).not.toHaveBeenCalled();
     act(() => next.click());
     expect(visiblePage()).toBe("Thread");

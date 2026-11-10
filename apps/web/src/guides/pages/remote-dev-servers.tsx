@@ -435,8 +435,10 @@ export const guide: Guide = {
         <p>
           The dev server and other terminals stop after the 30-second undo
           window. Five minutes later, bb removes the worktree if no other thread
-          uses it. The branch is kept. Commit a <code>.bb-env-teardown.sh</code>{" "}
-          to clean up anything outside the worktree, like Docker containers.
+          uses it. Its branch is deleted too once its commits are pushed or
+          merged; unpushed work keeps the branch. Commit a{" "}
+          <code>.bb-env-teardown.sh</code> to clean up anything outside the
+          worktree, like Docker containers.
         </p>
       ),
     },

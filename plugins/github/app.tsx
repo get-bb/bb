@@ -607,13 +607,13 @@ function RowMenu({ item }: { item: Item }) {
         ) : null}
         {item.kind === "issue" ? (
           <DropdownMenuItem
-            onSelect={() =>
-              setIssueState(
+            onSelect={() => {
+              void setIssueState(
                 item.repo,
                 item.number,
                 item.state === "OPEN" ? "closed" : "open",
-              ).catch((error: unknown) => toast.error(errorText(error)))
-            }
+              ).catch((error: unknown) => toast.error(errorText(error)));
+            }}
           >
             {item.state === "OPEN" ? "Close issue" : "Reopen issue"}
           </DropdownMenuItem>

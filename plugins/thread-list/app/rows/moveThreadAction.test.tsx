@@ -196,7 +196,7 @@ describe("Move to section", () => {
   it("moves an unpinned thread with one update", async () => {
     const { item, sdkCalls, hydrated } = renderMove();
     await hydrated();
-    run(item(makeTarget()), "sec_b");
+    await run(item(makeTarget()), "sec_b");
     await waitFor(() =>
       expect(sdkCalls).toEqual([
         {
@@ -211,7 +211,7 @@ describe("Move to section", () => {
     const { item, sdkCalls, hydrated } = renderMove();
     await hydrated();
     const pinned = makeTarget({ pinnedAt: 2 });
-    run(item(pinned), "threads");
+    await run(item(pinned), "threads");
     await waitFor(() =>
       expect(sdkCalls).toEqual([
         { method: "threads.unpin", args: [{ threadId: "thr_move" }] },
@@ -222,7 +222,7 @@ describe("Move to section", () => {
       ]),
     );
     sdkCalls.length = 0;
-    run(item(pinned), "sec_a");
+    await run(item(pinned), "sec_a");
     await waitFor(() =>
       expect(sdkCalls).toEqual([
         { method: "threads.unpin", args: [{ threadId: "thr_move" }] },

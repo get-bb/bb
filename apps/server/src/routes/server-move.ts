@@ -12,10 +12,12 @@ import {
 import {
   publicApiRoutes,
   typedRoutes,
+  type OldServerCopyDeleteJob,
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
+import { createJobRegistry } from "../services/lib/job-registry.js";
 import {
   getGateAuthKind,
   type RequestHeaderReader,
@@ -167,10 +169,23 @@ export function registerServerMoveRoutes(
     });
   });
 
-  del(publicApiRoutes.hosts.deleteOldServerCopy, async (context) => {
+  const deleteJobs = createJobRegistry<OldServerCopyDeleteJob>({
+    isActive: (job) => job.state === "running",
+    fail: ({ id, hostId }, error) => ({
+      id,
+      hostId,
+      state: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    }),
+    notifyChanged: () => {},
+  });
+
+  const startDeleteJob = async (
+    context: RequestHeaderReader,
+    hostId: string,
+  ) => {
     assertServerManagementAllowed(context);
     assertServerMoveExperimentEnabled(deps);
-    const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
     const lastMove = await readLastServerMoveFile(deps.config.dataDir);
     if (lastMove === null || lastMove.fromHostId !== hostId) {
@@ -180,18 +195,49 @@ export function registerServerMoveRoutes(
         "This machine doesn't have an old server copy",
       );
     }
-    const result = await callHostOnlineRpc(deps, {
-      hostId,
-      timeoutMs: DELETE_OLD_SERVER_COPY_TIMEOUT_MS,
-      command: { type: "server_move.delete_old_copy" },
+    return deleteJobs.start({
+      key: hostId,
+      lane: hostId,
+      create: (id) => ({ id, hostId, state: "running" }),
+      run: async ({ job }) => {
+        const result = await callHostOnlineRpc(deps, {
+          hostId,
+          timeoutMs: DELETE_OLD_SERVER_COPY_TIMEOUT_MS,
+          command: { type: "server_move.delete_old_copy" },
+        });
+        if (lastMove.oldCopyDeletedAt === null) {
+          await writeLastServerMoveFile(deps.config.dataDir, {
+            ...lastMove,
+            oldCopyDeletedAt: Date.now(),
+          });
+        }
+        deps.hub.notifySystem(["server-move-changed"]);
+        return { ...job, state: "completed", deleted: result.deleted };
+      },
     });
-    if (lastMove.oldCopyDeletedAt === null) {
-      await writeLastServerMoveFile(deps.config.dataDir, {
-        ...lastMove,
-        oldCopyDeletedAt: Date.now(),
-      });
+  };
+
+  del(publicApiRoutes.hosts.deleteOldServerCopy, async (context) => {
+    const job = await startDeleteJob(context, context.req.param("id"));
+    const outcome = await deleteJobs.settled(job.id);
+    if (outcome?.job.state !== "completed") throw outcome?.error;
+    return context.json({ deleted: outcome.job.deleted });
+  });
+
+  post(publicApiRoutes.hosts.oldServerCopyDeleteJobStart, async (context) => {
+    const job = await startDeleteJob(context, context.req.param("id"));
+    return context.json({ job }, 202);
+  });
+
+  get(publicApiRoutes.hosts.oldServerCopyDeleteJobGet, (context) => {
+    const job = deleteJobs.get(context.req.param("jobId"));
+    if (job?.hostId !== context.req.param("id")) {
+      throw new ApiError(
+        404,
+        "old_server_copy_delete_job_not_found",
+        "Unknown delete job; the server may have restarted",
+      );
     }
-    deps.hub.notifySystem(["server-move-changed"]);
-    return context.json({ deleted: result.deleted });
+    return context.json({ job });
   });
 }

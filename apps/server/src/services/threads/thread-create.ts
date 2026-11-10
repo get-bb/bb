@@ -1,6 +1,9 @@
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
-import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
+import {
+  admitAfterPathClaimsSettle,
+  assertEnvironmentPathAvailable,
+} from "../environments/path-admission.js";
 import { markThreadDeleted, getEnvironment, getThread } from "@bb/db";
 import {
   describeSessionOptionConflict,
@@ -457,7 +460,9 @@ async function createPendingThreadAndAttemptFirstDispatch(
       ? null
       : getEnvironment(deps.db, args.environmentId);
   if (environment !== null)
-    assertEnvironmentPathAvailable(deps, { ...environment, threadId: null });
+    await admitAfterPathClaimsSettle(deps, () =>
+      assertEnvironmentPathAvailable(deps, { ...environment, threadId: null }),
+    );
   if (args.request.sourceThreadId) {
     requireLiveSourceThread(deps, {
       projectId: args.request.projectId,
@@ -776,8 +781,6 @@ export async function createThreadFromRequest(
     requestedEnvironment.type === "provider"
       ? null
       : resolveStableThreadRequestEnvironment(deps, {
-          allowUnmanagedPersonalProjectReuseEnvironmentId:
-            forkSourceEnvironmentId,
           environment: requestedEnvironment,
           projectId: request.projectId,
         });
@@ -834,12 +837,6 @@ export async function createThreadFromRequest(
 
   const { environmentId, environmentIntent } =
     await resolveThreadEnvironmentPlacement(deps, {
-      ...(forkSourceEnvironmentId !== undefined
-        ? {
-            allowUnmanagedPersonalProjectReuseEnvironmentId:
-              forkSourceEnvironmentId,
-          }
-        : {}),
       projectId: request.projectId,
       requestedEnvironment: request.environment,
     });

@@ -1061,7 +1061,7 @@ async function loadDeclaredSessionOptions(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
-      connection.kill();
+      void connection.kill();
       reject(
         new Error(
           `ACP option discovery timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
@@ -1175,7 +1175,7 @@ async function loadSessionDiscoveredModels(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
-      connection.kill();
+      void connection.kill();
       reject(
         new Error(
           `The agent did not answer within ${MODEL_LIST_TIMEOUT_MS / 1000} seconds while bb asked it for its models`,
@@ -1331,7 +1331,7 @@ async function discoverAcpNativeModelSupport(args: {
   >((resolve) => {
     timeout = setTimeout(() => {
       timedOut = true;
-      args.connection.kill();
+      void args.connection.kill();
       resolve(supportByModel);
     }, ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS);
   });
@@ -2471,13 +2471,28 @@ async function startAgentSession(
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
     let loadedModels: AcpSessionModels | undefined;
     let createdFreshSession = false;
+    let forkHandoffProviderThreadId: string | undefined;
     if (request.kind === "fork") {
-      const forkedSession = await connection.request({
+      const source = getSessionByProviderThreadId(
+        request.sourceProviderThreadId,
+      );
+      const handoffSource =
+        source !== undefined &&
+        !source.stopping &&
+        !source.connection.exited &&
+        source.capabilities?.session.fork === true &&
+        source.capabilities.session.close === true &&
+        (capabilities.session.resume || supportsLoadSession)
+          ? source
+          : undefined;
+      const forkedSession = await (
+        handoffSource?.connection ?? connection
+      ).request({
         method: "session/fork",
         params: {
           sessionId: request.sourceProviderThreadId,
           cwd: params.cwd,
-          mcpServers,
+          mcpServers: handoffSource === undefined ? mcpServers : [],
           ...additionalSessionDirectories(params, capabilities),
         },
         resultSchema: acpSessionForkResultSchema,
@@ -2491,26 +2506,41 @@ async function startAgentSession(
           `ACP agent "${agentLabel}" returned an active session ID for session/fork.`,
         );
       }
-      sessionId = forkedSession.sessionId;
       loadedConfigOptions = forkedSession.configOptions;
       loadedModels = forkedSession.models;
-      rememberGrokContextWindow(session, forkedSession.models);
-    } else if (
-      request.kind === "resume" &&
+      if (handoffSource === undefined) {
+        sessionId = forkedSession.sessionId;
+        rememberGrokContextWindow(session, forkedSession.models);
+      } else {
+        forkHandoffProviderThreadId = forkedSession.sessionId;
+        await handoffSource.connection.request({
+          method: "session/close",
+          params: { sessionId: forkedSession.sessionId },
+          resultSchema: z.unknown(),
+          timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
+        });
+      }
+    }
+    const resumeProviderThreadId =
+      request.kind === "resume"
+        ? request.resumeProviderThreadId
+        : forkHandoffProviderThreadId;
+    if (
+      resumeProviderThreadId !== undefined &&
       (capabilities.session.resume || supportsLoadSession)
     ) {
       const restoreMethod = capabilities.session.resume
         ? "session/resume"
         : "session/load";
       session.loading = true;
-      session.loadingSessionId = request.resumeProviderThreadId;
+      session.loadingSessionId = resumeProviderThreadId;
       session.pendingLoadUsageUpdate = undefined;
       session.model.beginReplay();
       try {
         const configState = await connection.request({
           method: restoreMethod,
           params: {
-            sessionId: request.resumeProviderThreadId,
+            sessionId: resumeProviderThreadId,
             cwd: params.cwd,
             mcpServers,
             ...additionalSessionDirectories(params, capabilities),
@@ -2518,12 +2548,16 @@ async function startAgentSession(
           resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
           timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
         });
-        loadedConfigOptions = configState?.configOptions;
-        loadedModels = configState?.models;
+        if (configState?.configOptions !== undefined) {
+          loadedConfigOptions = configState.configOptions;
+        }
+        if (configState?.models !== undefined) {
+          loadedModels = configState.models;
+        }
         rememberGrokContextWindow(session, configState?.models);
-        sessionId = request.resumeProviderThreadId;
+        sessionId = resumeProviderThreadId;
       } catch (error) {
-        if (isAcpAuthRequiredResponse(error)) {
+        if (isAcpAuthRequiredResponse(error) || request.kind === "fork") {
           throw error;
         }
         sessionId = undefined;
@@ -2912,6 +2946,9 @@ function noteAgentResponse(
     case "session/load":
     case "session/resume":
     case "session/fork":
+      if (session.providerThreadId !== "") {
+        return;
+      }
       publishSessionStateEvents(
         session,
         session.model.applySessionSetup(result),

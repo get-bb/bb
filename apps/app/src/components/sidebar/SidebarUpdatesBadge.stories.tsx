@@ -6,6 +6,7 @@ import type {
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import type {
+  HostProviderCliInstallJob,
   InstalledPlugin,
   PluginUpdateJob,
   SystemAppUpdateStatus,
@@ -201,7 +202,8 @@ function useSimulatedUpdates(scenario: Scenario): void {
       string,
       { job: PluginUpdateJob; startedAt: number; fails: boolean }
     >();
-    const originalInstall = sdk.hosts.installProviderCli;
+    const originalStartInstall = sdk.hosts.experimental_startProviderCliInstall;
+    const originalInstallJobs = sdk.hosts.experimental_providerCliInstallJobs;
     const originalStatus = sdk.hosts.providerCliStatus;
     const originalFetch = window.fetch;
     const originalApply = sdk.system.applyAppUpdate;
@@ -238,28 +240,59 @@ function useSimulatedUpdates(scenario: Scenario): void {
       return restarting;
     };
 
-    sdk.hosts.installProviderCli = ({ hostId, provider }) =>
-      new Promise((resolve) => {
-        window.setTimeout(() => {
-          const success = !failing.has(provider);
-          if (success) {
-            delete staleProviders[provider];
-            queryClient.setQueryData(
-              hostProviderCliStatusQueryKey(hostId),
-              providerStatus(staleProviders),
-            );
-          }
-          resolve([
-            {
-              type: "completed",
-              provider,
-              exitCode: success ? 0 : 1,
-              signal: null,
-              success,
-            },
-          ]);
-        }, UPDATE_DURATION_MS);
-      });
+    const installs = new Map<string, Promise<HostProviderCliInstallJob>>();
+    sdk.hosts.experimental_startProviderCliInstall = async ({
+      hostId,
+      provider,
+      actionKind,
+    }) => {
+      const base = {
+        id: `${hostId}:${provider}:${Date.now()}`,
+        hostId,
+        provider,
+        actionKind,
+        startedAt: Date.now(),
+      };
+      installs.set(
+        base.id,
+        new Promise((resolve) => {
+          window.setTimeout(() => {
+            const success = !failing.has(provider);
+            if (success) {
+              delete staleProviders[provider];
+              queryClient.setQueryData(
+                hostProviderCliStatusQueryKey(hostId),
+                providerStatus(staleProviders),
+              );
+            }
+            resolve({
+              ...base,
+              state: "completed",
+              finishedAt: Date.now(),
+              events: [
+                {
+                  type: "completed",
+                  provider,
+                  exitCode: success ? 0 : 1,
+                  signal: null,
+                  success,
+                },
+              ],
+            });
+          }, UPDATE_DURATION_MS);
+        }),
+      );
+      return { ...base, state: "running" };
+    };
+    sdk.hosts.experimental_providerCliInstallJobs = {
+      ...originalInstallJobs,
+      list: async () => [],
+      wait: async ({ jobId }) => {
+        const install = installs.get(jobId);
+        if (install === undefined) throw new Error(`Unknown job ${jobId}`);
+        return install;
+      },
+    };
     sdk.hosts.providerCliStatus = async ({ hostId }) =>
       providerStatus(hostId === HOST_IDS.local ? staleProviders : {});
 
@@ -339,7 +372,8 @@ function useSimulatedUpdates(scenario: Scenario): void {
     };
 
     return () => {
-      sdk.hosts.installProviderCli = originalInstall;
+      sdk.hosts.experimental_startProviderCliInstall = originalStartInstall;
+      sdk.hosts.experimental_providerCliInstallJobs = originalInstallJobs;
       sdk.hosts.providerCliStatus = originalStatus;
       window.fetch = originalFetch;
       sdk.system.applyAppUpdate = originalApply;

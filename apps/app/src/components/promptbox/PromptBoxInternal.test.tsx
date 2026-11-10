@@ -794,7 +794,9 @@ describe("ComposerBox composer popups", () => {
       const editor = (getPromptEditorElement() as TiptapEditorHTMLElement)
         .editor;
       if (!editor) throw new Error("Composer editor is missing");
-      act(() => editor.commands.setTextSelection(7));
+      act(() => {
+        editor.commands.setTextSelection(7);
+      });
       await openPopupFromMenu();
       const popup = await screen.findByRole("dialog", {
         name: "Saved prompts",
@@ -2195,8 +2197,12 @@ describe("ComposerBox submit shortcuts", () => {
             new DOMRect(0, 0, 40, 40),
           );
           fireEvent.pointerDown(submit, touch);
-          act(() => vi.advanceTimersByTime(700));
-          act(() => vi.advanceTimersByTime(500));
+          act(() => {
+            vi.advanceTimersByTime(700);
+          });
+          act(() => {
+            vi.advanceTimersByTime(500);
+          });
           fireEvent.pointerUp(submit, touch);
           fireEvent.click(submit, { detail: 1 });
         };
@@ -2241,7 +2247,9 @@ describe("ComposerBox submit shortcuts", () => {
 
         openMenu();
         rerender(renderComposer(""));
-        act(() => vi.advanceTimersByTime(500));
+        act(() => {
+          vi.advanceTimersByTime(500);
+        });
         expect(screen.queryByRole("menuitem")).toBeNull();
         expect(
           screen
@@ -2303,8 +2311,12 @@ describe("ComposerBox submit shortcuts", () => {
           clientX: 20,
           clientY: 20,
         });
-        act(() => vi.advanceTimersByTime(700));
-        act(() => vi.advanceTimersByTime(500));
+        act(() => {
+          vi.advanceTimersByTime(700);
+        });
+        act(() => {
+          vi.advanceTimersByTime(500);
+        });
         expect(screen.queryByRole("menuitem")).toBeNull();
         expect(save).not.toHaveBeenCalled();
         if (!isTouch) {

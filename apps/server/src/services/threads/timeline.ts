@@ -21,6 +21,7 @@ import {
   resolveTimelineSnapshot,
   timelineSnapshotKey,
   type TimelineContentCursor,
+  type TimelineSnapshot,
 } from "./timeline-snapshot.js";
 import {
   buildThreadTimelineFromEvents,
@@ -120,12 +121,24 @@ import {
   type TimelineProjection,
 } from "./timeline-projection-cache.js";
 import {
+  byteLengthOfStoredEventRows,
+  decodeTimelineSelectionRows,
+  withRowMeta,
+} from "./timeline-selection-decode.js";
+import {
+  getOrProjectTimelineTurnDetails,
+  type TimelineTurnDetailsProjection,
+} from "./timeline-turn-details-cache.js";
+import {
   forgetTimelineProjectionFolds,
   keepTimelineProjectionFold,
 } from "./timeline-projection-fold.js";
 import {
   selectTimelineWindowStart,
+  keepLatestTimelinePageableRows,
   lookupLatestTimelineSelection,
+  reuseKeptLatestTimelinePageableRows,
+  rememberDecodedLatestTimelineSelection,
   rememberLatestTimelineSelection,
   TimelineSelectionTrimFallback,
   type LatestTimelineSelectionMemoArgs,
@@ -181,6 +194,7 @@ export function resolveThreadTimelineSurface(
       cursorKey,
       options.planCommand ?? null,
       options.compactionOfferEnabled,
+      options.extensionStateKinds ?? [],
     ]),
     threadName,
     workspaceRoot,
@@ -289,6 +303,7 @@ export interface ThreadTimelineBuildProfile {
 export type ThreadTimelineWindow = Omit<ThreadTimelineResponse, "tag">;
 
 interface BuildThreadTimelineInternalResult {
+  expiresAt: number | null;
   profile: ThreadTimelineBuildProfile;
   response: ThreadTimelineWindow;
 }
@@ -352,35 +367,27 @@ interface SelectedClientRequestContextRows {
   rejectedRows: StoredEventRow[];
 }
 
-function withRowMeta(
-  row: StoredEventRow,
-  event: ThreadEvent,
-): ThreadEventWithMeta {
-  return {
-    event,
-    meta: {
-      id: row.id,
-      seq: row.sequence,
-      createdAt: row.createdAt,
-    },
-  };
-}
-
 export function toThreadEventWithMeta(
   row: StoredEventRow,
 ): ThreadEventWithMeta {
   return withRowMeta(row, parseStoredEvent(row));
 }
 
-export function retainedOutputPreviewsByCallId(
+export interface RetainedOutputPreviews {
+  byCallId: ReadonlyMap<string, TimelineOutputPreview>;
+  expiresAt: number | null;
+}
+
+export function readRetainedOutputPreviews(
   events: readonly ThreadEventWithMeta[],
   availablePreview: Extract<
     TimelineOutputPreview["experimental_fullOutputAvailability"],
     "available" | "detail-limit"
   >,
   now: number,
-): ReadonlyMap<string, TimelineOutputPreview> {
-  const previews = new Map<string, TimelineOutputPreview>();
+): RetainedOutputPreviews {
+  const byCallId = new Map<string, TimelineOutputPreview>();
+  let expiresAt: number | null = null;
   for (const { event } of events) {
     if (event.type !== "item/completed") {
       continue;
@@ -393,17 +400,25 @@ export function retainedOutputPreviewsByCallId(
       item.type === "commandExecution"
         ? item.truncation?.aggregatedOutput
         : item.truncation?.result;
-    if (truncation !== undefined) {
-      previews.set(item.id, {
-        experimental_fullOutputAvailability:
-          truncation.truncatedAt > now ? availablePreview : "retention-expired",
-        totalChars: truncation.originalLength,
-      });
-    } else {
-      previews.delete(item.id);
+    if (truncation === undefined) {
+      byCallId.delete(item.id);
+      continue;
+    }
+    const available = truncation.truncatedAt > now;
+    byCallId.set(item.id, {
+      experimental_fullOutputAvailability: available
+        ? availablePreview
+        : "retention-expired",
+      totalChars: truncation.originalLength,
+    });
+    if (
+      available &&
+      (expiresAt === null || truncation.truncatedAt < expiresAt)
+    ) {
+      expiresAt = truncation.truncatedAt;
     }
   }
-  return previews;
+  return { byCallId, expiresAt };
 }
 
 export function withRetainedOutputPreview(
@@ -1245,21 +1260,6 @@ function selectStandardTimelineEventRows(
   };
 }
 
-const storedEventRowByteLengths = new WeakMap<StoredEventRow, number>();
-
-function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
-  let byteLength = 0;
-  for (const row of rows) {
-    let rowByteLength = storedEventRowByteLengths.get(row);
-    if (rowByteLength === undefined) {
-      rowByteLength = Buffer.byteLength(row.data, "utf8");
-      storedEventRowByteLengths.set(row, rowByteLength);
-    }
-    byteLength += rowByteLength;
-  }
-  return byteLength;
-}
-
 function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
   return {
     compactedEventCount: 0,
@@ -1394,12 +1394,10 @@ function buildThreadTimelineInternal(
           threadId: thread.id,
         }
       : null;
-  const storedEventSelection = measureThreadTimelineStage(
-    profile,
-    "event-query",
-    () => {
+  const { decodedPrefix, selection: storedEventSelection } =
+    measureThreadTimelineStage(profile, "event-query", () => {
       if (memoArgs === null) {
-        return selectRows(null).selection;
+        return { decodedPrefix: null, selection: selectRows(null).selection };
       }
       const lookup = measureThreadTimelineStage(
         profile,
@@ -1407,15 +1405,17 @@ function buildThreadTimelineInternal(
         () => lookupLatestTimelineSelection(db, memoArgs),
       );
       if (lookup.selection !== null) {
-        return lookup.selection;
+        return {
+          decodedPrefix: lookup.decodedPrefix,
+          selection: lookup.selection,
+        };
       }
       const result = selectTrimmedOrFreshRows(lookup.trimSource, (source) =>
         selectRows(lookup.budgetFloor, source),
       );
       rememberLatestTimelineSelection(db, memoArgs, lookup, result);
-      return result.selection;
-    },
-  );
+      return { decodedPrefix: null, selection: result.selection };
+    });
   const eventSelection =
     options.maxInlineOutputChars === null
       ? {
@@ -1424,17 +1424,23 @@ function buildThreadTimelineInternal(
         }
       : storedEventSelection;
   const rawEventRows = eventSelection.rows;
-  profile.eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
-  profile.eventRowCount = rawEventRows.length;
-  profile.selectionStrategy = eventSelection.strategy;
-  const decodedRawEvents = measureThreadTimelineStage(
+  const decodedSelection = measureThreadTimelineStage(
     profile,
     "event-json-decode",
-    () =>
-      rawEventRows.map((row) =>
-        withRowMeta(row, decodeStoredEventRowCached(db, row)),
-      ),
+    () => decodeTimelineSelectionRows(db, rawEventRows, decodedPrefix),
   );
+  if (memoArgs !== null) {
+    rememberDecodedLatestTimelineSelection(
+      db,
+      memoArgs,
+      rawEventRows,
+      decodedSelection,
+    );
+  }
+  const decodedRawEvents = decodedSelection.events.slice();
+  profile.eventDataBytes = decodedSelection.dataBytes;
+  profile.eventRowCount = rawEventRows.length;
+  profile.selectionStrategy = eventSelection.strategy;
   profile.decodedEventCount = decodedRawEvents.length;
   const headState =
     options.page.kind === "latest"
@@ -1462,7 +1468,12 @@ function buildThreadTimelineInternal(
     workspaceRoot: surface.workspaceRoot,
     providerId: thread.providerId,
   };
-  const timelineOptions = { ...projectionOptions, includeNestedRows };
+  const deferContent = options.deferContent ?? false;
+  const timelineOptions = {
+    ...projectionOptions,
+    includeNestedRows,
+    omitSettledDelegationChildRows: deferContent,
+  };
   const project = (
     cachedEventProjection: EventProjection | null,
   ): BuiltTimelineProjection => {
@@ -1548,6 +1559,7 @@ function buildThreadTimelineInternal(
       : keepTimelineProjection(
           {
             includeNestedRows,
+            omitSettledDelegationChildRows: deferContent,
             projectionKey: JSON.stringify([
               projectionOptions,
               eventSelection.orderingBoundarySequence,
@@ -1561,19 +1573,31 @@ function buildThreadTimelineInternal(
   const projectedTimelineRows = projection.rows;
   profile.compactedEventCount = projection.compactedEventCount;
   profile.projectedRowCount = projectedTimelineRows.length;
-  const retainedOutputPreviews = retainedOutputPreviewsByCallId(
+  const retainedOutputPreviews = readRetainedOutputPreviews(
     decodedRawEvents,
     "available",
     Date.now(),
   );
-  const deferContent = options.deferContent ?? false;
-  const pageableTimelineRows = mapTimelineRowTree(
+  const mappedTimelineRows = mapTimelineRowTree(
     projectedTimelineRows,
     (row) => {
-      const previewed = withRetainedOutputPreview(row, retainedOutputPreviews);
+      const previewed = withRetainedOutputPreview(
+        row,
+        retainedOutputPreviews.byCallId,
+      );
       return deferContent ? deferSettledTimelineRow(previewed) : previewed;
     },
   );
+  const pageableRowsVariant = JSON.stringify([deferContent, includeNestedRows]);
+  const pageableTimelineRows =
+    memoArgs === null
+      ? mappedTimelineRows
+      : reuseKeptLatestTimelinePageableRows(
+          db,
+          memoArgs,
+          pageableRowsVariant,
+          mappedTimelineRows,
+        );
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
@@ -1590,6 +1614,14 @@ function buildThreadTimelineInternal(
         rows: pageableTimelineRows,
       }),
   );
+  if (memoArgs !== null) {
+    keepLatestTimelinePageableRows(
+      db,
+      memoArgs,
+      pageableRowsVariant,
+      pageableTimelineRows,
+    );
+  }
   profile.responseRowCount = paginatedTimeline.rows.length;
   profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
 
@@ -1624,9 +1656,19 @@ function buildThreadTimelineInternal(
     },
   };
   return {
+    expiresAt: retainedOutputPreviews.expiresAt,
     response,
     profile: completeThreadTimelineBuildProfile(profile, options),
   };
+}
+
+function earliestExpiry(
+  left: number | null,
+  right: number | null,
+): number | null {
+  if (left === null) return right;
+  if (right === null) return left;
+  return Math.min(left, right);
 }
 
 export function buildThreadTimelineWithProfile(
@@ -1635,6 +1677,7 @@ export function buildThreadTimelineWithProfile(
   options: BuildThreadTimelineOptions,
 ): {
   cost: MainThreadCost;
+  expiresAt: number | null;
   profile: ThreadTimelineBuildProfile;
   response: ThreadTimelineWindow;
 } {
@@ -1657,6 +1700,7 @@ export function buildThreadTimelineWithProfile(
             segmentLimit: options.page.segmentLimit,
           },
         });
+        result.expiresAt = earliestExpiry(result.expiresAt, older.expiresAt);
         result.response.rows = older.response.rows;
         result.response.timelinePage = older.response.timelinePage;
         result.profile.eventRowCount += older.profile.eventRowCount;
@@ -1799,6 +1843,7 @@ function buildThreadConversationRows(
       options: {
         completedTurnDisplay: options.completedTurnDisplay,
         includeNestedRows: options.includeNestedRows,
+        omitSettledDelegationChildRows: false,
         includeDiagnosticOperations: false,
         isLatestPage: true,
         providerDisplayName: options.providerDisplayName,
@@ -1864,6 +1909,7 @@ function selectThreadConversationOutline(
         options: {
           completedTurnDisplay: options.completedTurnDisplay,
           includeNestedRows: false,
+          omitSettledDelegationChildRows: false,
           includeDiagnosticOperations: false,
           isLatestPage: true,
           providerDisplayName: options.providerDisplayName,
@@ -2205,6 +2251,49 @@ function buildTimelineTurnSummaryDetailsPage(
     ]),
   );
   const contentCursor = readTimelineContentCursor(detailsPage);
+  const now = Date.now();
+  const projection = getOrProjectTimelineTurnDetails(db, {
+    now,
+    project: () =>
+      projectTimelineTurnSummaryDetails(db, thread, options, snapshot, now),
+    revision: JSON.stringify([
+      timelineSnapshotKey(snapshot),
+      getThreadEventRewriteGeneration(thread.id),
+    ]),
+    slot: JSON.stringify([thread.id, snapshot.surface]),
+  });
+  const contents = paginateTimelineContents(
+    projection.rows,
+    contentCursor?.beforeLeaf,
+    TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
+    TIMELINE_TURN_DETAILS_PAGE_BYTE_LIMIT,
+    projection.leafBytes,
+  );
+  const cursor =
+    contents.start === 0
+      ? null
+      : bindTimelineCursor(
+          {
+            anchorId: options.turnId,
+            anchorSeq: Math.max(1, options.sourceSeqStart),
+          },
+          snapshot,
+          { beforeLeaf: contents.start, beforeSequence: snapshot.maxSeq + 1 },
+        );
+  return {
+    rows: contents.rows,
+    olderCursor: cursor?.anchorId ?? null,
+    historySnapshot: timelineSnapshotKey(snapshot),
+  };
+}
+
+function projectTimelineTurnSummaryDetails(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineTurnSummaryDetailsOptions,
+  snapshot: TimelineSnapshot,
+  now: number,
+): Pick<TimelineTurnDetailsProjection, "expiresAt" | "rows"> {
   const includeDiagnosticOperations = options.includeDiagnosticOperations;
   const detailsWindow = {
     beforeSequence: Math.min(options.sourceSeqEnd, snapshot.maxSeq) + 1,
@@ -2350,50 +2439,32 @@ function buildTimelineTurnSummaryDetailsPage(
     },
   });
 
-  if (children.kind !== "missing-match") {
-    const scopedRows = scopeTimelineTurnDetailsRows(
-      children.rows,
-      retainedOutputPreviewsByCallId(
-        projectionEvents,
-        "detail-limit",
-        Date.now(),
-      ),
-      options,
+  if (children.kind === "missing-match") {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
     );
-    if (scopedRows === null) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include item ${options.itemId}`,
-      );
-    }
-    const contents = paginateTimelineContents(
-      scopedRows,
-      contentCursor?.beforeLeaf,
-      TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
-      TIMELINE_TURN_DETAILS_PAGE_BYTE_LIMIT,
-    );
-    const cursor =
-      contents.start === 0
-        ? null
-        : bindTimelineCursor(
-            {
-              anchorId: options.turnId,
-              anchorSeq: Math.max(1, options.sourceSeqStart),
-            },
-            snapshot,
-            { beforeLeaf: contents.start, beforeSequence: snapshot.maxSeq + 1 },
-          );
-    return {
-      rows: contents.rows,
-      olderCursor: cursor?.anchorId ?? null,
-      historySnapshot: timelineSnapshotKey(snapshot),
-    };
   }
-
-  throw new ApiError(
-    400,
-    "invalid_request",
-    `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
+  const retainedOutputPreviews = readRetainedOutputPreviews(
+    projectionEvents,
+    "detail-limit",
+    now,
   );
+  const scopedRows = scopeTimelineTurnDetailsRows(
+    children.rows,
+    retainedOutputPreviews.byCallId,
+    options,
+  );
+  if (scopedRows === null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include item ${options.itemId}`,
+    );
+  }
+  return {
+    expiresAt: retainedOutputPreviews.expiresAt,
+    rows: scopedRows,
+  };
 }

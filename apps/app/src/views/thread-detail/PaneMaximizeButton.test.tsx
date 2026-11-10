@@ -118,9 +118,13 @@ describe("PaneMaximizeButton", () => {
     });
 
     fireEvent.pointerEnter(button);
-    act(() => vi.advanceTimersByTime(399));
+    act(() => {
+      vi.advanceTimersByTime(399);
+    });
     expect(screen.queryByRole("menu", { name: "Pane arrangement" })).toBeNull();
-    act(() => vi.advanceTimersByTime(1));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     const menu = screen.getByRole("menu", { name: "Pane arrangement" });
     expect(menu.textContent).toContain("Maximize pane");
     expect(menu.textContent).toContain("Move");
@@ -154,11 +158,15 @@ describe("PaneMaximizeButton", () => {
 
     fireEvent.focus(button);
     const menu = screen.getByRole("menu", { name: "Pane arrangement" });
-    act(() => vi.advanceTimersByTime(150));
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
     expect(menu.isConnected).toBe(true);
 
     fireEvent.keyDown(button, { key: "ArrowDown" });
-    act(() => vi.advanceTimersByTime(0));
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
     expect(document.activeElement).toBe(
       screen.getByRole("menuitem", { name: /Maximize pane/ }),
     );
@@ -179,7 +187,9 @@ describe("PaneMaximizeButton", () => {
     fireEvent.pointerEnter(button);
     fireEvent.pointerLeave(button);
 
-    act(() => vi.advanceTimersByTime(500));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     expect(screen.queryByRole("menu", { name: "Pane arrangement" })).toBeNull();
   });
 
@@ -234,7 +244,9 @@ describe("PaneMaximizeButton", () => {
       name: "Full Screen (⌘⇧E)",
     });
     fireEvent.pointerEnter(trigger);
-    act(() => vi.advanceTimersByTime(400));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
     const menu = screen.getByRole("menu", {
       name: "Pane arrangement",
     });
@@ -245,11 +257,15 @@ describe("PaneMaximizeButton", () => {
     );
 
     fireEvent.pointerLeave(menu);
-    act(() => vi.advanceTimersByTime(99));
+    act(() => {
+      vi.advanceTimersByTime(99);
+    });
     expect(screen.getByTestId("browser-overlay-state").textContent).toBe(
       "hidden",
     );
-    act(() => vi.advanceTimersByTime(1));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(screen.getByTestId("browser-overlay-state").textContent).toBe(
       "visible",
     );

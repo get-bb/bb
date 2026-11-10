@@ -207,7 +207,9 @@ describe("BottomAnchoredScrollBody", () => {
     const { layout, view } = setup("thread-a", rowKeys("thread-a", 60));
     expect(layout.scrollTop).toBe(layout.maxScrollTop());
 
-    act(() => vi.advanceTimersByTime(1_500));
+    act(() => {
+      vi.advanceTimersByTime(1_500);
+    });
     act(() => layout.flushResizeObservers());
     act(() =>
       view.rerender(
@@ -350,7 +352,9 @@ describe("BottomAnchoredScrollBody", () => {
         keys,
       );
       act(() => layout.userScrollTo(layout.maxScrollTop() - 1_500));
-      act(() => vi.advanceTimersByTime(500));
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
       const fromEnd = layout.maxScrollTop() - layout.scrollTop + 300;
 
       layout.bounceTo(layout.scrollTop - 300);
@@ -393,7 +397,9 @@ describe("BottomAnchoredScrollBody", () => {
     expect(layout.scrollTop).toBe(layout.maxScrollTop());
 
     act(() => layout.userScrollTo(layout.maxScrollTop() - 1_500));
-    act(() => vi.advanceTimersByTime(500));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     const reader = firstVisible();
     const before = topOf(reader);
     const above = document.querySelector(

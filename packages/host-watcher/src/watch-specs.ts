@@ -36,7 +36,7 @@ async function resolveGitDirectory(cwd: string): Promise<string | undefined> {
   try {
     const dotGitStat = await fs.lstat(dotGitPath);
     if (dotGitStat.isDirectory()) {
-      return canonicalizePath(dotGitPath);
+      return await canonicalizePath(dotGitPath);
     }
     if (!dotGitStat.isFile()) {
       return undefined;
@@ -50,7 +50,7 @@ async function resolveGitDirectory(cwd: string): Promise<string | undefined> {
     if (relativeGitDir.length === 0) {
       return undefined;
     }
-    return canonicalizePath(path.resolve(cwd, relativeGitDir));
+    return await canonicalizePath(path.resolve(cwd, relativeGitDir));
   } catch {
     return undefined;
   }
@@ -64,7 +64,9 @@ async function resolveGitCommonDirectory(gitDirPath: string): Promise<string> {
     if (relativeCommonDirPath.length === 0) {
       return gitDirPath;
     }
-    return canonicalizePath(path.resolve(gitDirPath, relativeCommonDirPath));
+    return await canonicalizePath(
+      path.resolve(gitDirPath, relativeCommonDirPath),
+    );
   } catch {
     return gitDirPath;
   }

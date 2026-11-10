@@ -83,9 +83,13 @@ describe("useCycle", () => {
   it("loops from mount without a ref, as before", () => {
     const { host, unmount } = render(<Unwatched />);
     expect(FakeObserver.instances).toHaveLength(0);
-    act(() => vi.advanceTimersByTime(1100));
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
     expect(cycleOf(host)).toBe(1);
-    act(() => vi.advanceTimersByTime(1100));
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
     expect(cycleOf(host)).toBe(2);
     unmount();
   });
@@ -96,7 +100,9 @@ describe("useCycle", () => {
     const paused = () =>
       host.querySelector("[data-cycle]")!.getAttribute("data-paused");
 
-    act(() => vi.advanceTimersByTime(5000));
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
     expect(cycleOf(host)).toBe(0);
     expect(paused()).toBe("true");
 
@@ -104,14 +110,20 @@ describe("useCycle", () => {
     const entered = cycleOf(host);
     expect(entered).toBe(1);
     expect(paused()).toBe("false");
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(host.textContent).toBe("leaving");
-    act(() => vi.advanceTimersByTime(100));
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
     expect(cycleOf(host)).toBe(entered + 1);
 
     observer.show(false);
     expect(paused()).toBe("true");
-    act(() => vi.advanceTimersByTime(5000));
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
     expect(cycleOf(host)).toBe(entered + 1);
 
     observer.show(true);
@@ -128,7 +140,9 @@ describe("useCycle", () => {
 
     observer.showBatch(true, false);
     expect(paused()).toBe("true");
-    act(() => vi.advanceTimersByTime(5000));
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
     expect(cycleOf(host)).toBe(0);
 
     observer.showBatch(false, true);
@@ -141,7 +155,9 @@ describe("useCycle", () => {
     vi.stubGlobal("matchMedia", () => ({ matches: true }));
     const { host, unmount } = render(<Watched />);
     FakeObserver.instances[0]!.show(true);
-    act(() => vi.advanceTimersByTime(5000));
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
     expect(cycleOf(host)).toBe(0);
     unmount();
   });
@@ -235,11 +251,15 @@ describe("PluginMorph", () => {
       [...root.querySelectorAll(".mx-title")].map(
         (title) => `${title.className}: ${title.textContent}`,
       );
-    act(() => vi.advanceTimersByTime(20_000));
+    act(() => {
+      vi.advanceTimersByTime(20_000);
+    });
     expect(root.dataset.scene).toBe("stock");
 
     FakeObserver.instances[0]!.show(true);
-    act(() => vi.advanceTimersByTime(1_050));
+    act(() => {
+      vi.advanceTimersByTime(1_050);
+    });
     expect(root.dataset.scene).toBe("files");
     expect(panes()).toEqual([
       "mx-pane mx-stock is-leaving",
@@ -250,34 +270,52 @@ describe("PluginMorph", () => {
       "mx-title is-entering: Files",
     ]);
 
-    act(() => vi.advanceTimersByTime(1_400));
+    act(() => {
+      vi.advanceTimersByTime(1_400);
+    });
     expect(panes()).toEqual(["mx-pane mx-files mx-collapsed"]);
     expect(titles()).toEqual(["mx-title: Files"]);
 
-    act(() => vi.advanceTimersByTime(3_600));
+    act(() => {
+      vi.advanceTimersByTime(3_600);
+    });
     expect(root.dataset.scene).toBe("graph");
     expect(root.querySelector(".bar-toggle.active")).not.toBeNull();
 
-    act(() => vi.advanceTimersByTime(3_600));
+    act(() => {
+      vi.advanceTimersByTime(3_600);
+    });
     expect(root.dataset.scene).toBe("taskboard");
     expect(root.querySelector(".bar-toggle.active")).toBeNull();
 
-    act(() => vi.advanceTimersByTime(3_600));
+    act(() => {
+      vi.advanceTimersByTime(3_600);
+    });
     expect(root.dataset.scene).toBe("shelves");
     expect(panes()).toEqual(["mx-pane mx-shelves"]);
 
-    act(() => vi.advanceTimersByTime(3_600));
+    act(() => {
+      vi.advanceTimersByTime(3_600);
+    });
     expect(root.dataset.scene).toBe("stock");
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);
-    act(() => document.dispatchEvent(new Event("visibilitychange")));
-    act(() => vi.advanceTimersByTime(20_000));
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(20_000);
+    });
     expect(root.dataset.scene).toBe("stock");
     expect(root.className).toContain("fw-paused");
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(false);
-    act(() => document.dispatchEvent(new Event("visibilitychange")));
-    act(() => vi.advanceTimersByTime(1_600));
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1_600);
+    });
     expect(root.dataset.scene).toBe("files");
     unmount();
   });
@@ -294,10 +332,14 @@ describe("PluginMorph", () => {
         root.querySelector(".bar-toggle.active") !== null,
       ].join("|");
     seen.push(layout());
-    act(() => vi.advanceTimersByTime(2_600));
+    act(() => {
+      vi.advanceTimersByTime(2_600);
+    });
     for (let step = 0; step < 5; step += 1) {
       seen.push(layout());
-      act(() => vi.advanceTimersByTime(3_600));
+      act(() => {
+        vi.advanceTimersByTime(3_600);
+      });
     }
     for (let step = 1; step < seen.length; step += 1) {
       expect(seen[step]).not.toBe(seen[step - 1]);
@@ -310,13 +352,17 @@ describe("PluginMorph", () => {
     const { root, unmount } = mount(true);
     FakeObserver.instances[0]!.show(true);
     expect(root.dataset.scene).toBe("stock");
-    act(() => vi.advanceTimersByTime(2_200));
+    act(() => {
+      vi.advanceTimersByTime(2_200);
+    });
     expect(root.dataset.scene).toBe("files");
     expect(root.querySelectorAll(".mx-pane")).toHaveLength(1);
     expect(root.querySelector(".mx-pane")!.className).not.toContain("is-");
     expect(root.querySelectorAll(".mx-title")).toHaveLength(1);
     expect(root.querySelector(".mx-title")!.textContent).toBe("Files");
-    act(() => vi.advanceTimersByTime(2_200));
+    act(() => {
+      vi.advanceTimersByTime(2_200);
+    });
     expect(root.dataset.scene).toBe("graph");
     expect(root.querySelectorAll(".mx-pane")).toHaveLength(1);
     unmount();

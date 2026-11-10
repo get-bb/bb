@@ -12,6 +12,7 @@ import {
 import { LazyTerminalOutputBlock } from "./LazyTerminalOutputBlock.js";
 import { LazyTimelineFileDiffBlock } from "./LazyTimelineFileDiffBlock.js";
 import { shouldLoadTimelineWorkRowFullOutput } from "./useTimelineWorkRowFullOutput.js";
+import { useTimelineDetailIdentity } from "./timeline-detail-identity.js";
 
 interface PreloadableSplit {
   isLoaded: () => boolean;
@@ -25,53 +26,28 @@ const FILE_CHANGE_SPLITS: readonly PreloadableSplit[] = [
 const COMMAND_SPLITS: readonly PreloadableSplit[] = [LazyTerminalOutputBlock];
 const NO_SPLITS: readonly PreloadableSplit[] = [];
 
-interface TimelineDetailSource {
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
-  threadId: string;
-  turnId: string | null;
-}
-
-export function timelineDetailIdentity(
-  row: TimelineDetailSource,
-  threadId: string | undefined,
-  itemId: string | null,
-): ThreadTimelineTurnSummaryDetailsQueryIdentity {
-  return {
-    itemId,
-    sourceSeqEnd: row.sourceSeqEnd,
-    sourceSeqStart: row.sourceSeqStart,
-    threadId: threadId ?? row.threadId,
-    turnId: row.turnId ?? "",
-  };
-}
-
 function timelineRowBodyDetailIdentity(
   row: ThreadTimelineViewRow,
-  threadId: string | undefined,
+  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
 ): ThreadTimelineTurnSummaryDetailsQueryIdentity | null {
   const deferredItemId = deferredTimelineContentItemId(row);
   if (deferredItemId !== null) {
-    return timelineDetailIdentity(row, threadId, deferredItemId);
+    return { ...identity, itemId: deferredItemId };
   }
   if (row.kind === "turn") {
-    return row.children === null
-      ? timelineDetailIdentity(row, threadId, null)
-      : null;
+    return row.children === null ? identity : null;
   }
   if (row.kind !== "work") {
     return null;
   }
   if (row.workKind === "delegation") {
-    return row.childRows === null
-      ? timelineDetailIdentity(row, threadId, row.callId)
-      : null;
+    return row.childRows === null ? { ...identity, itemId: row.callId } : null;
   }
   if (
     (row.workKind === "command" || row.workKind === "tool") &&
     shouldLoadTimelineWorkRowFullOutput(row)
   ) {
-    return timelineDetailIdentity(row, row.threadId, row.callId);
+    return { ...identity, itemId: row.callId };
   }
   return null;
 }
@@ -102,8 +78,9 @@ export function usePreloadTimelineRowBody(
 ): () => void {
   const queryClient = useQueryClient();
   const requestDiffWorkers = useRequestPierreWorkerPool();
+  const sourceIdentity = useTimelineDetailIdentity(row, threadId, null);
   return () => {
-    const identity = timelineRowBodyDetailIdentity(row, threadId);
+    const identity = timelineRowBodyDetailIdentity(row, sourceIdentity);
     if (identity !== null) {
       prefetchThreadTimelineTurnSummaryDetails(queryClient, identity);
     }

@@ -27,7 +27,7 @@ import { createTestAppHarness } from "../helpers/test-app.js";
 import { loadCorpusThreadIntoDb } from "./corpus-harness.js";
 import {
   buildThreadTimelineWithProfile,
-  retainedOutputPreviewsByCallId,
+  readRetainedOutputPreviews,
   toThreadEventWithMeta,
   withRetainedOutputPreview,
 } from "../../src/services/threads/timeline.js";
@@ -96,6 +96,7 @@ describe.skipIf(!corpusAvailable())(
               summarizeShellCommands: true,
               includeNestedRows: false,
               isLatestPage: true,
+              omitSettledDelegationChildRows: false,
               providerId: thread.providerId,
               providerDisplayName: harness.deps.providerRegistry.get(
                 thread.providerId,
@@ -131,11 +132,11 @@ describe.skipIf(!corpusAvailable())(
             });
             durations.push(performance.now() - start);
             if (page === 0) {
-              const retainedOutputPreviews = retainedOutputPreviewsByCallId(
+              const retainedOutputPreviews = readRetainedOutputPreviews(
                 events,
                 "available",
                 Date.now(),
-              );
+              ).byCallId;
               expected = shortenTimelineResponseOutputs(
                 {
                   ...timeline,

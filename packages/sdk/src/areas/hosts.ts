@@ -1,4 +1,10 @@
-import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
+import {
+  hostProviderCliInstallJobListResponseSchema,
+  hostProviderCliInstallJobResponseSchema,
+  oldServerCopyDeleteJobResponseSchema,
+  type HostProviderCliInstallJob,
+  type OldServerCopyDeleteJob,
+} from "@bb/server-contract";
 import type { Host, HostType } from "@bb/domain";
 import type {
   CreateHostJoinCodeResponse,
@@ -23,7 +29,10 @@ import type {
   UpdateHostRequest,
   SystemMachineProvider,
 } from "@bb/server-contract";
+import { waitForJob } from "../job-wait.js";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+
+const JOB_POLL_INTERVAL_MS = 1_000;
 
 export interface HostGetArgs {
   hostId: string;
@@ -82,6 +91,26 @@ export interface HostPickFolderArgs extends HostPickFolderRequest {
 
 export interface HostProviderCliInstallArgs extends HostProviderCliInstallRequest {
   hostId: string;
+  signal?: AbortSignal;
+}
+
+export interface HostProviderCliInstallJobArgs {
+  hostId: string;
+  jobId: string;
+  signal?: AbortSignal;
+}
+
+export interface HostProviderCliInstallJobWaitArgs
+  extends HostProviderCliInstallJobArgs {
+  onJob?: (job: HostProviderCliInstallJob) => void;
+}
+
+export interface HostProviderCliInstallJobsArea {
+  list(args: HostGetArgs): Promise<HostProviderCliInstallJob[]>;
+  get(args: HostProviderCliInstallJobArgs): Promise<HostProviderCliInstallJob>;
+  wait(
+    args: HostProviderCliInstallJobWaitArgs,
+  ): Promise<HostProviderCliInstallJob>;
 }
 
 export interface HostListArgs {
@@ -143,6 +172,10 @@ export interface HostsArea {
   installProviderCli(
     args: HostProviderCliInstallArgs,
   ): Promise<HostProviderCliInstallResult>;
+  experimental_startProviderCliInstall(
+    args: HostProviderCliInstallArgs,
+  ): Promise<HostProviderCliInstallJob>;
+  experimental_providerCliInstallJobs: HostProviderCliInstallJobsArea;
   list(args?: HostListArgs): Promise<HostListResult>;
   experimental_listProviders(
     args?: MachineProviderListArgs,
@@ -162,6 +195,55 @@ export interface HostsArea {
 
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
   const { transport } = args;
+
+  async function startProviderCliInstall(
+    input: HostProviderCliInstallArgs,
+  ): Promise<HostProviderCliInstallJob> {
+    const response = await transport.readJson(
+      transport.api.v1.hosts[":id"]["provider-clis"]["install-jobs"].$post(
+        {
+          param: { id: input.hostId },
+          json: { provider: input.provider, actionKind: input.actionKind },
+        },
+        ...signalRequestArgs(input.signal),
+      ),
+    );
+    return hostProviderCliInstallJobResponseSchema.parse(response).job;
+  }
+
+  const providerCliInstallJobs: HostProviderCliInstallJobsArea = {
+    async list(input) {
+      const response = await transport.readJson(
+        transport.api.v1.hosts[":id"]["provider-clis"]["install-jobs"].$get(
+          { param: { id: input.hostId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return hostProviderCliInstallJobListResponseSchema.parse(response).jobs;
+    },
+    async get(input) {
+      const response = await transport.readJson(
+        transport.api.v1.hosts[":id"]["provider-clis"]["install-jobs"][
+          ":jobId"
+        ].$get(
+          { param: { id: input.hostId, jobId: input.jobId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return hostProviderCliInstallJobResponseSchema.parse(response).job;
+    },
+    async wait(input) {
+      return waitForJob({
+        job: null,
+        isActive: (job) => job.state === "running",
+        read: () => providerCliInstallJobs.get(input),
+        intervalMs: JOB_POLL_INTERVAL_MS,
+        signal: input.signal,
+        onJob: input.onJob,
+      });
+    },
+  };
+
   return {
     async experimental_create(input) {
       let host = await transport.readJson(
@@ -226,10 +308,29 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
       return { ok: true };
     },
     async experimental_deleteOldServerCopy(input) {
-      return transport.readJson(
-        transport.api.v1.hosts[":id"]["old-server-copy"].$delete({
-          param: { id: input.hostId },
-        }),
+      const jobs = transport.api.v1.hosts[":id"]["old-server-copy"][
+        "delete-jobs"
+      ];
+      const read = async (jobId: string): Promise<OldServerCopyDeleteJob> =>
+        oldServerCopyDeleteJobResponseSchema.parse(
+          await transport.readJson(
+            jobs[":jobId"].$get({ param: { id: input.hostId, jobId } }),
+          ),
+        ).job;
+      const started = oldServerCopyDeleteJobResponseSchema.parse(
+        await transport.readJson(
+          jobs.$post({ param: { id: input.hostId } }),
+        ),
+      ).job;
+      const job = await waitForJob({
+        job: started,
+        isActive: (current) => current.state === "running",
+        read: () => read(started.id),
+        intervalMs: JOB_POLL_INTERVAL_MS,
+      });
+      if (job.state === "completed") return { deleted: job.deleted };
+      throw new Error(
+        job.state === "failed" ? job.error : "Deleting the old copy did not finish",
       );
     },
     async directory(input) {
@@ -273,23 +374,21 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
       );
     },
     async installProviderCli(input) {
-      const response = await transport.resolve(
-        transport.api.v1.hosts[":id"]["provider-clis"].install.$post({
-          param: { id: input.hostId },
-          json: {
-            provider: input.provider,
-            actionKind: input.actionKind,
-          },
-        }),
+      const job = await startProviderCliInstall(input);
+      const settled = await providerCliInstallJobs.wait({
+        hostId: input.hostId,
+        jobId: job.id,
+        signal: input.signal,
+      });
+      if (settled.state === "completed") return settled.events;
+      throw new Error(
+        settled.state === "failed"
+          ? settled.error
+          : "Provider CLI install did not finish",
       );
-      const text: string = await response.text();
-      return text
-        .split(/\r?\n/u)
-        .filter((line) => line.trim().length > 0)
-        .map((line) =>
-          hostProviderCliInstallEventSchema.parse(JSON.parse(line)),
-        );
     },
+    experimental_startProviderCliInstall: startProviderCliInstall,
+    experimental_providerCliInstallJobs: providerCliInstallJobs,
     async list(input) {
       return transport.readJson(
         transport.api.v1.hosts.$get(

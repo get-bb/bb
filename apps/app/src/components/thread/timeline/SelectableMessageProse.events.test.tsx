@@ -484,7 +484,7 @@ describe("SelectableMessageProse", () => {
       text: "Triple click replaces word selection",
     });
     fireEvent.click(target, { detail: 3 });
-    await vi.advanceTimersToNextFrame();
+    vi.advanceTimersToNextFrame();
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(

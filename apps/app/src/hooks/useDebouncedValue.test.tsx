@@ -34,10 +34,14 @@ describe("useDebouncedValue", () => {
 
     rerender({ value: "feature/one" });
     rerender({ value: "feature/two" });
-    act(() => vi.advanceTimersByTime(119));
+    act(() => {
+      vi.advanceTimersByTime(119);
+    });
     expect(result.current).toBe("main");
 
-    act(() => vi.advanceTimersByTime(1));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(result.current).toBe("feature/two");
   });
 });

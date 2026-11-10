@@ -100,7 +100,9 @@ export function applyEnvironmentUpdateResult({
     patchThreadEntity(queryClient, threadId, {
       environmentName: environment.name,
     });
-  queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
+  void queryClient.invalidateQueries({
+    queryKey: threadSearchQueryKeyPrefix(),
+  });
   invalidateEnvironmentWorkspaceStateQueries({
     environmentId: environment.id,
     queryClient,

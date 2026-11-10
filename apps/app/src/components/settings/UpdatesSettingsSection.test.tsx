@@ -418,6 +418,24 @@ afterEach(() => {
 });
 
 describe("UpdatesSettingsSection", () => {
+  it("renders an update from a server without update scheduling fields", async () => {
+    useWebApp();
+    const legacyStatus = makeAppUpdateStatus();
+    Reflect.deleteProperty(legacyStatus, "scheduled");
+    Reflect.deleteProperty(legacyStatus, "autoUpdate");
+    Reflect.deleteProperty(legacyStatus, "availableSkipped");
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(legacyStatus);
+
+    renderSection();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    ).toBeDefined();
+    expect(screen.queryByText(/updating shortly/i)).toBeNull();
+  });
+
   it("checks for updates once when the view mounts", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,

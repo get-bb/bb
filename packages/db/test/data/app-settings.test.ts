@@ -3,8 +3,10 @@ import { defaultAppSettings } from "@bb/domain";
 import {
   getAppKeybindingOverrides,
   getAppSettings,
+  getSkippedAppUpdate,
   setAppKeybindingOverrides,
   setAppSettings,
+  setSkippedAppUpdate,
   type DbConnection,
 } from "../../src/index.js";
 import { createMigratedConnection } from "../../src/testing.js";
@@ -44,6 +46,14 @@ describe("app settings data", () => {
         )
         .get(),
     ).toBeUndefined();
+  });
+
+  it("remembers only the latest skipped app update", () => {
+    expect(getSkippedAppUpdate(db)).toBeNull();
+    setSkippedAppUpdate(db, "0.50.0");
+    setSkippedAppUpdate(db, "0.51.0");
+    expect(getSkippedAppUpdate(db)).toBe("0.51.0");
+    expect(getAppSettings(db)).toEqual(defaultAppSettings);
   });
 
   it("defaults terminal copy-on-select to enabled and persists opting out", () => {

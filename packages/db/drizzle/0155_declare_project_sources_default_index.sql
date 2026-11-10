@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS `project_sources_default_project_idx` ON `project_sources` (`project_id`) WHERE "project_sources"."is_default" = 1;

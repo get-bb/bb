@@ -161,10 +161,10 @@ function addProjectionTurnMessage(
   });
 }
 
-function isInteractionLifecycleMessage(
-  message: EventProjectionMessage,
-): boolean {
+function canGroupThreadMessageInTurn(message: EventProjectionMessage): boolean {
   switch (message.kind) {
+    case "operation":
+      return message.opType === "warning" || message.opType === "deprecation";
     case "permission-grant-lifecycle":
     case "plugin-form-lifecycle":
     case "user-question-lifecycle":
@@ -341,7 +341,7 @@ export function groupEventProjectionTurns(
 
   for (const message of args.messages) {
     if (message.scope.kind === "thread") {
-      const runningTurn = isInteractionLifecycleMessage(message)
+      const runningTurn = canGroupThreadMessageInTurn(message)
         ? findTurnRunningAtSequence(turnsById, message.sourceSeqStart)
         : null;
       if (runningTurn !== null) {

@@ -2,8 +2,12 @@ import { getThread, listEvents, threadPruningCursors } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { describe, expect, it, vi } from "vitest";
-import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
+import { performance } from "node:perf_hooks";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  applyTurnCompletedEvent,
+  readTurnCompletion,
+} from "../../src/internal/turn-completed-events.js";
 import { pruneThreadEventHistoryBestEffort } from "../../src/services/system/event-pruning.js";
 import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
 import {
@@ -174,6 +178,10 @@ function seedResolvedAssistantMessage(
 }
 
 describe("thread event pruning", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("preserves context window usage when idle pruning removes old context-usage rows", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps);
@@ -290,11 +298,14 @@ describe("thread event pruning", () => {
       });
 
       applyTurnCompletedEvent(harness.deps, {
-        type: "turn/completed",
-        threadId: thread.id,
-        providerThreadId: "provider-thread-1",
-        scope: turnScope("turn-1"),
-        status: "completed",
+        afterIdle: null,
+        payload: {
+          type: "turn/completed",
+          threadId: thread.id,
+          providerThreadId: "provider-thread-1",
+          scope: turnScope("turn-1"),
+          status: "completed",
+        },
       });
 
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
@@ -352,16 +363,20 @@ describe("thread event pruning", () => {
         },
       });
 
-      const result = applyTurnCompletedEvent(harness.deps, {
-        type: "turn/completed",
+      const payload = {
+        type: "turn/completed" as const,
         threadId: thread.id,
         providerThreadId: "provider-thread-1",
         scope: turnScope("turn-1"),
-        status: "completed",
-      });
+        status: "completed" as const,
+      };
 
-      expect(result.isRootTurnCompletion).toBe(true);
-      expect(result.nextStatus).toBeNull();
+      expect(
+        readTurnCompletion(harness.deps, payload).isRootTurnCompletion,
+      ).toBe(true);
+      expect(
+        applyTurnCompletedEvent(harness.deps, { afterIdle: null, payload }),
+      ).toEqual({ kind: "settled", nextStatus: null });
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
   });
@@ -450,6 +465,7 @@ describe("thread event pruning", () => {
           itemKind: null,
           data: {},
         });
+      vi.spyOn(performance, "now").mockReturnValue(0);
       const notify = vi
         .spyOn(harness.deps.hub, "notifyThread")
         .mockImplementation(() => {});

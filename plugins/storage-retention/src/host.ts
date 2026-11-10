@@ -184,13 +184,17 @@ export default experimental_defineHostEntry({
         if (trashes.length > 0) {
           const lease = context.experimental_retainWorker();
           void (async () => {
-            for (const trash of trashes)
-              await fs
-                .rm(trash, { recursive: true, force: true })
-                .catch((error) => {
-                  console.error("Storage trash cleanup failed", error);
-                });
-          })().finally(() => lease.dispose());
+            try {
+              for (const trash of trashes)
+                await fs
+                  .rm(trash, { recursive: true, force: true })
+                  .catch((error) => {
+                    console.error("Storage trash cleanup failed", error);
+                  });
+            } finally {
+              await lease.dispose();
+            }
+          })();
         }
       }
       return { removed };

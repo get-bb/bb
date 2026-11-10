@@ -1,4 +1,7 @@
-import { paginateTimelineContents } from "./timeline-content-pagination.js";
+import {
+  paginateTimelineContents,
+  timelineRowsJsonBytes,
+} from "./timeline-content-pagination.js";
 import type { TimelineContentCursor } from "./timeline-snapshot.js";
 import {
   timelineRowChildren,
@@ -21,8 +24,7 @@ interface OlderThreadTimelinePageRequest {
 }
 
 export type ThreadTimelinePageRequest =
-  | LatestThreadTimelinePageRequest
-  | OlderThreadTimelinePageRequest;
+  LatestThreadTimelinePageRequest | OlderThreadTimelinePageRequest;
 
 interface TimelineLogicalSegment {
   rows: TimelineRow[];
@@ -73,12 +75,10 @@ function buildTimelineLogicalSegments(
       ),
     ),
   ].sort((left, right) => left - right);
-  const segments = bounds.map(
-    (sequenceStart): TimelineLogicalSegment => ({
-      rows: [],
-      sequenceStart,
-    }),
-  );
+  const segments = bounds.map((sequenceStart): TimelineLogicalSegment => ({
+    rows: [],
+    sequenceStart,
+  }));
   for (const row of args.rows) {
     if (
       row.sourceSeqStart < ownedSequenceStart ||
@@ -161,15 +161,14 @@ export function paginateTimelineRows(
       timelineRowChangesFrom(row, windowStart),
     );
     const reported =
-      Buffer.byteLength(JSON.stringify(updates)) > remainingBytes
-        ? []
-        : changed;
+      timelineRowsJsonBytes(updates) > remainingBytes ? [] : changed;
     return {
       olderRowsSourceSeqEnd: omitted
         .filter((row) => !reported.includes(row))
-        .reduce<
-          number | null
-        >((sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd), omittedContentSourceSeqEnd),
+        .reduce<number | null>(
+          (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
+          omittedContentSourceSeqEnd,
+        ),
       ...(reported.length > 0 ? { olderRowUpdates: updates } : {}),
     };
   };
@@ -196,7 +195,7 @@ export function paginateTimelineRows(
     for (const row of contents.rows) returnedRows.set(row.id, row);
     returnedSegmentCount += 1;
     remainingLeaves -= contents.end - contents.start;
-    remainingBytes -= Buffer.byteLength(JSON.stringify(contents.rows));
+    remainingBytes -= timelineRowsJsonBytes(contents.rows);
     if (contents.start > 0 || remainingLeaves <= 0 || remainingBytes <= 0) {
       const hasOlderRows =
         contents.start > 0 ||

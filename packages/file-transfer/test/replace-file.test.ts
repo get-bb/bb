@@ -18,7 +18,9 @@ describe("replaceFile", () => {
       code: "ENOSPC",
     });
     const probe = await fs.open(target, "r");
-    const fileHandlePrototype = Object.getPrototypeOf(probe);
+    const fileHandlePrototype: {
+      write: (this: unknown, ...args: unknown[]) => Promise<unknown>;
+    } = Object.getPrototypeOf(probe);
     await probe.close();
     const originalWriteFile = fs.writeFile;
     const originalHandleWrite = fileHandlePrototype.write;

@@ -95,7 +95,7 @@ export function invalidateRealtimeQueriesFetchedBeforeInitialConnect({
   queryClient,
 }: InitialConnectInvalidationArgs): void {
   for (const queryKey of getServerReconnectInvalidationQueryKeys()) {
-    queryClient.invalidateQueries({
+    void queryClient.invalidateQueries({
       queryKey,
       predicate: (query) =>
         query.state.dataUpdatedAt !== 0 &&

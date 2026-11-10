@@ -26,7 +26,6 @@ type ReuseThreadRequestEnvironment = Extract<
   { type: "reuse" }
 >;
 interface ResolveStableThreadRequestEnvironmentArgs {
-  allowUnmanagedPersonalProjectReuseEnvironmentId?: string;
   environment: ThreadRequestEnvironment;
   projectId: string;
 }
@@ -73,40 +72,6 @@ function assertPersonalWorkspaceProjectCompatibility(projectId: string): void {
       400,
       "invalid_request",
       "Personal workspaces are only supported for the personal project",
-    );
-  }
-}
-
-function isPersonalWorkspaceEnvironment(environment: EnvironmentRow): boolean {
-  return (
-    environment.projectId === PERSONAL_PROJECT_ID &&
-    environment.environmentProviderId !== null
-  );
-}
-
-function assertReuseWorkspaceProjectCompatibility(
-  projectId: string,
-  environment: EnvironmentRow,
-  allowUnmanagedPersonalProjectReuseEnvironmentId: string | undefined,
-): void {
-  const projectIsPersonal = projectId === PERSONAL_PROJECT_ID;
-  const environmentIsPersonal = isPersonalWorkspaceEnvironment(environment);
-  if (
-    projectIsPersonal &&
-    !environmentIsPersonal &&
-    allowUnmanagedPersonalProjectReuseEnvironmentId !== environment.id
-  ) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Personal project threads must reuse a personal workspace",
-    );
-  }
-  if (!projectIsPersonal && environmentIsPersonal) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Standard project threads cannot reuse personal workspaces",
     );
   }
 }
@@ -160,7 +125,6 @@ export function resolveReuseThreadRequestEnvironment(
   deps: ThreadRequestEnvironmentDeps,
   environment: ReuseThreadRequestEnvironment,
   projectId: string,
-  allowUnmanagedPersonalProjectReuseEnvironmentId: string | undefined,
 ): ResolvedReuseThreadRequestEnvironment {
   let reusedEnvironment = requireEnvironment(
     deps.db,
@@ -173,11 +137,6 @@ export function resolveReuseThreadRequestEnvironment(
       "Environment belongs to a different project",
     );
   }
-  assertReuseWorkspaceProjectCompatibility(
-    projectId,
-    reusedEnvironment,
-    allowUnmanagedPersonalProjectReuseEnvironmentId,
-  );
   assertUsableHostId(deps, { hostId: reusedEnvironment.hostId });
   assertEnvironmentPathAvailable(deps, {
     hostId: reusedEnvironment.hostId,
@@ -216,7 +175,6 @@ export function resolveStableThreadRequestEnvironment(
         deps,
         args.environment,
         args.projectId,
-        args.allowUnmanagedPersonalProjectReuseEnvironmentId,
       );
     default: {
       const exhaustiveCheck: never = args.environment;

@@ -959,3 +959,112 @@ describe("queue recovery", () => {
     });
   });
 });
+
+describe("a thread-ready wake during a running drain", () => {
+  it("drains a message queued while the previous drain was finishing", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-drain-rerun",
+        status: "idle",
+      });
+      let wokeDuringDrain = false;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: (context) => {
+              const held = context.input.text === "held by the plugin";
+              if (held && !wokeDuringDrain) {
+                wokeDuringDrain = true;
+                seedQueuedMessage(harness.deps, {
+                  threadId: thread.id,
+                  content: textInput("queued during the drain"),
+                });
+                void runQueuedMessageDispatch(harness.deps, {
+                  kind: "thread-ready",
+                  threadId: thread.id,
+                });
+              }
+              return held
+                ? ({ action: "wait", reason: "full" } as const)
+                : ({ action: "proceed" } as const);
+            },
+          },
+        ],
+      });
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("held by the plugin"),
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+
+      expect(wokeDuringDrain).toBe(true);
+      expect(
+        turnRequests(harness, thread.id).map(
+          (event) =>
+            turnRequestEventDataSchema.parse(JSON.parse(event.data)).input,
+        ),
+      ).toContainEqual(textInput("queued during the drain"));
+    });
+  });
+});
+
+describe("a targeted attempt that holds its claim while the turn completes", () => {
+  it("drains the rest of the queue when the attempt does not start a turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-claim-held",
+        status: "active",
+      });
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: async (context) => {
+              if (context.input.text !== "scheduled") {
+                return { action: "proceed" } as const;
+              }
+              applyLoggedThreadLifecycleEvent(harness.deps, {
+                event: { type: "run.succeeded" },
+                threadId: thread.id,
+              });
+              await new Promise((resolve) => setImmediate(resolve));
+              return { action: "wait", reason: "full" } as const;
+            },
+          },
+        ],
+      });
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("scheduled"),
+        waitingOn: { kind: "time" },
+        sendAt: Date.now() - 1,
+      });
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("queued behind"),
+        waitingOn: { kind: "thread-busy" },
+      });
+
+      await runTimeWake(harness, Date.now());
+
+      await vi.waitFor(() => {
+        expect(
+          turnRequests(harness, thread.id).map(
+            (event) =>
+              turnRequestEventDataSchema.parse(JSON.parse(event.data)).input,
+          ),
+        ).toContainEqual(textInput("queued behind"));
+      });
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) =>
+          JSON.parse(row.content),
+        ),
+      ).toEqual([textInput("scheduled")]);
+    });
+  });
+});

@@ -401,13 +401,15 @@ export function settleArchiveThreadsTransaction({
   transaction: ArchiveThreadsTransaction | undefined;
 }): void {
   if (response !== undefined) transaction?.prediction.succeed();
-  queryClient.invalidateQueries({ queryKey: threadsQueryKey() });
-  queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
-  queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
+  void queryClient.invalidateQueries({ queryKey: threadsQueryKey() });
+  void queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
+  void queryClient.invalidateQueries({
+    queryKey: threadSearchQueryKeyPrefix(),
+  });
   for (const threadId of response?.archivedThreadIds ??
     transaction?.archivedThreadIds ??
     []) {
-    queryClient.invalidateQueries({ queryKey: threadQueryKey(threadId) });
+    void queryClient.invalidateQueries({ queryKey: threadQueryKey(threadId) });
   }
 }
 

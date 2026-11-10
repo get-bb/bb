@@ -40,6 +40,7 @@ import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
 import { resolveThreadHeadStateOptions } from "./thread-head-state.js";
+import { reuseUnchangedTimelineWindowParts } from "./timeline-window-reuse.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -171,9 +172,10 @@ export function createThreadTimelineWindows(
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
       }),
-      () => {
+      (previous) => {
         const {
           cost,
+          expiresAt,
           profile,
           response: built,
         } = buildThreadTimelineWithProfile(deps.db, thread, {
@@ -183,11 +185,17 @@ export function createThreadTimelineWindows(
           page: request.page,
         });
         slowTimelineBuildLogger.log({ cost, profile, threadId: thread.id });
-        const window = shortenTimelineResponseOutputs(built, {
-          maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-          preview: !request.includeNestedRows,
-        });
-        return { ...window, tag: timelineWindowTag(window) };
+        const window = reuseUnchangedTimelineWindowParts(
+          shortenTimelineResponseOutputs(built, {
+            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+            preview: !request.includeNestedRows,
+          }),
+          previous,
+        );
+        return {
+          expiresAt,
+          response: { ...window, tag: timelineWindowTag(window) },
+        };
       },
     );
   }

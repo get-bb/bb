@@ -87,20 +87,21 @@ export async function withGateDeadline({
     elapsedMs + deadlineMs <= maxWaitMs &&
     (await tunnelServing());
   const deadline = new Promise<number>((resolve) => {
+    const expire = async () => {
+      const elapsedMs = Date.now() - startedAt;
+      if (!(await waitingOnLiveTunnel(elapsedMs))) {
+        resolve(elapsedMs);
+        return;
+      }
+      if (settled) return;
+      if (!reportedSlowTunnel) {
+        reportedSlowTunnel = true;
+        report("slow", elapsedMs);
+      }
+      arm();
+    };
     const arm = () => {
-      deadlineTimer = setTimeout(async () => {
-        const elapsedMs = Date.now() - startedAt;
-        if (!(await waitingOnLiveTunnel(elapsedMs))) {
-          resolve(elapsedMs);
-          return;
-        }
-        if (settled) return;
-        if (!reportedSlowTunnel) {
-          reportedSlowTunnel = true;
-          report("slow", elapsedMs);
-        }
-        arm();
-      }, deadlineMs);
+      deadlineTimer = setTimeout(() => void expire(), deadlineMs);
     };
     arm();
   });

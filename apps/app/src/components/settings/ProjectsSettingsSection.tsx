@@ -159,7 +159,7 @@ function SortableProjectRow({
         className="group -mx-2 flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
         onClick={(event) => {
           if (targetsResourceAction(event)) return;
-          navigate(detailPath);
+          void navigate(detailPath);
         }}
       >
         <Link

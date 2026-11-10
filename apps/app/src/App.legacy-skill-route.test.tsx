@@ -24,7 +24,7 @@ vi.mock("./views/SplitWorkspaceRoute", () => ({
 
 function HistoryBackButton() {
   const navigate = useNavigate();
-  return <button onClick={() => navigate(-1)}>Back</button>;
+  return <button onClick={() => void navigate(-1)}>Back</button>;
 }
 
 function LocationPath() {

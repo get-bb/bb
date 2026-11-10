@@ -13,12 +13,19 @@ interface ThreadTimelineCacheOptions {
   maxEntryBytes?: number;
 }
 
+interface ThreadTimelineCacheBuild {
+  expiresAt: number | null;
+  response: ThreadTimelineResponse;
+}
+
 interface ThreadTimelineCache {
   getOrBuild(
     threadId: string,
     key: string,
     revision: string,
-    build: () => ThreadTimelineResponse,
+    build: (
+      previous: ThreadTimelineResponse | undefined,
+    ) => ThreadTimelineCacheBuild,
   ): ThreadTimelineResponse;
   invalidateThread(threadId: string): void;
   readonly size: number;
@@ -26,6 +33,7 @@ interface ThreadTimelineCache {
 
 interface ThreadTimelineCacheEntry {
   bytes: number;
+  expiresAt: number | null;
   response: ThreadTimelineResponse;
   revision: string;
   threadId: string;
@@ -57,17 +65,26 @@ export function createThreadTimelineCache(
       const cached = entries.get(key);
       if (cached !== undefined) {
         deleteEntry(key);
-        if (cached.revision === revision) {
+        if (
+          cached.revision === revision &&
+          (cached.expiresAt === null || Date.now() < cached.expiresAt)
+        ) {
           entries.set(key, cached);
           totalBytes += cached.bytes;
           return cached.response;
         }
       }
 
-      const value = build();
+      const { expiresAt, response: value } = build(cached?.response);
       const bytes = timelineWindowJsonLength(value);
       if (bytes <= maxEntryBytes) {
-        entries.set(key, { bytes, response: value, revision, threadId });
+        entries.set(key, {
+          bytes,
+          expiresAt,
+          response: value,
+          revision,
+          threadId,
+        });
         totalBytes += bytes;
         while (entries.size > maxEntries || totalBytes > maxBytes) {
           const oldest = entries.keys().next().value;

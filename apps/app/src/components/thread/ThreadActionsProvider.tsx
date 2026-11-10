@@ -259,7 +259,7 @@ export function ThreadActionsProvider({
     ],
   );
 
-  const requestDeleteThreads = useCallback(
+  const planAndRequestDeleteThreads = useCallback(
     async (threads: readonly Thread[]) => {
       if (threads.length === 0) return;
       const plan = await claimSelectionPlan(threads, "delete");
@@ -276,8 +276,13 @@ export function ThreadActionsProvider({
     [claimSelectionPlan, openDeleteDialog],
   );
 
+  const requestDeleteThreads = useCallback(
+    (threads: readonly Thread[]) => void planAndRequestDeleteThreads(threads),
+    [planAndRequestDeleteThreads],
+  );
+
   const requestDelete = useCallback(
-    (thread: Thread) => void requestDeleteThreads([thread]),
+    (thread: Thread) => requestDeleteThreads([thread]),
     [requestDeleteThreads],
   );
 
@@ -439,7 +444,7 @@ export function ThreadActionsProvider({
     ],
   );
 
-  const requestArchiveThreads = useCallback(
+  const planAndArchiveThreads = useCallback(
     async (threads: readonly Thread[]) => {
       const active = threads.filter((thread) => thread.archivedAt === null);
       if (active.length === 0) return;
@@ -464,8 +469,13 @@ export function ThreadActionsProvider({
     ],
   );
 
+  const requestArchiveThreads = useCallback(
+    (threads: readonly Thread[]) => void planAndArchiveThreads(threads),
+    [planAndArchiveThreads],
+  );
+
   const requestArchive = useCallback(
-    (thread: Thread) => void requestArchiveThreads([thread]),
+    (thread: Thread) => requestArchiveThreads([thread]),
     [requestArchiveThreads],
   );
 

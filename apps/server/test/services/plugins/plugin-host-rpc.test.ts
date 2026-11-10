@@ -1,3 +1,4 @@
+import { createDeferredPromise } from "@bb/test-helpers";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -26,6 +27,7 @@ describe("callPluginHostRpc", () => {
   it("sends a retryable read again with a new call id when the daemon drops its response", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
+      const firstCall = createDeferredPromise<void>();
       const callIds: string[] = [];
       const cancelled: string[] = [];
       const responder = registerHostRpcResponder(harness, {
@@ -39,12 +41,16 @@ describe("callPluginHostRpc", () => {
           if (request.command.type !== "plugin.host.call")
             throw new Error(`Unexpected RPC ${request.command.type}`);
           callIds.push(request.command.callId);
-          if (callIds.length === 1) return new Promise(() => {});
+          if (callIds.length === 1) {
+            firstCall.resolve();
+            return new Promise(() => {});
+          }
           return { ok: true, result: { output: { path: "read" } } };
         },
       });
-      await expect(
-        callPluginHostRpc(harness.deps, {
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+      try {
+        const result = callPluginHostRpc(harness.deps, {
           pluginId: "environment-test",
           contract: readContract,
           method: "read",
@@ -52,18 +58,26 @@ describe("callPluginHostRpc", () => {
           hostId: host.id,
           timeoutMs: 1_000,
           artifact: stubHostArtifact("environment-test"),
-        }),
-      ).resolves.toEqual({ path: "read" });
-      expect(callIds).toHaveLength(2);
-      expect(callIds[1]).not.toBe(callIds[0]);
-      await vi.waitFor(() => expect(cancelled).toEqual([callIds[0]]));
-      responder.unregister();
+        });
+        await firstCall.promise;
+        await vi.advanceTimersByTimeAsync(3_499);
+        expect(callIds).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(result).resolves.toEqual({ path: "read" });
+        expect(callIds).toHaveLength(2);
+        expect(callIds[1]).not.toBe(callIds[0]);
+        expect(cancelled).toEqual([callIds[0]]);
+      } finally {
+        vi.useRealTimers();
+        responder.unregister();
+      }
     });
   });
 
   it("cancels the retried read on the daemon when the server gives up, and gives it only the time left", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
+      const firstCall = createDeferredPromise<void>();
       const calls: { callId: string; timeoutMs: number }[] = [];
       const cancelled: string[] = [];
       const responder = registerHostRpcResponder(harness, {
@@ -80,11 +94,13 @@ describe("callPluginHostRpc", () => {
             callId: request.command.callId,
             timeoutMs: request.command.timeoutMs,
           });
+          firstCall.resolve();
           return new Promise(() => {});
         },
       });
-      await expect(
-        callPluginHostRpc(harness.deps, {
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+      try {
+        const result = callPluginHostRpc(harness.deps, {
           pluginId: "environment-test",
           contract: readContract,
           method: "read",
@@ -92,17 +108,36 @@ describe("callPluginHostRpc", () => {
           hostId: host.id,
           timeoutMs: 1_000,
           artifact: stubHostArtifact("environment-test"),
-        }),
-      ).rejects.toThrow();
-      expect(calls).toHaveLength(2);
-      expect(calls[0]?.timeoutMs).toBe(1_000);
-      expect(calls[1]?.timeoutMs).toBeLessThanOrEqual(600);
-      await vi.waitFor(() =>
+        });
+        const rejected = expect(result).rejects.toThrow();
+        let settled = false;
+        void result.then(
+          () => {
+            settled = true;
+          },
+          () => {
+            settled = true;
+          },
+        );
+        await firstCall.promise;
+        await vi.advanceTimersByTimeAsync(3_499);
+        expect(calls).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(calls).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(3_499);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await rejected;
+        expect(calls).toHaveLength(2);
+        expect(calls[0]?.timeoutMs).toBe(1_000);
+        expect(calls[1]?.timeoutMs).toBeLessThanOrEqual(600);
         expect(cancelled).toEqual(
           expect.arrayContaining(calls.map((call) => call.callId)),
-        ),
-      );
-      responder.unregister();
+        );
+      } finally {
+        vi.useRealTimers();
+        responder.unregister();
+      }
     });
   });
 

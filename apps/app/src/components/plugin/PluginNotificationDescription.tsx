@@ -34,7 +34,7 @@ export function usePluginNotificationAction() {
                 (panel) => panel.pluginId === pluginId,
               )
             : undefined;
-        navigate(
+        void navigate(
           panel
             ? getPluginPanelRoutePath({ pluginId, path: panel.path })
             : getPluginDetailRoutePath({

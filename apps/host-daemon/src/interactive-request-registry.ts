@@ -137,28 +137,8 @@ export class InteractiveRequestRegistry {
 
     try {
       const response = await this.options.registerRequest(request);
-      if (this.pendingEntries.get(key) !== entry) {
-        return promise;
-      }
-      if (response.outcome === "rejected") {
-        this.pendingEntries.delete(key);
-        entry.reject(
-          new InteractiveRequestRegistryError(
-            "interactive_request_rejected",
-            response.reason,
-          ),
-        );
-        return promise;
-      }
-
-      entry.interactionId = response.interactionId;
-      if (response.status !== "pending" && response.status !== "resolving") {
-        this.pendingEntries.delete(key);
-        entry.reject(
-          new Error(
-            `Pending interaction ${response.interactionId} is already ${response.status}`,
-          ),
-        );
+      if (this.pendingEntries.get(key) === entry) {
+        this.applyRegistrationResponse(key, entry, response);
       }
     } catch (error) {
       if (this.pendingEntries.get(key) === entry) {
@@ -173,6 +153,32 @@ export class InteractiveRequestRegistry {
     }
 
     return promise;
+  }
+
+  private applyRegistrationResponse(
+    key: string,
+    entry: PendingInteractiveRequestEntry,
+    response: HostDaemonInteractiveRequestResponse,
+  ): void {
+    if (response.outcome === "rejected") {
+      this.pendingEntries.delete(key);
+      entry.reject(
+        new InteractiveRequestRegistryError(
+          "interactive_request_rejected",
+          response.reason,
+        ),
+      );
+      return;
+    }
+    entry.interactionId = response.interactionId;
+    if (response.status !== "pending" && response.status !== "resolving") {
+      this.pendingEntries.delete(key);
+      entry.reject(
+        new Error(
+          `Pending interaction ${response.interactionId} is already ${response.status}`,
+        ),
+      );
+    }
   }
 
   resolve(request: InteractiveResolveCommandInput): void {

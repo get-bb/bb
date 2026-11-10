@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { WebSocket, WebSocketServer } from "ws";
+import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { jsonObjectSchema } from "@bb/domain";
 import { z } from "zod";
 
@@ -674,7 +674,7 @@ function createConnection(
       socket.terminate();
     }
   });
-  socket.on("message", async (data, binary) => {
+  const handleMessage = async (data: RawData, binary: boolean) => {
     let command: CdpCommand;
     try {
       if (binary) throw new Error("Text CDP messages required");
@@ -712,6 +712,9 @@ function createConnection(
       deadlines.delete(timeout);
       pending.delete(command.id);
     }
+  };
+  socket.on("message", (data, binary) => {
+    handleMessage(data, binary).catch(() => socket.terminate());
   });
 
   function dispose() {

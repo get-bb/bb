@@ -218,7 +218,7 @@ export class WatchManager {
       nextTargets.set(target.threadId, target);
     }
 
-    const stops: (void | Promise<void>)[] = [];
+    const stops: Promise<void>[] = [];
     for (const [threadId, entry] of this.threadStorageEntries) {
       const nextTarget = nextTargets.get(threadId);
       if (nextTarget) {
@@ -227,7 +227,7 @@ export class WatchManager {
         continue;
       }
       this.threadStorageEntries.delete(threadId);
-      stops.push(entry.stopWatching());
+      stops.push(Promise.resolve(entry.stopWatching()));
     }
     await Promise.all(stops);
 

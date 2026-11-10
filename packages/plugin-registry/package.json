@@ -6,6 +6,7 @@
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
     "typecheck": "node ./scripts/build-registry.mjs --check && tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "node ./scripts/build-registry.mjs --check && vitest run --config vitest.config.ts"
   },
   "devDependencies": {

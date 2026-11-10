@@ -54,6 +54,7 @@
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "lint": "oxlint src test",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {

@@ -144,6 +144,7 @@ export async function resolveResponse<TResponse extends SdkResponseLike>(
     if (isTypeErrorWithCauseCode(error, "ECONNREFUSED")) {
       throw new Error(
         "Cannot connect to BB server. Ensure it is running and BB_SERVER_URL is correct.",
+        { cause: error },
       );
     }
     throw error;

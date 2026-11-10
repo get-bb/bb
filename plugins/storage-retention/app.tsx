@@ -346,11 +346,7 @@ function StoragePanel(props: PluginNavPanelProps) {
       observedHosts.current.add(host.hostId);
     }
   }, [data, notifySuccess]);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  useRealtime("changed", refresh);
-  useRealtime("policy-changed", async () => {
+  const refreshPolicy = async () => {
     const revision = stateRevision.current;
     try {
       const state = await rpc.call("state", null);
@@ -360,6 +356,15 @@ function StoragePanel(props: PluginNavPanelProps) {
         description: message(error),
       });
     }
+  };
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  useRealtime("changed", () => {
+    void refresh();
+  });
+  useRealtime("policy-changed", () => {
+    void refreshPolicy();
   });
   useEffect(
     () =>

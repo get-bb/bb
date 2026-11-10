@@ -89,13 +89,17 @@ describe("DesktopZoomIndicator", () => {
     const toolbar = screen.getByRole("toolbar", { name: "Zoom" });
     expect(toolbar.className).not.toMatch(/animate-in|opacity-0/);
 
-    act(() => vi.advanceTimersByTime(2000));
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
     expect(toolbar.className).toContain("opacity-0");
 
     act(() => emitZoomChange(1.5));
     expect(toolbar.className).not.toContain("opacity-0");
 
-    act(() => vi.advanceTimersByTime(2150));
+    act(() => {
+      vi.advanceTimersByTime(2150);
+    });
     expect(screen.queryByRole("toolbar", { name: "Zoom" })).toBeNull();
   });
 
@@ -104,7 +108,9 @@ describe("DesktopZoomIndicator", () => {
     const { emitZoomChange } = setup();
     act(() => emitZoomChange(1.25));
     fireEvent.pointerEnter(screen.getByRole("toolbar", { name: "Zoom" }));
-    act(() => vi.advanceTimersByTime(2500));
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
 
     expect(screen.getByRole("toolbar", { name: "Zoom" })).toBeTruthy();
   });

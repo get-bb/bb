@@ -55,7 +55,7 @@ export function useDeletedResourceRouteOwner(): DeletedResourceRouteChangeHandle
     (message: ChangedMessage) => {
       if (isDeletedProjectMessage(message)) {
         if (routeProjectId === message.id) {
-          navigate(getRootComposeRoutePath(), { replace: true });
+          void navigate(getRootComposeRoutePath(), { replace: true });
         }
         return;
       }
@@ -78,7 +78,7 @@ export function useDeletedResourceRouteOwner(): DeletedResourceRouteChangeHandle
         return;
       }
 
-      navigate(getRootComposeRoutePath());
+      void navigate(getRootComposeRoutePath());
     },
     [navigate, routeProjectId, routeThreadId],
   );

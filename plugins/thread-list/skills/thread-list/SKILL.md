@@ -33,7 +33,8 @@ On first load the plugin copies any non-default `sidebar.*` values from
 
 Collapsed groups stay collapsed when background threads appear or become
 unread. Their headers retain activity indicators. Opening a thread reveals
-its containing groups; background activity does not change collapse preferences.
+its containing groups in that window only; neither opening a thread nor
+background activity changes collapse preferences.
 
 `environmentGrouping` decides whether sibling threads sharing one worktree
 collapse into a single row: `"auto"` (default) groups them in every

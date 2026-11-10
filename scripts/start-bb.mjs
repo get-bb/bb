@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +9,6 @@ import {
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const requireFromRoot = createRequire(resolve(repoRoot, "package.json"));
 const WORKTREE_RUNTIME_POLICY_ARG = "--worktree-runtime-policy";
 const BUILD_TERMINATION_TIMEOUT_MS = 5_000;
 const BUILD_KILL_GRACE_MS = 1_000;
@@ -33,6 +31,7 @@ export async function runBuildProcess(request) {
       timeoutMs: BUILD_TERMINATION_TIMEOUT_MS,
       killGraceMs: BUILD_KILL_GRACE_MS,
     });
+    return stopPromise;
   };
   const handleSigint = () => stopChild();
   const handleSigterm = () => stopChild();
@@ -49,7 +48,7 @@ export async function runBuildProcess(request) {
       stdio: "inherit",
     });
     const result = await waitForProcess(child);
-    await stopPromise;
+    if (stopPromise !== undefined) await stopChild();
     return result;
   } finally {
     process.off("SIGINT", handleSigint);
@@ -58,7 +57,7 @@ export async function runBuildProcess(request) {
 }
 
 async function buildRuntimeArtifacts() {
-  const turboEntrypoint = requireFromRoot.resolve("turbo/bin/turbo");
+  const turboEntrypoint = resolve(repoRoot, "node_modules/turbo/bin/turbo");
   const result = await runBuildProcess({
     args: [
       turboEntrypoint,

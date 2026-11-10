@@ -75,6 +75,9 @@ output.txt
 
 # turborepo
 .turbo
+
+# Query functions each @bb/db and @bb/server test run executed (BB_QUERY_PLAN_EXECUTED)
+.query-plan/
 .claude/
 
 # Temp roots from the CLI packaged-plugin build test (mkdtemp under apps/cli)

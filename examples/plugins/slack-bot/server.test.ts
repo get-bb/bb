@@ -138,7 +138,7 @@ describe("slack-bot webhook", () => {
         {
           threadId: "th_1",
           mode: "auto",
-          input: [{ type: "text", text: "and lint too" }],
+          input: [{ type: "text", text: "and lint too", mentions: [] }],
         },
       ],
     ]);

@@ -515,6 +515,38 @@ describe("core environment orchestration", () => {
       );
     }));
 
+  it("logs what the provider reports while removing an environment", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        policy: { retireGraceMs: 0 },
+        remove: async (context) => {
+          context.report.step("Removing worktree");
+          context.report.log("Kept branch bb/work because it has commits");
+          return { status: "removed" };
+        },
+      });
+      const info = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, info };
+      fixture.ask();
+      await fixture.settled();
+      const environmentId = fixture.attach();
+      await sweepProviderEnvironment(harness.deps, environmentId);
+      expect(
+        info.mock.calls.filter(
+          ([, message]) => message === "Environment removal",
+        ),
+      ).toEqual([
+        [{ environmentId, text: "Removing worktree" }, "Environment removal"],
+        [
+          {
+            environmentId,
+            text: "Kept branch bb/work because it has commits",
+          },
+          "Environment removal",
+        ],
+      ]);
+    }));
+
   it("copies a path plugin out of a workspace before removing it", async () =>
     withTestHarness(async (harness) => {
       const workspace = await mkdtemp(join(tmpdir(), "bb-env-plugin-"));
@@ -1748,6 +1780,83 @@ describe("core environment orchestration", () => {
         teardownAttempt: 1,
       });
     }));
+
+  it("retires an expired environment while another host is still removing one", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await withTestHarness(async (harness) => {
+      let releaseRemoval = () => {};
+      const removalGate = new Promise<void>((resolve) => {
+        releaseRemoval = resolve;
+      });
+      let slowRemovalStarted = false;
+      const fixture = setup(harness, {
+        policy: { retireGraceMs: 60_000 },
+        remove: async ({ path }) => {
+          if (path === "/tmp/slow-retirement") {
+            slowRemovalStarted = true;
+            await removalGate;
+          }
+          return { status: "removed" };
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      const environmentId = fixture.attach();
+      harness.db
+        .update(threads)
+        .set({
+          environmentId,
+          status: "idle",
+          archivedAt: Date.now(),
+          deletedAt: Date.now(),
+        })
+        .where(eq(threads.id, fixture.thread.id))
+        .run();
+      await sweepProviderEnvironment(harness.deps, environmentId);
+      const retireAt = getEnvironment(harness.db, environmentId)!.retireAt!;
+      const { host } = seedHostSession(harness.deps, {
+        id: "host_slow_retirement",
+      });
+      const slowEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: fixture.context.project.id,
+        path: "/tmp/slow-retirement",
+        environmentProviderId: fixture.record.provider.id,
+        environmentProviderPluginId: fixture.record.pluginId,
+      });
+      harness.db
+        .update(environments)
+        .set({ retireAt: Date.now() - 1 })
+        .where(eq(environments.id, slowEnvironment.id))
+        .run();
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
+      };
+      const firstSweep = runPeriodicSweeps(deps);
+      try {
+        await expect.poll(() => slowRemovalStarted).toBe(true);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        vi.setSystemTime(retireAt + 1);
+        await runPeriodicSweeps(deps);
+        await expect
+          .poll(() => getEnvironment(harness.db, environmentId)?.status, {
+            timeout: 1_000,
+          })
+          .toBe("destroyed");
+        expect(getEnvironment(harness.db, slowEnvironment.id)).toMatchObject({
+          teardownStatus: "running",
+        });
+      } finally {
+        releaseRemoval();
+        await firstSweep;
+        await expect
+          .poll(() => getEnvironment(harness.db, slowEnvironment.id)?.status)
+          .toBe("destroyed");
+      }
+    });
+  });
 
   it.each([
     { retireGraceMs: 0, ownsPath: true },

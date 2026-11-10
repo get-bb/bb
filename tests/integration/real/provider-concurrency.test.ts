@@ -26,7 +26,7 @@ describe("real provider concurrency integration", () => {
       await assertProviderPrerequisites("claude-code");
 
       const harness = await createIntegrationHarness({
-        builtinPlugins: ["environment-git-worktree"],
+        builtinPlugins: ["git", "environment-git-worktree"],
       });
 
       try {

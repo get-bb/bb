@@ -86,6 +86,7 @@ import {
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
 import {
   FAVICON_COLOR_VALUES,
   getFaviconGlyphHref,
@@ -506,6 +507,11 @@ export function LocalOpenTargetSettingsSection({
     setAccessRequestPending(true);
     try {
       await onRequestAccess();
+    } catch (error) {
+      showMutationErrorToast({
+        error,
+        fallbackMessage: "Failed to connect to bb on this device",
+      });
     } finally {
       setAccessRequestPending(false);
     }
@@ -561,7 +567,7 @@ export function LocalOpenTargetSettingsSection({
             variant="outline"
             size="sm"
             disabled={accessRequestPending || accessDenied}
-            onClick={handleRequestAccess}
+            onClick={() => void handleRequestAccess()}
           >
             {buttonLabel}
           </Button>
@@ -1134,11 +1140,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When you read a thread on any device, remove its notifications from your phones and tablets and from open bb windows and tabs. Phones need an app version that supports it.",
   },
-  narrowPluginCss: {
-    label: "Faster plugin styles",
-    description:
-      "Load each plugin's stylesheet so it only matches that plugin's own UI, which makes style updates cheaper on pages with many plugins. Plugins built with an old portal-scope helper keep the slower stylesheet. Applies after a reload.",
-  },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
     description:
@@ -1336,7 +1337,7 @@ export function SettingsView() {
         disabled={systemConfigQuery.data === undefined}
         generalSettings={generalSettings}
         onGeneralSettingsChange={(next) =>
-          updateGeneralSettingsMutation.mutateAsync(next)
+          updateGeneralSettingsMutation.mutateAsync(next).catch(() => undefined)
         }
       />
     );
@@ -1366,7 +1367,7 @@ export function SettingsView() {
         onAppearanceThemePrefetch={appThemePreview.prefetchThemes}
         onAppearanceThemePreview={appThemePreview.previewTheme}
         onCreatePalette={() =>
-          navigate(getRootComposeRoutePath(), {
+          void navigate(getRootComposeRoutePath(), {
             state: {
               focusPrompt: true,
               initialPrompt: CREATE_CUSTOM_PALETTE_PROMPT,

@@ -1,11 +1,17 @@
 import { getThread, listEvents, updateThread } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import {
+  turnRequestEventDataSchema,
+  turnScope,
+  type ThreadParentNotifications,
+} from "@bb/domain";
 import { retryTurnRequestSchema } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runPeriodicSweeps } from "../../src/services/system/periodic-sweeps.js";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import {
   TURN_START_DEADLINE_MS,
   TURN_START_DEADLINE_RECONNECT_GRACE_MS,
+  turnStartDeadlineSweep,
 } from "../../src/services/threads/thread-lifecycle.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
@@ -31,7 +37,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function seedIdleThread(harness: TestAppHarness, value: number) {
+function seedIdleThread(
+  harness: TestAppHarness,
+  value: number,
+  parentNotifications?: ThreadParentNotifications,
+) {
   const { host, session } = seedHostSession(harness.deps, {
     id: `host-turn-start-deadline-${value}`,
   });
@@ -45,10 +55,28 @@ function seedIdleThread(harness: TestAppHarness, value: number) {
     path: `/tmp/turn-start-deadline-${value}`,
     status: "ready",
   });
+  const parent =
+    parentNotifications === undefined
+      ? null
+      : seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          status: "idle",
+          title: "Parent",
+        });
+  if (parent !== null) {
+    seedThreadRuntimeState(harness.deps, {
+      environmentId: environment.id,
+      providerThreadId: `provider-turn-start-deadline-parent-${value}`,
+      threadId: parent.id,
+    });
+  }
   const thread = seedThread(harness.deps, {
     projectId: project.id,
     environmentId: environment.id,
     status: "idle",
+    parentThreadId: parent?.id ?? null,
+    ...(parentNotifications !== undefined ? { parentNotifications } : {}),
   });
   const providerThreadId = `provider-turn-start-deadline-${value}`;
   seedThreadRuntimeState(harness.deps, {
@@ -56,7 +84,20 @@ function seedIdleThread(harness: TestAppHarness, value: number) {
     providerThreadId,
     threadId: thread.id,
   });
-  return { environment, providerThreadId, sessionId: session.id, thread };
+  return {
+    environment,
+    parent,
+    providerThreadId,
+    sessionId: session.id,
+    thread,
+  };
+}
+
+function parentSystemRequests(harness: TestAppHarness, parentThreadId: string) {
+  return listEvents(harness.db, { threadId: parentThreadId })
+    .filter((row) => row.type === "client/turn/requested")
+    .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
+    .filter((data) => data.initiator === "system");
 }
 
 async function sendTurnThatNeverStarts(
@@ -297,4 +338,105 @@ describe("turn start deadline", () => {
       expect(deadlineErrorCount(harness, fixture.thread.id)).toBe(1);
     });
   });
+  it.each([
+    { settlesThread: true, status: "idle" },
+    { settlesThread: false, status: "active" },
+  ])(
+    "leaves a long turn alone when it completes after the sweep lists it (thread $status)",
+    async ({ settlesThread, status }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      await withTestHarness(async (harness) => {
+        const fixture = seedIdleThread(harness, settlesThread ? 8 : 9);
+        const requestedAt = Date.now();
+        await sendTurnThatNeverStarts(harness, fixture, "long turn");
+        seedTurnStarted(harness.deps, {
+          environmentId: fixture.environment.id,
+          providerThreadId: fixture.providerThreadId,
+          threadId: fixture.thread.id,
+          turnId: "turn-long",
+        });
+        vi.setSystemTime(requestedAt + TURN_START_DEADLINE_MS * 8);
+
+        const connectedAt = harness.hub.getDaemonConnectedAtForHost.bind(
+          harness.hub,
+        );
+        vi.spyOn(harness.hub, "getDaemonConnectedAtForHost").mockImplementation(
+          (hostId) => {
+            seedEvent(harness.deps, {
+              threadId: fixture.thread.id,
+              environmentId: fixture.environment.id,
+              providerThreadId: fixture.providerThreadId,
+              sequence: 100,
+              type: "turn/completed",
+              scope: turnScope("turn-long"),
+              data: {
+                providerThreadId: fixture.providerThreadId,
+                status: "completed",
+              },
+            });
+            if (settlesThread) {
+              applyLoggedThreadLifecycleEvent(harness.deps, {
+                event: { type: "run.succeeded" },
+                threadId: fixture.thread.id,
+              });
+            }
+            return connectedAt(hostId);
+          },
+        );
+        await turnStartDeadlineSweep(harness.deps, Date.now()).run(
+          harness.deps,
+          Date.now(),
+        );
+
+        expect(harness.hub.getDaemonConnectedAtForHost).toHaveBeenCalledTimes(
+          1,
+        );
+        expect(getThread(harness.db, fixture.thread.id)?.status).toBe(status);
+        expect(deadlineErrorCount(harness, fixture.thread.id)).toBe(0);
+        expect(
+          listQueuedThreadCommands(harness, "thread.stop", fixture.thread.id),
+        ).toEqual([]);
+      });
+    },
+  );
+
+  it.each([
+    { parentNotifications: "auto", notified: true },
+    { parentNotifications: "stuck", notified: true },
+    { parentNotifications: "off", notified: false },
+  ] as const)(
+    "tells the parent when bb stops a child whose turn never started ($parentNotifications)",
+    async ({ parentNotifications, notified }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      await withTestHarness(async (harness) => {
+        const fixture = seedIdleThread(harness, 10, parentNotifications);
+        const parentId = fixture.parent!.id;
+        const requestedAt = Date.now();
+        await sendTurnThatNeverStarts(harness, fixture, "never starts");
+
+        await sweepAt(harness, requestedAt + TURN_START_DEADLINE_MS + 1_000);
+        await settleDeadlineStop(harness, fixture.thread.id);
+        expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+        vi.setSystemTime(Date.now() + 5_000);
+
+        if (!notified) {
+          await new Promise((resolve) => setTimeout(resolve, 2_500));
+          expect(parentSystemRequests(harness, parentId)).toEqual([]);
+          return;
+        }
+        await vi.waitFor(
+          () =>
+            expect(parentSystemRequests(harness, parentId)).toMatchObject([
+              { systemMessageKind: "child-failed" },
+            ]),
+          { timeout: 5_000 },
+        );
+        expect(
+          JSON.stringify(parentSystemRequests(harness, parentId)[0]?.input),
+        ).toContain(
+          "was stopped by bb because its provider did not start the turn within 5 minutes",
+        );
+      });
+    },
+  );
 });

@@ -411,7 +411,7 @@ export function SkillsLibrary() {
   );
   const openSkill = useCallback(
     (skill: SkillSummary) => {
-      navigate(
+      void navigate(
         getSkillDetailRoutePath({
           skillId: skill.id,
         }),
@@ -421,7 +421,7 @@ export function SkillsLibrary() {
   );
   const editSkillViaThread = useCallback(
     (skill: SkillSummary) => {
-      navigate(getRootComposeRoutePath(), {
+      void navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
           initialPrompt: buildSkillEditThreadPrompt({
@@ -439,7 +439,7 @@ export function SkillsLibrary() {
     (skill: RegistrySkill) => {
       const localSkill = findLocalRegistrySkill(skill);
       if (localSkill !== null) {
-        navigate(
+        void navigate(
           getSkillDetailRoutePath({
             skillId: localSkill.id,
           }),
@@ -447,7 +447,9 @@ export function SkillsLibrary() {
         return;
       }
       if (!isRegistryBrowseRoute) setRegistryPage(0);
-      navigate(getRegistrySkillDetailRoutePath({ registrySkillId: skill.id }));
+      void navigate(
+        getRegistrySkillDetailRoutePath({ registrySkillId: skill.id }),
+      );
     },
     [findLocalRegistrySkill, isRegistryBrowseRoute, navigate],
   );
@@ -456,11 +458,11 @@ export function SkillsLibrary() {
     setRegistryPage(0);
   }, []);
   const closeSkillDetail = useCallback(() => {
-    navigate(getToolsOwnedCollectionRoutePath("skills"));
+    void navigate(getToolsOwnedCollectionRoutePath("skills"));
   }, [navigate]);
   const handleCreateSkill = useCallback(
     (prompt?: string) => {
-      navigate(getRootComposeRoutePath(), {
+      void navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
           initialPrompt: prompt ?? CREATE_SKILL_PROMPT,
@@ -473,7 +475,7 @@ export function SkillsLibrary() {
   );
   const forkRegistrySkill = useCallback(
     (skill: RegistrySkill) => {
-      navigate(getRootComposeRoutePath(), {
+      void navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
           initialPrompt: buildRegistrySkillReferencePrompt(skill),

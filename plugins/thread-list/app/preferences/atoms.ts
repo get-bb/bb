@@ -1,15 +1,28 @@
 import { atom } from "jotai";
+import { createRevealableCollapsedAtoms } from "./revealable-collapsed-atom.js";
 import { createSyncedPreferenceAtom } from "./synced-preference-atom.js";
 
-export const collapsedProjectIdsAtom =
-  createSyncedPreferenceAtom("collapsedProjects");
-export const collapsedThreadIdsAtom =
-  createSyncedPreferenceAtom("collapsedThreads");
-export const collapsedEnvironmentIdsAtom = createSyncedPreferenceAtom(
-  "collapsedEnvironments",
+const collapsedProjects = createRevealableCollapsedAtoms(
+  createSyncedPreferenceAtom("collapsedProjects"),
+);
+export const collapsedProjectIdsAtom = collapsedProjects.collapsed;
+export const revealProjectIdsAtom = collapsedProjects.reveal;
+const collapsedThreads = createRevealableCollapsedAtoms(
+  createSyncedPreferenceAtom("collapsedThreads"),
+);
+export const collapsedThreadIdsAtom = collapsedThreads.collapsed;
+export const revealThreadIdsAtom = collapsedThreads.reveal;
+const collapsedEnvironments = createRevealableCollapsedAtoms(
+  createSyncedPreferenceAtom("collapsedEnvironments"),
+);
+export const collapsedEnvironmentIdsAtom = collapsedEnvironments.collapsed;
+export const revealEnvironmentIdsAtom = collapsedEnvironments.reveal;
+const collapsedSidebarSections = createRevealableCollapsedAtoms(
+  createSyncedPreferenceAtom("collapsedSections"),
 );
 export const collapsedSidebarSectionIdsAtom =
-  createSyncedPreferenceAtom("collapsedSections");
+  collapsedSidebarSections.collapsed;
+export const revealSidebarSectionIdsAtom = collapsedSidebarSections.reveal;
 export const sidebarSectionOrderAtom =
   createSyncedPreferenceAtom("sectionOrder");
 export const sidebarManualSectionOrderAtom =
@@ -37,11 +50,17 @@ export const sidebarChronologicalSortAtom =
   createSyncedPreferenceAtom("chronologicalSort");
 export const sidebarSortDirectionAtom =
   createSyncedPreferenceAtom("sortDirection");
-export const sidebarCollapsedThreadSectionsAtom = createSyncedPreferenceAtom(
-  "collapsedThreadSections",
+const collapsedThreadSections = createRevealableCollapsedAtoms(
+  createSyncedPreferenceAtom("collapsedThreadSections"),
 );
-export const sidebarCollapsedMachinesAtom =
-  createSyncedPreferenceAtom("collapsedMachines");
+export const sidebarCollapsedThreadSectionsAtom =
+  collapsedThreadSections.collapsed;
+export const revealThreadSectionKeysAtom = collapsedThreadSections.reveal;
+const collapsedMachines = createRevealableCollapsedAtoms(
+  createSyncedPreferenceAtom("collapsedMachines"),
+);
+export const sidebarCollapsedMachinesAtom = collapsedMachines.collapsed;
+export const revealMachineKeysAtom = collapsedMachines.reveal;
 
 export const sidebarThreadLifecyclesAtom =
   createSyncedPreferenceAtom("threadLifecycles");

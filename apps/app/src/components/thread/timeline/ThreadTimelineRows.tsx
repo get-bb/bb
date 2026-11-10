@@ -66,20 +66,19 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
-import {
-  MessageColumnWidthContext,
-  useMeasuredWidth,
-} from "./MessageActionBar.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { TimelineRowBodyPlaceholder } from "./TimelineRowBodyPlaceholder.js";
 import {
-  timelineDetailIdentity,
   usePreloadTimelineRowBody,
   useTimelineRowBodyRenderersReady,
 } from "./timeline-row-body-preload.js";
+import {
+  TimelineDetailSourceContext,
+  useTimelineDetailIdentity,
+} from "./timeline-detail-identity.js";
 import {
   TimelineActionRowHeader,
   TimelineLeadingIcon,
@@ -1110,7 +1109,7 @@ function TimelineExpandableBody(props: TimelineExpandableBodyProps) {
     preloadBody();
   }, [preloadBody]);
   const deferred = useTimelineDetailRows(
-    timelineDetailIdentity(row, threadId, itemId ?? ""),
+    useTimelineDetailIdentity(row, threadId, itemId ?? ""),
     itemId !== null,
   );
   const resolved =
@@ -1359,7 +1358,7 @@ function LazyTurnRowBody({
 }: TurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
   const detail = useTimelineDetailRows(
-    timelineDetailIdentity(row, threadId, null),
+    useTimelineDetailIdentity(row, threadId, null),
     true,
   );
   const rows = detail.rows
@@ -1433,7 +1432,7 @@ function DeferredDelegationChildRows({
 }) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
   const detail = useTimelineDetailRows(
-    timelineDetailIdentity(row, threadId, row.callId),
+    useTimelineDetailIdentity(row, threadId, row.callId),
     true,
   );
   const loadedRows = detail.rows
@@ -1488,6 +1487,7 @@ function DeferredDelegationChildRows({
 function DelegationRowBody({ row }: { row: TimelineViewDelegationWorkRow }) {
   const { projectId, resolveUserAttachmentImageSrc } =
     useTimelineRendererStaticContext();
+  const detailIdentity = useTimelineDetailIdentity(row, row.threadId, null);
   const delegationActive = row.status === "pending";
   const [lastInlineChildRows, setLastInlineChildRows] = useState(row.childRows);
   if (row.childRows !== null && row.childRows !== lastInlineChildRows) {
@@ -1500,40 +1500,42 @@ function DelegationRowBody({ row }: { row: TimelineViewDelegationWorkRow }) {
       streaming={delegationActive}
       className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
     >
-      <div className="flex flex-col gap-3">
-        {row.childRows === null ? (
-          <DeferredDelegationChildRows
-            fallbackRows={lastInlineChildRows}
-            row={row}
-          />
-        ) : row.childRows.length > 0 ? (
-          <TimelineRowsList
-            rows={row.childRows}
-            scopeActive={delegationActive}
-            showAssistantMessageActions={false}
-            compactActivityIntents={false}
-            spacing="nested"
-            unreadDividerAutoScroll={false}
-            unreadDividerPlacement={null}
-          />
-        ) : null}
-        {row.output.trim().length > 0 ? (
-          <ConversationMessageContent
-            attachments={null}
-            id={row.id}
-            projectId={projectId}
-            resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
-            role="assistant"
-            showActions={false}
-            mobileActionDisplay="overflow"
-            streaming={delegationActive}
-            text={row.output}
-            timestamp={row.startedAt}
-            threadId={row.threadId}
-            turnId={row.turnId}
-          />
-        ) : null}
-      </div>
+      <TimelineDetailSourceContext.Provider value={detailIdentity}>
+        <div className="flex flex-col gap-3">
+          {row.childRows === null ? (
+            <DeferredDelegationChildRows
+              fallbackRows={lastInlineChildRows}
+              row={row}
+            />
+          ) : row.childRows.length > 0 ? (
+            <TimelineRowsList
+              rows={row.childRows}
+              scopeActive={delegationActive}
+              showAssistantMessageActions={false}
+              compactActivityIntents={false}
+              spacing="nested"
+              unreadDividerAutoScroll={false}
+              unreadDividerPlacement={null}
+            />
+          ) : null}
+          {row.output.trim().length > 0 ? (
+            <ConversationMessageContent
+              attachments={null}
+              id={row.id}
+              projectId={projectId}
+              resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
+              role="assistant"
+              showActions={false}
+              mobileActionDisplay="overflow"
+              streaming={delegationActive}
+              text={row.output}
+              timestamp={row.startedAt}
+              threadId={row.threadId}
+              turnId={row.turnId}
+            />
+          ) : null}
+        </div>
+      </TimelineDetailSourceContext.Provider>
     </TimelineDetailScroll>
   );
 }
@@ -2186,19 +2188,9 @@ function TimelineRowsList({
     return keys;
   }, [items, rows, spacing, stableSearchExpandedRowIds, navigationTargetRowId]);
   const isTopLevelList = spacing === "top-level";
-  const { measureRef: messageColumnWidthSourceRef, width: messageColumnWidth } =
-    useMeasuredWidth({ enabled: isTopLevelList });
-  const messageColumnWidthValue = useMemo(
-    () => ({ width: messageColumnWidth }),
-    [messageColumnWidth],
-  );
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
-      <MessageColumnWidthContext.Provider
-        value={isTopLevelList ? messageColumnWidthValue : null}
-      >
         <div
-          ref={isTopLevelList ? messageColumnWidthSourceRef : undefined}
           className={cn(
             "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
             timelineRowsListGapClassName(spacing),
@@ -2269,7 +2261,6 @@ function TimelineRowsList({
             }}
           />
         </div>
-      </MessageColumnWidthContext.Provider>
     </TimelineSearchExpansionContext.Provider>
   );
 }

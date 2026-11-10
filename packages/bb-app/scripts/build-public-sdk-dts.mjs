@@ -107,6 +107,23 @@ function resolveWorkspaceSource(id) {
   return source ? path.join(packageDirectory, source) : null;
 }
 
+async function workspaceCompilerPaths() {
+  const paths = {};
+  for (const entry of await readdir(packagesRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = path.join(packagesRoot, entry.name, "package.json");
+    if (!existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    for (const key of Object.keys(manifest.exports ?? {})) {
+      if ((key !== "." && !key.startsWith("./")) || key.includes("*")) continue;
+      const id = `@bb/${entry.name}${key === "." ? "" : key.slice(1)}`;
+      const source = resolveWorkspaceSource(id);
+      if (source !== null) paths[id] = [source];
+    }
+  }
+  return paths;
+}
+
 const supportsNativeCompiler =
   (process.platform === "darwin" && process.arch === "arm64") ||
   (process.platform === "linux" &&
@@ -134,9 +151,12 @@ try {
         respectExternal: false,
         compilerOptions: {
           baseUrl: packagesRoot,
-          paths: {
-            "@bb/hono-typed-routes": ["hono-typed-routes/src/index.ts"],
-          },
+          paths:
+            declarationRoot === null
+              ? await workspaceCompilerPaths()
+              : {
+                  "@bb/hono-typed-routes": ["hono-typed-routes/src/index.ts"],
+                },
         },
       }),
     ],

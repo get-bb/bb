@@ -334,6 +334,43 @@ describe("fuzzyMatchPaths", () => {
     expect(matches.map((match) => match.item)).toEqual(["docs/café.md"]);
   });
 
+  it.each([
+    {
+      path: "docs/заметка.md",
+      queries: ["заметка", "Заметка", "заМетКа", "ЗАМЕТКА", "docs/Заметка"],
+    },
+    {
+      path: "заметки/запись.md",
+      queries: ["Заметки/", "Заметки/Запись", "Заме/Запи"],
+    },
+    {
+      path: "docs/σημείωση.md",
+      queries: ["σημείωση", "Σημείωση", "σηΜείωση"],
+    },
+  ])("ignores non-ASCII query casing for $path", ({ path, queries }) => {
+    for (const query of queries) {
+      const matches = fuzzyMatchPaths({
+        items: [path],
+        query,
+        getPath: (item) => item,
+        limit: 16,
+      });
+
+      expect(matches.map((match) => match.item), query).toEqual([path]);
+    }
+  });
+
+  it("preserves ASCII smart-case for path queries", () => {
+    const matches = fuzzyMatchPaths({
+      items: ["docs/memo.md", "docs/Memo.md"],
+      query: "Memo",
+      getPath: (item) => item,
+      limit: 16,
+    });
+
+    expect(matches.map((match) => match.item)).toEqual(["docs/Memo.md"]);
+  });
+
   it("matches mixed-case paths for lowercase and uppercase queries", () => {
     const paths = [
       "apps/app/src/components/PromptBox.tsx",

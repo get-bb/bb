@@ -52,7 +52,7 @@ async function stopConnection(
   exit: Promise<AcpAgentExitInfo>,
 ): Promise<void> {
   if (!connection.exited) {
-    connection.kill();
+    await connection.kill();
   }
   await exit;
 }
@@ -200,7 +200,7 @@ describe("ACP agent stdio lifecycle", () => {
           () => undefined,
           (error: Error) => error,
         );
-      connection.kill();
+      const stopped = connection.kill();
       connection.notify("construction/continues", {
         payload: "x".repeat(EPIPE_PAYLOAD_SIZE),
       });
@@ -226,6 +226,7 @@ describe("ACP agent stdio lifecycle", () => {
         }),
       ).rejects.toThrow(`ACP agent "${process.execPath}" is not running`);
       const exitInfo = await exited.promise;
+      await stopped;
       if (process.platform !== "win32")
         expect(exitInfo).toMatchObject({ code: 0, signal: null });
     } finally {
@@ -265,7 +266,7 @@ describe("ACP agent stdio lifecycle", () => {
 
     try {
       await ready.promise;
-      connection.kill();
+      await connection.kill();
       await exited.promise;
       expect(requestCount).toBe(0);
       expect(existsSync(lateWrite)).toBe(false);

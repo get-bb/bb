@@ -4,7 +4,8 @@ import {
   listProviderLifecycleEnvironments,
   releaseFinishedEnvironmentPreparationOwners,
 } from "../src/data/environments.js";
-import { describe, expect, it } from "vitest";
+import { performance } from "node:perf_hooks";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -24,14 +25,18 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   appendDaemonEventsInTransaction,
+  findLastCompletedRootStoredTurn,
   getFirstParentedTimelineBoundarySequence,
+  getLatestStoredThreadEventOfTypes,
   getLatestModelFallbackRowSinceTurnRequest,
   getTimelineGroupingContextChangesInRange,
+  getUnfinishedCommandItemData,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
   insertEvents,
+  isStoredTurnContextCompactionOnly,
   isStoredTurnProviderCompactionRunning,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
@@ -41,12 +46,17 @@ import {
   listLatestOpenBackgroundTaskStateRowsForThread,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
+  listStoredBufferedTextDeltaRowsByItems,
+  listStoredClientTurnRequestIdsInRange,
   listStoredConversationOutlineEventRows,
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRows,
   listStoredEventRowsByParentToolCallIds,
+  listStoredItemLifecycleRowsByItems,
   listStoredTurnCompletedKeys,
+  listThreadEventSuffixBackgroundSettlementRows,
   listTodoSnapshotEventRowsForThread,
+  type ScopedItemRef,
 } from "../src/data/events.js";
 import {
   MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
@@ -266,6 +276,10 @@ function expectNoThreadOnlyEventSeek(details: string): void {
 }
 
 describe("slow query index plans", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("checks spawn-agent history without reading unrelated event payloads", () => {
     const { db, thread } = setup();
     try {
@@ -1103,6 +1117,129 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("probes each started command's completion through the turn index", () => {
+    const { db, thread } = setup();
+    const commandEvent = (args: {
+      sequence: number;
+      type: "item/started" | "item/completed";
+      itemId: string;
+    }) => ({
+      threadId: thread.id,
+      sequence: args.sequence,
+      type: args.type,
+      scope: turnScope("turn-commands"),
+      itemId: args.itemId,
+      itemKind: "commandExecution" as const,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        item: { type: "commandExecution", id: args.itemId },
+      }),
+    });
+    insertEvents(db, noopNotifier, [
+      commandEvent({ sequence: 1, type: "item/started", itemId: "cmd-open" }),
+      commandEvent({ sequence: 2, type: "item/started", itemId: "cmd-done" }),
+      commandEvent({ sequence: 3, type: "item/completed", itemId: "cmd-done" }),
+    ]);
+
+    const captured = captureStatements(db, () => {
+      expect(
+        getUnfinishedCommandItemData(db, {
+          afterSequence: 0,
+          threadId: thread.id,
+        }),
+      ).toContain("cmd-open");
+    });
+    expect(
+      getUnfinishedCommandItemData(db, {
+        afterSequence: 1,
+        threadId: thread.id,
+      }),
+    ).toBeNull();
+
+    expect(captured).toHaveLength(1);
+    expect(queryPlanDetails({ db, ...captured[0]! })).toContain(
+      "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=? AND item_id=?)",
+    );
+
+    db.$client.close();
+  });
+
+  it("seeks each carried settlement's item events by thread and item", () => {
+    const { db, thread } = setup();
+    const itemEvent = (args: {
+      sequence: number;
+      type:
+        | "item/started"
+        | "item/backgroundTask/completed"
+        | "item/delegation/completed";
+      itemId: string;
+      itemKind: "backgroundTask" | "delegation";
+    }) => ({
+      threadId: thread.id,
+      sequence: args.sequence,
+      type: args.type,
+      scope: threadScope(),
+      itemId: args.itemId,
+      itemKind: args.itemKind,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        providerThreadId: "provider-plan",
+        item: { type: args.itemKind, id: args.itemId },
+      }),
+    });
+    insertEvents(db, noopNotifier, [
+      itemEvent({
+        sequence: 1,
+        type: "item/started",
+        itemId: "task",
+        itemKind: "backgroundTask",
+      }),
+      itemEvent({
+        sequence: 2,
+        type: "item/started",
+        itemId: "delegation",
+        itemKind: "delegation",
+      }),
+      itemEvent({
+        sequence: 4,
+        type: "item/delegation/completed",
+        itemId: "delegation",
+        itemKind: "delegation",
+      }),
+      itemEvent({
+        sequence: 5,
+        type: "item/backgroundTask/completed",
+        itemId: "task",
+        itemKind: "backgroundTask",
+      }),
+    ]);
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listThreadEventSuffixBackgroundSettlementRows(db, {
+          threadId: thread.id,
+          cutoffSequence: 3,
+          oldMaxSequence: 5,
+        }).map((row) => row.sequence),
+      ).toEqual([4, 5]);
+    });
+
+    const plans = captured.map((query) => queryPlanDetails({ db, ...query }));
+    for (const details of plans) {
+      expectNoThreadOnlyEventSeek(details);
+    }
+    expect(plans).toEqual([
+      expect.stringContaining(
+        "events_background_task_thread_type_item_sequence_idx (thread_id=? AND type=? AND item_id=?",
+      ),
+      expect.stringContaining(
+        "events_delegating_item_lookup_idx (thread_id=? AND item_id=?",
+      ),
+    ]);
+
+    db.$client.close();
+  });
+
   it("scans background-task history once without a completed-set join", () => {
     const { db, thread } = setup();
 
@@ -1243,6 +1380,70 @@ describe("slow query index plans", () => {
 
     db.$client.close();
   });
+
+  it.each([
+    {
+      name: "getLatestStoredThreadEventOfTypes",
+      run: (db: DbConnection, threadId: string) =>
+        getLatestStoredThreadEventOfTypes(db, {
+          afterSequence: 0,
+          threadId,
+          types: ["system/thread/interrupted", "turn/started"],
+        }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>?)",
+      ],
+    },
+    {
+      name: "listStoredClientTurnRequestIdsInRange",
+      run: (db: DbConnection, threadId: string) =>
+        listStoredClientTurnRequestIdsInRange(db, {
+          seqEnd: 10,
+          seqStart: 1,
+          threadId,
+        }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>? AND sequence<?)",
+      ],
+    },
+    {
+      name: "findLastCompletedRootStoredTurn",
+      run: (db: DbConnection, threadId: string) =>
+        findLastCompletedRootStoredTurn(db, { threadId }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=?)",
+        "SEARCH completed USING COVERING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+      ],
+    },
+    {
+      name: "isStoredTurnContextCompactionOnly",
+      run: (db: DbConnection, threadId: string) =>
+        isStoredTurnContextCompactionOnly(db, { threadId, turnId: "turn-1" }),
+      plan: [
+        "SEARCH events USING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+      ],
+    },
+  ])(
+    "$name seeks its event types instead of walking the thread",
+    (testCase) => {
+      const { db, thread } = setup();
+
+      const captured = captureStatements(db, () => {
+        testCase.run(db, thread.id);
+      });
+      expect(captured).toHaveLength(1);
+      const [query] = captured;
+      if (!query) {
+        throw new Error(`Expected the ${testCase.name} SQL`);
+      }
+      const details = queryPlanDetails({ db, ...query }).split("\n");
+      expect(
+        details.filter((line) => !line.startsWith("USE TEMP B-TREE")),
+      ).toEqual(testCase.plan);
+
+      db.$client.close();
+    },
+  );
 
   it("resolves open background-task state without per-row subqueries", () => {
     const { db, logger, thread } = setup();
@@ -1424,6 +1625,7 @@ describe("slow query index plans", () => {
             type: sequence === 3 ? "item/completed" : deltaType,
           })),
         );
+        vi.spyOn(performance, "now").mockReturnValue(0);
         const statements = captureStatements(db, () => {
           expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
         });
@@ -1945,6 +2147,7 @@ describe("slow query index plans", () => {
     ]);
     logger.clear();
 
+    vi.spyOn(performance, "now").mockReturnValue(0);
     const statements = captureStatements(db, () => {
       expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
     });
@@ -2164,6 +2367,58 @@ describe("slow query index plans", () => {
 
     db.$client.close();
   });
+
+  it.each([
+    {
+      name: "listStoredItemLifecycleRowsByItems",
+      run: (db: DbConnection, threadId: string, items: ScopedItemRef[]) =>
+        listStoredItemLifecycleRowsByItems(db, {
+          items,
+          maxInlineOutputChars: 100,
+          threadId,
+        }),
+      seek: "(thread_id=? AND turn_id=? AND type=? AND item_id=?)",
+    },
+    {
+      name: "listStoredBufferedTextDeltaRowsByItems",
+      run: (db: DbConnection, threadId: string, items: ScopedItemRef[]) =>
+        listStoredBufferedTextDeltaRowsByItems(db, {
+          beforeSequence: 10,
+          items,
+          threadId,
+        }),
+      seek: "(thread_id=? AND turn_id=? AND type=? AND item_id=? AND sequence<?)",
+    },
+  ])(
+    "$name seeks each item's turn instead of walking the thread",
+    ({ run, seek }) => {
+      const { db, thread } = setup();
+      const items: ScopedItemRef[] = [
+        { itemId: "item-1", scopeKind: "turn", turnId: "turn-1" },
+        { itemId: "item-2", scopeKind: "turn", turnId: "turn-2" },
+        { itemId: "item-3", scopeKind: "thread", turnId: null },
+      ];
+      try {
+        for (const scopedItems of [items.slice(0, 1), items]) {
+          const captured = captureStatements(db, () => {
+            run(db, thread.id, scopedItems);
+          });
+          expect(captured).toHaveLength(1);
+          const searches = queryPlanDetails({ db, ...captured[0]! })
+            .split("\n")
+            .filter((detail) => detail.startsWith("SEARCH"));
+          expect(searches).toEqual(
+            scopedItems.map(
+              () =>
+                `SEARCH events USING INDEX events_thread_turn_type_item_sequence_idx ${seek}`,
+            ),
+          );
+        }
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
 
   it("prunes stored provider model catalogs through the primary-key prefix", () => {
     const { db, host, logger } = setup();

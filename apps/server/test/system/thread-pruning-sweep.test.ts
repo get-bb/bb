@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { eq, sql } from "drizzle-orm";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   advanceThreadPruning,
   events,
@@ -168,6 +168,14 @@ const UNTIMED_SWEEP_LIMITS: ThreadPruningSweepLimits = {
 };
 
 describe("thread pruning sweep", () => {
+  beforeEach(() => {
+    vi.spyOn(performance, "now").mockReturnValue(0);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("prunes settled threads while other threads are busy and leaves busy threads' events untouched", async () => {
     await withTestHarness(async (harness) => {
       const busy = {

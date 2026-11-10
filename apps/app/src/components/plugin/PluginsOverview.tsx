@@ -189,7 +189,7 @@ export function PluginsOverview({
   });
 
   const startCreatePlugin = (prompt?: string) => {
-    navigate(getRootComposeRoutePath(), {
+    void navigate(getRootComposeRoutePath(), {
       state: {
         focusPrompt: true,
         initialPrompt: prompt ?? CREATE_PLUGIN_PROMPT,

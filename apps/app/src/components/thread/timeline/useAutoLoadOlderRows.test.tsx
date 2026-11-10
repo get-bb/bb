@@ -117,6 +117,20 @@ describe("useAutoLoadOlderRows", () => {
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
   });
 
+  it("starts the next page three viewport heights before the reader reaches the top", () => {
+    const onLoadOlderRows = vi.fn(() => Promise.resolve());
+    const anchor = createBottomAnchor(scrollElementAt(0, 800));
+    const { sentinel } = renderAutoLoad({ anchor, onLoadOlderRows });
+
+    mockElementRect(sentinel, { top: -2_520, bottom: -2_500 });
+    notifyPosition(anchor);
+    expect(onLoadOlderRows).not.toHaveBeenCalled();
+
+    mockElementRect(sentinel, { top: -2_320, bottom: -2_300 });
+    notifyPosition(anchor);
+    expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+  });
+
   it("stays manual with no bottom anchor to keep the reading position", () => {
     const onLoadOlderRows = vi.fn(() => Promise.resolve());
     const { result } = renderAutoLoad({ anchor: null, onLoadOlderRows });

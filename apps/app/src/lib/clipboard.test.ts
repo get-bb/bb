@@ -281,7 +281,11 @@ describe("copyToClipboardWithToast", () => {
       }
     }
     const write = vi.fn(async () => {
-      await Promise.all(Object.values(clipboardData[0] ?? {}));
+      await Promise.all(
+        Object.values(clipboardData[0] ?? {}).map((value) =>
+          Promise.resolve(value),
+        ),
+      );
     });
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("ClipboardItem", TestClipboardItem);
@@ -319,7 +323,11 @@ describe("copyToClipboardWithToast", () => {
   it("writes an attached image when the message has no text", async () => {
     const clipboardData: Record<string, Blob | Promise<Blob>>[] = [];
     const write = vi.fn(async () => {
-      await Promise.all(Object.values(clipboardData[0] ?? {}));
+      await Promise.all(
+        Object.values(clipboardData[0] ?? {}).map((value) =>
+          Promise.resolve(value),
+        ),
+      );
     });
     vi.stubGlobal(
       "ClipboardItem",

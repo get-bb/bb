@@ -327,11 +327,14 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
                 composer.onChangeMessage(event.currentTarget.value, [])
               }
             />
-            <button type="button" onClick={() => composer.onSubmit()}>
+            <button type="button" onClick={() => void composer.onSubmit()}>
               Submit composer
             </button>
             {composer.canModifierSubmit ? (
-              <button type="button" onClick={() => composer.onModifierSubmit()}>
+              <button
+                type="button"
+                onClick={() => void composer.onModifierSubmit()}
+              >
                 Modifier submit
               </button>
             ) : null}

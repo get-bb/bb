@@ -50,10 +50,6 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
-import { appQueryClient } from "./app-query-client";
-import { defaultExperiments } from "@bb/domain";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
@@ -210,7 +206,7 @@ function cssHrefs(pluginId: string): Array<string | null> {
 }
 
 function pluginSheet(pluginId: string, version: string): string {
-  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
+  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
 }
 
 function fireLoad(link: Element | null | undefined): void {
@@ -1327,34 +1323,15 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
-    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
   const sheet = (hash: string) =>
-    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}`;
-
-  it.each([
-    [false, sheet("aaa")],
-    [true, `${sheet("aaa")}&css-scope=owned-root-v1`],
-  ])(
-    "requests the narrow stylesheet only when narrowPluginCss is %s",
-    (narrowPluginCss, href) => {
-      appQueryClient.setQueryData(
-        systemConfigQueryKey(),
-        makeSystemConfig({
-          experiments: { ...defaultExperiments, narrowPluginCss },
-        }),
-      );
-      retainPluginCss("hello");
-      applyPluginCss("hello", "/assets/app.css?h=aaa");
-      expect(cssHrefs("hello")[0]).toBe(href);
-    },
-  );
+    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
 
   it("keeps the same element for an unchanged URL and removes it on null", () => {
     retainPluginCss("hello");
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     const first = cssLinks("hello")[0];
     expect(first?.getAttribute("href")).toBe(sheet("aaa"));
     prefetchPluginCss("/assets/prefetched.css");
@@ -1362,11 +1339,13 @@ describe("applyPluginCss", () => {
       document
         .querySelector("link[data-bb-plugin-css-prefetch]")
         ?.getAttribute("href"),
-    ).toBe(`/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}`);
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    ).toBe(
+      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+    );
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(cssLinks("hello")[0]).toBe(first);
 
-    applyPluginCss("hello", null);
+    void applyPluginCss("hello", null);
     expect(cssLinks("hello")).toHaveLength(0);
   });
 
@@ -1463,7 +1442,7 @@ describe("applyPluginCss", () => {
 
   it("preloads inactive CSS and removes the sheet only after its final consumer releases", async () => {
     vi.useFakeTimers();
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(cssPreloads("hello")).toHaveLength(1);
     expect(cssPreloads("hello")[0]?.fetchPriority).not.toBe("low");
     expect(cssPreloads("hello")[0]?.getAttribute("href")).toBe(sheet("aaa"));
@@ -1488,7 +1467,7 @@ describe("applyPluginCss", () => {
 
   it("keeps the same sheet when a consumer retains within the grace window", async () => {
     vi.useFakeTimers();
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     fireLoad(cssPreloads("hello")[0]);
     const releaseFirst = retainPluginCss("hello");
     const first = cssLinks("hello")[0];
@@ -1512,7 +1491,7 @@ describe("applyPluginCss", () => {
 
   it("reattaches the sheet when its load completes during the grace and a consumer retains", async () => {
     vi.useFakeTimers();
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     fireLoad(cssPreloads("hello")[0]);
     const releaseFirst = retainPluginCss("hello");
     const first = cssLinks("hello")[0];
@@ -1538,12 +1517,12 @@ describe("applyPluginCss", () => {
 
   it("adopts a changed URL that finishes loading during the grace and reuses it on retain", async () => {
     vi.useFakeTimers();
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     fireLoad(cssPreloads("hello")[0]);
     const releaseFirst = retainPluginCss("hello");
     fireLoad(cssLinks("hello")[0]);
 
-    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    void applyPluginCss("hello", "/assets/app.css?h=bbb");
     const fresh = cssLinks("hello")[1];
     expect(fresh?.getAttribute("href")).toBe(sheet("bbb"));
     releaseFirst();
@@ -1565,17 +1544,17 @@ describe("applyPluginCss", () => {
   it("applies a URL that is republished after a flip-flop discarded its in-flight sheet", async () => {
     vi.useFakeTimers();
     retainPluginCss("hello");
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     fireLoad(cssLinks("hello")[0]);
 
-    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    void applyPluginCss("hello", "/assets/app.css?h=bbb");
     const inflight = cssLinks("hello")[1];
     expect(inflight?.getAttribute("href")).toBe(sheet("bbb"));
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     fireLoad(inflight);
     expect(cssHrefs("hello")).toEqual([sheet("aaa")]);
 
-    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    void applyPluginCss("hello", "/assets/app.css?h=bbb");
     expect(cssHrefs("hello")).toEqual([sheet("aaa"), sheet("bbb")]);
     retainPluginCss("hello");
     expect(cssLinks("hello")).toHaveLength(2);
@@ -1588,14 +1567,14 @@ describe("applyPluginCss", () => {
 
   it("removes the sheet at once and cancels the timer when the URL is cleared during the grace", async () => {
     vi.useFakeTimers();
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     fireLoad(cssPreloads("hello")[0]);
     const release = retainPluginCss("hello");
     expect(cssLinks("hello")).toHaveLength(1);
 
     release();
     expect(vi.getTimerCount()).toBe(1);
-    applyPluginCss("hello", null);
+    void applyPluginCss("hello", null);
     expect(cssLinks("hello")).toHaveLength(0);
     expect(cssPreloads("hello")).toHaveLength(0);
     expect(vi.getTimerCount()).toBe(0);
@@ -1607,14 +1586,14 @@ describe("applyPluginCss", () => {
 
   it("swaps to one preload of the new URL when it changes during the grace", async () => {
     vi.useFakeTimers();
-    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
     fireLoad(cssPreloads("hello")[0]);
     const release = retainPluginCss("hello");
     fireLoad(cssLinks("hello")[0]);
     expect(cssLinks("hello")).toHaveLength(1);
 
     release();
-    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    void applyPluginCss("hello", "/assets/app.css?h=bbb");
     expect(cssLinks("hello")).toHaveLength(0);
     const preloadHrefs = () =>
       cssPreloads("hello").map((l) => l.getAttribute("href"));
@@ -1633,7 +1612,7 @@ describe("applyPluginCss", () => {
     const palette = document.getElementById("bb-app-theme");
     expect(palette?.textContent).toBe(paletteCss);
 
-    applyPluginCss("palette-owner", "/assets/app.css?h=palette-owner");
+    void applyPluginCss("palette-owner", "/assets/app.css?h=palette-owner");
     fireLoad(cssPreloads("palette-owner")[0]);
     expect(cssLinks("palette-owner")).toHaveLength(0);
     expect(document.getElementById("bb-app-theme")).toBe(palette);

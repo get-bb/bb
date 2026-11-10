@@ -11,7 +11,9 @@ import {
   markProjectDeleted,
   reorderProject,
   setProjectGitRemoteUrlIfMissing,
+  updateProject,
 } from "../../src/data/projects.js";
+import type { DbNotifier } from "../../src/notifier.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createMigratedConnection } from "../../src/testing.js";
 
@@ -73,6 +75,27 @@ describe("projects", () => {
 
     expect(second.project.id).not.toBe(first.project.id);
     expect(listPublicProjects(db)).toHaveLength(2);
+  });
+
+  it("renames a project and notifies only when the project exists", () => {
+    const { db, host } = setup();
+    const { project } = createProject(db, noopNotifier, {
+      name: "before",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/rename" },
+    });
+    const notified: string[] = [];
+    const notifier: DbNotifier = {
+      ...noopNotifier,
+      notifyProject: (id) => notified.push(id),
+    };
+
+    expect(updateProject(db, notifier, project.id, { name: "after" })).toMatchObject({
+      id: project.id,
+      name: "after",
+    });
+    expect(getProject(db, project.id)?.name).toBe("after");
+    expect(updateProject(db, notifier, "missing-project", { name: "x" })).toBeNull();
+    expect(notified).toEqual([project.id]);
   });
 
   it("sets a git remote anchor only while it is missing", () => {

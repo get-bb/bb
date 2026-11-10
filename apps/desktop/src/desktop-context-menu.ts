@@ -81,6 +81,14 @@ function isWebLink(
   );
 }
 
+async function copyLink(url: string): Promise<void> {
+  try {
+    await clipboard.writeText(url);
+  } catch (error) {
+    console.error("Could not copy link", error);
+  }
+}
+
 function getSpellcheckContextFromParams(
   params: ContextMenuParams,
 ): DesktopContextMenuSpellcheckContext | null {
@@ -140,7 +148,7 @@ export function buildDesktopContextMenuTemplate({
     template.push({
       label: "Copy Link",
       click: () => {
-        clipboard.writeText(params.linkURL);
+        void copyLink(params.linkURL);
       },
     });
     pushSeparatorIfNeeded(template);

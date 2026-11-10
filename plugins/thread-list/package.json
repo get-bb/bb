@@ -26,6 +26,7 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
@@ -53,6 +54,7 @@
     "hono": "4.13.16",
     "jsdom": "^29.1.1",
     "oxlint": "^1.91.0",
+    "oxlint-tsgolint": "^7.0.2006",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sonner": "^1.7.4",

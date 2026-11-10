@@ -51,11 +51,11 @@ function NavigationControls() {
   const navigate = useNavigate();
   return (
     <>
-      <button onClick={() => navigate("/")}>compose</button>
-      <button onClick={() => navigate("/plugins/docs/docs/work/today.md")}>
+      <button onClick={() => void navigate("/")}>compose</button>
+      <button onClick={() => void navigate("/plugins/docs/docs/work/today.md")}>
         plugin
       </button>
-      <button onClick={() => navigate("/threads/thread-1")}>thread</button>
+      <button onClick={() => void navigate("/threads/thread-1")}>thread</button>
     </>
   );
 }
