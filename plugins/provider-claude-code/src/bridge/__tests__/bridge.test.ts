@@ -1231,6 +1231,51 @@ describe("bridge", () => {
     }
   });
 
+  it("lists models with each request's contributed environment", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    queryMock.mockImplementation(() => ({
+      initializationResult: vi.fn().mockResolvedValue({
+        models: [
+          {
+            value: "sonnet",
+            resolvedModel: "claude-sonnet-5",
+            displayName: "Sonnet",
+            description: "Sonnet 5",
+          },
+        ],
+      }),
+      close: vi.fn(),
+    }));
+    const pooled = {
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:1/model-list-env-test",
+      ANTHROPIC_AUTH_TOKEN: "pool-token",
+    };
+
+    try {
+      bridge.sendRequest(1, "model/list", { envVars: pooled });
+      expect((await bridge.waitForResponse(1)).error).toBeUndefined();
+      bridge.sendRequest(2, "model/list", { envVars: pooled });
+      expect((await bridge.waitForResponse(2)).error).toBeUndefined();
+      bridge.sendRequest(3, "model/list", {
+        envVars: { ...pooled, ANTHROPIC_AUTH_TOKEN: "other-token" },
+      });
+      expect((await bridge.waitForResponse(3)).error).toBeUndefined();
+
+      const probeEnvs = queryMock.mock.calls.map(
+        (call) => call[0]?.options.env,
+      );
+      expect(probeEnvs).toEqual([
+        expect.objectContaining(pooled),
+        expect.objectContaining({
+          ...pooled,
+          ANTHROPIC_AUTH_TOKEN: "other-token",
+        }),
+      ]);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("forks a Claude session from the session config directory through the requested checkpoint", async () => {
     const root = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
     tempDirs.push(root);
@@ -3681,7 +3726,7 @@ describe("bridge", () => {
       close,
     });
 
-    await expect(listClaudeCodeBridgeModels()).rejects.toThrow(
+    await expect(listClaudeCodeBridgeModels(process.env)).rejects.toThrow(
       "Claude Code reported no models.",
     );
     expect(close).toHaveBeenCalledOnce();
@@ -3742,7 +3787,7 @@ describe("bridge", () => {
       close,
     });
 
-    await expect(listClaudeCodeBridgeModels()).rejects.toThrow(
+    await expect(listClaudeCodeBridgeModels(process.env)).rejects.toThrow(
       "temporary discovery failure",
     );
     expect(queryMock).toHaveBeenCalledOnce();

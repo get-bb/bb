@@ -20,13 +20,13 @@ function catalog(model: string) {
 }
 
 describe("createClaudeCodeBridgeModelListMemo", () => {
-  it("shares one probe between concurrent asks and reuses it until the window ends", async () => {
+  it("shares one probe per environment between concurrent asks and reuses it until the window ends", async () => {
     let currentTime = 0;
-    let resolveProbe: (value: ReturnType<typeof catalog>) => void = () => {};
+    const probes: Array<(value: ReturnType<typeof catalog>) => void> = [];
     const list = vi.fn(
-      () =>
+      (_envVars: Readonly<Record<string, string>>) =>
         new Promise<ReturnType<typeof catalog>>((resolve) => {
-          resolveProbe = resolve;
+          probes.push(resolve);
         }),
     );
     const listModels = createClaudeCodeBridgeModelListMemo({
@@ -34,22 +34,29 @@ describe("createClaudeCodeBridgeModelListMemo", () => {
       now: () => currentTime,
       ttlMs: 1_000,
     });
+    const pooled = { ANTHROPIC_AUTH_TOKEN: "pool", ANTHROPIC_BASE_URL: "hub" };
 
-    const first = listModels();
-    const second = listModels();
-    expect(list).toHaveBeenCalledTimes(1);
-    resolveProbe(catalog("opus"));
-    await expect(first).resolves.toEqual(catalog("opus"));
-    await expect(second).resolves.toEqual(catalog("opus"));
+    const first = listModels(pooled);
+    const second = listModels({
+      ANTHROPIC_BASE_URL: "hub",
+      ANTHROPIC_AUTH_TOKEN: "pool",
+    });
+    const direct = listModels({});
+    expect(list.mock.calls).toEqual([[pooled], [{}]]);
+    probes[0]?.(catalog("fable"));
+    probes[1]?.(catalog("opus"));
+    await expect(first).resolves.toEqual(catalog("fable"));
+    await expect(second).resolves.toEqual(catalog("fable"));
+    await expect(direct).resolves.toEqual(catalog("opus"));
 
     currentTime = 999;
-    await expect(listModels()).resolves.toEqual(catalog("opus"));
-    expect(list).toHaveBeenCalledTimes(1);
+    await expect(listModels(pooled)).resolves.toEqual(catalog("fable"));
+    expect(list).toHaveBeenCalledTimes(2);
 
     currentTime = 1_000;
-    const refreshed = listModels();
-    expect(list).toHaveBeenCalledTimes(2);
-    resolveProbe(catalog("sonnet"));
+    const refreshed = listModels(pooled);
+    expect(list).toHaveBeenCalledTimes(3);
+    probes[2]?.(catalog("sonnet"));
     await expect(refreshed).resolves.toEqual(catalog("sonnet"));
   });
 });
