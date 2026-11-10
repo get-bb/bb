@@ -756,10 +756,11 @@ async function withRestoreEnvironmentHint(
   if (!parsed.success || parsed.data.details.reason !== "destroyed") {
     return error;
   }
-  const { canRestoreEnvironment } = await sdk.threads.get({ threadId });
+  const thread = await sdk.threads.get({ threadId }).catch(() => null);
+  if (thread === null) return error;
   return new CliExitError(error.message, 1, {
     code: parsed.data.code,
-    hint: canRestoreEnvironment
+    hint: thread.canRestoreEnvironment
       ? `Its workspace was removed. Restore it with \`bb thread restore-environment ${threadId}\`, then send again.`
       : "Its workspace was removed and its environment provider cannot restore it. Start a new thread to continue.",
   });

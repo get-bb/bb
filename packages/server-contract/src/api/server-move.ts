@@ -139,3 +139,30 @@ export const deleteOldServerCopyResponseSchema = z
 export type DeleteOldServerCopyResponse = z.infer<
   typeof deleteOldServerCopyResponseSchema
 >;
+
+const oldServerCopyDeleteJobFields = {
+  id: z.string().min(1),
+  hostId: z.string().min(1),
+};
+export const oldServerCopyDeleteJobSchema = z.discriminatedUnion("state", [
+  z.object({ ...oldServerCopyDeleteJobFields, state: z.literal("running") }),
+  z.object({
+    ...oldServerCopyDeleteJobFields,
+    state: z.literal("completed"),
+    deleted: z.boolean(),
+  }),
+  z.object({
+    ...oldServerCopyDeleteJobFields,
+    state: z.literal("failed"),
+    error: z.string(),
+  }),
+]);
+export type OldServerCopyDeleteJob = z.infer<
+  typeof oldServerCopyDeleteJobSchema
+>;
+export const oldServerCopyDeleteJobResponseSchema = z.object({
+  job: oldServerCopyDeleteJobSchema,
+});
+export type OldServerCopyDeleteJobResponse = z.infer<
+  typeof oldServerCopyDeleteJobResponseSchema
+>;

@@ -13,10 +13,10 @@
       "types": "./src/internal-environment-lifecycle.ts",
       "default": "./src/internal-environment-lifecycle.ts"
     },
-    "./query-plan-guard": {
-      "source": "./src/query-plan-guard.ts",
-      "types": "./src/query-plan-guard.ts",
-      "default": "./src/query-plan-guard.ts"
+    "./query-plan-test-guard": {
+      "source": "./src/query-plan-test-guard.ts",
+      "types": "./src/query-plan-test-guard.ts",
+      "default": "./src/query-plan-test-guard.ts"
     },
     "./testing": {
       "source": "./src/testing.ts",
@@ -31,10 +31,12 @@
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run --config vitest.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "check:query-plan-allowlist": "tsx scripts/check-query-plan-allowlist.ts"
+    "check:query-plan-report": "tsx scripts/check-query-plan-report.ts",
+    "list:query-functions": "tsx scripts/list-query-functions.ts"
   },
   "dependencies": {
     "@bb/config": "workspace:*",
@@ -49,6 +51,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.20.5",
     "drizzle-kit": "^0.31.11",
+    "esbuild": "^0.28.2",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.12"

@@ -2246,15 +2246,21 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 `Dropping stale steer for thread "${threadId}": ${error.recovery.message}`,
                 threadId,
               );
-              turnState.clearThread(threadId);
-              return { status: "stale", activeTurnId: null };
+              turnState.clearStaleTurn(threadId, expectedTurnId);
+              return {
+                status: "stale",
+                activeTurnId: turnState.getActiveTurnId(threadId),
+              };
             }
             if (
               error instanceof JsonRpcResponseError &&
               error.code === BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN
             ) {
-              turnState.clearThread(threadId);
-              return { status: "stale", activeTurnId: null };
+              turnState.clearStaleTurn(threadId, expectedTurnId);
+              return {
+                status: "stale",
+                activeTurnId: turnState.getActiveTurnId(threadId),
+              };
             }
             if (error instanceof JsonRpcRequestTimeoutError) {
               options.onStderr?.(

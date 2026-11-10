@@ -201,7 +201,7 @@ function remember<V>(
   key: string,
   value: V,
   limit: number,
-): V {
+): void {
   map.delete(key);
   map.set(key, value);
   while (map.size > limit) {
@@ -209,7 +209,6 @@ function remember<V>(
     if (oldest.done === true) break;
     map.delete(oldest.value);
   }
-  return value;
 }
 
 function cachedRead<T>(

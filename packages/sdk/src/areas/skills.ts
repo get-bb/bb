@@ -3,7 +3,7 @@ import {
   registrySkillEntriesRequestSchema,
   registrySkillEntriesResponseSchema,
   registrySkillInstallRequestSchema,
-  registrySkillInstallResponseSchema,
+  registrySkillInstallJobResponseSchema,
   registryRepositoryStarsSchema,
   registrySkillSchema,
   registrySkillsPageSchema,
@@ -18,6 +18,7 @@ import {
   type SkillFilesResponse,
   type SkillListResponse,
 } from "@bb/server-contract";
+import { waitForJob } from "../job-wait.js";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface SkillWorkspaceArgs {
@@ -156,14 +157,33 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
     },
     async install(input) {
       const body = registrySkillInstallRequestSchema.parse(input);
-      return requestParsed(
-        "/api/v1/skills-registry/install",
-        registrySkillInstallResponseSchema,
+      const path = "/api/v1/skills-registry/install-jobs";
+      const { job: started } = await requestParsed(
+        path,
+        registrySkillInstallJobResponseSchema,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         },
+      );
+      const job = await waitForJob({
+        job: started,
+        isActive: (current) => current.state === "running",
+        read: async () =>
+          (
+            await requestParsed(
+              `${path}/${encodeURIComponent(started.id)}`,
+              registrySkillInstallJobResponseSchema,
+            )
+          ).job,
+        intervalMs: 1_000,
+      });
+      if (job.state === "completed") {
+        return { ok: true, filePath: job.filePath };
+      }
+      throw new Error(
+        job.state === "failed" ? job.error : "Skill install did not finish",
       );
     },
     async repositoryStars(input) {

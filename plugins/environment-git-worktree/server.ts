@@ -12,6 +12,7 @@ import { reportHostProgress } from "bb-environment-provider-host/progress";
 import { z } from "zod";
 import {
   discoveredWorktreeSchema,
+  ownedBranchSchema,
   worktreeBaseBranchSchema,
   worktreeHostContract,
   worktreeHostSignals,
@@ -72,13 +73,17 @@ export const worktreeRpcContract = defineRpcContract({
 
 const ADOPTED_RESOURCE = { adopted: true } as const;
 
-function isAdoptedResource(resource: JsonValue | null): boolean {
-  return (
-    typeof resource === "object" &&
-    resource !== null &&
-    !Array.isArray(resource) &&
-    resource.adopted === true
-  );
+const worktreeResourceSchema = z.union([
+  z.object({ adopted: z.literal(true) }).strict(),
+  z.object({ ownedBranch: ownedBranchSchema }).strict(),
+]);
+type WorktreeResource = z.infer<typeof worktreeResourceSchema>;
+
+function parseWorktreeResource(
+  resource: JsonValue | null,
+): WorktreeResource | null {
+  const parsed = worktreeResourceSchema.safeParse(resource);
+  return parsed.success ? parsed.data : null;
 }
 
 function errorMessage(error: unknown): string {
@@ -162,6 +167,17 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         ...(result.baseBranch === null
           ? {}
           : { mergeBaseBranch: result.baseBranch }),
+        ...(result.ownsBranch
+          ? {
+              resource: {
+                ownedBranch: {
+                  name: branch.branchName,
+                  repositoryPath: context.projectCheckout.path,
+                  baseBranch: result.baseBranch,
+                },
+              },
+            }
+          : {}),
       };
     } catch (error) {
       if (context.signal.aborted) throw error;
@@ -210,7 +226,8 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       });
     },
     async remove(context) {
-      if (isAdoptedResource(context.resource)) {
+      const resource = parseWorktreeResource(context.resource);
+      if (resource !== null && "adopted" in resource) {
         return { status: "removed" };
       }
       if (context.hostId === null) {
@@ -225,6 +242,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             operationId,
             pathKey: context.pathKey,
             path: context.path,
+            ownedBranch: resource?.ownedBranch ?? null,
           },
           {
             hostId: context.hostId,

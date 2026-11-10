@@ -110,7 +110,9 @@ describe("command palette guide interaction", () => {
         ?.getAttribute("aria-selected"),
     ).toBe("true");
 
-    act(() => vi.advanceTimersByTime(2400));
+    act(() => {
+      vi.advanceTimersByTime(2400);
+    });
     expect(
       container.querySelector('[data-guide-fixture="command-palette-overlay"]'),
     ).not.toBeNull();

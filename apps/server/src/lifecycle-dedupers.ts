@@ -1,7 +1,5 @@
 import {
-  createAsyncDeduper,
   createAsyncRerunner,
-  type AsyncDeduper,
   type AsyncRerunner,
 } from "./services/lib/async-deduper.js";
 import {
@@ -13,7 +11,7 @@ import {
 
 export interface LifecycleDedupers {
   providerModelCatalogs: ProviderModelCatalogStore;
-  queuedMessageDispatch: AsyncDeduper<string, void>;
+  queuedMessageDispatch: AsyncRerunner<string>;
   threadProvisionAdvance: AsyncRerunner<string>;
 }
 
@@ -24,7 +22,7 @@ export function createLifecycleDedupers(): LifecycleDedupers {
       pushCoalesceMs: PROVIDER_MODEL_CATALOG_PUSH_COALESCE_MS,
       memoryEntryLimit: PROVIDER_MODEL_CATALOG_MEMORY_ENTRY_LIMIT,
     }),
-    queuedMessageDispatch: createAsyncDeduper<string, void>(),
+    queuedMessageDispatch: createAsyncRerunner<string>(),
     threadProvisionAdvance: createAsyncRerunner<string>(),
   };
 }

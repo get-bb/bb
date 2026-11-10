@@ -1,7 +1,7 @@
 # CI performance
 
 The main CI workflow keeps build, lint/typecheck, two server test shards, eight app test
-shards, integration tests, three package test groups, two plugin test groups, three fork
+shards, integration tests, three package test groups, two plugin test groups, two fork
 check shards, and package smokes independent. Node 24/26 compatibility smokes run on
 main and manual runs. Windows runs the nine host packages, an app smoke, a desktop
 smoke, and thirteen test shards that cover the remaining suites; see
@@ -27,7 +27,11 @@ Frontend build configuration retains Windows checks. Changes to desktop,
 packaged-app, SDK, template, or plugin-bundling code retain package smokes on
 PRs. Provider changes retain the live provider listing check. App/web-only
 changes skip standalone plugin fork checks; shared UI and plugin changes can
-still select them through the task graph. Selected checks remain blocking.
+still select them through the task graph. After the Linux test shards finish,
+`Query functions run in tests` reads the query functions `@bb/db` and
+`@bb/server` tests recorded and checks the ones in data files the PR changed;
+it installs nothing and runs only on pull requests. Selected checks remain
+blocking.
 
 PRs changing only `docs/ci-performance.md`, `docs/windows-ci.md`,
 `docs/debugging-and-qa.md`, `docs/filing-issues.md`, or
@@ -58,11 +62,11 @@ merge's first parent; pushes fetch all branches and tags.
 
 ## Fork checks
 
-The Plugin Fork Check runs in three shards. On pull requests it checks only
-the forkable plugins a change touches. Within each shard, Pi and Tasks start
-first because their longer checks otherwise extend the tail after shorter
-forks finish. CI caps each fork's Vitest at two workers while retaining
-four concurrent forks; see
+The Plugin Fork Check runs in two shards on 8-vCPU Linux runners. On pull
+requests it checks only the forkable plugins a change touches. Within each
+shard, Pi, Tasks, and Codex start first because their longer checks otherwise
+extend the tail after shorter forks finish. CI caps each fork's Vitest at
+two workers while running up to eight concurrent forks; see
 [forkable-plugins.md](forkable-plugins.md) for selection and local commands.
 
 Each selected fork resolves a fresh package lock with lifecycle scripts
@@ -622,13 +626,11 @@ The build job builds and checks the plugin SDK's published version before the
 remaining build tasks. Those later tasks reuse its Turbo outputs. A version
 mismatch therefore fails earlier without relaxing the published-content guard.
 
-The AppImage FUSE installer (`.github/actions/install-appimage-fuse`) skips an
-already-installed runtime and otherwise uses isolated apt indexes without
-rewriting the runner's global apt configuration. It requires a successful index
-refresh and tries Ubuntu's archive and then the kernel.org mirror on
-amd64/i386, or Ubuntu Ports on other architectures. Index and download failures
-move to the next mirror; exhausting them is a blocking failure. Desktop and
-release packaging use the same installer.
+AppImage toolset `1.0.3` supplies a static runtime, so CI and release packaging
+use the runner's existing FUSE device without installing legacy FUSE 2 packages.
+The AppImage lifecycle smoke still requires real mounts and disables extraction
+fallback. Avoid restoring the obsolete apt setup: downloading full Ubuntu indexes
+added minutes to packaging and could time out before any build started.
 
 The boot smoke waits for the host daemon to connect after the server and plugins
 are ready; these are independent startup milestones. It clears its shutdown

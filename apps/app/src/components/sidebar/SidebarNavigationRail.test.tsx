@@ -597,16 +597,24 @@ describe("Rail", () => {
     vi.useFakeTimers();
     renderRail(THREAD_PATH, { isCompactViewport: true, useLayout: true });
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
-    act(() => vi.advanceTimersByTime(250));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "1 update available" }));
-    act(() => vi.advanceTimersByTime(250));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
     fireEvent.click(screen.getByRole("link", { name: "Details" }));
     expect(pathname()).toBe(`${SETTINGS_ROUTE_PATH}/updates`);
-    act(() => vi.advanceTimersByTime(250));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
-    act(() => vi.advanceTimersByTime(250));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
     fireEvent.click(railButton("Home"));
 
     expect(pathname()).toBe(THREAD_PATH);

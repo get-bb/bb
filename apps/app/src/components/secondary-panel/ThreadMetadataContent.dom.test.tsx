@@ -43,10 +43,14 @@ describe("ThreadMetadataCard", () => {
     fireEvent.scroll(scrollArea);
     expect(scrollArea.dataset.scrollbarScrolling).toBe("true");
 
-    act(() => vi.advanceTimersByTime(599));
+    act(() => {
+      vi.advanceTimersByTime(599);
+    });
     expect(scrollArea.dataset.scrollbarScrolling).toBe("true");
 
-    act(() => vi.advanceTimersByTime(1));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
   });
 });

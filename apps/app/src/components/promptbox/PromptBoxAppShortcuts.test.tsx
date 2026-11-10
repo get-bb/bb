@@ -174,7 +174,9 @@ describe("prompt editor app shortcuts", () => {
       window.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Control", ctrlKey: true }),
       );
-      act(() => vi.advanceTimersByTime(700));
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
       expect(screen.getByText("hint-held")).toBeDefined();
 
       act(() => {

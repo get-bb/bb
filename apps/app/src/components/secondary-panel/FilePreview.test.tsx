@@ -929,7 +929,9 @@ describe("FilePreview", () => {
     if (!(scrollBox instanceof HTMLElement)) throw new Error("no scroll box");
     scrollBox.scrollTop = 499 * CSV_TEST_ROW_HEIGHT_PX;
     fireEvent.scroll(scrollBox);
-    act(() => vi.runOnlyPendingTimers());
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
     expect(screen.getByText("r499c0")).not.toBeNull();
     expect(screen.queryByText("r0c0")).toBeNull();
     expect(table.querySelectorAll("tbody tr[data-index]").length).toBeLessThan(
@@ -1350,7 +1352,9 @@ describe("FilePreview", () => {
       />,
     );
     expect(screen.queryByRole("status")).toBeNull();
-    act(() => vi.advanceTimersByTime(200));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     const loadingStatus = screen.getByRole("status");
     expect(loadingStatus.textContent).toBe("Loading preview…");
     view.rerender(preview("first"));
@@ -1360,18 +1364,24 @@ describe("FilePreview", () => {
     expect(screen.queryByRole("status")).toBeNull();
     fireEvent.load(frame);
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    act(() => vi.advanceTimersByTime(200));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByTitle("Gallery")).toBe(frame);
 
     view.rerender(preview("second"));
-    act(() => vi.advanceTimersByTime(200));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     expect(screen.getByRole("status")).toBeTruthy();
     fireEvent.load(screen.getByTitle("Gallery"));
     expect(screen.queryByRole("status")).toBeNull();
 
     view.rerender(preview("second", "/gallery.html?retry=1"));
-    act(() => vi.advanceTimersByTime(200));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     expect(screen.getByRole("status")).toBeTruthy();
     fireEvent.load(screen.getByTitle("Gallery"));
     expect(screen.queryByRole("status")).toBeNull();

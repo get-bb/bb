@@ -47,6 +47,7 @@ import { createAppVersionService } from "./services/system/app-version.js";
 import { createLauncherChannel } from "./services/system/launcher-channel.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startGatedPerformanceDiagnostics } from "./services/system/performance-diagnostics.js";
+import { createGatedQueryPlanObserver } from "./services/system/query-plan-audit.js";
 import { startGatedWalCheckpointer } from "./services/system/wal-checkpoint-experiment.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
@@ -142,6 +143,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const db = initDb(serverConfig.databasePath, {
     slowQueryThresholdMs: () => (diagnosticsEnabled() ? 25 : 100),
     slowQueryDiagnosticsEnabled: () => diagnosticsEnabled(),
+    queryPlanObserver: createGatedQueryPlanObserver({
+      databasePath: serverConfig.databasePath,
+      enabled: () => serverConfig.BB_QUERY_PLAN_AUDIT || diagnosticsEnabled(),
+      logger,
+    }),
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
   });

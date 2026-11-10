@@ -1,6 +1,9 @@
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
-import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
+import {
+  admitAfterPathClaimsSettle,
+  assertEnvironmentPathAvailable,
+} from "../environments/path-admission.js";
 import { markThreadDeleted, getEnvironment, getThread } from "@bb/db";
 import {
   describeSessionOptionConflict,
@@ -457,7 +460,9 @@ async function createPendingThreadAndAttemptFirstDispatch(
       ? null
       : getEnvironment(deps.db, args.environmentId);
   if (environment !== null)
-    assertEnvironmentPathAvailable(deps, { ...environment, threadId: null });
+    await admitAfterPathClaimsSettle(deps, () =>
+      assertEnvironmentPathAvailable(deps, { ...environment, threadId: null }),
+    );
   if (args.request.sourceThreadId) {
     requireLiveSourceThread(deps, {
       projectId: args.request.projectId,

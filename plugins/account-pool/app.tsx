@@ -995,12 +995,12 @@ function AccountPoolSettings() {
         } else if (result.status === "error") {
           setCodexStep(null);
           setError(result.message);
-        } else timer = setTimeout(poll, codexStep.intervalMs);
+        } else timer = setTimeout(() => void poll(), codexStep.intervalMs);
       } catch (pollError) {
         if (!cancelled) setError(errorText(pollError));
       }
     };
-    timer = setTimeout(poll, codexStep.intervalMs);
+    timer = setTimeout(() => void poll(), codexStep.intervalMs);
     return () => {
       cancelled = true;
       if (timer !== null) clearTimeout(timer);

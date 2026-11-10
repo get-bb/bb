@@ -69,10 +69,10 @@ export function createThreadMutationBatcher(
           : undefined;
     } catch (error) {
       await Promise.all(
-        batch.map((request) =>
+        batch.flatMap((request) =>
           request.operation === "update"
-            ? undefined
-            : request.acknowledge(Promise.reject(error)),
+            ? []
+            : [request.acknowledge(Promise.reject(error))],
         ),
       );
       for (const request of batch) request.reject(error);
@@ -94,14 +94,16 @@ export function createThreadMutationBatcher(
       }),
     );
     const failure = results.find((result) => result.status === "rejected");
-    const acknowledged = batch.map((request, index) => {
-      if (request.operation === "update") return undefined;
+    const acknowledged = batch.flatMap((request, index) => {
+      if (request.operation === "update") return [];
       const result = results[index]!;
-      return request.acknowledge(
-        failure === undefined && result.status === "fulfilled"
-          ? Promise.resolve(result.value)
-          : Promise.reject(failure?.reason),
-      );
+      return [
+        request.acknowledge(
+          failure === undefined && result.status === "fulfilled"
+            ? Promise.resolve(result.value)
+            : Promise.reject(failure?.reason),
+        ),
+      ];
     });
     if (failure === undefined) {
       applyThreadMetadataBatchResult({

@@ -34,7 +34,7 @@ function NavigationProbe() {
         {location.search}
         {location.hash}
       </output>
-      <button onClick={() => navigate(-1)}>Back</button>
+      <button onClick={() => void navigate(-1)}>Back</button>
     </>
   );
 }

@@ -1612,7 +1612,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         try {
           database.close();
         } catch {}
-        return deps.walCheckpointer?.detach(database);
+        return deps.walCheckpointer?.detach(database) ?? Promise.resolve();
       });
     candidate.released.abort();
     candidate.handle.invalidate();

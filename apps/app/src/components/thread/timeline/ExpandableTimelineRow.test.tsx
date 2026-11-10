@@ -48,6 +48,8 @@ it("settles a refreshed automatic group without retaining or animating its stale
   expect(region.style.transitionDuration).toBe("");
   fireEvent.click(screen.getByRole("button", { name: "Commands" }));
   expect(screen.getByText("Three completed commands")).toBeTruthy();
-  act(() => vi.advanceTimersByTime(200));
+  act(() => {
+    vi.advanceTimersByTime(200);
+  });
   expect(screen.queryByText("Three completed commands")).toBeNull();
 });

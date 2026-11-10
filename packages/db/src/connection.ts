@@ -30,11 +30,16 @@ export interface DbSynchronousWorkTracker {
   record(label: () => string, durationMs: number, cpuMs: number): void;
 }
 
+export interface QueryPlanExecutionObserver {
+  observeFirstExecution(source: string, params: readonly unknown[]): void;
+}
+
 export interface CreateConnectionOptions {
   slowQueryLogger?: SlowDbQueryLogger;
   synchronousWorkTracker?: DbSynchronousWorkTracker;
   slowQueryThresholdMs?: number | (() => number);
   slowQueryDiagnosticsEnabled?: () => boolean;
+  queryPlanObserver?: () => QueryPlanExecutionObserver | null;
 }
 
 export type DbConnection = ReturnType<typeof createConnection>;
@@ -119,6 +124,7 @@ interface SlowDbQueryConfig {
   sampleWal: () => QueryDiagnosticsLogFields["wal"];
   diagnosticsEnabled: () => boolean;
   tracker: DbSynchronousWorkTracker | null;
+  queryPlanObserver: () => QueryPlanExecutionObserver | null;
 }
 
 interface TimedStatementOperationArgs<TValue> {
@@ -259,6 +265,7 @@ function instrumentStatement(
 
   statement.all = (...params) => {
     noteTransactionStatement(config, source, writes);
+    config.queryPlanObserver()?.observeFirstExecution(source, params);
     return runTimedStatementOperation({
       bindingArgumentCount: params.length,
       config,
@@ -269,6 +276,7 @@ function instrumentStatement(
   };
   statement.get = (...params) => {
     noteTransactionStatement(config, source, writes);
+    config.queryPlanObserver()?.observeFirstExecution(source, params);
     return runTimedStatementOperation({
       bindingArgumentCount: params.length,
       config,
@@ -279,6 +287,7 @@ function instrumentStatement(
   };
   statement.run = (...params) => {
     noteTransactionStatement(config, source, writes);
+    config.queryPlanObserver()?.observeFirstExecution(source, params);
     return runTimedStatementOperation({
       bindingArgumentCount: params.length,
       config,
@@ -295,7 +304,11 @@ function instrumentSqliteClient(
   sqlite: Database.Database,
   options: CreateConnectionOptions,
 ): void {
-  if (!options.slowQueryLogger && !options.synchronousWorkTracker) {
+  if (
+    !options.slowQueryLogger &&
+    !options.synchronousWorkTracker &&
+    !options.queryPlanObserver
+  ) {
     return;
   }
 
@@ -309,6 +322,7 @@ function instrumentSqliteClient(
       sqlite.memory ? null : `${resolve(sqlite.name)}-wal`,
     ),
     diagnosticsEnabled: options.slowQueryDiagnosticsEnabled ?? (() => false),
+    queryPlanObserver: options.queryPlanObserver ?? (() => null),
   };
   const originalExec = sqlite.exec.bind(sqlite);
   sqlite.exec = (source) =>

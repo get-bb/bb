@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
 import {
+  registrySkillInstallJobResponseSchema,
   skillContentResponseSchema,
   skillFilesResponseSchema,
   skillListResponseSchema,
@@ -1078,6 +1079,48 @@ describe("public project skills route", () => {
         packageRef: "vercel-labs/skills",
         registrySkillId: "github.com/vercel-labs/skills/find-skills",
         skillId: "find-skills",
+      });
+    });
+  });
+
+  it("runs a registry install as a job that outlives its request", async () => {
+    await withTestHarness(async (harness) => {
+      const filePath = "/data/skills/find-skills/SKILL.md";
+      installServerRegistrySkillMock.mockResolvedValueOnce({ filePath });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              registryHtml({
+                source: "github.com/vercel-labs/skills",
+                skillId: "find-skills",
+              }),
+              { status: 200 },
+            ),
+        ),
+      );
+      const registrySkillId = "github.com/vercel-labs/skills/find-skills";
+
+      const started = await harness.app.request(
+        "/api/v1/skills-registry/install-jobs",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ registrySkillId }),
+        },
+      );
+      expect(started.status).toBe(202);
+      const { job } = registrySkillInstallJobResponseSchema.parse(
+        await readJson(started),
+      );
+      await vi.waitFor(async () => {
+        const current = await harness.app.request(
+          `/api/v1/skills-registry/install-jobs/${job.id}`,
+        );
+        expect(await readJson(current)).toEqual({
+          job: { id: job.id, registrySkillId, state: "completed", filePath },
+        });
       });
     });
   });

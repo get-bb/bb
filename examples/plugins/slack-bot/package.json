@@ -19,12 +19,15 @@
     "bb-plugin"
   ],
   "scripts": {
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../../.oxlintrc.type-aware.json"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.20.5",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.12"
+    "vitest": "^4.1.12",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929"
   }
 }

@@ -78,7 +78,7 @@ function CopyForAgent({
       type="button"
       className={`btn gd-copy ${className}`}
       onClick={() => {
-        copy();
+        void copy();
         trackLandingEvent({
           name: "guide_prompt_copied",
           properties: { guide, placement },

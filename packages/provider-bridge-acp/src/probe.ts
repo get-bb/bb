@@ -80,7 +80,11 @@ export async function probeAcpAgent(
   } catch (error) {
     return { reachable: false, reason: describe(error) };
   } finally {
-    connected.kill();
+    void connected.kill().catch((error: unknown) => {
+      process.stderr.write(
+        `acp probe: stopping "${request.command}" failed: ${describe(error)}\n`,
+      );
+    });
   }
 }
 

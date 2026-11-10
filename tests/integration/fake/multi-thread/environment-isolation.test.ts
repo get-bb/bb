@@ -166,7 +166,7 @@ describe.sequential("fake provider environment-isolation multi-thread integratio
   );
 
   it("isolates concurrent work across separate environments", () =>
-    withHarness(async (harness) => {
+    withHarness({ builtinPlugins: ["git"] }, async (harness) => {
       const secondRepoDir = await createTestGitRepo({
         repoDir: path.join(path.dirname(harness.repoDir), "second-project"),
       });

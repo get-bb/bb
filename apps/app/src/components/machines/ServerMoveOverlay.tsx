@@ -178,7 +178,7 @@ export function ServerMoveOverlay({
     const params = new URLSearchParams(location.search);
     params.delete(SERVER_MOVE_ARRIVAL_PARAM);
     const search = params.toString();
-    navigate(
+    void navigate(
       {
         pathname: location.pathname,
         search: search.length === 0 ? "" : `?${search}`,

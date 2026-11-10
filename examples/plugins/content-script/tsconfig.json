@@ -2,7 +2,9 @@
   "extends": "@bb/tsconfig/base.json",
   "compilerOptions": {
     "lib": ["DOM", "ES2022"],
+    "rootDir": ".",
+    "allowArbitraryExtensions": true,
     "noEmit": true
   },
-  "include": ["app.ts", "server.ts"]
+  "include": ["app.ts", "app.d.css.ts", "server.ts"]
 }

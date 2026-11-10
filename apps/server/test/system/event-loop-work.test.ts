@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setTimeout as delay } from "node:timers/promises";
 import { eq } from "drizzle-orm";
 import { hosts, type DbConnection } from "@bb/db";
@@ -45,6 +45,28 @@ function slowHostRename(db: DbConnection): void {
   );
 }
 
+function stubThreadCpuClock(): {
+  advance: (usage: NodeJS.CpuUsage) => void;
+  restore: () => void;
+} {
+  const elapsed: NodeJS.CpuUsage = { user: 0, system: 0 };
+  const spy = vi
+    .spyOn(process, "threadCpuUsage")
+    .mockImplementation((previous?: NodeJS.CpuUsage) => ({
+      user: elapsed.user - (previous?.user ?? 0),
+      system: elapsed.system - (previous?.system ?? 0),
+    }));
+  return {
+    advance(usage) {
+      elapsed.user += usage.user;
+      elapsed.system += usage.system;
+    },
+    restore() {
+      spy.mockRestore();
+    },
+  };
+}
+
 describe("event loop work attribution", () => {
   let db: DbConnection;
 
@@ -60,7 +82,15 @@ describe("event loop work attribution", () => {
   });
 
   it("names the slow transaction inside a trivial daemon message by its first write", () => {
-    runEventLoopWorkSync("ws:daemon heartbeat", () => slowHostRename(db));
+    const threadCpuClock = stubThreadCpuClock();
+    try {
+      runEventLoopWorkSync("ws:daemon heartbeat", () => {
+        threadCpuClock.advance({ user: 3_000, system: 1_000 });
+        slowHostRename(db);
+      });
+    } finally {
+      threadCpuClock.restore();
+    }
 
     const snapshot = takeEventLoopWorkWindowSnapshot();
 
@@ -71,7 +101,7 @@ describe("event loop work attribution", () => {
     expect(snapshot.longestSynchronousWorkWallMs).toBeGreaterThanOrEqual(
       BLOCK_MS - 5,
     );
-    expect(snapshot.longestSynchronousWorkCpuMs).toBeLessThan(BLOCK_MS / 2);
+    expect(snapshot.longestSynchronousWorkCpuMs).toBe(4);
     expect(snapshot.longestSynchronousWorkVoluntaryContextSwitches).toEqual(
       expect.any(Number),
     );

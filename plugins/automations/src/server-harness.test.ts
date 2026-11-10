@@ -20,6 +20,30 @@ import {
   type AutomationRunResponse,
 } from "./rpc-types.js";
 
+function observeCompletedRun(host: FakePluginHost, automationId: string) {
+  const { harness } = host;
+  const publish = host.bb.realtime.publish.bind(host.bb.realtime);
+  const publishSpy = vi.spyOn(host.bb.realtime, "publish");
+  const completedRun = new Promise<AutomationRunResponse>((resolve, reject) => {
+    publishSpy.mockImplementation((...args) => {
+      publish(...args);
+      void harness
+        .callRpc("automations_runs", {
+          projectId: PROJECT_ID,
+          automationId,
+        })
+        .then((result) => {
+          const { runs } = automationRunListResponseSchema.parse(result);
+          if (runs[0] !== undefined && runs[0].status !== "running") {
+            resolve(runs[0]);
+          }
+        })
+        .catch(reject);
+    });
+  });
+  return { completedRun, stop: () => publishSpy.mockRestore() };
+}
+
 function storedScriptPathPattern(automationId: string): RegExp {
   const suffix = join(sep, "scripts", automationId, "script.sh");
   return new RegExp(`${suffix.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`);
@@ -1770,27 +1794,7 @@ describe("automations server plugin harness", () => {
     let primaryHostId: string | null = null;
     harness.sdk.stub("system.config", () => ({ primaryHostId }));
     const initialCalls = harness.sdk.callsTo("system.config").length;
-    const publish = host.bb.realtime.publish.bind(host.bb.realtime);
-    const publishSpy = vi.spyOn(host.bb.realtime, "publish");
-    const completedRun = new Promise<AutomationRunResponse>(
-      (resolve, reject) => {
-        publishSpy.mockImplementation((...args) => {
-          publish(...args);
-          void harness
-            .callRpc("automations_runs", {
-              projectId: PROJECT_ID,
-              automationId: automation.id,
-            })
-            .then((result) => {
-              const { runs } = automationRunListResponseSchema.parse(result);
-              if (runs[0] !== undefined && runs[0].status !== "running") {
-                resolve(runs[0]);
-              }
-            })
-            .catch(reject);
-        });
-      },
-    );
+    const { completedRun, stop } = observeCompletedRun(host, automation.id);
     const service = harness.runService("automation-sweep");
     try {
       await vi.waitFor(() =>
@@ -1812,17 +1816,18 @@ describe("automations server plugin harness", () => {
     } finally {
       service.controller.abort();
       await service.done;
-      publishSpy.mockRestore();
+      stop();
       await harness.dispose();
     }
   });
 
   it("points a script's bb calls at the server the plugin runs in", async () => {
-    const { harness } = await bootAutomationsPlugin(
+    const host = await bootAutomationsPlugin(
       undefined,
       undefined,
       "http://127.0.0.1:48886",
     );
+    const { harness } = host;
     const created = await harness.runCli([
       "create",
       "--project",
@@ -1844,24 +1849,23 @@ describe("automations server plugin harness", () => {
       JSON.parse(created.stdout!),
     );
 
-    await harness.callRpc("automations_run", {
-      projectId: PROJECT_ID,
-      automationId: automation.id,
-    });
-    await vi.waitFor(async () => {
-      const { runs } = automationRunListResponseSchema.parse(
-        await harness.callRpc("automations_runs", {
+    const { completedRun, stop } = observeCompletedRun(host, automation.id);
+    try {
+      const started = automationRunRpcResponseSchema.parse(
+        await harness.callRpc("automations_run", {
           projectId: PROJECT_ID,
           automationId: automation.id,
         }),
       );
-      expect(runs[0]).toMatchObject({
+      expect(await completedRun).toMatchObject({
+        id: started.run.id,
         status: "succeeded",
         output: expect.stringMatching(/(?:^|\n)http:\/\/127\.0\.0\.1:48886$/),
       });
-    });
-
-    await harness.dispose();
+    } finally {
+      stop();
+      await harness.dispose();
+    }
   });
 
   it("dispatches a due agent automation from one sweep tick and closes it from thread.idle", async () => {

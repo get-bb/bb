@@ -38,6 +38,7 @@ interface ProviderCliInstallJob {
   hostId: string;
   issue: ProviderCliActionableIssue;
   onboardingEntry?: OnboardingEntry;
+  serverJobId?: string;
 }
 
 export type ProviderCliInstallFailureKind = "command" | "interrupted";
@@ -92,6 +93,7 @@ const INITIAL_SNAPSHOT: ProviderCliInstallSnapshot = {
 
 let snapshot: ProviderCliInstallSnapshot = INITIAL_SNAPSHOT;
 let queuedJobs: ProviderCliInstallJob[] = [];
+let trackedServerJobIds = new Set<string>();
 let queryClient: QueryClient | null = null;
 const listeners = new Set<() => void>();
 
@@ -168,7 +170,8 @@ function describeInstallRequestFailure(error: unknown): {
   const connectionLost =
     httpError === null
       ? error instanceof TypeError || error instanceof BbRequestTimeoutError
-      : CONNECTION_LOST_HTTP_STATUSES.has(httpError.status);
+      : CONNECTION_LOST_HTTP_STATUSES.has(httpError.status) ||
+        httpError.code === "provider_cli_install_job_not_found";
   if (connectionLost) {
     return {
       kind: "interrupted",
@@ -296,8 +299,7 @@ function runInstall(job: ProviderCliInstallJob): void {
   let completedEvent: ProviderCliInstallCompletedEvent | null = null;
   let errorMessage: string | null = null;
 
-  void sdk.hosts
-    .installProviderCli({ hostId, provider, actionKind: action.kind })
+  void runServerInstall(job)
     .then((events) => {
       for (const event of events) {
         if (event.provider !== provider) {
@@ -366,6 +368,31 @@ function runInstall(job: ProviderCliInstallJob): void {
     });
 }
 
+async function runServerInstall(
+  job: ProviderCliInstallJob,
+): Promise<ProviderCliInstallEvent[]> {
+  const { hostId, issue } = job;
+  const jobId =
+    job.serverJobId ??
+    (
+      await sdk.hosts.experimental_startProviderCliInstall({
+        hostId,
+        provider: issue.provider,
+        actionKind: issue.action.kind,
+      })
+    ).id;
+  trackedServerJobIds.add(jobId);
+  const settled = await sdk.hosts.experimental_providerCliInstallJobs.wait({
+    hostId,
+    jobId,
+  });
+  if (settled.state === "running") {
+    throw new Error("Provider CLI install did not finish");
+  }
+  if (settled.state === "failed") throw new Error(settled.error);
+  return settled.events;
+}
+
 function processNextInstall(): void {
   if (snapshot.runningJobKey !== null) {
     return;
@@ -379,6 +406,16 @@ function processNextInstall(): void {
     false,
   );
   runInstall(nextJob);
+}
+
+export function adoptProviderCliInstall(args: {
+  hostId: string;
+  issue: ProviderCliActionableIssue;
+  serverJobId: string;
+}): void {
+  if (trackedServerJobIds.has(args.serverJobId)) return;
+  trackedServerJobIds.add(args.serverJobId);
+  startProviderCliInstall(args);
 }
 
 export function startProviderCliInstall(job: ProviderCliInstallJob): void {
@@ -406,6 +443,7 @@ export function startProviderCliInstall(job: ProviderCliInstallJob): void {
 export function resetProviderCliInstallStoreForTests(): void {
   snapshot = INITIAL_SNAPSHOT;
   queuedJobs = [];
+  trackedServerJobIds = new Set();
   queryClient = null;
   listeners.clear();
 }

@@ -44,13 +44,14 @@ describe.sequential("fake provider active crash recovery integration", () => {
       onTestFinished(async () => {
         observation.mockRestore();
         await Promise.all(
-          workers.map(({ child, closed }) => {
-            if (closed) return;
-            return new Promise<void>((resolve) => {
-              child.once("close", resolve);
-              child.kill("SIGKILL");
-            });
-          }),
+          workers
+            .filter(({ closed }) => !closed)
+            .map(({ child }) => {
+              return new Promise<void>((resolve) => {
+                child.once("close", resolve);
+                child.kill("SIGKILL");
+              });
+            }),
         );
       });
       await withHarness(async (harness) => {

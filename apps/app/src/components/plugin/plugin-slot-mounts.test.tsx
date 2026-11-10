@@ -1224,7 +1224,7 @@ describe("useComposer", () => {
       return (
         <button
           type="button"
-          onClick={() => navigate("/threads/thr_owned_next")}
+          onClick={() => void navigate("/threads/thr_owned_next")}
         >
           change-owned-scope
         </button>
@@ -1711,11 +1711,11 @@ describe("PluginPanelView routes", () => {
         ],
       }),
     );
-    applyPluginCss("demo", "/demo.css?h=route");
+    void applyPluginCss("demo", "/demo.css?h=route");
     function LeavePanel() {
       const navigate = useNavigate();
       return (
-        <button type="button" onClick={() => navigate("/")}>
+        <button type="button" onClick={() => void navigate("/")}>
           Leave panel
         </button>
       );
@@ -1831,7 +1831,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
       return <button type="button">Toggle sidebar</button>;
     }
     const panel = panelSlot({ headerContent: Accessory });
-    applyPluginCss("demo", "/demo.css?h=header");
+    void applyPluginCss("demo", "/demo.css?h=header");
     const view = render(
       <>
         <PluginPanelHeaderCenter chrome={panel} />

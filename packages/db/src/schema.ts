@@ -513,6 +513,9 @@ export const projectSources = sqliteTable(
       table.projectId,
       table.hostId,
     ),
+    uniqueIndex("project_sources_default_project_idx")
+      .on(table.projectId)
+      .where(sql`${table.isDefault} = 1`),
     check(
       "project_sources_shape_check",
       sql`(

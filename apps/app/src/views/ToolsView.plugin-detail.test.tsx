@@ -176,7 +176,7 @@ function RoutedPluginsView() {
 
 function HistoryBackButton() {
   const navigate = useNavigate();
-  return <button onClick={() => navigate(-1)}>Browser back</button>;
+  return <button onClick={() => void navigate(-1)}>Browser back</button>;
 }
 
 function renderWithQueryClient(ui: ReactNode) {

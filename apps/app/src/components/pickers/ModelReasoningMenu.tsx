@@ -1,6 +1,5 @@
 import {
   Fragment,
-  useCallback,
   useEffect,
   useRef,
   type ReactNode,
@@ -45,7 +44,13 @@ import {
   formatModelLoadErrorTitle,
   ModelLoadErrorMessage,
 } from "./model-load-error-message";
-import type { ModelNavRow } from "./ModelReasoningPicker";
+import type {
+  ModelNavRow,
+  MoreModelsOpenedBy,
+} from "./ModelReasoningPicker";
+
+const MENU_ROW_FOCUS_VISIBLE_CLASS =
+  "focus-visible:bg-state-hover focus-visible:text-foreground";
 
 export interface ModelReasoningMenuProps {
   listRef: RefObject<HTMLDivElement | null>;
@@ -65,8 +70,8 @@ export interface ModelReasoningMenuProps {
   showMoreModels: boolean;
   onToggleMoreModels: () => void;
   moreModelOptions: readonly ModelPickerOption[];
-  moreModelsOpen: boolean;
-  onMoreModelsOpenChange: (open: boolean) => void;
+  moreModelsOpenedBy: MoreModelsOpenedBy | null;
+  onMoreModelsOpenedByChange: (openedBy: MoreModelsOpenedBy | null) => void;
   isPreviewing: boolean;
   modelValue: string;
   selectionBlocked: boolean;
@@ -101,8 +106,8 @@ export function ModelReasoningMenu({
   showMoreModels,
   onToggleMoreModels,
   moreModelOptions,
-  moreModelsOpen,
-  onMoreModelsOpenChange,
+  moreModelsOpenedBy,
+  onMoreModelsOpenedByChange,
   isPreviewing,
   modelValue,
   selectionBlocked,
@@ -130,9 +135,6 @@ export function ModelReasoningMenu({
   )
     ? serviceTierValue
     : DEFAULT_SERVICE_TIER;
-  const openSub = useCallback(() => {
-    onMoreModelsOpenChange(true);
-  }, [onMoreModelsOpenChange]);
 
   return (
     <MenuHoverProvider>
@@ -161,6 +163,22 @@ export function ModelReasoningMenu({
               {navRows.map((row, index) => {
                 const active = highlightedIndex === index;
                 const domId = optionId(index);
+                if (row.kind === "more-submenu") {
+                  return (
+                    <MoreModelsSubmenu
+                      key="more-submenu"
+                      id={domId}
+                      isActive={active}
+                      openedBy={moreModelsOpenedBy}
+                      onOpenedByChange={onMoreModelsOpenedByChange}
+                      activeBrandPrefix={brandPrefix}
+                      isPreviewing={isPreviewing}
+                      modelValue={modelValue}
+                      options={moreModelOptions}
+                      onSelect={onModelSelect}
+                    />
+                  );
+                }
                 if (row.kind === "more-toggle") {
                   return (
                     <MoreModelsToggleRow
@@ -188,20 +206,6 @@ export function ModelReasoningMenu({
                   />
                 );
               })}
-              {!isCompactViewport &&
-              !isSearching &&
-              moreModelOptions.length > 0 ? (
-                <MoreModelsSubmenu
-                  open={moreModelsOpen}
-                  onOpenChange={onMoreModelsOpenChange}
-                  openSub={openSub}
-                  activeBrandPrefix={brandPrefix}
-                  isPreviewing={isPreviewing}
-                  modelValue={modelValue}
-                  options={moreModelOptions}
-                  onSelect={onModelSelect}
-                />
-              ) : null}
               {isSearching && navRows.length === 0 ? (
                 <div
                   className={cn(
@@ -501,6 +505,7 @@ function MoreModelsToggleRow({
         "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground",
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
+        MENU_ROW_FOCUS_VISIBLE_CLASS,
         isActive && "bg-state-active",
         "py-[0.3125rem] max-md:pointer-coarse:py-2",
       )}
@@ -516,18 +521,20 @@ function MoreModelsToggleRow({
 }
 
 function MoreModelsSubmenu({
-  open,
-  onOpenChange,
-  openSub,
+  id,
+  isActive,
+  openedBy,
+  onOpenedByChange,
   activeBrandPrefix,
   isPreviewing,
   modelValue,
   options,
   onSelect,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  openSub: () => void;
+  id: string;
+  isActive: boolean;
+  openedBy: MoreModelsOpenedBy | null;
+  onOpenedByChange: (openedBy: MoreModelsOpenedBy | null) => void;
   activeBrandPrefix: string | undefined;
   isPreviewing: boolean;
   modelValue: string;
@@ -535,32 +542,47 @@ function MoreModelsSubmenu({
   onSelect: (value: string) => void;
 }) {
   const { isLastHovered, hoverProps } = useMenuItemHover();
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const focusFirstSubItem = useCallback(() => {
-    window.setTimeout(() => {
-      contentRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    }, 0);
-  }, []);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const open = openedBy !== null;
 
   useEffect(() => {
-    if (open && !isLastHovered) {
-      onOpenChange(false);
+    if (openedBy === "hover" && !isLastHovered) {
+      onOpenedByChange(null);
     }
-  }, [open, isLastHovered, onOpenChange]);
+  }, [openedBy, isLastHovered, onOpenedByChange]);
+
+  useEffect(() => {
+    if (!open) return;
+    const focused = document.activeElement;
+    returnFocusRef.current = focused instanceof HTMLElement ? focused : null;
+  }, [open]);
+
+  useEffect(() => {
+    if (openedBy !== "activation") return;
+    const timer = window.setTimeout(() => {
+      contentRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [openedBy]);
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onOpenedByChange(null);
+      }}
+    >
       <PopoverAnchor asChild>
         <button
-          ref={triggerRef}
           type="button"
+          id={id}
           aria-haspopup="menu"
           aria-expanded={open}
-          onClick={openSub}
+          onClick={() => onOpenedByChange("activation")}
           onPointerEnter={(event) => {
             hoverProps.onPointerEnter(event);
-            openSub();
+            onOpenedByChange("hover");
           }}
           onKeyDown={(event) => {
             hoverProps.onKeyDown(event);
@@ -572,20 +594,21 @@ function MoreModelsSubmenu({
               event.key === "ArrowRight"
             ) {
               event.preventDefault();
-              openSub();
-              focusFirstSubItem();
+              onOpenedByChange("activation");
               return;
             }
 
             if (event.key === "Escape" || event.key === "ArrowLeft") {
               event.preventDefault();
-              onOpenChange(false);
+              onOpenedByChange(null);
             }
           }}
           className={cn(
             "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 py-[0.3125rem] text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground",
             LIST_HOVER_TRANSITION,
             MENU_ITEM_LAST_HOVERED_CLASS,
+            MENU_ROW_FOCUS_VISIBLE_CLASS,
+            isActive && "bg-state-active",
           )}
           data-last-hovered={hoverProps["data-last-hovered"]}
         >
@@ -602,12 +625,50 @@ function MoreModelsSubmenu({
           "max-h-[min(20rem,var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-y-auto overscroll-contain p-1 data-[state=closed]:animate-none",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
         )}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          const target = returnFocusRef.current;
+          const focused = document.activeElement;
+          if (
+            target?.isConnected &&
+            (focused === null ||
+              focused === document.body ||
+              focused.contains(target))
+          ) {
+            target.focus();
+          }
+        }}
         onKeyDown={(event) => {
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+
           if (event.key === "Escape" || event.key === "ArrowLeft") {
             event.preventDefault();
-            onOpenChange(false);
-            triggerRef.current?.focus();
+            event.stopPropagation();
+            onOpenedByChange(null);
+            return;
           }
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          const items = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
+          );
+          if (items.length === 0) return;
+          event.preventDefault();
+          const index = items.findIndex(
+            (item) => item === document.activeElement,
+          );
+          const step = event.key === "ArrowDown" ? 1 : -1;
+          const next =
+            index < 0
+              ? step > 0
+                ? 0
+                : items.length - 1
+              : (index + step + items.length) % items.length;
+          items[next]?.focus();
         }}
       >
         <MenuHoverProvider>
@@ -661,6 +722,7 @@ function MenuRowButton({
         "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
+        MENU_ROW_FOCUS_VISIBLE_CLASS,
         isActive && "bg-state-active",
         disabled && "cursor-not-allowed opacity-60",
         "py-[0.3125rem] max-md:pointer-coarse:py-2",
@@ -713,6 +775,7 @@ function MenuActionButton({
         "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
+        MENU_ROW_FOCUS_VISIBLE_CLASS,
         "py-[0.3125rem] max-md:pointer-coarse:py-2",
       )}
       {...hoverProps}

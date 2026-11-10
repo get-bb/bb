@@ -236,18 +236,15 @@ jobs:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
-      - name: Build bb-app and boot it
-        shell: bash
-        run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
-
       - name: Restore npm package downloads
         id: npm-downloads
         timeout-minutes: 1
         continue-on-error: true
         uses: ./.github/actions/cache-npm-downloads
 
-      - name: Smoke test the bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+      - name: Build bb-app and smoke its workspace and tarball
+        shell: bash
+        run: pnpm exec turbo run smoke:boot smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --continue=dependencies-successful
 
       - name: Save newly populated npm downloads
         if: steps.npm-downloads.outcome == 'success' && steps.npm-downloads.outputs.cache-hit != 'true'
@@ -514,7 +511,7 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Lint and typecheck
-        run: pnpm exec turbo run lint typecheck ${{ fromJSON(needs.plan.outputs.selection).staticFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+        run: pnpm exec turbo run lint lint:type-aware typecheck ${{ fromJSON(needs.plan.outputs.selection).staticFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024 --keep-run-summaries .turbo/runs
@@ -702,12 +699,33 @@ jobs:
       - name: Test
         env:
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
+          BB_QUERY_PLAN_EXECUTED: .query-plan/executed.jsonl
           VITEST_MAX_WORKERS: ${{ (startsWith(matrix.shard, 'server-') || matrix.shard == 'integration') && '4' || '2' }}
         run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       - name: Test native browser address interactions
         if: ${{ contains(matrix.filter, '--filter=@bb/desktop') }}
         run: xvfb-run -a pnpm exec turbo run smoke:browser-address --filter=@bb/desktop --output-logs=new-only
+
+      - name: List query functions
+        if: ${{ contains(matrix.filter, '--filter=@bb/db') }}
+        run: |
+          mkdir -p packages/db/.query-plan
+          pnpm --filter @bb/db --silent list:query-functions > packages/db/.query-plan/query-functions.json
+
+      - name: Upload executed query functions
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: query-functions-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: |
+            packages/db/.query-plan/
+            apps/server/.query-plan/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload test timings
         if: ${{ !cancelled() }}
@@ -724,6 +742,33 @@ jobs:
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
 
+  query-functions:
+    name: Query functions run in tests
+    needs: [plan, tests]
+    if: ${{ github.event_name == 'pull_request' && needs.tests.result == 'success' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch comparison base
+        env:
+          BASE_SHA: ${{ needs.plan.outputs.base }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
+
+      - name: Download executed query functions
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: query-functions-*
+          path: ${{ runner.temp }}/query-functions
+
+      - name: Check query functions in changed files
+        env:
+          BASE_SHA: ${{ needs.plan.outputs.base }}
+        run: node scripts/check-pr-query-functions.mjs --base "$BASE_SHA" --artifacts "$RUNNER_TEMP/query-functions"
+
   # Every other suite mocks the Agent SDK, so an upstream CLI release that
   # breaks the model probe passes CI silently. This runs it against a real,
   # unpinned CLI.
@@ -732,13 +777,13 @@ jobs:
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection).forks }}
     name: Plugin Fork Check (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 20
 
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2]
 
     steps:
       - name: Checkout repository
@@ -754,7 +799,7 @@ jobs:
           if [[ -n "$BASE_SHA" ]]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA" || true
           fi
-          selection=$(node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3 --list)
+          selection=$(node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/2 --list)
           echo "count=$(node -e 'console.log(JSON.parse(process.argv[1]).length)' "$selection")" >> "$GITHUB_OUTPUT"
           echo "Forkable plugins: $selection" >> "$GITHUB_STEP_SUMMARY"
 
@@ -803,7 +848,7 @@ jobs:
         env:
           VITEST_MAX_WORKERS: "2"
           BASE_SHA: ${{ github.event_name == 'pull_request' && needs.plan.outputs.base || '' }}
-        run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3
+        run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/2 --concurrency=8
 
       - name: Upload fork dependency evidence
         if: ${{ !cancelled() && steps.selection.outputs.count != '0' }}
@@ -942,20 +987,12 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/cache-pnpm
 
-      - parallel:
-          - name: Install dependencies
-            timeout-minutes: 5
-            env:
-              TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-              PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-            run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
-
-          - name: Install AppImage FUSE runtime
-            if: ${{ runner.os == 'Linux' }}
-            uses: ./.github/actions/install-appimage-fuse
-            timeout-minutes: 5
-            with:
-              package: libfuse2t64
+      - name: Install dependencies
+        timeout-minutes: 5
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
 
       - name: Smoke bb-app tarball
         if: ${{ runner.os != 'Linux' }}

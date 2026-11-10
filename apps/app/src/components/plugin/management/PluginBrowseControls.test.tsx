@@ -582,15 +582,21 @@ describe("PluginCollectionToolbar", () => {
       name: "Search plugins",
     });
     fireEvent.change(search, { target: { value: "Notes" } });
-    act(() => vi.advanceTimersByTime(250));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
     expect(search.value).toBe("Notes");
     fireEvent.change(search, { target: { value: "Notes app" } });
-    act(() => vi.advanceTimersByTime(550));
+    act(() => {
+      vi.advanceTimersByTime(550);
+    });
     expect(screen.getByLabelText("Parameters").textContent).toContain(
       "query=Notes&",
     );
     expect(search.value).toBe("Notes app");
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(screen.getByLabelText("Parameters").textContent).toContain(
       "query=Notes+app",
     );

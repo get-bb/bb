@@ -161,7 +161,7 @@ describe.sequential("watchPathChanges", () => {
     });
     expect(onWatchError).not.toHaveBeenCalled();
 
-    stopWatching();
+    await stopWatching();
   });
 
   it("reports a missing watched path once and retries until it appears", async () => {
@@ -200,7 +200,7 @@ describe.sequential("watchPathChanges", () => {
       expect(rootPaths).toEqual([threadStorageRoot]);
       expect(onWatchError).toHaveBeenCalledTimes(1);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -238,7 +238,7 @@ describe.sequential("watchPathChanges", () => {
 
       expect(rootPaths).toEqual([threadStorageRoot, threadStorageRoot]);
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 
@@ -366,7 +366,7 @@ describe.sequential("watchPathChanges", () => {
       ],
     });
 
-    stopWatching();
+    await stopWatching();
   });
 
   it("rescans children without warning when FSEvents drops events", async () => {
@@ -415,7 +415,7 @@ describe.sequential("watchPathChanges", () => {
         ],
       });
     } finally {
-      stopWatching();
+      await stopWatching();
     }
   });
 });

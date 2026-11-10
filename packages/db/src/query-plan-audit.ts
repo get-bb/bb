@@ -82,6 +82,10 @@ const ACCESS_STEP =
   /^(SCAN|SEARCH) (\S+)(?: USING (?:(?:COVERING |PRIMARY KEY )?INDEX (\S+)|INTEGER PRIMARY KEY)(?: \((.*)\))?)?/;
 const AUTOMATIC_INDEX = /AUTOMATIC (?:PARTIAL )?COVERING INDEX/;
 
+export function isExplainableStatement(sql: string): boolean {
+  return EXPLAINABLE_STATEMENT.test(sql);
+}
+
 function countPlaceholders(sql: string): number {
   let count = 0;
   let quote: string | null = null;
@@ -250,7 +254,7 @@ export function auditQueryPlan(
   sql: string,
   options: QueryPlanAuditOptions,
 ): QueryPlanAudit {
-  if (!EXPLAINABLE_STATEMENT.test(sql)) {
+  if (!isExplainableStatement(sql)) {
     return { status: "skipped", reason: "not a DML statement" };
   }
   const plan = explain(sqlite, sql, options.params);

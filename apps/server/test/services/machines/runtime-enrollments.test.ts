@@ -210,7 +210,7 @@ describe("production machine enrollment wiring", () => {
         hostName: "Runtime machine",
       });
       await h.pluginService.setEnabled("enrollment-runtime", false);
-      expect(() =>
+      await expect(() =>
         api.experimental_machines.bootstrap({
           key: "after-disable",
           executor: { exec },

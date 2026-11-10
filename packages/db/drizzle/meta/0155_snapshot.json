@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "59e0260d-21f6-4378-a690-40a91d5cb73a",
+  "id": "e38205e3-c87f-475f-bb00-bc647481a692",
   "prevId": "b6d871fd-4795-4342-910c-c93e087aadbc",
   "tables": {
     "app_settings": {
@@ -1758,13 +1758,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "last_failure_label": {
-          "name": "last_failure_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "active_artifact_id": {
           "name": "active_artifact_id",
           "type": "text",
@@ -2664,13 +2657,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "rollback_candidate_label": {
-          "name": "rollback_candidate_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "rollback_source_fingerprint": {
           "name": "rollback_source_fingerprint",
           "type": "text",
@@ -3180,6 +3166,14 @@
             "host_id"
           ],
           "isUnique": true
+        },
+        "project_sources_default_project_idx": {
+          "name": "project_sources_default_project_idx",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": true,
+          "where": "\"project_sources\".\"is_default\" = 1"
         }
       },
       "foreignKeys": {

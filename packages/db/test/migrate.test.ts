@@ -265,6 +265,14 @@ const threadStatusChangedAtMigrationWhen = (
   ) as { entries: { tag: string; when: number }[] }
 ).entries.find((entry) => entry.tag === "0150_thread_status_changed_at")!.when;
 
+const projectSourcesDefaultIndexMigrationWhen = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+  ) as { entries: { tag: string; when: number }[] }
+).entries.find(
+  (entry) => entry.tag === "0155_declare_project_sources_default_index",
+)!.when;
+
 function restoreWideExperimentsTable(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
@@ -3860,6 +3868,34 @@ describe("migrate", () => {
       expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
       expect(readTableNames(db)).not.toContain("event_large_values");
       expectEventLargeValuesInline(db, values);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("declares the default project source index on a database that already has it", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at >= ?
+          `,
+        )
+        .run(projectSourcesDefaultIndexMigrationWhen);
+      dropPluginFailureLabelColumns(db);
+
+      expect(() => migrate(db)).not.toThrow();
+      expect(
+        db.$client
+          .prepare<[], IndexNameRow>(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'project_sources_default_project_idx'",
+          )
+          .all(),
+      ).toEqual([{ name: "project_sources_default_project_idx" }]);
     } finally {
       closeConnection(db);
     }

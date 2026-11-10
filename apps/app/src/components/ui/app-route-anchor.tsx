@@ -117,10 +117,10 @@ export function RouteNavigationProvider({
   const [isNavigationPending, startNavigationTransition] = useTransition();
   const navigateImmediately = useCallback<RouteNavigate>((path, options) => {
     if (options === undefined) {
-      navigateRef.current(path);
+      void navigateRef.current(path);
       return;
     }
-    navigateRef.current(path, options);
+    void navigateRef.current(path, options);
   }, []);
   const navigateRoute = useCallback<RouteNavigate>(
     (path, options) => {

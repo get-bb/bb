@@ -6,6 +6,7 @@ import type {
   TimelineToolWorkRow,
 } from "@bb/server-contract";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-panel-queries";
+import { useTimelineDetailIdentity } from "./timeline-detail-identity.js";
 
 export type TimelinePreviewableWorkRow =
   | TimelineCommandWorkRow
@@ -113,13 +114,7 @@ export function useTimelineWorkRowFullOutput(
   row: TimelinePreviewableWorkRow,
 ): TimelineWorkRowFullOutput {
   const { data, isError, refetch } = useThreadTimelineTurnSummaryDetails(
-    {
-      itemId: row.callId,
-      sourceSeqEnd: row.sourceSeqEnd,
-      sourceSeqStart: row.sourceSeqStart,
-      threadId: row.threadId,
-      turnId: row.turnId ?? "",
-    },
+    useTimelineDetailIdentity(row, row.threadId, row.callId),
     {
       enabled: shouldLoadTimelineWorkRowFullOutput(row),
       refetchOnMount: false,

@@ -251,6 +251,78 @@ afterEach(() => {
 });
 
 describe("ThreadActionsProvider archive confirmation", () => {
+  it.each([
+    { status: "starting", archivedAt: null, warns: true, selection: false },
+    { status: "active", archivedAt: null, warns: true, selection: false },
+    { status: "stopping", archivedAt: null, warns: true, selection: true },
+    { status: "idle", archivedAt: null, warns: false, selection: false },
+    { status: "active", archivedAt: 2, warns: false, selection: false },
+  ] as const)(
+    "reports running cascade work for $status descendants (archivedAt=$archivedAt, selection=$selection)",
+    async ({ status, archivedAt, warns, selection }) => {
+      const parent = makeThread({ status: "idle" });
+      const child = makeThread({
+        id: "thr_child",
+        parentThreadId: parent.id,
+        status: "idle",
+      });
+      const grandchild = makeThreadListEntry(
+        makeThread({
+          id: "thr_grandchild",
+          parentThreadId: child.id,
+          status,
+          archivedAt,
+        }),
+      );
+      mockCascade({ [parent.id]: [child.id, grandchild.id] });
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarBootstrapResponse({
+          projects: [
+            makeProjectWithThreadsResponse({
+              id: parent.projectId,
+              threads: [
+                makeThreadListEntry(parent),
+                grandchild,
+                makeThreadListEntry(
+                  makeThread({ id: "thr_unrelated", status: "active" }),
+                ),
+              ],
+            }),
+          ],
+        }),
+      );
+      renderProvider(
+        selection ? (
+          <SelectionButtons threads={[parent, child]} />
+        ) : (
+          <ArchiveButton thread={parent} />
+        ),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: selection ? "Archive selection" : "Archive",
+        }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.textContent?.includes("This will stop current work.")).toBe(
+        warns,
+      );
+      expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["starting", "active", "stopping"] as const)(
+    "warns for a selected %s parent even when its descendant is uncached",
+    async (status) => {
+      renderProvider(<ArchiveButton thread={makeThread({ status })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.textContent).toContain("This will stop current work.");
+    },
+  );
+
   it("archives parent and children immediately when confirmation is disabled", async () => {
     mocks.confirmThreadArchive = false;
     renderProvider(<ArchiveButton thread={makeThread()} />);
@@ -893,7 +965,9 @@ describe("default thread rename", () => {
     const input = within(dialog).getByRole("textbox", { name: "Thread name" });
     expect(input).toHaveProperty("value", "Investigate archive behavior");
     fireEvent.change(input, { target: { value: "  Renamed  " } });
-    const submit = within(dialog).getByRole("button", { name: "Rename thread" });
+    const submit = within(dialog).getByRole("button", {
+      name: "Rename thread",
+    });
     fireEvent.click(submit);
 
     expect((await within(dialog).findByRole("alert")).textContent).toBe(

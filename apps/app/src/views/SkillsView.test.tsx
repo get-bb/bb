@@ -274,7 +274,7 @@ function renderRegistrySkillRoute() {
 function NavigateButton({ to, label }: { to: string; label: string }) {
   const navigate = useNavigate();
   return (
-    <button type="button" onClick={() => navigate(to)}>
+    <button type="button" onClick={() => void navigate(to)}>
       {label}
     </button>
   );
@@ -896,7 +896,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       });
       expect(
         fetchMock.mock.calls.some(
-          ([input]) => requestPath(input) === "/api/v1/skills-registry/install",
+          ([input]) =>
+            requestPath(input).startsWith("/api/v1/skills-registry/install"),
         ),
       ).toBe(false);
     },

@@ -409,7 +409,7 @@ describe("public host management", () => {
   it("rejects machine-gated host-management mutations", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host_machine_forbidden" });
-      const requests = [
+      const responses = await Promise.all([
         harness.app.request(`${API}/hosts/join-codes`, {
           method: "POST",
           headers: {
@@ -462,8 +462,8 @@ describe("public host management", () => {
           },
           body: JSON.stringify({ maxPermissionMode: "full" }),
         }),
-      ];
-      for (const response of await Promise.all(requests)) {
+      ]);
+      for (const response of responses) {
         expect(response.status).toBe(403);
         expect(await readJson(response)).toMatchObject({
           code: "machine_host_management_forbidden",

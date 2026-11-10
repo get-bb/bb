@@ -7,7 +7,8 @@
     "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/gate.mjs",
     "start": "node dist/gate.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsrs --noEmit"
+    "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json"
   },
   "dependencies": {
     "@bb/connect-db": "workspace:*",

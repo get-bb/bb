@@ -310,7 +310,7 @@ export function ShowcaseHeroCarousel({
                     executionInputSources: request.executionInputSources,
                     environment: request.environment,
                   });
-                  navigate(
+                  void navigate(
                     getThreadRoutePath({
                       projectId: thread.projectId ?? request.projectId,
                       threadId: thread.id,

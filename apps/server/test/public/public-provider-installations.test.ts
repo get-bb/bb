@@ -4,7 +4,11 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
-import { systemProviderInfoSchema } from "@bb/server-contract";
+import {
+  hostProviderCliInstallJobListResponseSchema,
+  hostProviderCliInstallJobResponseSchema,
+  systemProviderInfoSchema,
+} from "@bb/server-contract";
 import { DEFAULT_BB_REQUEST_TIMEOUT_MS } from "@bb/sdk";
 import {
   validatePluginProviderDeclaration,
@@ -542,6 +546,197 @@ describe("public provider installation routes", () => {
       expect(await readJson(unsupported)).toMatchObject({
         code: "provider_installation_unavailable",
       });
+    });
+  });
+
+  it("runs installs as server jobs that any client can follow to completion", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-job-host",
+      });
+      let finishInstall: () => void = () => {};
+      const installFinished = new Promise<void>((resolve) => {
+        finishInstall = resolve;
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        async handle(request) {
+          if (request.command.type === "provider.installation.run") {
+            await installFinished;
+          }
+          return handleProviderInstallationRpc(request);
+        },
+      });
+      let pushes = 0;
+      harness.deps.hub.onChangedMessage((message) => {
+        if (
+          message.entity === "host" &&
+          message.id === host.id &&
+          message.changes.includes("provider-cli-install-jobs-changed")
+        ) {
+          pushes += 1;
+        }
+      });
+      const jobsUrl = `${API}/hosts/${host.id}/provider-clis/install-jobs`;
+      const start = () =>
+        harness.app.request(jobsUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider: "codex", actionKind: "update" }),
+        });
+      try {
+        const started = await start();
+        expect(started.status).toBe(202);
+        const { job } = hostProviderCliInstallJobResponseSchema.parse(
+          await readJson(started),
+        );
+        expect(job).toMatchObject({ provider: "codex", state: "running" });
+
+        const duplicate = hostProviderCliInstallJobResponseSchema.parse(
+          await readJson(await start()),
+        );
+        expect(duplicate.job.id).toBe(job.id);
+        const listed = hostProviderCliInstallJobListResponseSchema.parse(
+          await readJson(await harness.app.request(jobsUrl)),
+        );
+        expect(listed.jobs.map((entry) => entry.id)).toEqual([job.id]);
+
+        finishInstall();
+        await vi.waitFor(async () => {
+          const response = await harness.app.request(`${jobsUrl}/${job.id}`);
+          const current = hostProviderCliInstallJobResponseSchema.parse(
+            await readJson(response),
+          );
+          expect(current.job).toMatchObject({
+            state: "completed",
+            events: [{ type: "completed", provider: "codex", success: true }],
+          });
+        });
+        expect(pushes).toBe(2);
+        expect(
+          responder.requests.filter(
+            (request) => request.command.type === "provider.installation.run",
+          ),
+        ).toHaveLength(1);
+
+        const missing = await harness.app.request(`${jobsUrl}/no-such-job`);
+        expect(missing.status).toBe(404);
+        expect(await readJson(missing)).toMatchObject({
+          code: "provider_cli_install_job_not_found",
+        });
+      } finally {
+        responder.unregister();
+      }
+    });
+  });
+
+  it("completes an update the machine no longer needs once its status shows it current", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-already-current-host",
+      });
+      let current = true;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle(request) {
+          const { command } = request;
+          if (command.type === "provider.installation.run") {
+            return {
+              ok: true as const,
+              result: {
+                events: [
+                  {
+                    type: "error" as const,
+                    provider: command.providerId,
+                    message: "Codex update is no longer available on this host.",
+                  },
+                ],
+              },
+            };
+          }
+          if (command.type === "provider.installation.status") {
+            return {
+              ok: true as const,
+              result: {
+                ...installationStatus(command.providerId),
+                currentVersion: current ? "1.1.0" : "1.0.0",
+                needsUpdate: !current,
+                installAction: current
+                  ? null
+                  : installationStatus(command.providerId).installAction,
+              },
+            };
+          }
+          return handleProviderInstallationRpc(request);
+        },
+      });
+      const install = async () =>
+        harness.app.request(`${API}/hosts/${host.id}/provider-clis/install`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider: "codex", actionKind: "update" }),
+        });
+      try {
+        expect(await (await install()).text()).toBe(
+          `${JSON.stringify({
+            type: "completed",
+            provider: "codex",
+            exitCode: null,
+            signal: null,
+            success: true,
+          })}\n`,
+        );
+
+        current = false;
+        expect(await (await install()).text()).toContain(
+          '"type":"error","provider":"codex","message":"Codex update is no longer available on this host."',
+        );
+      } finally {
+        responder.unregister();
+      }
+    });
+  });
+
+  it("records a failed install job when the machine cannot run it", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-failed-job-host",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle(request) {
+          if (request.command.type === "provider.installation.run") {
+            throw new Error("npm is not installed");
+          }
+          return handleProviderInstallationRpc(request);
+        },
+      });
+      const jobsUrl = `${API}/hosts/${host.id}/provider-clis/install-jobs`;
+      try {
+        const { job } = hostProviderCliInstallJobResponseSchema.parse(
+          await readJson(
+            await harness.app.request(jobsUrl, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ provider: "codex", actionKind: "update" }),
+            }),
+          ),
+        );
+        await vi.waitFor(async () => {
+          const current = hostProviderCliInstallJobResponseSchema.parse(
+            await readJson(await harness.app.request(`${jobsUrl}/${job.id}`)),
+          );
+          expect(current.job).toMatchObject({
+            state: "failed",
+            error: expect.stringContaining("npm is not installed"),
+          });
+        });
+      } finally {
+        responder.unregister();
+      }
     });
   });
 

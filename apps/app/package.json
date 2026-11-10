@@ -14,6 +14,7 @@
     "storybook:build": "ladle build",
     "lint": "oxlint src vite.config.ts vite.dev.config.ts vite-bundle-stats.ts vite-font-preload.ts vite-split-prefetch.ts vite-forkable-plugin-paths.ts vite-shared-ui-seam.ts vite-react-compiler.ts vite-journey-chunks.ts vite-plugin-zod-runtime.ts",
     "typecheck": "tsrs --noEmit && tsrs --noEmit -p tsconfig.node.json",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts",
     "bench": "cross-env BB_SIDEBAR_BENCH=1 vitest run --config vitest.config.ts src/components/sidebar/sidebar.bench.test.tsx"
   },

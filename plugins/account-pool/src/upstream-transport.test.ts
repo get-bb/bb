@@ -28,11 +28,12 @@ afterEach(async () => {
 
 async function upstream() {
   let requests = 0;
-  const server = http.createServer(async (request, response) => {
-    for await (const _chunk of request) {
-    }
-    requests++;
-    response.end("OK");
+  const server = http.createServer((request, response) => {
+    request.resume();
+    request.on("end", () => {
+      requests++;
+      response.end("OK");
+    });
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -154,11 +155,12 @@ it("preserves cancellation without sending a request", async () => {
 
 it("does not replay an accepted POST whose response connection fails", async () => {
   let requests = 0;
-  const server = http.createServer(async (request) => {
-    for await (const _chunk of request) {
-    }
-    requests++;
-    request.socket.destroy();
+  const server = http.createServer((request) => {
+    request.resume();
+    request.on("end", () => {
+      requests++;
+      request.socket.destroy();
+    });
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

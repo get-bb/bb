@@ -8,10 +8,7 @@ import { buildMutablePluginHost } from "../../../apps/server/src/services/plugin
 
 export const INTEGRATION_APP_VERSION = "0.0.0-dev";
 export const PROJECT_CHECKOUT_BUILTIN_PLUGIN = "environment-project-checkout";
-export const INTEGRATION_BUILTIN_PLUGINS = [
-  PROJECT_CHECKOUT_BUILTIN_PLUGIN,
-  "git",
-];
+export const INTEGRATION_BUILTIN_PLUGINS = [PROJECT_CHECKOUT_BUILTIN_PLUGIN];
 
 const TEMPLATE_PATH_ENV = "BB_TEST_BUILTIN_HOST_RECORDS";
 
@@ -38,7 +35,7 @@ export async function setupBuiltinHostBuildRecords(): Promise<
     const toolchain = await resolvePluginBuildToolchain(
       path.join(dataDir, "plugins"),
     );
-    for (const name of INTEGRATION_BUILTIN_PLUGINS) {
+    for (const name of [...INTEGRATION_BUILTIN_PLUGINS, "git"]) {
       const rootDir = resolveBuiltinPluginRootPath(name);
       const manifest = await readPluginManifest(rootDir);
       if (

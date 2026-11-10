@@ -3,9 +3,18 @@ export type {
   DbConnection,
   DbQueryConnection,
   DbTransaction,
+  QueryPlanExecutionObserver,
   SlowDbQueryLogger,
   SlowDbQueryLogFields,
 } from "./connection.js";
+export {
+  createQueryPlanAuditor,
+  openQueryPlanAuditDatabase,
+} from "./query-plan-guard.js";
+export type {
+  QueryPlanAuditor,
+  QueryPlanFindingReport,
+} from "./query-plan-guard.js";
 export { startWalCheckpointer } from "./wal-checkpointer.js";
 export type {
   WalCheckpointer,
@@ -22,6 +31,7 @@ export {
 
 export { countAppliedMigrations, migrate } from "./migrate.js";
 export {
+  isSqliteBusyError,
   isSqliteForeignKeyConstraint,
   isSqliteUniqueConstraintOnColumns,
 } from "./sqlite-errors.js";

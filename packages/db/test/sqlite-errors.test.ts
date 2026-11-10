@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
+import Database from "better-sqlite3";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  isSqliteBusyError,
   isSqliteForeignKeyConstraint,
   isSqliteUniqueConstraintOnColumns,
 } from "../src/sqlite-errors.js";
@@ -71,6 +76,7 @@ describe("sqlite constraint errors raised through drizzle", () => {
     );
 
     expect(isSqliteForeignKeyConstraint(error)).toBe(true);
+    expect(isSqliteBusyError(error)).toBe(false);
     expect(
       isSqliteUniqueConstraintOnColumns(error, {
         columnNames: ["parent_id"],
@@ -78,6 +84,27 @@ describe("sqlite constraint errors raised through drizzle", () => {
         tableName: "error_children",
       }),
     ).toBe(false);
+  });
+
+  it("recognizes a write blocked by another connection's lock as busy", () => {
+    const directory = mkdtempSync(join(tmpdir(), "bb-sqlite-busy-"));
+    const path = join(directory, "busy.db");
+    const holder = new Database(path);
+    const blocked = new Database(path, { timeout: 0 });
+    try {
+      holder.exec("CREATE TABLE busy_rows (id INTEGER)");
+      holder.exec("BEGIN IMMEDIATE");
+      const error = captureError(() =>
+        blocked.exec("INSERT INTO busy_rows VALUES (1)"),
+      );
+
+      expect(isSqliteBusyError(error)).toBe(true);
+      expect(isSqliteForeignKeyConstraint(error)).toBe(false);
+    } finally {
+      holder.close();
+      blocked.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("ignores errors that are not from sqlite", () => {

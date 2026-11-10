@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
@@ -7,8 +7,10 @@ import type {
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
+import { adoptProviderCliInstall } from "@/components/provider-cli/provider-cli-install-store";
 import {
   buildProviderCliIssue,
+  hasProviderCliAction,
   isProviderCliIssue,
   isProviderCliUpdateIssue,
   providerCliEntries,
@@ -24,7 +26,10 @@ import {
 import { pluginHasUpdateSurfaces } from "@/components/plugin/management/PluginUpdatesCard";
 import { pluginsNeedingAttention } from "@/hooks/usePluginAttention";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
-import { hostProviderCliStatusQueryKey } from "@/hooks/queries/query-keys";
+import {
+  hostProviderCliInstallJobsQueryKey,
+  hostProviderCliStatusQueryKey,
+} from "@/hooks/queries/query-keys";
 import { SESSION_STATIC_QUERY_POLICY } from "@/hooks/queries/query-policies";
 import {
   useSystemConfig,
@@ -209,6 +214,35 @@ export function useUpdateInventory(
       providerStatusByHostId.set(host.id, query);
     }
   });
+
+  const installJobQueries = useQueries({
+    queries: connectedHosts.map((host) => ({
+      queryKey: hostProviderCliInstallJobsQueryKey(host.id),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        sdk.hosts.experimental_providerCliInstallJobs.list({
+          hostId: host.id,
+          signal,
+        }),
+      enabled,
+      ...SESSION_STATIC_QUERY_POLICY,
+    })),
+  });
+  const runningInstalls = connectedHosts.flatMap((host, index) => {
+    const providerStatus = providerStatusByHostId.get(host.id)?.data;
+    const jobs = installJobQueries[index]?.data ?? [];
+    if (providerStatus === undefined) return [];
+    return jobs.flatMap((job) => {
+      const status = providerStatus[job.provider];
+      if (job.state !== "running" || status === undefined) return [];
+      const issue = buildProviderCliIssue({ provider: job.provider, status });
+      return issue !== null && hasProviderCliAction(issue)
+        ? [{ hostId: host.id, issue, serverJobId: job.id }]
+        : [];
+    });
+  });
+  useEffect(() => {
+    for (const install of runningInstalls) adoptProviderCliInstall(install);
+  }, [runningInstalls]);
 
   const machines: UpdateInventoryMachine[] = updateHosts.map((host) => {
     const statusQuery = providerStatusByHostId.get(host.id);

@@ -15,9 +15,14 @@
     "server": "./server.ts",
     "app": "./app.ts"
   },
+  "scripts": {
+    "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../../.oxlintrc.type-aware.json"
+  },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
     "@bb/tsconfig": "workspace:*",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929"
   }
 }

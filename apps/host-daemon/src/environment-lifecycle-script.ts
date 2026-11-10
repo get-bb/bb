@@ -262,7 +262,7 @@ async function runLifecycleScript(
       ...gitBash,
       processGroup: gitBashProcessGroup,
     });
-    windowsTreeStop
+    void windowsTreeStop
       .catch(() => undefined)
       .then(() => delay(WINDOWS_OUTPUT_CLOSE_GRACE_MS))
       .then(reportOutputLeftOpen, reportOutputLeftOpen);

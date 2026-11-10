@@ -6,6 +6,8 @@ Bundled and installed automatically. Select it through the environment picker or
 
 New branches start at the selected base without an upstream. Publish with `git push -u origin HEAD` to track the task's remote branch. Existing branches keep their upstream configuration.
 
+Removal deletes the branch the plugin created (recorded in the environment resource) after the worktree is gone, unless another worktree has it checked out or it has commits that are on no remote or tag, not in the recorded base, and not squash-merged into it; commits that survive only on another local branch keep the branch, because a restore could not bring them back. Squash detection compares patch IDs against base commits that touch the same files, and skips bases more than 2,000 commits or branches more than 200 files away. Kept branches and errors are reported in the removal progress, which core writes to the server log. A kept branch is marked with `branch.<name>.bbOwned`, so a restore that reuses it owns it again; other branches a restore reuses, and branches of adopted worktrees, are never deleted. Restoring onto a deleted branch recreates it from the single remote-tracking branch of that name, tracking it, or from the base.
+
 The Plugin Guide documents the experimental environment-provider contract. Core owns durable launches, retries, cancellation, retirement, and teardown; this plugin owns resource creation and removal.
 
 Removal refuses worktrees with worktree-local refs under `refs/worktree/`,

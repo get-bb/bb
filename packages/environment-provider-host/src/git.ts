@@ -19,6 +19,7 @@ export interface RunGitOptions extends GitProcessOptions {
   allowFailure?: boolean;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  input?: string;
 }
 
 type GitRepositoryState = "not_git" | "no_commits" | "has_commits";

@@ -818,7 +818,7 @@ export function applyCreateThreadResult({
     projectId: request.projectId,
   });
   if (hasUnmanagedCheckoutIntent(request)) {
-    queryClient.invalidateQueries({
+    void queryClient.invalidateQueries({
       queryKey: projectSourceBranchesQueryKeyPrefix(request.projectId),
     });
   }

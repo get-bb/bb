@@ -21,6 +21,7 @@
     "test": "vitest run --config vitest.config.ts",
     "generate": "node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs",
     "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "build": "node ../../scripts/build-node-entry.mjs src/cli.ts dist/cli.js --clean-dist"
   },
   "dependencies": {

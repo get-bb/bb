@@ -337,7 +337,7 @@ describe("collectPluginAppRegistrations — experimental_threadList", () => {
 });
 
 describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
-  it("collects actions and disclosures with live disclosure controls", () => {
+  it("collects actions and disclosures with live disclosure controls", async () => {
     let disclosure: ExperimentalSidebarFooterDisclosureController | null = null;
     const onActivate = vi.fn();
     const openPluginDetails = vi.fn();
@@ -401,7 +401,7 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
     expect(compatibilityItem?.kind).toBe("action");
     if (compatibilityItem?.kind !== "action")
       throw new Error("expected action");
-    compatibilityItem.onActivate({ openPluginDetails });
+    await compatibilityItem.onActivate({ openPluginDetails });
     expect(legacyRun).toHaveBeenCalledOnce();
     expect(openPluginDetails).toHaveBeenCalledOnce();
 
