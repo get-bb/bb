@@ -406,9 +406,10 @@ function buildPage(
   responseByteBudget = THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
   includeNestedRows = false,
   deferContent = false,
+  completedTurnDisplay: "collapse" | "flat" = "collapse",
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
-    completedTurnDisplay: "collapse",
+    completedTurnDisplay,
     deferContent,
     eventBudget,
     responseByteBudget,
@@ -587,6 +588,7 @@ function walkAllPages(
   eventBudget: number,
   segmentLimit = 20,
   includeNestedRows = false,
+  completedTurnDisplay: "collapse" | "flat" = "collapse",
 ): WalkResult {
   let mergedRows: TimelineRow[] = [];
   const seenCursors = new Set<string>();
@@ -603,6 +605,8 @@ function walkAllPages(
       segmentLimit,
       THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
       includeNestedRows,
+      false,
+      completedTurnDisplay,
     );
     pages += 1;
     maxEventRowCount = Math.max(maxEventRowCount, profile.eventRowCount);
@@ -880,9 +884,7 @@ describe("in-turn timeline windows", () => {
     expect(unbudgeted.response.timelinePage.olderCursor).toBeNull();
 
     const budgeted = buildPage(db, thread, 100, null);
-    expect(budgeted.profile.eventRowCount).toBe(
-      unbudgeted.profile.eventRowCount,
-    );
+    expect(budgeted.profile.eventRowCount).toBeLessThan(200);
     expect(budgeted.response.rows.length).toBeLessThan(
       unbudgeted.response.rows.length,
     );
@@ -2083,7 +2085,7 @@ describe("background tasks across an in-turn window", () => {
     expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
       /^timeline-v3:/,
     );
-    expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
+    expect(budgeted.profile.eventRowCount).toBeLessThan(200);
     expect(budgeted.response.activeWorkflows).toHaveLength(1);
     expect(budgeted.response.activeWorkflows).toEqual(
       buildPage(db, thread, LARGE_BUDGET, null).response.activeWorkflows,
@@ -2535,5 +2537,706 @@ describe("turn details for an item that finishes in a later turn", () => {
       ]);
       expect(details, turnId).toEqual(children);
     }
+  });
+});
+
+function flatPage(
+  db: DbConnection,
+  thread: Thread,
+  eventBudget: number,
+  cursor: TimelinePaginationCursor | null = null,
+) {
+  return buildPage(
+    db,
+    thread,
+    eventBudget,
+    cursor,
+    20,
+    THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    false,
+    false,
+    "flat",
+  );
+}
+
+function walkFlatPages(db: DbConnection, thread: Thread, eventBudget: number) {
+  return walkAllPages(db, thread, eventBudget, 20, false, "flat");
+}
+
+function itemEvent(
+  thread: Thread,
+  sequence: number,
+  type: "item/started" | "item/completed",
+  turnId: string,
+  item: Record<string, unknown> & { id: string; type: string },
+  parentToolCallId: string | null = null,
+): EventInput {
+  return {
+    threadId: thread.id,
+    sequence,
+    type,
+    scope: turnScope(turnId),
+    providerThreadId,
+    itemId: item.id,
+    itemKind: item.type as EventInput["itemKind"],
+    parentToolCallId,
+    data: JSON.stringify({
+      item: parentToolCallId === null ? item : { ...item, parentToolCallId },
+    }),
+  };
+}
+
+function turnEvents(
+  thread: Thread,
+  sequence: number,
+  turn: number,
+): EventInput[] {
+  const turnId = `turn-${turn}`;
+  return [
+    {
+      threadId: thread.id,
+      sequence,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: requestId(turn),
+        senderThreadId: null,
+        input: [{ type: "text", text: `User message ${turn}`, mentions: [] }],
+        target: turn === 1 ? { kind: "thread-start" } : { kind: "new-turn" },
+        execution,
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: sequence + 1,
+      type: "turn/started",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({}),
+    },
+    {
+      threadId: thread.id,
+      sequence: sequence + 2,
+      type: "turn/input/accepted",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ clientRequestId: requestId(turn) }),
+    },
+  ];
+}
+
+function turnCompletedEvent(
+  thread: Thread,
+  sequence: number,
+  turnId: string,
+): EventInput {
+  return {
+    threadId: thread.id,
+    sequence,
+    type: "turn/completed",
+    scope: turnScope(turnId),
+    providerThreadId,
+    itemId: null,
+    itemKind: null,
+    parentToolCallId: null,
+    data: JSON.stringify({ status: "completed", providerThreadId }),
+  };
+}
+
+function commandItemEvents(
+  thread: Thread,
+  sequence: number,
+  turnId: string,
+  id: string,
+  parentToolCallId: string | null = null,
+): EventInput[] {
+  const item = {
+    type: "commandExecution",
+    id,
+    command: `echo ${id}`,
+    cwd: "/tmp/test",
+    approvalStatus: null,
+  };
+  return [
+    itemEvent(
+      thread,
+      sequence,
+      "item/started",
+      turnId,
+      { ...item, status: "pending" },
+      parentToolCallId,
+    ),
+    itemEvent(
+      thread,
+      sequence + 1,
+      "item/completed",
+      turnId,
+      { ...item, status: "completed", exitCode: 0, aggregatedOutput: id },
+      parentToolCallId,
+    ),
+  ];
+}
+
+describe("page-bounded reads of turns whose rows render flat", () => {
+  it("reads only each page's window of a long running turn", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [300] });
+
+    const unbudgeted = walkFlatPages(db, thread, LARGE_BUDGET);
+    expect(unbudgeted.maxEventRowCount).toBeGreaterThan(600);
+    expect(flatPage(db, thread, 100).profile.eventRowCount).toBeLessThan(200);
+    const budgeted = walkFlatPages(db, thread, 100);
+    expect(budgeted.rows).toEqual(unbudgeted.rows);
+    expect(budgeted.pages).toBeGreaterThan(3);
+    expect(budgeted.maxEventRowCount).toBeLessThan(250);
+  });
+
+  it("reads a cross-turn delegation's subtree without its spawning turn", () => {
+    const { db, thread } = setup();
+    const events: EventInput[] = [...turnEvents(thread, 1, 1)];
+    let sequence = 4;
+    const agent = {
+      type: "toolCall",
+      id: "agent-1",
+      tool: "Agent",
+      arguments: { prompt: "Keep auditing." },
+    };
+    events.push(
+      itemEvent(thread, sequence++, "item/started", "turn-1", {
+        ...agent,
+        status: "pending",
+      }),
+    );
+    for (let item = 0; item < 300; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `turn-1-item-${item}`),
+      );
+      sequence += 2;
+    }
+    events.push(turnCompletedEvent(thread, sequence++, "turn-1"));
+    events.push(...turnEvents(thread, sequence, 2));
+    sequence += 3;
+    for (let item = 0; item < 5; item += 1) {
+      events.push(
+        ...commandItemEvents(
+          thread,
+          sequence,
+          "turn-2",
+          `child-${item}`,
+          "agent-1",
+        ),
+      );
+      sequence += 2;
+    }
+    events.push(
+      ...commandItemEvents(thread, sequence, "turn-2", "turn-2-item-0"),
+    );
+    insertEvents(db, noopNotifier, events);
+
+    const latest = flatPage(db, thread, 100);
+    expect(latest.profile.eventRowCount).toBeLessThan(60);
+    expect(latest.response.timelinePage.olderRowUpdates).toEqual([
+      expect.objectContaining({ id: `${thread.id}:delegation:agent-1` }),
+    ]);
+    expect(walkFlatPages(db, thread, 100).rows).toEqual(
+      walkFlatPages(db, thread, LARGE_BUDGET).rows,
+    );
+  });
+
+  it("keeps one compaction row per turn when the turn compacts twice across pages", () => {
+    const { db, thread } = setup();
+    const events: EventInput[] = [...turnEvents(thread, 1, 1)];
+    let sequence = 4;
+    const compaction = (id: string) => ({
+      type: "contextCompaction",
+      id,
+    });
+    const compact = (id: string) => {
+      events.push(
+        itemEvent(thread, sequence++, "item/started", "turn-1", compaction(id)),
+        itemEvent(
+          thread,
+          sequence++,
+          "item/completed",
+          "turn-1",
+          compaction(id),
+        ),
+      );
+    };
+    compact("compaction-1");
+    for (let item = 0; item < 200; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `turn-1-item-${item}`),
+      );
+      sequence += 2;
+    }
+    compact("compaction-2");
+    for (let item = 200; item < 260; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `turn-1-item-${item}`),
+      );
+      sequence += 2;
+    }
+    insertEvents(db, noopNotifier, events);
+
+    const budgeted = walkFlatPages(db, thread, 100);
+    expect(budgeted.pages).toBeGreaterThan(2);
+    expect(budgeted.rows).toEqual(walkFlatPages(db, thread, LARGE_BUDGET).rows);
+    expect(
+      budgeted.rows.filter((row) =>
+        row.includes('"operationKind":"compaction"'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("cuts a long running turn only at rows pruning keeps, so held older cursors survive pruning", () => {
+    const { db, thread } = setup();
+    const events: EventInput[] = [...turnEvents(thread, 1, 1)];
+    let sequence = 4;
+    for (let item = 0; item < 200; item += 1) {
+      const [started, completed] = commandItemEvents(
+        thread,
+        0,
+        "turn-1",
+        `streaming-${item}`,
+      );
+      events.push({ ...started!, sequence: sequence++ });
+      for (let delta = 0; delta < 4; delta += 1) {
+        events.push({
+          threadId: thread.id,
+          sequence: sequence++,
+          type: "item/commandExecution/outputDelta",
+          scope: turnScope("turn-1"),
+          providerThreadId,
+          itemId: `streaming-${item}`,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({
+            threadId: thread.id,
+            providerThreadId,
+            itemId: `streaming-${item}`,
+            delta: `chunk ${delta}\n`,
+          }),
+        });
+      }
+      events.push({ ...completed!, sequence: sequence++ });
+    }
+    insertEvents(db, noopNotifier, events);
+
+    const cursors: TimelinePaginationCursor[] = [];
+    let cursor: TimelinePaginationCursor | null = null;
+    do {
+      cursor = flatPage(db, thread, 100, cursor).response.timelinePage
+        .olderCursor;
+      if (cursor !== null) cursors.push(cursor);
+    } while (cursor !== null);
+    expect(cursors.length).toBeGreaterThan(5);
+    const anchorTypes = new Set(
+      cursors.map(
+        (held) =>
+          (
+            db.$client
+              .prepare(
+                "SELECT type FROM events WHERE thread_id = ? AND sequence = ?",
+              )
+              .get(thread.id, held.anchorSeq) as { type: string }
+          ).type,
+      ),
+    );
+    expect(anchorTypes).toEqual(new Set(["item/started"]));
+
+    db.$client
+      .prepare(
+        "DELETE FROM events WHERE thread_id = ? AND type = 'item/commandExecution/outputDelta'",
+      )
+      .run(thread.id);
+    for (const held of cursors) {
+      expect(() => flatPage(db, thread, 100, held)).not.toThrow();
+    }
+  });
+
+  it("starts the latest window at an item that streams longer than the budget", () => {
+    const { db, thread } = setup();
+    const events: EventInput[] = [...turnEvents(thread, 1, 1)];
+    let sequence = 4;
+    events.push(
+      itemEvent(thread, sequence++, "item/started", "turn-1", {
+        type: "agentMessage",
+        id: "message-1",
+        text: "",
+      }),
+    );
+    for (let delta = 0; delta < 300; delta += 1) {
+      events.push({
+        threadId: thread.id,
+        sequence: sequence++,
+        type: "item/agentMessage/delta",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "message-1",
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          threadId: thread.id,
+          providerThreadId,
+          itemId: "message-1",
+          delta: `line ${delta}\n`,
+        }),
+      });
+    }
+    insertEvents(db, noopNotifier, events);
+
+    const latest = flatPage(db, thread, 100);
+    expect(
+      latest.profile.stageTimings.filter(
+        (timing) => timing.stage === "thread-view-projection",
+      ),
+    ).toHaveLength(1);
+    expect(latest.response.rows).toContainEqual(
+      expect.objectContaining({ kind: "conversation", role: "assistant" }),
+    );
+    expect(walkFlatPages(db, thread, 100).rows).toEqual(
+      walkFlatPages(db, thread, LARGE_BUDGET).rows,
+    );
+  });
+  it("keeps the plan-mode banner and model fallback when the latest window starts inside the turn", () => {
+    const { db, thread: idleThread } = setup();
+    const thread: Thread = { ...idleThread, status: "active" };
+    const [requested, ...turnStart] = turnEvents(thread, 1, 1);
+    const request = JSON.parse(requested!.data) as Record<string, unknown>;
+    const events: EventInput[] = [
+      {
+        ...requested!,
+        data: JSON.stringify({
+          ...request,
+          input: [
+            {
+              type: "text",
+              text: "/plan audit everything",
+              mentions: [
+                {
+                  start: 0,
+                  end: 5,
+                  resource: {
+                    kind: "command",
+                    trigger: "/",
+                    name: "plan",
+                    source: "command",
+                    origin: "builtin",
+                    label: "plan",
+                    argumentHint: null,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      },
+      ...turnStart,
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "provider/modelFallback",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          providerThreadId,
+          originalModel: "big-model",
+          fallbackModel: "small-model",
+          reason: "provider",
+          message: "Switched from big-model to small-model.",
+        }),
+      },
+    ];
+    let sequence = 5;
+    for (let item = 0; item < 300; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `turn-1-item-${item}`),
+      );
+      sequence += 2;
+    }
+    insertEvents(db, noopNotifier, events);
+
+    const page = (eventBudget: number) =>
+      buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "flat",
+        eventBudget,
+        includeClearedContextHistory: false,
+        includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
+        maxInlineOutputChars: 32_000,
+        maxSeq: 0,
+        planCommand: { trigger: "/", name: "plan", trailingText: " " },
+        page: { kind: "latest", segmentLimit: 20 },
+      });
+    const budgeted = page(100);
+    const unbudgeted = page(LARGE_BUDGET);
+    expect(budgeted.profile.eventRowCount).toBeLessThan(200);
+    expect(unbudgeted.response.activePromptMode).not.toBeNull();
+    expect(unbudgeted.response.modelFallback).not.toBeNull();
+    expect(budgeted.response.activePromptMode).toEqual(
+      unbudgeted.response.activePromptMode,
+    );
+    expect(budgeted.response.modelFallback).toEqual(
+      unbudgeted.response.modelFallback,
+    );
+  });
+});
+
+function steerEvents(
+  thread: Thread,
+  sequence: number,
+  request: number,
+  turnId: string,
+): EventInput[] {
+  const [requested] = turnEvents(thread, sequence, request);
+  const data = JSON.parse(requested!.data) as Record<string, unknown>;
+  return [
+    {
+      ...requested!,
+      data: JSON.stringify({
+        ...data,
+        target: { kind: "steer", expectedTurnId: turnId },
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: sequence + 1,
+      type: "turn/input/accepted",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ clientRequestId: requestId(request) }),
+    },
+  ];
+}
+
+function commandBlock(
+  thread: Thread,
+  sequence: number,
+  turnId: string,
+  prefix: string,
+  count: number,
+): EventInput[] {
+  return Array.from({ length: count }, (_, item) =>
+    commandItemEvents(thread, sequence + item * 2, turnId, `${prefix}-${item}`),
+  ).flat();
+}
+
+function expectedOlderRowsSourceSeqEnd(
+  allRows: readonly TimelineRow[],
+  page: ReturnType<typeof buildPage>["response"],
+  ownedSequenceEnd: number,
+): number | null {
+  const returned = new Set(page.rows.map((row) => row.id));
+  const updated = new Set(
+    (page.timelinePage.olderRowUpdates ?? []).map((row) => row.id),
+  );
+  return allRows.reduce<number | null>(
+    (end, row) =>
+      row.sourceSeqStart < ownedSequenceEnd &&
+      !returned.has(row.id) &&
+      !updated.has(row.id)
+        ? Math.max(end ?? 0, row.sourceSeqEnd)
+        : end,
+    null,
+  );
+}
+
+describe("the older-row bound of a page that reads part of a turn", () => {
+  it("closes a row left open before the window when its flat turn completes", () => {
+    const { db, thread } = setup();
+    const reasoningId = "open-reasoning";
+    const events: EventInput[] = [
+      ...turnEvents(thread, 1, 1),
+      itemEvent(thread, 4, "item/started", "turn-1", {
+        type: "reasoning",
+        id: reasoningId,
+        summary: [],
+        content: [],
+      }),
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "item/reasoning/textDelta",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: reasoningId,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ itemId: reasoningId, delta: "Checking" }),
+      },
+      ...commandBlock(thread, 6, "turn-1", "before", 300),
+      ...steerEvents(thread, 606, 2, "turn-1"),
+      ...commandBlock(thread, 608, "turn-1", "middle", 300),
+      ...steerEvents(thread, 1208, 3, "turn-1"),
+      ...commandBlock(thread, 1210, "turn-1", "after", 300),
+      turnCompletedEvent(thread, 1810, "turn-1"),
+    ];
+    insertEvents(db, noopNotifier, events);
+
+    const allRows = flatPage(db, thread, LARGE_BUDGET).response.rows;
+    const reasoningRow = allRows.find((row) => row.sourceSeqStart === 4);
+    expect(reasoningRow?.sourceSeqEnd).toBe(1810);
+    const latest = flatPage(db, thread, 100);
+    expect(latest.profile.eventRowCount).toBeLessThan(700);
+    expect(latest.response.timelinePage.olderRowUpdates).toContainEqual(
+      expect.objectContaining({ id: reasoningRow!.id, sourceSeqEnd: 1810 }),
+    );
+    const older = flatPage(
+      db,
+      thread,
+      100,
+      latest.response.timelinePage.olderCursor,
+    );
+    expect(older.profile.eventRowCount).toBeLessThan(700);
+    expect(older.response.timelinePage.olderRowsSourceSeqEnd).toBe(1810);
+    expect(older.response.timelinePage.olderRowsSourceSeqEnd).toBe(
+      expectedOlderRowsSourceSeqEnd(
+        allRows,
+        older.response,
+        latest.response.timelinePage.olderCursor!.anchorSeq,
+      ),
+    );
+  });
+
+  it("counts a command row whose background task completes inside the window", () => {
+    const { db, thread } = setup();
+    const launcher = {
+      type: "commandExecution",
+      id: "launcher",
+      command: "pnpm test &",
+      cwd: "/tmp/test",
+      approvalStatus: null,
+    };
+    const task = {
+      type: "backgroundTask",
+      id: "launched-task",
+      taskType: "local_bash",
+      description: "pnpm test",
+      skipTranscript: false,
+      foreground: false,
+    };
+    const events: EventInput[] = [
+      ...turnEvents(thread, 1, 1),
+      ...commandBlock(thread, 4, "turn-1", "before", 300),
+      itemEvent(thread, 604, "item/started", "turn-1", {
+        ...launcher,
+        status: "pending",
+      }),
+      itemEvent(
+        thread,
+        605,
+        "item/started",
+        "turn-1",
+        { ...task, status: "pending", taskStatus: "running" },
+        "launcher",
+      ),
+      itemEvent(thread, 606, "item/completed", "turn-1", {
+        ...launcher,
+        status: "completed",
+        exitCode: 0,
+        aggregatedOutput: "started",
+      }),
+      ...steerEvents(thread, 607, 2, "turn-1"),
+      ...commandBlock(thread, 609, "turn-1", "after", 20),
+      {
+        ...itemEvent(
+          thread,
+          649,
+          "item/completed",
+          "turn-1",
+          { ...task, status: "completed", taskStatus: "completed" },
+          "launcher",
+        ),
+        type: "item/backgroundTask/completed",
+        scope: threadScope(),
+      },
+      turnCompletedEvent(thread, 650, "turn-1"),
+    ];
+    insertEvents(db, noopNotifier, events);
+
+    const latest = flatPage(db, thread, 100);
+    const allRows = flatPage(db, thread, LARGE_BUDGET).response.rows;
+
+    expect(latest.profile.eventRowCount).toBeLessThan(200);
+    expect(latest.response.timelinePage.olderRowsSourceSeqEnd).toBe(606);
+    expect(latest.response.timelinePage.olderRowsSourceSeqEnd).toBe(
+      expectedOlderRowsSourceSeqEnd(
+        allRows,
+        latest.response,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    );
+  });
+
+  it("leaves out a flat turn's item that is still running at the window start", () => {
+    const { db, thread } = setup();
+    const longCommand = {
+      type: "commandExecution",
+      id: "long-command",
+      command: "sleep 600",
+      cwd: "/tmp/test",
+      approvalStatus: null,
+    };
+    let sequence = 4;
+    const events: EventInput[] = [
+      ...turnEvents(thread, 1, 1),
+      ...commandBlock(thread, sequence, "turn-1", "before", 300),
+    ];
+    sequence += 600;
+    events.push(
+      itemEvent(thread, sequence++, "item/started", "turn-1", {
+        ...longCommand,
+        status: "pending",
+      }),
+      ...steerEvents(thread, sequence, 2, "turn-1"),
+    );
+    sequence += 2;
+    events.push(
+      ...commandBlock(thread, sequence, "turn-1", "after", 20),
+      itemEvent(thread, sequence + 40, "item/completed", "turn-1", {
+        ...longCommand,
+        status: "completed",
+        exitCode: 0,
+        aggregatedOutput: "slept",
+      }),
+      turnCompletedEvent(thread, sequence + 41, "turn-1"),
+    );
+    insertEvents(db, noopNotifier, events);
+
+    const latest = flatPage(db, thread, 100);
+    const allRows = flatPage(db, thread, LARGE_BUDGET).response.rows;
+
+    expect(latest.profile.eventRowCount).toBeLessThan(200);
+    expect(latest.response.timelinePage.olderRowUpdates).toEqual([
+      expect.objectContaining({ id: `${thread.id}:command:long-command` }),
+    ]);
+    expect(latest.response.timelinePage.olderRowsSourceSeqEnd).toBe(
+      expectedOlderRowsSourceSeqEnd(
+        allRows,
+        latest.response,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    );
   });
 });
