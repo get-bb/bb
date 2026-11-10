@@ -11,19 +11,19 @@ afterEach(() => {
 
 function renderDialog({
   childThreadCount = 1,
-  status = "idle",
+  stopsRunningWork = false,
   pending = false,
 }: {
   pending?: boolean;
   childThreadCount?: number;
-  status?: "idle" | "starting" | "active" | "stopping";
+  stopsRunningWork?: boolean;
 } = {}) {
   const onArchive = vi.fn();
   const onOpenChange = vi.fn();
-  const thread = makeThread({ status });
+  const thread = makeThread({ status: "idle" });
   const view = render(
     <ThreadArchiveDialog
-      target={{ threads: [thread], childThreadCount }}
+      target={{ threads: [thread], childThreadCount, stopsRunningWork }}
       pending={pending}
       onOpenChange={onOpenChange}
       onArchive={onArchive}
@@ -58,13 +58,10 @@ describe("ThreadArchiveDialog", () => {
     expect(screen.getByRole("button", { name: "Archive" })).toBeTruthy();
   });
 
-  it.each(["starting", "active", "stopping"] as const)(
-    "warns that current work will stop for a %s thread",
-    (status) => {
-      renderDialog({ status });
-      expect(screen.getByText(/This will stop current work\./)).toBeTruthy();
-    },
-  );
+  it("warns when the archive will stop work beyond the selected idle thread", () => {
+    renderDialog({ stopsRunningWork: true });
+    expect(screen.getByText(/This will stop current work\./)).toBeTruthy();
+  });
 
   it("omits the active-work warning for an idle thread", () => {
     renderDialog();
@@ -104,6 +101,7 @@ describe("ThreadArchiveDialog", () => {
     expect(onArchive).toHaveBeenCalledWith({
       threads: [thread],
       childThreadCount: 2,
+      stopsRunningWork: false,
     });
   });
 });
