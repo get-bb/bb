@@ -1,0 +1,81 @@
+name: Desktop packaging profile
+on:
+  push:
+    branches: [ci/nov9-desktop-packaging]
+env:
+  PRIMARY_NODE_VERSION: "22.x"
+  PNPM_VERSION: "9.15.0"
+jobs:
+  windows-desktop-smoke:
+    name: Windows desktop smoke (Node 22.x)
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+
+      - name: Restore Windows dependency disk
+        timeout-minutes: 2
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
+
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
+
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache-prefix: windows-desktop-smoke
+          turbo-cache: "true"
+          turbo-cache-max-size-mb: "256"
+
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        shell: bash
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+
+      - name: Build packaging inputs
+        shell: bash
+        run: pnpm exec turbo run build --filter=@bb/desktop --filter=bb-app --output-logs=errors-only
+      - name: Profile packaging with default and larger libuv pools
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          cd apps/desktop
+          for size in 4 16 16 4; do
+            echo "POOL_BEGIN=$size $(date -u +%FT%TZ)"
+            UV_THREADPOOL_SIZE=$size node --require ../../scripts/diagnose-desktop.cjs scripts/run-electron-builder.mjs --win --dir --x64 --publish never
+            echo "POOL_END=$size $(date -u +%FT%TZ)"
+          done
+      - name: Packaged app smoke
+        shell: bash
+        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=errors-only
