@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { z } from "zod";
 import type { hostStorageContract } from "./host-contract.js";
+import { isFsErrorWithCode } from "./fs-errors.js";
 
 type ListOutput = z.infer<typeof hostStorageContract.listGitWorktrees.output>;
 type Worktree = ListOutput["repositories"][number]["worktrees"][number];
@@ -110,17 +111,43 @@ async function listRepository(repositoryPath: string, signal: AbortSignal) {
   return parseWorktreeList(result.stdout);
 }
 
+function parseStatus(stdout: string) {
+  const tokens = stdout.split("\0");
+  const paths: string[] = [];
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!;
+    if (token.length < 4) continue;
+    paths.push(token.slice(3));
+    if (token[0] === "R" || token[0] === "C") index++;
+  }
+  return paths;
+}
+
+async function latestModification(root: string, relativePaths: string[]) {
+  const times = await Promise.all(
+    relativePaths.slice(0, 500).map((relative) =>
+      fs.lstat(path.join(root, relative)).then(
+        (stats) => stats.mtimeMs,
+        () => 0,
+      ),
+    ),
+  );
+  const latest = Math.max(0, ...times);
+  return latest > 0 ? Math.round(latest) : null;
+}
+
 async function inspect(
   entry: { path: string; head: string | null; branch: string | null },
   signal: AbortSignal,
 ) {
   const status = await git(
-    ["status", "--porcelain", "--untracked-files=normal"],
+    ["status", "--porcelain", "-z", "--untracked-files=normal"],
     entry.path,
     signal,
   );
   if (status.exitCode !== 0)
     throw new Error(status.stderr || "git status failed");
+  const changed = parseStatus(status.stdout);
   let unsavedCommitCount = 0;
   if (entry.branch === null && entry.head !== null) {
     const unsaved = await git(
@@ -141,8 +168,41 @@ async function inspect(
     unsavedCommitCount = Number(unsaved.stdout.trim());
   }
   return {
-    changedFileCount: status.stdout.split("\n").filter(Boolean).length,
+    changedFileCount: changed.length,
     unsavedCommitCount,
+    changedAt: await latestModification(entry.path, changed),
+  };
+}
+
+export async function inspectCheckouts(
+  { paths }: { paths: string[] },
+  signal: AbortSignal,
+) {
+  if (paths.some((target) => !path.isAbsolute(target)))
+    throw new Error("Checkout paths must be absolute");
+  return {
+    checkouts: await mapConcurrently(paths, 4, async (target) => {
+      signal.throwIfAborted();
+      try {
+        if (!(await fs.stat(target)).isDirectory())
+          return { path: target, state: "missing" as const };
+      } catch (error) {
+        if (isFsErrorWithCode(error, "ENOENT"))
+          return { path: target, state: "missing" as const };
+        throw error;
+      }
+      const status = await git(
+        ["status", "--porcelain", "-z", "--untracked-files=normal"],
+        target,
+        signal,
+      );
+      if (status.exitCode !== 0)
+        return { path: target, state: "notGit" as const };
+      const changedFileCount = parseStatus(status.stdout).length;
+      return changedFileCount > 0
+        ? { path: target, state: "changed" as const, changedFileCount }
+        : { path: target, state: "clean" as const };
+    }),
   };
 }
 
@@ -199,17 +259,27 @@ export async function listGitWorktrees(
       ),
       4,
       async (entry): Promise<Worktree> => {
-        const state = await inspect(entry, signal).catch(() => {
-          signal.throwIfAborted();
-          return { changedFileCount: null, unsavedCommitCount: null };
-        });
+        const { changedAt, ...state } = await inspect(entry, signal).catch(
+          () => {
+            signal.throwIfAborted();
+            return {
+              changedFileCount: null,
+              unsavedCommitCount: null,
+              changedAt: null,
+            };
+          },
+        );
+        const gitActivityAt = await lastActivityAt(entry.path);
         return {
           path: entry.path,
           head: entry.head,
           branch: entry.branch,
           locked: entry.locked,
           ...state,
-          lastActivityAt: await lastActivityAt(entry.path),
+          lastActivityAt:
+            gitActivityAt === null && changedAt === null
+              ? null
+              : Math.max(gitActivityAt ?? 0, changedAt ?? 0),
         };
       },
     );
@@ -243,6 +313,16 @@ async function check(
   return { entry, reasons };
 }
 
+async function pathMissing(target: string) {
+  try {
+    await fs.lstat(target);
+    return false;
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) return true;
+    throw error;
+  }
+}
+
 async function removeOne(
   repositoryPath: string,
   worktreePath: string,
@@ -255,6 +335,8 @@ async function removeOne(
     force,
     signal,
   );
+  if (entry === null && (await pathMissing(worktreePath)))
+    return { path: worktreePath, outcome: "removed" };
   if (entry === null || reasons.length > 0)
     return { path: worktreePath, outcome: "skipped", reasons };
   signal.throwIfAborted();

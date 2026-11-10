@@ -1,6 +1,6 @@
 import { createStorage } from "./storage.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { storageRpc } from "./contract.js";
+import { storageRpc, type Policy } from "./contract.js";
 import { createService } from "./service.js";
 import { registerCli } from "./cli.js";
 
@@ -8,7 +8,16 @@ export default function plugin(bb: BbPluginApi) {
   const service = createService(bb);
   const devCleanupEnabled = async () =>
     (await service.state()).policy.deleteDevDataOnCheckoutRemoval;
-  const storage = createStorage(bb, devCleanupEnabled);
+  const cleanupEnabled = async () =>
+    (await service.state()).policy.deleteStorageOnArchive;
+  const storage = createStorage(bb, devCleanupEnabled, cleanupEnabled);
+  const configure = async (policy: Policy) => {
+    const before = (await service.state()).policy.deleteStorageOnArchive;
+    const state = await service.configure(policy);
+    if (!before && state.policy.deleteStorageOnArchive)
+      void storage.backfillArchivedStorage();
+    return state;
+  };
   bb.events.on("experimental_environment.removed", ({ removal }) =>
     removal.hostId === null
       ? undefined
@@ -56,8 +65,6 @@ export default function plugin(bb: BbPluginApi) {
       }
     },
   });
-  const cleanupEnabled = async () =>
-    (await service.state()).policy.deleteStorageOnArchive;
   bb.events.on("thread.archived", async ({ thread }) => {
     if (
       thread.archivedAt === null ||
@@ -88,7 +95,8 @@ export default function plugin(bb: BbPluginApi) {
     removeOrphans: (input) => storage.removeOrphans(input),
     clearLargeFiles: storage.clearLargeFiles,
     startClearLargeFiles: storage.startClearLargeFiles,
-    retryWorktreeCleanup: (input) => storage.retryWorktreeCleanup(input),
+    retryWorktreeCleanup: (input) =>
+      storage.retryWorktreeCleanup({ ...input, interruptedOnly: false }),
     clearThread: storage.clearThread,
     clearArchivedFiles: storage.clearArchivedFiles,
     startClearArchivedFiles: storage.startClearArchivedFiles,
@@ -97,8 +105,14 @@ export default function plugin(bb: BbPluginApi) {
     startRemoveExternalWorktree: storage.startRemoveExternalWorktree,
     state: () => service.state(),
     preview: (policy) => service.preview(policy),
-    configure: (policy) => service.configure(policy),
+    configure,
   });
-  registerCli(bb, service, storage);
+  registerCli(bb, { ...service, configure }, storage);
   bb.background.schedule("retention", "0 * * * *", () => service.sweep());
+  bb.background.schedule("leftover-worktree-recovery", "15 * * * *", () =>
+    storage.recoverInterruptedWorktrees(),
+  );
+  bb.background.schedule("archived-storage-backfill", "30 * * * *", () =>
+    storage.backfillArchivedStorage(),
+  );
 }

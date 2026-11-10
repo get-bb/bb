@@ -12,6 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { hostStorageContract } from "./host-contract.js";
 import {
+  inspectCheckouts,
   inspectGitWorktree,
   listGitWorktrees,
   removeGitWorktrees,
@@ -46,6 +47,8 @@ export default experimental_defineHostEntry({
     homeDirectory: () => os.homedir(),
     listGitWorktrees: (input, context) =>
       listGitWorktrees(input, context.signal),
+    inspectCheckouts: (input, context) =>
+      inspectCheckouts(input, context.signal),
     inspectGitWorktree: (input, context) =>
       inspectGitWorktree(input, context.signal),
     removeGitWorktrees: (input, context) =>

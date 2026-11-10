@@ -5,7 +5,7 @@ import {
   hostStorageRetryWorktreeCleanupResponseSchema,
   hostStorageRemoveExternalWorktreesResponseSchema,
   externalWorktreeSkipReasonSchema,
-  maintenanceKindSchema,
+  cleanupInputSchema,
   entryCleanupInputSchema,
   entryCleanupStatusSchema,
 } from "./storage-types.js";
@@ -50,12 +50,7 @@ export const storageRpc = defineRpcContract({
     output: entryCleanupStatusSchema,
   },
   startCleanup: {
-    input: z
-      .object({
-        hostId: z.string().min(1),
-        kind: maintenanceKindSchema,
-      })
-      .strict(),
+    input: cleanupInputSchema,
     output: z.null(),
   },
   hosts: { input: z.null(), output: hostStorageListResponseSchema },
@@ -67,7 +62,12 @@ export const storageRpc = defineRpcContract({
     output: hostStorageRemoveOrphansResponseSchema,
   },
   retryWorktreeCleanup: {
-    input: machineInput,
+    input: z
+      .object({
+        hostId: z.string().min(1),
+        includeUncommitted: z.boolean(),
+      })
+      .strict(),
     output: hostStorageRetryWorktreeCleanupResponseSchema,
   },
   removeExternalWorktrees: {

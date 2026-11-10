@@ -13,13 +13,16 @@ import {
 } from "./host-contract.js";
 import { readThreadsById, readThreadsInEnvironments } from "./sdk-data.js";
 import { LARGE_FILE_MIN_BYTES } from "./rules.js";
+import { describeLeftoverCleanup } from "./leftover-cleanup.js";
 import {
   developerStorageScanSchema,
   externalWorktreeScanSchema,
 } from "./storage-types.js";
 import type {
+  CleanupInput,
   EntryCleanupInput,
   EntryCleanupStatus,
+  HostStorageLeftoverWorktree,
   ExternalWorktreeRemoval,
   ExternalWorktreeSkipReason,
   HostStorageRemoveExternalWorktreesResponse,
@@ -239,9 +242,28 @@ function leftoverEnvironments(retired: Environment[], threads: Thread[]) {
   );
   return retired.filter((env) => !occupied.has(env.id));
 }
+const interruptedCleanup = (env: Environment) =>
+  env.lifecycle.teardown?.status === "failed" &&
+  (env.lifecycle.teardown.message?.startsWith("Needs recovery:") ?? false);
+type LeftoverCleanup = HostStorageLeftoverWorktree["cleanup"];
+function leftoverFailure(error: unknown): LeftoverCleanup {
+  const text = error instanceof Error ? error.message : String(error);
+  if (text.includes("process inspection"))
+    return { state: "recoveryUnsupported" };
+  if (
+    text.includes("workspace processes remain") ||
+    text.includes("cannot inspect same-user processes") ||
+    text.includes("setup or a hook is still running")
+  )
+    return { state: "processesRunning" };
+  if (text.includes("Needs recovery")) return { state: "interrupted" };
+  return { state: "failed", message: text.replace(/^HTTP \d+: /, "") };
+}
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
 
+const plural = (count: number, noun: string) =>
+  `${count.toLocaleString()} ${count === 1 ? noun : `${noun}s`}`;
 class StorageLocationUnavailable extends Error {
   constructor() {
     super(
@@ -253,6 +275,7 @@ class StorageLocationUnavailable extends Error {
 export function createStorage(
   bb: BbPluginApi,
   devCleanupEnabled: () => Promise<boolean>,
+  archiveCleanupEnabled: () => Promise<boolean>,
 ) {
   const db = bb.storage.database();
   bb.storage.migrate(db, [
@@ -301,6 +324,48 @@ export function createStorage(
       "INSERT INTO scans (host_id, result_json) VALUES (?, ?) ON CONFLICT(host_id) DO UPDATE SET result_json = excluded.result_json",
     ).run(hostId, JSON.stringify(scan));
     changed();
+  }
+  const leftoverCleanups = new Map<string, LeftoverCleanup>();
+  async function readHeldWorkspaces(
+    held: { threadId: string; path: string }[],
+    environments: Environment[],
+  ) {
+    const result = new Map<string, { path: string; threadTitles: string[] }>();
+    if (held.length === 0) return result;
+    const users = new Map(
+      held.map(({ threadId, path }) => [
+        threadId,
+        environments.filter(
+          (env) =>
+            liveEnvironment(env) && hostPath(env.path) === hostPath(path),
+        ),
+      ]),
+    );
+    const threads = await readThreadsInEnvironments(
+      bb,
+      [
+        ...new Set(
+          [...users.values()].flatMap((envs) => envs.map((env) => env.id)),
+        ),
+      ],
+      lifecycle.signal,
+    );
+    for (const { threadId, path } of held) {
+      const envIds = new Set(users.get(threadId)?.map((env) => env.id));
+      result.set(threadId, {
+        path,
+        threadTitles: threads
+          .filter(
+            (thread) =>
+              thread.id !== threadId &&
+              thread.archivedAt === null &&
+              thread.environmentId !== null &&
+              envIds.has(thread.environmentId),
+          )
+          .map((thread) => thread.title ?? thread.titleFallback ?? thread.id),
+      });
+    }
+    return result;
   }
   const scanRemovals = new Map<string, Removal>();
   const removedTargets = new Map<
@@ -496,7 +561,7 @@ export function createStorage(
     for (const env of allEnvironments) {
       if (
         !env.managed ||
-        !env.isWorktree ||
+        (!env.isWorktree && !environments.has(env.id)) ||
         env.path === null ||
         env.status === "destroyed" ||
         env.lifecycle.teardown?.status === "removed"
@@ -510,12 +575,36 @@ export function createStorage(
       if (environments.has(env.id)) counts.pendingPaths.add(env.path);
       projectCounts.set(env.projectId, counts);
     }
+    const environmentIds = new Set(allEnvironments.map((env) => env.id));
     const externalWorktrees = unownedWorktrees
-      .map((worktree) => ({
-        ...worktree,
-        threads: linked(worktree.path),
-      }))
-      .sort((a, b) => b.sizeBytes - a.sizeBytes);
+      .map((worktree) => {
+        const threadsUsing = linked(worktree.path);
+        const threadActivity = threadsUsing.map(
+          (thread) => byId.get(thread.threadId)?.updatedAt ?? 0,
+        );
+        const latest = Math.max(
+          worktree.lastActivityAt ?? 0,
+          ...threadActivity,
+        );
+        const removedEnvironment = worktree.path
+          .replaceAll("\\", "/")
+          .match(/\/worktrees\/(env_[a-zA-Z0-9]+)\//)?.[1];
+        return {
+          ...worktree,
+          threads: threadsUsing,
+          lastUsedAt: latest > 0 ? latest : null,
+          origin:
+            removedEnvironment !== undefined &&
+            !environmentIds.has(removedEnvironment)
+              ? ("removedEnvironment" as const)
+              : ("outsideBb" as const),
+        };
+      })
+      .sort(
+        (a, b) =>
+          (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0) ||
+          b.sizeBytes - a.sizeBytes,
+      );
     const externalCounts = new Map<string, { count: number; bytes: number }>();
     for (const worktree of externalWorktrees) {
       const counts = externalCounts.get(worktree.projectId) ?? {
@@ -541,6 +630,11 @@ export function createStorage(
               ...entry,
               projectId: env.projectId,
               teardownMessage: env.lifecycle.teardown?.message ?? null,
+              cleanup:
+                leftoverCleanups.get(env.id) ??
+                (interruptedCleanup(env)
+                  ? { state: "interrupted" as const }
+                  : { state: "retrying" as const }),
             },
           ]
         : [];
@@ -564,6 +658,18 @@ export function createStorage(
         !workspaces.has(entry.name)
       );
     });
+    const largest = owned
+      .sort((a, b) => b.sizeBytes - a.sizeBytes)
+      .slice(0, 20);
+    const heldWorkspaces = await readHeldWorkspaces(
+      largest.flatMap(({ thread }) => {
+        const workspace = workspaces.get(thread.id);
+        return workspace === undefined
+          ? []
+          : [{ threadId: thread.id, path: workspace }];
+      }),
+      allEnvironments,
+    );
     const clearableOwned = owned.filter(
       (entry) => clearableArchived(entry.thread) && !workspaces.has(entry.name),
     );
@@ -595,20 +701,18 @@ export function createStorage(
         fileCount: clearable.reduce((total, entry) => total + entry.count, 0),
         bytes: sum(clearable),
       },
-      largestThreads: owned
-        .sort((a, b) => b.sizeBytes - a.sizeBytes)
-        .slice(0, 20)
-        .map(({ thread, sizeBytes }) => ({
-          threadId: thread.id,
-          projectId: thread.projectId,
-          title: thread.title ?? thread.titleFallback ?? thread.id,
-          archivedAt: thread.archivedAt,
-          updatedAt: thread.updatedAt,
-          hidden: thread.visibility === "hidden",
-          pinned: thread.pinnedAt !== null,
-          running: ["starting", "active", "stopping"].includes(thread.status),
-          sizeBytes,
-        })),
+      largestThreads: largest.map(({ thread, sizeBytes }) => ({
+        threadId: thread.id,
+        projectId: thread.projectId,
+        title: thread.title ?? thread.titleFallback ?? thread.id,
+        archivedAt: thread.archivedAt,
+        updatedAt: thread.updatedAt,
+        hidden: thread.visibility === "hidden",
+        pinned: thread.pinnedAt !== null,
+        running: ["starting", "active", "stopping"].includes(thread.status),
+        sizeBytes,
+        heldWorkspace: heldWorkspaces.get(thread.id) ?? null,
+      })),
       leftoverWorktrees: worktrees,
       projectWorktrees: projects
         .filter(
@@ -945,6 +1049,7 @@ export function createStorage(
         };
         store(hostId, withoutRemoved(scan, removal));
         completed = true;
+        void backfillArchivedStorage();
       } catch (error) {
         if (!lifecycle.signal.aborted) {
           scans.set(hostId, {
@@ -1630,30 +1735,97 @@ export function createStorage(
       }
     }
   }
+  async function backfillArchivedStorage() {
+    try {
+      if (lifecycle.signal.aborted || !(await archiveCleanupEnabled())) return;
+      const names = db
+        .prepare<[], { name: string }>(
+          "SELECT DISTINCT json_extract(entry.value, '$.name') AS name FROM scans, json_each(scans.result_json, '$.entries') AS entry WHERE COALESCE(json_extract(entry.value, '$.empty'), 0) = 0",
+        )
+        .all()
+        .map((row) => row.name)
+        .filter((name) => /^thr_[a-zA-Z0-9]+$/.test(name));
+      const threads = await readThreadsById(bb, names, lifecycle.signal);
+      for (const thread of threads.values())
+        if (
+          thread.archivedAt !== null &&
+          thread.pinnedAt === null &&
+          thread.deletedAt === null
+        )
+          queueArchivedStorage(thread.id, thread.archivedAt);
+      await clearPendingArchives(archiveCleanupEnabled);
+    } catch (error) {
+      if (!lifecycle.signal.aborted)
+        bb.log.warn(
+          `Could not clear storage of already archived threads: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+  }
   async function retryWorktreeCleanup(
-    { hostId }: { hostId: string },
+    {
+      hostId,
+      includeUncommitted,
+      interruptedOnly,
+    }: {
+      hostId: string;
+      includeUncommitted: boolean;
+      interruptedOnly: boolean;
+    },
     reserved: (() => void) | null = null,
   ) {
     const release = reserved ?? (await acquire(hostId));
     try {
       await requireHost(hostId, true);
-      const environments = await readLeftoverEnvironments(
-        await readEnvironments(hostId),
+      const environments = (
+        await readLeftoverEnvironments(await readEnvironments(hostId))
+      ).filter((env) => !interruptedOnly || interruptedCleanup(env));
+      const interruptedPaths = environments.flatMap((env) =>
+        interruptedCleanup(env) && env.path !== null ? [env.path] : [],
       );
+      const changes = new Map<string, number>();
+      for (let offset = 0; offset < interruptedPaths.length; offset += 100) {
+        const { checkouts } = await worker.call(
+          "inspectCheckouts",
+          { paths: interruptedPaths.slice(offset, offset + 100) },
+          { hostId, signal: lifecycle.signal },
+        );
+        for (const checkout of checkouts)
+          if (checkout.state === "changed")
+            changes.set(checkout.path, checkout.changedFileCount);
+      }
       let retriedCount = 0;
       const failed: { environmentId: string; message: string }[] = [];
       for (const env of environments) {
         lifecycle.signal.throwIfAborted();
+        const recover = interruptedCleanup(env);
+        const changedFileCount =
+          recover && env.path !== null ? changes.get(env.path) : undefined;
+        if (changedFileCount !== undefined && !includeUncommitted) {
+          const cleanup = {
+            state: "uncommittedChanges" as const,
+            changedFileCount,
+          };
+          leftoverCleanups.set(env.id, cleanup);
+          failed.push({
+            environmentId: env.id,
+            message: describeLeftoverCleanup(cleanup),
+          });
+          continue;
+        }
         try {
           await bb.sdk.environments.experimental_cleanup({
             environmentId: env.id,
+            recover,
           });
+          leftoverCleanups.delete(env.id);
           retriedCount++;
         } catch (error) {
           lifecycle.signal.throwIfAborted();
+          const cleanup = leftoverFailure(error);
+          leftoverCleanups.set(env.id, cleanup);
           failed.push({
             environmentId: env.id,
-            message: error instanceof Error ? error.message : String(error),
+            message: describeLeftoverCleanup(cleanup),
           });
         }
       }
@@ -1661,6 +1833,25 @@ export function createStorage(
       return { retriedCount, failed };
     } finally {
       release();
+    }
+  }
+  async function recoverInterruptedWorktrees() {
+    lifecycle.signal.throwIfAborted();
+    const machines = await bb.sdk.hosts.list({ type: "persistent" });
+    for (const machine of machines) {
+      if (machine.status !== "connected") continue;
+      try {
+        await retryWorktreeCleanup({
+          hostId: machine.id,
+          includeUncommitted: false,
+          interruptedOnly: true,
+        });
+      } catch (error) {
+        if (lifecycle.signal.aborted) return;
+        bb.log.warn(
+          `Could not recover interrupted worktree cleanup on ${machine.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
   }
   async function externalWorktreeTargets(
@@ -1864,13 +2055,8 @@ export function createStorage(
       release();
     }
   }
-  async function startCleanup({
-    hostId,
-    kind,
-  }: {
-    hostId: string;
-    kind: MaintenanceKind;
-  }) {
+  async function startCleanup(input: CleanupInput) {
+    const { hostId, kind } = input;
     await requireHost(hostId, true);
     if (!read(hostId))
       throw new Error("Scan the machine before cleaning up storage");
@@ -1884,33 +2070,49 @@ export function createStorage(
         const release = await reservation;
         setMaintenance(hostId, { state: "running", kind });
         let message: string;
-        if (kind === "orphans") {
+        let freedBytes: number | null = null;
+        if (input.kind === "orphans") {
           const result = await removeOrphans({ hostId }, release);
-          message = `Removed ${result.removedCount} orphaned storage folders`;
-        } else if (kind === "development") {
+          message = `Removed ${plural(result.removedCount, "orphaned storage folder")}`;
+          freedBytes = result.removedBytes;
+        } else if (input.kind === "development") {
           const result = await removeDevInstances(
             { hostId, names: null },
             release,
           );
-          message = `Removed ${result.removedCount} development instances; ${result.skippedCount} skipped`;
-        } else if (kind === "externalWorktrees") {
+          message = `Removed ${plural(result.removedCount, "development instance")}; ${result.skippedCount} skipped`;
+          freedBytes = result.removedBytes;
+        } else if (input.kind === "externalWorktrees") {
           const result = await removeExternalWorktrees(
-            { hostId, paths: null },
+            input.paths === null
+              ? { hostId, paths: null }
+              : { hostId, paths: input.paths, force: input.force },
             release,
           );
-          message = `Removed ${result.removedCount} worktrees created outside BB; ${result.skipped.length + result.failed.length} kept`;
+          const kept = result.skipped.length + result.failed.length;
+          message = `Removed ${plural(result.removedCount, "worktree")}${kept > 0 ? `; ${kept} kept` : ""}`;
+          freedBytes = result.removedBytes;
         } else {
-          const result = await retryWorktreeCleanup({ hostId }, release);
-          const failure = result.failed[0];
-          if (failure && result.retriedCount === 0)
+          const result = await retryWorktreeCleanup(
+            {
+              hostId,
+              includeUncommitted: input.includeUncommitted,
+              interruptedOnly: false,
+            },
+            release,
+          );
+          if (result.retriedCount === 0 && result.failed[0])
             throw new Error(
-              `${result.failed.length} worktrees couldn’t be retried: ${failure.message}`,
+              `${plural(result.failed.length, "checkout")} kept: ${result.failed[0].message}`,
             );
-          message = failure
-            ? `Retried cleanup for ${result.retriedCount} worktrees; ${result.failed.length} couldn’t be retried: ${failure.message}`
-            : `Retried cleanup for ${result.retriedCount} worktrees`;
+          message = `Cleaned up ${plural(result.retriedCount, "checkout")}${result.failed.length > 0 ? `; ${result.failed.length} kept` : ""}`;
         }
-        setMaintenance(hostId, { state: "completed", kind, message });
+        setMaintenance(hostId, {
+          state: "completed",
+          kind,
+          message,
+          freedBytes,
+        });
       } catch (error) {
         if (!lifecycle.signal.aborted)
           setMaintenance(hostId, {
@@ -1996,6 +2198,8 @@ export function createStorage(
     cancelArchivedStorage,
     clearPendingArchives,
     retryWorktreeCleanup,
+    recoverInterruptedWorktrees,
+    backfillArchivedStorage,
   };
 }
 export type Storage = ReturnType<typeof createStorage>;

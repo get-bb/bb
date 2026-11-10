@@ -435,6 +435,7 @@ it("starts orphan cleanup in the background without locking the page and toasts 
       state: "completed",
       kind: "orphans",
       message: "Removed 1 orphaned storage folder",
+      freedBytes: 10,
     },
   ];
   await act(async () => {
@@ -515,6 +516,7 @@ it.each([
         state: "completed",
         kind,
         message: "Test machine",
+        freedBytes: null,
       },
     ];
     await act(async () => {
@@ -543,6 +545,8 @@ it("keeps worktree removal spinning through queued and running states, then toas
       lastActivityAt: null,
       sizeBytes: 4096,
       threads: [],
+      lastUsedAt: null,
+      origin: "outsideBb",
     },
   ];
   const page = within(slot.container);
@@ -791,6 +795,7 @@ it("omits freed space from a combined toast when one completion has no size", as
       kind: "externalWorktrees",
       state: "completed",
       message: "Removed 4 worktrees created outside BB; 2 kept",
+      freedBytes: null,
     },
   ];
   hosts[0]!.externalWorktreeRemovals = [
@@ -825,6 +830,8 @@ it("disables single worktree removal while a bulk worktree removal runs", async 
       lastActivityAt: null,
       sizeBytes: 4096,
       threads: [],
+      lastUsedAt: null,
+      origin: "outsideBb",
     },
   ];
   hosts[0]!.maintenanceJobs = [{ kind: "externalWorktrees", state: "running" }];
@@ -832,4 +839,103 @@ it("disables single worktree removal while a bulk worktree removal runs", async 
     name: "Remove worktree: heavy",
   });
   expect(button.hasAttribute("disabled")).toBe(true);
+});
+
+it("bulk-removes worktrees unused for the chosen period in one confirmation, optionally keeping ones with changes", async () => {
+  const { slot, hosts, start } = fixture();
+  const day = 86_400_000;
+  const worktree = (name: string, ageDays: number, changed: number) => ({
+    projectId: "proj_test",
+    repositoryPath: "/fixture/repo",
+    path: `/fixture/worktrees/${name}`,
+    branch: name,
+    locked: false,
+    changedFileCount: changed,
+    unsavedCommitCount: 0,
+    lastActivityAt: null,
+    sizeBytes: 1024,
+    threads: [],
+    lastUsedAt: Date.now() - ageDays * day,
+    origin: "outsideBb" as const,
+  });
+  hosts[0]!.report!.externalWorktrees = [
+    worktree("stale-clean", 40, 0),
+    worktree("stale-dirty", 20, 3),
+    worktree("fresh", 1, 0),
+  ];
+  const page = within(slot.container);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Remove worktrees" }),
+  );
+  let confirmation = await page.findByRole("region", {
+    name: "Confirm cleanup",
+  });
+  expect(confirmation.textContent).toContain(
+    "Remove 2 worktrees not used in 1 week",
+  );
+  fireEvent.click(
+    within(confirmation).getByRole("button", {
+      name: "Keep the 1 with changes",
+    }),
+  );
+  await waitFor(() =>
+    expect(start).toHaveBeenLastCalledWith({
+      hostId: "host_test",
+      kind: "externalWorktrees",
+      paths: ["/fixture/worktrees/stale-clean"],
+      force: false,
+    }),
+  );
+  fireEvent.click(page.getByRole("button", { name: "Remove worktrees" }));
+  confirmation = await page.findByRole("region", { name: "Confirm cleanup" });
+  fireEvent.click(
+    within(confirmation).getByRole("button", { name: "Remove all 2" }),
+  );
+  await waitFor(() =>
+    expect(start).toHaveBeenLastCalledWith({
+      hostId: "host_test",
+      kind: "externalWorktrees",
+      paths: [
+        "/fixture/worktrees/stale-clean",
+        "/fixture/worktrees/stale-dirty",
+      ],
+      force: true,
+    }),
+  );
+});
+
+it("removes a whole development group from one confirmation", async () => {
+  const { slot, hosts, remove } = fixture();
+  const storage = hosts[0]!.report!.developerStorage!;
+  const template = storage.entries[0]!;
+  storage.entries = ["one", "two"].map((name) => ({
+    ...template,
+    name,
+    running: false,
+    threads: [{ threadId: `thr_${name}`, title: name, archived: true }],
+  }));
+  remove.mockResolvedValue({
+    running: [],
+    removedCount: 2,
+    removedBytes: 40,
+    skippedCount: 0,
+    stoppedProcessCount: 0,
+  });
+  const page = within(slot.container);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Remove all archived threads" }),
+  );
+  const confirmation = await page.findByRole("region", {
+    name: "Confirm cleanup",
+  });
+  fireEvent.click(
+    within(confirmation).getByRole("button", { name: "Remove instances" }),
+  );
+  await waitFor(() =>
+    expect(remove).toHaveBeenCalledWith({
+      hostId: "host_test",
+      names: ["one", "two"],
+      stopRunning: true,
+    }),
+  );
 });

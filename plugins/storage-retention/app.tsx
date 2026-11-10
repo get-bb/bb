@@ -47,6 +47,11 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { EntryCleanupInput } from "./src/storage-types.js";
+import { describeLeftoverCleanup } from "./src/leftover-cleanup.js";
+import {
+  needsForce,
+  selectExternalWorktrees,
+} from "./src/worktree-selection.js";
 import type { storageRpc, State, Policy } from "./src/contract.js";
 import {
   LARGE_FILE_MIN_BYTES,
@@ -337,7 +342,12 @@ function StoragePanel(props: PluginNavPanelProps) {
           if (job.state === "completed")
             notifySuccess(feedback.completed, {
               description: `${machine} · ${"message" in job ? job.message : `${bytes(job.clearedBytes)} freed`}`,
-              freedBytes: "clearedBytes" in job ? job.clearedBytes : null,
+              freedBytes:
+                "clearedBytes" in job
+                  ? job.clearedBytes
+                  : "freedBytes" in job
+                    ? job.freedBytes
+                    : null,
               removedInstances: null,
             });
         }
@@ -470,6 +480,7 @@ function StoragePage({
   }
   const cleanupBusy = (kind: string) =>
     busyActions.has(`storage:${hostId ?? "all"}:${kind}`);
+  const [unusedForDays, setUnusedForDays] = useState<number | null>(7);
   const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
     string | null
   >(null);
@@ -480,6 +491,10 @@ function StoragePage({
     detail: string;
     action: string;
     run: () => Promise<string | CleanupCompletion>;
+    alternative?: {
+      action: string;
+      run: () => Promise<string | CleanupCompletion>;
+    };
     feedback: ActionFeedback;
   } | null>(null);
   function setCleanup(value: typeof cleanup) {
@@ -614,6 +629,9 @@ function StoragePage({
       (total, worktree) => total + worktree.sizeBytes,
       0,
     ) ?? 0;
+  const unusedWorktrees = report
+    ? externalWorktreeSelection(report.externalWorktrees, unusedForDays)
+    : null;
   const missingDevBytes = missingDev.reduce(
     (total, entry) => total + entry.sizeBytes,
     0,
@@ -691,6 +709,7 @@ function StoragePage({
           },
         ]
       : [];
+  const cleanupAlternative = cleanup?.alternative;
   const cleanupConfirmation = cleanup && (
     <div
       role="region"
@@ -714,6 +733,26 @@ function StoragePage({
         >
           Cancel
         </Button>
+        {cleanupAlternative && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={offline || busyActions.has(cleanup.feedback.id ?? "")}
+            onClick={() =>
+              void perform(
+                async () => {
+                  const done = await cleanupAlternative.run();
+                  setCleanup(null);
+                  return done;
+                },
+                cleanup.feedback,
+                (done) => done,
+              )
+            }
+          >
+            {cleanupAlternative.action}
+          </Button>
+        )}
         <Button
           variant="destructive"
           size="sm"
@@ -1010,26 +1049,54 @@ function StoragePage({
                     <CleanupRow
                       title="Leftover worktrees"
                       size={report.leftoverWorktreeBytes}
-                      description="Checkouts BB could not remove after their threads were archived. BB retries automatically."
-                      action="Retry cleanup"
+                      description="Checkouts of archived threads that BB hasn’t removed yet. BB keeps retrying, and removes interrupted ones once nothing is running in them and they have no uncommitted changes."
+                      action="Clean up"
                       busy={cleanupBusy("worktrees")}
                       disabled={locked || report.leftoverWorktrees.length === 0}
-                      onAction={() =>
-                        void perform(
-                          async () => {
-                            await rpc.call("startCleanup", {
+                      onAction={() => {
+                        const changed = report.leftoverWorktrees.filter(
+                          (worktree) =>
+                            worktree.cleanup.state === "uncommittedChanges",
+                        );
+                        const start = (includeUncommitted: boolean) =>
+                          rpc
+                            .call("startCleanup", {
                               kind: "worktrees",
-                              hostId,
-                            });
-                          },
-                          cleanupFeedback(
-                            "worktrees",
-                            hostId,
-                            machine?.name ?? hostId ?? "Machine",
-                          ),
-                        )
-                      }
+                              hostId: report.hostId,
+                              includeUncommitted,
+                            })
+                            .then(() => "Checkout cleanup started.");
+                        const feedback = cleanupFeedback(
+                          "worktrees",
+                          report.hostId,
+                          machine?.name ?? report.hostId,
+                        );
+                        if (changed.length === 0) {
+                          void perform(() => start(false), feedback);
+                          return;
+                        }
+                        const total = report.leftoverWorktrees.length;
+                        setCleanup({
+                          key: "leftover-worktrees",
+                          feedback,
+                          action:
+                            changed.length === total
+                              ? `Remove ${plural(total, "checkout")}`
+                              : `Remove all ${total}`,
+                          title: `Remove ${plural(total, "leftover checkout")} (${bytes(report.leftoverWorktreeBytes)})?`,
+                          detail: `${changed.length === total ? (total === 1 ? "It has" : "They all have") : `${changed.length} of them have`} uncommitted changes, which are lost if removed. Their branches are kept. This can’t be undone.`,
+                          ...(changed.length < total && {
+                            alternative: {
+                              action: `Keep the ${changed.length} with changes`,
+                              run: () => start(false),
+                            },
+                          }),
+                          run: () => start(true),
+                        });
+                      }}
                     >
+                      {cleanup?.key === "leftover-worktrees" &&
+                        cleanupConfirmation}
                       {report.leftoverWorktrees.length > 0 && (
                         <details className="text-xs text-muted-foreground">
                           <summary className="cursor-pointer">
@@ -1047,9 +1114,8 @@ function StoragePage({
                               >
                                 <p className="break-all">{worktree.path}</p>
                                 <p className="mt-1 text-muted-foreground">
-                                  {bytes(worktree.sizeBytes)}
-                                  {worktree.teardownMessage &&
-                                    ` · ${worktree.teardownMessage}`}
+                                  {bytes(worktree.sizeBytes)} ·{" "}
+                                  {describeLeftoverCleanup(worktree.cleanup)}
                                 </p>
                               </div>
                             ))}
@@ -1060,11 +1126,34 @@ function StoragePage({
                     <CleanupRow
                       title="Worktrees created outside BB"
                       size={externalBytes}
-                      description="Git worktrees of your projects that BB didn’t create, such as ones agents added with git worktree add. Removing them keeps their branches. Bulk removal keeps worktrees with uncommitted changes, locked worktrees, and detached worktrees with commits on no branch; remove those one at a time."
+                      description="Git worktrees of your projects that BB didn’t create, such as ones agents added with git worktree add. Removing them keeps their branches."
                       action="Remove worktrees"
                       busy={cleanupBusy("externalWorktrees")}
-                      disabled={locked || report.externalWorktrees.length === 0}
-                      onAction={() =>
+                      disabled={
+                        locked ||
+                        unusedWorktrees === null ||
+                        unusedWorktrees.selected.length === 0
+                      }
+                      onAction={() => {
+                        if (unusedWorktrees === null) return;
+                        const { selected, forced } = unusedWorktrees;
+                        const start = (force: boolean) =>
+                          rpc
+                            .call("startCleanup", {
+                              kind: "externalWorktrees",
+                              hostId: report.hostId,
+                              paths: (force
+                                ? selected
+                                : selected.filter(
+                                    (worktree) => !needsForce(worktree),
+                                  )
+                              )
+                                .slice(0, 500)
+                                .map((worktree) => worktree.path),
+                              force,
+                            })
+                            .then(() => "Worktree removal started.");
+                        const safeCount = selected.length - forced.length;
                         setCleanup({
                           key: "external-worktrees",
                           feedback: cleanupFeedback(
@@ -1072,22 +1161,75 @@ function StoragePage({
                             report.hostId,
                             machine?.name ?? report.hostId,
                           ),
-                          action: "Remove worktrees",
-                          title: `Remove ${plural(report.externalWorktrees.length, "worktree")} created outside BB (${bytes(externalBytes)})?`,
-                          detail:
-                            "Delete these checkouts, including ignored files such as dependencies, build output, and local env files. Branches and commits stay in the repository. Worktrees with uncommitted changes, locked worktrees, and detached worktrees with commits on no branch are kept; remove those one at a time. Make sure no agent is still working in them. This can’t be undone.",
-                          run: async () => {
-                            await rpc.call("startCleanup", {
-                              kind: "externalWorktrees",
-                              hostId: report.hostId,
-                            });
-                            return "Worktree removal started in the background.";
-                          },
-                        })
-                      }
+                          action:
+                            forced.length === 0
+                              ? `Remove ${plural(selected.length, "worktree")}`
+                              : `Remove all ${selected.length}`,
+                          title: `Remove ${plural(selected.length, "worktree")}${unusedForDays === null ? "" : ` not used in ${duration(unusedForDays)}`} (${bytes(unusedWorktrees.bytes)})?`,
+                          detail: [
+                            "Delete these checkouts, including ignored files such as dependencies, build output, and local env files. Branches and commits on branches stay in the repository.",
+                            forced.length > 0 &&
+                              `${forced.length === selected.length ? (selected.length === 1 ? "It has" : "They all have") : `${forced.length} of them have`} uncommitted changes, a lock, or commits on no branch; that work is lost if removed.`,
+                            "Make sure no agent is still working in them. This can’t be undone.",
+                          ]
+                            .filter(Boolean)
+                            .join(" "),
+                          ...(forced.length > 0 &&
+                            safeCount > 0 && {
+                              alternative: {
+                                action: `Keep the ${forced.length} with changes`,
+                                run: () => start(false),
+                              },
+                            }),
+                          run: () => start(forced.length > 0),
+                        });
+                      }}
                     >
                       {cleanup?.key === "external-worktrees" &&
                         cleanupConfirmation}
+                      {report.externalWorktrees.length > 0 &&
+                        unusedWorktrees && (
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span>Not used in</span>
+                            <Select
+                              value={
+                                unusedForDays === null
+                                  ? "any"
+                                  : String(unusedForDays)
+                              }
+                              onValueChange={(next) => {
+                                setUnusedForDays(
+                                  next === "any" ? null : Number(next),
+                                );
+                                setCleanup(null);
+                              }}
+                            >
+                              <SelectTrigger
+                                aria-label="Not used in"
+                                className="h-7 w-32"
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {UNUSED_FOR_OPTIONS.map((days) => (
+                                  <SelectItem key={days} value={String(days)}>
+                                    {duration(days)}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="any">Any time</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <span>
+                              {plural(
+                                unusedWorktrees.selected.length,
+                                "worktree",
+                              )}{" "}
+                              · {bytes(unusedWorktrees.bytes)}
+                              {unusedWorktrees.forced.length > 0 &&
+                                ` · ${unusedWorktrees.forced.length} with uncommitted changes`}
+                            </span>
+                          </div>
+                        )}
                       {report.externalWorktrees.length > 0 && (
                         <ExternalWorktrees
                           worktrees={report.externalWorktrees}
@@ -1238,6 +1380,11 @@ function StoragePage({
                               ]}
                               onOpen={() => navigate.toThread(thread.threadId)}
                             />
+                            {thread.heldWorkspace && (
+                              <p className="text-xs leading-snug text-muted-foreground">
+                                {heldWorkspaceExplanation(thread.heldWorkspace)}
+                              </p>
+                            )}
                           </div>
                           <div className="flex h-5 shrink-0 items-center gap-2">
                             <span className="text-xs tabular-nums text-muted-foreground">
@@ -1249,7 +1396,11 @@ function StoragePage({
                               )}
                               label="Clear files"
                               target={thread.title}
-                              disabled={locked || thread.running}
+                              disabled={
+                                locked ||
+                                thread.running ||
+                                thread.heldWorkspace !== null
+                              }
                               onClick={() =>
                                 void runRowAction(
                                   thread.threadId,
@@ -1298,7 +1449,7 @@ function StoragePage({
                     rowDisabled={locked}
                     confirmationKey={cleanup?.key ?? null}
                     confirmation={cleanupConfirmation}
-                    onRemoveSelected={(entries) => {
+                    onRemoveSelected={(entries, key) => {
                       const size = entries.reduce(
                         (total, entry) => total + entry.sizeBytes,
                         0,
@@ -1307,7 +1458,7 @@ function StoragePage({
                         (entry) => entry.running,
                       ).length;
                       setCleanup({
-                        key: "dev-selected",
+                        key,
                         feedback: {
                           id: developmentToastId(
                             report.hostId,
@@ -1568,8 +1719,9 @@ function StoragePage({
                         Delete thread storage on archive
                       </span>
                       <span className="block text-xs text-muted-foreground">
-                        Permanently remove files after archiving. Conversations
-                        and uploaded attachments are kept. Pinned threads are
+                        Permanently remove files after archiving, including
+                        threads that are already archived. Conversations and
+                        uploaded attachments are kept. Pinned threads are
                         skipped.
                       </span>
                     </span>
@@ -2176,16 +2328,19 @@ function ExternalWorktrees({
                         )}
                       </p>
                       <p className="break-all">{worktree.path}</p>
+                      {worktree.origin === "removedEnvironment" && (
+                        <p>Left over from a BB environment that was removed</p>
+                      )}
                       {warnings.length > 0 && (
                         <p className="text-foreground">
                           {warnings.join(" · ")}
                         </p>
                       )}
-                      {(worktree.lastActivityAt !== null || thread) && (
+                      {(worktree.lastUsedAt !== null || thread) && (
                         <p>
-                          {worktree.lastActivityAt !== null &&
-                            `Last git activity ${ago(worktree.lastActivityAt)}`}
-                          {worktree.lastActivityAt !== null && thread && " · "}
+                          {worktree.lastUsedAt !== null &&
+                            `Last used ${ago(worktree.lastUsedAt)}`}
+                          {worktree.lastUsedAt !== null && thread && " · "}
                           {thread && (
                             <button
                               className="hover:text-foreground hover:underline"
@@ -2289,6 +2444,36 @@ function developerEntryLabel(entry: DeveloperEntry) {
 }
 
 const PREVIEW_COUNT = 5;
+const UNUSED_FOR_OPTIONS = [7, 14, 30, 90];
+function heldWorkspaceExplanation(held: {
+  path: string;
+  threadTitles: string[];
+}) {
+  const folder = held.path.split(/[\\/]/).filter(Boolean).at(-1) ?? held.path;
+  const [first] = held.threadTitles;
+  const users =
+    first === undefined
+      ? "an environment"
+      : held.threadTitles.length === 1
+        ? `“${first}”`
+        : `“${first}” and ${plural(held.threadTitles.length - 1, "other thread")}`;
+  return `Can’t be cleared: its ${folder} checkout is still used by ${users}. Archive or move that work first.`;
+}
+function externalWorktreeSelection(
+  worktrees: ExternalWorktree[],
+  unusedForDays: number | null,
+) {
+  const selected = selectExternalWorktrees(
+    worktrees,
+    unusedForDays,
+    Date.now(),
+  );
+  return {
+    selected,
+    forced: selected.filter(needsForce),
+    bytes: selected.reduce((total, worktree) => total + worktree.sizeBytes, 0),
+  };
+}
 
 function ShowMoreToggle({
   expanded,
@@ -2332,7 +2517,7 @@ function DeveloperStorage({
   confirmationKey: string | null;
   confirmation: ReactNode;
   onRemove: (entry: DeveloperEntry, label: string) => void;
-  onRemoveSelected: (entries: DeveloperEntry[]) => void;
+  onRemoveSelected: (entries: DeveloperEntry[], key: string) => void;
 }) {
   const navigate = useBbNavigate();
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
@@ -2383,9 +2568,20 @@ function DeveloperStorage({
             : storage.entries;
   const groups = [
     {
+      title: "Archived threads",
+      description: "Every linked thread is archived",
+      entries: filtered.filter(
+        (entry) =>
+          entry.threads.length > 0 &&
+          entry.threads.every((thread) => thread.archived),
+      ),
+    },
+    {
       title: "Linked threads",
       description: null,
-      entries: filtered.filter((entry) => entry.threads.length > 0),
+      entries: filtered.filter((entry) =>
+        entry.threads.some((thread) => !thread.archived),
+      ),
     },
     {
       title: "Other instances",
@@ -2487,7 +2683,9 @@ function DeveloperStorage({
                   variant="outline"
                   size="sm"
                   disabled={rowDisabled}
-                  onClick={() => onRemoveSelected(selectedEntries)}
+                  onClick={() =>
+                    onRemoveSelected(selectedEntries, "dev-selected")
+                  }
                 >
                   Remove selected
                 </Button>
@@ -2521,7 +2719,7 @@ function DeveloperStorage({
                     }
                     disabled={selectable(group.entries).length === 0}
                   />
-                  <h3 className="text-xs font-medium text-muted-foreground">
+                  <h3 className="min-w-0 flex-1 text-xs font-medium text-muted-foreground">
                     {group.title}{" "}
                     <span className="font-normal tabular-nums text-muted-foreground">
                       ({group.entries.length.toLocaleString()})
@@ -2533,7 +2731,27 @@ function DeveloperStorage({
                       </span>
                     )}
                   </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    aria-label={`Remove all ${group.title.toLowerCase()}`}
+                    disabled={
+                      rowDisabled || selectable(group.entries).length === 0
+                    }
+                    onClick={() =>
+                      onRemoveSelected(
+                        selectable(group.entries),
+                        `dev-group:${group.title}`,
+                      )
+                    }
+                  >
+                    Remove all
+                  </Button>
                 </div>
+                {confirmationKey === `dev-group:${group.title}` && (
+                  <div className="mt-2">{confirmation}</div>
+                )}
                 <div className="mt-2 space-y-3">
                   {(expandedGroups.has(group.title)
                     ? group.entries
