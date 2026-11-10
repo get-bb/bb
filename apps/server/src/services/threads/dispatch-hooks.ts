@@ -449,19 +449,21 @@ export async function runMessageDispatchHookPass(
     }
 
     const queuedOwner = request.queuedMessages[0]?.waitingOn;
-    const preferredPlugin =
+    const ownerId =
       queuedOwner?.kind === "plugin"
         ? queuedOwner.pluginId
         : request.pluginSubmission?.pluginId;
-    const preferredWaitIndex = waits.findIndex(
-      (entry) => entry.pluginId === preferredPlugin,
-    );
-    const [waiter] = waits.splice(Math.max(0, preferredWaitIndex), 1);
+    const waiter =
+      waits.find((entry) => entry.pluginId === ownerId) ?? waits[0];
     if (waiter === undefined) {
       await request.continueAfterHooks?.();
       return { kind: "proceed" };
     }
-    return { kind: "wait", waiter, additionalWaiters: waits };
+    return {
+      kind: "wait",
+      waiter,
+      additionalWaiters: waits.filter((entry) => entry !== waiter),
+    };
   });
 }
 
