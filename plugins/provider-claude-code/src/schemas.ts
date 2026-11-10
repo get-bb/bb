@@ -408,6 +408,7 @@ export const claudeResultMessageSchema = z
     usage: z.unknown().optional(),
     modelUsage: z.unknown().optional(),
     origin: claudeMessageOriginSchema.optional(),
+    user_message_uuids: z.array(z.string()).optional(),
   })
   .passthrough();
 export type ClaudeResultMessage = z.infer<typeof claudeResultMessageSchema>;
