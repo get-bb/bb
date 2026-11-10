@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
-      - name: Compare declaration noCheck option
+      - name: Compare declaration workspace paths
         shell: bash
         run: |
           node --input-type=module - <<'NODE'
@@ -74,9 +74,27 @@ jobs:
           import { createHash } from 'node:crypto';
           const p='packages/bb-app/scripts/build-public-sdk-dts.mjs';
           const baseline=readFileSync(p,'utf8');
-          const candidate=baseline.replace('          baseUrl: packagesRoot,','          noCheck: true,\n          baseUrl: packagesRoot,');
+          const pathBuilder = `async function workspaceCompilerPaths() {
+            const paths = {};
+            for (const entry of await readdir(packagesRoot, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+              const manifestPath = path.join(packagesRoot, entry.name, "package.json");
+              if (!existsSync(manifestPath)) continue;
+              const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+              for (const key of Object.keys(manifest.exports ?? {})) {
+                if ((key !== "." && !key.startsWith("./")) || key.includes("*")) continue;
+                const id = "@bb/" + entry.name + (key === "." ? "" : key.slice(1));
+                const source = resolveWorkspaceSource(id);
+                if (source !== null) paths[id] = [source];
+              }
+            }
+            return paths;
+          }
+          `;
+          const candidate=baseline.replace('const supportsNativeCompiler =',pathBuilder+'const supportsNativeCompiler =').replace('paths: {\n            "@bb/hono-typed-routes": ["hono-typed-routes/src/index.ts"],\n          },','paths: await workspaceCompilerPaths(),');
+          if(candidate===baseline || !candidate.includes('paths: await workspaceCompilerPaths()')) throw new Error('injection failed');
           let expected;
-          for (const variant of ['baseline','noCheck','noCheck','baseline']) {
+          for (const variant of ['baseline','paths','paths','baseline']) {
             writeFileSync(p,variant==='baseline' ? baseline : candidate);
             const started=performance.now();
             const result=spawnSync(process.execPath,[p],{stdio:'inherit'});
