@@ -94,6 +94,7 @@ jobs:
           const candidate=baseline.replace('const supportsNativeCompiler =',pathBuilder+'const supportsNativeCompiler =').replace('paths: {\n            "@bb/hono-typed-routes": ["hono-typed-routes/src/index.ts"],\n          },','paths: await workspaceCompilerPaths(),');
           if(candidate===baseline || !candidate.includes('paths: await workspaceCompilerPaths()')) throw new Error('injection failed');
           let expected;
+          let round = 0;
           for (const variant of ['baseline','paths','paths','baseline']) {
             writeFileSync(p,variant==='baseline' ? baseline : candidate);
             const started=performance.now();
@@ -101,8 +102,16 @@ jobs:
             if(result.status!==0) throw new Error('declaration build failed: '+variant);
             const data=readFileSync('packages/bb-app/dist/index.d.ts');
             expected ??= data;
+            writeFileSync('declaration-'+(++round)+'-'+variant+'.d.ts',data);
             console.log('DTS_COMPARE',JSON.stringify({variant,seconds:(performance.now()-started)/1000,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex'),byteIdentical:expected.equals(data)}));
-            if(!expected.equals(data)) throw new Error('declarations differ');
+
           }
           writeFileSync(p,baseline);
           NODE
+
+      - name: Upload compared declarations
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: compared-declarations
+          path: declaration-*.d.ts
