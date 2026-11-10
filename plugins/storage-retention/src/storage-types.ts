@@ -266,6 +266,7 @@ export type HostStorageRemoveOrphansResponse = z.infer<
 
 export const hostStorageRetryWorktreeCleanupResponseSchema = z.object({
   retriedCount: z.number().int().nonnegative(),
+  failed: z.array(z.object({ environmentId: z.string(), message: z.string() })),
 });
 export type HostStorageRetryWorktreeCleanupResponse = z.infer<
   typeof hostStorageRetryWorktreeCleanupResponseSchema

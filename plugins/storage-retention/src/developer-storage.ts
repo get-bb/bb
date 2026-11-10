@@ -7,6 +7,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { isFsErrorWithCode } from "./fs-errors.js";
+import { removeTree } from "./remove-tree.js";
 import type { hostStorageContract } from "./host-contract.js";
 
 const launchRecordSchema = z.object({ repoRoot: z.string().min(1) });
@@ -328,11 +329,9 @@ export async function removeDeveloperEntries(
       const lease = retainWorker();
       void (async () => {
         for (const trash of trashes)
-          await fs
-            .rm(trash, { recursive: true, force: true })
-            .catch((error) => {
-              console.error("Development storage cleanup failed", error);
-            });
+          await removeTree(trash).catch((error) => {
+            console.error("Development storage cleanup failed", error);
+          });
       })().finally(() => lease.dispose());
     }
   }

@@ -290,10 +290,9 @@ export function createStorage(
   };
   function read(hostId: string): Scan | null {
     const row = db
-      .prepare<
-        [string],
-        { result_json: string }
-      >("SELECT result_json FROM scans WHERE host_id = ?")
+      .prepare<[string], { result_json: string }>(
+        "SELECT result_json FROM scans WHERE host_id = ?",
+      )
       .get(hostId);
     return row ? cachedScanSchema.parse(JSON.parse(row.result_json)) : null;
   }
@@ -1465,10 +1464,9 @@ export function createStorage(
       hostId = (await bb.sdk.threads.storageLocation({ threadId })).hostId;
     } else {
       const matches = db
-        .prepare<
-          [string],
-          { host_id: string }
-        >("SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)")
+        .prepare<[string], { host_id: string }>(
+          "SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)",
+        )
         .all(threadId);
       const match = matches[0];
       if (
@@ -1577,7 +1575,9 @@ export function createStorage(
       .prepare<
         [number],
         { thread_id: string; archived_at: number; failure_count: number }
-      >("SELECT thread_id, archived_at, failure_count FROM archive_cleanup WHERE next_attempt_at <= ? ORDER BY archived_at")
+      >(
+        "SELECT thread_id, archived_at, failure_count FROM archive_cleanup WHERE next_attempt_at <= ? ORDER BY archived_at",
+      )
       .all(Date.now());
     for (const entry of pending) {
       if (lifecycle.signal.aborted) return;
@@ -1641,15 +1641,24 @@ export function createStorage(
         await readEnvironments(hostId),
       );
       let retriedCount = 0;
+      const failed: { environmentId: string; message: string }[] = [];
       for (const env of environments) {
         lifecycle.signal.throwIfAborted();
-        await bb.sdk.environments.experimental_cleanup({
-          environmentId: env.id,
-        });
-        retriedCount++;
+        try {
+          await bb.sdk.environments.experimental_cleanup({
+            environmentId: env.id,
+          });
+          retriedCount++;
+        } catch (error) {
+          lifecycle.signal.throwIfAborted();
+          failed.push({
+            environmentId: env.id,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
       changed();
-      return { retriedCount };
+      return { retriedCount, failed };
     } finally {
       release();
     }
@@ -1892,7 +1901,14 @@ export function createStorage(
           message = `Removed ${result.removedCount} worktrees created outside BB; ${result.skipped.length + result.failed.length} kept`;
         } else {
           const result = await retryWorktreeCleanup({ hostId }, release);
-          message = `Retried cleanup for ${result.retriedCount} worktrees`;
+          const failure = result.failed[0];
+          if (failure && result.retriedCount === 0)
+            throw new Error(
+              `${result.failed.length} worktrees couldn’t be retried: ${failure.message}`,
+            );
+          message = failure
+            ? `Retried cleanup for ${result.retriedCount} worktrees; ${result.failed.length} couldn’t be retried: ${failure.message}`
+            : `Retried cleanup for ${result.retriedCount} worktrees`;
         }
         setMaintenance(hostId, { state: "completed", kind, message });
       } catch (error) {

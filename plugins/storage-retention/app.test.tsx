@@ -10,6 +10,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Toaster, toast } from "sonner";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeHostResponse } from "@get-bb/plugin-sdk/testing";
+import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
 import { policySchema, storageRpc } from "./src/contract.js";
 import { makeSystemConfig } from "../../apps/app/src/test/fixtures/system-config.js";
@@ -101,6 +102,7 @@ function fixture(subPath = "host_test") {
     string,
     import("./src/storage-types.js").EntryCleanupStatus
   >();
+  const network = { droppedPolls: 0 };
   const start = vi.fn(async () => null);
   const removeWorktree = vi.fn(async () => ({ state: "started" as const }));
   const Component = app.navPanels[0]!.component;
@@ -140,8 +142,16 @@ function fixture(subPath = "host_test") {
           );
           return { id };
         },
-        entryCleanup: (raw) =>
-          entryJobs.get(storageRpc.entryCleanup.input.parse(raw).id),
+        entryCleanup: (raw) => {
+          if (network.droppedPolls > 0) {
+            network.droppedPolls--;
+            throw new experimental_PluginRpcCallError({
+              code: "transport_error",
+              message: "Failed to fetch",
+            });
+          }
+          return entryJobs.get(storageRpc.entryCleanup.input.parse(raw).id);
+        },
         scanHost: start,
         startClearArchivedFiles: start,
         startClearLargeFiles: start,
@@ -165,7 +175,16 @@ function fixture(subPath = "host_test") {
       },
     },
   );
-  return { slot, configure, remove, start, removeWorktree, hosts, reports };
+  return {
+    slot,
+    configure,
+    remove,
+    start,
+    removeWorktree,
+    hosts,
+    reports,
+    network,
+  };
 }
 
 it("stops a running development instance only after the user confirms stop and remove", async () => {
@@ -710,4 +729,107 @@ it("aggregates background completions across cleanup types while keeping failure
     document.querySelector('[data-sonner-toast][data-type="success"]')
       ?.textContent,
   ).toContain("3 storage actions completed");
+});
+
+it("keeps waiting for a row cleanup through a dropped connection instead of reporting failure", async () => {
+  const { slot, remove, network } = fixture();
+  remove.mockResolvedValueOnce({
+    running: [],
+    removedCount: 1,
+    removedBytes: 20,
+    skippedCount: 0,
+    stoppedProcessCount: 0,
+  });
+  network.droppedPolls = 1;
+  fireEvent.click(
+    await within(slot.container).findByRole("button", {
+      name: "Remove instance: after",
+    }),
+  );
+  await waitFor(
+    () =>
+      expect(
+        document.querySelector('[data-sonner-toast][data-type="success"]')
+          ?.textContent,
+      ).toContain("Development data deleted"),
+    { timeout: 3000 },
+  );
+  expect(network.droppedPolls).toBe(0);
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="error"]'),
+  ).toBeNull();
+});
+
+it("does not toast scans that BB ran in the background", async () => {
+  const { slot, hosts, reports } = fixture();
+  const page = within(slot.container);
+  await page.findByRole("button", { name: "Rescan machine" });
+  hosts[0]!.scan = { state: "scanning", startedAt: Date.now() };
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await page.findByRole("button", { name: "Scanning…" });
+  const calls = reports.mock.calls.length;
+  hosts[0]!.scan = { state: "idle" };
+  hosts[0]!.report!.scannedAt += 1000;
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await page.findByRole("button", { name: "Rescan machine" });
+  expect(reports.mock.calls.length).toBeGreaterThan(calls);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+});
+
+it("omits freed space from a combined toast when one completion has no size", async () => {
+  const { slot, hosts } = fixture();
+  await within(slot.container).findByRole("button", { name: "Rescan machine" });
+  hosts[0]!.maintenanceJobs = [
+    {
+      kind: "externalWorktrees",
+      state: "completed",
+      message: "Removed 4 worktrees created outside BB; 2 kept",
+    },
+  ];
+  hosts[0]!.externalWorktreeRemovals = [
+    { path: "/fixture/worktree", state: "completed", removedBytes: 0 },
+  ];
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-sonner-toast][data-type="success"]')
+        ?.textContent,
+    ).toContain("2 storage actions completed"),
+  );
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="success"]')
+      ?.textContent,
+  ).not.toContain("freed");
+});
+
+it("disables single worktree removal while a bulk worktree removal runs", async () => {
+  const { slot, hosts } = fixture();
+  hosts[0]!.report!.externalWorktrees = [
+    {
+      projectId: "proj_test",
+      repositoryPath: "/fixture/repo",
+      path: "/fixture/worktrees/heavy",
+      branch: "heavy",
+      locked: false,
+      changedFileCount: 0,
+      unsavedCommitCount: 0,
+      lastActivityAt: null,
+      sizeBytes: 4096,
+      threads: [],
+    },
+  ];
+  hosts[0]!.maintenanceJobs = [{ kind: "externalWorktrees", state: "running" }];
+  const button = await within(slot.container).findByRole("button", {
+    name: "Remove worktree: heavy",
+  });
+  expect(button.hasAttribute("disabled")).toBe(true);
 });

@@ -10,6 +10,7 @@ import {
 import {
   definePluginApp,
   experimental_Icon as PluginIcon,
+  experimental_PluginRpcCallError,
   experimental_copyToClipboard,
   useBbNavigate,
   useRealtime,
@@ -86,6 +87,16 @@ function plural(count: number, noun: string, nouns = `${noun}s`) {
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
+const ENTRY_CLEANUP_RECONNECT_MS = 60_000;
+function isTransientRpcFailure(error: unknown) {
+  return (
+    error instanceof experimental_PluginRpcCallError &&
+    ((error.code === "transport_error" && error.status === undefined) ||
+      error.status === 502 ||
+      error.status === 503 ||
+      error.status === 504)
+  );
+}
 
 type CleanupCompletion = {
   description: string;
@@ -138,9 +149,9 @@ function useStorageSuccessToast(): NotifySuccess {
     batch.count++;
     batch.titles.add(title);
     batch.freedBytes =
-      batch.freedBytes === null && completion.freedBytes === null
+      batch.freedBytes === null || completion.freedBytes === null
         ? null
-        : (batch.freedBytes ?? 0) + (completion.freedBytes ?? 0);
+        : batch.freedBytes + completion.freedBytes;
     batch.removedInstances =
       batch.removedInstances === null || completion.removedInstances === null
         ? null
@@ -207,6 +218,7 @@ function cleanupFeedback(
     id: `storage:${hostId ?? "all"}:${kind}`,
   };
 }
+type RequestScan = <T>(hostIds: string[], work: () => Promise<T>) => Promise<T>;
 type StorageData = {
   state: State;
   hosts: Hosts;
@@ -254,24 +266,37 @@ function StoragePanel(props: PluginNavPanelProps) {
   const previousScans = useRef(
     new Map<string, { scannedAt: number | undefined; status: string }>(),
   );
+  const requestedScans = useRef(new Set<string>());
+  const requestScan = useCallback<RequestScan>(async (hostIds, work) => {
+    for (const id of hostIds) requestedScans.current.add(id);
+    try {
+      return await work();
+    } catch (error) {
+      for (const id of hostIds) requestedScans.current.delete(id);
+      throw error;
+    }
+  }, []);
   const previousJobs = useRef(new Map<string, string>());
   const observedHosts = useRef(new Set<string>());
   const previousRemovals = useRef(new Map<string, Map<string, string>>());
   useEffect(() => {
     for (const host of data?.hosts ?? []) {
       const previousScan = previousScans.current.get(host.hostId);
-      if (previousScan) {
+      if (previousScan && requestedScans.current.has(host.hostId)) {
         const description = data?.machines[host.hostId]?.name ?? host.hostId;
-        if (host.scan.state === "failed" && previousScan.status !== "failed")
+        if (host.scan.state === "failed" && previousScan.status !== "failed") {
+          requestedScans.current.delete(host.hostId);
           toast.error("Storage scan failed", {
             description: `${description} · ${host.scan.message}`,
           });
-        else if (
+        } else if (
           host.scan.state === "idle" &&
           host.report &&
           previousScan.scannedAt !== host.report.scannedAt
-        )
+        ) {
+          requestedScans.current.delete(host.hostId);
           notifySuccess("Storage scan completed", description);
+        }
       }
       previousScans.current.set(host.hostId, {
         scannedAt: host.report?.scannedAt,
@@ -385,6 +410,7 @@ function StoragePanel(props: PluginNavPanelProps) {
       refresh={refresh}
       notifySuccess={notifySuccess}
       updateState={updateState}
+      requestScan={requestScan}
     />
   );
 }
@@ -396,6 +422,7 @@ function StoragePage({
   refresh,
   updateState,
   notifySuccess,
+  requestScan,
 }: {
   hostId: string | null;
   data: StorageData | null;
@@ -403,6 +430,7 @@ function StoragePage({
   refresh: () => Promise<void>;
   updateState: (state: State) => void;
   notifySuccess: NotifySuccess;
+  requestScan: RequestScan;
 }) {
   const rpc = useRpc<typeof storageRpc>();
   const navigate = useBbNavigate();
@@ -493,8 +521,22 @@ function StoragePage({
   }
   async function runEntryCleanup(input: EntryCleanupInput) {
     const { id } = await rpc.call("startEntryCleanup", input);
+    let unreachableSince: number | null = null;
     for (;;) {
-      const status = await rpc.call("entryCleanup", { id });
+      let status;
+      try {
+        status = await rpc.call("entryCleanup", { id });
+        unreachableSince = null;
+      } catch (error) {
+        unreachableSince ??= Date.now();
+        if (
+          !isTransientRpcFailure(error) ||
+          Date.now() - unreachableSince > ENTRY_CLEANUP_RECONNECT_MS
+        )
+          throw error;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
       if (status.state === "failed") throw new Error(status.message);
       if (status.state === "completed") return status.result;
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -759,7 +801,11 @@ function StoragePage({
                 className="shrink-0"
                 disabled={scanning || offline || !detail}
                 onClick={() =>
-                  void perform(() => rpc.call("scanHost", { hostId }))
+                  void perform(() =>
+                    requestScan([hostId], () =>
+                      rpc.call("scanHost", { hostId }),
+                    ),
+                  )
                 }
               >
                 <Icon
@@ -1058,7 +1104,12 @@ function StoragePage({
                               worktreeRemovalToastId(report.hostId, path),
                             )
                           }
-                          rowDisabled={locked}
+                          rowDisabled={
+                            locked ||
+                            busyActions.has(
+                              `storage:${report.hostId}:externalWorktrees`,
+                            )
+                          }
                           confirmationKey={cleanup?.key ?? null}
                           confirmation={cleanupConfirmation}
                           onRemove={(worktree, label) => {
@@ -1408,7 +1459,12 @@ function StoragePage({
                     size="sm"
                     disabled={scannable.length === 0 || scanningAll}
                     onClick={() =>
-                      void perform(() => rpc.call("scanAll", null))
+                      void perform(() =>
+                        requestScan(
+                          scannable.map((host) => host.hostId),
+                          () => rpc.call("scanAll", null),
+                        ),
+                      )
                     }
                   >
                     <Icon
@@ -1446,7 +1502,10 @@ function StoragePage({
                     }
                     onScan={() =>
                       void perform(
-                        () => rpc.call("scanHost", { hostId: host.hostId }),
+                        () =>
+                          requestScan([host.hostId], () =>
+                            rpc.call("scanHost", { hostId: host.hostId }),
+                          ),
                         {
                           id: `scan:${host.hostId}`,
                           background: true,

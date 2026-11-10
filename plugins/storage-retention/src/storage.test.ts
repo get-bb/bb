@@ -3122,3 +3122,78 @@ it("refuses to clear storage containing a live Windows workspace with different 
     await host.harness.lifecycle.dispose();
   }
 });
+
+it("retries every leftover worktree when one needs manual recovery", async () => {
+  type Environment = Awaited<
+    ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
+  >[number];
+  const retired = (id: string): Environment => ({
+    id,
+    name: null,
+    projectId: "proj_work",
+    hostId: "host_test",
+    path: `/worktrees/${id}`,
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: id,
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: "main",
+    status: "error",
+    environmentProviderId: "bb--environment-git-worktree",
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: {
+      phase: "teardown",
+      retireAt: 1,
+      teardown: {
+        status: "failed",
+        attempt: 5,
+        message: "Needs recovery",
+      },
+    },
+    hostLifecycle: "active",
+    managed: true,
+    workspaceProvisionType: "managed-worktree",
+    createdAt: 0,
+    updatedAt: 0,
+  });
+  const cleaned: string[] = [];
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async () => {
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      hosts: {
+        get: async () =>
+          makeHostResponse({ id: "host_test", status: "connected" }),
+      },
+      environments: {
+        list: async () => [retired("env_stuck"), retired("env_ok")],
+        experimental_cleanup: async ({ environmentId }) => {
+          cleaned.push(environmentId);
+          if (environmentId === "env_stuck")
+            throw new Error("HTTP 409: Needs recovery");
+          return null;
+        },
+      },
+      threads: { list: async () => [] },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await expect(
+      host.harness.callRpc("retryWorktreeCleanup", { hostId: "host_test" }),
+    ).resolves.toEqual({
+      retriedCount: 1,
+      failed: [
+        { environmentId: "env_stuck", message: "HTTP 409: Needs recovery" },
+      ],
+    });
+    expect(cleaned).toEqual(["env_stuck", "env_ok"]);
+  } finally {
+    await host.harness.dispose();
+  }
+});
