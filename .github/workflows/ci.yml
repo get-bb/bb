@@ -130,7 +130,7 @@ jobs:
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
         run: |
           if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
-          pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }}
+          pnpm exec turbo run test --env-mode=loose ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
