@@ -236,18 +236,15 @@ jobs:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
-      - name: Build bb-app and boot it
-        shell: bash
-        run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
-
       - name: Restore npm package downloads
         id: npm-downloads
         timeout-minutes: 1
         continue-on-error: true
         uses: ./.github/actions/cache-npm-downloads
 
-      - name: Smoke test the bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+      - name: Build bb-app and smoke its workspace and tarball
+        shell: bash
+        run: pnpm exec turbo run smoke:boot smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --continue=dependencies-successful
 
       - name: Save newly populated npm downloads
         if: steps.npm-downloads.outcome == 'success' && steps.npm-downloads.outputs.cache-hit != 'true'
