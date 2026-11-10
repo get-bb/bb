@@ -780,13 +780,13 @@ jobs:
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection).forks }}
     name: Plugin Fork Check (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 20
 
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2]
 
     steps:
       - name: Checkout repository
@@ -802,7 +802,7 @@ jobs:
           if [[ -n "$BASE_SHA" ]]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA" || true
           fi
-          selection=$(node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3 --list)
+          selection=$(node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/2 --list)
           echo "count=$(node -e 'console.log(JSON.parse(process.argv[1]).length)' "$selection")" >> "$GITHUB_OUTPUT"
           echo "Forkable plugins: $selection" >> "$GITHUB_STEP_SUMMARY"
 
@@ -851,7 +851,7 @@ jobs:
         env:
           VITEST_MAX_WORKERS: "2"
           BASE_SHA: ${{ github.event_name == 'pull_request' && needs.plan.outputs.base || '' }}
-        run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3
+        run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/2 --concurrency=8
 
       - name: Upload fork dependency evidence
         if: ${{ !cancelled() && steps.selection.outputs.count != '0' }}
