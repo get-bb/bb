@@ -2300,7 +2300,10 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       break;
     case "model/list":
       try {
-        sendResult(request.id, await listModelsMemoized());
+        sendResult(
+          request.id,
+          await listModelsMemoized(request.params.envVars ?? {}),
+        );
       } catch (error) {
         if (error instanceof MissingClaudeCliError) {
           sendError(

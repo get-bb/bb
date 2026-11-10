@@ -1270,6 +1270,63 @@ describe("Account Pool plugin", () => {
     expect(forwarded).toBe(1);
   });
 
+  it("serves Claude Code's account bootstrap with the routed account's login", async () => {
+    const seen: {
+      url: string;
+      authorization: string | null;
+      beta: string | null;
+    }[] = [];
+    const fixture = await createOAuthRequestFixture(
+      "claude",
+      async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seen.push({
+          url: String(input),
+          authorization: headers.get("authorization"),
+          beta: headers.get("anthropic-beta"),
+        });
+        return Response.json({
+          additional_model_options: [
+            { model: "claude-next", name: "Next", description: "Newest" },
+          ],
+        });
+      },
+      () => Date.now(),
+    );
+
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/api/claude_cli/bootstrap?entrypoint=sdk-ts",
+      {
+        headers: {
+          authorization: `Bearer ${fixture.key}`,
+          "anthropic-beta": "oauth-2025-04-20",
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      additional_model_options: [
+        { model: "claude-next", name: "Next", description: "Newest" },
+      ],
+    });
+    expect(seen).toEqual([
+      {
+        url: "https://upstream.example/api/claude_cli/bootstrap?entrypoint=sdk-ts",
+        authorization: "Bearer oauth-old",
+        beta: "oauth-2025-04-20",
+      },
+    ]);
+    const anonymous = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/api/claude_cli/bootstrap",
+      { headers: {} },
+    );
+    expect(anonymous.status).toBe(401);
+    expect(seen).toHaveLength(1);
+  });
+
   it("exposes every account CLI operation", async () => {
     const upstream = await startUpstream(async (request, response) => {
       await readRequestBody(request);
@@ -3930,9 +3987,7 @@ describe("Account Pool plugin", () => {
     const upstreamKey = (init: RequestInit | undefined) => {
       const headers = new Headers(init?.headers);
       return (
-        headers.get("x-api-key") ??
-        headers.get("authorization")?.slice(7) ??
-        ""
+        headers.get("x-api-key") ?? headers.get("authorization")?.slice(7) ?? ""
       );
     };
 
@@ -5282,10 +5337,10 @@ describe("Account Pool plugin", () => {
               : reason === "network error"
                 ? ["sk-first", "sk-first", "sk-first", "sk-first"]
                 : [
-                  "sk-first",
-                  "sk-second",
-                  reason === "family quota" ? "sk-first" : "sk-second",
-                ],
+                    "sk-first",
+                    "sk-second",
+                    reason === "family quota" ? "sk-first" : "sk-second",
+                  ],
           );
         } finally {
           finishOld();
@@ -6401,7 +6456,10 @@ describe("sequential pool recovery", () => {
         fetch: async (_input, init) => {
           attempts.push(new Headers(init?.headers).get("x-api-key"));
           return outage
-            ? Response.json({}, { status: 503, headers: { "retry-after": "0" } })
+            ? Response.json(
+                {},
+                { status: 503, headers: { "retry-after": "0" } },
+              )
             : Response.json({});
         },
       },

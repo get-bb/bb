@@ -69,6 +69,7 @@ export interface AccountPoolPluginOptions {
 const DISPOSE_INSPECTION_TIMEOUT_MS = 2_000;
 const DISPOSE_INSPECTION_TIMEOUT = Symbol("dispose-inspection-timeout");
 const HUB_BASE_PATH = "/api/v1/plugins/account-pool/http";
+const CLAUDE_BOOTSTRAP_PATH = "/api/claude_cli/bootstrap";
 
 const PROVIDER_ROUTING_ENV: Record<PoolProvider, readonly string[]> = {
   claude: [
@@ -445,6 +446,12 @@ export function createAccountPoolPlugin(
         { auth: "none" },
       );
     }
+    bb.http.route(
+      "GET",
+      CLAUDE_BOOTSTRAP_PATH,
+      (context) => hub.handle(context.req.raw, "claude", CLAUDE_BOOTSTRAP_PATH),
+      { auth: "none" },
+    );
     for (const route of [
       "/v1/responses",
       "/v1/images/generations",
