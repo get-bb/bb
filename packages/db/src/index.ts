@@ -31,6 +31,7 @@ export {
 
 export { countAppliedMigrations, migrate } from "./migrate.js";
 export {
+  isSqliteBusyError,
   isSqliteForeignKeyConstraint,
   isSqliteUniqueConstraintOnColumns,
 } from "./sqlite-errors.js";

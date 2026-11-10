@@ -37,6 +37,7 @@ import {
   getDatabaseMaintenanceActivity,
   getEnvironment,
   isDatabaseMaintenanceIdle,
+  isSqliteBusyError,
   releaseFinishedEnvironmentPreparationOwners,
   deleteSweepItemFailuresOfUnknownSweeps,
   listArchivedThreadsPendingTeardown,
@@ -217,11 +218,8 @@ export async function runPeriodicSweepJobs(
 
 async function runChunkedIncrementalVacuum(
   client: Database.Database,
-  walCheckpointer: AppDeps["walCheckpointer"],
-): Promise<{
-  result: ReturnType<typeof runIncrementalVacuum>;
-  busyError: Error | null;
-}> {
+  args: IncrementalVacuumLogArgs,
+): Promise<void> {
   let first: ReturnType<typeof runIncrementalVacuum> | null = null;
   let last: ReturnType<typeof runIncrementalVacuum> | null = null;
   for (
@@ -232,7 +230,7 @@ async function runChunkedIncrementalVacuum(
     if (last !== null) {
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
-    await walCheckpointer.checkpoint(client);
+    await args.walCheckpointer.checkpoint(client);
     try {
       last = runIncrementalVacuum(client, {
         maxPages: Math.min(
@@ -242,21 +240,24 @@ async function runChunkedIncrementalVacuum(
       });
     } catch (error) {
       if (
-        first !== null &&
-        last !== null &&
-        error instanceof Error &&
-        "code" in error &&
-        typeof error.code === "string" &&
-        error.code.startsWith("SQLITE_BUSY")
+        first === null ||
+        last === null ||
+        !(error instanceof Error) ||
+        !isSqliteBusyError(error)
       ) {
-        return {
-          result: { before: first.before, after: last.after },
-          busyError: error,
-        };
+        throw error;
       }
-      throw error;
+      args.logger.warn(
+        {
+          ...args.logFields,
+          err: error,
+          result: { before: first.before, after: last.after },
+        },
+        "Incremental database vacuum stopped early",
+      );
+      return;
     }
-    await walCheckpointer.checkpoint(client);
+    await args.walCheckpointer.checkpoint(client);
     first ??= last;
     if (last.after.freelistCount === 0) {
       break;
@@ -265,10 +266,10 @@ async function runChunkedIncrementalVacuum(
   if (first === null || last === null) {
     throw new Error("Incremental vacuum ran no chunks");
   }
-  return {
-    result: { before: first.before, after: last.after },
-    busyError: null,
-  };
+  args.logger.info(
+    { ...args.logFields, result: { before: first.before, after: last.after } },
+    "Incremental database vacuum completed",
+  );
 }
 
 interface IncrementalVacuumLogArgs {
@@ -295,21 +296,7 @@ async function runIncrementalVacuumAboveFreelistThreshold(
     return;
   }
   try {
-    const { result, busyError } = await runChunkedIncrementalVacuum(
-      client,
-      args.walCheckpointer,
-    );
-    if (busyError !== null) {
-      args.logger.warn(
-        { ...args.logFields, result, err: busyError },
-        "Incremental database vacuum stopped early",
-      );
-      return;
-    }
-    args.logger.info(
-      { ...args.logFields, result },
-      "Incremental database vacuum completed",
-    );
+    await runChunkedIncrementalVacuum(client, args);
   } catch (error) {
     args.logger.warn(
       { ...args.logFields, err: error },
@@ -536,8 +523,7 @@ async function runMachineAuthPruneSweep(
 }
 
 type CompletedEventOutputMigrationTarget =
-  | (typeof RETAINED_EVENT_OUTPUT_TARGETS)[number]
-  | "legacy-image-generation";
+  (typeof RETAINED_EVENT_OUTPUT_TARGETS)[number] | "legacy-image-generation";
 
 function completedEventOutputMigrationKey(
   target: CompletedEventOutputMigrationTarget,
