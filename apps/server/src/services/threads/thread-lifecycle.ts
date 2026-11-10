@@ -2365,6 +2365,7 @@ export async function reconcileDaemonReportedThreads(
       environmentId: environments.id,
       id: threads.id,
       status: threads.status,
+      storageDeletedAt: threads.storageDeletedAt,
     })
     .from(threads)
     .innerJoin(environments, eq(threads.environmentId, environments.id))
@@ -2397,6 +2398,10 @@ export async function reconcileDaemonReportedThreads(
 
   for (const thread of pendingThreads) {
     if (thread.deletedAt !== null) {
+      if (thread.storageDeletedAt !== null) {
+        finalizeStoppedThread(deps, { threadId: thread.id });
+        continue;
+      }
       requestThreadStorageDeletion(deps, thread, {
         hostId: args.hostId,
         id: thread.environmentId,
