@@ -14,6 +14,7 @@ import { formatChildThreadCount } from "@/lib/child-thread-copy";
 export interface ThreadArchiveDialogTarget {
   threads: readonly Thread[];
   childThreadCount: number;
+  stopsRunningWork: boolean;
 }
 
 interface ThreadArchiveDialogProps<Target extends ThreadArchiveDialogTarget> {
@@ -72,14 +73,8 @@ export function ThreadArchiveDialogContent<
   onOpenChange,
   onArchive,
 }: ThreadArchiveDialogContentProps<Target>) {
-  const { childThreadCount, threads } = target;
+  const { childThreadCount, threads, stopsRunningWork } = target;
   const single = threads.length === 1;
-  const active = threads.some(
-    (thread) =>
-      thread.status === "starting" ||
-      thread.status === "active" ||
-      thread.status === "stopping",
-  );
 
   return (
     <form
@@ -96,7 +91,7 @@ export function ThreadArchiveDialogContent<
           {single ? "Archive thread?" : `Archive ${threads.length} threads?`}
         </DialogTitle>
         <DialogDescription>
-          {active ? "This will stop current work. " : null}
+          {stopsRunningWork ? "This will stop current work. " : null}
           {single ? "Its" : "Their"}{" "}
           <span className="font-semibold">
             {formatChildThreadCount(childThreadCount)}
