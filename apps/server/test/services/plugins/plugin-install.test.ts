@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import {
+  cp,
   mkdtemp,
   mkdir,
   readFile,
@@ -151,10 +152,25 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout.trim();
 }
 
+let gitSeedDir: string | undefined;
+
+beforeAll(async () => {
+  if (!hasGit) return;
+  gitSeedDir = await mkdtemp(join(tmpdir(), "bb-plugin-install-seed-"));
+  await git(gitSeedDir, ["init", "-q", "-b", "main"]);
+  await git(gitSeedDir, ["config", "user.email", "test@example.com"]);
+  await git(gitSeedDir, ["config", "user.name", "Test"]);
+});
+
+afterAll(async () => {
+  if (gitSeedDir) await rm(gitSeedDir, { recursive: true, force: true });
+});
+
 async function initGitRepo(repoDir: string): Promise<void> {
-  await git(repoDir, ["init", "-q", "-b", "main"]);
-  await git(repoDir, ["config", "user.email", "test@example.com"]);
-  await git(repoDir, ["config", "user.name", "Test"]);
+  if (!gitSeedDir) throw new Error("Git fixture was not initialized");
+  await cp(join(gitSeedDir, ".git"), join(repoDir, ".git"), {
+    recursive: true,
+  });
 }
 
 async function commitAll(repoDir: string, message: string): Promise<string> {
