@@ -128,6 +128,7 @@ jobs:
         run: |
           mkdir -p benchmark
           cp apps/server/test/services/plugins/plugin-install.test.ts benchmark/candidate.ts
+          git fetch --no-tags --depth=1 origin ba05ae88ede3d3eba9e1aedf0713d79339d2d229
           git show ba05ae88ed:apps/server/test/services/plugins/plugin-install.test.ts > benchmark/baseline.ts
           pnpm exec turbo run test --filter=@bb/server --output-logs=new-only > benchmark/warmup.log 2>&1
           for sample in baseline-a candidate-b candidate-c baseline-d; do
