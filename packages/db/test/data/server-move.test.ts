@@ -110,6 +110,7 @@ function seedPluginPaths(db: DbConnection): void {
     registrationPath: `${SOURCE_ROOT}/plugins/snapshots/server-owned/1/previous-registration.json`,
     status: "ready",
     rollbackCandidateVersion: null,
+    rollbackCandidateLabel: null,
     rollbackSourceFingerprint: null,
     rollbackBbVersion: null,
     rollbackSdkVersion: null,

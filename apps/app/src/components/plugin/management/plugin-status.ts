@@ -131,9 +131,12 @@ export function reviewableRangeUpgrade(
     : null;
 }
 
-export function pluginRowSignal(
+type PluginRowStatusSignal = Extract<PluginRowSignal, { kind: "status" }>;
+type PluginRowUpdateSignal = Extract<PluginRowSignal, { kind: "update" }>;
+
+function pluginRowStatusSignal(
   plugin: PluginListItem,
-): PluginRowSignal | null {
+): PluginRowStatusSignal | null {
   const state = plugin.updateState;
   if (state.lastFailure !== null) {
     return {
@@ -166,12 +169,30 @@ export function pluginRowSignal(
       detail: state.detail,
     };
   }
-  if (state.availableLabel !== null) {
-    return { kind: "update", version: state.availableLabel };
+  return null;
+}
+
+export function pluginRowSignals(plugin: PluginListItem): {
+  status: PluginRowStatusSignal | null;
+  update: PluginRowUpdateSignal | null;
+} {
+  const status = pluginRowStatusSignal(plugin);
+  const state = plugin.updateState;
+  if (status === null && state.availableLabel !== null) {
+    return {
+      status,
+      update: { kind: "update", version: state.availableLabel },
+    };
   }
   const rangeUpgrade = reviewableRangeUpgrade(plugin);
-  if (rangeUpgrade !== null) {
-    return { kind: "update", version: rangeUpgrade.candidate.label };
+  if (
+    rangeUpgrade !== null &&
+    (status === null || state.lastFailure !== null)
+  ) {
+    return {
+      status,
+      update: { kind: "update", version: rangeUpgrade.candidate.label },
+    };
   }
-  return null;
+  return { status, update: null };
 }

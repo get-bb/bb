@@ -135,6 +135,7 @@ describe("plugin cache pruning", () => {
       registrationPath: null,
       status,
       rollbackCandidateVersion: status === "ready" ? null : "candidate",
+      rollbackCandidateLabel: status === "ready" ? null : "candidate",
       rollbackSourceFingerprint: status === "ready" ? null : "source",
       rollbackBbVersion: status === "ready" ? null : "1.0.0",
       rollbackSdkVersion: status === "ready" ? null : "0.6.0",

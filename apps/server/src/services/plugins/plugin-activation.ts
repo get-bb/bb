@@ -69,6 +69,7 @@ interface PluginActivationContext {
     readonly statusDetail: null;
   };
   sourceFingerprint: (row: InstalledPluginRow) => string;
+  installedUpdateVersion: (row: InstalledPluginRow) => { label: string };
   syncCliSkill: () => Promise<void>;
   notifyPluginsChanged: () => void;
 }
@@ -92,6 +93,7 @@ export function createPluginActivation(context: PluginActivationContext) {
     registrationMatchesForActivation,
     emptyPluginUpdateState,
     sourceFingerprint,
+    installedUpdateVersion,
     syncCliSkill,
     notifyPluginsChanged,
   } = context;
@@ -112,6 +114,7 @@ export function createPluginActivation(context: PluginActivationContext) {
     }
     return {
       candidateVersion: snapshot.rollbackCandidateVersion,
+      candidateLabel: snapshot.rollbackCandidateLabel,
       sourceFingerprint: snapshot.rollbackSourceFingerprint,
       bbVersion: snapshot.rollbackBbVersion,
       sdkVersion: snapshot.rollbackSdkVersion,
@@ -151,6 +154,7 @@ export function createPluginActivation(context: PluginActivationContext) {
     if (
       !setInstalledPluginLastFailure(deps.db, snapshot.pluginId, {
         version: rollback.candidateVersion,
+        label: rollback.candidateLabel,
         detail: rollback.detail,
         at: now(),
       })
@@ -234,6 +238,7 @@ export function createPluginActivation(context: PluginActivationContext) {
         throw error;
       }
       let pointerWritten = false;
+      let candidateLabel = candidateVersion;
       try {
         reportPluginUpdatePhase("activating");
         await args.beforePersist?.();
@@ -261,6 +266,7 @@ export function createPluginActivation(context: PluginActivationContext) {
         });
         pointerWritten = true;
         const current = getInstalledPlugin(deps.db, args.row.id);
+        if (current) candidateLabel = installedUpdateVersion(current).label;
         stabilizingPluginIds.add(args.row.id);
         if (current) await loadOne(current);
         const immediate = statuses.get(args.row.id);
@@ -315,6 +321,7 @@ export function createPluginActivation(context: PluginActivationContext) {
         if (
           !setPluginStateSnapshotRollbackPending(deps.db, snapshot.id, {
             candidateVersion,
+            candidateLabel,
             sourceFingerprint: sourceFingerprint(args.row),
             bbVersion: deps.appVersion,
             sdkVersion: PLUGIN_SDK_VERSION,

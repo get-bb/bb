@@ -40,6 +40,7 @@ export interface PluginStateSnapshotRow {
     | "restored"
     | "failed";
   rollbackCandidateVersion: string | null;
+  rollbackCandidateLabel: string | null;
   rollbackSourceFingerprint: string | null;
   rollbackBbVersion: string | null;
   rollbackSdkVersion: string | null;
@@ -98,6 +99,7 @@ export function setPluginStateSnapshotRollbackPending(
   id: string,
   rollback: {
     candidateVersion: string;
+    candidateLabel: string;
     sourceFingerprint: string;
     bbVersion: string;
     sdkVersion: string;
@@ -111,6 +113,7 @@ export function setPluginStateSnapshotRollbackPending(
       .set({
         status: "rollback-pending",
         rollbackCandidateVersion: rollback.candidateVersion,
+        rollbackCandidateLabel: rollback.candidateLabel,
         rollbackSourceFingerprint: rollback.sourceFingerprint,
         rollbackBbVersion: rollback.bbVersion,
         rollbackSdkVersion: rollback.sdkVersion,
