@@ -46,11 +46,13 @@ signatures (see "Looking up the exact API" in distribution.md).
   `commit` `archiveThreads` `experimental_cleanup`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
   `pickFolder` `cloneDefaultPath` `providerCliStatus` `installProviderCli`
-  `retryUpdate` `experimental_listProviders` `experimental_create`
+  `experimental_startProviderCliInstall` `retryUpdate`
+  `experimental_listProviders` `experimental_create`
   `experimental_getEnrollmentCommand` `experimental_reconnect`
   `experimental_suspend` `experimental_resume` `experimental_retryCleanup`
   `experimental_reconcile` `experimental_deleteOldServerCopy`
-  `experimental_discoverRepos`, and the
+  `experimental_discoverRepos`; sub-area `experimental_providerCliInstallJobs`
+  (`list` `get` `wait`), and the
   deprecated `createJoinCode` (machine creation and suspension are in
   backend-machines.md)
 - `files`: `read` `write` `list` `listPaths` `mkdir` `move` `remove`

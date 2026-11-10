@@ -183,33 +183,11 @@ export async function getProviderInstallations(
   });
 }
 
-const installationTails = new WeakMap<object, Map<string, Promise<void>>>();
-export async function serializeProviderInstallation<T>(
+export function invalidateProviderInstallationStatus(
   deps: WorkSessionDeps,
   hostId: string,
-  run: () => Promise<T>,
-): Promise<T> {
-  let hosts = installationTails.get(deps.db);
-  if (!hosts) {
-    hosts = new Map();
-    installationTails.set(deps.db, hosts);
-  }
-  const previous = hosts.get(hostId) ?? Promise.resolve();
-  let release: () => void = () => {};
-  const tail = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  hosts.set(hostId, tail);
-  await previous;
-  const cache = providerStatusCache(deps);
-  const invalidate = () =>
-    cache.invalidateWhere((key) => key.startsWith(`${hostId} `));
-  invalidate();
-  try {
-    return await run();
-  } finally {
-    invalidate();
-    release();
-    if (hosts.get(hostId) === tail) hosts.delete(hostId);
-  }
+): void {
+  providerStatusCache(deps).invalidateWhere((key) =>
+    key.startsWith(`${hostId} `),
+  );
 }

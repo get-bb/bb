@@ -4174,6 +4174,27 @@ be cancelled during activation or rollback.
 Stabilization requires exercising reconnect/reload, concurrent deduplication,
 rollback delivery, missing jobs after restart, and CLI/SDK parity.
 
+## `PluginBbSdk.hosts.experimental_startProviderCliInstall` and `experimental_providerCliInstallJobs`
+
+Starts a server-owned provider CLI install or update on a machine and returns
+its job at once (`POST /hosts/:id/provider-clis/install-jobs`, 202).
+`experimental_providerCliInstallJobs.list/get` report `running`, then
+`completed` with the installer's events or `failed` with the reason the
+machine could not run it; `wait` polls `get` until the job ends and rides out
+up to two minutes of the server being unreachable. Starting the same provider
+on the same machine while a job runs returns that job. Jobs survive client
+disconnects, stay ten minutes after finishing, and live in memory only, so a
+server restart answers `provider_cli_install_job_not_found`. Installs on one
+machine run one at a time. `installProviderCli` keeps its events contract by
+starting a job and waiting on it. Core callers: the Updates settings section,
+the sidebar updates badge and the setup guide through
+`provider-cli-install-store`, which also follows jobs started elsewhere
+(another device or before a reload), and `bb updates apply` and
+`bb machine` through `installProviderCli`. Stabilize after reload, server
+restart and multi-device follow have been exercised on released builds, and
+once streaming installer output into the job (which needs a daemon protocol
+change) is settled.
+
 ## `PluginApplyUpdateArgs.range`, `expectedVersion`, and `rangeUpgrade` on update checks
 
 `checkUpdates` and `listUpdateResults` entries carry `rangeUpgrade` when a

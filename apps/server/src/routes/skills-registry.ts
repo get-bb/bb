@@ -3,8 +3,10 @@ import {
   registrySkillEntriesRequestSchema,
   registrySkillInstallRequestSchema,
   type RegistrySkill,
+  type RegistrySkillInstallJob,
 } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
+import { createJobRegistry } from "../services/lib/job-registry.js";
 import {
   githubRepoForSource,
   hasLoadableSkillContent,
@@ -146,22 +148,72 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
     return context.json(detail);
   });
 
-  app.post("/skills-registry/install", async (context) => {
-    const body = registrySkillInstallRequestSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
+  const installJobs = createJobRegistry<RegistrySkillInstallJob>({
+    isActive: (job) => job.state === "running",
+    fail: ({ id, registrySkillId }, error) => ({
+      id,
+      registrySkillId,
+      state: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    }),
+    notifyChanged: () => {},
+  });
+
+  async function startInstallJob(
+    input: unknown,
+  ): Promise<RegistrySkillInstallJob> {
+    const body = registrySkillInstallRequestSchema.safeParse(input);
     if (!body.success) {
       throw new ApiError(400, "invalid_request", "Expected registrySkillId");
     }
     const registrySkill = await resolveRegistrySkillById(
       body.data.registrySkillId,
     );
-    const result = await installServerRegistrySkill({
-      dataDir: deps.config.dataDir,
-      packageRef: packageRefForSource(registrySkill.source),
-      registrySkillId: registrySkill.id,
-      skillId: registrySkill.skillId,
+    return installJobs.start({
+      key: registrySkill.id,
+      lane: registrySkill.id,
+      create: (id) => ({
+        id,
+        registrySkillId: registrySkill.id,
+        state: "running",
+      }),
+      run: async ({ job }) => {
+        const result = await installServerRegistrySkill({
+          dataDir: deps.config.dataDir,
+          packageRef: packageRefForSource(registrySkill.source),
+          registrySkillId: registrySkill.id,
+          skillId: registrySkill.skillId,
+        });
+        return { ...job, state: "completed", filePath: result.filePath };
+      },
     });
-    return context.json({ ok: true, ...result });
+  }
+
+  app.post("/skills-registry/install", async (context) => {
+    const job = await startInstallJob(
+      await context.req.json().catch(() => null),
+    );
+    const outcome = await installJobs.settled(job.id);
+    if (outcome?.job.state !== "completed") throw outcome?.error;
+    return context.json({ ok: true, filePath: outcome.job.filePath });
+  });
+
+  app.post("/skills-registry/install-jobs", async (context) => {
+    const job = await startInstallJob(
+      await context.req.json().catch(() => null),
+    );
+    return context.json({ job }, 202);
+  });
+
+  app.get("/skills-registry/install-jobs/:jobId", (context) => {
+    const job = installJobs.get(context.req.param("jobId"));
+    if (job === undefined) {
+      throw new ApiError(
+        404,
+        "registry_skill_install_job_not_found",
+        "Unknown skill install job; the server may have restarted",
+      );
+    }
+    return context.json({ job });
   });
 }

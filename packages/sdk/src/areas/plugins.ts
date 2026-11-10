@@ -64,6 +64,7 @@ import {
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import { z } from "zod";
+import { waitForJob } from "../job-wait.js";
 import type { CreateSdkAreaArgs } from "./common.js";
 
 /**
@@ -467,17 +468,16 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   ): Promise<InstalledPlugin> {
     const response = await requestInstall(path, body);
     if ("plugin" in response) return response.plugin;
-    let job = response.job;
-    while (
-      job.state === "queued" ||
-      job.state === "running" ||
-      job.state === "cancelling"
-    ) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, INSTALL_JOB_POLL_INTERVAL_MS),
-      );
-      job = await installJobs.get({ jobId: job.id });
-    }
+    const { id } = response.job;
+    const job = await waitForJob({
+      job: response.job,
+      isActive: (current) =>
+        current.state === "queued" ||
+        current.state === "running" ||
+        current.state === "cancelling",
+      read: () => installJobs.get({ jobId: id }),
+      intervalMs: INSTALL_JOB_POLL_INTERVAL_MS,
+    });
     if (job.state === "succeeded") return job.plugin;
     throw new Error(job.state === "failed" ? job.error : "install cancelled");
   }
@@ -590,15 +590,18 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     async applyUpdate(input) {
       const response = await requestUpdate(input);
       if (!("job" in response)) return response;
-      let job = response.job;
-      while (job.state === "queued" || job.state === "running") {
-        await new Promise((resolve) =>
-          setTimeout(resolve, INSTALL_JOB_POLL_INTERVAL_MS),
-        );
-        job = await updateJobs.get({ jobId: job.id });
-      }
+      const { id } = response.job;
+      const job = await waitForJob({
+        job: response.job,
+        isActive: (current) =>
+          current.state === "queued" || current.state === "running",
+        read: () => updateJobs.get({ jobId: id }),
+        intervalMs: INSTALL_JOB_POLL_INTERVAL_MS,
+      });
       if (job.state === "completed") return job.result;
-      throw new Error(job.error);
+      throw new Error(
+        job.state === "failed" ? job.error : "update did not complete",
+      );
     },
     async experimental_startUpdate(input) {
       const response = await requestUpdate(input);

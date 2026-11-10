@@ -90,6 +90,7 @@ import type {
   PathId,
   PathProjectId,
   PathIdAndFilePath,
+  PathIdAndJobId,
   PathIdHostAndFilePath,
   PathIdRefAndFilePath,
   PathThreadAndQueuedMessage,
@@ -152,6 +153,8 @@ import {
   type HostPathsExistRequest,
   type HostPathsExistResponse,
   type HostProviderCliInstallEvent,
+  type HostProviderCliInstallJobListResponse,
+  type HostProviderCliInstallJobResponse,
   type HostProviderCliInstallRequest,
   type HostProviderCliStatusResponse,
   type HostRetryUpdateResponse,
@@ -406,6 +409,7 @@ import {
   serverMoveCheckRequestSchema,
   serverMoveStartRequestSchema,
   type DeleteOldServerCopyResponse,
+  type OldServerCopyDeleteJobResponse,
   type ServerMoveCheckRequest,
   type ServerMoveCheckResponse,
   type ServerMoveStartRequest,
@@ -1013,11 +1017,47 @@ export const publicApiRoutes = {
       ),
       response: textResponse<HostProviderCliInstallEvent>(),
     }),
+    providerCliInstallJobStart: defineRoute({
+      path: "/hosts/:id/provider-clis/install-jobs",
+      method: "post",
+      request: jsonRequest<PathId, HostProviderCliInstallRequest>(
+        hostProviderCliInstallRequestSchema,
+      ),
+      response: jsonResponse<HostProviderCliInstallJobResponse, 202>({
+        status: 202,
+      }),
+    }),
+    providerCliInstallJobList: defineRoute({
+      path: "/hosts/:id/provider-clis/install-jobs",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostProviderCliInstallJobListResponse>(),
+    }),
+    providerCliInstallJobGet: defineRoute({
+      path: "/hosts/:id/provider-clis/install-jobs/:jobId",
+      method: "get",
+      request: noRequest<PathIdAndJobId>(),
+      response: jsonResponse<HostProviderCliInstallJobResponse>(),
+    }),
     deleteOldServerCopy: defineRoute({
       path: "/hosts/:id/old-server-copy",
       method: "delete",
       request: noRequest<PathId>(),
       response: jsonResponse<DeleteOldServerCopyResponse>(),
+    }),
+    oldServerCopyDeleteJobStart: defineRoute({
+      path: "/hosts/:id/old-server-copy/delete-jobs",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<OldServerCopyDeleteJobResponse, 202>({
+        status: 202,
+      }),
+    }),
+    oldServerCopyDeleteJobGet: defineRoute({
+      path: "/hosts/:id/old-server-copy/delete-jobs/:jobId",
+      method: "get",
+      request: noRequest<PathIdAndJobId>(),
+      response: jsonResponse<OldServerCopyDeleteJobResponse>(),
     }),
   },
   server: {
