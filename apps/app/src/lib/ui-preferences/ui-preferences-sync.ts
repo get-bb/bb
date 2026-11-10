@@ -226,7 +226,7 @@ async function writeUiPreference<Key extends UiPreferenceKey>(
 function notifySyncFailure(error: unknown): void {
   if (syncFailureNotified) return;
   syncFailureNotified = true;
-  appToast.error("Couldn’t sync sidebar preferences", {
+  appToast.error("Couldn’t sync UI preferences", {
     description:
       error instanceof Error ? error.message : "Changes stay on this device.",
   });
