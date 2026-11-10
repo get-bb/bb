@@ -4,6 +4,7 @@ on:
 jobs:
   fuse-probe:
     strategy:
+      fail-fast: false
       matrix:
         os: [blacksmith-4vcpu-ubuntu-2404, blacksmith-4vcpu-ubuntu-2204]
     runs-on: ${{ matrix.os }}
@@ -15,6 +16,24 @@ jobs:
           dpkg-query -W libfuse2 libfuse2t64 fuse3 || true
           ls -l /dev/fuse
           ldconfig -p | grep libfuse || true
-          du -sh /var/lib/apt/lists
-          apt-cache policy libfuse2 libfuse2t64
-          apt-get --print-uris --yes --no-install-recommends install libfuse2t64 || apt-get --print-uris --yes --no-install-recommends install libfuse2
+          sudo du -sh /var/lib/apt/lists
+      - name: Mount the configured static AppImage runtime without FUSE 2
+        run: |
+          curl --fail --location --max-time 90 https://github.com/electron-userland/electron-builder-binaries/releases/download/appimage%401.0.3/appimage-tools-runtime-20251108.tar.gz -o tools.tar.gz
+          echo '84021a78ee214ae6fd33a2d62a92ba25542dd10bc86bf117a9b2d0bba44e7665  tools.tar.gz' | sha256sum -c -
+          mkdir tools app
+          tar -xzf tools.tar.gz -C tools
+          find tools -name runtime-x64 -o -name mksquashfs
+          runtime=$(find tools -name runtime-x64 -type f)
+          squash=$(find tools -name mksquashfs -type f)
+          file "$runtime"
+          printf '#!/bin/sh\ncat "$APPDIR/probe.txt"\n' > app/AppRun
+          printf 'STATIC_RUNTIME_FUSE_MOUNT_PASSED\n' > app/probe.txt
+          chmod +x app/AppRun
+          "$squash" app probe.AppImage -offset "$(stat -c%s "$runtime")" -all-root -noappend -quiet
+          dd if="$runtime" of=probe.AppImage conv=notrunc status=none
+          chmod +x probe.AppImage
+          unset APPIMAGE_EXTRACT_AND_RUN APPIMAGE_EXTRACT_AND_RUN_AND_DISCARD
+          ./probe.AppImage | tee mount-result.txt
+          grep -Fx STATIC_RUNTIME_FUSE_MOUNT_PASSED mount-result.txt
+          dpkg-query -W -f='${Status}' libfuse2 libfuse2t64 && exit 1 || true
