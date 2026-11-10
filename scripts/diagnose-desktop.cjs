@@ -14,8 +14,8 @@ function wrap(object, key, label) {
 Module._load = function(request,...args) {
  const value = original.call(this,request,...args);
  if (request.includes('appFileCopier')) for (const key of ['computeFileSets','computeNodeModuleFileSets','copyAppFiles','transformFiles']) wrap(value,key,'files');
- if (request.includes('asarUtil')) wrap(value.AsarPackager?.prototype,'pack','asar');
+ if (request.includes('asarUtil')) for (const key of ['pack','processFileSets','executeElectronAsar']) wrap(value.AsarPackager?.prototype,key,'asar');
  if (request.includes('platformPackager')) for (const key of ['doPack','sanityCheckPackage','doSignAfterPack']) wrap(value.PlatformPackager?.prototype,key,'platform');
  return value;
 };
-process.env.NODE_OPTIONS = `--require "${__filename}"`;
+process.env.NODE_OPTIONS = `--require "${__filename.replaceAll(String.fromCharCode(92), "/")}"`;
