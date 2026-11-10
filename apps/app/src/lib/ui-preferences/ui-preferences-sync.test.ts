@@ -474,21 +474,31 @@ describe("ui preferences sync", () => {
     expect(mocks.set).not.toHaveBeenCalled();
   });
 
-  it("toasts once and invalidates the query on a non-conflict failure", async () => {
+  it("toasts once for failed UI preference writes and invalidates the query", async () => {
     const { modeAtom, queryClient, store } = startSyncedHarness(
       serverResponse({
         "sidebar.organizationMode": { revision: 1, value: "project" },
       }),
     );
+    const collapsedSectionsAtom = createSyncedPreferenceAtom(
+      "infoPanel.collapsedSections",
+    );
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     mocks.set.mockRejectedValueOnce(new Error("offline"));
-    store.set(modeAtom, "machine");
+    store.set(collapsedSectionsAtom, ["commits"]);
     await waitForUiPreferenceWrites();
     mocks.set.mockRejectedValueOnce(new Error("offline"));
     store.set(modeAtom, "chronological");
     await waitForUiPreferenceWrites();
     expect(mocks.toastError).toHaveBeenCalledTimes(1);
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "Couldn’t sync UI preferences",
+      {
+        description: "offline",
+      },
+    );
     expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(store.get(collapsedSectionsAtom)).toEqual(["commits"]);
     expect(store.get(modeAtom)).toBe("chronological");
   });
 
