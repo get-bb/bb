@@ -25,9 +25,9 @@ jobs:
           tar -xzf tools.tar.gz -C tools
           find tools -name runtime-x64 -o -name mksquashfs
           runtime=$(find tools -name runtime-x64 -type f)
-          squash=$(find tools -name mksquashfs -type f)
+          squash=tools/linux/x64/mksquashfs
           file "$runtime"
-          printf '#!/bin/sh\ncat "$APPDIR/probe.txt"\n' > app/AppRun
+          printf '#!/bin/sh\nmountpoint -q "$APPDIR" || exit 1\ncat "$APPDIR/probe.txt"\n' > app/AppRun
           printf 'STATIC_RUNTIME_FUSE_MOUNT_PASSED\n' > app/probe.txt
           chmod +x app/AppRun
           "$squash" app probe.AppImage -offset "$(stat -c%s "$runtime")" -all-root -noappend -quiet
