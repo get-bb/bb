@@ -6,6 +6,7 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
+import type { HostWaitFailure } from "./useReadyHost";
 
 interface ProjectsScanState {
   data: HostDiscoveredReposResponse | undefined;
@@ -17,11 +18,11 @@ interface ProjectsScanState {
 export function useProjectsScanTelemetry({
   entry,
   scan,
-  noHost,
+  hostWaitFailure,
 }: {
   entry: OnboardingEntry;
   scan: ProjectsScanState;
-  noHost: boolean;
+  hostWaitFailure: HostWaitFailure | null;
 }): void {
   const { data, dataUpdatedAt, error, errorUpdatedAt } = scan;
   useEffect(() => {
@@ -55,10 +56,10 @@ export function useProjectsScanTelemetry({
       },
     });
   }, [entry, error, errorUpdatedAt]);
-  const noHostReportedRef = useRef(false);
+  const hostWaitReportedRef = useRef(false);
   useEffect(() => {
-    if (!noHost || noHostReportedRef.current) return;
-    noHostReportedRef.current = true;
+    if (hostWaitFailure === null || hostWaitReportedRef.current) return;
+    hostWaitReportedRef.current = true;
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
@@ -66,8 +67,8 @@ export function useProjectsScanTelemetry({
         step: "projects",
         operation: "scan",
         outcome: "failed",
-        failure_reason: "no_host",
+        failure_reason: hostWaitFailure,
       },
     });
-  }, [entry, noHost]);
+  }, [entry, hostWaitFailure]);
 }

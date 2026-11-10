@@ -3,7 +3,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { BbHttpError } from "@bb/sdk/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
-import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
+import { useLoadTelemetry } from "./useLoadTelemetry";
 
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 
@@ -34,17 +34,18 @@ function recorded() {
     .mock.calls.map(([event]) => event.properties);
 }
 
-describe("load failure telemetry", () => {
+describe("load telemetry", () => {
   it.each(["agent", "plugins"] as const)(
     "records each time the %s step's data starts failing to load",
     (step) => {
       const view = renderHook(
         (query: QueryState) =>
-          useLoadFailureTelemetry({
+          useLoadTelemetry({
             entry: "replay",
             step,
-            noHost: false,
+            hostWaitFailure: null,
             query,
+            loaded: false,
             timedOut: false,
           }),
         { initialProps: loaded },
@@ -65,13 +66,14 @@ describe("load failure telemetry", () => {
     },
   );
 
-  it("records a missing computer instead of the query state", () => {
+  it("records a computer that never became ready instead of the query state", () => {
     renderHook(() =>
-      useLoadFailureTelemetry({
+      useLoadTelemetry({
         entry: "first_run",
         step: "agent",
-        noHost: true,
+        hostWaitFailure: "no_host",
         query: loaded,
+        loaded: false,
         timedOut: false,
       }),
     );
@@ -89,11 +91,12 @@ describe("load failure telemetry", () => {
   it("records a load that timed out once per attempt, not again when it then errors", () => {
     const view = renderHook(
       (props: { query: QueryState; timedOut: boolean }) =>
-        useLoadFailureTelemetry({
+        useLoadTelemetry({
           entry: "first_run",
           step: "agent",
-          noHost: false,
+          hostWaitFailure: null,
           query: props.query,
+          loaded: false,
           timedOut: props.timedOut,
         }),
       { initialProps: { query: loaded, timedOut: false } },
@@ -112,5 +115,36 @@ describe("load failure telemetry", () => {
       failure_reason: "timed_out",
     };
     expect(recorded()).toEqual([timedOut, timedOut]);
+  });
+
+  it("records the first successful load once with how long it took", () => {
+    vi.useFakeTimers();
+    const view = renderHook(
+      (loadedNow: boolean) =>
+        useLoadTelemetry({
+          entry: "first_run",
+          step: "agent",
+          hostWaitFailure: null,
+          query: loaded,
+          loaded: loadedNow,
+          timedOut: false,
+        }),
+      { initialProps: false },
+    );
+    vi.advanceTimersByTime(4_200);
+    view.rerender(true);
+    view.rerender(false);
+    view.rerender(true);
+    vi.useRealTimers();
+
+    expect(recorded()).toEqual([
+      {
+        entry: "first_run",
+        step: "agent",
+        operation: "load",
+        outcome: "succeeded",
+        duration_ms: 4_200,
+      },
+    ]);
   });
 });

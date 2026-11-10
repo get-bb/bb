@@ -14,6 +14,7 @@ import {
   type NavigateFunction,
 } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -74,7 +75,8 @@ function agentLoadFailures(): unknown[] {
     .mock.calls.flatMap(([event]) =>
       event.name === "onboarding_operation" &&
       event.properties.step === "agent" &&
-      event.properties.operation === "load"
+      event.properties.operation === "load" &&
+      event.properties.outcome === "failed"
         ? [event.properties.failure_reason]
         : [],
     );
@@ -84,16 +86,18 @@ function renderFlow({
   initialStep,
   onClose = vi.fn(),
   variant = "new",
+  hostStatus = "connected",
 }: {
   initialStep: OnboardingStepId;
   onClose?: () => void;
   variant?: "control" | "new";
+  hostStatus?: Host["status"];
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient.setQueryData(hostsQueryOptions(false).queryKey, [
-    makeHost({ id: "host_1", name: "bee" }),
+    makeHost({ id: "host_1", name: "bee", status: hostStatus }),
   ]);
   const flow = (closing: boolean) => (
     <QueryClientProvider client={queryClient}>
@@ -169,6 +173,11 @@ function providerStateRequests(): number {
   return sdkCalls.filter((call) => call === "system.providerStates").length;
 }
 
+function repoScanRequests(): number {
+  return sdkCalls.filter((call) => call === "hosts.experimental_discoverRepos")
+    .length;
+}
+
 afterEach(() => {
   toast.dismiss();
   cleanup();
@@ -232,6 +241,39 @@ describe("OnboardingFlow", () => {
         queryClient.getQueryState(pluginCatalogSearchQueryKey("")) !==
           undefined,
       ).toBe(prefetched);
+    },
+  );
+
+  it.each(["new", "control"] as const)(
+    "waits for this computer to connect before scanning or checking agents in the %s guide",
+    async (variant) => {
+      vi.useFakeTimers();
+      const { queryClient } = renderFlow({
+        initialStep: "agent",
+        variant,
+        hostStatus: "disconnected",
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(repoScanRequests()).toBe(0);
+      expect(providerStateRequests()).toBe(0);
+      expect(
+        screen.getByText("Waiting for this computer to connect…"),
+      ).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(agentLoadFailures()).toEqual([]);
+
+      await act(async () => {
+        queryClient.setQueryData(hostsQueryOptions(false).queryKey, [
+          makeHost({ id: "host_1", name: "bee", status: "connected" }),
+        ]);
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(repoScanRequests()).toBe(1);
+      expect(providerStateRequests()).toBeGreaterThan(0);
+      expect(screen.getByText("On bee")).toBeTruthy();
     },
   );
 

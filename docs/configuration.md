@@ -392,14 +392,19 @@ selected) and `succeeded_count` (imported before the failure). Plugins step
 fails when its install job finishes, not when the request is accepted, even
 if the guide moved to another step meanwhile; a cancelled install job records
 no outcome. `load`
-records only `failed`, once each time the Agent step's agent states or the
-Plugins step's catalog start failing to load; in the new guide the Agent step
-also records `timed_out` when its agent states haven't loaded after 10
-seconds and it offers Retry, once per attempt. `finish` records only `failed`,
+records `succeeded` once per step visit when the Agent step's agent states or
+the Plugins step's catalog first load, with `duration_ms` (time from the step
+opening to the data arriving), and `failed` once each time they start failing
+to load; in the new guide the Agent step also records `timed_out` when its
+agent states haven't loaded within 10 seconds of this computer connecting and
+it offers Retry, once per attempt. Both guides wait for this computer to
+connect before scanning for repos or checking agents. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
-`no_host` (no computer was available: once per guide for `scan`, and each
-time the Agent step opens without one for agent `load`), `host_unavailable`, `timed_out`,
+`no_host` (no computer registered within 30 seconds: once per guide for
+`scan`, and once per Agent step visit for agent `load`), `host_unavailable`
+(for `scan` and agent `load`, also when this computer didn't connect within
+30 seconds), `timed_out`,
 `not_found`, `permission`, `command_failed` (the agent install command, plugin
 install job, or new machine's setup ran and failed), or `other`. A failed
 `remote_access` adds `failure_stage`: `sign_in` (getbb.app sign-in couldn't

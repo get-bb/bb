@@ -179,6 +179,16 @@ describe("client telemetry events", () => {
             entry: "first_run",
             step: "agent",
             operation: "load",
+            outcome: "succeeded",
+            duration_ms: 4200,
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "load",
             outcome: "failed",
             failure_reason: "timed_out",
           },
@@ -438,6 +448,16 @@ describe("client telemetry events", () => {
             operation: "scan",
             outcome: "succeeded",
             unreadable_count: -1,
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "load",
+            outcome: "succeeded",
+            duration_ms: -1,
           },
         },
         {

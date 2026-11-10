@@ -11,6 +11,7 @@ import { BbHttpError } from "@bb/sdk/browser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
+import type { HostWaitFailure } from "./useReadyHost";
 
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 
@@ -49,7 +50,11 @@ function renderScanQuery(
   const view = renderHook(
     () => {
       const scan = useQuery({ queryKey: ["scan"], queryFn });
-      useProjectsScanTelemetry({ entry: "first_run", noHost: false, scan });
+      useProjectsScanTelemetry({
+        entry: "first_run",
+        hostWaitFailure: null,
+        scan,
+      });
       return scan;
     },
     { wrapper },
@@ -76,7 +81,7 @@ describe("projects scan telemetry", () => {
     renderHook(() =>
       useProjectsScanTelemetry({
         entry: "first_run",
-        noHost: false,
+        hostWaitFailure: null,
         scan: {
           ...idle,
           dataUpdatedAt: 1,
@@ -95,18 +100,26 @@ describe("projects scan telemetry", () => {
     ]);
   });
 
-  it("records a missing machine once while the step stays open", () => {
+  it("records a computer that never became ready once while the step stays open", () => {
     const view = renderHook(
-      ({ noHost }) =>
-        useProjectsScanTelemetry({ entry: "first_run", noHost, scan: idle }),
-      { initialProps: { noHost: false } },
+      ({ hostWaitFailure }: { hostWaitFailure: HostWaitFailure | null }) =>
+        useProjectsScanTelemetry({
+          entry: "first_run",
+          hostWaitFailure,
+          scan: idle,
+        }),
+      {
+        initialProps: {
+          hostWaitFailure: null as HostWaitFailure | null,
+        },
+      },
     );
     expect(recorded()).toEqual([]);
-    view.rerender({ noHost: true });
-    view.rerender({ noHost: false });
-    view.rerender({ noHost: true });
+    view.rerender({ hostWaitFailure: "host_unavailable" });
+    view.rerender({ hostWaitFailure: null });
+    view.rerender({ hostWaitFailure: "no_host" });
     expect(recorded()).toEqual([
-      { ...base, outcome: "failed", failure_reason: "no_host" },
+      { ...base, outcome: "failed", failure_reason: "host_unavailable" },
     ]);
   });
 

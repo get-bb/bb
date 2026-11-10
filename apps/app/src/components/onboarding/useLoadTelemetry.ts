@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   operationFailureReason,
   type OnboardingStepId,
@@ -8,27 +8,30 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
+import type { HostWaitFailure } from "./useReadyHost";
 
-export function useLoadFailureTelemetry({
+export function useLoadTelemetry({
   entry,
   step,
-  noHost,
+  hostWaitFailure,
   query,
+  loaded,
   timedOut,
 }: {
   entry: OnboardingEntry;
   step: OnboardingStepId;
-  noHost: boolean;
+  hostWaitFailure: HostWaitFailure | null;
   query: { isError: boolean; error: unknown };
+  loaded: boolean;
   timedOut: boolean;
 }): void {
-  const failureReason: OperationFailureReason | "no_host" | null = noHost
-    ? "no_host"
-    : query.isError
+  const failureReason: OperationFailureReason | HostWaitFailure | null =
+    hostWaitFailure ??
+    (query.isError
       ? operationFailureReason(query.error)
       : timedOut
         ? "timed_out"
-        : null;
+        : null);
   const failingRef = useRef(false);
   useEffect(() => {
     if (failureReason === null) {
@@ -48,4 +51,20 @@ export function useLoadFailureTelemetry({
       },
     });
   }, [entry, failureReason, step]);
+  const [shownAt] = useState(() => Date.now());
+  const succeededRef = useRef(false);
+  useEffect(() => {
+    if (!loaded || succeededRef.current) return;
+    succeededRef.current = true;
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step,
+        operation: "load",
+        outcome: "succeeded",
+        duration_ms: Math.max(0, Math.round(Date.now() - shownAt)),
+      },
+    });
+  }, [entry, loaded, shownAt, step]);
 }

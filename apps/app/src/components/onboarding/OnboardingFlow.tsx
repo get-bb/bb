@@ -118,7 +118,7 @@ import {
 } from "./onboarding-telemetry";
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
 import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
-import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
+import { useLoadTelemetry } from "./useLoadTelemetry";
 import { useOnboardingLeftTelemetry } from "./useOnboardingLeftTelemetry";
 import { useOnboardingErrorStep } from "./OnboardingErrorTelemetry";
 import {
@@ -131,6 +131,7 @@ import {
   type OnboardingPluginSwitches,
 } from "./useOnboardingPluginSwitches";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
+import { useReadyHost, type HostWaitFailure } from "./useReadyHost";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 import { useRefetchOnUpdateNeeded } from "./useRefetchOnUpdateNeeded";
 import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
@@ -393,7 +394,7 @@ function AgentStepContainer({
   redesign,
   entry,
   hostId,
-  noHost,
+  hostWaitFailure,
   hostName,
   onContinue,
 }: {
@@ -401,7 +402,7 @@ function AgentStepContainer({
   redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
-  noHost: boolean;
+  hostWaitFailure: HostWaitFailure | null;
   hostName: string | null;
   onContinue: () => void;
 }) {
@@ -428,11 +429,12 @@ function AgentStepContainer({
     redesign && statesLoading,
     AGENT_STATES_LOAD_TIMEOUT_MS,
   );
-  useLoadFailureTelemetry({
+  useLoadTelemetry({
     entry,
     step: "agent",
-    noHost,
+    hostWaitFailure,
     query: statesQuery,
+    loaded: states !== undefined,
     timedOut: statesLoad.timedOut,
   });
   const refetchProviderStates = useCallback<RefetchProviderStates>(
@@ -491,8 +493,8 @@ function AgentStepContainer({
 
   const { runningJobKey } = installRunner;
   useEffect(() => {
-    if (runningJobKey === null) void refetchStates();
-  }, [refetchStates, runningJobKey]);
+    if (hostId !== null && runningJobKey === null) void refetchStates();
+  }, [hostId, refetchStates, runningJobKey]);
 
   const previousRunningJobKeyRef = useRef<string | null>(null);
   const [settlingJobKeys, setSettlingJobKeys] = useState<
@@ -1058,11 +1060,12 @@ function PluginsStepContainer({
   onSkip: () => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
-  useLoadFailureTelemetry({
+  useLoadTelemetry({
     entry: onboardingEntry,
     step: "plugins",
-    noHost: false,
+    hostWaitFailure: null,
     query: catalogQuery,
+    loaded: catalogQuery.data !== undefined,
     timedOut: false,
   });
   const listQuery = usePluginList({ enabled: true });
@@ -1356,13 +1359,17 @@ export function OnboardingFlow({
   }
   const hostsLoaded = useHosts().data !== undefined;
   const primaryHost = usePrimaryHost();
-  const hostId = primaryHost?.id ?? null;
+  const { readyHost, hostWaitFailure } = useReadyHost({
+    hostsLoaded,
+    primaryHost,
+  });
+  const hostId = readyHost?.id ?? null;
+  const hostName = readyHost?.name ?? null;
   const reposQuery = useHostDiscoveredRepos(hostId);
-  const noHost = hostsLoaded && primaryHost === null;
   useProjectsScanTelemetry({
     entry,
     scan: reposQuery,
-    noHost: step === "projects" && noHost,
+    hostWaitFailure: step === "projects" ? hostWaitFailure : null,
   });
   const agentStatesQuery = useSystemProviderStates({
     enabled: hostId !== null,
@@ -1466,8 +1473,8 @@ export function OnboardingFlow({
           redesign={redesign}
           entry={entry}
           hostId={hostId}
-          noHost={noHost}
-          hostName={primaryHost?.name ?? null}
+          hostWaitFailure={hostWaitFailure}
+          hostName={hostName}
           onContinue={advance(
             hasReadyAgent(agentStates) ? "completed" : "skipped",
           )}
@@ -1505,7 +1512,7 @@ export function OnboardingFlow({
           chrome={chrome}
           redesign={redesign}
           entry={entry}
-          hostId={hostId}
+          hostId={primaryHost?.id ?? null}
           hostName={primaryHost?.name ?? null}
           closing={closing}
           onBack={goTo(-1)}
