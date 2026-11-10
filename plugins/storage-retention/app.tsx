@@ -341,7 +341,11 @@ function StoragePanel(props: PluginNavPanelProps) {
             });
           if (job.state === "completed")
             notifySuccess(feedback.completed, {
-              description: `${machine} · ${"message" in job ? job.message : `${bytes(job.clearedBytes)} freed`}`,
+              description: `${machine} · ${
+                "message" in job
+                  ? `${job.message}${job.freedBytes ? ` · ${bytes(job.freedBytes)} freed` : ""}`
+                  : `${bytes(job.clearedBytes)} freed`
+              }`,
               freedBytes:
                 "clearedBytes" in job
                   ? job.clearedBytes
@@ -1084,7 +1088,7 @@ function StoragePage({
                               ? `Remove ${plural(total, "checkout")}`
                               : `Remove all ${total}`,
                           title: `Remove ${plural(total, "leftover checkout")} (${bytes(report.leftoverWorktreeBytes)})?`,
-                          detail: `${changed.length === total ? (total === 1 ? "It has" : "They all have") : `${changed.length} of them have`} uncommitted changes, which are lost if removed. Their branches are kept. This can’t be undone.`,
+                          detail: `${changed.length === total ? (total === 1 ? "It has" : "They all have") : `${changed.length} of them ${changed.length === 1 ? "has" : "have"}`} uncommitted changes, which are lost if removed. Their branches are kept. This can’t be undone.`,
                           ...(changed.length < total && {
                             alternative: {
                               action: `Keep the ${changed.length} with changes`,
@@ -1169,7 +1173,7 @@ function StoragePage({
                           detail: [
                             "Delete these checkouts, including ignored files such as dependencies, build output, and local env files. Branches and commits on branches stay in the repository.",
                             forced.length > 0 &&
-                              `${forced.length === selected.length ? (selected.length === 1 ? "It has" : "They all have") : `${forced.length} of them have`} uncommitted changes, a lock, or commits on no branch; that work is lost if removed.`,
+                              `${forced.length === selected.length ? (selected.length === 1 ? "It has" : "They all have") : `${forced.length} of them ${forced.length === 1 ? "has" : "have"}`} uncommitted changes, a lock, or commits on no branch; that work is lost if removed.`,
                             "Make sure no agent is still working in them. This can’t be undone.",
                           ]
                             .filter(Boolean)
