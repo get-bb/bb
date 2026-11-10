@@ -1,4 +1,7 @@
 import semver from "semver";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import {
   getInstalledPlugin,
@@ -58,6 +61,45 @@ import type {
 } from "./plugin-service-internal.js";
 
 const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+
+async function gitSubdirectoryMatches(args: {
+  url: string;
+  installedCommit: string;
+  candidateCommit: string;
+  subdirectory: string;
+}): Promise<boolean> {
+  const directory = await mkdtemp(join(tmpdir(), "bb-plugin-update-trees-"));
+  try {
+    await runInstallCommand("git", ["init", "--bare", "--quiet", directory]);
+    await runInstallCommand("git", [
+      "-C",
+      directory,
+      "fetch",
+      "--quiet",
+      "--no-tags",
+      "--depth=1",
+      "--filter=blob:none",
+      "--",
+      args.url,
+      args.installedCommit,
+      args.candidateCommit,
+    ]);
+    const trees = await Promise.all(
+      [args.installedCommit, args.candidateCommit].map((commit) =>
+        runInstallCommand("git", [
+          "-C",
+          directory,
+          "rev-parse",
+          "--verify",
+          `${commit}:${args.subdirectory}`,
+        ]),
+      ),
+    );
+    return trees[0] === trees[1];
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
 
 const persistedResolvedVersionSchema = pluginResolvedVersionSchema.extend({
   label: z.string().optional(),
@@ -515,6 +557,17 @@ export function createPluginUpdates(
     });
     if (remote.outcome !== "update-available") return remote;
     if (intent.selector.kind === "range") return remote;
+    if (
+      row.sourceGitSubdirectory !== null &&
+      (await gitSubdirectoryMatches({
+        url: intent.url,
+        installedCommit: args.row.gitResolvedCommit,
+        candidateCommit: remote.candidate.version,
+        subdirectory: row.sourceGitSubdirectory,
+      }).catch(() => false))
+    ) {
+      return { outcome: "current", current: remote.current };
+    }
     const staged = await stageGitCandidate({
       row: args.row,
       commit: remote.candidate.version,
