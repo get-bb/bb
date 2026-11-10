@@ -8,6 +8,7 @@ import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
+  ACP_PROMPT_INTERRUPTED_METHOD,
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
@@ -46,6 +47,7 @@ function createHarness(
     providerId: "acp",
     entropyPrefix: ENTROPY,
     textDeltaFlushMs: 0,
+    progressThrottleMs: 0,
   });
   return {
     assembler,
@@ -112,6 +114,217 @@ function completedItems(events: ThreadEvent[]) {
     event.type === "item/completed" ? [event.item] : [],
   );
 }
+
+describe("ACP nested output ownership", () => {
+  it("keeps interleaved nested messages and commands under their owning call", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const events: ThreadEvent[] = [];
+    function send(update: Record<string, unknown>) {
+      const translated = harness.translate(updateEvent(update));
+      events.push(...translated);
+      return translated;
+    }
+    const parentEvents = send({
+      sessionUpdate: "tool_call",
+      toolCallId: "owner-call",
+      title: "Delegate work",
+      kind: "other",
+      status: "in_progress",
+    });
+    const parent = parentEvents.find((event) => event.type === "item/started");
+    if (parent?.type !== "item/started") {
+      throw new Error("Expected the owning call to open");
+    }
+    send({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Main before. " },
+    });
+    const metadata = { claudeCode: { parentToolUseId: "owner-call" } };
+    send({
+      sessionUpdate: "agent_thought_chunk",
+      content: { type: "text", text: "Child thinking." },
+      _meta: metadata,
+    });
+    send({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Child before command." },
+      _meta: metadata,
+    });
+    send({
+      sessionUpdate: "tool_call",
+      toolCallId: "nested-command",
+      title: "Run command",
+      kind: "execute",
+      rawInput: { command: "printf nested" },
+      status: "in_progress",
+      _meta: metadata,
+    });
+    send({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "nested-command",
+      status: "completed",
+      rawOutput: "nested",
+    });
+    send({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Child finished." },
+      _meta: metadata,
+    });
+    const ownerCompleted = send({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "owner-call",
+      status: "completed",
+    });
+    send({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Main after." },
+    });
+    events.push(...harness.translate(turnCompletedEvent("end_turn")));
+    const items = completedItems(events);
+    expect.soft(items.filter((item) => item.type === "agentMessage")).toEqual([
+      expect.objectContaining({
+        text: "Child before command.",
+        parentToolCallId: parent.item.id,
+      }),
+      expect.objectContaining({
+        text: "Child finished.",
+        parentToolCallId: parent.item.id,
+      }),
+      expect.objectContaining({ text: "Main before. Main after." }),
+    ]);
+    expect.soft(items.find((item) => item.type === "reasoning")).toMatchObject({
+      content: ["Child thinking."],
+      parentToolCallId: parent.item.id,
+    });
+    expect
+      .soft(items.find((item) => item.type === "commandExecution"))
+      .toMatchObject({
+        parentToolCallId: parent.item.id,
+        aggregatedOutput: "nested",
+      });
+    expect
+      .soft(completedItems(ownerCompleted))
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ text: "Child finished." }),
+        ]),
+      );
+  });
+
+  it.each(["execute", "other"])(
+    "retains the opening parent for %s progress and completion",
+    (kind) => {
+      const harness = createHarness();
+      harness.translate(turnStartedEvent());
+      const opened = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "nested",
+          kind,
+          title: "Nested work",
+          status: "in_progress",
+          rawInput: kind === "execute" ? { command: "printf nested" } : {},
+          _meta: { claudeCode: { parentToolUseId: "owner" } },
+        }),
+      );
+      const started = opened.find((event) => event.type === "item/started");
+      if (started?.type !== "item/started") {
+        throw new Error("Expected nested work to open");
+      }
+      expect(started.item.parentToolCallId).toBeDefined();
+      const progress = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "nested",
+          status: "in_progress",
+          rawOutput: "working",
+          _meta: { claudeCode: { parentToolUseId: "different-owner" } },
+        }),
+      );
+      expect(progress).toContainEqual(
+        expect.objectContaining({
+          type:
+            kind === "execute"
+              ? "item/commandExecution/outputDelta"
+              : "item/toolCall/progress",
+          itemId: started.item.id,
+          parentToolCallId: started.item.parentToolCallId,
+        }),
+      );
+      const closed = completedItems(
+        harness.translate(
+          updateEvent({
+            sessionUpdate: "tool_call_update",
+            toolCallId: "nested",
+            status: "completed",
+          }),
+        ),
+      );
+      expect(closed).toContainEqual(
+        expect.objectContaining({
+          id: started.item.id,
+          parentToolCallId: started.item.parentToolCallId,
+        }),
+      );
+    },
+  );
+
+  it.each(["completed", "interrupted"])(
+    "flushes every nested stream when %s",
+    (ending) => {
+      const harness = createHarness();
+      harness.translate(turnStartedEvent());
+      for (const owner of ["first", "second"]) {
+        harness.translate(
+          updateEvent({
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: owner },
+            _meta: { claudeCode: { parentToolUseId: owner } },
+          }),
+        );
+      }
+      const flushed = harness.translate(
+        ending === "completed"
+          ? turnCompletedEvent("end_turn")
+          : {
+              jsonrpc: "2.0",
+              method: ACP_PROMPT_INTERRUPTED_METHOD,
+              params: { threadId: THREAD_ID },
+            },
+      );
+      expect(completedItems(flushed)).toEqual([
+        expect.objectContaining({
+          text: "first",
+          parentToolCallId: expect.any(String),
+        }),
+        expect.objectContaining({
+          text: "second",
+          parentToolCallId: expect.any(String),
+        }),
+      ]);
+    },
+  );
+
+  it.each([null, 42, "", "bad\u001fkey", "self"])(
+    "ignores invalid or self-referential ownership %j",
+    (parentToolUseId) => {
+      const harness = createHarness();
+      harness.translate(turnStartedEvent());
+      const events = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "self",
+          kind: "other",
+          status: "completed",
+          _meta: { claudeCode: { parentToolUseId } },
+        }),
+      );
+      expect(completedItems(events)).toHaveLength(1);
+      expect(completedItems(events)[0]).not.toHaveProperty("parentToolCallId");
+    },
+  );
+});
 
 describe("acp file change kinds", () => {
   function fileChangesFor(
