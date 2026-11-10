@@ -12,6 +12,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  notExists,
   notInArray,
   or,
   sql,
@@ -33,6 +34,7 @@ import {
   listThreadTurnInterruptionEventStates,
   liveThread,
   markThreadStorageDeleted,
+  threadPurges,
   threads,
   type DbNotifier,
   type DbQueryConnection,
@@ -239,6 +241,40 @@ class InFlightRpcGuard {
 }
 
 const inFlightThreadRpcGuard = new InFlightRpcGuard();
+
+const MAX_THREAD_STORAGE_DELETES_PER_HOST = 4;
+
+const threadStorageDeleteSlotsByHostId = new Map<
+  string,
+  { running: number; waiting: (() => void)[] }
+>();
+
+async function withThreadStorageDeleteSlot(
+  hostId: string,
+  task: () => Promise<void>,
+): Promise<void> {
+  let slots = threadStorageDeleteSlotsByHostId.get(hostId);
+  if (slots === undefined) {
+    slots = { running: 0, waiting: [] };
+    threadStorageDeleteSlotsByHostId.set(hostId, slots);
+  }
+  if (slots.running >= MAX_THREAD_STORAGE_DELETES_PER_HOST) {
+    await new Promise<void>((resolve) => slots.waiting.push(resolve));
+  } else {
+    slots.running += 1;
+  }
+  try {
+    await task();
+  } finally {
+    const next = slots.waiting.shift();
+    if (next === undefined) {
+      slots.running -= 1;
+      if (slots.running === 0) threadStorageDeleteSlotsByHostId.delete(hostId);
+    } else {
+      next();
+    }
+  }
+}
 
 const stopsAwaitingDaemon = new Map<
   string,
@@ -1236,10 +1272,12 @@ export function requestThreadStorageDeletion(
   if (!inFlightThreadRpcGuard.claim(thread.id, "thread.storage.delete")) {
     return;
   }
-  void deleteThreadStorageKeepingPlugins(deps, {
-    environment,
-    threadId: thread.id,
-  }).finally(() => {
+  void withThreadStorageDeleteSlot(environment.hostId, () =>
+    deleteThreadStorageKeepingPlugins(deps, {
+      environment,
+      threadId: thread.id,
+    }),
+  ).finally(() => {
     inFlightThreadRpcGuard.release(thread.id, "thread.storage.delete");
   });
 }
@@ -2379,6 +2417,12 @@ export async function reconcileDaemonReportedThreads(
           "starting",
           "stopping",
         ]),
+        notExists(
+          deps.db
+            .select({ threadId: threadPurges.threadId })
+            .from(threadPurges)
+            .where(eq(threadPurges.threadId, threads.id)),
+        ),
         or(
           isNotNull(threads.deletedAt),
           eq(threads.status, "stopping"),

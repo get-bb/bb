@@ -66,6 +66,37 @@ async function listLsofProcessCwds(): Promise<ProcessWithCwd[]> {
   return results;
 }
 
+let runningProcessCwdScan: Promise<ProcessWithCwd[]> | null = null;
+let queuedProcessCwdScan: Promise<ProcessWithCwd[]> | null = null;
+
+function startProcessCwdScan(): Promise<ProcessWithCwd[]> {
+  const scan = (
+    process.platform === "linux"
+      ? listLinuxProcessCwds()
+      : listLsofProcessCwds()
+  ).finally(() => {
+    if (runningProcessCwdScan === scan) runningProcessCwdScan = null;
+  });
+  runningProcessCwdScan = scan;
+  return scan;
+}
+
+function scanProcessCwds(): Promise<ProcessWithCwd[]> {
+  if (queuedProcessCwdScan !== null) return queuedProcessCwdScan;
+  if (runningProcessCwdScan === null) return startProcessCwdScan();
+  const queued = runningProcessCwdScan
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .then(() => {
+      queuedProcessCwdScan = null;
+      return startProcessCwdScan();
+    });
+  queuedProcessCwdScan = queued;
+  return queued;
+}
+
 async function resolveSweepDirectory(
   directory: string,
 ): Promise<string | null> {
@@ -105,10 +136,7 @@ export async function listProcessesWithCwdUnder(
   if (directories.length === 0) {
     return [];
   }
-  const all =
-    process.platform === "linux"
-      ? await listLinuxProcessCwds()
-      : await listLsofProcessCwds();
+  const all = await scanProcessCwds();
   return all.filter(
     (entry) =>
       entry.pid !== process.pid &&

@@ -1,4 +1,5 @@
 import {
+  getThread,
   markThreadDeleted,
   markThreadStorageDeleted,
   requestThreadPurge,
@@ -75,3 +76,54 @@ it.each(["idle", "error", "active", "starting", "stopping"] as const)(
     });
   },
 );
+
+it("sends at most four storage deletions to a host at once", async () => {
+  await withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps);
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+    });
+    const deleted = Array.from({ length: 6 }, () =>
+      seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      }),
+    );
+    for (const thread of deleted) {
+      markThreadDeleted(harness.db, harness.deps.hub, { threadId: thread.id });
+    }
+
+    await reconcileDaemonReportedThreads(harness.deps, {
+      hostId: host.id,
+      activeThreadIds: [],
+      undeliveredEventThreadIds: [],
+      sameDaemonInstance: false,
+    });
+
+    for (let remaining = deleted.length; remaining > 0; remaining -= 1) {
+      await expect
+        .poll(() => listQueuedCommands(harness, "thread.storage.delete").length)
+        .toBe(Math.min(4, remaining));
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "thread.storage.delete",
+      );
+      await reportQueuedCommandSuccess(harness, queued, {
+        providerCheckpointId: null,
+      });
+    }
+    await expect
+      .poll(() =>
+        deleted.map(
+          (thread) =>
+            getThread(harness.db, thread.id)?.storageDeletedAt ?? null,
+        ),
+      )
+      .not.toContain(null);
+  });
+});
