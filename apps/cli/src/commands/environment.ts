@@ -169,7 +169,7 @@ export function registerEnvironmentCommands(
     .description("Clean up an unused provider-managed environment")
     .option(
       "--recover",
-      "After inspection, acknowledge interrupted hooks and retry failed cleanup (Linux, same-user cwd/maps guard; inspect other users separately)",
+      "After inspection, acknowledge interrupted hooks and retry failed cleanup (Linux and macOS; same-user cwd and mapped-file guard; inspect other users separately)",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
