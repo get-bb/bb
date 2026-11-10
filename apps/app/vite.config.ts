@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { bundleStats } from "./vite-bundle-stats.js";
 import { splitPrefetch } from "./vite-split-prefetch.js";
+import { downloadBeforeImport } from "./vite-download-before-import.js";
 import { routeModulePreload } from "./vite-route-modulepreload.js";
 import { fontPreload } from "./vite-font-preload.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
@@ -24,6 +25,7 @@ export const sharedViteConfig = {
     bundleStats(),
     fontPreload(),
     routeModulePreload("src/views/SplitWorkspaceRoute.tsx"),
+    downloadBeforeImport(),
     splitPrefetch({
       "markdown-html": "src/components/ui/markdown-html.tsx",
       "queued-messages-list":

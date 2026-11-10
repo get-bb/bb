@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { installStaleChunkRecovery } from "./stale-chunk-recovery";
+import {
+  installStaleChunkRecovery,
+  recoverFromVisibleModuleImportFailure,
+} from "./stale-chunk-recovery";
 import { getPromptDraftAccessor } from "../hooks/usePromptDraftStorage";
 
 const LOADED_ENTRY = "/assets/index-old.js";
@@ -121,6 +124,60 @@ it("does not reload again when the reload still serves the stale document, and p
   failImport();
   await settle();
   expect(reload).toHaveBeenCalledTimes(2);
+});
+
+it("reloads once when a pre-import download fails because the deployment changed", async () => {
+  deploy("/assets/index-new.js");
+  failImport(
+    new TypeError("Unable to download module script: /assets/old.js"),
+  );
+  await settle();
+  expect(reload).toHaveBeenCalledOnce();
+});
+
+it("reloads the same build at most once per five minutes when a visible import is rejected", async () => {
+  failImport();
+  await settle();
+  expect(reload).not.toHaveBeenCalled();
+  recoverFromVisibleModuleImportFailure();
+  await settle();
+  expect(reload).toHaveBeenCalledOnce();
+  dispose();
+  dispose = installStaleChunkRecovery();
+  recoverFromVisibleModuleImportFailure();
+  await settle();
+  expect(reload).toHaveBeenCalledOnce();
+  vi.advanceTimersByTime(5 * 60_000);
+  recoverFromVisibleModuleImportFailure();
+  await settle();
+  expect(reload).toHaveBeenCalledTimes(2);
+});
+
+it("honours a visible failure that arrives while a background check is in flight", async () => {
+  let answer!: () => void;
+  fetchIndex.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        answer = () => resolve(new Response(indexHtml(LOADED_ENTRY)));
+      }),
+  );
+  failImport();
+  recoverFromVisibleModuleImportFailure();
+  answer();
+  await settle();
+  expect(fetchIndex).toHaveBeenCalledOnce();
+  expect(reload).toHaveBeenCalledOnce();
+});
+
+it("does not reload for a visible failure while the server is unreachable", async () => {
+  fetchIndex.mockRejectedValue(new TypeError("offline"));
+  recoverFromVisibleModuleImportFailure();
+  await settle();
+  expect(reload).not.toHaveBeenCalled();
+  failImport();
+  deploy(LOADED_ENTRY);
+  await settle();
+  expect(reload).not.toHaveBeenCalled();
 });
 
 it.each([
