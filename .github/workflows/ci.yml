@@ -46,7 +46,7 @@ jobs:
           & $gnu -cf $archive --force-local --use-compress-program 'zstd -T0' bb-dependencies.vhdx
           if ($LASTEXITCODE -ne 0) { throw 'archive failed' }
           $hash = (Get-FileHash $source).Hash
-          foreach ($sample in @('gnu-a', 'native-b', 'native-c', 'gnu-d')) {
+          foreach ($sample in @('native-a', 'gnu-b', 'gnu-c', 'native-d')) {
             $target = Join-Path $env:RUNNER_TEMP $sample
             New-Item -ItemType Directory -Path $target | Out-Null
             $clock = [Diagnostics.Stopwatch]::StartNew()
