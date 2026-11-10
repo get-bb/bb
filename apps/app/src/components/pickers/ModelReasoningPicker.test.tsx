@@ -379,6 +379,26 @@ describe("ModelReasoningPicker", () => {
     expect(onReasoningChange).not.toHaveBeenCalled();
   });
 
+  it("keeps submenu ArrowRight navigation from changing reasoning", async () => {
+    const { onReasoningChange, onModelChange } = renderPicker({
+      moreModelOptions: [{ value: "legacy", label: "Legacy" }],
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    );
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "More models" }));
+    const submenuModel = await screen.findByRole("button", { name: "Legacy" });
+    act(() => submenuModel.focus());
+    fireEvent.keyDown(submenuModel, { key: "ArrowRight" });
+    expect(onReasoningChange).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(submenuModel);
+    fireEvent.click(submenuModel);
+    expect(onModelChange).toHaveBeenCalledExactlyOnceWith("legacy");
+  });
+
   it("leaves modified arrows and models without reasoning alone", () => {
     const { onReasoningChange } = renderPicker();
     const trigger = screen.getByRole("button", {

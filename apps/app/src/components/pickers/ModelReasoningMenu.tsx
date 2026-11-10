@@ -603,8 +603,15 @@ function MoreModelsSubmenu({
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
         )}
         onKeyDown={(event) => {
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+
           if (event.key === "Escape" || event.key === "ArrowLeft") {
             event.preventDefault();
+            event.stopPropagation();
             onOpenChange(false);
             triggerRef.current?.focus();
           }
