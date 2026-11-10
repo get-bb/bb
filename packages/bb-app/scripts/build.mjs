@@ -4,9 +4,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
-  buildNodeEsmEntry,
+  buildNodeEsmEntry as originalBuildNodeEsmEntry,
   copyDirectory,
 } from "../../../scripts/build-utils.mjs";
+
+async function buildNodeEsmEntry(options) {
+  const start = performance.now();
+  try { return await originalBuildNodeEsmEntry(options); }
+  finally { console.log(`BUILD_PROFILE entry ${options.entryPoint} ${(performance.now()-start).toFixed(0)}ms`); }
+}
 
 const execFileAsync = promisify(execFile);
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
@@ -25,7 +31,9 @@ async function assertPathExists(pathToCheck, label) {
 
 async function copyBuildOutput({ from, label, to }) {
   await assertPathExists(from, label);
+  const start = performance.now();
   await copyDirectory({ from, to });
+  console.log(`BUILD_PROFILE copy ${label} ${(performance.now()-start).toFixed(0)}ms`);
 }
 
 async function buildPublicSdkDeclarations() {
@@ -59,7 +67,9 @@ await buildNodeEsmEntry({
   outfile: resolve(packageRoot, "dist", "index.js"),
   packageRoot,
 });
+const dtsStart = performance.now();
 await buildPublicSdkDeclarations();
+console.log(`BUILD_PROFILE declarations ${(performance.now()-dtsStart).toFixed(0)}ms`);
 await buildNodeEsmEntry({
   cleanDist: false,
   entryPoint: resolve(scriptsDir, "prune-bb-chunks.mjs"),

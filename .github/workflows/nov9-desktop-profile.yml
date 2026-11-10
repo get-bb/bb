@@ -65,17 +65,12 @@ jobs:
       - name: Build packaging inputs
         shell: bash
         run: pnpm exec turbo run build --filter=@bb/desktop --filter=bb-app --output-logs=errors-only
-      - name: Profile packaging with default and larger libuv pools
+      - name: Profile bb-app asset build
         shell: bash
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
-          cd apps/desktop
-          for size in 4 16 16 4; do
-            echo "POOL_BEGIN=$size $(date -u +%FT%TZ)"
-            UV_THREADPOOL_SIZE=$size node --require ../../scripts/diagnose-desktop.cjs scripts/run-electron-builder.mjs --win --dir --x64 --publish never
-            echo "POOL_END=$size $(date -u +%FT%TZ)"
+          cd packages/bb-app
+          for pass in 1 2; do
+            echo "BUILD_BEGIN=$pass $(date -u +%FT%TZ)"
+            node scripts/build.mjs
+            echo "BUILD_END=$pass $(date -u +%FT%TZ)"
           done
-      - name: Packaged app smoke
-        shell: bash
-        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=errors-only
