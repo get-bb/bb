@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSelector } from "./ProjectSelector";
+import { expectNonmodalPicker } from "@/test/nonmodal-picker";
 
 const PROJECTS = [
   { id: "proj_alpha", name: "Alpha Web" },
@@ -17,6 +18,19 @@ const PROJECTS = [
 afterEach(cleanup);
 
 describe("ProjectSelector", () => {
+  it("keeps the page interactive and closes when focus leaves", async () => {
+    render(
+      <ProjectSelector projects={PROJECTS} value={null} onChange={vi.fn()} />,
+    );
+    const trigger = screen.getByRole("button", { name: /^Project/ });
+    await expectNonmodalPicker({
+      trigger,
+      open: () => fireEvent.click(trigger),
+      content: () =>
+        screen.queryByRole("combobox", { name: "Search projects" }),
+    });
+  });
+
   it("selects a searched project and returns to all projects without falling back to the first project", () => {
     function Picker() {
       const [value, setValue] = useState<string | null>("all");
