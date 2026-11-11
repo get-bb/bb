@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExperimentalPanelTab } from "@get-bb/plugin-sdk/app";
 import { testThread as thread } from "../testing/thread.js";
-import { findDiffTabKey, workspaceChats } from "./model.js";
+import { findDiffTabKey, tabAfterClose, workspaceChats } from "./model.js";
 
 describe("workspaceChats", () => {
   const threads = [
@@ -57,5 +57,22 @@ describe("findDiffTabKey", () => {
 
   it("returns null when the Git plugin is off", () => {
     expect(findDiffTabKey([info])).toBeNull();
+  });
+});
+
+describe("tabAfterClose", () => {
+  const chats = [thread("a"), thread("b"), thread("c")];
+
+  it("selects the tab to the right, like a browser", () => {
+    expect(tabAfterClose(chats, "b")?.id).toBe("c");
+  });
+
+  it("falls back to the tab on the left when closing the last tab", () => {
+    expect(tabAfterClose(chats, "c")?.id).toBe("b");
+  });
+
+  it("returns null for the only tab or an unknown one", () => {
+    expect(tabAfterClose([thread("a")], "a")).toBeNull();
+    expect(tabAfterClose(chats, "z")).toBeNull();
   });
 });

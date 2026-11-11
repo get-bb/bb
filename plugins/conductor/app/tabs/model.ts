@@ -38,3 +38,12 @@ export function findDiffTabKey(
     )?.key ?? null
   );
 }
+
+export function tabAfterClose(
+  chats: readonly PluginSidebarThread[],
+  closingId: string,
+): PluginSidebarThread | null {
+  const index = chats.findIndex((chat) => chat.id === closingId);
+  if (index === -1) return null;
+  return chats[index + 1] ?? chats[index - 1] ?? null;
+}

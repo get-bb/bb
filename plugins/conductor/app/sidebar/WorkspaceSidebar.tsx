@@ -268,23 +268,29 @@ function WorkspaceRow({
           <span className="min-w-0 flex-1 truncate">
             <ThreadTitle threadId={workspace.primary.id} />
           </span>
-          {chatCount > 1 ? (
-            <span
-              className="shrink-0 text-xs tabular-nums text-subtle-foreground"
-              aria-label={`${chatCount} chats`}
-            >
-              {chatCount}
-            </span>
-          ) : null}
         </span>
-        <span className="relative flex shrink-0 items-center">
+        <span
+          className={cn(
+            "relative flex shrink-0 items-center justify-end",
+            workspace.environmentId !== null &&
+              "group-hover/workspace:min-w-6 group-focus-within/workspace:min-w-6",
+          )}
+        >
           <span
             className={cn(
-              "pointer-events-none pr-1",
+              "pointer-events-none flex items-center gap-2 pr-1",
               workspace.environmentId !== null &&
                 "group-hover/workspace:invisible group-focus-within/workspace:invisible",
             )}
           >
+            {chatCount > 1 ? (
+              <span
+                className="shrink-0 text-xs tabular-nums text-subtle-foreground"
+                aria-label={`${chatCount} chats`}
+              >
+                {chatCount}
+              </span>
+            ) : null}
             <ChangeCounts changes={changes} />
           </span>
           {workspace.environmentId === null ? null : (
@@ -336,7 +342,6 @@ function ProjectBlock({
         className={cn(
           SIDEBAR_ROW_BASE_CLASS,
           COARSE_POINTER_ROW_HEIGHT_CLASS,
-          SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
           "group/project relative pl-2 pr-1",
         )}
       >

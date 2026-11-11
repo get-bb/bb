@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   experimental_resolveThreadStatus as resolveThreadStatus,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
@@ -23,7 +23,8 @@ import { runWorkspaceScript } from "../scripts/run.js";
 import { formatLineCount } from "../sidebar/model.js";
 import { useWorkspaceChanges } from "../sidebar/reads.js";
 import { toActionTarget } from "../thread-target.js";
-import { findDiffTabKey, workspaceChats } from "./model.js";
+import { findDiffTabKey, tabAfterClose, workspaceChats } from "./model.js";
+import { deferCloseUntilOpen, takePendingClose } from "./pending-close.js";
 
 export interface WorkspaceTabsProps {
   threadId: string;
@@ -57,11 +58,26 @@ function TabStatus({ thread }: { thread: PluginSidebarThread }) {
   );
 }
 
-function CloseTab({ thread }: { thread: PluginSidebarThread }) {
+function CloseTab({
+  thread,
+  activeThreadId,
+  nextThreadId,
+}: {
+  thread: PluginSidebarThread;
+  activeThreadId: string | null;
+  nextThreadId: string | null;
+}) {
+  const navigate = useBbNavigate();
   const actions = useThreadActions(toActionTarget(thread), {
     keys: [ARCHIVE_ACTION_KEY],
   });
   const archive = actions.find((entry) => entry.key === ARCHIVE_ACTION_KEY);
+  useEffect(() => {
+    if (archive === undefined) return;
+    if (takePendingClose(thread.id, activeThreadId)) {
+      void archive.action.run();
+    }
+  }, [activeThreadId, archive, thread.id]);
   if (archive === undefined) return null;
   return (
     <button
@@ -71,6 +87,11 @@ function CloseTab({ thread }: { thread: PluginSidebarThread }) {
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (thread.id === activeThreadId && nextThreadId !== null) {
+          deferCloseUntilOpen(thread.id, nextThreadId);
+          navigate.toThread(nextThreadId);
+          return;
+        }
         void archive.action.run();
       }}
     >
@@ -170,7 +191,13 @@ export function TabStrip({
               <span className="pointer-events-none min-w-0 truncate">
                 <ThreadTitle threadId={chat.id} />
               </span>
-              {closable ? <CloseTab thread={chat} /> : null}
+              {closable ? (
+                <CloseTab
+                  thread={chat}
+                  activeThreadId={activeThreadId}
+                  nextThreadId={tabAfterClose(chats, chat.id)?.id ?? null}
+                />
+              ) : null}
             </div>
           );
         })}
