@@ -9,6 +9,7 @@ import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
+import type { PromptCacheTtl } from "../prompt-cache.js";
 import type {
   ClaudeMutableFlagSettings,
   ClaudeSdkReasoningEffort,
@@ -16,6 +17,7 @@ import type {
 } from "./sdk-session.js";
 
 export interface BuildSessionOptionsArgs {
+  promptCacheTtl?: PromptCacheTtl;
   additionalWorkspaceWriteRoots?: readonly string[];
   baseInstructions?: string;
   cwd: string;
@@ -85,6 +87,9 @@ function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
     enableWorkflows: params.workflowsEnabled,
     ultracode: params.reasoningLevel === "ultracode",
     fastMode: params.serviceTier === "fast",
+    ...(params.promptCacheTtl && params.promptCacheTtl !== "auto"
+      ? { promptCacheTtl: params.promptCacheTtl }
+      : {}),
   };
 }
 

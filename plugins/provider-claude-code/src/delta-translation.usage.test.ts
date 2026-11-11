@@ -6,6 +6,13 @@ import {
   turnScope,
 } from "./delta-test-harness.js";
 
+function aggregateOnlyAssistant() {
+  const fixture = loadFixture("assistant-text.json");
+  const message = { ...(fixture.message as Record<string, unknown>) };
+  delete message.id;
+  return { ...fixture, message };
+}
+
 describe("claude usage and fixture translation (delta path)", () => {
   it.each([
     [{}, {}],
@@ -17,7 +24,7 @@ describe("claude usage and fixture translation (delta path)", () => {
     "preserves independently omitted Claude cache counts %j",
     (counts, expected) => {
       const harness = createClaudeDeltaHarness();
-      harness.translate(loadFixture("assistant-text.json"));
+      harness.translate(aggregateOnlyAssistant());
       const fixture = loadFixture("result-success.json");
       const events = harness.translate({
         ...fixture,
@@ -57,7 +64,7 @@ describe("claude usage and fixture translation (delta path)", () => {
     ];
 
     const reported = turns.map(([cacheCreation]) => {
-      harness.translate(loadFixture("assistant-text.json"));
+      harness.translate(aggregateOnlyAssistant());
       const event = harness
         .translate({
           ...fixture,
@@ -202,7 +209,7 @@ describe("claude usage and fixture translation (delta path)", () => {
 
   it("fixture: user-tool-result-generic produces toolCall completed", () => {
     const harness = createClaudeDeltaHarness();
-    harness.translate(loadFixture("assistant-text.json"));
+    harness.translate(aggregateOnlyAssistant());
 
     const events = harness.translate(
       loadFixture("user-tool-result-generic.json"),
@@ -221,7 +228,7 @@ describe("claude usage and fixture translation (delta path)", () => {
 
   it("fixture: result-success produces request context usage, token usage, and turn/completed", () => {
     const harness = createClaudeDeltaHarness();
-    harness.translate(loadFixture("assistant-text.json"));
+    harness.translate(aggregateOnlyAssistant());
 
     const events = harness.translate(loadFixture("result-success.json"));
 
@@ -340,7 +347,7 @@ describe("claude usage and fixture translation (delta path)", () => {
   it("clears the latest Claude request context when a non-assistant event starts the next turn", () => {
     const harness = createClaudeDeltaHarness();
 
-    harness.translate(loadFixture("assistant-text.json"), {
+    harness.translate(aggregateOnlyAssistant(), {
       threadId: "bb-thread-1",
     });
     harness.translate(loadFixture("result-success.json"), {
@@ -397,12 +404,12 @@ describe("claude usage and fixture translation (delta path)", () => {
   it("fixture: result-success accumulates Claude token usage across turns", () => {
     const harness = createClaudeDeltaHarness();
 
-    harness.translate(loadFixture("assistant-text.json"));
+    harness.translate(aggregateOnlyAssistant());
     const firstTurnEvents = harness.translate(
       loadFixture("result-success.json"),
     );
 
-    harness.translate(loadFixture("assistant-text.json"));
+    harness.translate(aggregateOnlyAssistant());
     const secondTurnEvents = harness.translate(
       loadFixture("result-success.json"),
     );
@@ -452,7 +459,7 @@ describe("claude usage and fixture translation (delta path)", () => {
       "bb-thread-1",
       "claude-opus-4-7[1m]",
     );
-    harness.translate(loadFixture("assistant-text.json"), {
+    harness.translate(aggregateOnlyAssistant(), {
       threadId: "bb-thread-1",
     });
 
@@ -495,7 +502,7 @@ describe("claude usage and fixture translation (delta path)", () => {
   it("keeps Claude context-window capacity unknown when no model hint exists", () => {
     const harness = createClaudeDeltaHarness();
 
-    harness.translate(loadFixture("assistant-text.json"), {
+    harness.translate(aggregateOnlyAssistant(), {
       threadId: "bb-thread-unknown",
     });
 
@@ -538,14 +545,14 @@ describe("claude usage and fixture translation (delta path)", () => {
   it("reuses the last known Claude context window when a later result omits modelUsage.contextWindow", () => {
     const harness = createClaudeDeltaHarness();
 
-    harness.translate(loadFixture("assistant-text.json"), {
+    harness.translate(aggregateOnlyAssistant(), {
       threadId: "bb-thread-1",
     });
     harness.translate(loadFixture("result-success.json"), {
       threadId: "bb-thread-1",
     });
 
-    harness.translate(loadFixture("assistant-text.json"), {
+    harness.translate(aggregateOnlyAssistant(), {
       threadId: "bb-thread-1",
     });
 

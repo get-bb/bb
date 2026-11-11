@@ -448,6 +448,28 @@ function resolvePendingSessionWork(
   resolvePendingInteractiveRequests(threadSession, message);
 }
 
+function applyPromptCacheTtlSetting(
+  attachment: ThreadAttachment,
+  ttl: TurnStartParams["promptCacheTtl"],
+): void {
+  const construction = attachment.sessionConstructionConfig.sessionOptions;
+  if (ttl === undefined || construction.promptCacheTtl === ttl) return;
+  construction.promptCacheTtl = ttl;
+  const settings =
+    typeof attachment.sessionOptions.settings === "object"
+      ? { ...attachment.sessionOptions.settings }
+      : {};
+  if (ttl === "auto") delete settings.promptCacheTtl;
+  else settings.promptCacheTtl = ttl;
+  attachment.sessionOptions.settings = settings;
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurn = {
+      reason: "Claude Code prompt cache TTL changed",
+      showRuntimeNote: false,
+    };
+  }
+}
+
 function applyChromeSetting(
   attachment: ThreadAttachment,
   enabled: boolean | undefined,
@@ -1081,6 +1103,7 @@ function toSessionConstructionConfig(
       permissionScope: params.permissionScope,
       plugins: params.plugins,
       sandboxEnabled: params.sandboxEnabled,
+      promptCacheTtl: params.promptCacheTtl,
     },
   };
 }
@@ -2601,6 +2624,7 @@ async function runTurnInput(
       applyTurnEnvironment(attachment, params.config);
     }
     applyChromeSetting(attachment, params.chromeEnabled);
+    applyPromptCacheTtlSetting(attachment, params.promptCacheTtl);
     applySubagentSetting(attachment, params.providerSubagentsEnabled);
     applyContextWindowSetting(attachment, params.disable1MContext);
     applyArtifactSetting(attachment, params.artifactsEnabled);

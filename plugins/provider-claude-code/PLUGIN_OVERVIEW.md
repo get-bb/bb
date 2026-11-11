@@ -7,6 +7,8 @@ Start a thread, pick Claude Code, and let it work in your repository from bb. Th
 - Checkpoint forks, manual compaction, and native questions from the agent.
 - Claude Code skills and provider-native CLAUDE.md or supported AGENTS.md files
   from your home directory and project.
+- A prompt cache TTL choice for each thread (Automatic, 5 minutes, or 1 hour) in the model picker.
+- Token usage for each API request, with cache writes split by 5-minute and 1-hour lifetime, in thread events for plugins to read.
 - Health, usage, and install status for Claude Code on each host, with an install or update action.
 
 ## Settings

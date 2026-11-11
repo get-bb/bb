@@ -54,6 +54,24 @@ const DISCOVERED_MODELS: ModelInfo[] = [
 ];
 
 describe("buildClaudeCodeModels", () => {
+  it("offers per-session cache TTL choices on models and selected aliases", () => {
+    const catalog = buildClaudeCodeModels(DISCOVERED_MODELS);
+    for (const model of [...catalog.models, ...catalog.selectedOnlyModels]) {
+      expect(model.sessionOptions).toEqual([
+        expect.objectContaining({
+          id: "promptCacheTtl",
+          type: "select",
+          value: "auto",
+          values: [
+            expect.objectContaining({ id: "auto" }),
+            expect.objectContaining({ id: "5m" }),
+            expect.objectContaining({ id: "1h" }),
+          ],
+        }),
+      ]);
+    }
+  });
+
   it("offers exactly the models Claude Code reports, in its order", () => {
     const result = buildClaudeCodeModels(DISCOVERED_MODELS);
 
