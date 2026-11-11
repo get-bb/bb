@@ -32,6 +32,8 @@ import {
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
 } from "@/components/ui/sidebar-row-classes";
 import { cn } from "@/lib/utils";
+import { useNewChatEnvironment } from "../new-chat/active.js";
+import { ProjectAvatar } from "../project-avatar.js";
 import { toActionTarget } from "../thread-target.js";
 import {
   buildWorkspaceSidebarModel,
@@ -106,18 +108,6 @@ function IconButton({
       </TooltipTrigger>
       <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>
-  );
-}
-
-function ProjectAvatar({ name }: { name: string }) {
-  const letter = name.trim().charAt(0).toUpperCase() || "?";
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-foreground/10 text-2xs font-semibold leading-none text-foreground/80"
-    >
-      {letter}
-    </span>
   );
 }
 
@@ -419,7 +409,11 @@ export function WorkspaceSidebar({
     () => buildWorkspaceSidebarModel(state.threads, state.projects),
     [state.threads, state.projects],
   );
-  const activeWorkspaceKey = findWorkspaceKeyForThread(model, activeThreadId);
+  const newChatEnvironmentId = useNewChatEnvironment();
+  const activeWorkspaceKey =
+    activeThreadId === null && newChatEnvironmentId !== null
+      ? `env:${newChatEnvironmentId}`
+      : findWorkspaceKeyForThread(model, activeThreadId);
   const lastActive = useLastActiveThreads();
   const expansion = useProjectExpansion();
 

@@ -1,15 +1,25 @@
 import { toast } from "sonner";
 import {
   definePluginApp,
+  experimental_useSidebarThreads as useSidebarThreads,
+  type ExperimentalPageTitle,
   type ExperimentalThreadHeaderRowProps,
+  type PluginNavPanelProps,
   type PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppBridgeOverlay } from "./app/bridge.js";
 import { forkToNewWorkspace } from "./app/fork.js";
+import { WorkspaceBreadcrumb } from "./app/header/WorkspaceBreadcrumb.js";
+import { NewChatPage } from "./app/new-chat/NewChatPage.js";
+import { environmentIdFromSubPath } from "./app/new-chat/route.js";
 import { runWorkspaceScript } from "./app/scripts/run.js";
 import { WorkspaceSidebar } from "./app/sidebar/WorkspaceSidebar.js";
-import { WorkspaceTabs } from "./app/tabs/WorkspaceTabs.js";
+import {
+  NEW_CHAT_PANEL_PATH,
+  WorkspaceTabs,
+} from "./app/tabs/WorkspaceTabs.js";
+import { findWorkspace } from "./app/workspace.js";
 
 function ConductorThreadList(props: PluginThreadListProps) {
   return (
@@ -25,6 +35,61 @@ function ConductorWorkspaceTabs(props: ExperimentalThreadHeaderRowProps) {
       <WorkspaceTabs {...props} />
     </TooltipProvider>
   );
+}
+
+function ConductorThreadHeaderTitle({
+  threadId,
+  projectId,
+  environment,
+}: ExperimentalThreadHeaderRowProps) {
+  return (
+    <WorkspaceBreadcrumb
+      threadId={threadId}
+      projectId={projectId}
+      environmentId={environment?.id ?? null}
+    />
+  );
+}
+
+function ConductorNewChatPage(props: PluginNavPanelProps) {
+  return (
+    <TooltipProvider>
+      <NewChatPage {...props} />
+    </TooltipProvider>
+  );
+}
+
+function NewChatHeaderTitle({ subPath }: PluginNavPanelProps) {
+  const environmentId = environmentIdFromSubPath(subPath);
+  const { threads, projects } = useSidebarThreads();
+  const workspace =
+    environmentId === null
+      ? null
+      : findWorkspace(threads, projects, environmentId, null);
+  if (workspace === null) return <span className="text-sm">New chat</span>;
+  return (
+    <WorkspaceBreadcrumb
+      threadId={null}
+      projectId={workspace.projectId}
+      environmentId={workspace.environmentId}
+    />
+  );
+}
+
+function useNewChatPageTitle({
+  subPath,
+}: PluginNavPanelProps): ExperimentalPageTitle | null {
+  const environmentId = environmentIdFromSubPath(subPath);
+  const { threads, projects } = useSidebarThreads();
+  const workspace =
+    environmentId === null
+      ? null
+      : findWorkspace(threads, projects, environmentId, null);
+  if (workspace === null) return null;
+  return {
+    breadcrumbs: [{ label: workspace.projectName }, { label: workspace.label }],
+    windowTitle: `New chat · ${workspace.label}`,
+  };
 }
 
 function reportFailure(action: string, error: unknown): void {
@@ -44,6 +109,20 @@ export default definePluginApp((app) => {
   app.slots.experimental_threadHeaderRow({
     id: "workspace-tabs",
     component: ConductorWorkspaceTabs,
+  });
+  app.slots.experimental_threadHeaderTitle({
+    id: "workspace-breadcrumb",
+    component: ConductorThreadHeaderTitle,
+  });
+  app.slots.navPanel({
+    id: "new-chat",
+    title: "New chat",
+    icon: "MessageSquarePlus",
+    path: NEW_CHAT_PANEL_PATH,
+    component: ConductorNewChatPage,
+    experimental_headerTitle: NewChatHeaderTitle,
+    experimental_hideFromNavigation: true,
+    experimental_usePageTitle: useNewChatPageTitle,
   });
   app.slots.experimental_appOverlay({
     id: "bridge",

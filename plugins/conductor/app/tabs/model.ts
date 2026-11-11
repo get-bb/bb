@@ -9,7 +9,7 @@ const GIT_DIFF_TAB_ID = "diff";
 export function workspaceChats(
   threads: readonly PluginSidebarThread[],
   environmentId: string | null,
-  currentThreadId: string,
+  currentThreadId: string | null,
 ): PluginSidebarThread[] {
   if (environmentId === null) return [];
   return threads

@@ -32,6 +32,13 @@ export interface WorkspaceTabsProps {
 }
 
 const ARCHIVE_ACTION_KEY = "bb--core/archive";
+const TAB_CLASS =
+  "group/tab relative flex max-w-56 min-w-0 shrink-0 items-center gap-1.5 px-2.5 text-sm";
+const ACTIVE_TAB_CLASS =
+  "text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-foreground";
+const IDLE_TAB_CLASS = "text-muted-foreground hover:text-foreground";
+const CLOSE_BUTTON_CLASS =
+  "relative z-10 -mr-1 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-subtle-foreground opacity-0 hover:bg-state-hover hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100";
 
 function TabStatus({ thread }: { thread: PluginSidebarThread }) {
   const status = resolveThreadStatus({
@@ -60,7 +67,7 @@ function CloseTab({ thread }: { thread: PluginSidebarThread }) {
     <button
       type="button"
       aria-label={`Close ${thread.displayTitle}`}
-      className="relative z-10 -mr-1 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-subtle-foreground opacity-0 hover:bg-state-hover hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
+      className={CLOSE_BUTTON_CLASS}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -108,13 +115,108 @@ function ToolbarButton({
   );
 }
 
+export const NEW_CHAT_PANEL_PATH = "new";
+
+export function useOpenNewChat(): (environmentId: string) => void {
+  const navigate = useBbNavigate();
+  return (environmentId) =>
+    navigate.toPluginPanel(NEW_CHAT_PANEL_PATH, { subPath: environmentId });
+}
+
+export function TabStrip({
+  chats,
+  activeThreadId,
+  untitled,
+  onNewChat,
+  onCloseUntitled,
+  trailing,
+}: {
+  chats: readonly PluginSidebarThread[];
+  activeThreadId: string | null;
+  untitled: boolean;
+  onNewChat(): void;
+  onCloseUntitled?: () => void;
+  trailing?: React.ReactNode;
+}) {
+  const closable = chats.length + (untitled ? 1 : 0) > 1;
+  return (
+    <div
+      data-conductor-workspace-tabs=""
+      className="flex h-9 shrink-0 items-stretch gap-1 border-b border-border-hairline px-2"
+    >
+      <div
+        role="tablist"
+        aria-label="Chats in this workspace"
+        className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none]"
+      >
+        {chats.map((chat) => {
+          const isActive = chat.id === activeThreadId;
+          return (
+            <div
+              key={chat.id}
+              className={cn(TAB_CLASS, isActive ? ACTIVE_TAB_CLASS : IDLE_TAB_CLASS)}
+            >
+              <a
+                role="tab"
+                aria-selected={isActive}
+                href={chat.href}
+                draggable={false}
+                className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <TabStatus thread={chat} />
+              <span className="pointer-events-none min-w-0 truncate">
+                <ThreadTitle threadId={chat.id} />
+              </span>
+              {closable ? <CloseTab thread={chat} /> : null}
+            </div>
+          );
+        })}
+        {untitled ? (
+          <div className={cn(TAB_CLASS, ACTIVE_TAB_CLASS)}>
+            <span role="tab" aria-selected={true} className="min-w-0 truncate">
+              Untitled
+            </span>
+            {closable && onCloseUntitled !== undefined ? (
+              <button
+                type="button"
+                aria-label="Close Untitled"
+                className={CLOSE_BUTTON_CLASS}
+                onClick={onCloseUntitled}
+              >
+                <Icon name="X" className="size-3" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="New chat in this workspace"
+              className="my-1 inline-flex w-7 shrink-0 items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground"
+              onClick={onNewChat}
+            >
+              <Icon name="Plus" className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            New chat in this workspace
+          </TooltipContent>
+        </Tooltip>
+      </div>
+      {trailing === undefined ? null : (
+        <div className="flex shrink-0 items-center gap-0.5">{trailing}</div>
+      )}
+    </div>
+  );
+}
+
 export function WorkspaceTabs({
   threadId,
-  projectId,
   environment,
 }: WorkspaceTabsProps) {
   useThreadSurfaceRegistration(threadId);
-  const navigate = useBbNavigate();
+  const openNewChat = useOpenNewChat();
   const panel = useAppPanel();
   const panelTabs = usePanelTabs();
   const { threads } = useSidebarThreads();
@@ -134,111 +236,60 @@ export function WorkspaceTabs({
   if (environmentId === null || chats.length === 0) return null;
 
   return (
-    <div
-      data-conductor-workspace-tabs=""
-      className="flex h-9 shrink-0 items-stretch gap-1 border-b border-border-hairline px-2"
-    >
-      <div
-        role="tablist"
-        aria-label="Chats in this workspace"
-        className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none]"
-      >
-        {chats.map((chat) => {
-          const isActive = chat.id === threadId;
-          return (
-            <div
-              key={chat.id}
-              className={cn(
-                "group/tab relative flex max-w-56 min-w-0 shrink-0 items-center gap-1.5 px-2.5 text-sm",
-                isActive
-                  ? "text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+    <TabStrip
+      chats={chats}
+      activeThreadId={threadId}
+      untitled={false}
+      onNewChat={() => openNewChat(environmentId)}
+      trailing={
+        <>
+          {diffTabKey === null ? null : (
+            <ToolbarButton
+              label="All changes"
+              icon="GitBranch"
+              onClick={() => panel.selectTab(diffTabKey)}
             >
-              <a
-                role="tab"
-                aria-selected={isActive}
-                href={chat.href}
-                draggable={false}
-                className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <TabStatus thread={chat} />
-              <span className="pointer-events-none min-w-0 truncate">
-                <ThreadTitle threadId={chat.id} />
-              </span>
-              {chats.length > 1 ? <CloseTab thread={chat} /> : null}
-            </div>
-          );
-        })}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="New chat in this workspace"
-              className="my-1 inline-flex w-7 shrink-0 items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground"
-              onClick={() =>
-                navigate.toCompose({
-                  projectId,
-                  environmentId,
-                  focusPrompt: true,
-                })
-              }
-            >
-              <Icon name="Plus" className="size-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            New chat in this workspace
-          </TooltipContent>
-        </Tooltip>
-      </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        {diffTabKey === null ? null : (
-          <ToolbarButton
-            label="All changes"
-            icon="GitBranch"
-            onClick={() => panel.selectTab(diffTabKey)}
-          >
-            {workspaceChanges !== undefined &&
-            (workspaceChanges.insertions > 0 ||
-              workspaceChanges.deletions > 0) ? (
-              <span className="tabular-nums">
-                <span className="text-success-foreground">
-                  +{formatLineCount(workspaceChanges.insertions)}
-                </span>{" "}
-                <span className="text-destructive">
-                  -{formatLineCount(workspaceChanges.deletions)}
+              {workspaceChanges !== undefined &&
+              (workspaceChanges.insertions > 0 ||
+                workspaceChanges.deletions > 0) ? (
+                <span className="tabular-nums">
+                  <span className="text-success-foreground">
+                    +{formatLineCount(workspaceChanges.insertions)}
+                  </span>{" "}
+                  <span className="text-destructive">
+                    -{formatLineCount(workspaceChanges.deletions)}
+                  </span>
                 </span>
-              </span>
-            ) : (
-              "Changes"
-            )}
-          </ToolbarButton>
-        )}
-        <ToolbarButton
-          label={running ? "Starting…" : "Run"}
-          icon="Play"
-          shortcut="⌘R"
-          onClick={() => {
-            if (running) return;
-            setRunning(true);
-            void runWorkspaceScript(
-              threadId,
-              chats.map((chat) => chat.id),
-            )
-              .catch((error: unknown) =>
-                toast.error(
-                  error instanceof Error
-                    ? `Could not run the workspace script: ${error.message}`
-                    : "Could not run the workspace script.",
-                ),
+              ) : (
+                "Changes"
+              )}
+            </ToolbarButton>
+          )}
+          <ToolbarButton
+            label={running ? "Starting…" : "Run"}
+            icon="Play"
+            shortcut="⌘R"
+            onClick={() => {
+              if (running) return;
+              setRunning(true);
+              void runWorkspaceScript(
+                threadId,
+                chats.map((chat) => chat.id),
               )
-              .finally(() => setRunning(false));
-          }}
-        >
-          Run
-        </ToolbarButton>
-      </div>
-    </div>
+                .catch((error: unknown) =>
+                  toast.error(
+                    error instanceof Error
+                      ? `Could not run the workspace script: ${error.message}`
+                      : "Could not run the workspace script.",
+                  ),
+                )
+                .finally(() => setRunning(false));
+            }}
+          >
+            Run
+          </ToolbarButton>
+        </>
+      }
+    />
   );
 }

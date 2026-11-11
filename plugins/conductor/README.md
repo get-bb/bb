@@ -22,14 +22,23 @@ worktree shows up as part of the same row instead of as another thread.
 - Clicking a workspace reopens the chat you last had open in it. Right-click
   opens bb's thread menu for its first chat.
 
-## Workspace tabs
+## Workspace header and tabs
 
-Every thread page in a workspace gets a tab strip under its header, like
-Conductor's chat tabs:
+The thread header shows where you are instead of the thread's title:
+`project › workspace`, where the workspace is named after its environment,
+else its branch (without bb's `bb/` prefix and thread id suffix). bb's thread
+menu, open-in button and panel toggle stay where they are.
+
+Under it, every thread page in a workspace gets a tab strip, like Conductor's
+chat tabs:
 
 - one tab per chat in the workspace, oldest first, with a working glyph while
   it runs; clicking a tab opens that chat, and its close button archives it;
-- **+** starts a new chat in the same workspace;
+- **+** opens an **Untitled** tab: a new-chat page for the same workspace
+  ("New chat in `/workspace`") with bb's composer, and a button per chat that
+  adds that chat's transcript to the prompt as a mention. Sending creates the
+  chat in the same worktree and opens it; closing Untitled goes back to the
+  chat you last had open there;
 - **Changes** (`+3.1k -338` once there are changes) opens the Git plugin's
   Diff tab in the side panel;
 - **Run** runs the workspace's run script in a terminal tab.
@@ -65,7 +74,11 @@ their workspace's glyph.
 ## How it works
 
 The plugin replaces bb's sidebar thread list through
-`app.slots.experimental_threadList`. It reads threads from
+`app.slots.experimental_threadList`, the thread title through
+`app.slots.experimental_threadHeaderTitle`, and adds the tab strip with
+`app.slots.experimental_threadHeaderRow`. The Untitled page is a `navPanel`
+(`/plugins/conductor/new/<environmentId>`) hidden from navigation, with its own
+header title and `experimental_NewThreadComposer`. It reads threads from
 `experimental_useSidebarThreads`, line counts from the Git plugin's `status`
 read, and pull requests from the GitHub PR Status plugin's `pullRequests`
 read; without either plugin those parts are simply left out. Which projects
