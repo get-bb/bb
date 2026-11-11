@@ -1,6 +1,7 @@
 {
   "name": "@get-bb/plugin-sdk",
   "version": "0.6.141",
+  "license": "MIT",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
