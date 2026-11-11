@@ -37,6 +37,10 @@ import {
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { PluginSlotMount } from "./PluginSlotMount";
+import {
+  CORE_THREAD_CONTEXT_OWNER,
+  threadContextSegmentKey,
+} from "./PluginThreadContextSegments";
 
 export interface CoreThreadContextCardRow {
   id: string;
@@ -387,10 +391,14 @@ function ThreadContextCardContent({
         const Component = entry.slot.component;
         const { title } = entry.slot;
         if (entry.owner === "core") {
+          const sectionKey = threadContextSegmentKey({
+            pluginId: CORE_THREAD_CONTEXT_OWNER,
+            id: entry.slot.id,
+          });
           return (
             <ThreadContextCardSectionView
-              key={`core/${entry.slot.id}`}
-              sectionKey={`core/${entry.slot.id}`}
+              key={sectionKey}
+              sectionKey={sectionKey}
               title={title}
               summary={null}
             >
@@ -403,7 +411,7 @@ function ThreadContextCardContent({
         return (
           <ThreadContextCardSectionView
             key={`${pluginId}/${id}/${generation}/${props.threadId}`}
-            sectionKey={`${pluginId}/${id}`}
+            sectionKey={threadContextSegmentKey({ pluginId, id })}
             title={title}
             summary={
               Summary === undefined ? null : (

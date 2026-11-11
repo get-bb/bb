@@ -3255,9 +3255,10 @@ registrations and sort by `group`, `order` (unset last), then
 registration order with core first on a tie. Rows share one block with no
 heading; sections follow, each under its title and a divider. A section's
 title is a disclosure button (`aria-expanded`, `aria-controls` the body),
-closed by default; the open keys (`pluginId/sectionId`, `core/id` for bb's own)
-live in the synced `threadContextCard.openSections` preference, shared by every
-thread. The body stays mounted but `hidden` while closed, so `:has` still sees
+closed by default; the open keys (`pluginId/sectionId`, and `bb--core/id` for
+bb's own, the reserved owner its thread context segments use, so no plugin id
+can collide) live in the synced `threadContextCard.openSections` preference,
+shared by every thread. The body stays mounted but `hidden` while closed, so `:has` still sees
 whether the component renders anything and the plugin keeps its subscriptions.
 The optional `summary` component mounts in its own crash boundary
 (`threadContextCardSection/summary`) inside the title button while the section

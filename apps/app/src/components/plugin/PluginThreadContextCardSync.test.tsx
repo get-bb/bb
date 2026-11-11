@@ -51,7 +51,7 @@ const CORE_SECTIONS: CoreThreadContextCardSection[] = [
   },
 ];
 
-const CORE_KEY = "core/childThreads";
+const CORE_KEY = "bb--core/childThreads";
 
 function serverResponse(
   revision: number,

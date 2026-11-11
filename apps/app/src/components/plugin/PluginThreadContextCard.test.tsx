@@ -136,6 +136,7 @@ afterEach(() => {
   cleanup();
   removePluginSlotRegistrations("first");
   removePluginSlotRegistrations("second");
+  removePluginSlotRegistrations("core");
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
 });
@@ -457,6 +458,31 @@ describe("thread context card sections fold", () => {
     );
     expect(toggleFor("Second status").getAttribute("aria-expanded")).toBe(
       "false",
+    );
+  });
+
+  it("keeps bb's section apart from a plugin section with the same id", () => {
+    registerSections(
+      [{ id: "childThreads", title: "Plugin children" }],
+      "core",
+    );
+    renderPane();
+
+    fireEvent.click(toggleFor("Plugin children"));
+    expect(toggleFor("Plugin children").getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(toggleFor("Child threads").getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+
+    fireEvent.click(toggleFor("Child threads"));
+    fireEvent.click(toggleFor("Plugin children"));
+    expect(toggleFor("Plugin children").getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    expect(toggleFor("Child threads").getAttribute("aria-expanded")).toBe(
+      "true",
     );
   });
 

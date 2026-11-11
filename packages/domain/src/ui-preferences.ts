@@ -165,7 +165,7 @@ export const uiPreferenceDefinitions = {
   "threadContextCard.openSections": defineUiPreference(
     uiPreferenceStringListSchema.transform((keys) => [...new Set(keys)]),
     [],
-    "Thread context card sections that are open, as <pluginId>/<sectionId> for plugin sections or core/<sectionId> for bb's own. Sections not listed start closed; the list is shared by every thread pane.",
+    "Thread context card sections that are open, as <pluginId>/<sectionId> for plugin sections or bb--core/<sectionId> for bb's own. Sections not listed start closed; the list is shared by every thread pane.",
   ),
   "infoPanel.collapsedSections": defineUiPreference(
     uiPreferenceStringListSchema.transform((ids) => [
