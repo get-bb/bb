@@ -6918,6 +6918,99 @@ describe("sequential pool recovery", () => {
     },
   );
 
+  it("refreshes usage and drops obsolete windows while an account is streaming", async () => {
+    let now = Date.now();
+    let messageCount = 0;
+    let usageReads = 0;
+    const stream = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = stream.writable.getWriter();
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "oauth",
+      options: {
+        now: () => now,
+        usageUrl: "https://upstream.example/usage",
+        fetch: async (input) => {
+          if (new URL(String(input)).pathname === "/usage") {
+            usageReads++;
+            return Response.json({
+              five_hour: null,
+              seven_day: { utilization: 45, resets_at: "4102444800" },
+            });
+          }
+          messageCount++;
+          const headers = {
+            "anthropic-ratelimit-unified-7d-utilization": "0.44",
+            "anthropic-ratelimit-unified-7d-reset": "4102444800",
+            ...(messageCount === 1
+              ? {
+                  "anthropic-ratelimit-unified-5h-utilization": "0.12",
+                  "anthropic-ratelimit-unified-5h-reset": "4102444800",
+                }
+              : { "content-type": "text/event-stream" }),
+          };
+          return messageCount === 1
+            ? Response.json({ ok: true }, { headers })
+            : new Response(stream.readable, { headers });
+        },
+      },
+    });
+    const send = () =>
+      fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+        headers: authHeaders(fixture.key),
+        body,
+      });
+    const first = await send();
+    expect(first.status).toBe(200);
+    await first.text();
+    const firstObservedAt = now;
+    now += 60_000;
+    const response = await send();
+    const responseBody = response.text();
+    const status = async () =>
+      statusSchema.parse(
+        await fixture.host.harness.behavior.callRpc("status.get", null),
+      );
+    try {
+      expect(response.status).toBe(200);
+      const before = await status();
+      expect(before.inFlight).toBe(1);
+      expect(before.accounts[0]?.observedAt).toBe(now);
+      expect(before.accounts[0]?.limitWindows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            slot: "primary",
+            utilization: 0.12,
+            observedAt: firstObservedAt,
+            source: "header",
+          }),
+        ]),
+      );
+      const readsBeforeRefresh = usageReads;
+      const refresh = await fixture.host.harness.behavior.runCli([
+        "account",
+        "refresh",
+        fixture.account.id,
+        "--json",
+      ]);
+      expect(refresh.exitCode).toBe(0);
+      const after = await status();
+      expect(after.inFlight).toBe(1);
+      expect(after.accounts[0]?.limitWindows).toEqual([
+        expect.objectContaining({
+          slot: "secondary",
+          utilization: 0.45,
+          source: "usage",
+        }),
+      ]);
+      expect(usageReads).toBe(readsBeforeRefresh + 1);
+    } finally {
+      await writer.close();
+      await responseBody;
+    }
+    expect((await status()).inFlight).toBe(0);
+  });
+
   it("returns Codex paid pins to recovered subscriptions and persists spending restrictions", async () => {
     let now = Date.now();
     let signIns = 0;

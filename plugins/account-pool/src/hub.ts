@@ -356,7 +356,6 @@ export class AccountPoolHub {
     recoverError = false,
   ): Promise<void> {
     const adapter = this.adapter(account.provider);
-    if ((this.inFlightByAccount.get(account.id) ?? 0) > 0) return;
     const running = this.usageRefreshes.get(account.id);
     if (running !== undefined) return running;
     const now = this.options.now();
