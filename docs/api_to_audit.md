@@ -1361,9 +1361,10 @@ component receives `InternalDoNotUseSetupGuideSectionProps`:
 `{ onPhone, onSetupStarted, onSetupFailed }`. `onPhone` is true when the guide
 is open on a phone, so the row hides install links and phone pairing. The row
 calls `onSetupStarted()` when the user starts setting it up and
-`onSetupFailed(stage)` (`InternalDoNotUseSetupFailureStage`: `sign_in`,
-`pairing`, or `turn_on`) when an attempt fails, so the guide can record the
-step. Core's `PluginSetupGuideSections` renders a plugin's rows through
+`onSetupFailed(stage, detail?)` (`InternalDoNotUseSetupFailureStage`:
+`sign_in`, `pairing`, or `turn_on`; `InternalDoNotUseSetupFailureDetail`: a
+fixed error code such as `expired` or `invalid_code`, never a message) when an
+attempt fails, so the guide can record the step and why. Core's `PluginSetupGuideSections` renders a plugin's rows through
 the ordinary plugin slot boundary.
 
 Callers: the bundled `connect` plugin only. Core caller: the onboarding
@@ -1384,8 +1385,9 @@ starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
 code is submitted, or Turn on is pressed, so the current guide records
 `remote_access` `started` at the same moment as the redesigned guide's
 `onSetupStarted`. `internal_DO_NOT_USE_onSetupFailed(stage)` is its failure
-counterpart, called with the same `InternalDoNotUseSetupFailureStage` the
-redesigned guide's `onSetupFailed` receives (`sign_in` when getbb.app sign-in
+counterpart, called with the same `InternalDoNotUseSetupFailureStage` and
+optional `InternalDoNotUseSetupFailureDetail` the redesigned guide's
+`onSetupFailed` receives (`sign_in` when getbb.app sign-in
 can't start or ends denied, expired, or failed; `pairing` when a pairing code
 is rejected; `turn_on` when turning remote access on fails). Core's
 `PluginSettingsSections` passes them through its `onSetupStarted` and
@@ -1871,6 +1873,68 @@ Docs: `frontend-core-slots.md`.
    plugins with expensive queries, or add visibility to the hook's inputs.
 4. **More summary.** The More button's accessible name lists every hidden
    badge. Check that this stays usable with many badged hidden panels.
+
+## `PluginNavPanelRegistration.experimental_headerTitle`
+
+An optional component receiving `PluginNavPanelProps` (`{ subPath }`).
+`PluginPanelHeaderCenter`
+(`apps/app/src/components/plugin/PluginPanelHeader.tsx`) renders it in the
+page's shared title bar in place of the panel icon, `title` and
+`experimental_usePageTitle` text, in the routed page header (`AppLayout`) and
+in plugin-panel split panes (`SplitThreadArea`). It is wrapped in
+`PluginContext` and a `data-bb-plugin-root` element like `headerContent`, and
+contained by the same error boundary: a throw logs a warning and shows the
+default icon and title. The window title still comes from
+`experimental_usePageTitle` or the panel title. Before the plugin loads, the
+header shows the remembered default title.
+
+**Core callers.** None: core pages render `PageTitleHeader`. The motivating
+caller is the Conductor layout plugin's "new chat in this workspace" page,
+which shows the same `project › workspace` breadcrumb as its thread header
+title. Tests: `plugin-slot-mounts.test.tsx` (render with subPath, crash
+fallback) and `plugin-app-nav-sidebar.test.ts` (registration).
+
+Docs: `frontend-core-slots.md`.
+
+**Audit before stabilizing.**
+
+1. **Shared title component.** Decide whether core should expose its
+   `PageTitleHeader` so plugins can compose rather than replace it.
+2. **Split panes.** In a split pane the pane drag starts from the title area
+   except on links and buttons; confirm that is enough for rich titles.
+
+## `PluginNavPanelRegistration.experimental_hideFromNavigation`
+
+An optional boolean. When true, `createSidebarNavigationRows`
+(`apps/app/src/components/sidebar/sidebarNavigationItems.ts`) leaves the panel
+out, so it has no rail or list entry, no More entry, no place in the user's
+navigation arrangement and no badge; `buildPluginPagePaletteActions` leaves out
+its "Plugin pages" palette entry. The plugin's capability list describes it
+as a page the plugin opens itself. Its route `/plugins/<pluginId>/<path>/*`
+renders as usual, with its title bar, App panel, right panel and splits; a
+plugin opens it with `useBbNavigate().toPluginPanel(path, { subPath })`.
+
+Navigation renders from the last-known chrome cache
+(`apps/app/src/lib/plugin-nav-panel-chrome.ts`) before plugins load, so the
+cache stores `hideFromNavigation` per panel. Its version went from 1 to 2, so a
+profile's first boot after the upgrade starts with no remembered panels rather
+than showing a hidden one.
+
+**Core callers.** None. The motivating caller is the Conductor layout plugin's
+"new chat in this workspace" page, reached from its tab strip. Tests:
+`SidebarNavigationRail.test.tsx` (rail and More, remembered and live),
+`palette-plugin-page-actions.test.ts`, `plugin-nav-panel-chrome.test.ts`
+(cache), `plugin-slot-mounts.test.tsx` (route renders) and
+`plugin-app-nav-sidebar.test.ts` (registration).
+
+Docs: `frontend-core-slots.md`.
+
+**Audit before stabilizing.**
+
+1. **Discoverability.** A hidden page is reachable only from plugin UI and
+   links. Decide whether Settings or the plugin's detail page should list it.
+2. **Settings toggle.** Decide whether users can show a hidden page in
+   navigation, which would make this a default rather than a rule.
 
 ## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
 
@@ -3247,6 +3311,96 @@ Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
 6. **Groups.** Rows and sections reuse the Info tab's groups. Confirm the two surfaces
    should share one group vocabulary.
 
+## `app.slots.experimental_threadHeaderRow` (`@get-bb/plugin-sdk/app`)
+
+A registration is `{ id, order?, component }`. Every registered row renders
+full width, stacked by `order` ascending (unset last, then registration
+order), directly under `ThreadDetailHeader` and above the timeline, in every
+thread page and split pane. The component receives
+`ExperimentalThreadHeaderRowProps`: `{ threadId, projectId, environment }`,
+where `environment` is `{ id }` from the thread, null when it has none. A
+component that returns null takes no space; when no plugin registers a row,
+the host renders nothing.
+
+`ThreadDetailView` appends `PluginThreadHeaderRows`
+(`apps/app/src/components/plugin/PluginThreadHeaderRows.tsx`) to the
+`timelineHeader` it passes as `mainHeader` to `SecondaryPanelLayout`, inside
+the thread's `AppNavigationHostProvider`, so `experimental_useAppPanel()` and
+`experimental_usePanelTabs()` in a row act on that thread's side panel. Each
+row mounts in its own `PluginSlotMount` crash boundary (`crashFallback={null}`),
+keyed by plugin, id, generation and thread, so a crash removes only that row
+for that thread.
+
+**Core callers.** None: bb draws nothing between the thread header and the
+timeline, so there is no core path to share. The motivating caller is a
+Conductor-style tab strip of the threads that share the thread's environment.
+Contract tests: `ThreadDetailView.contract.test.tsx` (placement, order, props,
+crash containment, plugin hooks, and the panel controller contract run from a
+row).
+
+Docs: `frontend-thread-header-row.md`.
+
+**Audit before stabilizing.**
+
+1. **Callers.** Ship at least one plugin that uses the row, and decide whether
+   bb moves any of its own pane chrome (such as banners) into the slot.
+2. **Compact viewports.** Rows take vertical space above the timeline on
+   phones; decide whether bb hides or collapses them in a compact viewport.
+3. **Ordering across plugins.** `order` is a bare number shared by every
+   plugin; confirm that is enough, or add groups as the Info tab has.
+4. **Transcript and panel presentations.** Rows render only on thread
+   pages and split panes, not in threads shown inside a panel or as a
+   transcript; confirm that scope.
+
+## `app.slots.experimental_threadHeaderTitle` (`@get-bb/plugin-sdk/app`)
+
+A registration is `{ id, component }`. The component receives
+`ExperimentalThreadHeaderTitleProps`, an alias of
+`ExperimentalThreadHeaderRowProps` (`{ threadId, projectId, environment }`),
+and renders in `ThreadDetailHeader` in place of the `ThreadTitle` text, in
+every thread page and split pane. Only one title renders: the first
+registration in slot order, which is plugin id in lexical order, then
+registration order within a plugin. Later registrations are ignored.
+
+Core keeps the rest of the header: the Thread actions menu after the title,
+plugin header actions, the open-in button, pane maximize and close, the context
+card button, the right-panel toggle, the macOS drag region, and the split-pane
+drag from the title area. While the inline rename editor is open (the
+`thread.rename` command or the menu's Rename) the header shows core's editor
+instead of the plugin title. Double-click does not start a rename on a plugin
+title. The pane drag ignores pointer-downs on links, buttons, inputs, labels,
+`role="button"`/`role="link"` and content-editable elements inside the title,
+so a plugin title can be clickable. The plugin title renders in a `div`, not
+core's `p`, so block content is valid. The document title stays the thread
+title.
+
+`PluginThreadHeaderTitle`
+(`apps/app/src/components/plugin/PluginThreadHeaderTitle.tsx`) mounts the
+component through `PluginSlotMount` keyed by plugin, id, generation and thread,
+with core's `ThreadTitle` as `crashFallback`, so a crash shows the normal title
+for that thread.
+
+**Core callers.** None: core draws the thread title itself and has no
+alternative title. The motivating caller is the Conductor layout plugin, which
+shows the thread title as the active tab of an `experimental_threadHeaderRow`
+tab strip and puts a `project › workspace` breadcrumb in the header instead.
+Tests: `ThreadDetailHeader.test.tsx` (props, plugin order, crash fallback,
+rename editor, pane drag from controls) and
+`plugin-app-thread-header-title.test.ts` (registration).
+
+Docs: `frontend-thread-header-row.md`.
+
+**Audit before stabilizing.**
+
+1. **Exclusivity.** First-wins by plugin id is silent. Decide whether users
+   pick the title provider in Settings, as for the thread list and composer.
+2. **Rename affordance.** A plugin title loses double-click rename; confirm
+   the menu and shortcut are enough or let the component request a rename.
+3. **Compact viewports.** Check how a long breadcrumb truncates next to the
+   header actions on phones and in narrow split panes.
+4. **Window title.** Decide whether a plugin should be able to set the window
+   title for a thread, or whether it stays core-owned.
+
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, order?, useData?, component }`. `useData` is a React
@@ -4244,7 +4398,10 @@ step, whether the scan ran out of time and how many folders it could not open.
 A failed operation or `onboarding_sign_in` adds a `failure_reason` from a fixed
 set (`no_host`, `host_unavailable`, `timed_out`, `not_found`, `permission`,
 `command_failed`, `unsupported`, or `other`); a failed `remote_access` adds a
-`failure_stage` (`sign_in`, `pairing`, or `turn_on`) instead.
+`failure_stage` (`sign_in`, `pairing`, or `turn_on`) instead. Agent install
+and sign-in failures with `command_failed`, and `sign_in` or `pairing`
+remote access failures, may add `failure_detail` from a fixed set of error
+classes and an integer `exit_code`; never output or messages.
 `onboarding_left` reports the step a guide was on when the page unloaded
 before the guide finished; it passes the optional second argument
 `{ keepalive: true }`, which sends the request with `fetch`'s `keepalive` so it

@@ -82,23 +82,29 @@ export function createSidebarNavigationRows(
 ): SidebarNavigationRow[] {
   return [
     ...HOST_ROWS,
-    ...panelEntries.map((entry): SidebarNavigationRow => {
-      const { chrome } = entry;
-      const isAutomations = chrome.pluginId === AUTOMATIONS_PLUGIN_ID;
-      return {
-        pluginId: isAutomations ? "__bb__" : chrome.pluginId,
-        id: isAutomations ? "automations" : chrome.id,
-        label: chrome.title,
-        icon: { kind: "plugin", pluginId: chrome.pluginId, icon: chrome.icon },
-        action: {
-          kind: "open-plugin-panel",
-          pluginId: chrome.pluginId,
-          panelId: chrome.id,
-        },
-        ownerPluginId: chrome.pluginId,
-        panelEntry: entry,
-      };
-    }),
+    ...panelEntries
+      .filter((entry) => !entry.chrome.hideFromNavigation)
+      .map((entry): SidebarNavigationRow => {
+        const { chrome } = entry;
+        const isAutomations = chrome.pluginId === AUTOMATIONS_PLUGIN_ID;
+        return {
+          pluginId: isAutomations ? "__bb__" : chrome.pluginId,
+          id: isAutomations ? "automations" : chrome.id,
+          label: chrome.title,
+          icon: {
+            kind: "plugin",
+            pluginId: chrome.pluginId,
+            icon: chrome.icon,
+          },
+          action: {
+            kind: "open-plugin-panel",
+            pluginId: chrome.pluginId,
+            panelId: chrome.id,
+          },
+          ownerPluginId: chrome.pluginId,
+          panelEntry: entry,
+        };
+      }),
   ];
 }
 

@@ -273,8 +273,54 @@ describe("useAgentSignIns", () => {
           outcome: "failed",
           resource_id: "codex",
           failure_reason: "command_failed",
+          failure_detail: "exit_nonzero",
+          exit_code: 1,
         },
       ]);
+    });
+
+    it.each([
+      {
+        exitCode: 127,
+        detail: { failure_detail: "not_found", exit_code: 127 },
+      },
+      { exitCode: null, detail: { failure_detail: "signal" } },
+    ])(
+      "classifies a sign-in exit of $exitCode without sending output",
+      async ({ exitCode, detail }) => {
+        const states = [provider("codex")];
+        const { result, rerender } = renderSignIns(concurrent, states);
+        await act(async () => {
+          await result.current.start("codex");
+        });
+        act(() => result.current.handleExit("codex", exitCode));
+        rerender({ states, statesSettledAt: settledAfterNow() });
+
+        expect(recorded().at(-1)).toEqual({
+          entry: "first_run",
+          outcome: "failed",
+          resource_id: "codex",
+          failure_reason: "command_failed",
+          ...detail,
+        });
+      },
+    );
+
+    it("records a sign-in the agent reported as failed", async () => {
+      const states = [provider("codex")];
+      const { result } = renderSignIns(concurrent, states);
+      await act(async () => {
+        await result.current.start("codex");
+      });
+      act(() => result.current.fail("codex"));
+
+      expect(recorded().at(-1)).toEqual({
+        entry: "first_run",
+        outcome: "failed",
+        resource_id: "codex",
+        failure_reason: "command_failed",
+        failure_detail: "login_failed",
+      });
     });
 
     it("records why the sign-in terminal could not be created", async () => {

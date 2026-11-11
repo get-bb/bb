@@ -16,6 +16,7 @@ import {
   useRealtimeConnectionState,
   useRpc,
   useSdk,
+  type InternalDoNotUseSetupFailureDetail,
   type InternalDoNotUseSetupFailureStage,
   type InternalDoNotUseSetupGuideSectionProps,
   type PluginSettingsSectionProps,
@@ -155,7 +156,7 @@ function isUnavailableError(error: unknown): boolean {
   );
 }
 
-function toPairErrorCode(error: unknown): ConnectPairErrorCode {
+function pairFailureDetail(error: unknown): ConnectPairErrorCode | "other" {
   if (isUnavailableError(error)) return "account_unavailable";
   const code = accountErrorCode(error);
   if (
@@ -169,7 +170,13 @@ function toPairErrorCode(error: unknown): ConnectPairErrorCode {
   ) {
     return code;
   }
-  return "invalid_code";
+  return "other";
+}
+
+function toPairErrorCode(
+  detail: ConnectPairErrorCode | "other",
+): ConnectPairErrorCode {
+  return detail === "other" ? "invalid_code" : detail;
 }
 
 function asStatus(payload: unknown): ConnectStatus | null {
@@ -460,7 +467,7 @@ function PairForm({
   dashboardUrl: string;
   layout: "settings" | "setupGuide";
   onSubmitted: () => void;
-  onFailed: () => void;
+  onFailed: (detail: InternalDoNotUseSetupFailureDetail) => void;
   onPaired: () => void;
 }) {
   const sdk = useSdk();
@@ -493,9 +500,10 @@ function PairForm({
             onPaired();
           },
           (rpcError: unknown) => {
+            const detail = pairFailureDetail(rpcError);
             setPending(false);
-            setErrorCode(toPairErrorCode(rpcError));
-            onFailed();
+            setErrorCode(toPairErrorCode(detail));
+            onFailed(detail);
           },
         );
     },
@@ -582,6 +590,28 @@ function PairForm({
       ) : null}
     </div>
   );
+}
+
+function signInStartFailureDetail(
+  error: unknown,
+): InternalDoNotUseSetupFailureDetail {
+  if (isUnavailableError(error)) return "account_unavailable";
+  switch (accountErrorCode(error)) {
+    case "rate_limited":
+      return "rate_limited";
+    case "unavailable":
+      return "service_unavailable";
+    case "network":
+      return "network";
+    default:
+      return "other";
+  }
+}
+
+function loginFailureDetail(
+  state: "denied" | "expired" | "failed",
+): InternalDoNotUseSetupFailureDetail {
+  return state === "failed" ? "login_failed" : state;
 }
 
 function signInStartErrorText(error: unknown): string {
@@ -1149,7 +1179,7 @@ interface AccountLogin {
 
 function useAccountLogin(
   onSignedIn: () => void,
-  onFailed: () => void,
+  onFailed: (detail: InternalDoNotUseSetupFailureDetail) => void,
   openOnStart: boolean,
 ): AccountLogin {
   const sdk = useSdk();
@@ -1160,6 +1190,10 @@ function useAccountLogin(
   const onSignedInRef = useRef(onSignedIn);
   useEffect(() => {
     onSignedInRef.current = onSignedIn;
+  });
+  const onFailedRef = useRef(onFailed);
+  useEffect(() => {
+    onFailedRef.current = onFailed;
   });
 
   const start = useCallback(() => {
@@ -1183,6 +1217,7 @@ function useAccountLogin(
         (rpcError: unknown) => {
           setStarting(false);
           setError(signInStartErrorText(rpcError));
+          onFailedRef.current(signInStartFailureDetail(rpcError));
         },
       );
   }, [navigate, openOnStart, sdk]);
@@ -1227,23 +1262,19 @@ function useAccountLogin(
   useEffect(() => {
     if (signedInId !== null) onSignedInRef.current();
   }, [signedInId]);
-  const onFailedRef = useRef(onFailed);
-  useEffect(() => {
-    onFailedRef.current = onFailed;
-  });
-  const failedLoginId =
+  const failedLogin =
     login !== null &&
     (login.state === "denied" ||
       login.state === "expired" ||
       login.state === "failed")
-      ? login.id
+      ? { id: login.id, state: login.state }
       : null;
+  const failedLoginId = failedLogin?.id ?? null;
+  const failedLoginState = failedLogin?.state ?? null;
   useEffect(() => {
-    if (failedLoginId !== null) onFailedRef.current();
-  }, [failedLoginId]);
-  useEffect(() => {
-    if (error !== null) onFailedRef.current();
-  }, [error]);
+    if (failedLoginId === null || failedLoginState === null) return;
+    onFailedRef.current(loginFailureDetail(failedLoginState));
+  }, [failedLoginId, failedLoginState]);
 
   const cancel = useCallback(() => {
     if (pendingId !== null) {
@@ -1272,7 +1303,7 @@ function AccountSignInCard({
   onSignedIn,
 }: {
   onStarted: () => void;
-  onFailed: () => void;
+  onFailed: (detail: InternalDoNotUseSetupFailureDetail) => void;
   onSignedIn: () => void;
 }) {
   const { login, starting, error, start, cancel } = useAccountLogin(
@@ -1381,15 +1412,20 @@ function NotPairedContent({
 }: {
   dashboardUrl: string;
   onSetupStarted: () => void;
-  onSetupFailed: (stage: InternalDoNotUseSetupFailureStage) => void;
+  onSetupFailed: (
+    stage: InternalDoNotUseSetupFailureStage,
+    detail?: InternalDoNotUseSetupFailureDetail,
+  ) => void;
   onPaired: () => void;
 }) {
   const reportSignInFailed = useCallback(
-    () => onSetupFailed("sign_in"),
+    (detail: InternalDoNotUseSetupFailureDetail) =>
+      onSetupFailed("sign_in", detail),
     [onSetupFailed],
   );
   const reportPairingFailed = useCallback(
-    () => onSetupFailed("pairing"),
+    (detail: InternalDoNotUseSetupFailureDetail) =>
+      onSetupFailed("pairing", detail),
     [onSetupFailed],
   );
   const dashboardHost = hostOf(dashboardUrl);
@@ -1729,7 +1765,10 @@ function ConnectSettingsSection({
     [onSetupStarted],
   );
   const reportSetupFailed = useCallback(
-    (stage: InternalDoNotUseSetupFailureStage) => onSetupFailed?.(stage),
+    (
+      stage: InternalDoNotUseSetupFailureStage,
+      detail?: InternalDoNotUseSetupFailureDetail,
+    ) => onSetupFailed?.(stage, detail),
     [onSetupFailed],
   );
   const reportTurnOnFailed = useCallback(
@@ -2211,11 +2250,13 @@ function ConnectSetupGuideSection({
   const navigate = useBbNavigate();
   const { status, loadError, refetch } = useConnectStatus();
   const reportSignInFailed = useCallback(
-    () => onSetupFailed("sign_in"),
+    (detail: InternalDoNotUseSetupFailureDetail) =>
+      onSetupFailed("sign_in", detail),
     [onSetupFailed],
   );
   const reportPairingFailed = useCallback(
-    () => onSetupFailed("pairing"),
+    (detail: InternalDoNotUseSetupFailureDetail) =>
+      onSetupFailed("pairing", detail),
     [onSetupFailed],
   );
   const { login, starting, error, start, cancel } = useAccountLogin(

@@ -66,6 +66,9 @@ the same change.
 
 - Read references/frontend-registration.md for definePluginApp, thread header
   and Browser toolbar controls, and sidebar replacement.
+- Read references/frontend-thread-header-row.md to add a full-width row under
+  the thread header (`experimental_threadHeaderRow`), such as a tab strip, or
+  to replace the thread title in the header (`experimental_threadHeaderTitle`).
 - Read references/frontend-sidebar-navigation.md for navigation providers
   (rail or list placement) and controls beside the sidebar toggle.
 - Read references/frontend-thread-row-metadata.md to add a badge to every thread

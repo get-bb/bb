@@ -170,6 +170,8 @@ it.each(["sidebar", "header"])(
       ) : (
         <PluginPanelHeaderCenter
           chrome={{ pluginId: "demo", icon: "Zap", title: "Inspect" }}
+          panel={undefined}
+          subPath=""
         />
       ),
     );

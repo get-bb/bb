@@ -38,6 +38,8 @@ export function makePluginRegistrationSet(
     threadInfoRows: [],
     threadRowMetadata: [],
     threadInfoSections: [],
+    threadHeaderRows: [],
+    threadHeaderTitles: [],
     threadContextCardRows: [],
     threadContextCardSections: [],
     threadActions: [],
