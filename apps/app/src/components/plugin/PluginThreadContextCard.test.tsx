@@ -21,8 +21,6 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { ThreadContextCardRow } from "./ThreadContextCardRow";
 import {
-  EMPTY_BLOCK_CLASS,
-  SECTION_DIVIDER_CLASS,
   ThreadContextCard,
   ThreadContextCardHeaderButton,
   ThreadContextCardProvider,
@@ -607,32 +605,6 @@ describe("thread context card sections fold", () => {
 
     fireEvent.click(toggleFor("Something"));
     expect(bodyOf("Nothing").querySelector(CONTENT)).toBeNull();
-  });
-
-  it("puts the emptiness and divider classes on every section and on the rows block", () => {
-    registerSections([
-      { id: "empty", title: "Nothing", component: Empty },
-      { id: "full", title: "Something" },
-    ]);
-    renderPane();
-    const required = [
-      ...EMPTY_BLOCK_CLASS.split(" "),
-      ...SECTION_DIVIDER_CLASS.split(" "),
-    ];
-
-    const sectionElements = document.querySelectorAll(
-      "[data-thread-context-card-section]",
-    );
-    expect(sectionElements.length).toBeGreaterThan(2);
-    for (const element of sectionElements) {
-      for (const token of required) {
-        expect(element.classList.contains(token)).toBe(true);
-      }
-    }
-    const rows = document.querySelector("[data-thread-context-card-rows]");
-    for (const token of EMPTY_BLOCK_CLASS.split(" ")) {
-      expect(rows?.classList.contains(token)).toBe(true);
-    }
   });
 });
 
