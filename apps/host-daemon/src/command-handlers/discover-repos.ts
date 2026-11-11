@@ -57,9 +57,11 @@ async function withDeadline<T>(
   operation: Promise<T>,
   deadline: number,
   disposeLate?: (value: T) => void,
+  onTimeout?: () => void,
 ): Promise<T | null> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) {
+    onTimeout?.();
     void operation.then((value) => disposeLate?.(value)).catch(() => {});
     return null;
   }
@@ -74,6 +76,7 @@ async function withDeadline<T>(
       new Promise<null>((resolve) => {
         timer = setTimeout(() => {
           timedOut = true;
+          onTimeout?.();
           resolve(null);
         }, remaining);
         timer.unref();
@@ -168,11 +171,11 @@ async function walkForRepos(
       (lateHandle) => {
         if (lateHandle !== null) closeLateDir(lateHandle);
       },
+      () => {
+        truncated = true;
+      },
     );
-    if (handle === null) {
-      if (Date.now() >= deadline) truncated = true;
-      return null;
-    }
+    if (handle === null) return null;
 
     const children: string[] = [];
     let gitMarker: "directory" | "file" | null = null;
@@ -224,7 +227,7 @@ async function walkForRepos(
         join(dir, ".git"),
         deadline,
       );
-      if (lastActivityMs === 0 && Date.now() >= deadline) {
+      if (lastActivityMs === 0 && Date.now() > deadline) {
         truncated = true;
         return;
       }
