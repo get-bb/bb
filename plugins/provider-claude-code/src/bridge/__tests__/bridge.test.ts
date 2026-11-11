@@ -6280,6 +6280,49 @@ describe("bridge", () => {
         bridge.restore();
       }
     });
+
+    it("keeps the turn open through a task-notification result that lands before the steer runs", async () => {
+      const threadId = "thread-steer-behind-task-notification";
+      const { bridge, first, query, steer } = await startTurnAndSteer(threadId);
+      try {
+        query.emit(resultFor([first]));
+        const notificationResult = createSuccessfulResultMessage("session-1");
+        if (notificationResult.type !== "result") {
+          throw new Error("Expected a result message");
+        }
+        query.emit(assistantText("background task finished"));
+        query.emit({
+          ...notificationResult,
+          origin: { kind: "task-notification" },
+        });
+        await bridge.flushWork();
+        expect(turnEvents(bridge).completed).toEqual([]);
+
+        query.emit(replayOf(steer));
+        query.emit(assistantText("two"));
+        query.emit(resultFor([steer]));
+        await bridge.flushWork();
+
+        const { completed, events, started } = turnEvents(bridge);
+        expect(started).toHaveLength(1);
+        expect(completed).toEqual([
+          expect.objectContaining({
+            scope: started[0]?.scope,
+            status: "completed",
+          }),
+        ]);
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: "item/completed",
+            scope: started[0]?.scope,
+            item: expect.objectContaining({ text: "two" }),
+          }),
+        );
+      } finally {
+        await stopBridgeThread({ bridge, queries: [query], threadId });
+        bridge.restore();
+      }
+    });
   });
 
   it.each([

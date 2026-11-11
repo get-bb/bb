@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SystemProviderState, TerminalSession } from "@bb/server-contract";
+import type {
+  OnboardingFailureDetail,
+  SystemProviderState,
+  TerminalSession,
+} from "@bb/server-contract";
 import {
   operationFailureReason,
   resolveSignInCommand,
@@ -39,6 +43,22 @@ interface SignInExit {
 export type RefetchProviderStates = (options: {
   cancelRefetch: boolean;
 }) => void;
+
+interface SignInFailureDetail {
+  detail: OnboardingFailureDetail;
+  exitCode?: number;
+}
+
+function signInExitFailure({ exitCode }: SignInExit): SignInFailureDetail {
+  if (exitCode === null) return { detail: "signal" };
+  const detail =
+    exitCode === 127
+      ? "not_found"
+      : exitCode === 126
+        ? "permission"
+        : "exit_nonzero";
+  return { detail, exitCode };
+}
 
 function exitOutcome(exit: SignInExit, ready: boolean): SignInOutcome {
   if (ready) return "ready";
@@ -131,6 +151,7 @@ export function useAgentSignIns({
       providerId: string,
       outcome: SignInOutcome | "started",
       failureReason?: SignInFailureReason,
+      failure?: SignInFailureDetail,
     ) =>
       recordTelemetryEvent({
         name: "onboarding_sign_in",
@@ -141,18 +162,24 @@ export function useAgentSignIns({
           ...(failureReason === undefined
             ? {}
             : { failure_reason: failureReason }),
+          ...(failure === undefined ? {} : { failure_detail: failure.detail }),
+          ...(failure?.exitCode === undefined
+            ? {}
+            : { exit_code: failure.exitCode }),
         },
       }),
     [entry],
   );
 
   const recordOutcome = useCallback(
-    (providerId: string, outcome: SignInOutcome) =>
-      record(
-        providerId,
-        outcome,
-        outcome === "failed" ? "command_failed" : undefined,
-      ),
+    (
+      providerId: string,
+      outcome: SignInOutcome,
+      failure?: SignInFailureDetail,
+    ) =>
+      outcome === "failed"
+        ? record(providerId, outcome, "command_failed", failure)
+        : record(providerId, outcome),
     [record],
   );
 
@@ -163,11 +190,16 @@ export function useAgentSignIns({
   };
 
   const closeRow = useCallback(
-    (providerId: string, outcome: SignInOutcome | null, refetch: boolean) => {
+    (
+      providerId: string,
+      outcome: SignInOutcome | null,
+      refetch: boolean,
+      failure?: SignInFailureDetail,
+    ) => {
       const current = signInsRef.current.get(providerId);
       if (current === undefined) return;
       signInsRef.current.delete(providerId);
-      if (outcome !== null) recordOutcome(providerId, outcome);
+      if (outcome !== null) recordOutcome(providerId, outcome, failure);
       setSignIns(new Map(signInsRef.current));
       setViews((previous) => withoutEntry(previous, providerId));
       terminals.close(current.session.id);
@@ -190,17 +222,21 @@ export function useAgentSignIns({
       if (exit === undefined) return;
       const outcome = exitOutcome(exit, ready);
       if (!exit.rowOpen) {
-        recordOutcome(providerId, outcome);
+        recordOutcome(providerId, outcome, signInExitFailure(exit));
         return;
       }
       if (!ready) setFailedProviderIds((ids) => withKey(ids, providerId));
-      closeRow(providerId, outcome, false);
+      closeRow(providerId, outcome, false, signInExitFailure(exit));
     },
     [closeRow, recordOutcome, takeExit],
   );
 
   const end = useCallback(
-    (providerId: string, outcome: SignInOutcome = "cancelled") => {
+    (
+      providerId: string,
+      outcome: SignInOutcome = "cancelled",
+      failure?: SignInFailureDetail,
+    ) => {
       if (!signInsRef.current.has(providerId)) {
         const request = requestsRef.current.get(providerId);
         if (request !== undefined) {
@@ -210,7 +246,7 @@ export function useAgentSignIns({
         return;
       }
       takeExit(providerId);
-      closeRow(providerId, outcome, true);
+      closeRow(providerId, outcome, true, failure);
     },
     [closeRow, takeExit],
   );
@@ -246,7 +282,7 @@ export function useAgentSignIns({
     (providerId: string) => {
       if (!signInsRef.current.has(providerId)) return;
       setFailedProviderIds((ids) => withKey(ids, providerId));
-      end(providerId, "failed");
+      end(providerId, "failed", { detail: "login_failed" });
     },
     [end],
   );

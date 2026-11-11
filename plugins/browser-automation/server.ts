@@ -386,7 +386,13 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       record.lastUsed + idleTimeoutMs,
       hardDeadline(record.session),
     );
-    await save(record);
+    try {
+      await save(record);
+    } catch (error) {
+      bb.log.warn(
+        `Browser Automation could not persist session activity: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
   async function run(
     input: z.output<typeof rpcContract.run.input>,
