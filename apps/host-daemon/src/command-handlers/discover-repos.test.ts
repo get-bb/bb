@@ -1,4 +1,12 @@
-import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  opendir,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -173,6 +181,49 @@ describe("discoverRepos", () => {
     });
 
     expect(result).toEqual({ repos: [], truncated: true, unreadableCount: 0 });
+  });
+
+  describe("while macOS is asking for access to Desktop or Documents", () => {
+    const PROMPT_ANSWER_MS = 300;
+
+    const scanWithPendingPrompt = (platform: NodeJS.Platform) =>
+      discoverRepos({
+        maxDepth: 5,
+        sinceDays: 3650,
+        limit: 50,
+        home,
+        platform,
+        walkBudgetMs: 100,
+        privacyPromptBudgetMs: 5_000,
+        openDirectory: async (path) => {
+          if (path === join(home, "Documents")) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, PROMPT_ANSWER_MS),
+            );
+          }
+          return opendir(path);
+        },
+      });
+
+    it("waits for the answer and scans the folder on macOS", async () => {
+      await makeRepo("projects/app");
+      await makeRepo("Documents/code/site");
+
+      const { repos, truncated } = await scanWithPendingPrompt("darwin");
+
+      expect(truncated).toBe(false);
+      expect(repos.map((repo) => repo.name).sort()).toEqual(["app", "site"]);
+    });
+
+    it("keeps the short budget for the same folder elsewhere", async () => {
+      await makeRepo("projects/app");
+      await makeRepo("Documents/code/site");
+
+      const { repos, truncated } = await scanWithPendingPrompt("linux");
+
+      expect(truncated).toBe(true);
+      expect(repos.map((repo) => repo.name)).toEqual(["app"]);
+    });
   });
 
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
