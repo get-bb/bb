@@ -276,12 +276,12 @@ function ThreadContextCardSectionView({
   const [openKeys, setOpenKeys] = useAtom(openSectionsAtom);
   const open = openKeys.includes(sectionKey);
   const toggle = useCallback(() => {
-    setOpenKeys((keys) =>
-      keys.includes(sectionKey)
-        ? keys.filter((key) => key !== sectionKey)
-        : [...keys, sectionKey],
-    );
-  }, [sectionKey, setOpenKeys]);
+    const nextOpen = !open;
+    setOpenKeys((keys) => {
+      const without = keys.filter((key) => key !== sectionKey);
+      return nextOpen ? [...without, sectionKey] : without;
+    });
+  }, [open, sectionKey, setOpenKeys]);
   const id = useId();
   const bodyId = `${id}-body`;
   const summaryId = `${id}-summary`;
