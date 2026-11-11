@@ -1084,12 +1084,23 @@ export function collectPluginAppRegistrations(
         const kind = "slots.experimental_threadContextCardSection";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadContextCardSection, id);
+        if (
+          registration.summary !== undefined &&
+          typeof registration.summary !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "summary" must be a React component function when set`,
+          );
+        }
         collected.threadContextCardSections.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
           component: requireComponent(kind, registration.component),
+          ...(registration.summary === undefined
+            ? {}
+            : { summary: registration.summary }),
         });
       },
       experimental_threadAction(registration) {
