@@ -51,6 +51,7 @@ const hardDeadline = (session: Session) =>
     ? Math.min(session.expiresAt, session.createdAt + maxLifetimeMs)
     : session.createdAt + maxLifetimeMs;
 const previewWaitMs = 5_000;
+const runCallGraceMs = 10_000;
 const keyFor = (threadId: string, sessionId: string) =>
   `sessions/${encodeURIComponent(threadId)}/${sessionId}`;
 
@@ -415,7 +416,11 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
           script: input.script,
           timeoutMs: input.timeoutMs,
         },
-        { hostId: record.session.hostId, signal },
+        {
+          hostId: record.session.hostId,
+          signal,
+          timeoutMs: input.timeoutMs + runCallGraceMs,
+        },
       );
       if (result.exitCode === 124)
         await finish(record, "stopped").catch(() => {});
