@@ -7,7 +7,7 @@ import {
   renderHook,
   screen,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Provider as JotaiProvider, createStore } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -86,12 +86,14 @@ const CORE_SECTIONS: CoreThreadContextCardSection[] = [
 ];
 
 function renderPane({
+  store = createStore(),
   enabled = true,
   paneWidth = 1600,
   threadIds = ["thr_1"],
   coreRows = CORE,
   coreSections = CORE_SECTIONS,
 }: {
+  store?: ReturnType<typeof createStore>;
   enabled?: boolean;
   paneWidth?: number;
   threadIds?: readonly string[];
@@ -102,7 +104,7 @@ function renderPane({
     paneWidth,
   );
   return render(
-    <JotaiProvider store={createStore()}>
+    <JotaiProvider store={store}>
       <TooltipProvider>
         <MemoryRouter>
           {threadIds.map((threadId) => (
@@ -313,6 +315,258 @@ describe("thread context card", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open diff" }));
     expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
+  });
+});
+
+const CONTENT = "[data-thread-context-card-body] :not([data-bb-plugin-root])";
+const MIRRORED_CARD_CSS = `
+  [data-thread-context-card-section]:not(:has(${CONTENT})) { display: none; }
+  :is([data-thread-context-card-rows], [data-thread-context-card-section]):has(${CONTENT}) ~ [data-thread-context-card-section] { border-top: 1px solid red; }
+`;
+
+function Summary({ threadId }: ExperimentalThreadContextCardProps) {
+  return <span>6 PRs for {threadId}</span>;
+}
+
+function SummaryWithButton() {
+  return (
+    <button type="button" data-testid="summary-button">
+      Review
+    </button>
+  );
+}
+
+function registerSections(
+  sections: Array<{
+    id: string;
+    title: string;
+    component?: ComponentType<ExperimentalThreadContextCardProps>;
+    summary?: ComponentType<ExperimentalThreadContextCardProps>;
+  }>,
+  pluginId = "first",
+) {
+  setPluginSlotRegistrations(
+    pluginId,
+    makePluginRegistrationSet({
+      threadContextCardSections: sections.map(
+        ({ id, title, component, summary }, index) => ({
+          id,
+          title,
+          group: "2_deploys",
+          order: index,
+          component: component ?? section(`${title} body`),
+          ...(summary === undefined ? {} : { summary }),
+        }),
+      ),
+    }),
+  );
+}
+
+function toggleFor(name: string, index = 0) {
+  return screen.getAllByRole("button", { name: new RegExp(`^${name}`) })[
+    index
+  ]!;
+}
+
+describe("thread context card sections fold", () => {
+  const NO_ROWS = { coreRows: [] as CoreThreadContextCardRow[] };
+
+  it("starts every section closed, bb's own included, with the body kept mounted", () => {
+    registerSections([{ id: "deploys", title: "Deploys" }]);
+    renderPane();
+
+    for (const title of ["Child threads", "Deploys"]) {
+      const toggle = toggleFor(title);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      const body = document.getElementById(
+        toggle.getAttribute("aria-controls") ?? "",
+      );
+      expect(body?.hasAttribute("hidden")).toBe(true);
+      expect(body?.textContent).toContain(
+        `${title === "Deploys" ? "Deploys body" : "Core children"} for thr_1`,
+      );
+    }
+  });
+
+  it("opens and closes a section from its title, with aria-controls on the body", () => {
+    registerSections([{ id: "deploys", title: "Deploys" }]);
+    renderPane();
+    const toggle = toggleFor("Deploys");
+    const body = document.getElementById(
+      toggle.getAttribute("aria-controls") ?? "",
+    );
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(body?.hasAttribute("hidden")).toBe(false);
+    expect(toggleFor("Child threads").getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(body?.hasAttribute("hidden")).toBe(true);
+  });
+
+  it("opens a core section the same way", () => {
+    renderPane();
+    fireEvent.click(toggleFor("Child threads"));
+    expect(toggleFor("Child threads").getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+  });
+
+  it("remembers open sections across a remount and in every thread", () => {
+    registerSections([{ id: "deploys", title: "Deploys" }]);
+    const store = createStore();
+    const first = renderPane({ store, threadIds: ["thr_1", "thr_2"] });
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Deploys/ })
+        .map((node) => node.getAttribute("aria-expanded")),
+    ).toEqual(["false", "false"]);
+
+    fireEvent.click(toggleFor("Deploys", 0));
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Deploys/ })
+        .map((node) => node.getAttribute("aria-expanded")),
+    ).toEqual(["true", "true"]);
+    expect(toggleFor("Child threads").getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+
+    first.unmount();
+    renderPane({ store, threadIds: ["thr_3"] });
+    expect(toggleFor("Deploys").getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(toggleFor("Deploys"));
+    cleanup();
+    renderPane({ store });
+    expect(toggleFor("Deploys").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keys a plugin's section by plugin and id, so two plugins can share an id", () => {
+    registerSections([{ id: "status", title: "First status" }], "first");
+    registerSections([{ id: "status", title: "Second status" }], "second");
+    renderPane();
+
+    fireEvent.click(toggleFor("First status"));
+    expect(toggleFor("First status").getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(toggleFor("Second status").getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+  });
+
+  it("shows the summary beside the title only while the section is closed", () => {
+    registerSections([
+      { id: "prs", title: "Pull requests", summary: Summary },
+      { id: "plain", title: "Plain" },
+    ]);
+    renderPane();
+    const toggle = toggleFor("Pull requests");
+
+    expect(toggle.textContent).toContain("6 PRs for thr_1");
+    expect(toggleFor("Plain").textContent).toBe("Plain");
+
+    fireEvent.click(toggle);
+    expect(toggle.textContent).toBe("Pull requests");
+    expect(screen.queryByText("6 PRs for thr_1")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle.textContent).toContain("6 PRs for thr_1");
+  });
+
+  it("draws the summary as inert text inside the toggle, never as a second control", () => {
+    registerSections([
+      { id: "prs", title: "Pull requests", summary: SummaryWithButton },
+    ]);
+    renderPane();
+    const toggle = toggleFor("Pull requests");
+    const summary = toggle.querySelector("[inert]");
+
+    expect(summary?.contains(screen.getByTestId("summary-button"))).toBe(true);
+    expect(toggle.getAttribute("aria-describedby")).toBe(summary?.id);
+    expect(summary?.className).toContain("truncate");
+    expect(summary?.className).toContain("whitespace-nowrap");
+  });
+
+  it("leaves the section usable when its summary crashes", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    registerSections([{ id: "prs", title: "Pull requests", summary: Crashes }]);
+    renderPane();
+    const toggle = toggleFor("Pull requests");
+
+    expect(toggle.textContent).toBe("Pull requests");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByText("Pull requests body for thr_1").closest("[hidden]"),
+    ).toBeNull();
+  });
+
+  it("keeps a section whose component renders nothing hidden, closed or open", () => {
+    const style = document.createElement("style");
+    style.textContent = MIRRORED_CARD_CSS;
+    document.head.append(style);
+    try {
+      registerSections([
+        { id: "empty", title: "Nothing", component: Empty },
+        { id: "full", title: "Something" },
+      ]);
+      renderPane(NO_ROWS);
+      const display = (title: string) =>
+        getComputedStyle(
+          document.querySelector(`section[aria-label="${title}"]`)!,
+        ).display;
+
+      expect(display("Nothing")).toBe("none");
+      expect(display("Something")).not.toBe("none");
+
+      fireEvent.click(toggleFor("Something"));
+      expect(display("Something")).not.toBe("none");
+      expect(display("Nothing")).toBe("none");
+    } finally {
+      style.remove();
+    }
+  });
+
+  it("draws a divider only between visible sections", () => {
+    const style = document.createElement("style");
+    style.textContent = MIRRORED_CARD_CSS;
+    document.head.append(style);
+    try {
+      registerSections([
+        { id: "empty-first", title: "Empty first", component: Empty },
+        { id: "a", title: "A" },
+        { id: "empty-middle", title: "Empty middle", component: Empty },
+        { id: "b", title: "B" },
+      ]);
+      renderPane({
+        ...NO_ROWS,
+        coreSections: [],
+      });
+      const divider = (title: string) =>
+        getComputedStyle(screen.getByRole("region", { name: title }))
+          .borderTopStyle;
+
+      expect(divider("A")).not.toBe("solid");
+      expect(divider("B")).toBe("solid");
+      fireEvent.click(toggleFor("B"));
+      expect(divider("B")).toBe("solid");
+    } finally {
+      style.remove();
+    }
+  });
+
+  it("uses the card's emptiness selectors on the folded layout", () => {
+    registerSections([{ id: "deploys", title: "Deploys" }]);
+    renderPane();
+    const className = screen.getByRole("region", { name: "Deploys" }).className;
+    expect(className).toContain(`:has(${CONTENT.replaceAll(" ", "_")})`);
   });
 });
 
