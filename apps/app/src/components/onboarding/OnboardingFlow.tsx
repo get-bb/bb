@@ -671,11 +671,9 @@ function AgentStepContainer({
         });
 
   const agentReady = hasReadyAgent(states);
+  const hostNeverConnected = hostWaitFailure !== null;
   const agentBlocked =
-    agents === null
-      ? statesQuery.isError || hostWaitFailure !== null
-      : !agentReady;
-  const hostNeverConnected = hostId === null && hostWaitFailure !== null;
+    agents === null ? statesQuery.isError || hostNeverConnected : !agentReady;
   const statesLoadFailed =
     redesign &&
     hostId !== null &&
@@ -870,7 +868,7 @@ function ProjectsStepContainer({
     void importProjects(hostId, chosen);
   };
 
-  const hostNeverConnected = hostId === null && hostWaitFailure !== null;
+  const hostNeverConnected = hostWaitFailure !== null;
   const scanning =
     !hostNeverConnected &&
     (hostId === null || reposQuery.isPending || rescanning);
@@ -1381,7 +1379,6 @@ export function OnboardingFlow({
     primaryHost,
   });
   const hostId = readyHost?.id ?? null;
-  const hostName = readyHost?.name ?? null;
   const reposQuery = useHostDiscoveredRepos(hostId);
   useProjectsScanTelemetry({
     entry,
@@ -1491,7 +1488,7 @@ export function OnboardingFlow({
           entry={entry}
           hostId={hostId}
           hostWaitFailure={hostWaitFailure}
-          hostName={hostName}
+          hostName={readyHost?.name ?? null}
           onContinue={advance(
             hasReadyAgent(agentStates) ? "completed" : "skipped",
           )}

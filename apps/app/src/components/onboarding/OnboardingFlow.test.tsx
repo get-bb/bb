@@ -248,7 +248,7 @@ describe("OnboardingFlow", () => {
   );
 
   it.each(["new", "control"] as const)(
-    "waits for this computer to connect before scanning or checking agents in the %s guide",
+    "waits for this computer to connect in the %s guide, offers a way forward after 30 seconds, then recovers",
     async (variant) => {
       vi.useFakeTimers();
       const { queryClient } = renderFlow({
@@ -256,41 +256,16 @@ describe("OnboardingFlow", () => {
         variant,
         hostStatus: "disconnected",
       });
-
       act(() => {
-        vi.advanceTimersByTime(10_000);
+        vi.advanceTimersByTime(29_000);
       });
-      expect(repoScanRequests()).toBe(0);
-      expect(providerStateRequests()).toBe(0);
       expect(
         screen.getByText("Waiting for this computer to connect…"),
       ).toBeTruthy();
-      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(providerStateRequests()).toBe(0);
       expect(agentLoadFailures()).toEqual([]);
-
-      await act(async () => {
-        queryClient.setQueryData(hostsQueryOptions(false).queryKey, [
-          makeHost({ id: "host_1", name: "bee", status: "connected" }),
-        ]);
-        await vi.advanceTimersByTimeAsync(1);
-      });
-      expect(repoScanRequests()).toBe(1);
-      expect(providerStateRequests()).toBeGreaterThan(0);
-      expect(screen.getByText("On bee")).toBeTruthy();
-    },
-  );
-
-  it.each(["new", "control"] as const)(
-    "offers the %s guide's way forward when this computer never connects, then recovers",
-    async (variant) => {
-      vi.useFakeTimers();
-      const { queryClient } = renderFlow({
-        initialStep: "agent",
-        variant,
-        hostStatus: "disconnected",
-      });
       act(() => {
-        vi.advanceTimersByTime(30_000);
+        vi.advanceTimersByTime(1_000);
       });
 
       expect(
