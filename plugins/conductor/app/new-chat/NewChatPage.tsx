@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
   experimental_useSidebarThreads as useSidebarThreads,
@@ -53,15 +53,61 @@ function TranscriptChip({
   );
 }
 
+function TranscriptChips({
+  chats,
+  draftKey,
+}: {
+  chats: readonly PluginSidebarThread[];
+  draftKey: string;
+}) {
+  const composers = useComposers();
+  const addTranscript = (chat: PluginSidebarThread) => {
+    const composer = findComposer(composers, draftKey);
+    if (composer === null) return;
+    composer.insert([
+      {
+        from: 0,
+        to: 0,
+        kind: "thread",
+        threadId: chat.id,
+        projectId: chat.projectId,
+        label: chat.displayTitle,
+      },
+      " ",
+    ]);
+    composer.focus();
+  };
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {chats.map((chat) => (
+        <TranscriptChip key={chat.id} chat={chat} onAdd={addTranscript} />
+      ))}
+    </div>
+  );
+}
+
 export function NewChatPage({ subPath }: PluginNavPanelProps) {
   const environmentId = environmentIdFromSubPath(subPath);
   useMarkNewChatEnvironment(environmentId);
   const sdk = useSdk();
   const navigate = useBbNavigate();
-  const composers = useComposers();
   const lastActive = useLastActiveThreads();
   const { threads, projects } = useSidebarThreads();
   const [focusRequest, setFocusRequest] = useState(1);
+  const defaultEnvironment = useMemo(
+    () =>
+      environmentId === null
+        ? undefined
+        : ({ type: "reuse", environmentId } as const),
+    [environmentId],
+  );
+  const submit = useCallback(
+    async (request: NewThreadRequest) => {
+      const thread = await sdk.threads.spawn(request);
+      navigate.toThread(thread.id);
+    },
+    [navigate, sdk],
+  );
   const workspace = useMemo(
     () =>
       environmentId === null
@@ -78,31 +124,12 @@ export function NewChatPage({ subPath }: PluginNavPanelProps) {
     );
   }
 
-  const draftKey = draftKeyFor(environmentId);
-  const addTranscript = (chat: PluginSidebarThread) => {
-    const composer = findComposer(composers, draftKey);
-    if (composer === null) return;
-    composer.insert([
-      {
-        kind: "thread",
-        threadId: chat.id,
-        projectId: chat.projectId,
-        label: chat.displayTitle,
-      },
-      " ",
-    ]);
-    composer.focus();
-  };
   const closeUntitled = () => {
     const remembered = lastActive[`env:${environmentId}`];
     const target =
       workspace.chats.find((chat) => chat.id === remembered) ??
       workspace.chats.at(-1);
     if (target !== undefined) navigate.toThread(target.id);
-  };
-  const submit = async (request: NewThreadRequest) => {
-    const thread = await sdk.threads.spawn(request);
-    navigate.toThread(thread.id);
   };
 
   return (
@@ -129,15 +156,10 @@ export function NewChatPage({ subPath }: PluginNavPanelProps) {
           {workspace.chats.length === 0 ? null : (
             <div className="flex flex-col gap-2">
               <p>Add chat transcripts:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {workspace.chats.map((chat) => (
-                  <TranscriptChip
-                    key={chat.id}
-                    chat={chat}
-                    onAdd={addTranscript}
-                  />
-                ))}
-              </div>
+              <TranscriptChips
+                chats={workspace.chats}
+                draftKey={draftKeyFor(environmentId)}
+              />
             </div>
           )}
         </div>
@@ -145,9 +167,9 @@ export function NewChatPage({ subPath }: PluginNavPanelProps) {
           <NewThreadComposer
             key={environmentId}
             layout="document"
-            draftKey={draftKey}
+            draftKey={draftKeyFor(environmentId)}
             defaultProjectId={workspace.projectId}
-            defaultEnvironment={{ type: "reuse", environmentId }}
+            defaultEnvironment={defaultEnvironment}
             focusRequest={focusRequest}
             placeholder="Ask to make changes, @mention files, run /commands"
             onSubmit={submit}

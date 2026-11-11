@@ -57,6 +57,8 @@ describe("findWorkspace", () => {
   });
 
   it("returns null for an environment with no threads", () => {
-    expect(findWorkspace([testThread("a")], projects, "env-z", null)).toBeNull();
+    expect(
+      findWorkspace([testThread("a")], projects, "env-z", null),
+    ).toBeNull();
   });
 });

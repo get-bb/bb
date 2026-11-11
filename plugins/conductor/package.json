@@ -6,7 +6,7 @@
   "description": "Conductor-style layout for bb: a sidebar of projects and workspaces, where a workspace is every thread sharing one environment.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.112"
+    "bbPluginSdk": ">=0.6.141"
   },
   "bb": {
     "name": "Conductor layout",

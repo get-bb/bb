@@ -154,7 +154,10 @@ export function TabStrip({
           return (
             <div
               key={chat.id}
-              className={cn(TAB_CLASS, isActive ? ACTIVE_TAB_CLASS : IDLE_TAB_CLASS)}
+              className={cn(
+                TAB_CLASS,
+                isActive ? ACTIVE_TAB_CLASS : IDLE_TAB_CLASS,
+              )}
             >
               <a
                 role="tab"
@@ -211,10 +214,7 @@ export function TabStrip({
   );
 }
 
-export function WorkspaceTabs({
-  threadId,
-  environment,
-}: WorkspaceTabsProps) {
+export function WorkspaceTabs({ threadId, environment }: WorkspaceTabsProps) {
   useThreadSurfaceRegistration(threadId);
   const openNewChat = useOpenNewChat();
   const panel = useAppPanel();
