@@ -342,6 +342,8 @@ Check imports here, behavior in the Plugin Guide, and signatures in the installe
 - `ExperimentalThreadInfoProps`
 - `ExperimentalThreadInfoRowRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
+- `ExperimentalThreadHeaderRowRegistration`
+- `ExperimentalThreadHeaderRowProps`
 - `ExperimentalThreadContextCardRowRegistration`
 - `ExperimentalThreadContextCardSectionRegistration`
 - `ExperimentalThreadContextCardProps`

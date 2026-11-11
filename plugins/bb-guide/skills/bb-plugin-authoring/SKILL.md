@@ -65,7 +65,8 @@ the same change.
 ### Frontend
 
 - Read references/frontend-registration.md for definePluginApp, thread header
-  and Browser toolbar controls, and sidebar replacement.
+  controls and rows under the header, Browser toolbar controls, and sidebar
+  replacement.
 - Read references/frontend-sidebar-navigation.md for navigation providers
   (rail or list placement) and controls beside the sidebar toggle.
 - Read references/frontend-thread-row-metadata.md to add a badge to every thread

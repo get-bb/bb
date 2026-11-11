@@ -23,6 +23,7 @@ describe("product-map surfaces", () => {
       "sidebar-footer",
       "thread-header",
       "thread-actions",
+      "thread-header-row",
       "thread-context-card",
       "timeline-renderers",
       "message-directives",

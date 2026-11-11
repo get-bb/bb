@@ -3247,6 +3247,47 @@ Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
 6. **Groups.** Rows and sections reuse the Info tab's groups. Confirm the two surfaces
    should share one group vocabulary.
 
+## `app.slots.experimental_threadHeaderRow` (`@get-bb/plugin-sdk/app`)
+
+A registration is `{ id, order?, component }`. Every registered row renders
+full width, stacked by `order` ascending (unset last, then registration
+order), directly under `ThreadDetailHeader` and above the timeline, in every
+thread page and split pane. The component receives
+`ExperimentalThreadHeaderRowProps`: `{ threadId, projectId, environment }`,
+where `environment` is `{ id }` from the thread, null when it has none. A
+component that returns null takes no space; when no plugin registers a row,
+the host renders nothing.
+
+`ThreadDetailView` appends `PluginThreadHeaderRows`
+(`apps/app/src/components/plugin/PluginThreadHeaderRows.tsx`) to the
+`timelineHeader` it passes as `mainHeader` to `SecondaryPanelLayout`, inside
+the thread's `AppNavigationHostProvider`, so `experimental_useAppPanel()` and
+`experimental_usePanelTabs()` in a row act on that thread's side panel. Each
+row mounts in its own `PluginSlotMount` crash boundary (`crashFallback={null}`),
+keyed by plugin, id, generation and thread, so a crash removes only that row
+for that thread.
+
+**Core callers.** None: bb draws nothing between the thread header and the
+timeline, so there is no core path to share. The motivating caller is a
+Conductor-style tab strip of the threads that share the thread's environment.
+Contract tests: `ThreadDetailView.contract.test.tsx` (placement, order, props,
+crash containment, plugin hooks, and the panel controller contract run from a
+row).
+
+Docs: `frontend-registration.md`.
+
+**Audit before stabilizing.**
+
+1. **Callers.** Ship at least one plugin that uses the row, and decide whether
+   bb moves any of its own pane chrome (such as banners) into the slot.
+2. **Compact viewports.** Rows take vertical space above the timeline on
+   phones; decide whether bb hides or collapses them in a compact viewport.
+3. **Ordering across plugins.** `order` is a bare number shared by every
+   plugin; confirm that is enough, or add groups as the Info tab has.
+4. **Transcript and panel presentations.** Rows render only on thread
+   pages and split panes, not in threads shown inside a panel or as a
+   transcript; confirm that scope.
+
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, order?, useData?, component }`. `useData` is a React
