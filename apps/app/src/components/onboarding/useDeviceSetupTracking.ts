@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { InternalDoNotUseSetupFailureStage } from "@get-bb/plugin-sdk/app";
+import type {
+  InternalDoNotUseSetupFailureDetail,
+  InternalDoNotUseSetupFailureStage,
+} from "@get-bb/plugin-sdk/app";
 import { MachineEnrollmentEndedError } from "@/components/dialogs/AddMachineDialog";
 import { operationFailureReason } from "./onboarding-model";
 import {
@@ -77,7 +80,10 @@ export function useDeviceSetupTracking({
   }, [connectStatus, record]);
 
   const failRemoteAccessSetup = useCallback(
-    (stage: InternalDoNotUseSetupFailureStage) => {
+    (
+      stage: InternalDoNotUseSetupFailureStage,
+      detail?: InternalDoNotUseSetupFailureDetail,
+    ) => {
       const remoteAccess = pending.current.remoteAccess;
       if (remoteAccess === "idle" || remoteAccess === "succeeded") return;
       pending.current.remoteAccess = "failed";
@@ -89,6 +95,7 @@ export function useDeviceSetupTracking({
           operation: "remote_access",
           outcome: "failed",
           failure_stage: stage,
+          ...(detail === undefined ? {} : { failure_detail: detail }),
         },
       });
     },

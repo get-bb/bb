@@ -79,10 +79,11 @@ export interface PluginSettingsSectionProps {
   /**
    * Internal to bb's bundled connect plugin; not part of the plugin API.
    * Set only when the setup guide renders the section; call it when a setup
-   * attempt fails, with the stage that failed.
+   * attempt fails, with the stage that failed and, when known, why.
    */
   internal_DO_NOT_USE_onSetupFailed?: (
     stage: InternalDoNotUseSetupFailureStage,
+    detail?: InternalDoNotUseSetupFailureDetail,
   ) => void;
 }
 
@@ -94,6 +95,26 @@ export type InternalDoNotUseSetupFailureStage =
   | "sign_in"
   | "pairing"
   | "turn_on";
+
+/**
+ * Why a setup guide section's setup attempt failed: a fixed code, never a
+ * message. Internal to bb's bundled connect plugin; not part of the plugin API.
+ */
+export type InternalDoNotUseSetupFailureDetail =
+  | "denied"
+  | "expired"
+  | "login_failed"
+  | "rate_limited"
+  | "service_unavailable"
+  | "account_unavailable"
+  | "network"
+  | "invalid_code"
+  | "expired_code"
+  | "already_used"
+  | "unauthorized"
+  | "profile_unavailable"
+  | "superseded"
+  | "other";
 
 /**
  * Props passed to an `experimental_appOverlay` component.
@@ -112,8 +133,11 @@ export interface InternalDoNotUseSetupGuideSectionProps {
   onPhone: boolean;
   /** Call when the user starts setting up this section. */
   onSetupStarted: () => void;
-  /** Call when a setup attempt fails, with the stage that failed. */
-  onSetupFailed: (stage: InternalDoNotUseSetupFailureStage) => void;
+  /** Call when a setup attempt fails, with the stage that failed and, when known, why. */
+  onSetupFailed: (
+    stage: InternalDoNotUseSetupFailureStage,
+    detail?: InternalDoNotUseSetupFailureDetail,
+  ) => void;
 }
 
 export type ExperimentalPageTitle = (
@@ -5374,7 +5398,9 @@ export interface BbNavigate {
    */
   openUrl(url: string): boolean;
   /** Open a live file in this surface's shared BB preview panel. */
-  experimental_openFilePreview(options: ExperimentalFilePreviewOptions): boolean;
+  experimental_openFilePreview(
+    options: ExperimentalFilePreviewOptions,
+  ): boolean;
   /** Open a live file in this client's preferred external file target. */
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,
