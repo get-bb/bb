@@ -54,7 +54,7 @@ interface CreateHarnessOptions {
   maxExitedScrollbackBytes?: number;
   maxExitedTerminals?: number;
   onSendMessage: TerminalMessageObserver;
-  resolveShell: ResolveTerminalShell;
+  resolveShell: ResolveTerminalShell | undefined;
 }
 
 interface CreateHarnessWithShellArgs {
@@ -451,7 +451,66 @@ describe("TerminalManager", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
+
+  it.skipIf(process.platform === "win32").each([
+    { shell: undefined, login: "available", expected: "login" },
+    { shell: "", login: "available", expected: "login" },
+    { shell: "missing", login: "available", expected: "login" },
+    { shell: "override", login: "available", expected: "override" },
+    { shell: undefined, login: "missing", expected: "fallback" },
+    { shell: undefined, login: "unexecutable", expected: "fallback" },
+    { shell: undefined, login: "unavailable", expected: "fallback" },
+  ])(
+    "selects the default terminal shell with SHELL=$shell and login=$login",
+    async ({ shell, login, expected }) => {
+      const directory = await makeTempDir("bb-terminal-shell-");
+      const loginShell = path.join(directory, "login-shell");
+      const overrideShell = path.join(directory, "override-shell");
+      if (login === "available") {
+        await fs.symlink("/bin/sh", loginShell);
+      } else if (login === "unexecutable") {
+        await fs.writeFile(loginShell, "", { mode: 0o600 });
+      }
+      await fs.symlink("/bin/sh", overrideShell);
+      const user = os.userInfo();
+      const userInfo = vi.spyOn(os, "userInfo");
+      if (login === "unavailable") {
+        userInfo.mockImplementation(() => {
+          throw new Error("Account information is unavailable");
+        });
+      } else {
+        userInfo.mockReturnValue({ ...user, shell: loginShell });
+      }
+      vi.stubEnv(
+        "SHELL",
+        shell === "override"
+          ? overrideShell
+          : shell === "missing"
+            ? path.join(directory, "missing-shell")
+            : shell,
+      );
+      const harness = createHarnessWithOptions({
+        onSendMessage: () => undefined,
+        resolveShell: undefined,
+      });
+
+      try {
+        await openTerminal(harness);
+        const selectedShell = harness.adapter.spawned[0]?.args.file;
+        if (expected === "fallback") {
+          expect(["/bin/zsh", "/bin/bash", "/bin/sh"]).toContain(selectedShell);
+        } else {
+          expect(selectedShell).toBe(
+            expected === "override" ? overrideShell : loginShell,
+          );
+        }
+      } finally {
+        harness.manager.dispose();
+      }
+    },
+  );
 
   it("opens a PTY in the workspace and keeps the environment active", async () => {
     const harness = createHarness();
