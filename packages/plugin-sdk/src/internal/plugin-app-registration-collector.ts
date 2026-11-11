@@ -36,6 +36,7 @@ import type {
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadRowMetadataRegistration,
   ExperimentalThreadInfoSectionRegistration,
+  ExperimentalThreadHeaderRowRegistration,
   ExperimentalThreadContextCardRowRegistration,
   ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
@@ -324,6 +325,7 @@ export interface CollectedPluginAppRegistrations {
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
+  threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -468,6 +470,7 @@ export function collectPluginAppRegistrations(
     threadInfoRows: [],
     threadRowMetadata: [],
     threadInfoSections: [],
+    threadHeaderRows: [],
     threadContextCardRows: [],
     threadContextCardSections: [],
     threadActions: [],
@@ -509,6 +512,7 @@ export function collectPluginAppRegistrations(
     threadInfoRow: new Set<string>(),
     threadRowMetadata: new Set<string>(),
     threadInfoSection: new Set<string>(),
+    threadHeaderRow: new Set<string>(),
     threadContextCardRow: new Set<string>(),
     threadContextCardSection: new Set<string>(),
     threadAction: new Set<string>(),
@@ -1012,6 +1016,16 @@ export function collectPluginAppRegistrations(
         collected.threadInfoSections.push({
           id,
           group: requireNonEmptyString(kind, "group", registration.group),
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadHeaderRow(registration) {
+        const kind = "slots.experimental_threadHeaderRow";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadHeaderRow, id);
+        collected.threadHeaderRows.push({
+          id,
           ...requireOptionalOrder(kind, registration.order),
           component: requireComponent(kind, registration.component),
         });

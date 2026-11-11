@@ -38,6 +38,7 @@ import {
   type PluginSourceCodeRendererProps,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
+  type ExperimentalThreadHeaderRowProps,
   type ExperimentalThreadContextCardProps,
   type ExperimentalThreadRowMetadataProps,
   type PluginThreadActionItemInput,
@@ -289,6 +290,7 @@ type SlotPropsByName = {
   experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
+  experimental_threadHeaderRow: ExperimentalThreadHeaderRowProps;
   experimental_threadContextCardRow: ExperimentalThreadContextCardProps;
   experimental_threadContextCardSection: ExperimentalThreadContextCardProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
@@ -391,6 +393,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
+  experimental_threadHeaderRow: ["threadId", "projectId", "environment"],
   experimental_threadContextCardRow: ["threadId", "projectId", "environment"],
   experimental_threadContextCardSection: [
     "threadId",

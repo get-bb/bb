@@ -2097,6 +2097,36 @@ export interface ExperimentalThreadInfoSectionRegistration {
 }
 
 /**
+ * Props passed to an `experimental_threadHeaderRow` component, rendered
+ * between a thread's header and its timeline.
+ */
+export interface ExperimentalThreadHeaderRowProps {
+  /**
+   * The thread shown in the pane. A split layout renders a header row per
+   * pane, so the component mounts once per visible thread; keep per-thread
+   * state in the component, never in a module-level singleton.
+   */
+  threadId: string;
+  projectId: string;
+  /** The thread's environment, null when it has none. */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/**
+ * A full-width row directly under the header of every thread pane, above the
+ * timeline, such as a tab strip of the threads that share an environment.
+ * Rows stack in order. Return null to take no space for this thread. A crash
+ * removes only this row for that thread.
+ */
+export interface ExperimentalThreadHeaderRowRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Ascending; unset sorts last; ties keep registration order. */
+  order?: number;
+  component: ComponentType<ExperimentalThreadHeaderRowProps>;
+}
+
+/**
  * Props passed to an `experimental_threadContextCardRow` or
  * `experimental_threadContextCardSection` component.
  */
@@ -3917,6 +3947,14 @@ export interface PluginAppSlots {
    */
   experimental_threadInfoSection(
     registration: ExperimentalThreadInfoSectionRegistration,
+  ): void;
+  /**
+   * Add a full-width row under the header of every thread pane, above the
+   * timeline (see {@link ExperimentalThreadHeaderRowRegistration}).
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_threadHeaderRow(
+    registration: ExperimentalThreadHeaderRowRegistration,
   ): void;
   /**
    * Add a row to the thread context card of every thread pane (see

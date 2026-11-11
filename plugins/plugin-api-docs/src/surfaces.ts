@@ -276,6 +276,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "thread-header-row",
+        title: "Rows under the thread header",
+        summary:
+          "Add a full-width row between a thread's header and its conversation. With this, a plugin can:",
+        bullets: [
+          "Show a tab strip of the threads that share the thread's environment",
+          "Stack with other plugins' rows in a set order, in every thread pane of a split layout",
+          "Open or switch the thread's side-panel tabs and navigate between threads",
+          "Take no space for a thread by rendering nothing; a crash removes only that row",
+        ],
+        apiSymbols: [
+          "PluginAppSlots.experimental_threadHeaderRow",
+          "ExperimentalThreadHeaderRowRegistration",
+          "ExperimentalThreadHeaderRowProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "thread-context-card",
         title: "Thread context card",
         summary:

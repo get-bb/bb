@@ -1196,6 +1196,22 @@ function AppShellWireframeBody({
             {mobile ? <MiniIcon icon="PanelRight" className="size-5" /> : null}
           </div>
 
+          <RegionMark
+            id="thread-header-row"
+            label="Plugin rows under the thread header"
+            className="flex h-8 shrink-0 items-center gap-1 border-b border-border-hairline px-4"
+            chip="side"
+          >
+            <span className="flex h-6 items-center gap-1.5 rounded-md border border-border-seam px-2 text-foreground">
+              <PluginGlyph className="size-3" />
+              Fix flaky checkout tests
+            </span>
+            <span className="flex h-6 items-center gap-1.5 px-2 text-subtle-foreground">
+              <PluginGlyph className="size-3" />
+              Review retries
+            </span>
+          </RegionMark>
+
           <div
             data-guide-fixture="app-window-timeline"
             className={cn(
