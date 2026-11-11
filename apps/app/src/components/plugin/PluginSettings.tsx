@@ -20,7 +20,6 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
 import {
   ResourceDetailConfigurationSection,
-  ResourceDetailPanel,
   ResourceDetailStack,
 } from "@bb/shared-ui/resource-list";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
@@ -471,7 +470,7 @@ function PluginSettingsFieldSkeleton() {
 function PluginSettingsPageSkeleton() {
   return (
     <div
-      className="mx-auto w-full max-w-5xl"
+      className="mx-auto w-full max-w-3xl"
       data-testid="plugin-settings-skeleton"
       role="status"
       aria-busy="true"
@@ -496,12 +495,12 @@ function PluginSettingsPageSkeleton() {
           <ResourceDetailConfigurationSection
             label={<Skeleton className="h-3.5 w-24" />}
           >
-            <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+            <div className="rounded-lg border border-border bg-card px-4 py-3.5">
               <div className="space-y-4">
                 <PluginSettingsFieldSkeleton />
                 <PluginSettingsFieldSkeleton />
               </div>
-            </ResourceDetailPanel>
+            </div>
           </ResourceDetailConfigurationSection>
         </ResourceDetailStack>
       </div>
@@ -596,7 +595,7 @@ function PluginSettingsContent({
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto w-full max-w-3xl">
       <PluginSettingsDetailsLink
         pluginId={plugin.id}
         onBackToDetails={onBackToDetails}
@@ -654,7 +653,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
       {plugin.hasSettings || !settingsAvailable ? (
-        <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+        <div className="rounded-lg border border-border bg-card px-4 py-3.5">
           {settingsAvailable ? (
             <PluginSettingsForm key={plugin.id} pluginId={plugin.id} />
           ) : (
@@ -664,7 +663,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
                 : "Enable this plugin to edit its settings."}
             </p>
           )}
-        </ResourceDetailPanel>
+        </div>
       ) : null}
       {settingsAvailable ? (
         <PluginSettingsSections pluginId={plugin.id} />
