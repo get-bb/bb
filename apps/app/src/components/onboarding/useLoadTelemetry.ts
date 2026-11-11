@@ -10,9 +10,20 @@ import {
 } from "./onboarding-telemetry";
 import type { HostWaitFailure } from "./useReadyHost";
 
+export type StepLoadTimes = Map<
+  OnboardingStepId,
+  { shownAt: number; reported: boolean }
+>;
+
+export function useStepLoadTimes(): StepLoadTimes {
+  const [loadTimes] = useState<StepLoadTimes>(() => new Map());
+  return loadTimes;
+}
+
 export function useLoadTelemetry({
   entry,
   step,
+  loadTimes,
   hostWaitFailure,
   query,
   loaded,
@@ -20,6 +31,7 @@ export function useLoadTelemetry({
 }: {
   entry: OnboardingEntry;
   step: OnboardingStepId;
+  loadTimes: StepLoadTimes;
   hostWaitFailure: HostWaitFailure | null;
   query: { isError: boolean; error: unknown };
   loaded: boolean;
@@ -51,11 +63,15 @@ export function useLoadTelemetry({
       },
     });
   }, [entry, failureReason, step]);
-  const [shownAt] = useState(() => Date.now());
-  const succeededRef = useRef(false);
   useEffect(() => {
-    if (!loaded || succeededRef.current) return;
-    succeededRef.current = true;
+    if (!loadTimes.has(step)) {
+      loadTimes.set(step, { shownAt: Date.now(), reported: false });
+    }
+  }, [loadTimes, step]);
+  useEffect(() => {
+    const timing = loadTimes.get(step);
+    if (!loaded || timing === undefined || timing.reported) return;
+    loadTimes.set(step, { ...timing, reported: true });
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
@@ -63,8 +79,8 @@ export function useLoadTelemetry({
         step,
         operation: "load",
         outcome: "succeeded",
-        duration_ms: Math.max(0, Math.round(Date.now() - shownAt)),
+        duration_ms: Math.max(0, Math.round(Date.now() - timing.shownAt)),
       },
     });
-  }, [entry, loaded, shownAt, step]);
+  }, [entry, loadTimes, loaded, step]);
 }

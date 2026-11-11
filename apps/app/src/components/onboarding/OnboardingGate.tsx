@@ -52,7 +52,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     completedAt === null && setupGuideQuery.data?.variant === "new";
   const primaryHost = usePrimaryHost({ enabled: prefetchInstallInfo });
   useHostProviderCliStatus({
-    hostId: primaryHost?.id ?? null,
+    hostId: primaryHost?.status === "connected" ? primaryHost.id : null,
     enabled: prefetchInstallInfo,
   });
   useEffect(() => {

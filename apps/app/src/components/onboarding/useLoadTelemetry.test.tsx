@@ -3,7 +3,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { BbHttpError } from "@bb/sdk/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
-import { useLoadTelemetry } from "./useLoadTelemetry";
+import { useLoadTelemetry, type StepLoadTimes } from "./useLoadTelemetry";
 
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 
@@ -43,6 +43,7 @@ describe("load telemetry", () => {
           useLoadTelemetry({
             entry: "replay",
             step,
+            loadTimes: new Map(),
             hostWaitFailure: null,
             query,
             loaded: false,
@@ -71,6 +72,7 @@ describe("load telemetry", () => {
       useLoadTelemetry({
         entry: "first_run",
         step: "agent",
+        loadTimes: new Map(),
         hostWaitFailure: "no_host",
         query: loaded,
         loaded: false,
@@ -94,6 +96,7 @@ describe("load telemetry", () => {
         useLoadTelemetry({
           entry: "first_run",
           step: "agent",
+          loadTimes: new Map(),
           hostWaitFailure: null,
           query: props.query,
           loaded: false,
@@ -119,11 +122,13 @@ describe("load telemetry", () => {
 
   it("records the first successful load once with how long it took", () => {
     vi.useFakeTimers();
+    const loadTimes: StepLoadTimes = new Map();
     const view = renderHook(
       (loadedNow: boolean) =>
         useLoadTelemetry({
           entry: "first_run",
           step: "agent",
+          loadTimes,
           hostWaitFailure: null,
           query: loaded,
           loaded: loadedNow,
@@ -144,6 +149,46 @@ describe("load telemetry", () => {
         operation: "load",
         outcome: "succeeded",
         duration_ms: 4_200,
+      },
+    ]);
+  });
+
+  it("records one successful load per step per guide run, timed from when the step first opened", () => {
+    vi.useFakeTimers();
+    const loadTimes: StepLoadTimes = new Map();
+    const renderStep = (loadedNow: boolean) =>
+      renderHook(
+        (props: boolean) =>
+          useLoadTelemetry({
+            entry: "first_run",
+            step: "agent",
+            loadTimes,
+            hostWaitFailure: null,
+            query: loaded,
+            loaded: props,
+            timedOut: false,
+          }),
+        { initialProps: loadedNow },
+      );
+
+    const firstVisit = renderStep(false);
+    vi.advanceTimersByTime(1_000);
+    firstVisit.unmount();
+    vi.advanceTimersByTime(2_000);
+    const secondVisit = renderStep(false);
+    vi.advanceTimersByTime(500);
+    secondVisit.rerender(true);
+    secondVisit.unmount();
+    renderStep(true).unmount();
+    vi.useRealTimers();
+
+    expect(recorded()).toEqual([
+      {
+        entry: "first_run",
+        step: "agent",
+        operation: "load",
+        outcome: "succeeded",
+        duration_ms: 3_500,
       },
     ]);
   });

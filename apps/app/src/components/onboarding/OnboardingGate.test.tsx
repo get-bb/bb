@@ -59,7 +59,7 @@ function renderGate() {
 
 beforeEach(() => {
   window.localStorage.clear();
-  mocks.usePrimaryHost.mockReturnValue({ id: "host-1" });
+  mocks.usePrimaryHost.mockReturnValue({ id: "host-1", status: "connected" });
   mocks.useSetupGuideAssignment.mockReturnValue({
     isPending: false,
     data: { variant: "control" },
@@ -212,6 +212,34 @@ describe("OnboardingGate", () => {
       isPending: false,
       data: { variant: "new" },
     });
+    view.rerender(
+      <OnboardingGate>
+        <div>App shell</div>
+      </OnboardingGate>,
+    );
+    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
+      hostId: "host-1",
+      enabled: true,
+    });
+  });
+
+  it("waits for this computer to connect before loading agent install info", () => {
+    configWith({ onboardingCompletedAt: null });
+    mocks.useSetupGuideAssignment.mockReturnValue({
+      isPending: false,
+      data: { variant: "new" },
+    });
+    mocks.usePrimaryHost.mockReturnValue({
+      id: "host-1",
+      status: "disconnected",
+    });
+    const { view } = renderGate();
+    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
+      hostId: null,
+      enabled: true,
+    });
+
+    mocks.usePrimaryHost.mockReturnValue({ id: "host-1", status: "connected" });
     view.rerender(
       <OnboardingGate>
         <div>App shell</div>

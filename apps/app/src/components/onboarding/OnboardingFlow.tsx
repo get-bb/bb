@@ -118,7 +118,11 @@ import {
 } from "./onboarding-telemetry";
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
 import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
-import { useLoadTelemetry } from "./useLoadTelemetry";
+import {
+  useLoadTelemetry,
+  useStepLoadTimes,
+  type StepLoadTimes,
+} from "./useLoadTelemetry";
 import { useOnboardingLeftTelemetry } from "./useOnboardingLeftTelemetry";
 import { useOnboardingErrorStep } from "./OnboardingErrorTelemetry";
 import {
@@ -397,6 +401,7 @@ function AgentStepContainer({
   hostId,
   hostWaitFailure,
   hostName,
+  loadTimes,
   onContinue,
 }: {
   chrome: StepChrome;
@@ -405,6 +410,7 @@ function AgentStepContainer({
   hostId: string | null;
   hostWaitFailure: HostWaitFailure | null;
   hostName: string | null;
+  loadTimes: StepLoadTimes;
   onContinue: () => void;
 }) {
   const statesQuery = useSystemProviderStates({
@@ -433,6 +439,7 @@ function AgentStepContainer({
   useLoadTelemetry({
     entry,
     step: "agent",
+    loadTimes,
     hostWaitFailure,
     query: statesQuery,
     loaded: states !== undefined,
@@ -1061,6 +1068,7 @@ function PluginsStepContainer({
   entry: onboardingEntry,
   trackInstall,
   switches,
+  loadTimes,
   onBack,
   onContinue,
   onSkip,
@@ -1070,6 +1078,7 @@ function PluginsStepContainer({
   entry: OnboardingEntry;
   trackInstall: TrackPluginInstall;
   switches: OnboardingPluginSwitches;
+  loadTimes: StepLoadTimes;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
@@ -1078,6 +1087,7 @@ function PluginsStepContainer({
   useLoadTelemetry({
     entry: onboardingEntry,
     step: "plugins",
+    loadTimes,
     hostWaitFailure: null,
     query: catalogQuery,
     loaded: catalogQuery.data !== undefined,
@@ -1422,6 +1432,7 @@ export function OnboardingFlow({
   }, [entry, step]);
   const trackPluginInstall = useOnboardingPluginInstallOutcomes(entry);
   const pluginSwitches = useOnboardingPluginSwitches();
+  const loadTimes = useStepLoadTimes();
   const finishedRef = useRef(false);
   useOnboardingLeftTelemetry({ entry, step, finishedRef });
   useOnboardingErrorStep(step);
@@ -1489,6 +1500,7 @@ export function OnboardingFlow({
           hostId={hostId}
           hostWaitFailure={hostWaitFailure}
           hostName={readyHost?.name ?? null}
+          loadTimes={loadTimes}
           onContinue={advance(
             hasReadyAgent(agentStates) ? "completed" : "skipped",
           )}
@@ -1516,6 +1528,7 @@ export function OnboardingFlow({
           entry={entry}
           trackInstall={trackPluginInstall}
           switches={pluginSwitches}
+          loadTimes={loadTimes}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}
