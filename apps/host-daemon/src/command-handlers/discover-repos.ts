@@ -241,7 +241,7 @@ async function walkForRepos(
           join(dir, child),
           depth + 1,
           depth === 0 && options.privacyPromptFolders.has(child)
-            ? Math.max(deadline, options.privacyPromptDeadline)
+            ? options.privacyPromptDeadline
             : deadline,
         ),
       ),
