@@ -45,6 +45,7 @@ async function withInitializedClaude<T>(
         env: args.env,
         persistSession: false,
         settingSources: ["user", "project", "local"],
+        strictMcpConfig: true,
         ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
       },
     });
