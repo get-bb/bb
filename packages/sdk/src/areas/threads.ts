@@ -86,7 +86,7 @@ import type {
   UpdateThreadRequest,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
@@ -1029,18 +1029,15 @@ function isThreadWaitTargetUnreachable(
 }
 
 export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
-  const { transport } = args;
+  const { call, send } = args.operations;
   const getThread = (input: ThreadGetArgs) =>
-    transport.readJson(
-      transport.api.v1.threads[":id"].$get(
-        {
-          param: { id: input.threadId },
-          ...(input.include === undefined
-            ? {}
-            : { query: { include: input.include } }),
-        },
-        ...signalRequestArgs(input.signal),
-      ),
+    call(
+      "threads.get",
+      {
+        id: input.threadId,
+        ...(input.include === undefined ? {} : { include: input.include }),
+      },
+      { signal: input.signal },
     );
   function timeline(
     input: ThreadTimelineArgs & { afterTag?: undefined },
@@ -1051,701 +1048,377 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   function timeline(
     input: ThreadTimelineArgs,
   ): Promise<ThreadTimelineReadResult> {
-    return transport.readJson(
-      transport.api.v1.threads[":id"].timeline.$get(
-        {
-          param: { id: input.threadId },
-          query: timelineQuery(input),
-        },
-        ...signalRequestArgs(input.signal),
-      ),
+    return call(
+      "threads.timeline",
+      { id: input.threadId, ...timelineQuery(input) },
+      { signal: input.signal },
     );
   }
-  const archiveAll = async (
+  const archiveAll = (
     input: ThreadActionArgs,
   ): Promise<ThreadArchiveAllResult> =>
-    transport.readJson(
-      transport.api.v1.threads[":id"]["archive-all"].$post({
-        param: { id: input.threadId },
-      }),
-    );
+    call("threads.archiveAll", { id: input.threadId });
   const events: ThreadEventsArea = {
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].events.$get(
-          {
-            param: { id: input.threadId },
-            query: eventsListQuery(input),
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    list: (input) =>
+      call(
+        "threads.events",
+        { id: input.threadId, ...eventsListQuery(input) },
+        { signal: input.signal },
+      ),
     async wait(input) {
-      const response = await transport.resolve(
-        transport.api.v1.threads[":id"].events.wait.$get(
-          {
-            param: { id: input.threadId },
-            query: eventWaitQuery(input),
-          },
-          ...signalRequestArgs(input.signal),
-        ),
+      const body = await call(
+        "threads.eventWait",
+        { id: input.threadId, ...eventWaitQuery(input) },
+        { signal: input.signal },
       );
-      const statusCode: number = response.status;
-      if (statusCode === 204) {
+      if (body === null) {
         return null;
       }
       const { parseThreadEventRow } = await import("./thread-event-parser.js");
-      return parseThreadEventRow(await response.json());
+      return parseThreadEventRow(body);
     },
   };
   const interactions: ThreadInteractionsArea = {
-    async cancel(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].interactions[
-          ":interactionId"
-        ].cancel.$post({
-          param: { id: input.threadId, interactionId: input.interactionId },
-        }),
-      );
-    },
-    async get(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].interactions[":interactionId"].$get(
-          {
-            param: {
-              id: input.threadId,
-              interactionId: input.interactionId,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].interactions.$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async resolve(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].interactions[
-          ":interactionId"
-        ].resolve.$post({
-          param: {
-            id: input.threadId,
-            interactionId: input.interactionId,
-          },
-          json: input.resolution,
-        }),
-      );
-    },
-    async respond(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].interactions[
-          ":interactionId"
-        ].respond.$post({
-          param: { id: input.threadId, interactionId: input.interactionId },
-          json: { value: input.value },
-        }),
-      );
-    },
+    cancel: (input) =>
+      call("threads.cancelInteraction", {
+        id: input.threadId,
+        interactionId: input.interactionId,
+      }),
+    get: (input) =>
+      call(
+        "threads.interaction",
+        { id: input.threadId, interactionId: input.interactionId },
+        { signal: input.signal },
+      ),
+    list: (input) =>
+      call(
+        "threads.interactions",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
+    resolve: (input) =>
+      call("threads.resolveInteraction", {
+        id: input.threadId,
+        interactionId: input.interactionId,
+        ...input.resolution,
+      }),
+    respond: (input) =>
+      call("threads.respondToInteraction", {
+        id: input.threadId,
+        interactionId: input.interactionId,
+        value: input.value,
+      }),
   };
   const queuedMessages: ThreadQueuedMessagesArea = {
-    async create(input) {
-      const { threadId, ...json } = input;
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"].$post({
-          param: { id: threadId },
-          json,
-        }),
-      );
-    },
+    create: ({ threadId, ...json }) =>
+      call("threads.createQueuedMessage", { id: threadId, ...json }),
     async delete(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"]["queued-messages"][
-          ":queuedMessageId"
-        ].$delete({
-          param: {
-            id: input.threadId,
-            queuedMessageId: input.queuedMessageId,
-          },
-        }),
-      );
+      await send("threads.deleteQueuedMessage", {
+        id: input.threadId,
+        queuedMessageId: input.queuedMessageId,
+      });
       return { ok: true };
     },
-    async experimental_holdForEdit(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"][":queuedMessageId"][
-          "edit-hold"
-        ].$post({
-          param: {
-            id: input.threadId,
-            queuedMessageId: input.queuedMessageId,
-          },
-        }),
-      );
-    },
+    experimental_holdForEdit: (input) =>
+      call("threads.holdQueuedMessageForEdit", {
+        id: input.threadId,
+        queuedMessageId: input.queuedMessageId,
+      }),
     async experimental_releaseEditHold(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"]["queued-messages"][":queuedMessageId"][
-          "edit-hold"
-        ].$delete({
-          param: {
-            id: input.threadId,
-            queuedMessageId: input.queuedMessageId,
-          },
-        }),
-      );
+      await send("threads.releaseQueuedMessageEditHold", {
+        id: input.threadId,
+        queuedMessageId: input.queuedMessageId,
+      });
       return { ok: true };
     },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"].$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async reorder(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"][
-          ":queuedMessageId"
-        ].order.$patch({
-          param: {
-            id: input.threadId,
-            queuedMessageId: input.queuedMessageId,
-          },
-          json: {
-            previousQueuedMessageId: input.previousQueuedMessageId,
-            nextQueuedMessageId: input.nextQueuedMessageId,
-            groupBoundaryQueuedMessageId: input.groupBoundaryQueuedMessageId,
-          },
-        }),
-      );
-    },
-    async send(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"][
-          ":queuedMessageId"
-        ].send.$post({
-          param: {
-            id: input.threadId,
-            queuedMessageId: input.queuedMessageId,
-          },
-          json: { mode: input.mode },
-        }),
-      );
-    },
-    async setGroupBoundary(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"][
-          "group-boundary"
-        ].$patch({
-          param: { id: input.threadId },
-          json: {
-            expectedGroupedPrefixQueuedMessageIds:
-              input.expectedGroupedPrefixQueuedMessageIds,
-            groupBoundaryQueuedMessageId: input.groupBoundaryQueuedMessageId,
-          },
-        }),
-      );
-    },
-    async update(input) {
-      const { queuedMessageId, threadId, ...json } = input;
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"][
-          ":queuedMessageId"
-        ].$patch({
-          param: { id: threadId, queuedMessageId },
-          json,
-        }),
-      );
-    },
+    list: (input) =>
+      call(
+        "threads.queuedMessages",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
+    reorder: (input) =>
+      call("threads.reorderQueuedMessage", {
+        id: input.threadId,
+        queuedMessageId: input.queuedMessageId,
+        previousQueuedMessageId: input.previousQueuedMessageId,
+        nextQueuedMessageId: input.nextQueuedMessageId,
+        groupBoundaryQueuedMessageId: input.groupBoundaryQueuedMessageId,
+      }),
+    send: (input) =>
+      call("threads.sendQueuedMessage", {
+        id: input.threadId,
+        queuedMessageId: input.queuedMessageId,
+        mode: input.mode,
+      }),
+    setGroupBoundary: (input) =>
+      call("threads.setQueuedMessageGroupBoundary", {
+        id: input.threadId,
+        expectedGroupedPrefixQueuedMessageIds:
+          input.expectedGroupedPrefixQueuedMessageIds,
+        groupBoundaryQueuedMessageId: input.groupBoundaryQueuedMessageId,
+      }),
+    update: ({ queuedMessageId, threadId, ...json }) =>
+      call("threads.updateQueuedMessage", {
+        id: threadId,
+        queuedMessageId,
+        ...json,
+      }),
   };
   const queue: ThreadQueueArea = {
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1["queued-messages"].$get(
-          { query: queueListQuery(input) },
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
+    list: (input) =>
+      call("queue.list", queueListQuery(input), { signal: input?.signal }),
   };
   const tabs: ThreadTabsArea = {
     async get(input) {
-      const body = await transport.readJson(
-        transport.api.v1.threads[":id"].tabs.$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
+      const body = await call(
+        "threads.tabs",
+        { id: input.threadId },
+        { signal: input.signal },
       );
       return threadTabsResponseSchema.parse(body);
     },
     async update(input) {
-      const body = await transport.readJson(
-        transport.api.v1.threads[":id"].tabs.$put({
-          param: { id: input.threadId },
-          json: {
-            expectedRevision: input.expectedRevision,
-            tabs: input.tabs,
-          },
-        }),
-      );
+      const body = await call("threads.updateTabs", {
+        id: input.threadId,
+        expectedRevision: input.expectedRevision,
+        tabs: input.tabs,
+      });
       return threadTabsResponseSchema.parse(body);
     },
   };
   return {
     archive: archiveAll,
     archiveAll,
-    async childSummary(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["child-summary"].$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async conversationOutline(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["conversation-outline"].$get(
-          {
-            param: { id: input.threadId },
-            query: input.role === undefined ? {} : { role: input.role },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async count(input) {
-      return transport.readJson(
-        transport.api.v1.threads.count.$get(
-          { query: countQuery(input) },
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async listRunning(input) {
-      return transport.readJson(
-        transport.api.v1.threads.running.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async defaultExecutionOptions(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["default-execution-options"].$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    childSummary: (input) =>
+      call(
+        "threads.childSummary",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
+    conversationOutline: (input) =>
+      call(
+        "threads.conversationOutline",
+        {
+          id: input.threadId,
+          ...(input.role === undefined ? {} : { role: input.role }),
+        },
+        { signal: input.signal },
+      ),
+    count: (input) =>
+      call("threads.count", countQuery(input), { signal: input?.signal }),
+    listRunning: (input) =>
+      call("threads.running", {}, { signal: input?.signal }),
+    defaultExecutionOptions: (input) =>
+      call(
+        "threads.defaultExecutionOptions",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
     async delete(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].$delete({
-          param: { id: input.threadId },
-          json: {
-            childThreadsConfirmed: input.childThreadsConfirmed,
-          },
-        }),
-      );
+      await send("threads.delete", {
+        id: input.threadId,
+        childThreadsConfirmed: input.childThreadsConfirmed,
+      });
       return { ok: true };
     },
-    async editMessage(input) {
-      const { threadId, ...json } = input;
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["edit-message"].$post({
-          param: { id: threadId },
-          json,
-        }),
-      );
-    },
+    editMessage: ({ threadId, ...json }) =>
+      call("threads.editMessage", { id: threadId, ...json }),
     events,
-    async fork(input) {
-      return transport.readJson(
-        transport.api.v1.threads.fork.$post({
-          json: forkJson(input),
-        }),
-      );
-    },
+    fork: async (input) => call("threads.fork", forkJson(input)),
     get: getThread,
-    async experimental_listAncestors(input) {
-      return transport.readJson(
-        transport.api.v1.threads.ancestors.$post(
-          { json: { threadIds: [...input.threadIds] } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_listDescendants(input) {
-      return transport.readJson(
-        transport.api.v1.threads.descendants.$post(
-          {
-            json: {
-              threadIds: [...input.threadIds],
-              ...(input.includeArchived === undefined
-                ? {}
-                : { includeArchived: input.includeArchived }),
-              ...(input.includeHidden === undefined
-                ? {}
-                : { includeHidden: input.includeHidden }),
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_listCascade(input) {
-      return transport.readJson(
-        transport.api.v1.threads.cascade.$post(
-          {
-            json: { threadIds: [...input.threadIds], action: input.action },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_regenerateTitle(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].title.regenerate.$post({
-          param: { id: input.threadId },
-        }),
-      );
-    },
-    async experimental_listPluginMetadata(input) {
-      return transport.readJson(
-        transport.api.v1.threads["plugin-metadata"].$post(
-          {
-            json: { pluginId: input.pluginId, threadIds: [...input.threadIds] },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async getPluginMetadata(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["plugin-metadata"].$get(
-          {
-            param: { id: input.threadId },
-            query: { pluginId: input.pluginId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async updatePluginMetadata(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["plugin-metadata"].$patch(
-          {
-            param: { id: input.threadId },
-            json: {
-              pluginId: input.pluginId,
-              ...(input.set === undefined
-                ? {}
-                : { set: validatePluginMetadata(input.set) }),
-              ...(input.remove === undefined ? {} : { remove: input.remove }),
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    experimental_listAncestors: (input) =>
+      call(
+        "threads.ancestors",
+        { threadIds: [...input.threadIds] },
+        { signal: input.signal },
+      ),
+    experimental_listDescendants: (input) =>
+      call(
+        "threads.descendants",
+        {
+          threadIds: [...input.threadIds],
+          ...(input.includeArchived === undefined
+            ? {}
+            : { includeArchived: input.includeArchived }),
+          ...(input.includeHidden === undefined
+            ? {}
+            : { includeHidden: input.includeHidden }),
+        },
+        { signal: input.signal },
+      ),
+    experimental_listCascade: (input) =>
+      call(
+        "threads.cascade",
+        { threadIds: [...input.threadIds], action: input.action },
+        { signal: input.signal },
+      ),
+    experimental_regenerateTitle: (input) =>
+      call("threads.regenerateTitle", { id: input.threadId }),
+    experimental_listPluginMetadata: (input) =>
+      call(
+        "threads.pluginMetadata.list",
+        { pluginId: input.pluginId, threadIds: [...input.threadIds] },
+        { signal: input.signal },
+      ),
+    getPluginMetadata: (input) =>
+      call(
+        "threads.pluginMetadata.get",
+        { id: input.threadId, pluginId: input.pluginId },
+        { signal: input.signal },
+      ),
+    updatePluginMetadata: async (input) =>
+      call(
+        "threads.pluginMetadata.update",
+        {
+          id: input.threadId,
+          pluginId: input.pluginId,
+          ...(input.set === undefined
+            ? {}
+            : { set: validatePluginMetadata(input.set) }),
+          ...(input.remove === undefined ? {} : { remove: input.remove }),
+        },
+        { signal: input.signal },
+      ),
     queue,
     interactions,
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.threads.$get(
-          { query: listQuery(input) },
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async markRead(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].read.$post(
-          {
-            param: { id: input.threadId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async markUnread(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].unread.$post(
-          {
-            param: { id: input.threadId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async message(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].messages[":seq"].$get(
-          {
-            param: { id: input.threadId, seq: String(input.seq) },
-            query: {
-              ...(input.before === undefined
-                ? {}
-                : { before: String(input.before) }),
-              ...(input.after === undefined
-                ? {}
-                : { after: String(input.after) }),
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async output(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].output.$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async open(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].open.$post({
-          param: { id: input.threadId },
-          json: {
-            ...(input.split === undefined ? {} : { split: input.split }),
-            file: input.file,
-          },
-        }),
-      );
-    },
-    async paneAction(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["pane-action"].$post({
-          param: { id: input.threadId },
-          json: { action: input.action },
-        }),
-      );
-    },
-    async pin(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].pin.$post({
-          param: { id: input.threadId },
-        }),
-      );
-    },
-    async promptHistory(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["prompt-history"].$get(
-          {
-            param: { id: input.threadId },
-            query: { limit: input.limit },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    list: (input) =>
+      call("threads.list", listQuery(input), { signal: input?.signal }),
+    markRead: (input) =>
+      call("threads.read", { id: input.threadId }, { signal: input.signal }),
+    markUnread: (input) =>
+      call("threads.unread", { id: input.threadId }, { signal: input.signal }),
+    message: (input) =>
+      call(
+        "threads.message",
+        {
+          id: input.threadId,
+          seq: String(input.seq),
+          ...(input.before === undefined
+            ? {}
+            : { before: String(input.before) }),
+          ...(input.after === undefined ? {} : { after: String(input.after) }),
+        },
+        { signal: input.signal },
+      ),
+    output: (input) =>
+      call("threads.output", { id: input.threadId }, { signal: input.signal }),
+    open: (input) =>
+      call("threads.open", {
+        id: input.threadId,
+        ...(input.split === undefined ? {} : { split: input.split }),
+        file: input.file,
+      }),
+    paneAction: (input) =>
+      call("threads.paneAction", { id: input.threadId, action: input.action }),
+    pin: (input) => call("threads.pin", { id: input.threadId }),
+    promptHistory: (input) =>
+      call(
+        "threads.promptHistory",
+        { id: input.threadId, limit: input.limit },
+        { signal: input.signal },
+      ),
     queuedMessages,
-    async reorderPinned(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["pin-order"].$patch({
-          param: { id: input.threadId },
-          json: {
-            previousThreadId: input.previousThreadId,
-            nextThreadId: input.nextThreadId,
-          },
-        }),
-      );
-    },
-    async resolveMentions(input) {
-      return transport.readJson(
-        transport.api.v1.threads["resolve-mentions"].$post(
-          { json: { threadIds: input.threadIds } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async search(input) {
-      return transport.readJson(
-        transport.api.v1.threads.search.$get(
-          { query: searchQuery(input) },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async send(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].send.$post({
-          param: { id: input.threadId },
-          json: sendJson(input),
-        }),
-      );
-    },
-    async restoreEnvironment(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["restore-environment"].$post({
-          param: { id: input.threadId },
-        }),
-      );
-    },
-    async retry(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].retry.$post({
-          param: { id: input.threadId },
-          json: retryJson(input),
-        }),
-      );
-    },
-    async spawn(input) {
-      return transport.readJson(
-        transport.api.v1.threads.$post({
-          json: spawnJson(input),
-        }),
-      );
-    },
+    reorderPinned: (input) =>
+      call("threads.pinOrder", {
+        id: input.threadId,
+        previousThreadId: input.previousThreadId,
+        nextThreadId: input.nextThreadId,
+      }),
+    resolveMentions: (input) =>
+      call(
+        "threads.resolveMentions",
+        { threadIds: input.threadIds },
+        { signal: input.signal },
+      ),
+    search: (input) =>
+      call("threads.search", searchQuery(input), { signal: input.signal }),
+    send: (input) =>
+      call("threads.send", { id: input.threadId, ...sendJson(input) }),
+    restoreEnvironment: (input) =>
+      call("threads.restoreEnvironment", { id: input.threadId }),
+    retry: (input) =>
+      call("threads.retry", { id: input.threadId, ...retryJson(input) }),
+    spawn: async (input) => call("threads.create", spawnJson(input)),
     async stop(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].stop.$post({
-          param: { id: input.threadId },
-        }),
-      );
+      await send("threads.stop", { id: input.threadId });
       return { ok: true };
     },
     async compact(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].compact.$post({
-          param: { id: input.threadId },
-        }),
-      );
+      await send("threads.compact", { id: input.threadId });
       return { ok: true };
     },
     async clearContext(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].context.clear.$post({
-          param: { id: input.threadId },
-        }),
-      );
+      await send("threads.clearContext", { id: input.threadId });
       return { ok: true };
     },
     async cancelPlan(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].plan.cancel.$post({
-          param: { id: input.threadId },
-        }),
-      );
+      await send("threads.cancelPlan", { id: input.threadId });
       return { ok: true };
     },
     async clearGoal(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].goal.clear.$post({
-          param: { id: input.threadId },
-        }),
-      );
+      await send("threads.clearGoal", { id: input.threadId });
       return { ok: true };
     },
     tabs,
-    async context(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].context.$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_headState(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["head-state"].$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    context: (input) =>
+      call("threads.context", { id: input.threadId }, { signal: input.signal }),
+    experimental_headState: (input) =>
+      call(
+        "threads.headState",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
     timeline,
-    async timelineTurnSummaryDetails(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].timeline["turn-summary-details"].$get(
-          {
-            param: { id: input.threadId },
-            query: {
-              turnId: input.turnId,
-              sourceSeqStart: input.sourceSeqStart,
-              sourceSeqEnd: input.sourceSeqEnd,
-              ...(input.beforeCursor === undefined
-                ? {}
-                : { beforeCursor: input.beforeCursor }),
-              ...(input.deferContent === undefined
-                ? {}
-                : { deferContent: input.deferContent }),
-              ...(input.itemId === undefined ? {} : { itemId: input.itemId }),
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async storageFiles(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["thread-storage"].files.$get(
-          {
-            param: { id: input.threadId },
-            query: { query: input.query, limit: input.limit },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async storageLocation(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["thread-storage"].location.$get(
-          {
-            param: { id: input.threadId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async storagePaths(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["thread-storage"].paths.$get(
-          {
-            param: { id: input.threadId },
-            query: {
-              query: input.query,
-              limit: input.limit,
-              includeFiles: input.includeFiles,
-              includeDirectories: input.includeDirectories,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    timelineTurnSummaryDetails: (input) =>
+      call(
+        "threads.timelineTurnSummaryDetails",
+        {
+          id: input.threadId,
+          turnId: input.turnId,
+          sourceSeqStart: input.sourceSeqStart,
+          sourceSeqEnd: input.sourceSeqEnd,
+          ...(input.beforeCursor === undefined
+            ? {}
+            : { beforeCursor: input.beforeCursor }),
+          ...(input.deferContent === undefined
+            ? {}
+            : { deferContent: input.deferContent }),
+          ...(input.itemId === undefined ? {} : { itemId: input.itemId }),
+        },
+        { signal: input.signal },
+      ),
+    storageFiles: (input) =>
+      call(
+        "threads.storageFiles",
+        { id: input.threadId, query: input.query, limit: input.limit },
+        { signal: input.signal },
+      ),
+    storageLocation: (input) =>
+      call(
+        "threads.storageLocation",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
+    storagePaths: (input) =>
+      call(
+        "threads.storagePaths",
+        {
+          id: input.threadId,
+          query: input.query,
+          limit: input.limit,
+          includeFiles: input.includeFiles,
+          includeDirectories: input.includeDirectories,
+        },
+        { signal: input.signal },
+      ),
     async unarchive(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].unarchive.$post({
-          param: { id: input.threadId },
-        }),
-      );
+      await send("threads.unarchive", { id: input.threadId });
       return { ok: true };
     },
-    async unpin(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].unpin.$post({
-          param: { id: input.threadId },
-        }),
-      );
-    },
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].$patch({
-          param: { id: input.threadId },
-          json: updateJson(input),
-        }),
-      );
-    },
+    unpin: (input) => call("threads.unpin", { id: input.threadId }),
+    update: (input) =>
+      call("threads.update", { id: input.threadId, ...updateJson(input) }),
     async wait(input) {
       const { pollIntervalMs, target, timeoutMs } =
         validateThreadWaitArgs(input);

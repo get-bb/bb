@@ -77,8 +77,8 @@ describe("/plugins/safe-mode", () => {
     const response = await put({ enabled: "yes" });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      ok: false,
-      error: "expected { enabled: boolean }",
+      code: "invalid_request",
+      message: "Invalid input: expected boolean, received string",
     });
   });
 });

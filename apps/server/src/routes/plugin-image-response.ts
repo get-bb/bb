@@ -1,3 +1,8 @@
+import {
+  bytesBody,
+  operationBodyResponse,
+  type OperationBody,
+} from "@bb/operations";
 import type { Context } from "hono";
 
 export function hashedAssetCacheControl(
@@ -9,15 +14,25 @@ export function hashedAssetCacheControl(
     : "no-store";
 }
 
+export function imageBody(
+  asset: { bytes: Uint8Array; contentType: string },
+  cacheControl: string,
+): OperationBody {
+  return bytesBody(new Uint8Array(asset.bytes), {
+    contentType: asset.contentType,
+    headers: {
+      "x-content-type-options": "nosniff",
+      "content-security-policy":
+        "default-src 'none'; style-src 'unsafe-inline'",
+      "cache-control": cacheControl,
+    },
+  });
+}
+
 export function pluginImageResponse(
-  context: Pick<Context, "body">,
+  _context: Pick<Context, "body">,
   asset: { bytes: Uint8Array; contentType: string },
   cacheControl: string,
 ): Response {
-  return context.body(new Uint8Array(asset.bytes), 200, {
-    "content-type": asset.contentType,
-    "x-content-type-options": "nosniff",
-    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'",
-    "cache-control": cacheControl,
-  });
+  return operationBodyResponse(imageBody(asset, cacheControl));
 }

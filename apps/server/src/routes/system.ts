@@ -9,7 +9,6 @@ import {
   machineEnvironmentView,
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
-import { getGateAuthKind } from "../request-context.js";
 import { serverAccessStatus } from "../services/machines/server-access.js";
 import {
   getAppSettings,
@@ -35,14 +34,13 @@ import {
 } from "@bb/domain";
 import {
   publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
   type SystemEnvironmentProvider,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
+import type { OperationCaller } from "@bb/operations";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import {
   hashedAssetCacheControl,
-  pluginImageResponse,
+  imageBody,
 } from "./plugin-image-response.js";
 import { effectivePort } from "../browser-request-guard.js";
 import {
@@ -57,7 +55,6 @@ import {
 import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
-import { readMultipartFormData } from "./multipart-form-data.js";
 import {
   buildAiServicesView,
   testAiService,
@@ -149,26 +146,23 @@ function resolveSystemServerUrl(
 }
 
 export function registerSystemRoutes(
-  app: Hono,
+  operations: OperationRoutes,
   deps: ServerAppDeps,
   pluginService: PluginService,
 ): void {
-  const { get, post, put, del } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
   const routes = publicApiRoutes.system;
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
 
   const mobileAppReleases = createMobileAppReleaseService();
-  get(routes.mobileAppReleases, async (context) => {
-    context.header("cache-control", "no-store");
-    return context.json(await mobileAppReleases());
-  });
-
-  get(routes.attention, (context) =>
-    context.json({ hasAttention: hasActiveThreadAttention(deps.db) }),
+  operations.implement(
+    routes.mobileAppReleases,
+    async () => await mobileAppReleases(),
   );
+
+  operations.implement(routes.attention, () => ({
+    hasAttention: hasActiveThreadAttention(deps.db),
+  }));
 
   function readAppKeybindingOverrides(): AppKeybindingOverrides {
     try {
@@ -242,9 +236,20 @@ export function registerSystemRoutes(
     };
   }
 
-  get(routes.config, async (context) => {
-    const serverUrl = resolveSystemServerUrl(context.req, deps.config);
-    return context.json(await buildSystemConfigResponse(serverUrl));
+  operations.implement(routes.config, async (_input, { request }) => {
+    const serverUrl = resolveSystemServerUrl(
+      request === null
+        ? {
+            url: `http://127.0.0.1:${deps.config.serverPort}/`,
+            header: () => undefined,
+          }
+        : {
+            url: request.url,
+            header: (name) => request.headers.get(name) ?? undefined,
+          },
+      deps.config,
+    );
+    return await buildSystemConfigResponse(serverUrl);
   });
 
   function compatibleGeneralSettings() {
@@ -254,54 +259,63 @@ export function registerSystemRoutes(
       showUnhandledProviderEvents: settings.showDiagnosticEvents,
     };
   }
-  post(routes.setMachineEnvironmentVariable, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
-      throw new ApiError(
-        403,
-        "forbidden",
-        "Machine credentials cannot change global environment settings",
+  operations.implement(
+    routes.setMachineEnvironmentVariable,
+    async (payload, { caller }) => {
+      if (caller.user === "machine")
+        throw new ApiError(
+          403,
+          "forbidden",
+          "Machine credentials cannot change global environment settings",
+        );
+      await setMachineEnvironmentVariable(
+        deps.db,
+        deps.config.dataDir,
+        payload,
+        null,
       );
-    await setMachineEnvironmentVariable(
-      deps.db,
-      deps.config.dataDir,
-      payload,
-      null,
-    );
-    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
-    deps.hub.notifySystem(["config-changed"]);
-    return context.json(await machineEnvironmentView(deps.db));
-  });
-
-  del(routes.deleteMachineEnvironmentVariable, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
-      throw new ApiError(
-        403,
-        "forbidden",
-        "Machine credentials cannot change global environment settings",
-      );
-    await deleteMachineEnvironmentVariable(deps.db, payload.name, null);
-    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
-    deps.hub.notifySystem(["config-changed"]);
-    return context.json(await machineEnvironmentView(deps.db));
-  });
-
-  get(routes.machineEnvironment, async (context) =>
-    context.json(await machineEnvironmentView(deps.db)),
+      deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+      deps.hub.notifySystem(["config-changed"]);
+      return await machineEnvironmentView(deps.db);
+    },
   );
-  put(routes.replaceMachineEnvironment, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
-      throw new ApiError(
-        403,
-        "forbidden",
-        "Machine credentials cannot change global environment settings",
-      );
-    await replaceMachineEnvironment(deps.db, deps.config.dataDir, payload);
-    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
-    deps.hub.notifySystem(["config-changed"]);
-    return context.json(await machineEnvironmentView(deps.db));
-  });
 
-  put(routes.generalSettings, (context, payload) => {
+  operations.implement(
+    routes.deleteMachineEnvironmentVariable,
+    async (payload, { caller }) => {
+      if (caller.user === "machine")
+        throw new ApiError(
+          403,
+          "forbidden",
+          "Machine credentials cannot change global environment settings",
+        );
+      await deleteMachineEnvironmentVariable(deps.db, payload.name, null);
+      deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+      deps.hub.notifySystem(["config-changed"]);
+      return await machineEnvironmentView(deps.db);
+    },
+  );
+
+  operations.implement(routes.machineEnvironment, async () =>
+    machineEnvironmentView(deps.db),
+  );
+  operations.implement(
+    routes.replaceMachineEnvironment,
+    async (payload, { caller }) => {
+      if (caller.user === "machine")
+        throw new ApiError(
+          403,
+          "forbidden",
+          "Machine credentials cannot change global environment settings",
+        );
+      await replaceMachineEnvironment(deps.db, deps.config.dataDir, payload);
+      deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+      deps.hub.notifySystem(["config-changed"]);
+      return await machineEnvironmentView(deps.db);
+    },
+  );
+
+  operations.implement(routes.generalSettings, (payload) => {
     const { showUnhandledProviderEvents, ...settings } = payload;
     const current = getAppSettings(deps.db);
     const diagnosticValue =
@@ -344,15 +358,15 @@ export function registerSystemRoutes(
     }
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(compatibleGeneralSettings());
+    return compatibleGeneralSettings();
   });
 
-  get(routes.setupGuide, async (context) => {
+  operations.implement(routes.setupGuide, async () => {
     const { guide } = await deps.setupGuideExperiment.resolve();
-    return context.json({ variant: guide.variant });
+    return { variant: guide.variant };
   });
 
-  post(routes.recordTelemetryEvent, async (context, payload) => {
+  operations.implement(routes.recordTelemetryEvent, async (payload) => {
     if (
       payload.name === "recommendation" &&
       payload.properties.action === "selected"
@@ -365,24 +379,24 @@ export function registerSystemRoutes(
     }
     if (payload.name === "onboarding_exposed") {
       await deps.setupGuideExperiment.recordExposure(payload.properties.entry);
-      return context.json({ ok: true });
+      return { ok: true as const };
     }
     deps.telemetry.capture(
       await deps.setupGuideExperiment.annotate(withReportedProviderId(payload)),
     );
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  put(routes.keyboardSettings, (context, payload) => {
-    setAppKeybindingOverrides(deps.db, payload);
+  operations.implement(routes.keyboardSettings, ({ overrides }) => {
+    setAppKeybindingOverrides(deps.db, overrides);
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(getAppKeybindingOverrides(deps.db));
+    return getAppKeybindingOverrides(deps.db);
   });
 
-  put(routes.experiments, (context, payload) => {
+  operations.implement(routes.experiments, (payload) => {
     setExperiments(deps.db, payload);
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(getExperiments(deps.db));
+    return getExperiments(deps.db);
   });
 
   async function requireKnownTheme(themeId: string): Promise<void> {
@@ -404,65 +418,59 @@ export function registerSystemRoutes(
     }
   }
 
-  put(routes.appearance, async (context, payload) => {
+  operations.implement(routes.appearance, async (payload) => {
     const { themeId, faviconColor } = payload;
     await requireKnownTheme(themeId);
     setStoredAppearance(deps.db, { themeId, faviconColor });
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(await resolveSelectedTheme(themeId, faviconColor));
+    return await resolveSelectedTheme(themeId, faviconColor);
   });
 
-  get(routes.resolveTheme, async (context) => {
-    const themeId = context.req.param("id");
+  operations.implement(routes.resolveTheme, async ({ id }) => {
+    const themeId = id;
     await requireKnownTheme(themeId);
-    return context.json(
-      await resolveSelectedTheme(themeId, getStoredFaviconColor(deps.db)),
-    );
+    return await resolveSelectedTheme(themeId, getStoredFaviconColor(deps.db));
   });
 
-  get(routes.themes, async (context) =>
-    context.json({
-      dir: themeRoot,
-      custom: listCustomThemeNames(themeRoot),
-      plugins: pluginService.listThemes(),
-      active: await resolveSelectedTheme(
-        getStoredThemeId(deps.db),
-        getStoredFaviconColor(deps.db),
-      ),
-    }),
-  );
+  operations.implement(routes.themes, async () => ({
+    dir: themeRoot,
+    custom: listCustomThemeNames(themeRoot),
+    plugins: pluginService.listThemes(),
+    active: await resolveSelectedTheme(
+      getStoredThemeId(deps.db),
+      getStoredFaviconColor(deps.db),
+    ),
+  }));
 
-  post(routes.reloadConfig, async (context) => {
+  operations.implement(routes.reloadConfig, async () => {
     try {
       await deps.bbAppManagedConfig.reload({ notify: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new ApiError(422, "invalid_config", message);
     }
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  get(routes.cliSkillsStatus, async (context, query) =>
-    context.json(
-      await readGlobalCliSkillStatus(deps, {
-        hostIds:
-          query.hostIds === undefined
-            ? listInstallableMachineIds(deps)
-            : query.hostIds.split(",").filter((hostId) => hostId.length > 0),
-      }),
-    ),
+  operations.implement(routes.cliSkillsStatus, async (query) =>
+    readGlobalCliSkillStatus(deps, {
+      hostIds:
+        query.hostIds === undefined
+          ? listInstallableMachineIds(deps)
+          : query.hostIds.split(",").filter((hostId) => hostId.length > 0),
+    }),
   );
 
-  post(routes.installCliSkills, async (context, body) =>
-    context.json(await installGlobalCliSkills(deps, { hostIds: body.hostIds })),
+  operations.implement(routes.installCliSkills, async (body) =>
+    installGlobalCliSkills(deps, { hostIds: body.hostIds }),
   );
 
-  get(routes.environmentProviders, async (context, query) => {
+  operations.implement(routes.environmentProviders, async (query) => {
     const project =
       query.projectId === undefined
         ? null
         : requirePublicProject(deps.db, query.projectId);
-    return context.json({
+    return {
       providers: (
         await Promise.all(
           listEnvironmentProviders()
@@ -600,11 +608,11 @@ export function registerSystemRoutes(
                 )
               ).filter((provider) => provider !== null),
         ),
-    });
+    };
   });
 
-  get(routes.machineProviders, async (context) => {
-    return context.json({
+  operations.implement(routes.machineProviders, async () => {
+    return {
       providers: await Promise.all(
         listMachineProviders().map(async (record) => ({
           id: record.provider.id,
@@ -625,30 +633,23 @@ export function registerSystemRoutes(
           supportsSuspend: record.provider.suspend !== null,
         })),
       ),
-    });
+    };
   });
 
-  get(routes.providers, async (context, query) =>
-    context.json(await listSystemProviderInfos(deps, query)),
+  operations.implement(routes.providers, async (query) =>
+    listSystemProviderInfos(deps, query),
   );
 
-  get(routes.providerCatalog, async (context) => {
+  operations.implement(routes.providerCatalog, async () => {
     await deps.providerRegistry.whenRegistrationsSettled();
-    return context.json(providerManagementCatalog(deps, pluginService));
+    return providerManagementCatalog(deps, pluginService);
   });
-  put(routes.providerEnabled, async (context, payload) =>
-    context.json(
-      await setProviderEnabled(
-        deps,
-        pluginService,
-        context.req.param("id"),
-        payload.enabled,
-      ),
-    ),
+  operations.implement(routes.providerEnabled, async ({ id, enabled }) =>
+    setProviderEnabled(deps, pluginService, id, enabled),
   );
 
-  get(routes.providerLogo, async (context) => {
-    const providerId = context.req.param("id");
+  operations.implement(routes.providerLogo, async ({ id }, { request }) => {
+    const providerId = id;
     const registration = providerId.startsWith("environment:")
       ? (getEnvironmentProvider(providerId.slice("environment:".length)) ??
         listEnvironmentCompositions().find(
@@ -659,10 +660,14 @@ export function registerSystemRoutes(
         ? getMachineProvider(providerId.slice("machine:".length))
         : deps.providerRegistry.get(providerId);
     if (registration?.icon !== undefined) {
-      return pluginImageResponse(
-        context,
+      return imageBody(
         registration.icon,
-        hashedAssetCacheControl(context.req.query("h"), registration.icon.hash),
+        hashedAssetCacheControl(
+          request === null
+            ? undefined
+            : (new URL(request.url).searchParams.get("h") ?? undefined),
+          registration.icon.hash,
+        ),
       );
     }
     throw new ApiError(
@@ -672,123 +677,115 @@ export function registerSystemRoutes(
     );
   });
 
-  get(routes.providerStates, async (context, query) =>
-    context.json(await getProviderStates(deps, query)),
+  operations.implement(routes.providerStates, async (query) =>
+    getProviderStates(deps, query),
   );
 
-  get(routes.usageLimits, async (context, query) =>
-    context.json(await getProviderUsageLimits(deps, query)),
+  operations.implement(routes.usageLimits, async (query) =>
+    getProviderUsageLimits(deps, query),
   );
 
-  get(routes.executionOptions, async (context, query) =>
-    context.json(await resolveSystemExecutionOptions(deps, query)),
+  operations.implement(routes.executionOptions, async (query) =>
+    resolveSystemExecutionOptions(deps, query),
   );
 
-  get(routes.aiServices, async (context) =>
-    context.json(await buildAiServicesView(deps)),
+  operations.implement(routes.aiServices, async () =>
+    buildAiServicesView(deps),
   );
 
-  put(routes.setAiServiceSelection, async (context, payload) =>
-    context.json(await updateAiServiceSelection(deps, payload)),
+  operations.implement(routes.setAiServiceSelection, async (payload) =>
+    updateAiServiceSelection(deps, payload),
   );
 
-  post(routes.testAiService, async (context, payload) =>
-    context.json(
-      await testAiService(deps, {
-        task: payload.task,
-        signal: context.req.raw.signal,
-      }),
-    ),
+  operations.implement(routes.testAiService, async (payload, { signal }) =>
+    testAiService(deps, {
+      task: payload.task,
+      signal,
+    }),
   );
 
-  post(routes.voiceTranscription, async (context) => {
-    const formData = await readMultipartFormData(context.req);
-    const file = formData.get("file");
-    if (!(file instanceof File)) {
-      throw new ApiError(400, "invalid_request", "Audio file is required");
-    }
-    return context.json({
-      text: await transcribeVoiceInput(deps, {
-        file,
-        prompt:
-          typeof formData.get("prompt") === "string"
-            ? String(formData.get("prompt"))
-            : undefined,
-        signal: context.req.raw.signal,
-      }),
+  operations.implement(
+    routes.voiceTranscription,
+    async (input: Record<string, unknown>, { signal }) => {
+      const file = input.file;
+      if (!(file instanceof File)) {
+        throw new ApiError(400, "invalid_request", "Audio file is required");
+      }
+      return {
+        text: await transcribeVoiceInput(deps, {
+          file,
+          prompt: typeof input.prompt === "string" ? input.prompt : undefined,
+          signal,
+        }),
+      };
+    },
+  );
+
+  operations.implement(routes.version, async (query) =>
+    deps.appVersion.getSystemVersion({
+      forceRefresh: query.force === "true",
+    }),
+  );
+
+  operations.implement(routes.appUpdate, async (query, { caller }) =>
+    deps.appUpdate.getStatus({
+      forceRefresh: query.force === "true" && caller.user !== "machine",
+    }),
+  );
+
+  operations.implement(routes.applyAppUpdate, async (body, { caller }) => {
+    assertAppUpdateAllowed(caller);
+    return await deps.appUpdate.apply({
+      confirmInterruptingThreads: body.confirmInterruptingThreads,
     });
   });
 
-  get(routes.version, async (context, query) =>
-    context.json(
-      await deps.appVersion.getSystemVersion({
-        forceRefresh: query.force === "true",
-      }),
-    ),
+  operations.implement(routes.scheduleAppUpdate, async (_input, { caller }) => {
+    assertAppUpdateAllowed(caller);
+    assertUpdateWhenIdleEnabled(deps.db);
+    return await deps.appUpdate.schedule();
+  });
+
+  operations.implement(
+    routes.cancelScheduledAppUpdate,
+    async (_input, { caller }) => {
+      assertAppUpdateAllowed(caller);
+      assertUpdateWhenIdleEnabled(deps.db);
+      return await deps.appUpdate.cancelScheduled();
+    },
   );
 
-  get(routes.appUpdate, async (context, query) =>
-    context.json(
-      await deps.appUpdate.getStatus({
-        forceRefresh:
-          query.force === "true" && getGateAuthKind(context) !== "machine",
-      }),
-    ),
+  operations.implement(routes.setAppUpdateAuto, async (body, { caller }) => {
+    assertAppUpdateAllowed(caller);
+    assertUpdateWhenIdleEnabled(deps.db);
+    return await deps.appUpdate.setAutoUpdate(body.enabled);
+  });
+
+  operations.implement(
+    routes.acknowledgeAppUpdate,
+    async (body, { caller }) => {
+      assertAppUpdateAllowed(caller);
+      return await deps.appUpdate.acknowledgeResult({ id: body.id });
+    },
   );
 
-  post(routes.applyAppUpdate, async (context, body) => {
-    assertAppUpdateAllowed(context);
-    return context.json(
-      await deps.appUpdate.apply({
-        confirmInterruptingThreads: body.confirmInterruptingThreads,
-      }),
-    );
-  });
-
-  post(routes.scheduleAppUpdate, async (context) => {
-    assertAppUpdateAllowed(context);
-    assertUpdateWhenIdleEnabled(deps.db);
-    return context.json(await deps.appUpdate.schedule());
-  });
-
-  post(routes.cancelScheduledAppUpdate, async (context) => {
-    assertAppUpdateAllowed(context);
-    assertUpdateWhenIdleEnabled(deps.db);
-    return context.json(await deps.appUpdate.cancelScheduled());
-  });
-
-  post(routes.setAppUpdateAuto, async (context, body) => {
-    assertAppUpdateAllowed(context);
-    assertUpdateWhenIdleEnabled(deps.db);
-    return context.json(await deps.appUpdate.setAutoUpdate(body.enabled));
-  });
-
-  post(routes.acknowledgeAppUpdate, async (context, body) => {
-    assertAppUpdateAllowed(context);
-    return context.json(
-      await deps.appUpdate.acknowledgeResult({ id: body.id }),
-    );
-  });
-
-  get(routes.cliCommand, async (context) =>
-    context.json(await deps.cliCommand.getStatus()),
+  operations.implement(routes.cliCommand, async () =>
+    deps.cliCommand.getStatus(),
   );
 
-  post(routes.installCliCommand, async (context) => {
-    assertCliCommandChangeAllowed(context);
-    return context.json(await deps.cliCommand.install());
+  operations.implement(routes.installCliCommand, async (_input, { caller }) => {
+    assertCliCommandChangeAllowed(caller);
+    return await deps.cliCommand.install();
   });
 
-  post(routes.removeCliCommand, async (context) => {
-    assertCliCommandChangeAllowed(context);
-    return context.json(await deps.cliCommand.remove());
+  operations.implement(routes.removeCliCommand, async (_input, { caller }) => {
+    assertCliCommandChangeAllowed(caller);
+    return await deps.cliCommand.remove();
   });
 }
 
-function assertCliCommandChangeAllowed(
-  context: Parameters<typeof getGateAuthKind>[0],
-): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertCliCommandChangeAllowed(caller: OperationCaller): void {
+  if (caller.user === "machine") {
     throw new ApiError(
       403,
       "forbidden",
@@ -810,10 +807,8 @@ function assertUpdateWhenIdleEnabled(db: ServerAppDeps["db"]): void {
   }
 }
 
-function assertAppUpdateAllowed(
-  context: Parameters<typeof getGateAuthKind>[0],
-): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertAppUpdateAllowed(caller: OperationCaller): void {
+  if (caller.user === "machine") {
     throw new ApiError(
       403,
       "forbidden",

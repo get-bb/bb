@@ -1,4 +1,10 @@
-import { createNodeBbSdk, type BbSdk } from "@bb/sdk/node";
+import {
+  createBbSdk,
+  createGuideArea,
+  createNodeTransport,
+  type BbSdk,
+  type BbSdkTransport,
+} from "@bb/sdk/node";
 import {
   CALLER_THREAD_HEADER_NAME,
   CLI_REQUEST_HEADER_NAME,
@@ -35,6 +41,16 @@ function cliSdkFetch(timeoutMs: number | undefined): typeof cliFetch {
   };
 }
 
+export function createCliTransport(
+  baseUrl: string,
+  timeoutMs?: number,
+): BbSdkTransport {
+  return createNodeTransport({ baseUrl, fetch: cliSdkFetch(timeoutMs) });
+}
+
 export function createCliBbSdk(baseUrl: string, timeoutMs?: number): BbSdk {
-  return createNodeBbSdk({ baseUrl, fetch: cliSdkFetch(timeoutMs) });
+  return createBbSdk({
+    guide: createGuideArea(),
+    transport: createCliTransport(baseUrl, timeoutMs),
+  });
 }

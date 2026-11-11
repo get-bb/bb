@@ -1,4 +1,3 @@
-import { archiveEnvironmentThreads } from "../../src/services/threads/thread-archive.js";
 import {
   beginProjectDeletion,
   advanceProjectDeletion,
@@ -316,9 +315,12 @@ it("environment archival stops cross-environment lifecycle dependents on their o
       threadId: deleted.id,
       deletedAt: 100,
     });
-    const archivedIds = archiveEnvironmentThreads(harness.deps, {
-      environment: ownerEnvironment,
-    });
+    const response = await harness.app.request(
+      `/api/v1/environments/${ownerEnvironment.id}/archive-threads`,
+      { method: "POST" },
+    );
+    expect(response.status).toBe(200);
+    const { archivedThreadIds: archivedIds } = await response.json();
     expect(archivedIds).toEqual(
       expect.arrayContaining([sidebarChild.id, hiddenFork.id]),
     );

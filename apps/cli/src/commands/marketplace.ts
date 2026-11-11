@@ -1,10 +1,14 @@
 import { resolve } from "node:path";
-import { Command } from "commander";
-import type { PluginMarketplace } from "@bb/server-contract";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import type { Command } from "commander";
+import {
+  pluginMarketplaceListResponseSchema,
+  pluginMarketplaceMutationResponseSchema,
+  pluginMarketplaceRefreshResponseSchema,
+  type PluginMarketplace,
+} from "@bb/server-contract";
+import { arg, flag } from "../cli-door.js";
+import { mountCommands, publicCommand } from "../operation-doors.js";
 import { renderBorderlessTable } from "../table.js";
-import { outputJson, type JsonOutputOptions } from "./helpers.js";
 
 function normalizeSource(source: string): string {
   const trimmed = source.trim();
@@ -35,145 +39,123 @@ function printMarketplace(marketplace: PluginMarketplace): void {
   }
 }
 
+const JSON_OPTION = { json: flag("--json", "Output JSON") };
+
+const marketplaceCommands = [
+  publicCommand("marketplaces.add", {
+    path: ["marketplace", "add"],
+    summary:
+      "Add a marketplace from an https manifest URL, git:<url>[@<ref>], or path:<directory> (validates and caches the catalog; installs nothing)",
+    positionals: { source: arg("<source>") },
+    options: {
+      subdirectory: flag(
+        "--subdirectory <path>",
+        "Read marketplace.json from this directory of a git: repository instead of its root",
+      ),
+      ...JSON_OPTION,
+    },
+    prepare: ({ positionals, options }) => ({
+      source: normalizeSource(positionals.source),
+      ...(options.subdirectory === undefined
+        ? {}
+        : { subdirectory: options.subdirectory }),
+    }),
+    json: (output) =>
+      pluginMarketplaceMutationResponseSchema.parse(output).marketplace,
+    print: (output) => {
+      const added =
+        pluginMarketplaceMutationResponseSchema.parse(output).marketplace;
+      console.log(`Added marketplace ${added.name}:`);
+      printMarketplace(added);
+      return `Adding a marketplace installs nothing. Install an entry with \`bb plugin install <id>@${added.name}\`.`;
+    },
+  }),
+  publicCommand("marketplaces.list", {
+    path: ["marketplace", "list"],
+    summary: "List the marketplaces bb reads catalogs from",
+    options: JSON_OPTION,
+    json: (output) =>
+      pluginMarketplaceListResponseSchema.parse(output).marketplaces,
+    print: (output) => {
+      const { marketplaces } =
+        pluginMarketplaceListResponseSchema.parse(output);
+      const showSubdirectory = marketplaces.some(
+        (entry) => entry.subdirectory !== null,
+      );
+      return renderBorderlessTable(
+        {
+          head: [
+            "Name",
+            "Source",
+            ...(showSubdirectory ? ["Subdirectory"] : []),
+            "Entries",
+            "Refreshed",
+          ],
+          colWidths: [
+            24,
+            showSubdirectory ? 42 : 58,
+            ...(showSubdirectory ? [16] : []),
+            9,
+            26,
+          ],
+          trimTrailingWhitespace: true,
+        },
+        marketplaces.map((entry) => [
+          entry.official ? `${entry.name} (official)` : entry.name,
+          entry.source,
+          ...(showSubdirectory ? [entry.subdirectory ?? ""] : []),
+          String(entry.entryCount),
+          entry.lastError === null
+            ? formatTimestamp(entry.lastRefreshAt)
+            : `failed: ${entry.lastError}`,
+        ]),
+      );
+    },
+  }),
+  publicCommand("marketplaces.refresh", {
+    path: ["marketplace", "refresh"],
+    summary:
+      "Re-read one marketplace catalog, or every one of them. Discovery metadata and icons only: a refresh never installs, updates, or runs plugin code",
+    positionals: { name: arg("[name]") },
+    options: JSON_OPTION,
+    json: (output) =>
+      pluginMarketplaceRefreshResponseSchema.parse(output).results,
+    print: (output) =>
+      pluginMarketplaceRefreshResponseSchema
+        .parse(output)
+        .results.map((result) =>
+          result.ok
+            ? `${result.name}: ${result.marketplace.entryCount} entries`
+            : `${result.name}: refresh failed (${result.error ?? "unknown error"}); keeping the last catalog`,
+        ),
+    exitCode: ({ results }, _input, json) =>
+      !json && results.some((result) => !result.ok) ? 1 : 0,
+  }),
+  publicCommand("marketplaces.remove", {
+    path: ["marketplace", "remove"],
+    summary:
+      "Forget a marketplace. bb-official and bb-community cannot be removed. Installed plugins keep their direct sources",
+    positionals: { name: arg("<name>") },
+    options: JSON_OPTION,
+    json: (output) => ({ convertedPluginIds: output.convertedPluginIds }),
+    print: (removed, input) => {
+      const lines = [`Removed marketplace ${input.name}.`];
+      if (removed.convertedPluginIds.length > 0) {
+        lines.push(
+          `Kept as direct installs: ${removed.convertedPluginIds.join(", ")}`,
+        );
+      }
+      return lines.join("\n");
+    },
+  }),
+];
+
 export function registerMarketplaceCommands(
   program: Command,
   getUrl: () => string,
 ): void {
-  const marketplace = program
+  program
     .command("marketplace")
     .description("Manage the plugin marketplaces bb reads catalogs from");
-
-  marketplace
-    .command("add <source>")
-    .description(
-      "Add a marketplace from an https manifest URL, git:<url>[@<ref>], or path:<directory> (validates and caches the catalog; installs nothing)",
-    )
-    .option(
-      "--subdirectory <path>",
-      "Read marketplace.json from this directory of a git: repository instead of its root",
-    )
-    .option("--json", "Output JSON")
-    .action(
-      action(
-        async (
-          source: string,
-          opts: JsonOutputOptions & { subdirectory?: string },
-        ) => {
-          const added = await createCliBbSdk(getUrl()).plugins.marketplaces.add(
-            {
-              source: normalizeSource(source),
-              ...(opts.subdirectory === undefined
-                ? {}
-                : { subdirectory: opts.subdirectory }),
-            },
-          );
-          if (opts.json) {
-            outputJson(opts, added);
-            return;
-          }
-          console.log(`Added marketplace ${added.name}:`);
-          printMarketplace(added);
-          console.log(
-            `Adding a marketplace installs nothing. Install an entry with \`bb plugin install <id>@${added.name}\`.`,
-          );
-        },
-      ),
-    );
-
-  marketplace
-    .command("list")
-    .description("List the marketplaces bb reads catalogs from")
-    .option("--json", "Output JSON")
-    .action(
-      action(async (opts: JsonOutputOptions) => {
-        const marketplaces =
-          await createCliBbSdk(getUrl()).plugins.marketplaces.list();
-        if (opts.json) {
-          outputJson(opts, marketplaces);
-          return;
-        }
-        const showSubdirectory = marketplaces.some(
-          (entry) => entry.subdirectory !== null,
-        );
-        console.log(
-          renderBorderlessTable(
-            {
-              head: [
-                "Name",
-                "Source",
-                ...(showSubdirectory ? ["Subdirectory"] : []),
-                "Entries",
-                "Refreshed",
-              ],
-              colWidths: [
-                24,
-                showSubdirectory ? 42 : 58,
-                ...(showSubdirectory ? [16] : []),
-                9,
-                26,
-              ],
-              trimTrailingWhitespace: true,
-            },
-            marketplaces.map((entry) => [
-              entry.official ? `${entry.name} (official)` : entry.name,
-              entry.source,
-              ...(showSubdirectory ? [entry.subdirectory ?? ""] : []),
-              String(entry.entryCount),
-              entry.lastError === null
-                ? formatTimestamp(entry.lastRefreshAt)
-                : `failed: ${entry.lastError}`,
-            ]),
-          ),
-        );
-      }),
-    );
-
-  marketplace
-    .command("refresh [name]")
-    .description(
-      "Re-read one marketplace catalog, or every one of them. Discovery metadata and icons only: a refresh never installs, updates, or runs plugin code",
-    )
-    .option("--json", "Output JSON")
-    .action(
-      action(async (name: string | undefined, opts: JsonOutputOptions) => {
-        const results = await createCliBbSdk(
-          getUrl(),
-        ).plugins.marketplaces.refresh(name === undefined ? {} : { name });
-        if (opts.json) {
-          outputJson(opts, results);
-          return;
-        }
-        for (const result of results) {
-          console.log(
-            result.ok
-              ? `${result.name}: ${result.marketplace.entryCount} entries`
-              : `${result.name}: refresh failed (${result.error ?? "unknown error"}); keeping the last catalog`,
-          );
-        }
-        if (results.some((result) => !result.ok)) process.exit(1);
-      }),
-    );
-
-  marketplace
-    .command("remove <name>")
-    .description(
-      "Forget a marketplace. bb-official and bb-community cannot be removed. Installed plugins keep their direct sources",
-    )
-    .option("--json", "Output JSON")
-    .action(
-      action(async (name: string, opts: JsonOutputOptions) => {
-        const removed = await createCliBbSdk(
-          getUrl(),
-        ).plugins.marketplaces.remove({ name });
-        if (opts.json) {
-          outputJson(opts, removed);
-          return;
-        }
-        console.log(`Removed marketplace ${name}.`);
-        if (removed.convertedPluginIds.length === 0) return;
-        console.log(
-          `Kept as direct installs: ${removed.convertedPluginIds.join(", ")}`,
-        );
-      }),
-    );
+  mountCommands(program, marketplaceCommands, { getUrl });
 }

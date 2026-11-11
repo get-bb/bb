@@ -5,14 +5,10 @@ import {
   normalizeThreadSectionName,
   renameThreadSection,
 } from "@bb/db";
-import {
-  publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
-} from "@bb/server-contract";
-import type { Hono } from "hono";
+import { publicApiRoutes } from "@bb/server-contract";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
+import type { OperationRoutes } from "../kernel/http-door.js";
 
 function requireSectionName(name: string): string {
   const normalized = normalizeThreadSectionName(name);
@@ -30,25 +26,25 @@ function throwDuplicateSectionName(): never {
   );
 }
 
-export function registerThreadSectionRoutes(app: Hono, deps: AppDeps): void {
-  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
+export function registerThreadSectionRoutes(
+  operations: OperationRoutes,
+  deps: AppDeps,
+): void {
   const routes = publicApiRoutes.threadSections;
 
-  get(routes.list, (context) => context.json(listThreadSections(deps.db)));
+  operations.implement(routes.list, () => listThreadSections(deps.db));
 
-  post(routes.create, (context, payload) => {
+  operations.implement(routes.create, (payload) => {
     const result = createThreadSection(deps.db, deps.hub, {
       name: requireSectionName(payload.name),
     });
     if (result.status === "duplicate") {
       throwDuplicateSectionName();
     }
-    return context.json(result.section, 201);
+    return result.section;
   });
 
-  patch(routes.update, (context, payload) => {
+  operations.implement(routes.update, (payload) => {
     const result = renameThreadSection(deps.db, deps.hub, {
       id: payload.id,
       name: requireSectionName(payload.name),
@@ -59,14 +55,14 @@ export function registerThreadSectionRoutes(app: Hono, deps: AppDeps): void {
     if (result.status === "duplicate") {
       throwDuplicateSectionName();
     }
-    return context.json(result.result);
+    return result.result;
   });
 
-  del(routes.delete, (context, payload) => {
+  operations.implement(routes.delete, (payload) => {
     const result = deleteThreadSection(deps.db, deps.hub, { id: payload.id });
     if (!result) {
       throw new ApiError(404, "section_not_found", "Section not found");
     }
-    return context.json(result);
+    return result;
   });
 }

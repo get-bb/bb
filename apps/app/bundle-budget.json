@@ -49,6 +49,12 @@
     "still moved the compressed closure 0.6 KB through minifier renaming and",
     "chunk-hash churn alone. The raw limit did not change.",
     "",
+    "On 2026-11-11 the boot brotli limit rose 1 KiB for the SDK's route index",
+    "(#7198): every SDK call now goes through one operation caller that looks",
+    "up each operation's method and path by name. The index is generated with",
+    "one compact string per operation and adds about 2.5 KB brotli over main,",
+    "most of it the operation names. The raw limit did not change.",
+    "",
     "There is deliberately no per-chunk limit. Parse and compile cost scales",
     "with the total bytes on the boot path, not with how they are divided, so",
     "splitting one boot chunk into two would satisfy a per-chunk cap while",
@@ -147,7 +153,7 @@
     "291.1 KB to 4 / 252.0 KB. Their limits are unchanged."
   ],
   "maxBootBytes": 1722436,
-  "maxBootBrotliBytes": 424031,
+  "maxBootBrotliBytes": 425055,
   "forbiddenBootPackages": [
     "@dnd-kit/accessibility",
     "@dnd-kit/core",

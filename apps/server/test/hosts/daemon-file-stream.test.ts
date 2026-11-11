@@ -1,7 +1,14 @@
 import { Buffer } from "node:buffer";
 import { describe, expect, it, vi } from "vitest";
 import { HOST_FILE_CHUNK_MAX_BYTES } from "@bb/host-daemon-contract";
-import { createDaemonFileStreamResponse } from "../../src/services/hosts/daemon-file-stream.js";
+import { operationBodyResponse } from "@bb/operations";
+import { createDaemonFileStreamBody } from "../../src/services/hosts/daemon-file-stream.js";
+
+async function createDaemonFileStreamResponse(
+  ...args: Parameters<typeof createDaemonFileStreamBody>
+): Promise<Response> {
+  return operationBodyResponse(await createDaemonFileStreamBody(...args));
+}
 
 const metadata = {
   path: "/tmp/clip.mp4",

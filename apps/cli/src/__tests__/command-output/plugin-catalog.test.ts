@@ -1,6 +1,8 @@
 import { sep } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createApiClient } from "@bb/server-contract";
 import {
+  createClientMock,
   collectLogPayloads,
   getHelpOutput,
   readlineMocks,
@@ -115,6 +117,9 @@ function json(value: object, status = 200): Response {
 
 describe("bb plugin catalog", () => {
   setupCommandOutputTestEnvironment();
+  beforeEach(() => {
+    createClientMock.mockReturnValue(createApiClient("http://server"));
+  });
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
 
@@ -503,6 +508,40 @@ describe("bb plugin catalog", () => {
     await runCommand(["plugin", "install", "linear"], register);
 
     expect(readlineMocks.question).toHaveBeenCalledWith("Install? [y/N] ");
+  });
+
+  it("prints Aborted. and exits 1 when a catalog install is declined", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(json({ results: [searchResult] }))
+      .mockResolvedValueOnce(json({ plan: bundledPlan }));
+    readlineMocks.question.mockResolvedValue("n");
+
+    await runCommand(["plugin", "install", "linear"], register);
+
+    expect(readlineMocks.question).toHaveBeenCalledWith("Install? [y/N] ");
+    expect(collectLogPayloads(vi.mocked(console.log)).at(-1)).toBe("Aborted.");
+    expect(process.exitCode).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a catalog install without a terminal", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(json({ results: [searchResult] }))
+      .mockResolvedValueOnce(json({ plan: bundledPlan }));
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+
+    await runCommand(["plugin", "install", "linear"], register);
+
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Refusing to install without confirmation — re-run with --yes.",
+    );
+    expect(readlineMocks.question).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 
   it("reports both interpretations and direct-source escape hatches", async () => {

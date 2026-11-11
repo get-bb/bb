@@ -121,9 +121,12 @@ export type ResolvePluginRpcCaller = (
 ) => PluginRpcCallerResolution;
 
 export function resolveRequestSource(
-  context: RequestHeaderReader,
+  request: Request | null,
   resolvePluginCaller: ResolvePluginRpcCaller,
 ): RequestSource {
+  const context: RequestHeaderReader = {
+    req: { header: (name) => request?.headers.get(name) ?? undefined },
+  };
   const pluginCaller = resolvePluginCaller(
     context.req.header(PLUGIN_RPC_CALLER_HEADER),
   );

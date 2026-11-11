@@ -1,11 +1,6 @@
-import type { Hono } from "hono";
 import { listQueuedThreadMessagesForApi } from "@bb/db";
-import {
-  publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
-} from "@bb/server-contract";
-import { ApiError } from "../errors.js";
+import { publicApiRoutes } from "@bb/server-contract";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import type { AppDeps } from "../types.js";
 import { toThreadQueuedMessage } from "../services/threads/thread-queued-messages.js";
 
@@ -19,19 +14,16 @@ import { toThreadQueuedMessage } from "../services/threads/thread-queued-message
  * recovering the rows it is holding after a restart. It replaced `GET /holds`,
  * which existed for exactly the same reason.
  */
-export function registerQueueRoutes(app: Hono, deps: AppDeps): void {
-  const { get } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
-
-  get(publicApiRoutes.queue.list, (context, query) => {
-    return context.json(
-      listQueuedThreadMessagesForApi(deps.db, {
-        ...(query.threadId !== undefined ? { threadId: query.threadId } : {}),
-        ...(query.waitHolder !== undefined
-          ? { waitHolder: query.waitHolder }
-          : {}),
-      }).map(toThreadQueuedMessage),
-    );
-  });
+export function registerQueueRoutes(
+  routes: OperationRoutes,
+  deps: AppDeps,
+): void {
+  routes.implement(publicApiRoutes.queue.list, (query) =>
+    listQueuedThreadMessagesForApi(deps.db, {
+      ...(query.threadId !== undefined ? { threadId: query.threadId } : {}),
+      ...(query.waitHolder !== undefined
+        ? { waitHolder: query.waitHolder }
+        : {}),
+    }).map(toThreadQueuedMessage),
+  );
 }

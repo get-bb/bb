@@ -1,21 +1,21 @@
-import type { Hono } from "hono";
+import { publicApiRoutes } from "@bb/server-contract";
+import { JsonBodyApiError } from "../errors.js";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import type { PluginUpdateJobs } from "../services/plugins/plugin-update-jobs.js";
 
 export function registerPluginUpdateJobRoutes(
-  app: Hono,
+  routes: OperationRoutes,
   jobs: PluginUpdateJobs,
 ): void {
-  app.get("/plugins/update-jobs", (context) =>
-    context.json({ jobs: jobs.list() }),
-  );
-  app.get("/plugins/update-jobs/:jobId", (context) => {
-    const job = jobs.get(context.req.param("jobId"));
+  const contract = publicApiRoutes.plugins;
+  routes.implement(contract.updateJobs, () => ({ jobs: jobs.list() }));
+  routes.implement(contract.updateJob, ({ jobId }) => {
+    const job = jobs.get(jobId);
     if (job === undefined) {
-      return context.json(
-        { error: "unknown update job; the server may have restarted" },
-        404,
-      );
+      throw new JsonBodyApiError(404, {
+        error: "unknown update job; the server may have restarted",
+      });
     }
-    return context.json({ job });
+    return { job };
   });
 }

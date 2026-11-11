@@ -1,3 +1,4 @@
+import { bytesBody } from "@bb/operations";
 import { joinHostPathSegments } from "../services/lib/host-path.js";
 import { serverAccess } from "../services/machines/server-access.js";
 import {
@@ -6,17 +7,16 @@ import {
   getPublicProjectByLocalPathSource,
   updateHost,
 } from "@bb/db";
+import type { OperationCaller } from "@bb/operations";
 import {
   publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
+  type HostProviderCliInstallJob,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   type ProviderCliInstallActionKind,
 } from "@bb/host-daemon-contract";
-import type { HostProviderCliInstallJob } from "@bb/server-contract";
 import type { AppDeps } from "../types.js";
 import {
   getProviderInstallations,
@@ -28,10 +28,6 @@ import { resolveBridgeLaunchForProviderId } from "../services/system/provider-br
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
-import {
-  getGateAuthKind,
-  type RequestHeaderReader,
-} from "../request-context.js";
 import {
   listPublicHostsWithStatus,
   requireNonDestroyedHostWithStatus,
@@ -85,8 +81,8 @@ function requireMutableHost(deps: AppDeps, hostId: string) {
   return host;
 }
 
-function assertHostManagementAllowed(context: RequestHeaderReader): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertHostManagementAllowed(caller: OperationCaller): void {
+  if (caller.user === "machine") {
     throw new ApiError(
       403,
       "machine_host_management_forbidden",
@@ -137,73 +133,59 @@ async function revokeConnectMachineCredential(
 }
 
 export function registerHostRoutes(
-  app: Hono,
+  operations: OperationRoutes,
   deps: AppDeps,
   plugins: PluginService,
 ): void {
-  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (message) =>
-      new ApiError(400, "invalid_request", message),
-  });
   const routes = publicApiRoutes.hosts;
 
-  post(routes.create, async (context, payload) => {
-    assertHostManagementAllowed(context);
-    return context.json(await submitMachine(deps, payload), 201);
+  operations.implement(routes.create, async (payload, { caller }) => {
+    assertHostManagementAllowed(caller);
+    return await submitMachine(deps, payload);
   });
 
-  post(routes.createJoinCode, async (context) => {
-    assertHostManagementAllowed(context);
+  operations.implement(routes.createJoinCode, async (_input, { caller }) => {
+    assertHostManagementAllowed(caller);
     const issued = await issueHostEnrollKey(deps, {
       enrollSource: "public-multi-machine",
     });
-    return context.json(
-      {
-        joinCode: issued.enrollKey.key,
-        hostId: issued.hostId,
-        expiresAt: issued.enrollKey.expiresAt,
-      },
-      201,
-    );
+    return {
+      joinCode: issued.enrollKey.key,
+      hostId: issued.hostId,
+      expiresAt: issued.enrollKey.expiresAt,
+    };
   });
 
-  get(routes.list, (context, query) =>
-    context.json(
-      listPublicHostsWithStatus(deps, {
-        includeCreating: query.includeCreating === "true",
-        type: query.type,
-      }),
-    ),
+  operations.implement(routes.list, (query) =>
+    listPublicHostsWithStatus(deps, {
+      includeCreating: query.includeCreating === "true",
+      type: query.type,
+    }),
   );
 
-  get(routes.get, (context) => {
-    const hostId = context.req.param("id");
+  operations.implement(routes.get, ({ id }) => {
+    const hostId = id;
     const host = requireNonDestroyedHostWithStatus(deps, hostId);
     const session = getLatestSessionForHost(deps.db, { hostId });
-    return context.json({
+    return {
       ...host,
       connectMachineId: requireMutableHost(deps, hostId).connectMachineId,
       threadStorageRootPath:
         session === null
           ? null
           : joinHostPathSegments(session.dataDir, "thread-storage"),
-    });
+    };
   });
 
-  get(routes.enrollmentCommand, async (context) => {
-    assertHostManagementAllowed(context);
-    requireMutableHost(deps, context.req.param("id"));
-    return context.json(
-      await manualHostCommand(
-        getMachineEnrollmentService(deps),
-        context.req.param("id"),
-      ),
-    );
+  operations.implement(routes.enrollmentCommand, async ({ id }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    requireMutableHost(deps, id);
+    return manualHostCommand(getMachineEnrollmentService(deps), id);
   });
 
-  post(routes.reconnect, async (context) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
+  operations.implement(routes.reconnect, async ({ id }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    const hostId = id;
     const host = requireMutableHost(deps, hostId);
     if (resolvePrimaryHostId(deps) === hostId || host.phase !== "active")
       throw new ApiError(
@@ -217,12 +199,12 @@ export function registerHostRoutes(
         "machine_reconnect_not_needed",
         "Machine is connected and doesn't need reconnecting",
       );
-    return context.json(await prepareReconnect(deps, hostId), 201);
+    return await prepareReconnect(deps, hostId);
   });
 
-  patch(routes.update, (context, payload) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
+  operations.implement(routes.update, ({ id, ...payload }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    const hostId = id;
     requireMutableHost(deps, hostId);
     const updated = updateHost(deps.db, deps.hub, hostId, {
       name: payload.name,
@@ -231,26 +213,29 @@ export function registerHostRoutes(
       throw new ApiError(404, "host_not_found", "Host not found");
     }
     deps.hub.notifyHost(hostId, ["host-connected"]);
-    return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
+    return requireNonDestroyedHostWithStatus(deps, updated.id);
   });
 
-  patch(routes.updatePermissionCeiling, (context, payload) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
-    requireMutableHost(deps, hostId);
-    const updated = updateHost(deps.db, deps.hub, hostId, {
-      maxPermissionMode: payload.maxPermissionMode,
-    });
-    if (!updated) {
-      throw new ApiError(404, "host_not_found", "Host not found");
-    }
-    deps.hub.notifyHost(hostId, ["host-connected"]);
-    return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
-  });
+  operations.implement(
+    routes.updatePermissionCeiling,
+    ({ id, ...payload }, { caller }) => {
+      assertHostManagementAllowed(caller);
+      const hostId = id;
+      requireMutableHost(deps, hostId);
+      const updated = updateHost(deps.db, deps.hub, hostId, {
+        maxPermissionMode: payload.maxPermissionMode,
+      });
+      if (!updated) {
+        throw new ApiError(404, "host_not_found", "Host not found");
+      }
+      deps.hub.notifyHost(hostId, ["host-connected"]);
+      return requireNonDestroyedHostWithStatus(deps, updated.id);
+    },
+  );
 
-  post(routes.retryUpdate, (context) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
+  operations.implement(routes.retryUpdate, ({ id }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    const hostId = id;
     const host = requireMutableHost(deps, hostId);
     if (host.lastRejectedProtocolVersion === null) {
       throw new ApiError(
@@ -267,44 +252,44 @@ export function registerHostRoutes(
       );
     }
     deps.hub.requestHostProtocolUpdateRetry(hostId);
-    return context.json({ ok: true as const });
+    return { ok: true as const };
   });
 
-  post(routes.reconcile, (context) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
+  operations.implement(routes.reconcile, ({ id }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    const hostId = id;
     startMachineReconciliation(deps, hostId);
-    return context.json(requireNonDestroyedHostWithStatus(deps, hostId), 202);
+    return requireNonDestroyedHostWithStatus(deps, hostId);
   });
 
-  post(routes.suspend, (context) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
+  operations.implement(routes.suspend, ({ id }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    const hostId = id;
     assertNotServerMachine(deps, hostId);
     startMachineSuspension(deps, hostId);
-    return context.json(requireNonDestroyedHostWithStatus(deps, hostId), 202);
+    return requireNonDestroyedHostWithStatus(deps, hostId);
   });
 
-  post(routes.resume, (context) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
+  operations.implement(routes.resume, ({ id }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    const hostId = id;
     assertNotServerMachine(deps, hostId);
     startMachineResume(deps, hostId);
-    return context.json(requireNonDestroyedHostWithStatus(deps, hostId), 202);
+    return requireNonDestroyedHostWithStatus(deps, hostId);
   });
 
-  post(routes.retryCleanup, async (context) => {
-    assertHostManagementAllowed(context);
-    await retryMachineCleanup(deps, context.req.param("id"));
-    return context.json({ ok: true as const });
+  operations.implement(routes.retryCleanup, async ({ id }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    await retryMachineCleanup(deps, id);
+    return { ok: true as const };
   });
 
-  del(routes.delete, async (context, query) => {
-    assertHostManagementAllowed(context);
-    const hostId = context.req.param("id");
+  operations.implement(routes.delete, async ({ id, ...query }, { caller }) => {
+    assertHostManagementAllowed(caller);
+    const hostId = id;
     if (query.force === "true") {
       await forceMachineRemoval(deps, hostId);
-      return context.json({ ok: true as const });
+      return { ok: true as const };
     }
     const host = requireMutableHost(deps, hostId);
     if (resolvePrimaryHostId(deps) === hostId) {
@@ -319,7 +304,7 @@ export function registerHostRoutes(
       requestMachineRemoval(deps, hostId);
       settleRemovedHostWork(deps, { hostId });
       await sweepProviderMachine(deps, hostId);
-      return context.json({ ok: true });
+      return { ok: true as const };
     }
 
     await serverAccess.release(deps, { key: hostId, hostId });
@@ -343,11 +328,11 @@ export function registerHostRoutes(
         host.connectMachineId,
       );
     }
-    return context.json({ ok: true });
+    return { ok: true as const };
   });
 
-  get(routes.discoveredRepos, async (context) => {
-    const hostId = context.req.param("id");
+  operations.implement(routes.discoveredRepos, async ({ id }) => {
+    const hostId = id;
     assertUsableHostId(deps, { hostId });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
@@ -359,7 +344,7 @@ export function registerHostRoutes(
         limit: DISCOVERED_REPOS_LIMIT,
       },
     });
-    return context.json({
+    return {
       repos: result.repos.map((repo) => ({
         ...repo,
         projectId:
@@ -371,11 +356,11 @@ export function registerHostRoutes(
       })),
       truncated: result.truncated,
       unreadableCount: result.unreadableCount,
-    });
+    };
   });
 
-  get(routes.directory, async (context, query) => {
-    const hostId = context.req.param("id");
+  operations.implement(routes.directory, async ({ id, ...query }) => {
+    const hostId = id;
     assertUsableHostId(deps, { hostId });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
@@ -385,11 +370,11 @@ export function registerHostRoutes(
         ...(query.path ? { path: query.path } : {}),
       },
     });
-    return context.json(result);
+    return result;
   });
 
-  get(routes.cloneDefaultPath, async (context, query) => {
-    const hostId = context.req.param("id");
+  operations.implement(routes.cloneDefaultPath, async ({ id, ...query }) => {
+    const hostId = id;
     assertUsableHostId(deps, { hostId });
     const project = requirePublicStandardProject(deps.db, query.projectId);
     const result = await callHostRetryableOnlineRpc(deps, {
@@ -400,11 +385,11 @@ export function registerHostRoutes(
         projectSlug: project.name,
       },
     });
-    return context.json(result);
+    return result;
   });
 
-  post(routes.pathsExist, async (context, payload) => {
-    const hostId = context.req.param("id");
+  operations.implement(routes.pathsExist, async ({ id, ...payload }) => {
+    const hostId = id;
     assertUsableHostId(deps, { hostId });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
@@ -414,11 +399,11 @@ export function registerHostRoutes(
         paths: payload.paths,
       },
     });
-    return context.json(result);
+    return result;
   });
 
-  post(routes.pickFolder, async (context, payload) => {
-    const hostId = context.req.param("id");
+  operations.implement(routes.pickFolder, async ({ id, ...payload }) => {
+    const hostId = id;
     assertUsableHostId(deps, { hostId });
     if (payload.clientHostId !== hostId) {
       throw new ApiError(
@@ -434,17 +419,17 @@ export function registerHostRoutes(
         type: "host.pick_folder",
       },
     });
-    return context.json(result);
+    return result;
   });
 
-  get(routes.providerCliStatus, async (context, query) => {
-    const hostId = context.req.param("id");
+  operations.implement(routes.providerCliStatus, async ({ id, ...query }) => {
+    const hostId = id;
     assertUsableHostId(deps, { hostId });
     const result = await getProviderInstallations(deps, {
       hostId,
       mode: query.refresh === "true" ? "refresh" : "read",
     });
-    return context.json(result);
+    return result;
   });
 
   const installJobs = createJobRegistry<HostProviderCliInstallJob>({
@@ -543,40 +528,47 @@ export function registerHostRoutes(
     });
   };
 
-  post(routes.providerCliInstall, async (context, payload) => {
-    const job = await startInstallJob(context.req.param("id"), payload);
-    const outcome = await installJobs.settled(job.id);
-    if (outcome?.job.state !== "completed") throw outcome?.error;
-    return new Response(providerCliInstallEventsToNdjson(outcome.job.events), {
-      headers: {
-        "content-type": "application/x-ndjson; charset=utf-8",
-        "cache-control": "no-store",
-      },
-    });
+  operations.implement(
+    routes.providerCliInstall,
+    async ({ id, ...payload }) => {
+      const job = await startInstallJob(id, payload);
+      const outcome = await installJobs.settled(job.id);
+      if (outcome?.job.state !== "completed") throw outcome?.error;
+      return bytesBody(
+        new TextEncoder().encode(
+          providerCliInstallEventsToNdjson(outcome.job.events),
+        ),
+        {
+          contentType: "application/x-ndjson; charset=utf-8",
+          headers: { "cache-control": "no-store" },
+        },
+      );
+    },
+  );
+
+  operations.implement(
+    routes.providerCliInstallJobStart,
+    async ({ id, ...payload }) => ({
+      job: await startInstallJob(id, payload),
+    }),
+  );
+
+  operations.implement(routes.providerCliInstallJobList, ({ id }) => {
+    assertUsableHostId(deps, { hostId: id });
+    return {
+      jobs: installJobs.list().filter((job) => job.hostId === id),
+    };
   });
 
-  post(routes.providerCliInstallJobStart, async (context, payload) => {
-    const job = await startInstallJob(context.req.param("id"), payload);
-    return context.json({ job }, 202);
-  });
-
-  get(routes.providerCliInstallJobList, (context) => {
-    const hostId = context.req.param("id");
-    assertUsableHostId(deps, { hostId });
-    return context.json({
-      jobs: installJobs.list().filter((job) => job.hostId === hostId),
-    });
-  });
-
-  get(routes.providerCliInstallJobGet, (context) => {
-    const job = installJobs.get(context.req.param("jobId"));
-    if (job?.hostId !== context.req.param("id")) {
+  operations.implement(routes.providerCliInstallJobGet, ({ id, jobId }) => {
+    const job = installJobs.get(jobId);
+    if (job?.hostId !== id) {
       throw new ApiError(
         404,
         "provider_cli_install_job_not_found",
         "Unknown provider install job; the server may have restarted",
       );
     }
-    return context.json({ job });
+    return { job };
   });
 }

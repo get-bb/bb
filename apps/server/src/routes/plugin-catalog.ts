@@ -1,10 +1,10 @@
 import {
   pluginCatalogInstallRequestSchema,
-  pluginMarketplaceAddRequestSchema,
   pluginMarketplaceNameSchema,
-  pluginMarketplaceRefreshRequestSchema,
+  publicApiRoutes,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
+import { JsonBodyApiError } from "../errors.js";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import type {
   PluginCatalogEntrySelector,
   PluginCatalogService,
@@ -26,79 +26,70 @@ function entrySelector(
 }
 
 export function registerPluginCatalogRoutes(
-  app: Hono,
+  routes: OperationRoutes,
   catalog: PluginCatalogService,
   installJobs: PluginInstallJobs,
 ): void {
-  app.get("/plugin-catalog", (context) =>
-    context.json({ catalog: catalog.status() }),
+  const catalogRoutes = publicApiRoutes.pluginCatalog;
+  const marketplaceRoutes = publicApiRoutes.marketplaces;
+  const failed = (error: unknown) =>
+    new JsonBodyApiError(422, { error: errorMessage(error) });
+
+  routes.implement(catalogRoutes.status, () => ({ catalog: catalog.status() }));
+
+  routes.implement(catalogRoutes.search, async ({ q }) => ({
+    results: await catalog.search(q ?? ""),
+    collections: catalog.collections(),
+    categories: catalog.categories(),
+  }));
+
+  routes.app.get(
+    "/plugin-catalog/icons/:marketplace/:entryId",
+    async (context) => {
+      const icon = await catalog.icon(
+        context.req.param("marketplace"),
+        context.req.param("entryId"),
+      );
+      if (icon === undefined) {
+        return context.json({ ok: false, error: "unknown catalog icon" }, 404);
+      }
+      return context.body(new Uint8Array(icon.bytes), 200, {
+        "content-type": icon.contentType,
+        "cache-control": hashedAssetCacheControl(
+          context.req.query("h"),
+          icon.hash,
+        ),
+        "content-security-policy":
+          "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "x-content-type-options": "nosniff",
+      });
+    },
   );
 
-  app.get("/plugin-catalog/search", async (context) =>
-    context.json({
-      results: await catalog.search(context.req.query("q") ?? ""),
-      collections: catalog.collections(),
-      categories: catalog.categories(),
-    }),
+  routes.implement(
+    catalogRoutes.installPlan,
+    async ({ entryId, marketplace }) => {
+      const selector = entrySelector(entryId, marketplace);
+      if (selector === null) {
+        throw new JsonBodyApiError(422, {
+          error: "expected ?entryId=<id>[&marketplace=<name>]",
+        });
+      }
+      try {
+        return { plan: await catalog.installPlan(selector) };
+      } catch (error) {
+        throw failed(error);
+      }
+    },
   );
 
-  app.get("/plugin-catalog/icons/:marketplace/:entryId", async (context) => {
-    const icon = await catalog.icon(
-      context.req.param("marketplace"),
-      context.req.param("entryId"),
-    );
-    if (icon === undefined) {
-      return context.json({ ok: false, error: "unknown catalog icon" }, 404);
-    }
-    return context.body(new Uint8Array(icon.bytes), 200, {
-      "content-type": icon.contentType,
-      "cache-control": hashedAssetCacheControl(
-        context.req.query("h"),
-        icon.hash,
-      ),
-      "content-security-policy":
-        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-      "x-content-type-options": "nosniff",
-    });
-  });
-
-  app.get("/plugin-catalog/install-plan", async (context) => {
-    const selector = entrySelector(
-      context.req.query("entryId"),
-      context.req.query("marketplace"),
-    );
-    if (selector === null) {
-      return context.json(
-        { error: "expected ?entryId=<id>[&marketplace=<name>]" },
-        422,
-      );
-    }
-    try {
-      return context.json({ plan: await catalog.installPlan(selector) });
-    } catch (error) {
-      return context.json({ error: errorMessage(error) }, 422);
-    }
-  });
-
-  app.post("/plugin-catalog/install", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginCatalogInstallRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        {
-          error:
-            'expected { "entryId": string, "marketplace"?: string, "confirmedSource"?: object }',
-        },
-        422,
-      );
-    }
+  routes.implement(catalogRoutes.install, async (input, { request }) => {
     let entry: ReturnType<PluginCatalogService["describeEntry"]>;
     try {
-      entry = catalog.describeEntry(body.data);
+      entry = catalog.describeEntry(input);
     } catch (error) {
-      return context.json({ error: errorMessage(error) }, 422);
+      throw failed(error);
     }
-    const input = body.data;
     const job = installJobs.start({
       target: {
         kind: "catalog",
@@ -108,70 +99,52 @@ export function registerPluginCatalogRoutes(
       displayName: entry.displayName,
       run: () => catalog.install(input),
     });
-    return respondWithInstallJob(context, installJobs, job, (error) => ({
+    return respondWithInstallJob(request, installJobs, job, (error) => ({
       error,
     }));
   });
 
-  app.get("/marketplaces", (context) =>
-    context.json({ marketplaces: catalog.listMarketplaces() }),
-  );
+  routes.implement(marketplaceRoutes.list, () => ({
+    marketplaces: catalog.listMarketplaces(),
+  }));
 
-  app.post("/marketplaces", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginMarketplaceAddRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        { error: 'expected { "source": string, "subdirectory"?: string }' },
-        422,
-      );
-    }
+  routes.implement(marketplaceRoutes.add, async ({ source, subdirectory }) => {
     try {
-      return context.json({
+      return {
         ok: true as const,
         marketplace: await catalog.addMarketplace({
-          source: body.data.source,
-          subdirectory: body.data.subdirectory ?? null,
+          source,
+          subdirectory: subdirectory ?? null,
         }),
-      });
+      };
     } catch (error) {
-      return context.json({ error: errorMessage(error) }, 422);
+      throw failed(error);
     }
   });
 
-  app.post("/marketplaces/refresh", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginMarketplaceRefreshRequestSchema.safeParse(json ?? {});
-    if (!body.success) {
-      return context.json({ error: 'expected { "name"?: string }' }, 422);
-    }
+  routes.implement(marketplaceRoutes.refresh, async (body) => {
     try {
-      return context.json({
-        results: await catalog.refreshMarketplaces(body.data),
-      });
+      return { results: await catalog.refreshMarketplaces(body) };
     } catch (error) {
-      return context.json({ error: errorMessage(error) }, 422);
+      throw failed(error);
     }
   });
 
-  app.delete("/marketplaces/:name", async (context) => {
-    const parsedName = pluginMarketplaceNameSchema.safeParse(
-      context.req.param("name"),
-    );
+  routes.implement(marketplaceRoutes.remove, async ({ name }) => {
+    const parsedName = pluginMarketplaceNameSchema.safeParse(name);
     if (!parsedName.success) {
-      return context.json(
-        { error: `invalid marketplace name "${context.req.param("name")}"` },
-        422,
-      );
+      throw new JsonBodyApiError(422, {
+        error: `invalid marketplace name "${name}"`,
+      });
     }
     try {
       const removed = await catalog.removeMarketplace(parsedName.data);
-      return context.json({
+      return {
         ok: true as const,
         convertedPluginIds: removed.convertedPluginIds,
-      });
+      };
     } catch (error) {
-      return context.json({ error: errorMessage(error) }, 422);
+      throw failed(error);
     }
   });
 }

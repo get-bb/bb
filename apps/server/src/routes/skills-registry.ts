@@ -1,10 +1,9 @@
-import type { Hono } from "hono";
 import {
-  registrySkillEntriesRequestSchema,
-  registrySkillInstallRequestSchema,
+  publicApiRoutes,
   type RegistrySkill,
   type RegistrySkillInstallJob,
 } from "@bb/server-contract";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import { ApiError } from "../errors.js";
 import { createJobRegistry } from "../services/lib/job-registry.js";
 import {
@@ -26,7 +25,11 @@ import {
 import { installServerRegistrySkill } from "../services/skills/registry-skill-install.js";
 import type { AppDeps } from "../types.js";
 
-export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
+export function registerSkillsRegistryRoutes(
+  routes: OperationRoutes,
+  deps: AppDeps,
+): void {
+  const contract = publicApiRoutes.skillsRegistry;
   async function proxyUpstream<T>(run: () => Promise<T>): Promise<T> {
     try {
       return await run();
@@ -46,17 +49,17 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
     }
   }
 
-  app.get("/skills-registry", async (context) => {
-    const query = context.req.query("q") ?? "";
-    const page = parsePageParameter(context.req.query("page"));
-    const perPage = parsePerPageParameter(context.req.query("perPage"));
-    return context.json(
-      await proxyUpstream(() => listRegistrySkills(query, page, perPage)),
-    );
-  });
+  routes.implement(contract.list, async ({ q, page, perPage }) =>
+    proxyUpstream(() =>
+      listRegistrySkills(
+        q ?? "",
+        parsePageParameter(page),
+        parsePerPageParameter(perPage),
+      ),
+    ),
+  );
 
-  app.get("/skills-registry/entry", async (context) => {
-    const id = context.req.query("id");
+  routes.implement(contract.entry, async ({ id }) => {
     if (id === undefined) {
       throw new ApiError(
         400,
@@ -64,19 +67,11 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Expected a registry skill ID",
       );
     }
-    return context.json(
-      await proxyUpstream(() => resolveRegistrySkillById(id)),
-    );
+    return proxyUpstream(() => resolveRegistrySkillById(id));
   });
 
-  app.post("/skills-registry/entries", async (context) => {
-    const body = registrySkillEntriesRequestSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
-    if (!body.success) {
-      throw new ApiError(400, "invalid_request", "Expected registry skill ids");
-    }
-    const ids = [...new Set(body.data.ids)];
+  routes.implement(contract.entries, async ({ ids: requested }) => {
+    const ids = [...new Set(requested)];
     const entries = (
       await Promise.all(
         ids.map(async (id): Promise<RegistrySkill | null> => {
@@ -88,11 +83,10 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         }),
       )
     ).filter((entry): entry is RegistrySkill => entry !== null);
-    return context.json({ entries });
+    return { entries };
   });
 
-  app.get("/skills-registry/repository-stars", async (context) => {
-    const source = context.req.query("source");
+  routes.implement(contract.repositoryStars, async ({ source }) => {
     if (
       source === undefined ||
       source.length === 0 ||
@@ -114,12 +108,10 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "GitHub repository stars are unavailable",
       );
     }
-    return context.json({ stars });
+    return { stars };
   });
 
-  app.get("/skills-registry/detail", async (context) => {
-    const source = context.req.query("source");
-    const skillId = context.req.query("skillId");
+  routes.implement(contract.detail, async ({ source, skillId }) => {
     if (
       source === undefined ||
       source.length === 0 ||
@@ -145,7 +137,7 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Registry skill source is unavailable",
       );
     }
-    return context.json(detail);
+    return detail;
   });
 
   const installJobs = createJobRegistry<RegistrySkillInstallJob>({
@@ -160,15 +152,9 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
   });
 
   async function startInstallJob(
-    input: unknown,
+    registrySkillId: string,
   ): Promise<RegistrySkillInstallJob> {
-    const body = registrySkillInstallRequestSchema.safeParse(input);
-    if (!body.success) {
-      throw new ApiError(400, "invalid_request", "Expected registrySkillId");
-    }
-    const registrySkill = await resolveRegistrySkillById(
-      body.data.registrySkillId,
-    );
+    const registrySkill = await resolveRegistrySkillById(registrySkillId);
     return installJobs.start({
       key: registrySkill.id,
       lane: registrySkill.id,
@@ -189,24 +175,19 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
     });
   }
 
-  app.post("/skills-registry/install", async (context) => {
-    const job = await startInstallJob(
-      await context.req.json().catch(() => null),
-    );
+  routes.implement(contract.install, async ({ registrySkillId }) => {
+    const job = await startInstallJob(registrySkillId);
     const outcome = await installJobs.settled(job.id);
     if (outcome?.job.state !== "completed") throw outcome?.error;
-    return context.json({ ok: true, filePath: outcome.job.filePath });
+    return { ok: true as const, filePath: outcome.job.filePath };
   });
 
-  app.post("/skills-registry/install-jobs", async (context) => {
-    const job = await startInstallJob(
-      await context.req.json().catch(() => null),
-    );
-    return context.json({ job }, 202);
-  });
+  routes.implement(contract.installJobStart, async ({ registrySkillId }) => ({
+    job: await startInstallJob(registrySkillId),
+  }));
 
-  app.get("/skills-registry/install-jobs/:jobId", (context) => {
-    const job = installJobs.get(context.req.param("jobId"));
+  routes.implement(contract.installJobGet, ({ jobId }) => {
+    const job = installJobs.get(jobId);
     if (job === undefined) {
       throw new ApiError(
         404,
@@ -214,6 +195,6 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Unknown skill install job; the server may have restarted",
       );
     }
-    return context.json({ job });
+    return { job };
   });
 }

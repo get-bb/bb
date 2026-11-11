@@ -9,16 +9,11 @@ import {
   listEnvironments,
   updateEnvironmentMetadata,
 } from "@bb/db";
-import {
-  environmentStatusValues,
-  type EnvironmentStatus,
-} from "@bb/domain";
+import { environmentStatusValues, type EnvironmentStatus } from "@bb/domain";
 import {
   publicApiRoutes,
-  typedRoutes,
-  type PublicApiSchema,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import {
@@ -39,22 +34,18 @@ import {
   requireEnvironment,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
-import {
-  ensureHostSessionReadyForWork,
-} from "../services/hosts/host-lifecycle.js";
+import { ensureHostSessionReadyForWork } from "../services/hosts/host-lifecycle.js";
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
-import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
   DEFAULT_PATH_LIST_EXCLUDE_NAMES,
   WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
 } from "./path-list-policy.js";
-import {
-  requireWorkspaceCommandTarget,
-} from "../services/environments/workspace-command-target.js";
+import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
+import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
 
 const LISTED_ENVIRONMENT_STATUSES: readonly EnvironmentStatus[] =
   environmentStatusValues.filter((status) => status !== "destroyed");
@@ -79,25 +70,22 @@ async function mapNoChangesTo409<TResult>(
 }
 
 export function registerEnvironmentRoutes(
-  app: Hono,
+  operations: OperationRoutes,
   deps: AppDeps,
   plugins: GitPluginRpc & { resolveRpcCaller: ResolvePluginRpcCaller },
 ): void {
-  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
   const routes = publicApiRoutes.environments;
-  post(routes.cleanup, async (context, query) => {
-    const environment = requireEnvironment(deps.db, context.req.param("id"));
+  operations.implement(routes.cleanup, async ({ id, recover }) => {
+    const environment = requireEnvironment(deps.db, id);
     if (environmentHasLiveThreads(deps.db, environment.id))
       throw new ApiError(
         409,
         "invalid_request",
         "Environment still has live threads",
       );
-    if (query?.recover === "true") {
+    if (recover === "true") {
       await recoverEnvironmentCleanup(deps, environment.id);
-      return context.json({ ok: true } as const);
+      return { ok: true } as const;
     }
     if (!cleanupEnvironment(deps, environment.id))
       throw new ApiError(
@@ -105,37 +93,33 @@ export function registerEnvironmentRoutes(
         "invalid_request",
         "Environment is not provider-managed",
       );
-    return context.json({ ok: true } as const);
+    return { ok: true } as const;
   });
 
-  get(routes.list, async (context, query) => {
+  operations.implement(routes.list, (query) => {
     const { limit, offset } = parsePaginationQuery({
-      limit: query?.limit,
-      offset: query?.offset,
+      limit: query.limit,
+      offset: query.offset,
     });
-    return context.json(
-      toEnvironmentResponses(
-        deps.db,
-        listEnvironments(deps.db, {
-          ...(query?.projectId ? { projectId: query.projectId } : {}),
-          ...(query?.hostId ? { hostId: query.hostId } : {}),
-          ...(query?.environmentProviderId
-            ? { environmentProviderId: query.environmentProviderId }
-            : {}),
-          ...(query?.instanceKey ? { instanceKey: query.instanceKey } : {}),
-          ...(query?.path === undefined ? {} : { path: query.path }),
-          ...(limit === undefined ? {} : { limit }),
-          ...(offset === undefined ? {} : { offset }),
-          statuses: query?.status
-            ? [query.status]
-            : LISTED_ENVIRONMENT_STATUSES,
-        }),
-      ),
+    return toEnvironmentResponses(
+      deps.db,
+      listEnvironments(deps.db, {
+        ...(query.projectId ? { projectId: query.projectId } : {}),
+        ...(query.hostId ? { hostId: query.hostId } : {}),
+        ...(query.environmentProviderId
+          ? { environmentProviderId: query.environmentProviderId }
+          : {}),
+        ...(query.instanceKey ? { instanceKey: query.instanceKey } : {}),
+        ...(query.path === undefined ? {} : { path: query.path }),
+        ...(limit === undefined ? {} : { limit }),
+        ...(offset === undefined ? {} : { offset }),
+        statuses: query.status ? [query.status] : LISTED_ENVIRONMENT_STATUSES,
+      }),
     );
   });
 
-  del(routes.delete, (context) => {
-    const environment = requireEnvironment(deps.db, context.req.param("id"));
+  operations.implement(routes.delete, ({ id }) => {
+    const environment = requireEnvironment(deps.db, id);
     if (environmentHasLiveThreads(deps.db, environment.id)) {
       throw new ApiError(
         409,
@@ -155,20 +139,15 @@ export function registerEnvironmentRoutes(
         environmentId: environment.id,
       });
     }
-    return context.json({ ok: true } as const);
+    return { ok: true } as const;
   });
 
-  get(routes.get, (context) =>
-    context.json(
-      toEnvironmentResponse(
-        deps.db,
-        requireEnvironment(deps.db, context.req.param("id")),
-      ),
-    ),
+  operations.implement(routes.get, ({ id }) =>
+    toEnvironmentResponse(deps.db, requireEnvironment(deps.db, id)),
   );
 
-  patch(routes.update, (context, payload) => {
-    const environment = requireEnvironment(deps.db, context.req.param("id"));
+  operations.implement(routes.update, ({ id, ...payload }) => {
+    const environment = requireEnvironment(deps.db, id);
     const updated = updateEnvironmentMetadata(
       deps.db,
       deps.hub,
@@ -178,31 +157,28 @@ export function registerEnvironmentRoutes(
     if (!updated) {
       throw new ApiError(404, "environment_not_found", "Environment not found");
     }
-    return context.json(toEnvironmentResponse(deps.db, updated));
+    return toEnvironmentResponse(deps.db, updated);
   });
 
-  post(routes.archiveThreads, (context) => {
-    const environment = requireEnvironment(deps.db, context.req.param("id"));
+  operations.implement(routes.archiveThreads, ({ id }, { request }) => {
+    const environment = requireEnvironment(deps.db, id);
     const archivedThreadIds = archiveEnvironmentThreads(deps, { environment });
     deps.logger.info(
       {
         environmentId: environment.id,
         archivedThreadIds,
-        source: resolveRequestSource(context, plugins.resolveRpcCaller),
+        source: resolveRequestSource(request, plugins.resolveRpcCaller),
       },
       "Environment threads archived",
     );
-    return context.json({
-      ok: true,
+    return {
+      ok: true as const,
       archivedThreadIds,
-    });
+    };
   });
 
-  get(routes.paths, async (context, query) => {
-    const environment = requireReadyEnvironment(
-      deps.db,
-      context.req.param("id"),
-    );
+  operations.implement(routes.paths, async ({ id, ...query }, { signal }) => {
+    const environment = requireReadyEnvironment(deps.db, id);
     const limit = parseFileListLimit(query.limit);
     const inclusion = parsePathKindInclusion({
       includeFiles: query.includeFiles,
@@ -212,7 +188,7 @@ export function registerEnvironmentRoutes(
     try {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: environment.hostId,
-        signal: context.req.raw.signal,
+        signal,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_paths",
@@ -226,23 +202,20 @@ export function registerEnvironmentRoutes(
           excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });
-      return context.json({
+      return {
         paths: result.paths,
         truncated: result.truncated,
-      });
+      };
     } catch (error) {
       if (error instanceof ApiError && error.body.code === "ENOENT") {
-        return context.json({ paths: [], truncated: false });
+        return { paths: [], truncated: false };
       }
       throw error;
     }
   });
 
-  post(routes.actions, async (context) => {
-    const environment = requireReadyEnvironment(
-      deps.db,
-      context.req.param("id"),
-    );
+  operations.implement(routes.actions, async ({ id }) => {
+    const environment = requireReadyEnvironment(deps.db, id);
 
     const target = requireWorkspaceCommandTarget(environment);
     const { workspaceContext } = target;
@@ -256,11 +229,7 @@ export function registerEnvironmentRoutes(
         maxFileListBytes: AI_MAX_FILE_LIST_BYTES,
       });
     if (!workspaceStatus.workingTree.hasUncommittedChanges) {
-      throw new ApiError(
-        409,
-        "no_changes",
-        "No uncommitted changes to commit",
-      );
+      throw new ApiError(409, "no_changes", "No uncommitted changes to commit");
     }
 
     const aiMessage = await generateCommitMessage(deps, {
@@ -286,12 +255,12 @@ export function registerEnvironmentRoutes(
         }),
     );
     await refreshGitState(plugins, target.environmentId);
-    return context.json({
-      ok: true,
-      action: "commit",
+    return {
+      ok: true as const,
+      action: "commit" as const,
       message: `Created commit ${result.commitSha}`,
       commitSha: result.commitSha,
       commitSubject: result.commitSubject,
-    });
+    };
   });
 }

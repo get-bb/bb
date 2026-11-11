@@ -2,7 +2,7 @@ import type {
   PromptHistoryListQuery,
   PromptHistoryListResponse,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export type ExperimentalPromptHistoryListArgs = PromptHistoryListQuery & {
   signal?: AbortSignal;
@@ -17,17 +17,12 @@ export interface ExperimentalPromptHistoryArea {
 }
 
 export function createPromptHistoryArea({
-  transport,
+  operations,
 }: CreateSdkAreaArgs): ExperimentalPromptHistoryArea {
   return {
-    async list(input = {}) {
+    list: (input = {}) => {
       const { signal, ...query } = input;
-      return transport.readJson(
-        transport.api.v1["prompt-history"].$get(
-          { query },
-          ...signalRequestArgs(signal),
-        ),
-      );
+      return operations.call("promptHistory.list", query, { signal });
     },
   };
 }

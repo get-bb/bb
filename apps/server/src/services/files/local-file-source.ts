@@ -3,7 +3,7 @@ import { open } from "node:fs/promises";
 // oxlint-disable-next-line no-restricted-imports
 import type { Stats } from "node:fs";
 import { ApiError } from "../../errors.js";
-import type { FileResponseSource } from "./file-stream-response.js";
+import type { FileResponseSource } from "./file-stream-body.js";
 
 export function createLocalFileSource(
   path: string,

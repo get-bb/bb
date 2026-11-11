@@ -1,8 +1,4 @@
-import {
-  hostDaemonToolCallRequestSchema,
-  typedRoutes,
-  type HostDaemonInternalSchema,
-} from "@bb/host-daemon-contract";
+import { hostDaemonInternalRoutes } from "@bb/host-daemon-contract";
 import type { ToolCallResponse } from "@bb/domain";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
@@ -19,6 +15,7 @@ import {
   UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
 } from "../services/threads/thread-environment-directory.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
+import { mountInternalRoute } from "../kernel/http-door.js";
 
 const textEncoder = new TextEncoder();
 
@@ -50,13 +47,9 @@ function streamToolCallResponse(
 }
 
 export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
-  const { post } = typedRoutes<HostDaemonInternalSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
-
-  post(
-    "/session/tool-call",
-    hostDaemonToolCallRequestSchema,
+  mountInternalRoute(
+    app,
+    hostDaemonInternalRoutes.toolCall,
     async (context, payload) => {
       const session = requireAuthenticatedDaemonSession({
         context,
@@ -76,14 +69,12 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
       }
 
       if (payload.tool === UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME) {
-        return context.json(
-          await handleUpdateEnvironmentDirectoryToolCall(deps, {
-            currentEnvironment: environment,
-            input: payload.arguments,
-            thread,
-            turnId: payload.turnId,
-          }),
-        );
+        return await handleUpdateEnvironmentDirectoryToolCall(deps, {
+          currentEnvironment: environment,
+          input: payload.arguments,
+          thread,
+          turnId: payload.turnId,
+        });
       }
 
       const pluginTool = findPluginAgentTool(payload.tool);
@@ -118,12 +109,15 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
         return streamToolCallResponse(response, roundTrip);
       }
 
-      return context.json({
+      return {
         success: false,
         contentItems: [
-          { type: "inputText", text: `Unsupported tool: ${payload.tool}` },
+          {
+            type: "inputText" as const,
+            text: `Unsupported tool: ${payload.tool}`,
+          },
         ],
-      });
+      };
     },
   );
 }

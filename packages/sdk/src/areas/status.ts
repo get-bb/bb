@@ -10,7 +10,7 @@ import type {
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface StatusGetArgs {
   projectId?: string;
@@ -69,7 +69,7 @@ function summarizeThread(thread: StatusSourceThread): StatusThreadSummary {
 }
 
 export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
-  const { transport } = args;
+  const { call } = args.operations;
   return {
     async get(input = {}) {
       const projectId = input.projectId;
@@ -78,38 +78,21 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
       const [project, thread] = await Promise.all([
         projectId
           ? fetchSilent(() =>
-              transport.readJson(
-                transport.api.v1.projects[":id"].$get(
-                  {
-                    param: { id: projectId },
-                  },
-                  ...signalRequestArgs(signal),
-                ),
-              ),
+              call("projects.get", { id: projectId }, { signal }),
             )
           : Promise.resolve(null),
         threadId
-          ? fetchSilent(() =>
-              transport.readJson(
-                transport.api.v1.threads[":id"].$get(
-                  {
-                    param: { id: threadId },
-                  },
-                  ...signalRequestArgs(signal),
-                ),
-              ),
-            )
+          ? fetchSilent(() => call("threads.get", { id: threadId }, { signal }))
           : Promise.resolve(null),
       ]);
       const pendingTodos =
         thread === null
           ? null
           : await fetchSilent(async () => {
-              const headState = await transport.readJson(
-                transport.api.v1.threads[":id"]["head-state"].$get(
-                  { param: { id: thread.id } },
-                  ...signalRequestArgs(signal),
-                ),
+              const headState = await call(
+                "threads.headState",
+                { id: thread.id },
+                { signal },
               );
               return headState.pendingTodos;
             });
@@ -117,14 +100,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
         thread === null
           ? null
           : await fetchSilent(() =>
-              transport.readJson(
-                transport.api.v1.threads.$get(
-                  {
-                    query: { parentThreadId: thread.id },
-                  },
-                  ...signalRequestArgs(signal),
-                ),
-              ),
+              call("threads.list", { parentThreadId: thread.id }, { signal }),
             );
 
       return {

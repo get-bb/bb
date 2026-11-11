@@ -1,56 +1,29 @@
 import { readFile } from "node:fs/promises";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { RegistryRanking, RegistrySkill } from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import {
+  JSON_FLAG_DESCRIPTION,
+  YES_FLAG_DESCRIPTION,
+  arg,
+  flag,
+} from "../cli-door.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+  type CliClient,
+} from "../operation-doors.js";
 import { resolveMachineId, selectMachines } from "./machine.js";
 import type { ContextSnapshot } from "../context-env.js";
 import { renderBorderlessTable } from "../table.js";
-import {
-  collectOption,
-  confirmDestructiveAction,
-  outputJson,
-  type JsonOutputOptions,
-} from "./helpers.js";
 
-interface SkillWorkspaceOptions extends JsonOutputOptions {
-  environment?: string;
-  project?: string;
+function projectId(project: string | undefined, client: CliClient): string {
+  return project ?? client.context().projectId ?? PERSONAL_PROJECT_ID;
 }
 
-interface SkillDeleteOptions extends SkillWorkspaceOptions {
-  yes?: boolean;
-}
-
-interface SkillUpdateOptions extends SkillWorkspaceOptions {
-  file: string;
-  revision: string;
-}
-
-interface SkillInstallCliSkillsOptions extends JsonOutputOptions {
-  machine: string[];
-}
-
-interface SkillSearchOptions extends JsonOutputOptions {
-  page?: string;
-  perPage?: string;
-}
-
-function projectId(
-  options: SkillWorkspaceOptions,
-  context: ContextSnapshot,
-): string {
-  return options.project ?? context.projectId ?? PERSONAL_PROJECT_ID;
-}
-
-function environmentId(options: SkillWorkspaceOptions): string | null {
-  return options.environment ?? null;
-}
-
-function parseNonnegativeInteger(value: string | undefined, fallback: number) {
-  if (value === undefined) return fallback;
+function parseNonnegativeInteger(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new Error(`Expected a nonnegative integer, received "${value}".`);
@@ -58,15 +31,18 @@ function parseNonnegativeInteger(value: string | undefined, fallback: number) {
   return parsed;
 }
 
-function addWorkspaceOptions(command: Command): Command {
-  return command
-    .option(
-      "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID or personal)",
-    )
-    .option("--environment <id>", "Project environment workspace")
-    .option("--json", "Print machine-readable JSON output");
-}
+const WORKSPACE_OPTIONS = {
+  project: flag(
+    "--project <id>",
+    "Project ID (defaults to BB_PROJECT_ID or personal)",
+  ),
+  environment: flag("--environment <id>", "Project environment workspace"),
+  json: flag("--json", JSON_FLAG_DESCRIPTION),
+};
+
+const SKILL_ID = { skillId: arg("<skill-id>") };
+
+const REGISTRY_SKILL_ID = { registrySkillId: arg("<registry-skill-id>") };
 
 const REGISTRY_ENRICH_CONCURRENCY = 6;
 const REGISTRY_ENRICH_LIMIT = 48;
@@ -159,6 +135,285 @@ async function enrichRegistryEntries(
   });
 }
 
+export const skillCommands = [
+  publicCommand("projects.skills", {
+    path: ["skill", "list"],
+    summary: "List installed and discovered skills",
+    options: WORKSPACE_OPTIONS,
+    prepare: ({ options }, client) => ({
+      id: projectId(options.project, client),
+      environmentId: options.environment ?? "",
+    }),
+    print: (result) =>
+      renderBorderlessTable(
+        {
+          head: ["ID", "NAME", "SCOPE", "PROVIDER", "EDITABLE", "PATH"],
+          colWidths: [72, 24, 18, 14, 10, 48],
+          trimTrailingWhitespace: true,
+        },
+        result.skills.map((entry) => [
+          entry.id,
+          entry.name,
+          entry.scope,
+          entry.provider ?? "bb",
+          entry.manageable ? "yes" : "no",
+          entry.filePath,
+        ]),
+      ),
+  }),
+  publicCommand("projects.skillContent", {
+    path: ["skill", "show"],
+    summary: "Print an installed skill file",
+    positionals: SKILL_ID,
+    options: {
+      ...WORKSPACE_OPTIONS,
+      path: flag("--path <path>", "Skill-relative file path", {
+        default: "SKILL.md",
+      }),
+    },
+    prepare: ({ positionals, options }, client) => ({
+      id: projectId(options.project, client),
+      skillId: positionals.skillId,
+      path: options.path,
+      environmentId: options.environment ?? "",
+    }),
+    print: (result) => {
+      console.error(`Revision: ${result.revision}`);
+      process.stdout.write(result.content);
+      return null;
+    },
+  }),
+  publicCommand("projects.skillFiles", {
+    path: ["skill", "files"],
+    summary: "List files included in an installed skill",
+    positionals: SKILL_ID,
+    options: WORKSPACE_OPTIONS,
+    prepare: ({ positionals, options }, client) => ({
+      id: projectId(options.project, client),
+      skillId: positionals.skillId,
+      environmentId: options.environment ?? "",
+    }),
+    print: (result) => {
+      for (const file of result.files) console.log(file);
+      if (result.truncated) console.error("File list truncated.");
+      return null;
+    },
+  }),
+  publicCommand("projects.updateSkill", {
+    path: ["skill", "update"],
+    summary: "Replace an editable skill's SKILL.md from a local file",
+    positionals: SKILL_ID,
+    options: {
+      ...WORKSPACE_OPTIONS,
+      file: flag("--file <path>", "Local SKILL.md to upload", {
+        required: true,
+      }),
+      revision: flag(
+        "--revision <sha256>",
+        "Revision returned by bb skill show --json",
+        { required: true },
+      ),
+    },
+    prepare: async ({ positionals, options }, client) => ({
+      id: projectId(options.project, client),
+      skillId: positionals.skillId,
+      environmentId: options.environment ?? null,
+      content: await readFile(options.file, "utf8"),
+      revision: options.revision,
+    }),
+    print: (result) => `Updated ${result.filePath}`,
+  }),
+  publicCommand("projects.deleteSkill", {
+    path: ["skill", "delete"],
+    summary: "Delete an editable user-owned skill",
+    positionals: SKILL_ID,
+    options: { ...WORKSPACE_OPTIONS, yes: flag("--yes", YES_FLAG_DESCRIPTION) },
+    confirm: (input) => `Delete ${input.skillId}? This cannot be undone.`,
+    declined: () => ({ message: "Aborted." }),
+    prepare: ({ positionals, options }, client) => ({
+      id: projectId(options.project, client),
+      skillId: positionals.skillId,
+      environmentId: options.environment ?? null,
+    }),
+    print: (result) => `Deleted ${result.deletedPath}`,
+  }),
+  clientCommand({
+    path: ["skill", "search"],
+    summary:
+      "Search the skills.sh registry, or list what is trending with no query",
+    positionals: { query: arg("[query]") },
+    options: {
+      page: flag("--page <number>", "Zero-based result page", {
+        default: "0",
+      }),
+      perPage: flag(
+        "--per-page <number>",
+        `Results per page; above ${REGISTRY_ENRICH_LIMIT} leaves lifetime install counts unresolved`,
+        { default: "24" },
+      ),
+    },
+    run: async ({ positionals, options }, client) => {
+      const registry = client.sdk().skills.registry;
+      const result = await registry.search({
+        query: positionals.query,
+        page: parseNonnegativeInteger(options.page),
+        perPage: parseNonnegativeInteger(options.perPage),
+      });
+      const enrichedSkills = await enrichRegistryEntries(
+        registry,
+        await enrichRegistryStars(registry, result.skills),
+        result.ranking,
+      );
+      const unresolvedCount = enrichedSkills.filter(
+        (entry) => entry.lifetimeInstalls === null,
+      ).length;
+      if (unresolvedCount > 0) {
+        console.error(
+          `Lifetime install counts unresolved for ${unresolvedCount} of ` +
+            `${enrichedSkills.length} skills — a detail page could not be ` +
+            `fetched, or the page exceeds the ${REGISTRY_ENRICH_LIMIT}-row ` +
+            `enrichment cap. Those rows carry lifetimeInstalls: null and ` +
+            `print as "—"; installs still counts the ranking's window.`,
+        );
+      }
+      return { ...result, skills: enrichedSkills };
+    },
+    print: (enrichedResult) =>
+      renderBorderlessTable(
+        {
+          head: ["ID", "INSTALLS", "STARS", "SUMMARY"],
+          colWidths: [48, 12, 10, 48],
+          trimTrailingWhitespace: true,
+        },
+        enrichedResult.skills.map((entry) => [
+          entry.id,
+          entry.lifetimeInstalls === null
+            ? "—"
+            : String(entry.lifetimeInstalls),
+          entry.stars === null ? "—" : String(entry.stars),
+          entry.summary ?? "",
+        ]),
+      ),
+  }),
+  clientCommand({
+    path: ["skill", "registry", "detail"],
+    summary: "Show registry metadata and the bounded file preview",
+    positionals: REGISTRY_SKILL_ID,
+    run: async ({ positionals }, client) => {
+      const registry = client.sdk().skills.registry;
+      const skillEntry = await registry.get(positionals);
+      const [detail, [enrichedSkillEntry]] = await Promise.all([
+        registry.detail({
+          source: skillEntry.source,
+          skillId: skillEntry.skillId,
+        }),
+        enrichRegistryStars(registry, [skillEntry]),
+      ]);
+      return { skill: enrichedSkillEntry ?? skillEntry, detail };
+    },
+    print: (result) => {
+      const { detail } = result;
+      const lines = [
+        `Name: ${result.skill.name}`,
+        `ID: ${result.skill.id}`,
+        `Source: ${result.skill.source}`,
+        `Installs: ${result.skill.installs}`,
+        `Stars: ${result.skill.stars ?? "—"}`,
+        `URL: ${result.skill.url}`,
+      ];
+      if (result.skill.summary) lines.push(`Summary: ${result.skill.summary}`);
+      lines.push(`Revision: ${detail.hash ?? "unknown"}`);
+      if (detail.files === null) return [...lines, "Files: unavailable"];
+      for (const line of lines) console.log(line);
+      for (const file of detail.files) {
+        console.log(`\n--- ${file.path} ---`);
+        process.stdout.write(file.contents);
+        if (!file.contents.endsWith("\n")) process.stdout.write("\n");
+      }
+      return null;
+    },
+  }),
+  clientCommand({
+    path: ["skill", "install"],
+    summary: "Install a canonical skills.sh entry into bb user skills",
+    positionals: REGISTRY_SKILL_ID,
+    run: ({ positionals }, client) =>
+      client.sdk().skills.registry.install(positionals),
+    print: (result) => `Installed ${result.filePath}`,
+  }),
+  publicCommand("system.cliSkillsStatus", {
+    path: ["skill", "cli-skills-status"],
+    summary: "Show whether each machine has bb's built-in CLI skills installed",
+    options: {
+      machine: flag(
+        "--machine <id-or-name>",
+        "Machine to report on (repeatable, defaults to every persistent machine)",
+        { type: "strings", default: [] },
+      ),
+    },
+    prepare: async ({ options }, client) => {
+      if (options.machine.length === 0) return {};
+      const hosts = await client.call("hosts.list", {});
+      return {
+        hostIds: options.machine
+          .map((target) => resolveMachineId(hosts, target))
+          .join(","),
+      };
+    },
+    print: (result) =>
+      renderBorderlessTable(
+        {
+          head: ["MACHINE", "STATUS"],
+          colWidths: [32, 16],
+          trimTrailingWhitespace: true,
+        },
+        result.machines.map((machine) => [machine.hostName, machine.status]),
+      ),
+  }),
+  clientCommand({
+    path: ["skill", "install-cli-skills"],
+    summary:
+      "Install bb's built-in CLI skills into ~/.agents/skills and ~/.claude/skills on a machine",
+    options: {
+      machine: flag(
+        "--machine <id-or-name>",
+        "Machine to install onto (repeatable, defaults to every connected persistent machine)",
+        { type: "strings", default: [] },
+      ),
+    },
+    run: async ({ options }, client) => {
+      const hosts = await client.call("hosts.list", {});
+      const hostIds =
+        options.machine.length > 0
+          ? options.machine.map((target) => resolveMachineId(hosts, target))
+          : selectMachines(hosts, "persistent")
+              .filter((host) => host.status === "connected")
+              .map((host) => host.id);
+      if (hostIds.length === 0) {
+        throw new Error("No connected machine to install the skills onto.");
+      }
+      return client.call("system.installCliSkills", { hostIds });
+    },
+    print: (result) => {
+      for (const entry of result.results) {
+        if (!entry.ok) {
+          console.error(`${entry.hostName}: ${entry.errorMessage}`);
+          continue;
+        }
+        for (const installation of entry.installations) {
+          console.log(
+            `${entry.hostName}: installed ${installation.name} to ${installation.path}`,
+          );
+        }
+      }
+      if (result.results.some((entry) => !entry.ok)) {
+        throw new Error("The install failed on at least one machine.");
+      }
+      return null;
+    },
+  }),
+];
+
 export function registerSkillCommands(
   program: Command,
   getUrl: () => string,
@@ -167,312 +422,9 @@ export function registerSkillCommands(
   const skill = program
     .command("skill")
     .description("List, inspect, edit, install, and remove skills");
-
-  addWorkspaceOptions(skill.command("list"))
-    .description("List installed and discovered skills")
-    .action(
-      action(async (options: SkillWorkspaceOptions) => {
-        const result = await createCliBbSdk(getUrl()).skills.list({
-          projectId: projectId(options, getContext()),
-          environmentId: environmentId(options),
-        });
-        if (outputJson(options, result)) return;
-        console.log(
-          renderBorderlessTable(
-            {
-              head: ["ID", "NAME", "SCOPE", "PROVIDER", "EDITABLE", "PATH"],
-              colWidths: [72, 24, 18, 14, 10, 48],
-              trimTrailingWhitespace: true,
-            },
-            result.skills.map((entry) => [
-              entry.id,
-              entry.name,
-              entry.scope,
-              entry.provider ?? "bb",
-              entry.manageable ? "yes" : "no",
-              entry.filePath,
-            ]),
-          ),
-        );
-      }),
-    );
-
-  addWorkspaceOptions(skill.command("show <skill-id>"))
-    .description("Print an installed skill file")
-    .option("--path <path>", "Skill-relative file path", "SKILL.md")
-    .action(
-      action(
-        async (
-          skillId: string,
-          options: SkillWorkspaceOptions & { path: string },
-        ) => {
-          const result = await createCliBbSdk(getUrl()).skills.getContent({
-            projectId: projectId(options, getContext()),
-            environmentId: environmentId(options),
-            skillId,
-            path: options.path,
-          });
-          if (outputJson(options, result)) return;
-          console.error(`Revision: ${result.revision}`);
-          process.stdout.write(result.content);
-        },
-      ),
-    );
-
-  addWorkspaceOptions(skill.command("files <skill-id>"))
-    .description("List files included in an installed skill")
-    .action(
-      action(async (skillId: string, options: SkillWorkspaceOptions) => {
-        const result = await createCliBbSdk(getUrl()).skills.listFiles({
-          projectId: projectId(options, getContext()),
-          environmentId: environmentId(options),
-          skillId,
-        });
-        if (outputJson(options, result)) return;
-        for (const path of result.files) console.log(path);
-        if (result.truncated) console.error("File list truncated.");
-      }),
-    );
-
-  addWorkspaceOptions(skill.command("update <skill-id>"))
-    .description("Replace an editable skill's SKILL.md from a local file")
-    .requiredOption("--file <path>", "Local SKILL.md to upload")
-    .requiredOption(
-      "--revision <sha256>",
-      "Revision returned by bb skill show --json",
-    )
-    .action(
-      action(async (skillId: string, options: SkillUpdateOptions) => {
-        const result = await createCliBbSdk(getUrl()).skills.update({
-          projectId: projectId(options, getContext()),
-          environmentId: environmentId(options),
-          skillId,
-          content: await readFile(options.file, "utf8"),
-          revision: options.revision,
-        });
-        if (outputJson(options, result)) return;
-        console.log(`Updated ${result.filePath}`);
-      }),
-    );
-
-  addWorkspaceOptions(skill.command("delete <skill-id>"))
-    .description("Delete an editable user-owned skill")
-    .option("--yes", "Skip the confirmation prompt")
-    .action(
-      action(async (skillId: string, options: SkillDeleteOptions) => {
-        if (
-          !options.yes &&
-          !(await confirmDestructiveAction(
-            `Delete ${skillId}? This cannot be undone.`,
-          ))
-        ) {
-          console.log("Aborted.");
-          return;
-        }
-        const result = await createCliBbSdk(getUrl()).skills.remove({
-          projectId: projectId(options, getContext()),
-          environmentId: environmentId(options),
-          skillId,
-        });
-        if (outputJson(options, result)) return;
-        console.log(`Deleted ${result.deletedPath}`);
-      }),
-    );
-
-  skill
-    .command("search [query]")
-    .description(
-      "Search the skills.sh registry, or list what is trending with no query",
-    )
-    .option("--page <number>", "Zero-based result page", "0")
-    .option(
-      "--per-page <number>",
-      `Results per page; above ${REGISTRY_ENRICH_LIMIT} leaves lifetime install counts unresolved`,
-      "24",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (query: string | undefined, options: SkillSearchOptions) => {
-        const registry = createCliBbSdk(getUrl()).skills.registry;
-        const result = await registry.search({
-          query,
-          page: parseNonnegativeInteger(options.page, 0),
-          perPage: parseNonnegativeInteger(options.perPage, 24),
-        });
-        const enrichedSkills = await enrichRegistryEntries(
-          registry,
-          await enrichRegistryStars(registry, result.skills),
-          result.ranking,
-        );
-        const enrichedResult = { ...result, skills: enrichedSkills };
-        const unresolvedCount = enrichedSkills.filter(
-          (entry) => entry.lifetimeInstalls === null,
-        ).length;
-        if (unresolvedCount > 0) {
-          console.error(
-            `Lifetime install counts unresolved for ${unresolvedCount} of ` +
-              `${enrichedSkills.length} skills — a detail page could not be ` +
-              `fetched, or the page exceeds the ${REGISTRY_ENRICH_LIMIT}-row ` +
-              `enrichment cap. Those rows carry lifetimeInstalls: null and ` +
-              `print as "—"; installs still counts the ranking's window.`,
-          );
-        }
-        if (outputJson(options, enrichedResult)) return;
-        console.log(
-          renderBorderlessTable(
-            {
-              head: ["ID", "INSTALLS", "STARS", "SUMMARY"],
-              colWidths: [48, 12, 10, 48],
-              trimTrailingWhitespace: true,
-            },
-            enrichedResult.skills.map((entry) => [
-              entry.id,
-              entry.lifetimeInstalls === null
-                ? "—"
-                : String(entry.lifetimeInstalls),
-              entry.stars === null ? "—" : String(entry.stars),
-              entry.summary ?? "",
-            ]),
-          ),
-        );
-      }),
-    );
-
-  skill
-    .command("registry")
-    .description("Inspect skills.sh registry entries")
-    .command("detail <registry-skill-id>")
-    .description("Show registry metadata and the bounded file preview")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (registrySkillId: string, options: JsonOutputOptions) => {
-        const registry = createCliBbSdk(getUrl()).skills.registry;
-        const skillEntry = await registry.get({ registrySkillId });
-        const [detail, [enrichedSkillEntry]] = await Promise.all([
-          registry.detail({
-            source: skillEntry.source,
-            skillId: skillEntry.skillId,
-          }),
-          enrichRegistryStars(registry, [skillEntry]),
-        ]);
-        const result = { skill: enrichedSkillEntry ?? skillEntry, detail };
-        if (outputJson(options, result)) return;
-        console.log(`Name: ${result.skill.name}`);
-        console.log(`ID: ${result.skill.id}`);
-        console.log(`Source: ${result.skill.source}`);
-        console.log(`Installs: ${result.skill.installs}`);
-        console.log(`Stars: ${result.skill.stars ?? "—"}`);
-        console.log(`URL: ${result.skill.url}`);
-        if (result.skill.summary)
-          console.log(`Summary: ${result.skill.summary}`);
-        console.log(`Revision: ${detail.hash ?? "unknown"}`);
-        if (detail.files === null) {
-          console.log("Files: unavailable");
-          return;
-        }
-        for (const file of detail.files) {
-          console.log(`\n--- ${file.path} ---`);
-          process.stdout.write(file.contents);
-          if (!file.contents.endsWith("\n")) process.stdout.write("\n");
-        }
-      }),
-    );
-
-  skill
-    .command("install <registry-skill-id>")
-    .description("Install a canonical skills.sh entry into bb user skills")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (registrySkillId: string, options: JsonOutputOptions) => {
-        const result = await createCliBbSdk(getUrl()).skills.registry.install({
-          registrySkillId,
-        });
-        if (outputJson(options, result)) return;
-        console.log(`Installed ${result.filePath}`);
-      }),
-    );
-
-  skill
-    .command("cli-skills-status")
-    .description(
-      "Show whether each machine has bb's built-in CLI skills installed",
-    )
-    .option(
-      "--machine <id-or-name>",
-      "Machine to report on (repeatable, defaults to every persistent machine)",
-      collectOption,
-      [],
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (options: SkillInstallCliSkillsOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hosts = options.machine.length > 0 ? await sdk.hosts.list() : [];
-        const hostIds =
-          options.machine.length > 0
-            ? options.machine.map((target) => resolveMachineId(hosts, target))
-            : undefined;
-        const result = await sdk.system.cliSkillsStatus(
-          hostIds === undefined ? {} : { hostIds },
-        );
-        if (outputJson(options, result)) return;
-        console.log(
-          renderBorderlessTable(
-            {
-              head: ["MACHINE", "STATUS"],
-              colWidths: [32, 16],
-              trimTrailingWhitespace: true,
-            },
-            result.machines.map((machine) => [
-              machine.hostName,
-              machine.status,
-            ]),
-          ),
-        );
-      }),
-    );
-
-  skill
-    .command("install-cli-skills")
-    .description(
-      "Install bb's built-in CLI skills into ~/.agents/skills and ~/.claude/skills on a machine",
-    )
-    .option(
-      "--machine <id-or-name>",
-      "Machine to install onto (repeatable, defaults to every connected persistent machine)",
-      collectOption,
-      [],
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (options: SkillInstallCliSkillsOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const hosts = await sdk.hosts.list();
-        const hostIds =
-          options.machine.length > 0
-            ? options.machine.map((target) => resolveMachineId(hosts, target))
-            : selectMachines(hosts, "persistent")
-                .filter((host) => host.status === "connected")
-                .map((host) => host.id);
-        if (hostIds.length === 0) {
-          throw new Error("No connected machine to install the skills onto.");
-        }
-        const result = await sdk.system.installCliSkills({ hostIds });
-        if (outputJson(options, result)) return;
-        for (const entry of result.results) {
-          if (!entry.ok) {
-            console.error(`${entry.hostName}: ${entry.errorMessage}`);
-            continue;
-          }
-          for (const installation of entry.installations) {
-            console.log(
-              `${entry.hostName}: installed ${installation.name} to ${installation.path}`,
-            );
-          }
-        }
-        if (result.results.some((entry) => !entry.ok)) {
-          throw new Error("The install failed on at least one machine.");
-        }
-      }),
-    );
+  const groupsBefore = skillCommands.slice(0, 6);
+  const groupsAfter = skillCommands.slice(6);
+  mountCommands(program, groupsBefore, { getUrl, getContext });
+  skill.command("registry").description("Inspect skills.sh registry entries");
+  mountCommands(program, groupsAfter, { getUrl, getContext });
 }

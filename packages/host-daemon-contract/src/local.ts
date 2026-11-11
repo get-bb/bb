@@ -1,7 +1,14 @@
 import type { Hono } from "hono";
 import { hc } from "hono/client";
 import { z } from "zod";
-import type { EmptyInput, Endpoint } from "@bb/hono-typed-routes";
+import {
+  defineRoute,
+  jsonRequest,
+  jsonResponse,
+  noRequest,
+  optionalQueryRequest,
+  type ApiSchemaFromRouteDescriptors,
+} from "@bb/hono-typed-routes";
 
 export const DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH = "/health";
 export const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
@@ -264,23 +271,36 @@ export type ProviderCliInstallEvent = z.infer<
   typeof providerCliInstallEventSchema
 >;
 
-export type HostDaemonLocalSchema = {
-  [DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH]: {
-    $get: Endpoint<EmptyInput, HealthResponse>;
-  };
-  "/workspace-open-targets": {
-    $get: Endpoint<
-      { query?: WorkspaceOpenTargetsQuery },
-      WorkspaceOpenTargetsResponse
-    >;
-  };
-  "/open-in-target": {
-    $post: Endpoint<{ json: OpenInTargetRequest }, Record<string, never>>;
-  };
-  "/status": {
-    $get: Endpoint<EmptyInput, StatusResponse>;
-  };
+export const hostDaemonLocalRoutes = {
+  health: defineRoute({
+    path: DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH,
+    method: "get",
+    request: noRequest(),
+    response: jsonResponse<HealthResponse>(),
+  }),
+  workspaceOpenTargets: defineRoute({
+    path: "/workspace-open-targets",
+    method: "get",
+    request: optionalQueryRequest(workspaceOpenTargetsQuerySchema),
+    response: jsonResponse<WorkspaceOpenTargetsResponse>(),
+  }),
+  openInTarget: defineRoute({
+    path: "/open-in-target",
+    method: "post",
+    request: jsonRequest(openInTargetRequestSchema),
+    response: jsonResponse<Record<string, never>>(),
+  }),
+  status: defineRoute({
+    path: "/status",
+    method: "get",
+    request: noRequest(),
+    response: jsonResponse<StatusResponse>(),
+  }),
 };
+
+export type HostDaemonLocalSchema = ApiSchemaFromRouteDescriptors<
+  typeof hostDaemonLocalRoutes
+>;
 
 type HostDaemonLocalRoutes = Hono<{}, HostDaemonLocalSchema, "/">;
 
