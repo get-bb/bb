@@ -184,26 +184,32 @@ describe("discoverRepos", () => {
   });
 
   describe("while macOS is asking for access to Desktop or Documents", () => {
-    const PROMPT_ANSWER_MS = 300;
+    const WALK_BUDGET_MS = 1_000;
+    const PROMPT_ANSWER_MS = 1_500;
 
-    const scanWithPendingPrompt = (platform: NodeJS.Platform) =>
+    const scan = (
+      platform: NodeJS.Platform,
+      delays: Record<string, number>,
+    ) =>
       discoverRepos({
         maxDepth: 5,
         sinceDays: 3650,
         limit: 50,
         home,
         platform,
-        walkBudgetMs: 100,
-        privacyPromptBudgetMs: 5_000,
+        walkBudgetMs: WALK_BUDGET_MS,
+        privacyPromptBudgetMs: 10_000,
         openDirectory: async (path) => {
-          if (path === join(home, "Documents")) {
-            await new Promise((resolve) =>
-              setTimeout(resolve, PROMPT_ANSWER_MS),
-            );
+          const delay = delays[path];
+          if (delay !== undefined) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
           }
           return opendir(path);
         },
       });
+
+    const scanWithPendingPrompt = (platform: NodeJS.Platform) =>
+      scan(platform, { [join(home, "Documents")]: PROMPT_ANSWER_MS });
 
     it("waits for the answer and scans the folder on macOS", async () => {
       await makeRepo("projects/app");
@@ -220,6 +226,18 @@ describe("discoverRepos", () => {
       await makeRepo("Documents/code/site");
 
       const { repos, truncated } = await scanWithPendingPrompt("linux");
+
+      expect(truncated).toBe(true);
+      expect(repos.map((repo) => repo.name)).toEqual(["app"]);
+    });
+
+    it("gives the folder's contents only the normal budget once it opens", async () => {
+      await makeRepo("projects/app");
+      await makeRepo("Documents/code/site");
+
+      const { repos, truncated } = await scan("darwin", {
+        [join(home, "Documents", "code")]: PROMPT_ANSWER_MS,
+      });
 
       expect(truncated).toBe(true);
       expect(repos.map((repo) => repo.name)).toEqual(["app"]);

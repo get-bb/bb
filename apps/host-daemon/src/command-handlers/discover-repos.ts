@@ -135,6 +135,7 @@ function isPermissionError(error: unknown): boolean {
 interface WalkOptions {
   maxDepth: number;
   deadline: number;
+  walkBudgetMs: number;
   privacyPromptDeadline: number;
   privacyPromptFolders: ReadonlySet<string>;
   openDirectory: (path: string) => Promise<Dir>;
@@ -208,18 +209,23 @@ async function walkForRepos(
   const walk = async (
     dir: string,
     depth: number,
-    deadline: number,
+    parentDeadline: number,
+    openDeadline: number,
   ): Promise<void> => {
     if (depth > options.maxDepth) return;
-    if (Date.now() > deadline) {
+    if (Date.now() > openDeadline) {
       truncated = true;
       return;
     }
 
     const listing = await limitOpenDirectories(() =>
-      readDirectory(dir, depth, deadline),
+      readDirectory(dir, depth, openDeadline),
     );
     if (listing === null) return;
+    const deadline =
+      openDeadline === parentDeadline
+        ? parentDeadline
+        : Math.max(parentDeadline, Date.now() + options.walkBudgetMs);
 
     if (listing.gitMarker === "file") return;
     if (listing.gitMarker === "directory") {
@@ -240,6 +246,7 @@ async function walkForRepos(
         walk(
           join(dir, child),
           depth + 1,
+          deadline,
           depth === 0 && options.privacyPromptFolders.has(child)
             ? options.privacyPromptDeadline
             : deadline,
@@ -248,7 +255,7 @@ async function walkForRepos(
     );
   };
 
-  await walk(root, 0, options.deadline);
+  await walk(root, 0, options.deadline, options.deadline);
   return { repos, truncated, unreadableCount };
 }
 
@@ -272,9 +279,11 @@ export async function discoverRepos(
   const home = args.home ?? homedir();
   const now = args.now ?? Date.now();
   const startedAt = Date.now();
+  const walkBudgetMs = args.walkBudgetMs ?? WALK_BUDGET_MS;
   const { repos, truncated, unreadableCount } = await walkForRepos(home, {
     maxDepth: args.maxDepth,
-    deadline: startedAt + (args.walkBudgetMs ?? WALK_BUDGET_MS),
+    deadline: startedAt + walkBudgetMs,
+    walkBudgetMs,
     privacyPromptDeadline:
       startedAt + (args.privacyPromptBudgetMs ?? PRIVACY_PROMPT_BUDGET_MS),
     privacyPromptFolders:
