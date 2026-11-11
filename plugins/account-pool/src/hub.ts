@@ -375,7 +375,7 @@ export class AccountPoolHub {
                 !(error instanceof TransientOAuthRefreshError) &&
                 (recover || error instanceof OAuthRefreshError)
               )
-                this.setError(account.id, errorMessage(error));
+                this.failAccount(account.id, error);
               throw error;
             },
           ),
@@ -564,7 +564,7 @@ export class AccountPoolHub {
           if (error instanceof TransientOAuthRefreshError) {
             failure = { status: 503, message: error.message, headers: {} };
           } else {
-            this.setError(selected.account.id, errorMessage(error));
+            this.failAccount(selected.account.id, error);
           }
           continue;
         }
@@ -711,12 +711,11 @@ export class AccountPoolHub {
                     headers: {},
                   };
                 } else {
-                  const message = errorMessage(error);
                   await this.rejectCredential(
                     selected.account,
                     secret,
                     signal,
-                    () => this.setError(selected.account.id, message),
+                    () => this.failAccount(selected.account.id, error),
                   );
                 }
                 break;
@@ -751,7 +750,7 @@ export class AccountPoolHub {
                 selected.account,
                 secret,
                 signal,
-                () => this.setError(selected.account.id, message),
+                () => this.setError(selected.account.id, message, false),
               );
             }
             break;
@@ -1124,7 +1123,10 @@ export class AccountPoolHub {
                   )
                 : null;
             const error = this.options.quotas.get(account.id).error;
-            if (error !== null && !recover) throw new Error(error);
+            if (error !== null && !recover)
+              throw rejection?.sameToken
+                ? new OAuthRefreshError(error)
+                : new Error(error);
             if (rejection?.sameToken && !recover && secret.kind === "oauth") {
               if (
                 !forceRefresh &&
@@ -1168,7 +1170,7 @@ export class AccountPoolHub {
                   "succeeded",
                   `previousExpiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, expiresAt=${result.secret.kind === "oauth" ? result.secret.expiresAt : null}, forced=${forceRefresh}.`,
                 );
-                this.setError(account.id, null);
+                this.setError(account.id, null, false);
               }
               if (rejection !== null)
                 await this.options.accounts.clearRejectedRefresh(account.id);
@@ -1449,11 +1451,23 @@ export class AccountPoolHub {
     }
   }
 
-  private setError(accountId: string, message: string | null): void {
+  private failAccount(accountId: string, error: unknown): void {
+    this.setError(
+      accountId,
+      errorMessage(error),
+      error instanceof OAuthRefreshError,
+    );
+  }
+
+  private setError(
+    accountId: string,
+    message: string | null,
+    loginRejected: boolean,
+  ): void {
     const quota = this.options.quotas.get(accountId);
     const error = message?.slice(0, 1_000) ?? null;
-    if (quota.error === error) return;
-    this.options.quotas.put({ ...quota, error });
+    if (quota.error === error && quota.loginRejected === loginRejected) return;
+    this.options.quotas.put({ ...quota, error, loginRejected });
     this.options.onAccountsChanged();
   }
 

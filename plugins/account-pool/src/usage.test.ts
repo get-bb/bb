@@ -24,6 +24,7 @@ function quota(limitWindows: LimitWindow[]): AccountQuota {
     observedAt: null,
     heldUntil: null,
     error: null,
+    loginRejected: false,
   };
 }
 

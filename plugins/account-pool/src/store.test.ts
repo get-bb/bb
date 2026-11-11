@@ -198,7 +198,7 @@ describe("QuotaStore", () => {
 
   it("moves stored Claude five-hour and seven-day columns into limit windows", () => {
     const database = new Database(":memory:");
-    const moveMigration = QUOTA_MIGRATIONS.length - 1;
+    const moveMigration = 6;
     for (const migration of QUOTA_MIGRATIONS.slice(0, moveMigration))
       database.exec(migration);
     const claudeId = "11111111-1111-4111-8111-111111111111";
@@ -233,7 +233,8 @@ describe("QuotaStore", () => {
       50,
     );
     insert.run(codexId, null, null, null, null, null, null, codexWindows, 60);
-    database.exec(QUOTA_MIGRATIONS[moveMigration] ?? "");
+    for (const migration of QUOTA_MIGRATIONS.slice(moveMigration))
+      database.exec(migration);
     const quotas = new QuotaStore(database);
 
     expect(quotas.get(claudeId).limitWindows).toEqual([
@@ -266,6 +267,29 @@ describe("QuotaStore", () => {
         )
         .get(),
     ).toEqual({ stale: 0 });
+    database.close();
+  });
+
+  it("drops the login rejection when an older build replaces the error", () => {
+    const database = new Database(":memory:");
+    for (const migration of QUOTA_MIGRATIONS) database.exec(migration);
+    const quotas = new QuotaStore(database);
+    const accountId = "11111111-1111-4111-8111-111111111111";
+    quotas.put({
+      ...quotas.get(accountId),
+      error: "OAuth refresh failed with HTTP 400. invalid_grant.",
+      loginRejected: true,
+    });
+    expect(quotas.get(accountId).loginRejected).toBe(true);
+    const storeError = database.prepare(
+      "UPDATE account_quota SET error = ? WHERE account_id = ?",
+    );
+
+    storeError.run(null, accountId);
+    expect(quotas.get(accountId).loginRejected).toBe(false);
+
+    storeError.run("Stored credential refresh failed.", accountId);
+    expect(quotas.get(accountId).loginRejected).toBe(false);
     database.close();
   });
 

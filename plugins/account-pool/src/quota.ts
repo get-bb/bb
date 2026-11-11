@@ -159,6 +159,7 @@ export function quotaFromHeaders(
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,
+    loginRejected: previous.loginRejected,
   };
 }
 

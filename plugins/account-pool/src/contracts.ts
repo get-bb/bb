@@ -195,6 +195,7 @@ const quotaFieldsShape = {
   observedAt: z.number().int().nullable(),
   heldUntil: z.number().int().nullable(),
   error: z.string().nullable(),
+  loginRejected: z.boolean(),
 };
 
 export const quotaSchema = z

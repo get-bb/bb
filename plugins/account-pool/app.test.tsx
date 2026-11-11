@@ -96,6 +96,7 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
     observedAt: 1,
     heldUntil: null,
     error: null,
+    loginRejected: false,
     inFlight: 0,
     status: "ready",
     ...overrides,

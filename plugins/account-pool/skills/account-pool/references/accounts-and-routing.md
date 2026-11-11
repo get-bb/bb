@@ -98,6 +98,8 @@ own, even after a restart, and keeps serving the stored access token. The
 account enters error once that access token expires or upstream rejects it; an
 API key enters error when it is rejected. `bb pool account login <id>` replaces
 the login and clears both the error and the stored fingerprint.
+JSON status marks an account that is in error for a rejected refresh token with
+`loginRejected`, and Provider usage shows it as expired with a sign-in hint.
 `bb pool account enable` clears the error, but an unchanged rejected refresh
 token puts the account back in error as soon as its access token has expired;
 `refresh` is the command that retries it. A 401

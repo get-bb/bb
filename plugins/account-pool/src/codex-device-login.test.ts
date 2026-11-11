@@ -90,6 +90,7 @@ function summary(account: CodexDeviceAccount): AccountSummary {
     observedAt: null,
     heldUntil: null,
     error: null,
+    loginRejected: false,
     inFlight: 0,
     status: "ready",
   };

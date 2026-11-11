@@ -615,6 +615,7 @@ const quotaRowSchema = z.object({
   observed_at: z.number().int().nullable(),
   held_until: z.number().int().nullable(),
   error: z.string().nullable(),
+  login_rejected_error: z.string().nullable(),
 });
 
 const EMPTY_QUOTA = {
@@ -626,6 +627,7 @@ const EMPTY_QUOTA = {
   observedAt: null,
   heldUntil: null,
   error: null,
+  loginRejected: false,
 };
 
 export class QuotaStore {
@@ -652,6 +654,8 @@ export class QuotaStore {
       observedAt: row.observed_at,
       heldUntil: row.held_until,
       error: row.error,
+      loginRejected:
+        row.error !== null && row.login_rejected_error === row.error,
     });
   }
 
@@ -661,8 +665,8 @@ export class QuotaStore {
       .prepare(
         `INSERT INTO account_quota (
           account_id, representative_claim, bucket_exhaustion_json,
-          family_weekly_json, limit_windows_json, extra_usage_json, usage_restriction_json, observed_at, held_until, error
-        ) VALUES (?, ?, '{}', ?, ?, ?, ?, ?, ?, ?)
+          family_weekly_json, limit_windows_json, extra_usage_json, usage_restriction_json, observed_at, held_until, error, login_rejected_error
+        ) VALUES (?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           representative_claim = excluded.representative_claim,
           family_weekly_json = excluded.family_weekly_json,
@@ -671,7 +675,8 @@ export class QuotaStore {
           usage_restriction_json = excluded.usage_restriction_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
-          error = excluded.error`,
+          error = excluded.error,
+          login_rejected_error = excluded.login_rejected_error`,
       )
       .run(
         value.accountId,
@@ -683,6 +688,7 @@ export class QuotaStore {
         value.observedAt,
         value.heldUntil,
         value.error,
+        value.loginRejected ? value.error : null,
       );
   }
 
@@ -828,4 +834,5 @@ export const QUOTA_MIGRATIONS = [
     five_hour_utilization = NULL, five_hour_reset_at = NULL,
     five_hour_status = NULL, seven_day_utilization = NULL,
     seven_day_reset_at = NULL, seven_day_status = NULL`,
+  `ALTER TABLE account_quota ADD COLUMN login_rejected_error TEXT`,
 ];

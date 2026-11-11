@@ -162,6 +162,12 @@ async function createPool(provider: PoolProvider, refreshFailureStatus = 400) {
       time += milliseconds;
     },
     error: () => initial.quotas.get(account.id).error,
+    loginRejected: () => initial.quotas.get(account.id).loginRejected,
+    storeErrorWithoutLoginRejected: () =>
+      initial.quotas.put({
+        ...initial.quotas.get(account.id),
+        loginRejected: false,
+      }),
     tick: () => active.hub.refreshUsage(),
     restart: async () => {
       await active.stop();
@@ -223,12 +229,14 @@ describe.each(["claude", "codex"] as const)(
       await pool.tick();
       expect(pool.refreshTokens).toEqual(["refresh-original"]);
       expect(pool.error()).toBeNull();
+      expect(pool.loginRejected()).toBe(false);
       expect(pool.accountsChanged()).toBe(changes);
 
       pool.advance(5 * MINUTE);
       await pool.tick();
       expect(pool.refreshTokens).toEqual(["refresh-original"]);
       expect(pool.error()).toBe(REJECTED);
+      expect(pool.loginRejected()).toBe(true);
       expect(pool.accountsChanged()).toBe(changes + 1);
 
       pool.advance(5 * MINUTE);
@@ -266,6 +274,7 @@ describe.each(["claude", "codex"] as const)(
 
       expect(pool.refreshTokens).toEqual(["refresh-original"]);
       expect(pool.error()).toBe(REJECTED);
+      expect(pool.loginRejected()).toBe(true);
       expect(pool.accountsChanged()).toBe(changes + 1);
     });
 
@@ -302,10 +311,47 @@ describe.each(["claude", "codex"] as const)(
       await pool.signInAgain("access-new", "refresh-new", 60 * MINUTE);
 
       expect(pool.error()).toBeNull();
+      expect(pool.loginRejected()).toBe(false);
       expect(await pool.kv.list("rejected-refresh:")).toEqual([]);
       expect(await pool.request()).toBe(200);
       expect(pool.authorizations).toEqual(["Bearer access-new"]);
       expect(pool.refreshTokens).toEqual(["refresh-original"]);
+    });
+
+    it("marks an error stored before the login was classified on the next refresh", async () => {
+      const pool = await createPool(provider);
+      pool.advance(7 * MINUTE);
+      await pool.tick();
+      pool.advance(5 * MINUTE);
+      await pool.tick();
+      pool.storeErrorWithoutLoginRejected();
+
+      pool.advance(5 * MINUTE);
+      await pool.tick();
+
+      expect(pool.loginRejected()).toBe(true);
+      expect(pool.refreshTokens).toEqual(["refresh-original"]);
+    });
+
+    it("leaves a stored error unmarked when the rejection was for another refresh token", async () => {
+      const pool = await createPool(provider);
+      pool.advance(7 * MINUTE);
+      await pool.tick();
+      pool.advance(5 * MINUTE);
+      await pool.tick();
+      pool.storeErrorWithoutLoginRejected();
+      await pool.accounts.writeSecret(pool.account.id, {
+        kind: "oauth",
+        accessToken: "access-other",
+        refreshToken: "refresh-other",
+        expiresAt: 1,
+      });
+
+      pool.advance(5 * MINUTE);
+      await pool.tick();
+
+      expect(pool.error()).toBe(REJECTED);
+      expect(pool.loginRejected()).toBe(false);
     });
 
     it("keeps serving and retrying after a transient refresh failure", async () => {

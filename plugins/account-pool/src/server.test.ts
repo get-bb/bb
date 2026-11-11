@@ -3580,16 +3580,25 @@ describe("Account Pool plugin", () => {
               { accountId: fixture.account.id },
             ),
           ).account;
+      const usage = async () =>
+        usageMeasurementSchema.parse(
+          await fixture.host.harness.behavior.callRpc(usageFetchMethod, {
+            resourceId: fixture.account.id,
+            refresh: false,
+          }),
+        ).usage;
 
       expect(await send()).toBe(401);
       expect(await send()).toBe(429);
       expect(refreshCalls).toBe(1);
+      expect(await usage()).toMatchObject({ status: "expired" });
 
       const stillRejected = await refresh();
       expect(refreshCalls).toBe(2);
       expect(stillRejected?.error).toBe(
         "OAuth refresh failed with HTTP 400. invalid_grant.",
       );
+      expect(await usage()).toMatchObject({ status: "expired" });
       expect(fixture.host.harness.inspection.logEntries).toContainEqual({
         level: "warn",
         message: expect.stringContaining(
@@ -3601,6 +3610,10 @@ describe("Account Pool plugin", () => {
       const recovered = await refresh();
       expect(refreshCalls).toBe(3);
       expect(recovered?.error).toBeNull();
+      expect(await usage()).toMatchObject({
+        status: "error",
+        message: "Usage has not been observed for this account.",
+      });
       expect(fixture.host.harness.inspection.logEntries).toContainEqual({
         level: "info",
         message: expect.stringContaining(

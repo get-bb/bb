@@ -154,8 +154,9 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
             label: account.label,
             scope: { kind: "shared" },
             observedAt: account.observedAt,
-            usage:
-              error === null
+            usage: account.loginRejected
+              ? { status: "expired", ...accountFields }
+              : error === null
                 ? { status: "ok", ...accountFields, windows }
                 : { status: "error", ...accountFields, message: error },
           };
