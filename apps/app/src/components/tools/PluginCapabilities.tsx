@@ -199,9 +199,24 @@ function pluginAppSurfaceItems(
       : []),
     ...namedSlotItems(
       pluginId,
-      slots.navPanels,
+      slots.navPanels.filter(
+        (panel) => panel.experimental_hideFromNavigation !== true,
+      ),
       "nav",
       "Adds a page to the app sidebar.",
+      (panel) =>
+        getPluginPanelRoutePath({
+          pluginId,
+          path: panel.path,
+        }),
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.navPanels.filter(
+        (panel) => panel.experimental_hideFromNavigation === true,
+      ),
+      "nav",
+      "Adds a page the plugin opens itself, outside navigation.",
       (panel) =>
         getPluginPanelRoutePath({
           pluginId,
@@ -323,6 +338,18 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadHeaderRows,
+      "thread-header-row",
+      "Adds a row under the thread header.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadHeaderTitles,
+      "thread-header-title",
+      "Replaces the thread title in the thread header.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadContextCardRows,
       "thread-context-card-row",
       "Adds a row to the thread context card.",
@@ -401,7 +428,9 @@ function pluginAppSurfaceItems(
         ),
         detail:
           slot.extensions.length === 0 ? (
-            <span>Opens files the plugin shows in a plugin-provided viewer.</span>
+            <span>
+              Opens files the plugin shows in a plugin-provided viewer.
+            </span>
           ) : (
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
               <span>Opens these files in a plugin-provided viewer:</span>

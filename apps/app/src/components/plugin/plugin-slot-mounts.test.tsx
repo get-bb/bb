@@ -1587,7 +1587,11 @@ describe("useComposer().experimental_setSelection", () => {
       }),
     );
     const host = {
-      scope: { kind: "thread", threadId: "thr_own_selection", environment: null },
+      scope: {
+        kind: "thread",
+        threadId: "thr_own_selection",
+        environment: null,
+      },
       textEffectKey: "thread:thr_own_selection",
       getSelection: () => selection,
       subscribeSelection: (listener: () => void) => {
@@ -1817,7 +1821,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     const panel = panelSlot({ headerContent: ExplodingAccessory });
     render(
       <>
-        <PluginPanelHeaderCenter chrome={panel} />
+        <PluginPanelHeaderCenter chrome={panel} panel={panel} subPath="" />
         <PluginPanelHeaderActions panel={panel} subPath="" />
       </>,
     );
@@ -1834,7 +1838,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     void applyPluginCss("demo", "/demo.css?h=header");
     const view = render(
       <>
-        <PluginPanelHeaderCenter chrome={panel} />
+        <PluginPanelHeaderCenter chrome={panel} panel={panel} subPath="" />
         <PluginPanelHeaderActions panel={panel} subPath="notes/today.md" />
       </>,
     );
@@ -1871,6 +1875,51 @@ describe("plugin panel shared title bar and full-bleed body", () => {
         .querySelector("[data-plugin-right-panel-toggle-portal]")
         ?.getAttribute("data-plugin-right-panel-toggle-portal"),
     ).toBe("plugin-panel:demo:board:pane-docs");
+  });
+
+  it("renders experimental_headerTitle in place of the icon and title with the subPath", () => {
+    function Breadcrumb({ subPath }: { subPath: string }) {
+      return (
+        <nav aria-label="Breadcrumb">
+          <button type="button">acme</button> › {subPath}
+        </nav>
+      );
+    }
+    const panel = panelSlot({ experimental_headerTitle: Breadcrumb });
+    render(
+      <PluginPanelHeaderCenter
+        chrome={panel}
+        panel={panel}
+        subPath="feature-x"
+      />,
+    );
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(breadcrumb.textContent).toBe("acme › feature-x");
+    expect(breadcrumb.closest("[data-bb-plugin-root]")).not.toBeNull();
+    expect(screen.queryByText("Demo board")).toBeNull();
+  });
+
+  it("restores the default title when experimental_headerTitle crashes", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    function Crashes(): never {
+      throw new Error("title crashed");
+    }
+    const panel = panelSlot({ experimental_headerTitle: Crashes });
+    render(<PluginPanelHeaderCenter chrome={panel} panel={panel} subPath="" />);
+    expect(screen.getByText("Demo board")).toBeDefined();
+    expect(screen.queryByText(/plugin demo crashed/)).toBeNull();
+  });
+
+  it("still renders the route of a panel hidden from navigation", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        navPanels: [panelSlot({ experimental_hideFromNavigation: true })],
+      }),
+    );
+    renderPanelBody("/plugins/demo/board/env_1");
+    expect(screen.getByText("panel body")).toBeDefined();
   });
 
   it("still contains a crashing panel inside the error boundary", () => {
@@ -2135,7 +2184,10 @@ describe("plugin thread panel actions", () => {
       opened.push(args.paramsJson);
     };
     function BothActionsHarness() {
-      const { actions } = useThreadFixedTabs({ threadId: "thr_one", environmentId: null });
+      const { actions } = useThreadFixedTabs({
+        threadId: "thr_one",
+        environmentId: null,
+      });
       const { newThreadPanelActions } = usePluginSlots();
       const threadEntries = usePluginPanelActions({
         actions,

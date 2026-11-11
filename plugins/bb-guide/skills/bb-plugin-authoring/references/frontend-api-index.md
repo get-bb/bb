@@ -148,6 +148,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarFooterDisclosureProps`
 - `PluginThreadListProps`
 - `ExperimentalThreadInfoProps`
+- `ExperimentalThreadHeaderRowProps`
+- `ExperimentalThreadHeaderTitleProps`
 - `ExperimentalThreadEnvironment`
 - `ExperimentalThreadContextSegmentInput`
 - `ExperimentalThreadContextSegmentProps`
@@ -232,6 +234,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalThreadInfoRowRegistration`
 - `ExperimentalThreadRowMetadataRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
+- `ExperimentalThreadHeaderRowRegistration`
+- `ExperimentalThreadHeaderTitleRegistration`
 - `ExperimentalThreadContextCardRowRegistration`
 - `ExperimentalThreadContextCardSectionRegistration`
 - `ExperimentalThreadContextKind`

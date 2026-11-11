@@ -10,18 +10,20 @@ interface BuildPluginPagePaletteActionsArgs {
 export function buildPluginPagePaletteActions(
   args: BuildPluginPagePaletteActionsArgs,
 ): PaletteAction[] {
-  return args.panels.map((panel) => ({
-    id: `plugin-page:${panel.pluginId}/${panel.id}`,
-    bucket: "Plugins" as const,
-    group: "Plugin pages",
-    title: panel.title,
-    shortcut: null,
-    run: () =>
-      args.navigate(
-        getPluginPanelRoutePath({
-          pluginId: panel.pluginId,
-          path: panel.path,
-        }),
-      ),
-  }));
+  return args.panels
+    .filter((panel) => panel.experimental_hideFromNavigation !== true)
+    .map((panel) => ({
+      id: `plugin-page:${panel.pluginId}/${panel.id}`,
+      bucket: "Plugins" as const,
+      group: "Plugin pages",
+      title: panel.title,
+      shortcut: null,
+      run: () =>
+        args.navigate(
+          getPluginPanelRoutePath({
+            pluginId: panel.pluginId,
+            path: panel.path,
+          }),
+        ),
+    }));
 }

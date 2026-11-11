@@ -196,6 +196,67 @@
         }
       ]
     },
+    "thread-header-title": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["checkout › flaky-tests"]
+      },
+      "fixtureClassAnchors": ["flex h-6.5 min-w-0 items-center gap-1 px-1 text-foreground"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadHeaderTitle.tsx",
+          "anchors": [
+            "slotKind=\"threadHeaderTitle\"",
+            "crashFallback={fallback}"
+          ]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadDetailHeader.tsx",
+          "anchors": ["<PluginThreadHeaderTitle", "isInteractiveTitleTarget(event)"]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadDetailHeader.test.tsx",
+          "anchors": [
+            "falls back to the core title when the plugin title crashes",
+            "shows the rename editor while renaming and the plugin title after"
+          ]
+        }
+      ]
+    },
+    "thread-header-row": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["Review retries"]
+      },
+      "fixtureClassAnchors": ["border-b border-border-hairline"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadHeaderRows.tsx",
+          "anchors": [
+            "slotKind=\"threadHeaderRow\"",
+            "crashFallback={null}",
+            "className=\"flex w-full min-w-0 shrink-0 flex-col\""
+          ]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadDetailView.tsx",
+          "anchors": ["<PluginThreadHeaderRows"]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadDetailView.contract.test.tsx",
+          "anchors": [
+            "stacks rows by order between the thread header and the timeline",
+            "drops only a crashing row and keeps the thread view"
+          ]
+        }
+      ]
+    },
     "app-overlay": {
       "groupId": "app-shell",
       "fidelity": "anchor",
