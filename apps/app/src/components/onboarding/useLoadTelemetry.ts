@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   operationFailureReason,
   type OnboardingStepId,
@@ -14,11 +14,6 @@ export type StepLoadTimes = Map<
   OnboardingStepId,
   { shownAt: number; reported: boolean }
 >;
-
-export function useStepLoadTimes(): StepLoadTimes {
-  const [loadTimes] = useState<StepLoadTimes>(() => new Map());
-  return loadTimes;
-}
 
 export function useLoadTelemetry({
   entry,

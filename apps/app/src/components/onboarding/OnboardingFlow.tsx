@@ -118,11 +118,7 @@ import {
 } from "./onboarding-telemetry";
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
 import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
-import {
-  useLoadTelemetry,
-  useStepLoadTimes,
-  type StepLoadTimes,
-} from "./useLoadTelemetry";
+import { useLoadTelemetry, type StepLoadTimes } from "./useLoadTelemetry";
 import { useOnboardingLeftTelemetry } from "./useOnboardingLeftTelemetry";
 import { useOnboardingErrorStep } from "./OnboardingErrorTelemetry";
 import {
@@ -1432,7 +1428,7 @@ export function OnboardingFlow({
   }, [entry, step]);
   const trackPluginInstall = useOnboardingPluginInstallOutcomes(entry);
   const pluginSwitches = useOnboardingPluginSwitches();
-  const loadTimes = useStepLoadTimes();
+  const [loadTimes] = useState<StepLoadTimes>(() => new Map());
   const finishedRef = useRef(false);
   useOnboardingLeftTelemetry({ entry, step, finishedRef });
   useOnboardingErrorStep(step);
