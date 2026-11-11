@@ -1618,6 +1618,7 @@ function refreshProviderCommands(threadSession: ThreadSession): void {
 function createOnSdkMessage(
   args: CreateSdkCallbackArgs,
 ): (message: SDKMessage) => void {
+  let sessionAnnounced = false;
   return (message: SDKMessage) => {
     const threadSession = getCurrentThreadSession({
       sessionSerial: args.sessionSerial,
@@ -1631,7 +1632,12 @@ function createOnSdkMessage(
     ) {
       threadSession.contextUsageCollector.invalidate();
     }
-    const providerThreadId = message.session_id?.trim() ?? "";
+    if (message.type === "system" && message.subtype === "init") {
+      sessionAnnounced = true;
+    }
+    const providerThreadId = sessionAnnounced
+      ? (message.session_id?.trim() ?? "")
+      : "";
     if (
       providerThreadId.length > 0 &&
       threadSession.attachment.providerThreadId !== providerThreadId
