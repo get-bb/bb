@@ -7,9 +7,12 @@ import type {
   StandardSchemaV1Issue,
   StandardSchemaV1Result,
 } from "@get-bb/plugin-sdk";
+import { sliceUtf16Head } from "@bb/text-utils";
 import type { AppDeps } from "../types.js";
 
 export const EXTENSION_PAYLOAD_MAX_BYTES = 64 * 1024;
+export const EXTENSION_REJECTION_REASON_MAX_CHARS = 4 * 1024;
+const REASON_TRUNCATION_MARKER = " ... [truncated]";
 
 export type ExtensionPayloadValidationDeps = Pick<
   AppDeps,
@@ -166,11 +169,19 @@ async function validateSite(
   return validateAgainstSchema(schema, site.payload);
 }
 
+function boundedReason(reason: string): string {
+  if (reason.length <= EXTENSION_REJECTION_REASON_MAX_CHARS) {
+    return reason;
+  }
+  return `${sliceUtf16Head(reason, EXTENSION_REJECTION_REASON_MAX_CHARS - REASON_TRUNCATION_MARKER.length)}${REASON_TRUNCATION_MARKER}`;
+}
+
 function toUnhandledEvent(
   site: ExtensionPayloadSite,
   providerId: string | null,
   reason: string,
 ): ThreadEvent {
+  const payloadBytes = Buffer.byteLength(JSON.stringify(site.payload));
   return {
     type: "provider/unhandled",
     threadId: site.threadId,
@@ -180,7 +191,13 @@ function toUnhandledEvent(
     rawEvent: {
       jsonrpc: "2.0",
       method: site.eventType,
-      params: { kind: site.kind, payload: site.payload, reason },
+      params: {
+        kind: site.kind,
+        ...(payloadBytes > EXTENSION_PAYLOAD_MAX_BYTES
+          ? { payloadOmitted: true, payloadBytes }
+          : { payload: site.payload }),
+        reason: boundedReason(reason),
+      },
     },
     scope: site.scope,
     ...(site.parentToolCallId === undefined
