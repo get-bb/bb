@@ -781,27 +781,6 @@ describe("local evaluation from cached definitions", () => {
     );
   });
 
-  it("stores a holdout visitor as unassigned instead of rendering it", async () => {
-    const { config } = localSetup(
-      EXPERIMENT_KEYS.map((key) =>
-        key === "homepage-hero"
-          ? simple(key, { holdout: { id: 7, exclusion_percentage: 100 } })
-          : simple(key),
-      ),
-      async () => flagsResponse({ flags: {} }),
-    );
-    const resolution = await resolveExperiments(
-      pageRequest("/", visitor),
-      config,
-    );
-    expect(resolution?.bootstrap.featureFlags).not.toHaveProperty(
-      "homepage-hero",
-    );
-    expect(resolution?.setCookies[0]).toContain(
-      encodeURIComponent(`homepage-hero=%7E${NOW}`),
-    );
-  });
-
   it("falls back to /flags for every key until definitions load", async () => {
     const { calls, config } = localSetup(null, async () =>
       flagsResponse({

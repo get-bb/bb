@@ -7,13 +7,9 @@ type Condition = {
   variant: string | null;
 };
 
-type Holdout = { id: string; exclusionPercentage: number };
-
 export type LocalFlag = {
   key: string;
   active: boolean;
-  earlyExit: boolean;
-  holdout: Holdout | null;
   conditions: readonly Condition[];
   variants: readonly Variant[];
 };
@@ -95,36 +91,6 @@ function readVariants(value: unknown): Variant[] | null {
   return variants;
 }
 
-function readHoldout(value: unknown): Holdout | null | undefined {
-  if (isEmpty(value)) {
-    return null;
-  }
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const id = value.id;
-  const exclusionPercentage = value.exclusion_percentage;
-  if (
-    id === undefined ||
-    id === null ||
-    exclusionPercentage === undefined ||
-    exclusionPercentage === null
-  ) {
-    return null;
-  }
-  const percentage = Number(exclusionPercentage);
-  if (
-    !(typeof id === "string" || typeof id === "number") ||
-    !Number.isFinite(percentage)
-  ) {
-    return undefined;
-  }
-  return {
-    id: String(id),
-    exclusionPercentage: Math.min(Math.max(percentage, 0), 100),
-  };
-}
-
 function readFlag(value: Record<string, unknown>): LocalFlag | "unsupported" {
   const filters = value.filters;
   if (
@@ -134,6 +100,7 @@ function readFlag(value: Record<string, unknown>): LocalFlag | "unsupported" {
     value.ensure_experience_continuity === true ||
     !isRecord(filters) ||
     !isEmpty(filters.aggregation_group_type_index) ||
+    !isEmpty(filters.holdout) ||
     !isEmpty(filters.holdout_groups) ||
     !isEmpty(filters.super_groups) ||
     !isEmpty(filters.feature_enrollment) ||
@@ -145,13 +112,9 @@ function readFlag(value: Record<string, unknown>): LocalFlag | "unsupported" {
       isEmpty(value.bucketing_identifier) ||
       value.bucketing_identifier === "distinct_id"
     ) ||
-    !Array.isArray(filters.groups) ||
-    !(isEmpty(filters.early_exit) || filters.early_exit === true)
+    !isEmpty(filters.early_exit) ||
+    !Array.isArray(filters.groups)
   ) {
-    return "unsupported";
-  }
-  const holdout = readHoldout(filters.holdout);
-  if (holdout === undefined) {
     return "unsupported";
   }
   const conditions: Condition[] = [];
@@ -166,14 +129,7 @@ function readFlag(value: Record<string, unknown>): LocalFlag | "unsupported" {
   if (variants === null) {
     return "unsupported";
   }
-  return {
-    key: value.key,
-    active: value.active,
-    earlyExit: filters.early_exit === true,
-    holdout,
-    conditions,
-    variants,
-  };
+  return { key: value.key, active: value.active, conditions, variants };
 }
 
 export function parseFlagDefinitions(body: unknown): FlagDefinitions | null {
@@ -193,11 +149,10 @@ export async function flagHash(
   key: string,
   distinctId: string,
   salt = "",
-  separator = ".",
 ): Promise<number> {
   const digest = await crypto.subtle.digest(
     "SHA-1",
-    new TextEncoder().encode(`${key}${separator}${distinctId}${salt}`),
+    new TextEncoder().encode(`${key}.${distinctId}${salt}`),
   );
   const hex = Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
@@ -233,22 +188,11 @@ export async function evaluateLocalFlag(
   if (!flag.active) {
     return { kind: "assigned", variant: null };
   }
-  if (
-    flag.holdout !== null &&
-    (flag.holdout.exclusionPercentage === 100 ||
-      (await flagHash("holdout", distinctId, "", "-")) <=
-        flag.holdout.exclusionPercentage / 100)
-  ) {
-    return { kind: "assigned", variant: `holdout-${flag.holdout.id}` };
-  }
   for (const condition of flag.conditions) {
     if (
       condition.rolloutPercentage !== null &&
       (await flagHash(flag.key, distinctId)) > condition.rolloutPercentage / 100
     ) {
-      if (flag.earlyExit) {
-        return { kind: "assigned", variant: null };
-      }
       continue;
     }
     const override = flag.variants.some(

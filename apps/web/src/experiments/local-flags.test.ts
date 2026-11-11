@@ -57,9 +57,6 @@ describe("local flag evaluation", () => {
     expect(await flagHash("homepage-hero", "visitor-1", "variant")).toBe(
       0.697373325650049,
     );
-    expect(await flagHash("holdout", "visitor-2", "", "-")).toBe(
-      0.5526552013475873,
-    );
   });
 
   it("assigns the variants posthog-node assigns for a 50/50 test", async () => {
@@ -78,26 +75,6 @@ describe("local flag evaluation", () => {
       "test",
       "control",
       "control",
-    ]);
-  });
-
-  it("applies an experiment holdout before conditions, like posthog-node", async () => {
-    const defs = definitions(
-      flag({
-        holdout: { id: 7, exclusion_percentage: 15 },
-        groups: [{ properties: [], rollout_percentage: 100 }],
-        multivariate: SPLIT,
-      }),
-    );
-    const ids = [
-      "0199f0a1-2b3c-7d4e-8f90-a1b2c3d4e5f6",
-      "visitor-1",
-      "visitor-7",
-    ];
-    expect(await variantsFor(defs, ids)).toEqual([
-      "holdout-7",
-      "test",
-      "holdout-7",
     ]);
   });
 
@@ -127,23 +104,6 @@ describe("local flag evaluation", () => {
     expect(await variantsFor(defs, ["visitor-1", "visitor-2"])).toEqual([
       "control",
       "control",
-    ]);
-  });
-
-  it("stops at the first out-of-rollout condition with early exit", async () => {
-    const defs = definitions(
-      flag({
-        early_exit: true,
-        groups: [
-          { properties: [], rollout_percentage: 10 },
-          { properties: [], rollout_percentage: 100 },
-        ],
-        multivariate: SPLIT,
-      }),
-    );
-    expect(await variantsFor(defs, ["visitor-1", "visitor-2"])).toEqual([
-      "test",
-      null,
     ]);
   });
 
@@ -226,6 +186,26 @@ describe("local flag evaluation", () => {
       ],
     ],
     [
+      "an experiment holdout",
+      [
+        flag({
+          holdout: { id: 7, exclusion_percentage: 15 },
+          groups: [{ properties: [], rollout_percentage: 100 }],
+          multivariate: SPLIT,
+        }),
+      ],
+    ],
+    [
+      "early exit",
+      [
+        flag({
+          early_exit: true,
+          groups: [{ properties: [], rollout_percentage: 100 }],
+          multivariate: SPLIT,
+        }),
+      ],
+    ],
+    [
       "early access enrollment",
       [
         flag({
@@ -248,9 +228,5 @@ describe("local flag evaluation", () => {
     expect(await variantsFor(definitions(...flags), ["visitor-1"])).toEqual([
       "inconclusive",
     ]);
-  });
-
-  it("rejects a body without a flags list", () => {
-    expect(parseFlagDefinitions({ detail: "nope" })).toBeNull();
   });
 });

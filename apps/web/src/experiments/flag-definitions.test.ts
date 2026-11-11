@@ -55,7 +55,6 @@ function setup(options: {
     },
     log: (entry) => logs.push(entry),
     now: () => clock,
-    timeoutMs: 20,
     ...(options.sharedCache ? { sharedCache: options.sharedCache } : {}),
   });
   return {

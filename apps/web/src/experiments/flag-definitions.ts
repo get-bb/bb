@@ -41,7 +41,6 @@ export type FlagDefinitionsConfig = {
   log: (entry: DefinitionsLogEntry) => void;
   sharedCache?: SharedCache;
   now?: () => number;
-  timeoutMs?: number;
 };
 
 export type FlagDefinitionsSource = {
@@ -96,10 +95,7 @@ export function createFlagDefinitionsSource(
   async function refresh(): Promise<void> {
     const startedAt = now();
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(),
-      config.timeoutMs ?? FETCH_TIMEOUT_MS,
-    );
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     let outcome: DefinitionsOutcome = "error";
     let status: number | undefined;
     try {
