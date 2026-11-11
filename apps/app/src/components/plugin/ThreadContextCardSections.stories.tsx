@@ -1,4 +1,5 @@
-import { useEffect, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
+import { Provider as JotaiProvider, createStore } from "jotai";
 import type { ExperimentalThreadContextCardProps } from "@get-bb/plugin-sdk";
 import type { IconName } from "@bb/shared-ui/icon";
 import {
@@ -152,6 +153,7 @@ function SectionsFixture({
   openTitles: readonly string[];
   withSummaries: boolean;
 }) {
+  const [store] = useState(createStore);
   useEffect(() => {
     for (const section of SECTIONS) {
       setPluginSlotRegistrations(
@@ -187,20 +189,22 @@ function SectionsFixture({
     };
   }, [openTitles, withSummaries]);
   return (
-    <div className="p-6">
-      <ThreadContextCardProvider
-        enabled
-        coreRows={[]}
-        coreSections={CORE_SECTIONS}
-        threadId="thr_story"
-        projectId="proj_story"
-        environment={null}
-      >
-        <div data-scroll-overlay="" className="flex w-[1500px] justify-start">
-          <ThreadContextCard />
-        </div>
-      </ThreadContextCardProvider>
-    </div>
+    <JotaiProvider store={store}>
+      <div className="p-6">
+        <ThreadContextCardProvider
+          enabled
+          coreRows={[]}
+          coreSections={CORE_SECTIONS}
+          threadId="thr_story"
+          projectId="proj_story"
+          environment={null}
+        >
+          <div data-scroll-overlay="" className="flex w-[1500px] justify-start">
+            <ThreadContextCard />
+          </div>
+        </ThreadContextCardProvider>
+      </div>
+    </JotaiProvider>
   );
 }
 
