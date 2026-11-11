@@ -111,6 +111,7 @@ import {
   type ExperimentalThreadInfoRowRegistration,
   type ExperimentalThreadInfoSectionRegistration,
   type ExperimentalThreadHeaderRowRegistration,
+  type ExperimentalThreadHeaderTitleRegistration,
   type ExperimentalThreadContextCardRowRegistration,
   type ExperimentalThreadContextCardSectionRegistration,
   type ExperimentalThreadContextKind,
@@ -2145,6 +2146,7 @@ export interface CapturedPluginApp {
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
+  threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];

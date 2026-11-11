@@ -10,7 +10,12 @@ import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
 class HeaderContentBoundary extends Component<
-  { pluginId: string; children: ReactNode },
+  {
+    pluginId: string;
+    slotName: "headerContent" | "experimental_headerTitle";
+    fallback: ReactNode;
+    children: ReactNode;
+  },
   { crashed: boolean }
 > {
   override state = { crashed: false };
@@ -21,16 +26,49 @@ class HeaderContentBoundary extends Component<
 
   override componentDidCatch(error: Error): void {
     console.warn(
-      `[plugin:${this.props.pluginId}] navPanel headerContent crashed and is hidden: ${error.message}`,
+      `[plugin:${this.props.pluginId}] navPanel ${this.props.slotName} crashed and is hidden: ${error.message}`,
     );
   }
 
   override render(): ReactNode {
-    return this.state.crashed ? null : this.props.children;
+    return this.state.crashed ? this.props.fallback : this.props.children;
   }
 }
 
 export function PluginPanelHeaderCenter({
+  chrome,
+  panel,
+  subPath,
+}: {
+  chrome: Pick<PluginNavPanelChrome, "pluginId" | "icon" | "title">;
+  panel: PluginNavPanelSlot | undefined;
+  subPath: string;
+}) {
+  const HeaderTitle = panel?.experimental_headerTitle;
+  usePluginCss(HeaderTitle === undefined ? null : chrome.pluginId);
+  const defaultCenter = <DefaultPluginPanelHeaderCenter chrome={chrome} />;
+  if (panel === undefined || HeaderTitle === undefined) return defaultCenter;
+  return (
+    <HeaderContentBoundary
+      key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
+      pluginId={panel.pluginId}
+      slotName="experimental_headerTitle"
+      fallback={defaultCenter}
+    >
+      <PluginContext.Provider value={panel.pluginId}>
+        <div
+          data-bb-plugin-root=""
+          data-bb-plugin={panel.pluginId}
+          className="flex min-w-0 flex-1 items-center"
+        >
+          <HeaderTitle subPath={subPath} />
+        </div>
+      </PluginContext.Provider>
+    </HeaderContentBoundary>
+  );
+}
+
+function DefaultPluginPanelHeaderCenter({
   chrome,
 }: {
   chrome: Pick<PluginNavPanelChrome, "pluginId" | "icon" | "title">;
@@ -76,6 +114,8 @@ export function PluginPanelHeaderActions({
         <HeaderContentBoundary
           key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
           pluginId={panel.pluginId}
+          slotName="headerContent"
+          fallback={null}
         >
           <PluginContext.Provider value={panel.pluginId}>
             <div

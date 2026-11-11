@@ -1172,9 +1172,15 @@ function AppShellWireframeBody({
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
             {mobile ? <MiniIcon icon="PanelLeft" className="size-5" /> : null}
-            <span className="truncate text-foreground">
-              Fix flaky checkout tests
-            </span>
+            <Mark
+              id="thread-header-title"
+              label="Plugin title in place of the thread title"
+              className="flex h-6.5 min-w-0 items-center gap-1 px-1 text-foreground"
+              showChip={false}
+            >
+              <PluginGlyph className="size-3.5" />
+              <span className="truncate">checkout › flaky-tests</span>
+            </Mark>
             <Mark
               id="thread-actions"
               label="Plugin thread actions, in the thread menu"

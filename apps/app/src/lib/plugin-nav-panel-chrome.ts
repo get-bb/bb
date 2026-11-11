@@ -13,6 +13,7 @@ const pluginNavPanelChromeSchema = z.object({
   path: z.string().min(1),
   title: z.string(),
   icon: z.string(),
+  hideFromNavigation: z.boolean(),
 });
 
 export type PluginNavPanelChrome = z.infer<typeof pluginNavPanelChromeSchema>;
@@ -24,7 +25,7 @@ export interface PluginNavPanelChromeEntry {
 
 const chromeCache = createLastKnownCache({
   prefix: "bb.plugin-nav-panels",
-  version: "1",
+  version: "2",
   schema: z.array(pluginNavPanelChromeSchema),
 });
 const CHROME_CACHE_KEY = chromeCache.key("all");
@@ -38,6 +39,7 @@ function pluginNavPanelChromeOf(
     path: panel.path,
     title: panel.title,
     icon: panel.icon,
+    hideFromNavigation: panel.experimental_hideFromNavigation === true,
   };
 }
 
