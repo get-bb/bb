@@ -15,7 +15,11 @@ function createStoredRecord(storageKey: string) {
       parsed = null;
     }
     const next: Record<string, string> = {};
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+    ) {
       for (const [key, value] of Object.entries(parsed)) {
         if (typeof value === "string") next[key] = value;
       }

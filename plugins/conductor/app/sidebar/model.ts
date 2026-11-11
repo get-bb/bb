@@ -28,7 +28,9 @@ export interface WorkspaceSidebarModel {
 
 export function workspaceKey(thread: PluginSidebarThread): string {
   const environmentId = thread.environment?.id ?? null;
-  return environmentId === null ? `thread:${thread.id}` : `env:${environmentId}`;
+  return environmentId === null
+    ? `thread:${thread.id}`
+    : `env:${environmentId}`;
 }
 
 function byCreatedAt(

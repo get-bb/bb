@@ -15,7 +15,11 @@ import {
   type PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chrome-style-tokens";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
@@ -376,7 +380,10 @@ function ProjectBlock({
           <span className="min-w-0 truncate font-medium">{name}</span>
           {!expanded && workspaces.length > 0 ? (
             <span
-              className={cn("shrink-0 text-xs tabular-nums", SIDEBAR_GROUP_TEXT_CLASS)}
+              className={cn(
+                "shrink-0 text-xs tabular-nums",
+                SIDEBAR_GROUP_TEXT_CLASS,
+              )}
             >
               {workspaces.length}
             </span>
