@@ -39,6 +39,7 @@ import {
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
   type ExperimentalThreadHeaderRowProps,
+  type ExperimentalThreadHeaderTitleProps,
   type ExperimentalThreadContextCardProps,
   type ExperimentalThreadRowMetadataProps,
   type PluginThreadActionItemInput,
@@ -261,7 +262,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "originPluginId",
   ],
 } as const satisfies {
-  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [
+    E in keyof PluginThreadEventPayloads
+  ]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -291,6 +294,7 @@ type SlotPropsByName = {
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
   experimental_threadHeaderRow: ExperimentalThreadHeaderRowProps;
+  experimental_threadHeaderTitle: ExperimentalThreadHeaderTitleProps;
   experimental_threadContextCardRow: ExperimentalThreadContextCardProps;
   experimental_threadContextCardSection: ExperimentalThreadContextCardProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
@@ -394,6 +398,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
   experimental_threadHeaderRow: ["threadId", "projectId", "environment"],
+  experimental_threadHeaderTitle: ["threadId", "projectId", "environment"],
   experimental_threadContextCardRow: ["threadId", "projectId", "environment"],
   experimental_threadContextCardSection: [
     "threadId",
@@ -530,6 +535,8 @@ const NAV_PANEL_REGISTRATION_FIELDS = [
   "experimental_usePageTitle",
   "headerContent",
   "experimental_sidebar",
+  "experimental_headerTitle",
+  "experimental_hideFromNavigation",
 ] as const satisfies readonly (keyof PluginNavPanelRegistration)[];
 
 type MissingNavPanelRegistrationField = Exclude<

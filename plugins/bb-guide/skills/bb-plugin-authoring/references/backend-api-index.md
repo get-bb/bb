@@ -340,9 +340,9 @@ Check imports here, behavior in the Plugin Guide, and signatures in the installe
 - `PluginThreadEventName`
 - `PluginThreadEventPayloads`
 - `ExperimentalThreadInfoProps`
-- `ExperimentalThreadInfoRowRegistration`
-- `ExperimentalThreadInfoSectionRegistration`
-- `ExperimentalThreadHeaderRowRegistration`, `ExperimentalThreadHeaderRowProps`
+- `ExperimentalThreadInfoRowRegistration`, `ExperimentalThreadInfoSectionRegistration`
+- `ExperimentalThreadHeaderRowRegistration`, `ExperimentalThreadHeaderRowProps`,
+  `ExperimentalThreadHeaderTitleRegistration`, `ExperimentalThreadHeaderTitleProps`
 - `ExperimentalThreadContextCardRowRegistration`
 - `ExperimentalThreadContextCardSectionRegistration`
 - `ExperimentalThreadContextCardProps`

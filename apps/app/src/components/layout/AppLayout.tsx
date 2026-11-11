@@ -406,7 +406,11 @@ function AppHeader({
       />
     </div>
   ) : pluginPanelChrome ? (
-    <PluginPanelHeaderCenter chrome={pluginPanelChrome} />
+    <PluginPanelHeaderCenter
+      chrome={pluginPanelChrome}
+      panel={pluginPanel}
+      subPath={pluginPanelSubPath ?? ""}
+    />
   ) : hasCenterContent ? (
     <div className="min-w-0 flex-1">
       {headerTitle ? (

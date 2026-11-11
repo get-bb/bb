@@ -37,6 +37,7 @@ import type {
   ExperimentalThreadRowMetadataRegistration,
   ExperimentalThreadInfoSectionRegistration,
   ExperimentalThreadHeaderRowRegistration,
+  ExperimentalThreadHeaderTitleRegistration,
   ExperimentalThreadContextCardRowRegistration,
   ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
@@ -212,6 +213,8 @@ const NAV_PANEL_REGISTRATION_KEYS = {
   experimental_usePageTitle: true,
   experimental_sidebar: true,
   headerContent: true,
+  experimental_headerTitle: true,
+  experimental_hideFromNavigation: true,
 } satisfies Record<keyof PluginNavPanelRegistration | "fixedTabs", true>;
 
 const RENAMED_NAV_PANEL_KEYS: ReadonlyMap<string, string> = new Map([
@@ -326,6 +329,7 @@ export interface CollectedPluginAppRegistrations {
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
+  threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -471,6 +475,7 @@ export function collectPluginAppRegistrations(
     threadRowMetadata: [],
     threadInfoSections: [],
     threadHeaderRows: [],
+    threadHeaderTitles: [],
     threadContextCardRows: [],
     threadContextCardSections: [],
     threadActions: [],
@@ -513,6 +518,7 @@ export function collectPluginAppRegistrations(
     threadRowMetadata: new Set<string>(),
     threadInfoSection: new Set<string>(),
     threadHeaderRow: new Set<string>(),
+    threadHeaderTitle: new Set<string>(),
     threadContextCardRow: new Set<string>(),
     threadContextCardSection: new Set<string>(),
     threadAction: new Set<string>(),
@@ -792,6 +798,22 @@ export function collectPluginAppRegistrations(
           );
         }
         if (
+          registration.experimental_headerTitle !== undefined &&
+          typeof registration.experimental_headerTitle !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_headerTitle" must be a React component function when set`,
+          );
+        }
+        if (
+          registration.experimental_hideFromNavigation !== undefined &&
+          typeof registration.experimental_hideFromNavigation !== "boolean"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_hideFromNavigation" must be a boolean when set`,
+          );
+        }
+        if (
           registration.experimental_usePageTitle !== undefined &&
           typeof registration.experimental_usePageTitle !== "function"
         ) {
@@ -863,6 +885,14 @@ export function collectPluginAppRegistrations(
             : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }
+            : {}),
+          ...(registration.experimental_headerTitle !== undefined
+            ? {
+                experimental_headerTitle: registration.experimental_headerTitle,
+              }
+            : {}),
+          ...(registration.experimental_hideFromNavigation === true
+            ? { experimental_hideFromNavigation: true }
             : {}),
         });
       },
@@ -1027,6 +1057,15 @@ export function collectPluginAppRegistrations(
         collected.threadHeaderRows.push({
           id,
           ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadHeaderTitle(registration) {
+        const kind = "slots.experimental_threadHeaderTitle";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadHeaderTitle, id);
+        collected.threadHeaderTitles.push({
+          id,
           component: requireComponent(kind, registration.component),
         });
       },

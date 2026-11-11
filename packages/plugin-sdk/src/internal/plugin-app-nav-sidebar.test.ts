@@ -76,3 +76,47 @@ describe("page title registration", () => {
     },
   );
 });
+
+describe("header title and hidden navigation registration", () => {
+  function collectPanel(fields: Record<string, unknown>) {
+    return () =>
+      collectPluginAppRegistrations({
+        __bbPluginApp: true,
+        setup(app) {
+          app.slots.navPanel({
+            id: "new-chat",
+            title: "New chat",
+            path: "new-chat",
+            icon: "Chat",
+            component: Page,
+            ...fields,
+          });
+        },
+      }).navPanels[0];
+  }
+
+  it("keeps a header title component and a true hide flag", () => {
+    const panel = collectPanel({
+      experimental_headerTitle: Sidebar,
+      experimental_hideFromNavigation: true,
+    })();
+    expect(panel?.experimental_headerTitle).toBe(Sidebar);
+    expect(panel?.experimental_hideFromNavigation).toBe(true);
+  });
+
+  it("leaves both out when they are absent or the flag is false", () => {
+    expect(collectPanel({})()).not.toHaveProperty("experimental_headerTitle");
+    expect(
+      collectPanel({ experimental_hideFromNavigation: false })(),
+    ).not.toHaveProperty("experimental_hideFromNavigation");
+  });
+
+  it("rejects a header title that is not a component and a non-boolean flag", () => {
+    expect(collectPanel({ experimental_headerTitle: "Breadcrumb" })).toThrow(
+      '"experimental_headerTitle" must be a React component function',
+    );
+    expect(collectPanel({ experimental_hideFromNavigation: "yes" })).toThrow(
+      '"experimental_hideFromNavigation" must be a boolean',
+    );
+  });
+});

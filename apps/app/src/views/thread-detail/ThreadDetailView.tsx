@@ -1503,6 +1503,7 @@ function ThreadDetailViewInternal(
             onCloseAutoFocus={onCloseAutoFocus}
           />
         )}
+        environmentId={thread.environmentId ?? null}
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         onClosePane={onRequestClose ?? undefined}
         onToggleSecondaryPanel={toggleSecondaryPanel}
