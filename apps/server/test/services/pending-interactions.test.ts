@@ -990,6 +990,82 @@ describe("pending interaction lifecycle", () => {
       });
     });
 
+    it("closes an unanswered question after 30 minutes and tells the daemon to end the wait", async () => {
+      await withTestHarness(async (harness) => {
+        vi.useFakeTimers();
+        try {
+          const { host, interaction, session, thread } = seedQuestion(harness);
+          const socket = createMockHubSocket();
+          harness.deps.hub.registerDaemon(session.id, host.id, socket);
+
+          await vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
+          expect(readStatus(harness, interaction.id)).toBe("pending");
+
+          await vi.advanceTimersByTimeAsync(1);
+          expect(readStatus(harness, interaction.id)).toBe("interrupted");
+          expect(
+            harness.deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(
+              thread.id,
+            ),
+          ).toBe(false);
+          expect(
+            socket.messages
+              .map((message) => JSON.parse(message) as { type: string })
+              .filter((message) => message.type === "interactive-requests.end"),
+          ).toEqual([
+            {
+              type: "interactive-requests.end",
+              requests: [{ threadId: thread.id, ...request }],
+              reason: expect.stringContaining(
+                "Proceed using your best judgment",
+              ),
+            },
+          ]);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    it("keeps an answered question open past the question timeout", async () => {
+      await withTestHarness(async (harness) => {
+        vi.useFakeTimers();
+        try {
+          const { interaction } = seedQuestion(harness);
+          setPendingInteractionResolving(harness.db, {
+            id: interaction.id,
+            resolution: JSON.stringify(createUserAnswerResolution()),
+          });
+
+          await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+          expect(readStatus(harness, interaction.id)).toBe("resolving");
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    it("closes an unanswered question after a server restart", async () => {
+      await withTestHarness(async (harness) => {
+        vi.useFakeTimers();
+        try {
+          const { interaction } = seedQuestion(harness);
+          vi.clearAllTimers();
+          await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+          const restarted = new PendingInteractionLifecycle(harness.deps);
+          restarted.start();
+          await vi.advanceTimersByTimeAsync(10 * 60 * 1000 - 1);
+          expect(readStatus(harness, interaction.id)).toBe("pending");
+
+          await vi.advanceTimersByTimeAsync(1);
+          expect(readStatus(harness, interaction.id)).toBe("interrupted");
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
     it("tells the daemon to end a wait whose question the server already closed", async () => {
       await withTestHarness(async (harness) => {
         const { host, interaction, session, thread } = seedQuestion(harness);

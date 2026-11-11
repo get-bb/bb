@@ -11,6 +11,7 @@ import {
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,
   listActivePluginPendingInteractions,
+  listExpiringProviderPendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolved,
@@ -26,6 +27,7 @@ import {
   isPluginExtensionInteractionRequestPayload,
   isPluginExtensionPendingInteraction,
   isPluginPendingInteraction,
+  isUserQuestionPendingInteractionPayload,
   parseExtensionKind,
   pluginInteractionDescriptionSchema,
   type JsonValue,
@@ -153,6 +155,9 @@ interface PluginInteractionWaiter {
 }
 
 const DESCRIBE_SUBMISSION_TIMEOUT_MS = 2_000;
+const PROVIDER_QUESTION_TIMEOUT_MS = 30 * 60 * 1000;
+const PROVIDER_QUESTION_TIMEOUT_REASON =
+  "No response after 30 minutes - the user may be away from keyboard. Proceed using your best judgment based on the context so far; you can re-ask this question later if it's still relevant.";
 
 async function runDescribeSubmission(args: {
   describeSubmission: DescribePluginSubmission | null;
@@ -379,6 +384,11 @@ export class PendingInteractionLifecycle {
         return updated ? [updated] : [];
       }),
     );
+    for (const row of listExpiringProviderPendingInteractions(this.deps.db)) {
+      if (row.expiresAt !== null) {
+        this.scheduleProviderQuestionExpiry(row.id, row.expiresAt);
+      }
+    }
   }
 
   setThreadInteractionSettledListener(
@@ -461,6 +471,11 @@ export class PendingInteractionLifecycle {
     }
 
     const payload = JSON.stringify(interaction.payload);
+    const expiresAt = isUserQuestionPendingInteractionPayload(
+      interaction.payload,
+    )
+      ? Date.now() + PROVIDER_QUESTION_TIMEOUT_MS
+      : null;
     const registered = this.deps.db.transaction((tx) => {
       const existing = getPendingInteractionByProviderRequest(tx, {
         providerId: interaction.providerId,
@@ -497,7 +512,7 @@ export class PendingInteractionLifecycle {
           providerThreadId: interaction.providerThreadId,
           providerRequestId: interaction.providerRequestId,
           payload,
-          expiresAt: null,
+          expiresAt,
         }),
       };
     });
@@ -509,6 +524,9 @@ export class PendingInteractionLifecycle {
     const pendingInteraction = toPendingInteraction(registered.row);
 
     if (registered.outcome === "created") {
+      if (expiresAt !== null) {
+        this.scheduleProviderQuestionExpiry(pendingInteraction.id, expiresAt);
+      }
       appendPendingInteractionTimelineEvent(this.deps, pendingInteraction);
       notifyInteractionChanged({
         deps: this.deps,
@@ -919,6 +937,31 @@ export class PendingInteractionLifecycle {
         statusReason: args.reason,
       }),
     );
+  }
+
+  private scheduleProviderQuestionExpiry(
+    interactionId: string,
+    expiresAt: number,
+  ): void {
+    const expire = () => {
+      if (isServerMoveFrozen(this.deps.db)) {
+        setTimeout(expire, SERVER_MOVE_FROZEN_RETRY_MS);
+        return;
+      }
+      if (
+        getPendingInteraction(this.deps.db, interactionId)?.status !== "pending"
+      ) {
+        return;
+      }
+      const updated = setPendingInteractionInterrupted(this.deps.db, {
+        id: interactionId,
+        statusReason: PROVIDER_QUESTION_TIMEOUT_REASON,
+      });
+      if (updated) {
+        this.settleInterruptedRows([updated]);
+      }
+    };
+    setTimeout(expire, Math.max(0, expiresAt - Date.now()));
   }
 
   private settleInterruptedRows(
