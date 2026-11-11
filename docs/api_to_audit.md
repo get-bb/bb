@@ -3274,7 +3274,7 @@ Contract tests: `ThreadDetailView.contract.test.tsx` (placement, order, props,
 crash containment, plugin hooks, and the panel controller contract run from a
 row).
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-header-row.md`.
 
 **Audit before stabilizing.**
 
