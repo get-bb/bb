@@ -1361,9 +1361,10 @@ component receives `InternalDoNotUseSetupGuideSectionProps`:
 `{ onPhone, onSetupStarted, onSetupFailed }`. `onPhone` is true when the guide
 is open on a phone, so the row hides install links and phone pairing. The row
 calls `onSetupStarted()` when the user starts setting it up and
-`onSetupFailed(stage)` (`InternalDoNotUseSetupFailureStage`: `sign_in`,
-`pairing`, or `turn_on`) when an attempt fails, so the guide can record the
-step. Core's `PluginSetupGuideSections` renders a plugin's rows through
+`onSetupFailed(stage, detail?)` (`InternalDoNotUseSetupFailureStage`:
+`sign_in`, `pairing`, or `turn_on`; `InternalDoNotUseSetupFailureDetail`: a
+fixed error code such as `expired` or `invalid_code`, never a message) when an
+attempt fails, so the guide can record the step and why. Core's `PluginSetupGuideSections` renders a plugin's rows through
 the ordinary plugin slot boundary.
 
 Callers: the bundled `connect` plugin only. Core caller: the onboarding
@@ -1384,8 +1385,9 @@ starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
 code is submitted, or Turn on is pressed, so the current guide records
 `remote_access` `started` at the same moment as the redesigned guide's
 `onSetupStarted`. `internal_DO_NOT_USE_onSetupFailed(stage)` is its failure
-counterpart, called with the same `InternalDoNotUseSetupFailureStage` the
-redesigned guide's `onSetupFailed` receives (`sign_in` when getbb.app sign-in
+counterpart, called with the same `InternalDoNotUseSetupFailureStage` and
+optional `InternalDoNotUseSetupFailureDetail` the redesigned guide's
+`onSetupFailed` receives (`sign_in` when getbb.app sign-in
 can't start or ends denied, expired, or failed; `pairing` when a pairing code
 is rejected; `turn_on` when turning remote access on fails). Core's
 `PluginSettingsSections` passes them through its `onSetupStarted` and
@@ -4244,7 +4246,10 @@ step, whether the scan ran out of time and how many folders it could not open.
 A failed operation or `onboarding_sign_in` adds a `failure_reason` from a fixed
 set (`no_host`, `host_unavailable`, `timed_out`, `not_found`, `permission`,
 `command_failed`, `unsupported`, or `other`); a failed `remote_access` adds a
-`failure_stage` (`sign_in`, `pairing`, or `turn_on`) instead.
+`failure_stage` (`sign_in`, `pairing`, or `turn_on`) instead. Agent install
+and sign-in failures with `command_failed`, and `sign_in` or `pairing`
+remote access failures, may add `failure_detail` from a fixed set of error
+classes and an integer `exit_code`; never output or messages.
 `onboarding_left` reports the step a guide was on when the page unloaded
 before the guide finished; it passes the optional second argument
 `{ keepalive: true }`, which sends the request with `fetch`'s `keepalive` so it

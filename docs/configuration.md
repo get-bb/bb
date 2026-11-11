@@ -405,8 +405,22 @@ install job, or new machine's setup ran and failed), or `other`. A failed
 `remote_access` adds `failure_stage`: `sign_in` (getbb.app sign-in couldn't
 start or ended denied, expired, or failed), `pairing` (a pairing code was
 rejected), or `turn_on` (turning remote access on failed); a retry after a
-failure records a new `started`. `add_machine` can fail before `started` when
-the setup command couldn't be prepared.
+failure records a new `started`. A failed `sign_in` or `pairing` stage also
+adds `failure_detail`: `denied`, `expired`, `login_failed`, `rate_limited`,
+`service_unavailable`, `account_unavailable`, or `network` for sign-in, and
+the rejected code's reason (`invalid_code`, `expired_code`, `already_used`,
+`network`, `unauthorized`, `profile_unavailable`, `superseded`, or
+`account_unavailable`) for pairing; anything else is `other`. An agent
+`install` or `update` that fails with `command_failed` adds `failure_detail`,
+classified on this computer from the install's output, and `exit_code` when
+the command exited: `not_found` (the installer or a command it needs is
+missing), `permission`, `network`, `disk_full`, `npm_error`,
+`verification_failed` (the command exited 0 but the agent still isn't
+installed or updated), `unavailable` (the install is no longer offered),
+`in_progress` (another agent install was running), `signal`, `exit_nonzero`,
+or `other`. Only the class and the number are sent, never the output, paths,
+or messages. `add_machine` can fail before `started` when the setup command
+couldn't be prepared.
 `onboarding_left` (`step`, the step on screen, and `entry`) is sent at most
 once per guide, in either guide, when the page unloads (the browser's
 `pagehide`: closing the tab or window, reloading, or navigating away) while the
@@ -435,8 +449,11 @@ status: `ready`, `not_installed`, `unauthenticated`, `expired`,
 again only when one of these values changes.
 `onboarding_sign_in` carries the agent's public id in `resource_id`
 (custom agents report `other`, as agent installs do). A `failed` sign-in adds
-`failure_reason`: `command_failed` (the sign-in command exited non-zero),
-`no_host`, `not_found` (the agent's state wasn't loaded), or `unsupported`
+`failure_reason`: `command_failed` (the sign-in command exited non-zero, with
+`failure_detail` `not_found` for exit 127, `permission` for 126, `signal` when
+killed, or `exit_nonzero`, plus `exit_code`; or the agent reported the
+sign-in failed, with `failure_detail` `login_failed`), `no_host`, `not_found`
+(the agent's state wasn't loaded), or `unsupported`
 (the agent has no sign-in command) when it couldn't start, and
 `host_unavailable`, `timed_out`, `not_found`, `permission`, or `other` when
 its terminal couldn't be created. A sign-in that couldn't start records only
