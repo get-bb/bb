@@ -1,6 +1,7 @@
 import type { OnboardingFailureDetail } from "@bb/server-contract";
 
 const CLASSIFIED_OUTPUT_TAIL_CHARS = 64 * 1024;
+const ANSI_ESCAPE_PATTERN = /\x1b\[[0-9;?]*[A-Za-z]/gu;
 
 const OUTPUT_PATTERNS: readonly [OnboardingFailureDetail, RegExp][] = [
   ["disk_full", /\bENOSPC\b|no space left on device/iu],
@@ -39,7 +40,11 @@ export function classifyProviderCliInstallFailure(args: {
       return withExitCode("verification_failed");
     }
   }
-  const output = `${args.output.slice(-CLASSIFIED_OUTPUT_TAIL_CHARS)}\n${errorMessage ?? ""}`;
+  const output =
+    `${args.output.slice(-CLASSIFIED_OUTPUT_TAIL_CHARS)}\n${errorMessage ?? ""}`.replace(
+      ANSI_ESCAPE_PATTERN,
+      "",
+    );
   for (const [detail, pattern] of OUTPUT_PATTERNS) {
     if (pattern.test(output)) return withExitCode(detail);
   }

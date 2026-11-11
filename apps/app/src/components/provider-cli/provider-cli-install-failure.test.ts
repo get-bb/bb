@@ -107,6 +107,22 @@ describe("classifyProviderCliInstallFailure", () => {
     ).toEqual(expected);
   });
 
+  it.each([
+    { code: "E404", expected: "npm_error" },
+    { code: "EACCES", expected: "permission" },
+  ])(
+    "classifies colored npm $code output from the terminal",
+    ({ code, expected }) => {
+      expect(
+        classifyProviderCliInstallFailure({
+          completed: exited(1),
+          errorMessage: null,
+          output: `\x1b[1mnpm\x1b[22m \x1b[31merror\x1b[39m code ${code}\r\n`,
+        }),
+      ).toEqual({ detail: expected, exitCode: 1 });
+    },
+  );
+
   it("does not match patterns from the echoed command line", () => {
     expect(
       classifyProviderCliInstallFailure({
