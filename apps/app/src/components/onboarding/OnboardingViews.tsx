@@ -658,39 +658,44 @@ export function AgentStep({
   onRecheck,
   ...rowHandlers
 }: AgentStepProps) {
+  const hostNeverConnected = machineName === null && loadFailedMessage !== null;
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon name="Laptop" aria-hidden className="size-3.5" />
-        <span className="min-w-0 flex-1 truncate">
-          {machineName === null
-            ? "Waiting for this computer to connect…"
-            : `On ${machineName}`}
-        </span>
-        {quiet || machineName === null ? null : (
-          <button
-            type="button"
-            onClick={onRecheck}
-            className="flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <Icon
-              name="ArrowReloadHorizontal"
-              aria-hidden
-              className="size-3.5"
-            />
-            Check again
-          </button>
-        )}
-      </div>
+      {hostNeverConnected ? null : (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Icon name="Laptop" aria-hidden className="size-3.5" />
+          <span className="min-w-0 flex-1 truncate">
+            {machineName === null
+              ? "Waiting for this computer to connect…"
+              : `On ${machineName}`}
+          </span>
+          {quiet || machineName === null ? null : (
+            <button
+              type="button"
+              onClick={onRecheck}
+              className="flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <Icon
+                name="ArrowReloadHorizontal"
+                aria-hidden
+                className="size-3.5"
+              />
+              Check again
+            </button>
+          )}
+        </div>
+      )}
       {agents === null && loadFailedMessage !== null ? (
         <ul className={ONBOARDING_LIST_CLASS}>
           <li className="flex items-center gap-3 px-3 py-3">
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
               {loadFailedMessage}
             </span>
-            <Button size="sm" variant="outline" onClick={onRecheck}>
-              Retry
-            </Button>
+            {hostNeverConnected ? null : (
+              <Button size="sm" variant="outline" onClick={onRecheck}>
+                Retry
+              </Button>
+            )}
           </li>
         </ul>
       ) : agents === null ? (
@@ -1250,9 +1255,7 @@ function DeviceRow({
 }
 
 export type OnboardingConnectState =
-  | { status: "on"; url: string }
-  | { status: "off" }
-  | { status: "unavailable" };
+  { status: "on"; url: string } | { status: "off" } | { status: "unavailable" };
 
 interface DevicesStepProps {
   connect: OnboardingConnectState;

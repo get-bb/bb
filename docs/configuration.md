@@ -399,8 +399,9 @@ to load; in the new guide the Agent step also records `timed_out` when its
 agent states haven't loaded within 10 seconds of this computer connecting and
 it offers Retry, once per attempt. Both guides wait for this computer to
 connect before scanning for repos or checking agents; if it hasn't connected
-after 30 seconds, each guide shows its usual scan or agent-check error with a
-way to continue. `finish` records only `failed`,
+after 30 seconds, the Agent step says so in place of the agent list, the
+Projects step shows its scan error, and each guide offers its usual way to
+continue. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
 `no_host` (no computer registered within 30 seconds: once per guide for

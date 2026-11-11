@@ -158,6 +158,7 @@ const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
 const AGENT_STATES_LOAD_TIMEOUT_MS = 10_000;
 const AGENT_STATES_LOAD_FAILED_MESSAGE =
   "Provider readiness could not be checked.";
+const HOST_NOT_CONNECTED_MESSAGE = "This computer hasn't connected to bb yet.";
 const ONBOARDING_PHONE_QUERY = "(max-width: 640px) and (pointer: coarse)";
 const ONBOARDING_COMPACT_QUERY = "(max-width: 640px)";
 
@@ -674,11 +675,12 @@ function AgentStepContainer({
     agents === null
       ? statesQuery.isError || hostWaitFailure !== null
       : !agentReady;
+  const hostNeverConnected = hostId === null && hostWaitFailure !== null;
   const statesLoadFailed =
     redesign &&
+    hostId !== null &&
     states === undefined &&
-    (hostWaitFailure !== null ||
-      (hostId !== null && (statesQuery.isError || statesLoad.timedOut)));
+    (statesQuery.isError || statesLoad.timedOut);
   return (
     <OnboardingLayout
       {...chrome}
@@ -703,7 +705,11 @@ function AgentStepContainer({
         machineName={hostName}
         agents={agents}
         loadFailedMessage={
-          statesLoadFailed ? AGENT_STATES_LOAD_FAILED_MESSAGE : null
+          hostNeverConnected
+            ? HOST_NOT_CONNECTED_MESSAGE
+            : statesLoadFailed
+              ? AGENT_STATES_LOAD_FAILED_MESSAGE
+              : null
         }
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={(providerId) => void startInstall(providerId)}

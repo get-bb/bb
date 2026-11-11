@@ -293,10 +293,14 @@ describe("OnboardingFlow", () => {
         vi.advanceTimersByTime(30_000);
       });
 
+      expect(
+        screen.getByText("This computer hasn't connected to bb yet."),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText("Waiting for this computer to connect…"),
+      ).toBeNull();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
       if (variant === "new") {
-        expect(
-          screen.getByText("Provider readiness could not be checked."),
-        ).toBeTruthy();
         expect(button(/^Continue/u).disabled).toBe(false);
       } else {
         expect(button(/Skip for now/u).disabled).toBe(false);
