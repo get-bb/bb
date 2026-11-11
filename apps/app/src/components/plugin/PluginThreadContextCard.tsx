@@ -414,8 +414,15 @@ function ThreadContextCardContent({
                   instanceId={props.threadId}
                   crashResetKey={String(generation)}
                   crashFallback={null}
+                  wrapRoot={false}
                 >
-                  <Summary {...props} />
+                  <span
+                    data-bb-plugin-root=""
+                    data-bb-plugin={pluginId}
+                    className="contents"
+                  >
+                    <Summary {...props} />
+                  </span>
                 </PluginSlotMount>
               )
             }

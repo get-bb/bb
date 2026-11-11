@@ -479,7 +479,24 @@ describe("thread context card sections fold", () => {
     expect(toggle.textContent).toContain("6 PRs for thr_1");
   });
 
-  it("draws the summary as inert text inside the toggle, never as a second control", () => {
+  it("draws a text summary as inert phrasing content inside the toggle", () => {
+    registerSections([{ id: "prs", title: "Pull requests", summary: Summary }]);
+    renderPane();
+    const toggle = toggleFor("Pull requests");
+    const summary = toggle.querySelector("[inert]");
+    const root = summary?.querySelector("[data-bb-plugin-root]");
+
+    expect(toggle.getAttribute("aria-describedby")).toBe(summary?.id);
+    expect(summary?.className).toContain("truncate");
+    expect(summary?.className).toContain("whitespace-nowrap");
+    expect(root?.tagName).toBe("SPAN");
+    expect(root?.getAttribute("data-bb-plugin")).toBe("first");
+    expect(root?.className).toBe("contents");
+    expect(root?.textContent).toBe("6 PRs for thr_1");
+    expect(toggle.querySelector("div")).toBeNull();
+  });
+
+  it("keeps a summary that breaks the text-only contract inert", () => {
     registerSections([
       { id: "prs", title: "Pull requests", summary: SummaryWithButton },
     ]);
@@ -488,9 +505,7 @@ describe("thread context card sections fold", () => {
     const summary = toggle.querySelector("[inert]");
 
     expect(summary?.contains(screen.getByTestId("summary-button"))).toBe(true);
-    expect(toggle.getAttribute("aria-describedby")).toBe(summary?.id);
-    expect(summary?.className).toContain("truncate");
-    expect(summary?.className).toContain("whitespace-nowrap");
+    expect(summary?.className).toContain("pointer-events-none");
   });
 
   it("leaves the section usable when its summary crashes", () => {
