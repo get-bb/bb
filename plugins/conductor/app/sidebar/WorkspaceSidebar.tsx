@@ -11,7 +11,6 @@ import {
   useSidebarThreadRowStatuses,
   type PluginSidebarProject,
   type PluginSidebarThread,
-  type PluginThreadActionTarget,
   type PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
@@ -33,6 +32,9 @@ import {
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
 } from "@/components/ui/sidebar-row-classes";
 import { cn } from "@/lib/utils";
+import { useNewChatEnvironment } from "../new-chat/active.js";
+import { ProjectAvatar } from "../project-avatar.js";
+import { toActionTarget } from "../thread-target.js";
 import {
   buildWorkspaceSidebarModel,
   findWorkspaceKeyForThread,
@@ -52,24 +54,6 @@ import {
   type WorkspaceChanges,
   type WorkspacePullRequest,
 } from "./reads.js";
-
-function toActionTarget(thread: PluginSidebarThread): PluginThreadActionTarget {
-  return {
-    id: thread.id,
-    projectId: thread.projectId,
-    parentThreadId: thread.parentThreadId,
-    parentNotifications: thread.parentNotifications,
-    archivedAt: thread.archivedAt,
-    pinnedAt: thread.pinnedAt,
-    sectionId: thread.sectionId,
-    isUnread: thread.isUnread,
-    status: thread.status,
-    environment:
-      thread.environment?.id == null
-        ? null
-        : { id: thread.environment.id, path: thread.environment.path },
-  };
-}
 
 function SectionLabel({
   label,
@@ -124,18 +108,6 @@ function IconButton({
       </TooltipTrigger>
       <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>
-  );
-}
-
-function ProjectAvatar({ name }: { name: string }) {
-  const letter = name.trim().charAt(0).toUpperCase() || "?";
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-foreground/10 text-2xs font-semibold leading-none text-foreground/80"
-    >
-      {letter}
-    </span>
   );
 }
 
@@ -296,23 +268,29 @@ function WorkspaceRow({
           <span className="min-w-0 flex-1 truncate">
             <ThreadTitle threadId={workspace.primary.id} />
           </span>
-          {chatCount > 1 ? (
-            <span
-              className="shrink-0 text-xs tabular-nums text-subtle-foreground"
-              aria-label={`${chatCount} chats`}
-            >
-              {chatCount}
-            </span>
-          ) : null}
         </span>
-        <span className="relative flex shrink-0 items-center">
+        <span
+          className={cn(
+            "relative flex shrink-0 items-center justify-end",
+            workspace.environmentId !== null &&
+              "group-hover/workspace:min-w-6 group-focus-within/workspace:min-w-6",
+          )}
+        >
           <span
             className={cn(
-              "pointer-events-none pr-1",
+              "pointer-events-none flex items-center gap-2 pr-1",
               workspace.environmentId !== null &&
                 "group-hover/workspace:invisible group-focus-within/workspace:invisible",
             )}
           >
+            {chatCount > 1 ? (
+              <span
+                className="shrink-0 text-xs tabular-nums text-subtle-foreground"
+                aria-label={`${chatCount} chats`}
+              >
+                {chatCount}
+              </span>
+            ) : null}
             <ChangeCounts changes={changes} />
           </span>
           {workspace.environmentId === null ? null : (
@@ -364,7 +342,6 @@ function ProjectBlock({
         className={cn(
           SIDEBAR_ROW_BASE_CLASS,
           COARSE_POINTER_ROW_HEIGHT_CLASS,
-          SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
           "group/project relative pl-2 pr-1",
         )}
       >
@@ -437,7 +414,11 @@ export function WorkspaceSidebar({
     () => buildWorkspaceSidebarModel(state.threads, state.projects),
     [state.threads, state.projects],
   );
-  const activeWorkspaceKey = findWorkspaceKeyForThread(model, activeThreadId);
+  const newChatEnvironmentId = useNewChatEnvironment();
+  const activeWorkspaceKey =
+    activeThreadId === null && newChatEnvironmentId !== null
+      ? `env:${newChatEnvironmentId}`
+      : findWorkspaceKeyForThread(model, activeThreadId);
   const lastActive = useLastActiveThreads();
   const expansion = useProjectExpansion();
 
