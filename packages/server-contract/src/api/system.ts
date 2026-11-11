@@ -237,7 +237,7 @@ const onboardingFailureReasonTelemetrySchema = z.enum([
   "other",
 ]);
 
-export const onboardingFailureDetailTelemetrySchema = z.enum([
+const onboardingFailureDetailTelemetrySchema = z.enum([
   "not_found",
   "permission",
   "network",
@@ -265,12 +265,6 @@ export const onboardingFailureDetailTelemetrySchema = z.enum([
 export type OnboardingFailureDetail = z.infer<
   typeof onboardingFailureDetailTelemetrySchema
 >;
-
-const telemetryExitCodeSchema = z
-  .number()
-  .int()
-  .min(-2_147_483_648)
-  .max(2_147_483_647);
 
 const telemetryResourceIdSchema = z
   .string()
@@ -329,7 +323,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           failure_reason: onboardingFailureReasonTelemetrySchema.optional(),
           failure_stage: z.enum(["sign_in", "pairing", "turn_on"]).optional(),
           failure_detail: onboardingFailureDetailTelemetrySchema.optional(),
-          exit_code: telemetryExitCodeSchema.optional(),
+          exit_code: z.number().int().optional(),
         })
         .strict(),
     })
@@ -363,7 +357,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           resource_id: telemetryResourceIdSchema,
           failure_reason: onboardingFailureReasonTelemetrySchema.optional(),
           failure_detail: onboardingFailureDetailTelemetrySchema.optional(),
-          exit_code: telemetryExitCodeSchema.optional(),
+          exit_code: z.number().int().optional(),
         })
         .strict(),
     })
