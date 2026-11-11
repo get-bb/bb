@@ -490,6 +490,9 @@ Docs: `providers.md`.
    stable machine-readable purpose beside it.
 6. Decide whether the context and entry types should stabilize with the method
    or remain experimental for a longer compatibility window.
+7. `provider.env-resolved` masks values by name (`TOKEN`, `KEY`, `SECRET`,
+   `PASSWORD`, `AUTH`). Decide whether entries also need an explicit
+   sensitivity flag for credentials with other names.
 
 ## Compatibility windows
 
