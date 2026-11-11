@@ -21,6 +21,8 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { ThreadContextCardRow } from "./ThreadContextCardRow";
 import {
+  EMPTY_BLOCK_CLASS,
+  SECTION_DIVIDER_CLASS,
   ThreadContextCard,
   ThreadContextCardHeaderButton,
   ThreadContextCardProvider,
@@ -320,10 +322,6 @@ describe("thread context card", () => {
 });
 
 const CONTENT = "[data-thread-context-card-body] :not([data-bb-plugin-root])";
-const MIRRORED_CARD_CSS = `
-  [data-thread-context-card-section]:not(:has(${CONTENT})) { display: none; }
-  :is([data-thread-context-card-rows], [data-thread-context-card-section]):has(${CONTENT}) ~ [data-thread-context-card-section] { border-top: 1px solid red; }
-`;
 
 function Summary({ threadId }: ExperimentalThreadContextCardProps) {
   return <span>6 PRs for {threadId}</span>;
@@ -549,65 +547,92 @@ describe("thread context card sections fold", () => {
     ).toBeNull();
   });
 
-  it("keeps a section whose component renders nothing hidden, closed or open", () => {
-    const style = document.createElement("style");
-    style.textContent = MIRRORED_CARD_CSS;
-    document.head.append(style);
-    try {
-      registerSections([
-        { id: "empty", title: "Nothing", component: Empty },
-        { id: "full", title: "Something" },
-      ]);
-      renderPane(NO_ROWS);
-      const display = (title: string) =>
-        getComputedStyle(
-          document.querySelector(`section[aria-label="${title}"]`)!,
-        ).display;
+  it("keeps the markup the card's CSS rules read: hidden wrapper outside the body, title and summary outside it", () => {
+    registerSections([
+      { id: "deploys", title: "Deploys", summary: Summary },
+      { id: "empty", title: "Nothing", component: Empty },
+    ]);
+    renderPane(NO_ROWS);
 
-      expect(display("Nothing")).toBe("none");
-      expect(display("Something")).not.toBe("none");
-
-      fireEvent.click(toggleFor("Something"));
-      expect(display("Something")).not.toBe("none");
-      expect(display("Nothing")).toBe("none");
-    } finally {
-      style.remove();
+    for (const title of ["Deploys", "Nothing"]) {
+      const sectionElement = screen.getByRole("region", { name: title });
+      const toggle = toggleFor(title);
+      const wrapper = document.getElementById(
+        toggle.getAttribute("aria-controls") ?? "",
+      );
+      const body = sectionElement.querySelector(
+        "[data-thread-context-card-body]",
+      );
+      expect(
+        sectionElement.hasAttribute("data-thread-context-card-section"),
+      ).toBe(true);
+      expect(wrapper?.hasAttribute("hidden")).toBe(true);
+      expect(wrapper?.parentElement).toBe(sectionElement);
+      expect(body?.parentElement).toBe(wrapper);
+      expect(body?.closest("[hidden]")).toBe(wrapper);
+      expect(
+        wrapper?.querySelectorAll("[data-thread-context-card-body]"),
+      ).toHaveLength(1);
+      expect(body?.contains(toggle)).toBe(false);
+      expect(toggle.closest("[data-thread-context-card-body]")).toBeNull();
+      expect(toggle.closest("[hidden]")).toBeNull();
     }
+
+    const summary = screen.getByText("6 PRs for thr_1");
+    expect(summary.closest("[data-thread-context-card-body]")).toBeNull();
+    expect(toggleFor("Deploys").contains(summary)).toBe(true);
   });
 
-  it("draws a divider only between visible sections", () => {
-    const style = document.createElement("style");
-    style.textContent = MIRRORED_CARD_CSS;
-    document.head.append(style);
-    try {
-      registerSections([
-        { id: "empty-first", title: "Empty first", component: Empty },
-        { id: "a", title: "A" },
-        { id: "empty-middle", title: "Empty middle", component: Empty },
-        { id: "b", title: "B" },
-      ]);
-      renderPane({
-        ...NO_ROWS,
-        coreSections: [],
-      });
-      const divider = (title: string) =>
-        getComputedStyle(screen.getByRole("region", { name: title }))
-          .borderTopStyle;
+  it("leaves an empty plugin body holding only its plugin root, and a populated body holding content", () => {
+    registerSections([
+      { id: "empty", title: "Nothing", component: Empty },
+      { id: "full", title: "Something" },
+    ]);
+    renderPane(NO_ROWS);
+    const bodyOf = (title: string) =>
+      screen
+        .getByRole("region", { name: title })
+        .querySelector("[data-thread-context-card-body]")!;
 
-      expect(divider("A")).not.toBe("solid");
-      expect(divider("B")).toBe("solid");
-      fireEvent.click(toggleFor("B"));
-      expect(divider("B")).toBe("solid");
-    } finally {
-      style.remove();
-    }
+    const empty = bodyOf("Nothing");
+    expect(empty.querySelector(CONTENT)).toBeNull();
+    expect(
+      [...empty.querySelectorAll("*")].every((element) =>
+        element.hasAttribute("data-bb-plugin-root"),
+      ),
+    ).toBe(true);
+    expect(empty.querySelectorAll("[data-bb-plugin-root]")).toHaveLength(1);
+
+    expect(bodyOf("Something").querySelector(CONTENT)).not.toBeNull();
+
+    fireEvent.click(toggleFor("Something"));
+    expect(bodyOf("Nothing").querySelector(CONTENT)).toBeNull();
   });
 
-  it("uses the card's emptiness selectors on the folded layout", () => {
-    registerSections([{ id: "deploys", title: "Deploys" }]);
+  it("puts the emptiness and divider classes on every section and on the rows block", () => {
+    registerSections([
+      { id: "empty", title: "Nothing", component: Empty },
+      { id: "full", title: "Something" },
+    ]);
     renderPane();
-    const className = screen.getByRole("region", { name: "Deploys" }).className;
-    expect(className).toContain(`:has(${CONTENT.replaceAll(" ", "_")})`);
+    const required = [
+      ...EMPTY_BLOCK_CLASS.split(" "),
+      ...SECTION_DIVIDER_CLASS.split(" "),
+    ];
+
+    const sectionElements = document.querySelectorAll(
+      "[data-thread-context-card-section]",
+    );
+    expect(sectionElements.length).toBeGreaterThan(2);
+    for (const element of sectionElements) {
+      for (const token of required) {
+        expect(element.classList.contains(token)).toBe(true);
+      }
+    }
+    const rows = document.querySelector("[data-thread-context-card-rows]");
+    for (const token of EMPTY_BLOCK_CLASS.split(" ")) {
+      expect(rows?.classList.contains(token)).toBe(true);
+    }
   });
 });
 

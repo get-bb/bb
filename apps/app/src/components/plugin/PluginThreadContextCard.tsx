@@ -252,10 +252,10 @@ export function useThreadContextCardContentInset(): number {
 const CONTENT_SELECTOR =
   "[data-thread-context-card-body] :not([data-bb-plugin-root])";
 
-const EMPTY_BLOCK_CLASS =
+export const EMPTY_BLOCK_CLASS =
   "[&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))]:hidden";
 
-const SECTION_DIVIDER_CLASS =
+export const SECTION_DIVIDER_CLASS =
   "[:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:mt-2 [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-t [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-border [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:pt-2";
 
 const SHOW_EMPTY_STATE_CLASS =
