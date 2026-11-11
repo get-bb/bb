@@ -1,13 +1,35 @@
-import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import { toast } from "sonner";
+import {
+  definePluginApp,
+  type ExperimentalThreadHeaderRowProps,
+  type PluginThreadListProps,
+} from "@get-bb/plugin-sdk/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import { AppBridgeOverlay } from "./app/bridge.js";
+import { forkToNewWorkspace } from "./app/fork.js";
+import { runWorkspaceScript } from "./app/scripts/run.js";
 import { WorkspaceSidebar } from "./app/sidebar/WorkspaceSidebar.js";
+import { WorkspaceTabs } from "./app/tabs/WorkspaceTabs.js";
 
 function ConductorThreadList(props: PluginThreadListProps) {
   return (
     <TooltipProvider>
       <WorkspaceSidebar {...props} />
     </TooltipProvider>
+  );
+}
+
+function ConductorWorkspaceTabs(props: ExperimentalThreadHeaderRowProps) {
+  return (
+    <TooltipProvider>
+      <WorkspaceTabs {...props} />
+    </TooltipProvider>
+  );
+}
+
+function reportFailure(action: string, error: unknown): void {
+  toast.error(
+    error instanceof Error ? `${action}: ${error.message}` : `${action}.`,
   );
 }
 
@@ -18,5 +40,35 @@ export default definePluginApp((app) => {
     description:
       "Projects with one row per workspace: the threads that share an environment, with branch, pull request, and line changes.",
     component: ConductorThreadList,
+  });
+  app.slots.experimental_threadHeaderRow({
+    id: "workspace-tabs",
+    component: ConductorWorkspaceTabs,
+  });
+  app.slots.experimental_appOverlay({
+    id: "bridge",
+    component: AppBridgeOverlay,
+  });
+  app.slots.messageAction({
+    id: "fork-to-new-workspace",
+    title: "Fork to new workspace",
+    icon: "FolderGit",
+    async run(context) {
+      await forkToNewWorkspace(context).catch((error: unknown) =>
+        reportFailure("Could not fork to a new workspace", error),
+      );
+    },
+  });
+  app.commands.register({
+    id: "run",
+    title: "Run workspace script",
+    defaultShortcut: { key: "r", mod: true },
+    isAvailable: (context) => context.threadId !== null,
+    async run(context) {
+      if (context.threadId === null) return;
+      await runWorkspaceScript(context.threadId).catch((error: unknown) =>
+        reportFailure("Could not run the workspace script", error),
+      );
+    },
   });
 });

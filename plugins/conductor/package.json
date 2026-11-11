@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
+    "sonner": "^1.7.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -22,6 +22,42 @@ worktree shows up as part of the same row instead of as another thread.
 - Clicking a workspace reopens the chat you last had open in it. Right-click
   opens bb's thread menu for its first chat.
 
+## Workspace tabs
+
+Every thread page in a workspace gets a tab strip under its header, like
+Conductor's chat tabs:
+
+- one tab per chat in the workspace, oldest first, with a working glyph while
+  it runs; clicking a tab opens that chat, and its close button archives it;
+- **+** starts a new chat in the same workspace;
+- **Changes** (`+3.1k -338` once there are changes) opens the Git plugin's
+  Diff tab in the side panel;
+- **Run** runs the workspace's run script in a terminal tab.
+
+bb's own **Fork** on a message already starts a new chat in the same
+workspace, so it shows up as a new tab. This plugin adds **Fork to new
+workspace** next to it, which forks the conversation up to that message into a
+fresh worktree on the same machine.
+
+## Run script
+
+**Run** (also **Run workspace script** in the command palette, Mod+R by
+default) reads the run script from the workspace's checkout, the way Conductor
+does:
+
+```toml
+# .conductor/settings.toml
+[scripts]
+run = "pnpm dev"
+runMode = "concurrent" # optional; by default a new run stops the last one
+```
+
+The older `conductor.json` (`{ "scripts": { "run": "pnpm dev" } }`) works
+too. bb runs the setup script itself (`.bb-env-setup.sh`), so only `run` is
+read here.
+
+## Notes
+
 Threads without an environment each get a row of their own. Hidden threads
 (side chats) and sub-agents never get a row, but their work still shows on
 their workspace's glyph.

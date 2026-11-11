@@ -11,7 +11,6 @@ import {
   useSidebarThreadRowStatuses,
   type PluginSidebarProject,
   type PluginSidebarThread,
-  type PluginThreadActionTarget,
   type PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
@@ -33,6 +32,7 @@ import {
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
 } from "@/components/ui/sidebar-row-classes";
 import { cn } from "@/lib/utils";
+import { toActionTarget } from "../thread-target.js";
 import {
   buildWorkspaceSidebarModel,
   findWorkspaceKeyForThread,
@@ -52,24 +52,6 @@ import {
   type WorkspaceChanges,
   type WorkspacePullRequest,
 } from "./reads.js";
-
-function toActionTarget(thread: PluginSidebarThread): PluginThreadActionTarget {
-  return {
-    id: thread.id,
-    projectId: thread.projectId,
-    parentThreadId: thread.parentThreadId,
-    parentNotifications: thread.parentNotifications,
-    archivedAt: thread.archivedAt,
-    pinnedAt: thread.pinnedAt,
-    sectionId: thread.sectionId,
-    isUnread: thread.isUnread,
-    status: thread.status,
-    environment:
-      thread.environment?.id == null
-        ? null
-        : { id: thread.environment.id, path: thread.environment.path },
-  };
-}
 
 function SectionLabel({
   label,
