@@ -298,25 +298,36 @@ export async function resolveMergeBaseBranch(
   ref: string,
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
-  const candidates =
-    ref.startsWith("refs/") || ref.startsWith("origin/")
-      ? [ref]
-      : [ref, `refs/remotes/origin/${ref}`];
-  for (const candidate of candidates) {
+  const gitOptions = {
+    cwd,
+    ...options,
+    priority: options.priority ?? gitPriority(),
+    allowFailure: true,
+  };
+  const resolveCommit = async (candidate: string) => {
     const result = await runGit(
       ["rev-parse", "--verify", "--end-of-options", `${candidate}^{commit}`],
-      {
-        cwd,
-        ...options,
-        priority: options.priority ?? gitPriority(),
-        allowFailure: true,
-      },
+      gitOptions,
     );
-    if (result.exitCode === 0 && trimOutput(result.stdout)) {
-      return trimOutput(result.stdout);
-    }
+    return result.exitCode === 0 && trimOutput(result.stdout)
+      ? trimOutput(result.stdout)
+      : undefined;
+  };
+  if (ref.startsWith("refs/") || ref.startsWith("origin/")) {
+    return resolveCommit(ref);
   }
-  return undefined;
+  const [local, remote] = await Promise.all([
+    resolveCommit(ref),
+    resolveCommit(`refs/remotes/origin/${ref}`),
+  ]);
+  if (local === undefined || remote === undefined || local === remote) {
+    return local ?? remote;
+  }
+  const localTrailsRemote = await runGit(
+    ["merge-base", "--is-ancestor", local, remote],
+    gitOptions,
+  );
+  return localTrailsRemote.exitCode === 0 ? remote : local;
 }
 
 export async function readMergeBaseRef(
