@@ -299,6 +299,8 @@ export function OverviewRow({
       actions={
         <AutomationActionsMenu
           name={automation.name}
+          projectId={automation.projectId}
+          automationId={automation.id}
           pending={runPending}
           onRunNow={() => {
             setRunPending(true);
@@ -386,6 +388,8 @@ function AutomationProblemRow({
       actions={
         <AutomationActionsMenu
           name={automation.name}
+          projectId={automation.projectId}
+          automationId={automation.id}
           pending={false}
           runDisabledReason={
             repairTarget !== null

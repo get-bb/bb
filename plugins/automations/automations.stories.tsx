@@ -774,6 +774,7 @@ export function FailureStates() {
 
 const automationMenuItems = [
   { label: "Run now", icon: "Play" as const, onSelect: noop },
+  { label: "Copy link", icon: "Link" as const, onSelect: noop },
   { kind: "separator" as const },
   {
     label: "Delete",
@@ -887,7 +888,7 @@ export function ControlStates() {
       </StoryRow>
       <StoryRow
         label="Actions"
-        hint="Run now and Delete live in the automation ownership menu."
+        hint="Run now, Copy link and Delete live in the automation ownership menu."
       >
         <ResourceOverflowMenu
           label="Automation actions"

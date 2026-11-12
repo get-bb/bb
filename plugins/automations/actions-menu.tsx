@@ -1,13 +1,20 @@
+import { experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
+import { toast } from "sonner";
+import { copyAutomationDetailLink } from "./src/automation-link.js";
 import { ResourceOverflowMenu } from "@/components/ui/resource-list";
 
 export function AutomationActionsMenu({
   name,
+  projectId,
+  automationId,
   pending,
   runDisabledReason,
   onRunNow,
   onDelete,
 }: {
   name: string;
+  projectId: string;
+  automationId: string;
   pending: boolean;
   runDisabledReason?: string;
   onRunNow: () => void;
@@ -24,6 +31,19 @@ export function AutomationActionsMenu({
           disabled: runDisabledReason !== undefined,
           disabledReason: runDisabledReason,
           onSelect: onRunNow,
+        },
+        {
+          label: "Copy link",
+          icon: "Link",
+          onSelect: () => {
+            void copyAutomationDetailLink(
+              window.location.origin,
+              projectId,
+              automationId,
+              (text) => experimental_copyToClipboard({ text }),
+              toast,
+            );
+          },
         },
         { kind: "separator" },
         {

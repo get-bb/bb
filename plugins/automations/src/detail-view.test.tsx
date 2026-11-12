@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -20,6 +26,7 @@ import {
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
   ...(await importOriginal()),
+  experimental_copyToClipboard: vi.fn(),
   experimental_ProviderModelPicker: ({
     value,
     onChange,
@@ -80,6 +87,9 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
     </button>
   ),
 }));
+
+import { experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
+import { toast } from "sonner";
 
 installTestPluginRuntime();
 
@@ -174,6 +184,40 @@ function AutomationDetailView({
 }
 
 describe("Automation detail recipe", () => {
+  it("copies the detail link without running or deleting", async () => {
+    const onRunNow = vi.fn();
+    const onDelete = vi.fn();
+    vi.mocked(experimental_copyToClipboard).mockResolvedValue(true);
+    const success = vi
+      .spyOn(toast, "success")
+      .mockImplementation(() => "success");
+    render(
+      <AutomationDetailView
+        automation={AUTOMATION}
+        projectLabel="Personal"
+        runsState={NO_RUNS}
+        actionPending={false}
+        onToggle={() => {}}
+        onEdit={() => {}}
+        onRunNow={onRunNow}
+        onDelete={onDelete}
+        onOpenThread={() => {}}
+      />,
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Nightly digest actions" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy link" }));
+    await waitFor(() =>
+      expect(experimental_copyToClipboard).toHaveBeenCalledWith({
+        text: `${window.location.origin}/plugins/automations/automations/proj_personal/auto_1`,
+      }),
+    );
+    expect(onRunNow).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+    success.mockRestore();
+  });
+
   it("explains a failed agent run in the header and in its run row", () => {
     const error = "Target thread thr_target was archived";
     const run = {

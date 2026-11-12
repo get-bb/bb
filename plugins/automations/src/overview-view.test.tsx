@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
@@ -14,6 +15,13 @@ import type {
   AutomationResponse,
   AutomationsOverviewResponse,
 } from "./rpc-types.js";
+
+vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@get-bb/plugin-sdk/app")>()),
+  experimental_copyToClipboard: vi.fn(),
+}));
+import { experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
+import { toast } from "sonner";
 
 installTestPluginRuntime();
 
@@ -59,7 +67,12 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
   },
 ];
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.mocked(experimental_copyToClipboard).mockReset();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("AutomationOverviewView", () => {
   it.each([
@@ -318,6 +331,126 @@ describe("AutomationOverviewView", () => {
     expect(screen.queryByRole("menuitem", { name: "Run now" })).toBeNull();
   });
 
+  it("copies each row link, allows retry, and excludes the page query and hash", async () => {
+    const copy = vi.mocked(experimental_copyToClipboard);
+    copy.mockResolvedValueOnce(false).mockResolvedValue(true);
+    const error = vi.spyOn(toast, "error").mockImplementation(() => "error");
+    const success = vi
+      .spyOn(toast, "success")
+      .mockImplementation(() => "success");
+    const onOpenDetail = vi.fn();
+    const onRunNow = vi.fn(async () => {});
+    const onDelete = vi.fn();
+    const onEnabledChange = vi.fn(async () => {});
+    const entry = INSTALLED_AUTOMATIONS[0]!;
+    const entries = [
+      entry,
+      {
+        ...entry,
+        automation: {
+          ...entry.automation,
+          id: "auto_2",
+          projectId: "proj_2",
+          name: "Second",
+        },
+        project: { id: "proj_2", name: "Other" },
+      },
+    ] as AutomationsOverviewResponse["automations"];
+    window.history.replaceState(null, "", "/?token=secret#frag");
+    render(
+      <AutomationOverviewView
+        entries={entries}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={onOpenDetail}
+        onEnabledChange={onEnabledChange}
+        onRunNow={onRunNow}
+        onDelete={onDelete}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+    const clickCopy = (name: string) => {
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: `${name} actions` }),
+      );
+      fireEvent.click(screen.getByRole("menuitem", { name: "Copy link" }));
+    };
+    clickCopy("Nightly digest");
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledExactlyOnceWith("Could not copy the link"),
+    );
+    expect(success).not.toHaveBeenCalled();
+    clickCopy("Nightly digest");
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledExactlyOnceWith("Link copied"),
+    );
+    const firstUrl = `${window.location.origin}/plugins/automations/automations/proj_1/auto_1`;
+    expect(copy).toHaveBeenNthCalledWith(1, { text: firstUrl });
+    expect(copy).toHaveBeenNthCalledWith(2, { text: firstUrl });
+    clickCopy("Second");
+    await waitFor(() =>
+      expect(copy).toHaveBeenNthCalledWith(3, {
+        text: `${window.location.origin}/plugins/automations/automations/proj_2/auto_2`,
+      }),
+    );
+    expect(onRunNow).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onOpenDetail).not.toHaveBeenCalled();
+    expect(onEnabledChange).not.toHaveBeenCalled();
+  });
+
+  it("copies a problem row even when Run now is disabled", async () => {
+    const entry = INSTALLED_AUTOMATIONS[0]!;
+    const automation = entry.automation as AutomationResponse;
+    if (automation.execution.mode !== "agent")
+      throw new Error("Expected agent fixture");
+    const problem = {
+      ...entry,
+      automation: {
+        ...automation,
+        id: "auto_repair",
+        name: "Needs a prompt",
+        execution: { ...automation.execution, prompt: "" },
+        problem: "missing-agent-prompt" as const,
+      },
+    };
+    const onOpenDetail = vi.fn();
+    vi.mocked(experimental_copyToClipboard).mockResolvedValue(true);
+    vi.spyOn(toast, "success").mockImplementation(() => "success");
+    render(
+      <AutomationOverviewView
+        entries={[problem]}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={onOpenDetail}
+        onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
+        onDelete={() => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Needs a prompt actions" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "Run now" }).ariaDisabled).toBe(
+      "true",
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Copy link" }).ariaDisabled,
+    ).not.toBe("true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy link" }));
+    await waitFor(() =>
+      expect(experimental_copyToClipboard).toHaveBeenCalledWith({
+        text: `${window.location.origin}/plugins/automations/automations/proj_1/auto_repair`,
+      }),
+    );
+    expect(onOpenDetail).not.toHaveBeenCalled();
+  });
+
   it("uses the shared row menu to request deletion", async () => {
     const onOpenDetail = vi.fn();
     const onDelete = vi.fn();
@@ -341,7 +474,7 @@ describe("AutomationOverviewView", () => {
     );
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Run now", "Delete"]);
+    ).toEqual(["Run now", "Copy link", "Delete"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
     expect(onDelete).toHaveBeenCalledWith(
