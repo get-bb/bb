@@ -256,6 +256,7 @@ function PluginThreadChatBody({
       providerLookup,
     });
     return getEnvironmentSummaryChrome({
+      environmentPath: environment?.path,
       display,
       providerLookup,
       hasMultipleMachines,

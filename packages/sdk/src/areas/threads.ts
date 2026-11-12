@@ -339,6 +339,11 @@ export interface ThreadActionArgs {
   threadId: string;
 }
 
+export interface ThreadChangeDirectoryArgs extends ThreadActionArgs {
+  expectedEnvironmentId: string;
+  path: string;
+}
+
 export interface ThreadStatusArgs extends ThreadActionArgs {
   signal?: AbortSignal;
 }
@@ -677,6 +682,17 @@ export interface ThreadsArea {
   experimental_listCascade(
     args: ThreadCascadeListArgs,
   ): Promise<ThreadCascadeListResult>;
+  /**
+   * Change an idle or failed thread's working directory on its current host.
+   * Reuses or provisions an unmanaged environment; keeps history and project.
+   * Requires the current expectedEnvironmentId; rejects stale callers, queued work,
+   * running/archived/deleted threads and unavailable/conflicting paths.
+   * The next message runs in the chosen directory; no agent turn is started.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_changeDirectory(
+    args: ThreadChangeDirectoryArgs,
+  ): Promise<ThreadMutationResult>;
   /**
    * Generate a new title from the thread's first task message, its latest user
    * messages, and the agent's latest replies, in the task's language. The
@@ -1405,6 +1421,20 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads.cascade.$post(
           {
             json: { threadIds: [...input.threadIds], action: input.action },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_changeDirectory(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].directory.$post(
+          {
+            param: { id: input.threadId },
+            json: {
+              path: input.path,
+              expectedEnvironmentId: input.expectedEnvironmentId,
+            },
           },
           ...signalRequestArgs(input.signal),
         ),

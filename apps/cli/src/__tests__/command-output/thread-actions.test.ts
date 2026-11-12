@@ -34,6 +34,39 @@ describe("bb thread action command output", () => {
     );
   }
 
+  it("changes the requested thread directory on the server host", async () => {
+    const change = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thr_directory",
+        environmentId: "env_new",
+        projectId: "proj_directory",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({
+      "v1.threads.:id.directory.$post": change,
+      "v1.threads.:id.$get": vi.fn(async () =>
+        fixtures.makeThread({
+          id: "thr_directory",
+          projectId: "proj_directory",
+          providerId: "codex",
+          environmentId: "env_old",
+        }),
+      ),
+    });
+    await runCommand(
+      ["thread", "change-directory", "thr_directory", "--path", "/remote/repo"],
+      register,
+    );
+    expect(change).toHaveBeenCalledWith({
+      param: { id: "thr_directory" },
+      json: { path: "/remote/repo", expectedEnvironmentId: "env_old" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Thread thr_directory working directory changed to /remote/repo",
+    ]);
+  });
+
   it("bb thread archive sends the thread id from args", async () => {
     const archivePost = vi.fn(async () => ({
       ok: true,

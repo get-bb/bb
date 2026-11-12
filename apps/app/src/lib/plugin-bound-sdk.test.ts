@@ -27,6 +27,14 @@ import { createDeferredPromise } from "@bb/test-helpers";
 
 function makeSdk() {
   const threads = {
+    experimental_changeDirectory: vi.fn(
+      async ({ threadId }: { threadId: string }) =>
+        makeThreadResponse({
+          id: threadId,
+          environmentId: "env_directory_new",
+          updatedAt: 20,
+        }),
+    ),
     spawn: vi.fn(async (args: unknown) => args),
     fork: vi.fn(async (args: unknown) => args),
     getPluginMetadata: vi.fn(async (args: unknown) => args),
@@ -116,6 +124,32 @@ function makeSdk() {
 }
 
 describe("bindSdkToPlugin", () => {
+  it("updates the environment and freshness timestamp when a plugin changes directory", async () => {
+    const { sdk, queryClient, threads } = makeSdk();
+    queryClient.setQueryData(
+      threadQueryKey("thr_directory"),
+      makeThreadResponse({
+        id: "thr_directory",
+        environmentId: "env_old",
+        updatedAt: 10,
+      }),
+    );
+    const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
+    await bound.threads.experimental_changeDirectory({
+      threadId: "thr_directory",
+      path: "/remote/repo",
+      expectedEnvironmentId: "env_old",
+    });
+    expect(threads.experimental_changeDirectory).toHaveBeenCalledWith({
+      threadId: "thr_directory",
+      path: "/remote/repo",
+      expectedEnvironmentId: "env_old",
+    });
+    expect(
+      queryClient.getQueryData(threadQueryKey("thr_directory")),
+    ).toMatchObject({ environmentId: "env_directory_new", updatedAt: 20 });
+  });
+
   it("stamps the plugin as the origin of spawned and forked threads", async () => {
     const { sdk, queryClient, threads } = makeSdk();
     const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);

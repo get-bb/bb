@@ -1,10 +1,12 @@
 import { ApiError } from "../../errors.js";
 
+const directoryChanges = new Set<string>();
+
 const inFlightByThreadId = new Map<string, number>();
 
 export class ThreadContextClearInProgressError extends ApiError {
-  constructor() {
-    super(409, "invalid_request", "Thread context is being cleared");
+  constructor(message = "Thread context is being cleared") {
+    super(409, "invalid_request", message);
   }
 }
 
@@ -15,7 +17,12 @@ async function withThreadContextMutationGuard<T>(
 ): Promise<T> {
   const inFlight = inFlightByThreadId.get(threadId) ?? 0;
   if (inFlight !== 0 && (mode === "clear" || inFlight < 0)) {
-    if (mode === "send") throw new ThreadContextClearInProgressError();
+    if (mode === "send")
+      throw new ThreadContextClearInProgressError(
+        directoryChanges.has(threadId)
+          ? "Thread working directory is being changed"
+          : undefined,
+      );
     throw new ApiError(
       409,
       "invalid_request",
@@ -45,4 +52,18 @@ export async function withThreadContextClearGuard<T>(
   work: () => Promise<T>,
 ): Promise<T> {
   return withThreadContextMutationGuard(threadId, "clear", work);
+}
+
+export async function withThreadDirectoryChangeGuard<T>(
+  threadId: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  return withThreadContextMutationGuard(threadId, "clear", async () => {
+    directoryChanges.add(threadId);
+    try {
+      return await work();
+    } finally {
+      directoryChanges.delete(threadId);
+    }
+  });
 }

@@ -4842,3 +4842,22 @@ precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
+
+## `bb.sdk.threads.experimental_changeDirectory`
+
+Changes an idle or failed thread's working directory on its existing host, using
+`{ threadId, path, expectedEnvironmentId }`. Returns the updated thread. The absolute existing directory
+reuses a ready project environment or provisions an unmanaged one. History and
+project membership are preserved; subsequent messages run in the new directory.
+The required `expectedEnvironmentId` rejects stale callers.
+The call rejects archived/deleted/running threads, queued messages, disconnected hosts, invalid
+paths, conflicting claims and another project's managed worktree. It serializes
+with message dispatch and context clearing, rechecks thread state after provisioning,
+and records a thread-scoped operation without starting an agent continuation.
+
+Core callers: thread context menu → directory dialog and `bb thread change-directory`.
+The agent's `update_environment_directory` tool shares admission, provisioning and
+attachment logic but records a turn-scoped operation and keeps its continuation.
+
+Stabilization: review naming, same-host scope, failed-thread recovery and remote
+path-picker behavior before removing the experimental prefix. No daemon wire change.

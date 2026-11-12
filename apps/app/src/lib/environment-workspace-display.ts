@@ -202,6 +202,7 @@ export function getEnvironmentLabelIconName(
 }
 
 interface EnvironmentSummaryChromeArgs extends EnvironmentWorkspaceLabelArgs {
+  environmentPath?: string | null;
   hasMultipleMachines: boolean;
   host: EnvironmentSummaryChromeHost | null;
   machineProviders: readonly MachineProviderPresentation[] | undefined;
@@ -217,6 +218,7 @@ export interface EnvironmentSummaryChrome {
 }
 
 export function getEnvironmentSummaryChrome({
+  environmentPath,
   display,
   providerLookup,
   hasMultipleMachines,
@@ -230,6 +232,25 @@ export function getEnvironmentSummaryChrome({
     hostName: host?.name ?? null,
     hostType: host?.type ?? null,
   });
+  if (
+    environmentPath &&
+    display.lifecycle === null &&
+    providerLookup.status === "loaded" &&
+    providerLookup.environmentProviderId === null
+  ) {
+    return {
+      environmentLabel: environmentPath,
+      environmentCompactLabel:
+        environmentPath
+          .split(/[\\/]+/u)
+          .filter(Boolean)
+          .at(-1) ?? environmentPath,
+      environmentIcon: "FolderOpen",
+      environmentProviderName: undefined,
+      environmentHost: undefined,
+      environmentMachineProvider: undefined,
+    };
+  }
   const summaryHost =
     host !== null && summary?.label === host.name ? host : undefined;
   return {

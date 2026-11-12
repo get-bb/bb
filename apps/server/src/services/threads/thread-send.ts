@@ -502,9 +502,17 @@ export async function sendThreadMessage(
     });
     return;
   }
-  return withThreadSendGuard(args.thread.id, () =>
-    sendThreadMessageWithoutContextClear(deps, args),
-  );
+  return withThreadSendGuard(args.thread.id, () => {
+    const latest = getThread(deps.db, args.thread.id);
+    if (latest && latest.environmentId !== args.thread.environmentId) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Thread working directory changed while preparing the message. Try again.",
+      );
+    }
+    return sendThreadMessageWithoutContextClear(deps, args);
+  });
 }
 
 async function sendThreadMessageWithoutContextClear(

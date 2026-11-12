@@ -158,6 +158,23 @@ interface LifecycleHandlers {
   requestDelete: (threadIds: readonly string[]) => Promise<void>;
 }
 
+function useDirectoryChangeHandler() {
+  const actions = useThreadActions();
+  const queryClient = useQueryClient();
+  return async (threadId: string) => {
+    try {
+      actions.requestChangeDirectory(
+        await resolveThread(queryClient, threadId),
+      );
+    } catch (error) {
+      showMutationErrorToast({
+        error,
+        fallbackMessage: "Failed to load thread.",
+      });
+    }
+  };
+}
+
 function useLifecycleHandlers(): LifecycleHandlers {
   const actions = useThreadActions();
   const queryClient = useQueryClient();
@@ -396,6 +413,26 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
         icon: "Edit",
         run: ({ requestRename }) => requestRename(thread.id),
       }),
+    }),
+    coreThreadAction({
+      id: "changeDirectory",
+      group: GROUPS.organize,
+      order: 30,
+      title: "Change working directory…",
+      icon: "FolderOpen",
+      useData: useDirectoryChangeHandler,
+      item: ({ thread, data }) =>
+        thread.archivedAt !== null || thread.environment === null
+          ? null
+          : {
+              label: "Change working directory…",
+              icon: "FolderOpen",
+              disabled: thread.status !== "idle" && thread.status !== "error",
+              run: () =>
+                afterMenuCloses(() => {
+                  void data(thread.id);
+                }),
+            },
     }),
     coreThreadAction({
       id: "regenerateTitle",

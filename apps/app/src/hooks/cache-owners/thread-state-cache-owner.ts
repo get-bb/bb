@@ -105,6 +105,19 @@ function responseMetadataPatch(
   };
 }
 
+export function applyThreadDirectoryChangeResult(
+  queryClient: QueryClient,
+  thread: ThreadWithRuntime,
+): void {
+  patchThreadEntity(
+    queryClient,
+    thread.id,
+    { environmentId: thread.environmentId, updatedAt: thread.updatedAt },
+    thread.updatedAt,
+  );
+  invalidateThreadListQueries({ queryClient });
+}
+
 export function applyThreadUpdateResult({
   queryClient,
   thread,

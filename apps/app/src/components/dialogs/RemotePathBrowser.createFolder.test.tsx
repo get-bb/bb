@@ -94,6 +94,7 @@ describe("RemotePathBrowser new folder", () => {
         ? nextDirectory
         : Promise.resolve(listing("/home/me", ["next"])),
     );
+    const onDirectoryChange = vi.fn();
     const { wrapper: Wrapper } = createQueryClientTestHarness();
 
     render(
@@ -101,7 +102,7 @@ describe("RemotePathBrowser new folder", () => {
         <RemotePathBrowser
           hostId="host_atum"
           allowCreateFolder
-          onDirectoryChange={vi.fn()}
+          onDirectoryChange={onDirectoryChange}
         />
       </Wrapper>,
     );
@@ -120,9 +121,11 @@ describe("RemotePathBrowser new folder", () => {
     ).toBe(true);
     expect(screen.queryByLabelText("New folder name")).toBeNull();
     expect(mkdir).not.toHaveBeenCalled();
+    expect(onDirectoryChange).toHaveBeenLastCalledWith(null);
 
     resolveNextDirectory(listing("/home/me/next", []));
     await screen.findByText("This folder is empty.");
+    expect(onDirectoryChange).toHaveBeenLastCalledWith("/home/me/next");
   });
 
   it("creates the folder on the host and selects it", async () => {

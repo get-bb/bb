@@ -205,3 +205,16 @@ Application links in messages:
   behavior. Desktop and native mobile clients need application-link support
   (mobile bridge version 3); older clients show an update message. Web browsers
   handle their own OS handoff and cannot reliably report missing applications.
+
+CHANGE AN EXISTING THREAD'S WORKING DIRECTORY
+
+  bb thread change-directory [id] --path <absolute-path> [--self] [--json]
+
+  Choose an existing directory on the thread's current host. The thread must be
+  idle or failed, with no queued messages, and the host online. Reuses a ready environment in the same
+  project, or attaches an unmanaged environment. Keeps the conversation and project;
+  future messages run in the selected directory. Does not move files or start a
+  turn. Rejects busy paths and another project's bb-managed worktree.
+
+  UI: thread context menu → Change working directory… → choose folder → Change directory.
+  SDK: `threads.experimental_changeDirectory({ threadId, path, expectedEnvironmentId })`.

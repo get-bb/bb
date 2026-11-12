@@ -1,3 +1,4 @@
+import { applyThreadDirectoryChangeResult } from "@/hooks/cache-owners/thread-state-cache-owner";
 import {
   markThreadReadMutationOptions,
   markThreadUnreadMutationOptions,
@@ -210,6 +211,11 @@ export function bindSdkToPlugin(
     threads: {
       ...sdk.threads,
       ...threadMutations,
+      async experimental_changeDirectory(args) {
+        const thread = await sdk.threads.experimental_changeDirectory(args);
+        applyThreadDirectoryChangeResult(queryClient, thread);
+        return thread;
+      },
       markRead(args) {
         return queryClient
           .getMutationCache()

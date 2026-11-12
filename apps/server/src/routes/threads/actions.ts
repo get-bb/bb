@@ -1,3 +1,4 @@
+import { changeThreadDirectory } from "../../services/threads/thread-environment-directory.js";
 import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
 import {
   deleteQueuedThreadMessage,
@@ -594,6 +595,20 @@ export function registerThreadActionRoutes(
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
     return context.json(toThreadResponseFromThread(deps, { thread }));
+  });
+
+  post(routes.changeDirectory, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    await changeThreadDirectory(deps, {
+      thread,
+      path: payload.path,
+      expectedEnvironmentId: payload.expectedEnvironmentId,
+    });
+    return context.json(
+      toThreadResponseFromThread(deps, {
+        thread: requirePublicThread(deps.db, thread.id),
+      }),
+    );
   });
 
   post(routes.regenerateTitle, async (context) => {

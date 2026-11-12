@@ -1,4 +1,8 @@
 import {
+  threadChangeDirectoryRequestSchema,
+  type ThreadChangeDirectoryRequest,
+} from "./api/threads.js";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -1656,6 +1660,14 @@ export const publicApiRoutes = {
       path: "/threads/:id/unpin",
       method: "post",
       request: noRequest<PathId>(),
+      response: jsonResponse<ThreadResponse>(),
+    }),
+    changeDirectory: defineRoute({
+      path: "/threads/:id/directory",
+      method: "post",
+      request: jsonRequest<PathId, ThreadChangeDirectoryRequest>(
+        threadChangeDirectoryRequestSchema,
+      ),
       response: jsonResponse<ThreadResponse>(),
     }),
     /**

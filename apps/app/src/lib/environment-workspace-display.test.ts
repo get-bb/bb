@@ -5,6 +5,7 @@ import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
   findEnvironmentDisplayProvider,
   getEnvironmentDisplayIconName,
+  getEnvironmentSummaryChrome,
   getEnvironmentWorkspaceInfoDisplay,
   getEnvironmentWorkspaceSummaryDisplay,
   isHostAmbiguous,
@@ -370,5 +371,24 @@ describe("getEnvironmentWorkspaceInfoDisplay", () => {
         locality: "local",
       }),
     ).toMatchObject({ label: "Local", machineName: "Michael-M4" });
+  });
+});
+
+describe("composer directory after manual attachment", () => {
+  it("shows the unmanaged path instead of dropping the environment label", () => {
+    expect(
+      getEnvironmentSummaryChrome({
+        environmentPath: "/Users/me/projects/repo",
+        display: makeDisplay(),
+        providerLookup: noProviderLookup,
+        hasMultipleMachines: false,
+        host: null,
+        machineProviders: undefined,
+      }),
+    ).toMatchObject({
+      environmentLabel: "/Users/me/projects/repo",
+      environmentCompactLabel: "repo",
+      environmentIcon: "FolderOpen",
+    });
   });
 });

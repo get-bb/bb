@@ -37,7 +37,10 @@ import {
 } from "../../src/services/threads/queued-messages.js";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
-import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
+import {
+  changeThreadDirectory,
+  handleUpdateEnvironmentDirectoryToolCall,
+} from "../../src/services/threads/thread-environment-directory.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { buildExecutionOptions } from "../../src/services/threads/thread-commands.js";
 import { applyThreadSessionOptionPatch } from "../../src/services/threads/thread-session-options.js";
@@ -1631,6 +1634,94 @@ describe("idle cold-start activation", () => {
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
+    });
+  });
+
+  it("rejects a message prepared for a directory that was changed before dispatch", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedProviderThreadFixture({
+        harness,
+        value: 401,
+      });
+      const target = seedEnvironment(harness.deps, {
+        hostId: environment.hostId,
+        projectId: environment.projectId,
+        path: "/tmp/manual-directory-race",
+        status: "ready",
+      });
+      await changeThreadDirectory(harness.deps, {
+        thread,
+        path: target.path!,
+        expectedEnvironmentId: environment.id,
+      });
+      await expect(
+        sendThreadMessage(harness.deps, {
+          originPluginId: null,
+          environment,
+          payload: {
+            input: textInput("stale message"),
+            mode: "start",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+          trigger: "user",
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("submits the next message in the manually selected directory with provider continuity", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedProviderThreadFixture({
+        harness,
+        value: 400,
+      });
+      const target = seedEnvironment(harness.deps, {
+        hostId: environment.hostId,
+        projectId: environment.projectId,
+        path: "/tmp/manual-directory",
+        status: "ready",
+      });
+      await changeThreadDirectory(harness.deps, {
+        thread,
+        path: target.path!,
+        expectedEnvironmentId: environment.id,
+      });
+      const switched = getThread(harness.db, thread.id);
+      if (!switched) throw new Error("Thread disappeared");
+      await sendThreadMessage(harness.deps, {
+        originPluginId: null,
+        environment: target,
+        payload: {
+          input: textInput("continue here"),
+          mode: "start",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread: switched,
+        trigger: "user",
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      expect(queued.command).toMatchObject({
+        type: "turn.submit",
+        environmentId: target.id,
+        resumeContext: {
+          providerThreadId: "provider-send-dispatch-400",
+          workspaceContext: { workspacePath: target.path },
+        },
+      });
     });
   });
 

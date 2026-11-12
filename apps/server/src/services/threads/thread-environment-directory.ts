@@ -2,6 +2,8 @@ import { assertEnvironmentPathAvailable } from "../environments/path-admission.j
 import { z } from "zod";
 import {
   getLatestThreadSequence,
+  getActiveStoredTurnId,
+  listQueuedThreadMessageCountsByThreadIds,
   createEnvironment,
   type EnvironmentRow,
   createEventId,
@@ -15,8 +17,15 @@ import {
   isAbsoluteHostPath,
   isHostPathRoot,
   turnScope,
+  threadScope,
 } from "@bb/domain";
 import type { DynamicTool, Thread, ToolCallResponse } from "@bb/domain";
+import { ApiError } from "../../errors.js";
+import { withThreadDirectoryChangeGuard } from "./thread-context-mutation-guard.js";
+import {
+  requireConnectedHostSession,
+  requireEnvironment,
+} from "../lib/entity-lookup.js";
 import type { AppDeps } from "../../types.js";
 import { runTrackedEnvironmentAttach } from "../environments/environment-engine.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
@@ -147,13 +156,13 @@ function successMessage(path: string): string {
 }
 
 function attachReadyEnvironment(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "hub" | "pendingInteractions">,
   args: {
     currentEnvironment: EnvironmentRow;
     createdEnvironment: boolean;
     targetEnvironment: ReadyEnvironment;
     thread: Thread;
-    turnId: string;
+    turnId: string | null;
   },
 ): AttachEnvironmentResult {
   const result = deps.db.transaction(
@@ -171,6 +180,11 @@ function attachReadyEnvironment(
         return { kind: "thread_unavailable", message: writableFailure };
       }
 
+      if (args.turnId === null) {
+        const failure = manualDirectoryChangeFailure(deps, latestThread);
+        if (failure) return { kind: "thread_unavailable", message: failure };
+      }
+
       if (latestThread.environmentId === args.targetEnvironment.id) {
         return { kind: "attached", changed: false };
       }
@@ -186,7 +200,7 @@ function attachReadyEnvironment(
         threadId: latestThread.id,
         environmentId: args.targetEnvironment.id,
         type: "system/operation",
-        scope: turnScope(args.turnId),
+        scope: args.turnId === null ? threadScope() : turnScope(args.turnId),
         data: {
           operation: ENVIRONMENT_DIRECTORY_UPDATE_OPERATION,
           operationId: createEventId(),
@@ -225,7 +239,7 @@ async function provisionUnmanagedEnvironmentForPath(
     path: string;
     thread: Thread;
   },
-): Promise<ReadyEnvironment | ToolCallResponse> {
+): Promise<ReadyEnvironment> {
   const environment = createEnvironment(deps.db, deps.hub, {
     projectId: args.thread.projectId,
     hostId: args.currentEnvironment.hostId,
@@ -249,20 +263,162 @@ async function provisionUnmanagedEnvironmentForPath(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return toolCallFailure(
+    throw new ApiError(
+      409,
+      "invalid_request",
       `Could not update environment directory to ${args.path}: ${message}`,
     );
   }
 
   const readyEnvironment = getEnvironment(deps.db, environment.id);
   if (!readyEnvironment) {
-    return toolCallFailure("Prepared environment no longer exists.");
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Prepared environment no longer exists.",
+    );
   }
   const ready = resolveReadyEnvironment(readyEnvironment);
   if ("failure" in ready) {
-    return toolCallFailure(ready.failure);
+    throw new ApiError(409, "invalid_request", ready.failure);
   }
   return ready;
+}
+
+interface ChangeEnvironmentDirectoryArgs {
+  currentEnvironment: EnvironmentRow;
+  path: string;
+  thread: Thread;
+  turnId: string | null;
+}
+
+function manualDirectoryChangeFailure(
+  deps: Pick<AppDeps, "db" | "pendingInteractions">,
+  thread: Thread,
+): string | null {
+  if (
+    (thread.status !== "idle" && thread.status !== "error") ||
+    getActiveStoredTurnId(deps.db, thread.id) !== null
+  ) {
+    return "Working directory can only be changed when the thread is idle or failed.";
+  }
+  if (
+    (listQueuedThreadMessageCountsByThreadIds(deps.db, {
+      threadIds: [thread.id],
+    })[0]?.queuedMessageCount ?? 0) > 0
+  ) {
+    return "Send or remove queued messages before changing the working directory.";
+  }
+  if (
+    deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(thread.id)
+  ) {
+    return "Resolve the pending interaction before changing the working directory.";
+  }
+  return null;
+}
+
+async function changeEnvironmentDirectory(
+  deps: AppDeps,
+  args: ChangeEnvironmentDirectoryArgs,
+): Promise<string> {
+  const normalizedPath = normalizeDirectoryPath(args.path);
+  const pathFailure = validateDirectoryPath(normalizedPath);
+  if (pathFailure) throw new ApiError(400, "invalid_path", pathFailure);
+  const writableFailure = threadWritableFailure(args.thread);
+  if (writableFailure)
+    throw new ApiError(409, "invalid_request", writableFailure);
+  if (args.turnId === null) {
+    const failure = manualDirectoryChangeFailure(deps, args.thread);
+    if (failure) throw new ApiError(409, "invalid_request", failure);
+    requireConnectedHostSession(deps, args.currentEnvironment.hostId);
+  }
+  assertEnvironmentPathAvailable(deps, {
+    hostId: args.currentEnvironment.hostId,
+    path: normalizedPath,
+    threadId: args.thread.id,
+  });
+  if (
+    getEnvironment(deps.db, args.currentEnvironment.id)?.path === normalizedPath
+  )
+    return normalizedPath;
+  const existingEnvironment = findProjectEnvironmentByHostPath(
+    deps.db,
+    args.thread.projectId,
+    args.currentEnvironment.hostId,
+    normalizedPath,
+  );
+  let targetEnvironment: ReadyEnvironment;
+  if (existingEnvironment) {
+    const ready = resolveReadyEnvironment(existingEnvironment);
+    if ("failure" in ready)
+      throw new ApiError(409, "invalid_request", ready.failure);
+    targetEnvironment = ready;
+  } else {
+    const refusal = suppliedWorkspacePathRefusal(deps.db, {
+      dataDir: findHostDataDir(deps, args.currentEnvironment.hostId),
+      hostId: args.currentEnvironment.hostId,
+      path: normalizedPath,
+      projectId: args.thread.projectId,
+    });
+    if (refusal !== null)
+      throw new ApiError(
+        409,
+        "invalid_request",
+        `${refusal}. Use a different directory.`,
+      );
+    targetEnvironment = await provisionUnmanagedEnvironmentForPath(deps, {
+      currentEnvironment: args.currentEnvironment,
+      path: normalizedPath,
+      thread: args.thread,
+    });
+  }
+  assertEnvironmentPathAvailable(deps, {
+    ...targetEnvironment,
+    threadId: args.thread.id,
+  });
+  const result = attachReadyEnvironment(deps, {
+    ...args,
+    createdEnvironment: existingEnvironment === null,
+    targetEnvironment,
+  });
+  if (result.kind === "environment_changed")
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Thread environment changed while preparing the new directory. Try again with the desired path.",
+    );
+  if (result.kind === "thread_unavailable")
+    throw new ApiError(409, "invalid_request", result.message);
+  return targetEnvironment.path;
+}
+
+export async function changeThreadDirectory(
+  deps: AppDeps,
+  args: { thread: Thread; path: string; expectedEnvironmentId: string },
+): Promise<void> {
+  await withThreadDirectoryChangeGuard(args.thread.id, async () => {
+    const thread = getThread(deps.db, args.thread.id);
+    if (!thread || thread.deletedAt !== null)
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    if (thread.environmentId !== args.expectedEnvironmentId)
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Thread environment changed. Refresh the thread and try again.",
+      );
+    if (thread.environmentId === null)
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Thread does not have an environment on a host.",
+      );
+    await changeEnvironmentDirectory(deps, {
+      currentEnvironment: requireEnvironment(deps.db, thread.environmentId),
+      path: args.path,
+      thread,
+      turnId: null,
+    });
+  });
 }
 
 export async function handleUpdateEnvironmentDirectoryToolCall(
@@ -270,112 +426,23 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
   args: HandleUpdateEnvironmentDirectoryToolCallArgs,
 ): Promise<ToolCallResponse> {
   const input = updateEnvironmentDirectoryInputSchema.safeParse(args.input);
-  if (!input.success) {
+  if (!input.success)
     return toolCallFailure(
       "Invalid arguments. Provide an object with an absolute path string.",
     );
-  }
-
-  const normalizedPath = normalizeDirectoryPath(input.data.path);
-  const pathFailure = validateDirectoryPath(normalizedPath);
-  if (pathFailure) {
-    return toolCallFailure(pathFailure);
-  }
-
-  const writableFailure = threadWritableFailure(args.thread);
-  if (writableFailure) {
-    return toolCallFailure(writableFailure);
-  }
-
   try {
-    assertEnvironmentPathAvailable(deps, {
-      hostId: args.currentEnvironment.hostId,
-      path: normalizedPath,
-      threadId: args.thread.id,
+    const path = await changeEnvironmentDirectory(deps, {
+      ...args,
+      path: input.data.path,
     });
-  } catch (error) {
-    return toolCallFailure(
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-
-  if (
-    getEnvironment(deps.db, args.currentEnvironment.id)?.path === normalizedPath
-  ) {
     return toolCallSuccess(
-      `This thread is already using ${normalizedPath} as its environment directory.`,
+      path === args.currentEnvironment.path
+        ? `This thread is already using ${path} as its environment directory.`
+        : successMessage(path),
     );
-  }
-
-  const existingEnvironment = findProjectEnvironmentByHostPath(
-    deps.db,
-    args.thread.projectId,
-    args.currentEnvironment.hostId,
-    normalizedPath,
-  );
-  let createdEnvironment = false;
-  let targetEnvironment: ReadyEnvironment;
-
-  if (existingEnvironment) {
-    const ready = resolveReadyEnvironment(existingEnvironment);
-    if ("failure" in ready) {
-      return toolCallFailure(ready.failure);
-    }
-    targetEnvironment = ready;
-  } else {
-    const dataDir = findHostDataDir(deps, args.currentEnvironment.hostId);
-    const refusal = suppliedWorkspacePathRefusal(deps.db, {
-      dataDir,
-      hostId: args.currentEnvironment.hostId,
-      path: normalizedPath,
-      projectId: args.thread.projectId,
-    });
-    if (refusal !== null) {
-      return toolCallFailure(`${refusal}. Use a different directory.`);
-    }
-    const provisionedEnvironment = await provisionUnmanagedEnvironmentForPath(
-      deps,
-      {
-        currentEnvironment: args.currentEnvironment,
-        path: normalizedPath,
-        thread: args.thread,
-      },
-    );
-
-    if ("success" in provisionedEnvironment) {
-      return provisionedEnvironment;
-    }
-    targetEnvironment = provisionedEnvironment;
-    createdEnvironment = true;
-  }
-
-  let attachResult: AttachEnvironmentResult;
-  try {
-    assertEnvironmentPathAvailable(deps, {
-      ...targetEnvironment,
-      threadId: args.thread.id,
-    });
-    attachResult = attachReadyEnvironment(deps, {
-      currentEnvironment: args.currentEnvironment,
-      createdEnvironment,
-      targetEnvironment,
-      thread: args.thread,
-      turnId: args.turnId,
-    });
   } catch (error) {
     return toolCallFailure(
       error instanceof Error ? error.message : String(error),
     );
-  }
-
-  switch (attachResult.kind) {
-    case "attached":
-      return toolCallSuccess(successMessage(targetEnvironment.path));
-    case "environment_changed":
-      return toolCallFailure(
-        "Thread environment changed while preparing the new directory. Try again with the desired path.",
-      );
-    case "thread_unavailable":
-      return toolCallFailure(attachResult.message);
   }
 }

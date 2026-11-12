@@ -191,9 +191,11 @@ export function RemotePathBrowser({
     createFolder.mutate({ parent: directory, name });
   };
 
+  const selectedDirectory =
+    isEditing || isPlaceholderData || isError ? null : directory;
   useEffect(() => {
-    onDirectoryChange(directory);
-  }, [directory, onDirectoryChange]);
+    onDirectoryChange(selectedDirectory);
+  }, [selectedDirectory, onDirectoryChange]);
 
   useEffect(() => {
     if (isEditing && !isPointerCoarse) editInputRef.current?.focus();

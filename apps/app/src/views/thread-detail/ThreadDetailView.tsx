@@ -1375,6 +1375,7 @@ function ThreadDetailViewInternal(
     : undefined;
   const composerEnvironmentChrome = threadEnvironmentDisplay
     ? getEnvironmentSummaryChrome({
+        environmentPath: environment?.path,
         display: threadEnvironmentDisplay,
         providerLookup: threadEnvironmentProviderLookup,
         hasMultipleMachines,

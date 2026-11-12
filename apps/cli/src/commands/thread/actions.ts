@@ -77,6 +77,12 @@ interface ThreadPinCommandOptions {
   json?: boolean;
 }
 
+interface ThreadChangeDirectoryCommandOptions {
+  self?: boolean;
+  json?: boolean;
+  path: string;
+}
+
 interface ThreadRegenerateTitleCommandOptions {
   self?: boolean;
   json?: boolean;
@@ -412,6 +418,44 @@ export function registerActionsCommands(
         ),
       );
   }
+
+  parent
+    .command("change-directory [id]")
+    .description(
+      "Change an idle thread's working directory on its current host",
+    )
+    .requiredOption(
+      "--path <path>",
+      "Absolute existing directory on the thread's host",
+    )
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: ThreadChangeDirectoryCommandOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          const current = await sdk.threads.get({ threadId });
+          if (current.environmentId === null)
+            throw new CliExitError(
+              "Thread does not have an environment on a host",
+              1,
+            );
+          const thread = await sdk.threads.experimental_changeDirectory({
+            threadId,
+            path: opts.path,
+            expectedEnvironmentId: current.environmentId,
+          });
+          if (outputJson(opts, thread)) return;
+          console.log(
+            `Thread ${thread.id} working directory changed to ${opts.path}`,
+          );
+        },
+      ),
+    );
 
   parent
     .command("regenerate-title [id]")

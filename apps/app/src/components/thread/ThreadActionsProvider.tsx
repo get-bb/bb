@@ -1,3 +1,4 @@
+import { ThreadDirectoryDialog } from "@/components/dialogs/ThreadDirectoryDialog";
 import {
   createContext,
   useCallback,
@@ -57,6 +58,7 @@ import type { ThreadCascadeAction } from "@bb/server-contract";
 
 export interface ThreadActionsContextValue {
   archiveEnvironmentThreads: (environmentId: string) => Promise<void>;
+  requestChangeDirectory: (thread: Thread) => void;
   requestArchive: (thread: Thread) => void;
   requestArchiveThreads: (threads: readonly Thread[]) => void;
   renameThreadAsync: (threadId: string, title: string) => Promise<void>;
@@ -112,6 +114,8 @@ function hasRunningWork(thread: Thread): boolean {
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
+  const directoryDialog = useDialogState<Thread>();
+  const requestChangeDirectory = directoryDialog.onOpen;
   const confirmThreadArchive =
     useSystemConfig().data?.generalSettings.confirmThreadArchive ?? true;
   const navigate = useRouteNavigate();
@@ -547,6 +551,7 @@ export function ThreadActionsProvider({
   const value = useMemo<ThreadActionsContextValue>(
     () => ({
       archiveEnvironmentThreads,
+      requestChangeDirectory,
       renameThreadAsync,
       requestArchive,
       requestArchiveThreads,
@@ -558,6 +563,7 @@ export function ThreadActionsProvider({
     }),
     [
       archiveEnvironmentThreads,
+      requestChangeDirectory,
       renameThreadAsync,
       requestArchive,
       requestArchiveThreads,
@@ -589,6 +595,10 @@ export function ThreadActionsProvider({
       <RenameControllerProvider controller={renameController}>
         {children}
       </RenameControllerProvider>
+      <ThreadDirectoryDialog
+        target={directoryDialog.target}
+        onOpenChange={directoryDialog.onOpenChange}
+      />
       <ThreadDeleteDialog
         target={deleteDialog.target}
         pending={deleteThread.isPending}

@@ -1403,3 +1403,13 @@ export const threadStoragePathListResponseSchema =
 export type ThreadStoragePathListResponse = z.infer<
   typeof threadStoragePathListResponseSchema
 >;
+
+export const threadChangeDirectoryRequestSchema = z
+  .object({
+    path: z.string().trim().min(1),
+    expectedEnvironmentId: z.string().min(1),
+  })
+  .strict();
+export type ThreadChangeDirectoryRequest = z.infer<
+  typeof threadChangeDirectoryRequestSchema
+>;

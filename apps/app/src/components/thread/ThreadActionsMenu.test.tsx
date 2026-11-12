@@ -52,6 +52,7 @@ import {
 } from "./ThreadActionsMenu";
 
 const hostActions = vi.hoisted(() => ({
+  requestChangeDirectory: vi.fn(),
   requestArchiveThreads: vi.fn(),
   requestDeleteThreads: vi.fn(),
 }));
@@ -393,6 +394,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -411,6 +413,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -486,6 +489,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -504,6 +508,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -528,6 +533,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -546,6 +552,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -572,6 +579,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -590,6 +598,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Rename",
         "Regenerate title",
+        "Change working directory…",
         "Move to section",
         "---",
         "Customize actions",
@@ -612,6 +621,35 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       expect(await menuRows()).toEqual(surface.compact ? compact : desktop);
     },
   );
+
+  it("opens the directory picker for the selected thread", async () => {
+    renderSurface(surface, { thread: baseThread });
+    await surface.open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "Change working directory…",
+      }),
+    );
+    await waitFor(() =>
+      expect(hostActions.requestChangeDirectory).toHaveBeenCalledWith(
+        expect.objectContaining({ id: baseThread.id }),
+      ),
+    );
+  });
+
+  it("disables directory changes while the thread is active", async () => {
+    renderSurface(surface, {
+      thread: makeThreadListEntry({ ...baseThread, status: "active" }),
+    });
+    await surface.open();
+    expect(
+      (
+        await screen.findByRole("menuitem", {
+          name: "Change working directory…",
+        })
+      ).getAttribute("aria-disabled"),
+    ).toBe("true");
+  });
 
   it("keeps a submenu row's detail out of sight but in its accessible name", async () => {
     renderSurface(
@@ -867,6 +905,7 @@ describe("thread action registrations", () => {
       "bb--core/parentNotifications",
       "bb--core/rename",
       "bb--core/regenerateTitle",
+      "bb--core/changeDirectory",
       "fixture/move",
       "bb--core/archive",
       "bb--core/delete",
