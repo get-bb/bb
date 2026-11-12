@@ -1262,7 +1262,9 @@ function DeviceRow({
 }
 
 export type OnboardingConnectState =
-  { status: "on"; url: string } | { status: "off" } | { status: "unavailable" };
+  | { status: "on"; url: string }
+  | { status: "off" }
+  | { status: "unavailable" };
 
 interface DevicesStepProps {
   connect: OnboardingConnectState;
