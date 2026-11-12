@@ -20,6 +20,11 @@ import { loadHostIdentity, persistHostId } from "./identity.js";
 import { acquireDaemonLock } from "./lock.js";
 import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
+  classifyDaemonStartFailure,
+  startWithPersistedAuthRecovery,
+  type HostDaemonStartAttempt,
+} from "./persisted-auth-recovery.js";
+import {
   prepareRuntimeShellEnv,
   resolvePowerShellExecutionPolicyDefault,
   resolveBbExecutablePathInDirectory,
@@ -43,6 +48,17 @@ interface StartHostDaemonOptions {
 
 export async function startHostDaemon(
   options: StartHostDaemonOptions = {},
+): Promise<HostDaemon> {
+  return startWithPersistedAuthRecovery({
+    enrollKey: options.enrollKey,
+    start: (attempt) => startHostDaemonOnce(options, attempt),
+    warn: (message, fields) => console.warn(message, fields),
+  });
+}
+
+async function startHostDaemonOnce(
+  options: StartHostDaemonOptions,
+  attempt: HostDaemonStartAttempt,
 ): Promise<HostDaemon> {
   const resolvedConfig = loadHostDaemonStartConfig({});
   const dataDir = resolvedConfig.dataDir;
@@ -72,7 +88,9 @@ export async function startHostDaemon(
   let app: Awaited<ReturnType<typeof createHostDaemonApp>> | undefined;
   let machineAuthProxy: MachineAuthProxy | undefined;
   try {
-    const persistedAuth = await readHostAuthState(dataDir);
+    const persistedAuth = attempt.ignorePersistedAuth
+      ? null
+      : await readHostAuthState(dataDir);
     const identity = await loadHostIdentity({
       dataDir,
       providedHostId: options.hostId,
@@ -197,7 +215,14 @@ export async function startHostDaemon(
         .shutdown("daemon-lock-lost", 1)
         .catch(() => process.exit(1));
     };
-    await app.daemon.start();
+    try {
+      await app.daemon.start();
+    } catch (error) {
+      throw classifyDaemonStartFailure({
+        error,
+        usedPersistedAuth: persistedAuth !== null,
+      });
+    }
     return app.daemon;
   } catch (error) {
     if (!app) {

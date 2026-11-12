@@ -2316,23 +2316,34 @@ async function requestMatchingHostEnrollKey(
   return enrollKeyResponse;
 }
 
-async function maybeAddAutoJoinEnv(
+export async function maybeAddAutoJoinEnv(
   args: MaybeAddAutoJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
   if (toOptionalString(args.env.BB_HOST_ENROLL_KEY) !== undefined) {
     return args.env;
   }
-  if (await pathExists(join(args.dataDir, HOST_AUTH_FILE_NAME))) {
-    return args.env;
-  }
-
+  const hasPersistedAuth = await pathExists(
+    join(args.dataDir, HOST_AUTH_FILE_NAME),
+  );
   const requestedHostId =
     toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.dataDir));
-  const enrollKeyResponse = await requestMatchingHostEnrollKey({
-    requestedHostId,
-    serverUrl: args.serverUrl,
-  });
+  if (hasPersistedAuth && requestedHostId === null) {
+    return args.env;
+  }
+
+  let enrollKeyResponse: HostEnrollKeyResponse;
+  try {
+    enrollKeyResponse = await requestMatchingHostEnrollKey({
+      requestedHostId,
+      serverUrl: args.serverUrl,
+    });
+  } catch (error) {
+    if (hasPersistedAuth) {
+      return args.env;
+    }
+    throw error;
+  }
 
   return {
     ...args.env,
