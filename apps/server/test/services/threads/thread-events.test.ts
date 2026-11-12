@@ -403,4 +403,51 @@ describe("thread event appends", () => {
       await harness.cleanup();
     }
   });
+
+  it("does not advance lastReadAt for a user-initiated turn request sent by a plugin", async () => {
+    const { environment, harness, thread } =
+      await createThreadEventTestContext();
+    try {
+      harness.db
+        .update(threads)
+        .set({
+          lastReadAt: 1_000,
+          latestAttentionAt: 1_500,
+          updatedAt: 1_500,
+        })
+        .where(eq(threads.id, thread.id))
+        .run();
+      vi.spyOn(Date, "now").mockReturnValue(2_000);
+      const notifyThreadSpy = vi.spyOn(harness.deps.hub, "notifyThread");
+
+      appendClientTurnEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        type: "client/turn/requested",
+        originPluginId: "wakeup",
+        input: textInput("status update"),
+        target: { kind: "new-turn" },
+        execution: {
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        initiator: "user",
+        senderThreadId: null,
+        requestMethod: "turn/start",
+        source: "tell",
+      });
+
+      expect(getThread(harness.db, thread.id)?.lastReadAt).toBe(1_000);
+      expect(notifyThreadSpy).toHaveBeenCalledWith(
+        thread.id,
+        ["events-appended"],
+        { eventTypes: ["client/turn/requested"], timelineSequence: 1 },
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
 });
