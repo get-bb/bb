@@ -905,15 +905,17 @@ function ProjectsStepContainer({
         status={
           scanning
             ? { kind: "scanning" }
-            : hostNeverConnected || reposQuery.isError
-              ? {
-                  kind: "error",
-                  message: "bb couldn't scan this computer for git repos.",
-                }
-              : {
-                  kind: "results",
-                  truncated: reposQuery.data?.truncated ?? false,
-                }
+            : hostNeverConnected
+              ? { kind: "unavailable", message: HOST_NOT_CONNECTED_MESSAGE }
+              : reposQuery.isError
+                ? {
+                    kind: "error",
+                    message: "bb couldn't scan this computer for git repos.",
+                  }
+                : {
+                    kind: "results",
+                    truncated: reposQuery.data?.truncated ?? false,
+                  }
         }
         repos={repos}
         selectedIds={selectedPaths}

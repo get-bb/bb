@@ -286,8 +286,12 @@ describe("OnboardingFlow", () => {
         variant === "new" ? button(/^Continue/u) : button(/Skip for now/u),
       );
       expect(
-        screen.getByText("bb couldn't scan this computer for git repos."),
+        screen.getByText("This computer hasn't connected to bb yet."),
       ).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: /Choose a folder/u }),
+      ).toBeNull();
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
       expect(button(/^Continue/u).disabled).toBe(false);
       expect(repoScanRequests()).toBe(0);
 
@@ -299,7 +303,7 @@ describe("OnboardingFlow", () => {
       });
       expect(repoScanRequests()).toBe(1);
       expect(
-        screen.queryByText("bb couldn't scan this computer for git repos."),
+        screen.queryByText("This computer hasn't connected to bb yet."),
       ).toBeNull();
     },
   );

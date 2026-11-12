@@ -869,6 +869,7 @@ export interface OnboardingRepo {
 type ProjectsStepStatus =
   | { kind: "scanning" }
   | { kind: "error"; message: string }
+  | { kind: "unavailable"; message: string }
   | { kind: "results"; truncated: boolean };
 
 interface ProjectsStepProps {
@@ -936,7 +937,11 @@ export function ProjectsStep({
     );
   }
 
-  if (status.kind === "error" || repos.length === 0) {
+  if (
+    status.kind === "error" ||
+    status.kind === "unavailable" ||
+    repos.length === 0
+  ) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-6 py-10 text-center">
         <Icon
@@ -945,19 +950,21 @@ export function ProjectsStep({
           className="size-6 text-muted-foreground"
         />
         <p className="text-sm text-muted-foreground">
-          {status.kind === "error"
-            ? status.message
-            : "bb didn't find a git repo you've worked in over the last 30 days."}
+          {status.kind === "results"
+            ? "bb didn't find a git repo you've worked in over the last 30 days."
+            : status.message}
         </p>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            {status.kind === "error" ? "Try again" : "Scan again"}
-          </Button>
-          <Button size="sm" variant="outline" onClick={onAddFolder}>
-            <Icon name="FolderPlus" aria-hidden />
-            Choose a folder
-          </Button>
-        </div>
+        {status.kind === "unavailable" ? null : (
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              {status.kind === "error" ? "Try again" : "Scan again"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={onAddFolder}>
+              <Icon name="FolderPlus" aria-hidden />
+              Choose a folder
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -1255,9 +1262,7 @@ function DeviceRow({
 }
 
 export type OnboardingConnectState =
-  | { status: "on"; url: string }
-  | { status: "off" }
-  | { status: "unavailable" };
+  { status: "on"; url: string } | { status: "off" } | { status: "unavailable" };
 
 interface DevicesStepProps {
   connect: OnboardingConnectState;
