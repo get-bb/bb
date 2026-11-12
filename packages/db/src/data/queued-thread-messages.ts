@@ -1221,15 +1221,17 @@ function hasAcceptedQueuedRetryInput(
         and(
           eq(accepted.threadId, retry.threadId),
           eq(accepted.type, "turn/input/accepted"),
-          exists(
+          inArray(
+            sql`json_extract(${accepted.data}, '$.clientRequestId')`,
             db
-              .select({ sequence: chainRequest.sequence })
+              .select({
+                requestId: sql`json_extract(${chainRequest.data}, '$.requestId')`,
+              })
               .from(chainRequest)
               .where(
                 and(
                   eq(chainRequest.threadId, retry.threadId),
                   eq(chainRequest.type, "client/turn/requested"),
-                  sql`json_extract(${chainRequest.data}, '$.requestId') = json_extract(${accepted.data}, '$.clientRequestId')`,
                   or(
                     sql`json_extract(${chainRequest.data}, '$.requestId') = ${retry.retryOfTurnRequestId}`,
                     sql`json_extract(${chainRequest.data}, '$.retryOfRequestId') = ${retry.retryOfTurnRequestId}`,
