@@ -97,6 +97,17 @@ jobs:
           fi
           printf '%s' "$LANDING_POSTHOG_KEY" | pnpm --filter @bb/web exec wrangler secret put LANDING_POSTHOG_KEY --name bb-web
 
+      - name: Sync PostHog flags secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          POSTHOG_FLAGS_SECRET_KEY: ${{ secrets.POSTHOG_FLAGS_SECRET_KEY }}
+        run: |
+          if [ -z "$POSTHOG_FLAGS_SECRET_KEY" ]; then
+            echo "::notice::POSTHOG_FLAGS_SECRET_KEY is empty; skipping optional flags secret sync."
+            exit 0
+          fi
+          printf '%s' "$POSTHOG_FLAGS_SECRET_KEY" | pnpm --filter @bb/web exec wrangler secret put POSTHOG_FLAGS_SECRET_KEY --name bb-web
+
       - name: Sync email signup secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
