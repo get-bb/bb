@@ -509,115 +509,122 @@ describe.concurrent("WorkspaceReads", () => {
     });
   });
 
-  it.sequential("does not report a multi-commit squash-merged branch as ahead of its merge base", async ({
-    onTestFinished,
-  }) => {
-    const { primaryRepo, worktreePath } =
-      await createPrimaryAndFeatureWorktree(onTestFinished);
-    await fs.writeFile(
-      path.join(worktreePath, "feature.txt"),
-      "feature extra\n",
-      "utf8",
-    );
-    await runGit(["add", "feature.txt"], { cwd: worktreePath });
-    await runGit(["commit", "-m", "Feature extra"], { cwd: worktreePath });
+  it.sequential(
+    "does not report a multi-commit squash-merged branch as ahead of its merge base",
+    async ({ onTestFinished }) => {
+      const { primaryRepo, worktreePath } =
+        await createPrimaryAndFeatureWorktree(onTestFinished);
+      await fs.writeFile(
+        path.join(worktreePath, "feature.txt"),
+        "feature extra\n",
+        "utf8",
+      );
+      await runGit(["add", "feature.txt"], { cwd: worktreePath });
+      await runGit(["commit", "-m", "Feature extra"], { cwd: worktreePath });
 
-    const workspace = new WorkspaceReads(worktreePath, tmpdir());
-    await mergeFeatureIntoMainWithSquash(
-      primaryRepo,
-      "feat: squash merge multi-commit feature into main",
-    );
+      const workspace = new WorkspaceReads(worktreePath, tmpdir());
+      await mergeFeatureIntoMainWithSquash(
+        primaryRepo,
+        "feat: squash merge multi-commit feature into main",
+      );
 
-    const status = await workspace.getStatus({
-      freshness: fresh(),
-      mergeBaseBranch: "main",
-    });
+      const status = await workspace.getStatus({
+        freshness: fresh(),
+        mergeBaseBranch: "main",
+      });
 
-    expect(status.mergeBase).toMatchObject({
-      mergeBaseBranch: "main",
-      squashMergeCheckComplete: true,
-      hasCommittedUnmergedChanges: false,
-      aheadCount: 0,
-    });
-    expect(status.mergeBase?.commits).toEqual([]);
-    expect(status.mergeBase?.files).toEqual([]);
-    expect(status.mergeBase?.insertions).toBe(0);
-    expect(status.mergeBase?.deletions).toBe(0);
-  });
+      expect(status.mergeBase).toMatchObject({
+        mergeBaseBranch: "main",
+        squashMergeCheckComplete: true,
+        hasCommittedUnmergedChanges: false,
+        aheadCount: 0,
+      });
+      expect(status.mergeBase?.commits).toEqual([]);
+      expect(status.mergeBase?.files).toEqual([]);
+      expect(status.mergeBase?.insertions).toBe(0);
+      expect(status.mergeBase?.deletions).toBe(0);
+    },
+  );
 
-  it.sequential("recognizes squash-merged branch after main advances past the squash commit", async ({
-    onTestFinished,
-  }) => {
-    const { primaryRepo, worktreePath } =
-      await createPrimaryAndFeatureWorktree(onTestFinished);
-    await fs.writeFile(
-      path.join(worktreePath, "feature.txt"),
-      "feature extra\n",
-      "utf8",
-    );
-    await runGit(["add", "feature.txt"], { cwd: worktreePath });
-    await runGit(["commit", "-m", "Feature extra"], { cwd: worktreePath });
+  it.sequential(
+    "recognizes squash-merged branch after main advances past the squash commit",
+    async ({ onTestFinished }) => {
+      const { primaryRepo, worktreePath } =
+        await createPrimaryAndFeatureWorktree(onTestFinished);
+      await fs.writeFile(
+        path.join(worktreePath, "feature.txt"),
+        "feature extra\n",
+        "utf8",
+      );
+      await runGit(["add", "feature.txt"], { cwd: worktreePath });
+      await runGit(["commit", "-m", "Feature extra"], { cwd: worktreePath });
 
-    const workspace = new WorkspaceReads(worktreePath, tmpdir());
-    await mergeFeatureIntoMainWithSquash(
-      primaryRepo,
-      "feat: squash merge feature into main",
-    );
+      const workspace = new WorkspaceReads(worktreePath, tmpdir());
+      await mergeFeatureIntoMainWithSquash(
+        primaryRepo,
+        "feat: squash merge feature into main",
+      );
 
-    await fs.writeFile(
-      path.join(primaryRepo, "after-squash.txt"),
-      "later\n",
-      "utf8",
-    );
-    await runGit(["add", "after-squash.txt"], { cwd: primaryRepo });
-    await runGit(["commit", "-m", "Main work after squash"], {
-      cwd: primaryRepo,
-    });
+      await fs.writeFile(
+        path.join(primaryRepo, "after-squash.txt"),
+        "later\n",
+        "utf8",
+      );
+      await runGit(["add", "after-squash.txt"], { cwd: primaryRepo });
+      await runGit(["commit", "-m", "Main work after squash"], {
+        cwd: primaryRepo,
+      });
 
-    const status = await workspace.getStatus({
-      freshness: fresh(),
-      mergeBaseBranch: "main",
-    });
+      const status = await workspace.getStatus({
+        freshness: fresh(),
+        mergeBaseBranch: "main",
+      });
 
-    expect(status.mergeBase).toMatchObject({
-      mergeBaseBranch: "main",
-      squashMergeCheckComplete: true,
-      hasCommittedUnmergedChanges: false,
-      aheadCount: 0,
-    });
-    expect(status.mergeBase?.behindCount).toBeGreaterThan(0);
-  });
+      expect(status.mergeBase).toMatchObject({
+        mergeBaseBranch: "main",
+        squashMergeCheckComplete: true,
+        hasCommittedUnmergedChanges: false,
+        aheadCount: 0,
+      });
+      expect(status.mergeBase?.behindCount).toBeGreaterThan(0);
+    },
+  );
 
-  it.sequential("treats a branch whose commits cancel out as merged", async ({
-    onTestFinished,
-  }) => {
-    const { primaryRepo, worktreePath } =
-      await createPrimaryAndFeatureWorktree(onTestFinished);
-    await fs.writeFile(path.join(worktreePath, "README.md"), "hello\n", "utf8");
-    await runGit(["add", "README.md"], { cwd: worktreePath });
-    await runGit(["commit", "-m", "Revert feature"], { cwd: worktreePath });
+  it.sequential(
+    "treats a branch whose commits cancel out as merged",
+    async ({ onTestFinished }) => {
+      const { primaryRepo, worktreePath } =
+        await createPrimaryAndFeatureWorktree(onTestFinished);
+      await fs.writeFile(
+        path.join(worktreePath, "README.md"),
+        "hello\n",
+        "utf8",
+      );
+      await runGit(["add", "README.md"], { cwd: worktreePath });
+      await runGit(["commit", "-m", "Revert feature"], { cwd: worktreePath });
 
-    await fs.writeFile(
-      path.join(primaryRepo, "main-work.txt"),
-      "main\n",
-      "utf8",
-    );
-    await runGit(["add", "main-work.txt"], { cwd: primaryRepo });
-    await runGit(["commit", "-m", "Main advance"], { cwd: primaryRepo });
+      await fs.writeFile(
+        path.join(primaryRepo, "main-work.txt"),
+        "main\n",
+        "utf8",
+      );
+      await runGit(["add", "main-work.txt"], { cwd: primaryRepo });
+      await runGit(["commit", "-m", "Main advance"], { cwd: primaryRepo });
 
-    const workspace = new WorkspaceReads(worktreePath, tmpdir());
-    const status = await workspace.getStatus({
-      freshness: fresh(),
-      mergeBaseBranch: "main",
-    });
+      const workspace = new WorkspaceReads(worktreePath, tmpdir());
+      const status = await workspace.getStatus({
+        freshness: fresh(),
+        mergeBaseBranch: "main",
+      });
 
-    expect(status.mergeBase).toMatchObject({
-      mergeBaseBranch: "main",
-      squashMergeCheckComplete: true,
-      hasCommittedUnmergedChanges: false,
-      aheadCount: 0,
-    });
-  });
+      expect(status.mergeBase).toMatchObject({
+        mergeBaseBranch: "main",
+        squashMergeCheckComplete: true,
+        hasCommittedUnmergedChanges: false,
+        aheadCount: 0,
+      });
+    },
+  );
 
   it("still reports genuine unmerged branch commits as ahead", async ({
     onTestFinished,
@@ -642,40 +649,41 @@ describe.concurrent("WorkspaceReads", () => {
     });
   });
 
-  it.sequential("does not report squash-merged branch commits as ahead of their merge base", async ({
-    onTestFinished,
-  }) => {
-    const { primaryRepo, worktreePath } =
-      await createPrimaryAndFeatureWorktree(onTestFinished);
-    await fs.writeFile(
-      path.join(primaryRepo, "notes.txt"),
-      "main work\n",
-      "utf8",
-    );
-    await runGit(["add", "notes.txt"], { cwd: primaryRepo });
-    await runGit(["commit", "-m", "Main work"], { cwd: primaryRepo });
+  it.sequential(
+    "does not report squash-merged branch commits as ahead of their merge base",
+    async ({ onTestFinished }) => {
+      const { primaryRepo, worktreePath } =
+        await createPrimaryAndFeatureWorktree(onTestFinished);
+      await fs.writeFile(
+        path.join(primaryRepo, "notes.txt"),
+        "main work\n",
+        "utf8",
+      );
+      await runGit(["add", "notes.txt"], { cwd: primaryRepo });
+      await runGit(["commit", "-m", "Main work"], { cwd: primaryRepo });
 
-    const workspace = new WorkspaceReads(worktreePath, tmpdir());
-    await mergeFeatureIntoMainWithSquash(
-      primaryRepo,
-      "feat: squash merge feature into main",
-    );
+      const workspace = new WorkspaceReads(worktreePath, tmpdir());
+      await mergeFeatureIntoMainWithSquash(
+        primaryRepo,
+        "feat: squash merge feature into main",
+      );
 
-    const status = await workspace.getStatus({
-      freshness: fresh(),
-      mergeBaseBranch: "main",
-    });
+      const status = await workspace.getStatus({
+        freshness: fresh(),
+        mergeBaseBranch: "main",
+      });
 
-    expect(status.workingTree.state).toBe("clean");
-    expect(status.mergeBase).toMatchObject({
-      mergeBaseBranch: "main",
-      squashMergeCheckComplete: true,
-      hasCommittedUnmergedChanges: false,
-      aheadCount: 0,
-      behindCount: 1,
-    });
-    expect(status.mergeBase?.commits).toEqual([]);
-  });
+      expect(status.workingTree.state).toBe("clean");
+      expect(status.mergeBase).toMatchObject({
+        mergeBaseBranch: "main",
+        squashMergeCheckComplete: true,
+        hasCommittedUnmergedChanges: false,
+        aheadCount: 0,
+        behindCount: 1,
+      });
+      expect(status.mergeBase?.commits).toEqual([]);
+    },
+  );
 
   it("reports status for git repositories with no commits yet", async ({
     onTestFinished,
@@ -799,6 +807,64 @@ describe.concurrent("WorkspaceReads", () => {
         })
       ).mergeBase?.aheadCount,
     ).toBe(0);
+  });
+
+  it("does not fetch missing objects from a partial clone's promisor remote", async ({
+    onTestFinished,
+  }) => {
+    const sourcePath = await copyRepository(
+      await makeTempDir(onTestFinished, "bb-workspace-promisor-source-"),
+    );
+    await runGit(["config", "uploadpack.allowFilter", "true"], {
+      cwd: sourcePath,
+    });
+    const baseBlob = (
+      await runGit(["rev-parse", "HEAD:README.md"], { cwd: sourcePath })
+    ).stdout.trim();
+    await fs.writeFile(path.join(sourcePath, "README.md"), "changed\n");
+    await runGit(["commit", "-am", "Change README"], { cwd: sourcePath });
+
+    const clonePath = path.join(
+      await makeTempDir(onTestFinished, "bb-workspace-promisor-clone-"),
+      "clone",
+    );
+    await runGit(
+      [
+        "clone",
+        "--filter=blob:none",
+        "--branch",
+        "main",
+        `file://${sourcePath}`,
+        clonePath,
+      ],
+      { cwd: tmpdir() },
+    );
+    await runGit(["update-ref", "refs/heads/base", "HEAD~1"], {
+      cwd: clonePath,
+    });
+    const isMissing = async () =>
+      (
+        await runGit(["cat-file", "-e", baseBlob], {
+          cwd: clonePath,
+          allowFailure: true,
+          env: { GIT_NO_LAZY_FETCH: "1" },
+        })
+      ).exitCode !== 0;
+    expect(await isMissing()).toBe(true);
+
+    const workspace = new WorkspaceReads(clonePath, tmpdir());
+    await workspace
+      .getStatus({ freshness: fresh(), mergeBaseBranch: "base" })
+      .catch(() => undefined);
+    await workspace
+      .getDiff({
+        ...UNLIMITED_DIFF,
+        freshness: fresh(),
+        target: { type: "all", mergeBaseBranch: "base" },
+      })
+      .catch(() => undefined);
+
+    expect(await isMissing()).toBe(true);
   });
 
   it("reports unresolved merge bases instead of empty diffs", async ({
