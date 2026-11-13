@@ -982,6 +982,11 @@
   initial-value: 256px;
 }
 
+@property --secondary-swipe-width {
+  syntax: "*";
+  inherits: false;
+}
+
 body.sidebar-resizing [data-sidebar="gap"],
 body.sidebar-resizing [data-sidebar="panel"] {
   transition-duration: 0ms !important;
@@ -1109,4 +1114,3 @@ body.sidebar-resizing [data-sidebar="panel"] {
 [data-panel-group]:has([data-resize-handle-active]) [data-panel] {
   transition-property: opacity;
 }
-
