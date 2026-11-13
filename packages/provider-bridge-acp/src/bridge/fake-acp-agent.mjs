@@ -81,6 +81,8 @@
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
  * - FAKE_ACP_GROK_CONTEXT=1  → advertise Grok model _meta.totalContextTokens
  *                              and prompt-result _meta.usage
+ * - FAKE_ACP_PROMPT_USAGE=1  → return ACP PromptResponse.usage, counted the
+ *                              way Copilot counts it (input includes cache)
  * - FAKE_ACP_COMPACT_STOP_REASON
  *                            → stop reason returned for /compact
  * - FAKE_ACP_RESUME_SESSION=1
@@ -130,6 +132,7 @@ const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
 const grokContext = process.env.FAKE_ACP_GROK_CONTEXT === "1";
+const promptUsage = process.env.FAKE_ACP_PROMPT_USAGE === "1";
 const unmappedReasoningConfig =
   process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
@@ -879,6 +882,18 @@ async function handlePrompt(message) {
         stopReason,
         ...(grokContext
           ? { _meta: { usage: { inputTokens: 17_504, totalTokens: 17_531 } } }
+          : {}),
+        ...(promptUsage
+          ? {
+              usage: {
+                inputTokens: 22_869,
+                outputTokens: 4,
+                totalTokens: 22_873,
+                thoughtTokens: 0,
+                cachedReadTokens: 0,
+                cachedWriteTokens: 22_865,
+              },
+            }
           : {}),
       },
     });
