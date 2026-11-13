@@ -46,6 +46,7 @@ const postHogKey: string | undefined = import.meta.env.VITE_POSTHOG_KEY;
 const postHogHost: string =
   import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com";
 const DEFINITIONS_CACHE = "posthog-flag-definitions";
+const PROXY_CACHE = "posthog-proxy-assets";
 let flagDefinitions: FlagDefinitionsSource | null | undefined;
 
 function logEntry(entry: object): void {
@@ -86,7 +87,11 @@ export default {
   ): Promise<Response> {
     const proxied = await proxyPostHogRequest(request, {
       fetch: (input, init) => fetch(input, init),
-      cache: caches.default,
+      cache: {
+        match: async (key) => (await caches.open(PROXY_CACHE)).match(key),
+        put: async (key, response) =>
+          (await caches.open(PROXY_CACHE)).put(key, response),
+      },
       waitUntil: (promise) => ctx.waitUntil(promise),
     });
     if (proxied) return proxied;
