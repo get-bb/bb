@@ -648,7 +648,9 @@ The local Expo module `modules/bb-window-layout` does the native part:
 - The `BbWindowLayout` view (mounted full-window by `WindowLayoutProvider`)
   reports the vertical bar's edge (`traitCollection.verticalBarEdge`), its
   behavior, and the active `reservedRegions(kind: .occlusion)` frames in
-  window points.
+  window points. The optional nullable `windowLayout.topBar` frame reports
+  `layoutGuide(for: .bar(onEdge: .top, extent: 44))` in window points, so
+  plugins can position header controls in the space left clear by the status bar.
 
 The native code is gated with `#if compiler(>=6.4)` and
 `#available(iOS 27.1, *)`; older SDKs and iOS versions report no bar and

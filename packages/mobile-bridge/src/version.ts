@@ -1,4 +1,4 @@
-export const MOBILE_BRIDGE_VERSION = 6;
+export const MOBILE_BRIDGE_VERSION = 7;
 
 export const MINIMUM_MOBILE_BRIDGE_VERSION = 1;
 

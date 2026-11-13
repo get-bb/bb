@@ -21,6 +21,7 @@ final class BbWindowLayoutView: ExpoView {
   let onWindowLayout = EventDispatcher()
   private var updateScheduled = false
   private var previousPayload: [String: Any]?
+  private var topBarGuide: UILayoutGuide?
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -67,6 +68,11 @@ final class BbWindowLayoutView: ExpoView {
   }
 
   override func updateConstraints() {
+    #if compiler(>=6.4)
+    if #available(iOS 27.1, *), topBarGuide == nil {
+      topBarGuide = layoutGuide(for: .bar(onEdge: UIRectEdge.top, extent: 44))
+    }
+    #endif
     super.updateConstraints()
     scheduleUpdate()
   }
@@ -97,10 +103,15 @@ final class BbWindowLayoutView: ExpoView {
       }
     }
     #endif
+    var topBar: Any = NSNull()
+    if let frame = topBarGuide?.layoutFrame, frame.width > 0, frame.height > 0 {
+      topBar = rect(convert(frame, to: nil))
+    }
     let payload: [String: Any] = [
       "verticalBarEdge": edge,
       "verticalBarBehavior": VerticalBarPreference.disabled ? "disabled" : "automatic",
-      "occlusions": occlusions.map(rect)
+      "occlusions": occlusions.map(rect),
+      "topBar": topBar
     ]
     guard !NSDictionary(dictionary: payload).isEqual(to: previousPayload ?? [:]) else { return }
     previousPayload = payload

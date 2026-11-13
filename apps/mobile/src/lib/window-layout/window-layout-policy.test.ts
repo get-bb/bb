@@ -28,6 +28,23 @@ describe("parseNativeWindowLayout", () => {
     });
   });
 
+  it("preserves the free top bar frame and distinguishes unavailable guides", () => {
+    const topBar = { x: 0, y: 0, width: 610, height: 44 };
+    expect(
+      parseNativeWindowLayout({ ...COVER_BAR_OFF, topBar })?.topBar,
+    ).toEqual(topBar);
+    expect(
+      parseNativeWindowLayout({ ...COVER_BAR_OFF, topBar: null })?.topBar,
+    ).toBeNull();
+    expect(parseNativeWindowLayout(COVER_BAR_OFF)?.topBar).toBeUndefined();
+    expect(
+      parseNativeWindowLayout({
+        ...COVER_BAR_OFF,
+        topBar: { ...topBar, width: -1 },
+      }),
+    ).toBeNull();
+  });
+
   it("rejects a payload the bridge could not carry", () => {
     expect(parseNativeWindowLayout(null)).toBeNull();
     expect(

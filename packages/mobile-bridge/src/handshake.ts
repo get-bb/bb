@@ -29,6 +29,7 @@ export const shellWindowLayoutSchema = z
       })
       .strict(),
     occlusions: z.array(windowRectSchema).max(32).readonly(),
+    topBar: windowRectSchema.nullable().optional(),
   })
   .strict();
 
