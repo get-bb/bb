@@ -1,6 +1,6 @@
 declare module "ws" {
   import { EventEmitter } from "node:events";
-  import type { IncomingMessage } from "node:http";
+  import type { Agent, IncomingMessage } from "node:http";
   import type { Duplex } from "node:stream";
 
   export type RawData = string | Buffer | ArrayBuffer | Buffer[];
@@ -11,6 +11,7 @@ declare module "ws" {
   }
 
   export interface ClientOptions {
+    agent?: Agent;
     headers?: Record<string, string>;
     perMessageDeflate?: boolean;
   }
