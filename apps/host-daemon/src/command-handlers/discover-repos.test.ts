@@ -247,6 +247,39 @@ describe("discoverRepos", () => {
       expect(result.repos.map((repo) => repo.name)).toEqual(["app"]);
     });
 
+    it("opens the folder once while several scans wait for the answer", async () => {
+      await makeRepo("Documents/code/site");
+      const documents = join(home, "Documents");
+      let pendingOpens = 0;
+      let mostPendingOpens = 0;
+      const scanOnce = () =>
+        discoverRepos({
+          maxDepth: 5,
+          sinceDays: 3650,
+          limit: 50,
+          home,
+          platform: "darwin",
+          walkBudgetMs: WALK_BUDGET_MS,
+          openDirectory: async (path) => {
+            if (path !== documents) return opendir(path);
+            pendingOpens += 1;
+            mostPendingOpens = Math.max(mostPendingOpens, pendingOpens);
+            await new Promise((resolve) =>
+              setTimeout(resolve, PROMPT_ANSWER_MS),
+            );
+            pendingOpens -= 1;
+            return opendir(path);
+          },
+        });
+
+      const results = await Promise.all([scanOnce(), scanOnce()]);
+
+      expect(mostPendingOpens).toBe(1);
+      expect(
+        results.map((result) => result.repos.map((repo) => repo.name)),
+      ).toEqual([["site"], ["site"]]);
+    });
+
     it("keeps the short budget for the same folder elsewhere", async () => {
       await makeRepo("projects/app");
       await makeRepo("Documents/code/site");

@@ -35,6 +35,8 @@ const WALK_CONCURRENCY = 32;
 const PERMISSION_ERROR_CODES = new Set(["EACCES", "EPERM"]);
 const MS_PER_DAY = 86_400_000;
 
+const pendingAccessAnswers = new Map<string, Promise<void>>();
+
 interface FoundRepo {
   path: string;
   lastActivityMs: number;
@@ -86,6 +88,26 @@ async function withDeadline<T>(
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+function openAfterAccessAnswer(
+  path: string,
+  openDirectory: (path: string) => Promise<Dir>,
+): Promise<Dir> {
+  const pending = pendingAccessAnswers.get(path);
+  if (pending !== undefined) return pending.then(() => openDirectory(path));
+  const opening = openDirectory(path);
+  const answered = opening.then(
+    () => {},
+    () => {},
+  );
+  pendingAccessAnswers.set(path, answered);
+  void answered.then(() => {
+    if (pendingAccessAnswers.get(path) === answered) {
+      pendingAccessAnswers.delete(path);
+    }
+  });
+  return opening;
 }
 
 function closeLateDir(dir: Dir): void {
@@ -163,7 +185,11 @@ async function walkForRepos(
     children: string[];
     gitMarker: "directory" | "file" | null;
   } | null> => {
-    const opening = options.openDirectory(dir).catch(countUnreadable);
+    const opening = (
+      deadline === null
+        ? openAfterAccessAnswer(dir, options.openDirectory)
+        : options.openDirectory(dir)
+    ).catch(countUnreadable);
     const handle =
       deadline === null
         ? await opening
