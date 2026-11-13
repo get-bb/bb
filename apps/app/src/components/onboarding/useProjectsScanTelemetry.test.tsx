@@ -170,4 +170,34 @@ describe("projects scan telemetry", () => {
       ]),
     );
   });
+  it("records the first successful scan once, not the rescans after it", async () => {
+    let calls = 0;
+    const { view } = renderScanQuery(() => {
+      calls += 1;
+      if (calls === 1) return Promise.reject(hostUnavailable());
+      if (calls === 4) return Promise.reject(hostUnavailable());
+      return Promise.resolve({
+        repos: [],
+        truncated: false,
+        unreadableCount: 0,
+      });
+    });
+    await waitFor(() => expect(view.result.current.isError).toBe(true));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await act(async () => {
+        await view.result.current.refetch();
+      });
+    }
+    await waitFor(() => expect(calls).toBe(4));
+    expect(recorded()).toEqual([
+      { ...base, outcome: "failed", failure_reason: "host_unavailable" },
+      {
+        ...base,
+        outcome: "succeeded",
+        item_count: 0,
+        timed_out: false,
+        unreadable_count: 0,
+      },
+    ]);
+  });
 });
