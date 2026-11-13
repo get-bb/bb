@@ -13,6 +13,7 @@ import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard
 import { installAppQueryClientBrowserEvents } from "./lib/query-client";
 import { appQueryClient } from "./lib/app-query-client";
 import { applyAppFrameGeometry, getBbDesktopInfo } from "./lib/bb-desktop";
+import { preventIOSFocusZoom } from "./lib/ios-webkit";
 import { applyCachedAppThemeCss } from "./lib/themes";
 import { installStaleChunkRecovery } from "./lib/stale-chunk-recovery";
 import { moveStylesheetPropertiesToRegistry } from "./lib/stylesheet-property-registry";
@@ -30,6 +31,7 @@ initializePreferredTheme();
 applyCachedAppThemeCss();
 initializeFavicon();
 applyAppFrameGeometry(document.documentElement, getBbDesktopInfo());
+preventIOSFocusZoom(document, navigator);
 if (typeof CSS.registerProperty === "function") {
   moveStylesheetPropertiesToRegistry(document.styleSheets, CSS);
 }
