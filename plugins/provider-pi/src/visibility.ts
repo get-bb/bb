@@ -25,6 +25,7 @@ type PiAssistantEventType =
 type PiMessageBoundaryRole =
   | "assistant"
   | "custom"
+  | "system"
   | "toolResult"
   | "user"
   | "unknown";
@@ -140,6 +141,7 @@ function toPiMessageBoundaryRole(
   switch (role) {
     case "assistant":
     case "custom":
+    case "system":
     case "toolResult":
     case "user":
       return role;
