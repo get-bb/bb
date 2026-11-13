@@ -3,11 +3,17 @@ import {
   markThreadDeleted,
   markThreadStorageDeleted,
   requestThreadPurge,
+  threadPurges,
 } from "@bb/db";
 import { expect, it } from "vitest";
+import {
+  advanceProjectDeletion,
+  beginProjectDeletion,
+} from "../../src/services/projects/project-deletion.js";
 import { reconcileDaemonReportedThreads } from "../../src/services/threads/thread-lifecycle.js";
 import {
   listQueuedCommands,
+  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -125,5 +131,67 @@ it("sends at most four storage deletions to a host at once", async () => {
         ),
       )
       .not.toContain(null);
+  });
+});
+
+it("retries only unfinished storage deletion while a project deletion is pending", async () => {
+  await withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps);
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+    });
+    const [storageGone, succeeds, fails] = Array.from({ length: 3 }, () =>
+      seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      }),
+    );
+    markThreadDeleted(harness.db, harness.deps.hub, {
+      threadId: storageGone.id,
+    });
+    markThreadStorageDeleted(harness.db, { threadId: storageGone.id });
+    const storageDeleteThreadIds = () =>
+      listQueuedCommands(harness, "thread.storage.delete")
+        .map((command) =>
+          command.type === "thread.storage.delete" ? command.threadId : null,
+        )
+        .sort();
+    const queuedFor = (threadId: string) =>
+      waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.storage.delete" &&
+          command.threadId === threadId,
+      );
+
+    beginProjectDeletion(harness.deps, { projectId: project.id });
+    const succeedsCommand = await queuedFor(succeeds.id);
+    const failsCommand = await queuedFor(fails.id);
+    expect(storageDeleteThreadIds()).toEqual([succeeds.id, fails.id].sort());
+    expect(
+      harness.db
+        .select({ threadId: threadPurges.threadId })
+        .from(threadPurges)
+        .all(),
+    ).toEqual([{ threadId: storageGone.id }]);
+    await reportQueuedCommandSuccess(harness, succeedsCommand, {
+      providerCheckpointId: null,
+    });
+    await reportQueuedCommandError(harness, failsCommand, {
+      errorCode: "temporary_failure",
+      errorMessage: "Host disconnected",
+    });
+
+    await advanceProjectDeletion(harness.deps, { projectId: project.id });
+    const retry = await queuedFor(fails.id);
+    expect(storageDeleteThreadIds()).toEqual([fails.id]);
+    await reportQueuedCommandSuccess(harness, retry, {
+      providerCheckpointId: null,
+    });
   });
 });
