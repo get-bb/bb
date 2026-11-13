@@ -60,6 +60,76 @@ describe("SidebarTouchSensor", () => {
     expect(onDragEnd).toHaveBeenCalledTimes(1);
   });
 
+  it("does not arm a drag when the touch catches a moving list or the row scrolls away, but arms through settling scrolls and an opening actions menu", async () => {
+    const onDragStart = vi.fn();
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({
+        onDragStart,
+        onDragEnd: vi.fn(),
+        touchSensor: SidebarTouchSensor,
+      });
+      return (
+        <DndContext {...dndContextProps}>
+          <div data-testid="sidebar-scroller">
+            <DraggableRow />
+          </div>
+        </DndContext>
+      );
+    }
+    const { getByText, getByTestId } = render(<Harness />);
+    const row = getByText("Thread");
+    const scroller = getByTestId("sidebar-scroller");
+    const wait = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
+    const scrollTo = (top: number) => {
+      Object.defineProperty(scroller, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(scroller);
+    };
+    const press = () => fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    const lift = () => fireEvent.touchEnd(row, { touches: [] });
+
+    scrollTo(0);
+    await wait(16);
+    scrollTo(20);
+    press();
+    await wait(550);
+    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
+    expect(fireEvent.touchMove(row, { touches: [{ clientX: 10, clientY: 40 }] })).toBe(true);
+    lift();
+
+    await wait(150);
+    press();
+    await wait(250);
+    const rowRect = vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, -30, 100, 40));
+    scrollTo(50);
+    await wait(300);
+    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
+    expect(fireEvent.touchMove(row, { touches: [{ clientX: 10, clientY: 40 }] })).toBe(true);
+    lift();
+    rowRect.mockRestore();
+
+    const actionsDrawer = document.createElement("div");
+    document.body.appendChild(actionsDrawer);
+    const elementFromPoint = vi.spyOn(document, "elementFromPoint").mockReturnValue(actionsDrawer);
+    press();
+    await wait(550);
+    expect(row.dataset.sidebarTouchArmed).toBe("true");
+    lift();
+    elementFromPoint.mockRestore();
+    actionsDrawer.remove();
+
+    await wait(150);
+    scrollTo(50);
+    await wait(16);
+    scrollTo(50.5);
+    press();
+    await wait(250);
+    scrollTo(50.5);
+    await wait(300);
+    expect(row.dataset.sidebarTouchArmed).toBe("true");
+    lift();
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
   it("reports the end of a drag released in the same task that started it", async () => {
     const onDragStart = vi.fn();
     const onDragEnd = vi.fn();

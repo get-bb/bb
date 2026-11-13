@@ -162,6 +162,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "long-press-guards",
+      "type": "registry:ui"
+    },
+    {
       "name": "menu-item-hover",
       "type": "registry:ui"
     },
