@@ -1,3 +1,4 @@
+import { bytesBody, emptyBody, type OperationBody } from "@bb/operations";
 import { requestMatchesEntityTag } from "../files/entity-tag.js";
 import { Buffer } from "node:buffer";
 import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
@@ -9,7 +10,7 @@ const REVALIDATE_CACHE_CONTROL = "private, no-cache";
 export type DaemonFileReadResult =
   HostDaemonOnlineRpcResultByType["host.read_file"];
 
-interface CreateDaemonFileContentResponseOptions {
+interface CreateDaemonFileContentBodyOptions {
   headers?: HeadersInit;
   ifNoneMatch?: string | undefined;
 }
@@ -29,7 +30,7 @@ export function requireDaemonFileContentResult(
 
 function buildFileContentHeaders(
   result: DaemonFileReadResult,
-  options: CreateDaemonFileContentResponseOptions,
+  options: CreateDaemonFileContentBodyOptions,
 ): Headers {
   const headers = new Headers(options.headers);
   if (!headers.has("content-type")) {
@@ -57,23 +58,20 @@ function decodeDaemonFileContent(result: DaemonFileReadResult): ArrayBuffer {
   return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
 }
 
-export function createDaemonFileContentResponse(
+export function createDaemonFileContentBody(
   result: DaemonFileReadResult,
-  options: CreateDaemonFileContentResponseOptions = {},
-): Response {
+  options: CreateDaemonFileContentBodyOptions = {},
+): OperationBody {
   const headers = buildFileContentHeaders(result, options);
   if (
     "notModified" in result ||
     requestMatchesEntityTag(options.ifNoneMatch, daemonFileEntityTag(result))
   ) {
-    return new Response(null, { status: 304, headers });
+    return emptyBody(304, { headers });
   }
   const content = decodeDaemonFileContent(result);
   headers.set("content-length", String(content.byteLength));
-  return new Response(content, {
-    status: 200,
-    headers,
-  });
+  return bytesBody(new Uint8Array(content), { headers });
 }
 
 export function remapDaemonFileRouteError(error: unknown): never {

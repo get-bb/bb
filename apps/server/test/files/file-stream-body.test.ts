@@ -2,10 +2,17 @@ import { mkdtemp, writeFile, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { operationBodyResponse } from "@bb/operations";
 import {
-  createFileStreamResponse,
+  createFileStreamBody,
   type FileResponseSource,
-} from "../../src/services/files/file-stream-response.js";
+} from "../../src/services/files/file-stream-body.js";
+
+async function createFileStreamResponse(
+  args: Parameters<typeof createFileStreamBody>[0],
+): Promise<Response> {
+  return operationBodyResponse(await createFileStreamBody(args));
+}
 import { createLocalFileSource } from "../../src/services/files/local-file-source.js";
 import { createDaemonFileSource } from "../../src/services/hosts/daemon-file-stream.js";
 

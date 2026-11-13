@@ -51,14 +51,18 @@ export function buildPromptInputs(args: {
     args.plan
       ? createBuiltinPlanCommandTextInput(args.message)
       : { type: "text", text: args.message, mentions: [] },
-    ...(args.files ?? []).map((path): PromptInput => ({
-      type: "localFile",
-      path,
-    })),
-    ...(args.images ?? []).map((path): PromptInput => ({
-      type: "localImage",
-      path,
-    })),
+    ...(args.files ?? []).map(
+      (path): PromptInput => ({
+        type: "localFile",
+        path,
+      }),
+    ),
+    ...(args.images ?? []).map(
+      (path): PromptInput => ({
+        type: "localImage",
+        path,
+      }),
+    ),
   ];
 }
 

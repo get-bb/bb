@@ -232,7 +232,7 @@ describe("bb machine command output", () => {
     async (command) => {
       const pending = { ...creating, id: "host-pending", name: "pending" };
       const get = vi.fn(async () => pending);
-      const remove = vi.fn(async () => undefined);
+      const remove = vi.fn(async () => ({ ok: true }));
       stubServerApi({
         "v1.hosts.$get": vi.fn(
           async ({ query }: { query: { includeCreating?: string } }) =>
@@ -254,7 +254,6 @@ describe("bb machine command output", () => {
       if (command === "remove") {
         expect(remove).toHaveBeenCalledWith({
           param: { id: pending.id },
-          query: {},
         });
       } else {
         expect(
@@ -401,7 +400,7 @@ describe("bb machine command output", () => {
   });
 
   it("bb machine remove resolves and removes a provider machine", async () => {
-    const remove = vi.fn(async () => undefined);
+    const remove = vi.fn(async () => ({ ok: true }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),
       "v1.hosts.:id.$delete": remove,
@@ -411,7 +410,6 @@ describe("bb machine command output", () => {
 
     expect(remove).toHaveBeenCalledWith({
       param: { id: "host-remote" },
-      query: {},
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Machine host-remote removed",
@@ -419,7 +417,7 @@ describe("bb machine command output", () => {
   });
 
   it("bb machine remove --force skips cleanup for a stranded machine", async () => {
-    const remove = vi.fn(async () => undefined);
+    const remove = vi.fn(async () => ({ ok: true }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),
       "v1.hosts.:id.$delete": remove,

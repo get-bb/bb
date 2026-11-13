@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { Command, Option } from "commander";
+import type { Command } from "commander";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import {
   BbHttpError,
@@ -10,10 +10,16 @@ import {
 import { createNodeWebsocketFactory } from "@bb/sdk/node-websocket";
 import {
   terminalServerMessageSchema,
+  type PublicOperationInput,
   type TerminalSession,
 } from "@bb/server-contract";
-import { action, CliExitError, CliUsageError } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import { CliExitError, CliUsageError } from "../action.js";
+import { JSON_FLAG_DESCRIPTION, arg, flag } from "../cli-door.js";
+import {
+  clientCommand,
+  mountCommands,
+  publicCommand,
+} from "../operation-doors.js";
 import { terminalScopeHint } from "../context-hints.js";
 import { durationHelp, parseDurationMs } from "../duration.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
@@ -48,49 +54,16 @@ interface TerminalScopeOptions {
   thread?: string;
 }
 
-interface TerminalListOptions
-  extends TerminalJsonOptions, TerminalScopeOptions {}
-
-interface TerminalStartOptions
-  extends TerminalJsonOptions, TerminalScopeOptions {
-  attach?: boolean;
-  command?: string;
-  cols?: string;
-  id?: string;
-  rows?: string;
-  title?: string;
-}
-
-interface TerminalRunOptions extends TerminalJsonOptions, TerminalScopeOptions {
-  cols?: string;
-  contains?: string;
-  id?: string;
-  maxOutputBytes: string;
-  regex?: string;
-  rows?: string;
-  timeout: string;
-  title?: string;
-}
-
 interface TerminalSendOptions extends TerminalJsonOptions {
   enter?: boolean;
   stdin?: boolean;
   text?: string;
 }
 
-interface TerminalResizeOptions extends TerminalJsonOptions {
-  cols: string;
-  rows: string;
-}
-
 interface TerminalOutputOptions extends TerminalJsonOptions {
   limitChunks?: string;
   sinceSeq?: string;
   tailBytes?: string;
-}
-
-interface TerminalReadOptions extends TerminalOutputOptions {
-  plain?: boolean;
 }
 
 interface TerminalWaitOptions extends TerminalOutputOptions {
@@ -103,411 +76,452 @@ interface TerminalWaitOptions extends TerminalOutputOptions {
   timeout: string;
 }
 
-interface TerminalCloseOptions extends TerminalJsonOptions {
-  ifClean?: boolean;
-}
-
 type TerminalStartResolution =
   | { mode: "shell" }
   | { mode: "command"; command: string }
   | { mode: "argv"; argv: string[] };
 
+const JSON_OPTION = { json: flag("--json", JSON_FLAG_DESCRIPTION) };
+
+const TERMINAL_SCOPE_OPTIONS = {
+  thread: flag("--thread <id>", "Thread-scoped terminal"),
+  environment: flag("--environment <id>", "Environment-scoped terminal"),
+  machine: flag("--machine <id-or-name>", "Machine-scoped terminal"),
+  host: flag("--host <id-or-name>", "Alias for --machine"),
+  cwd: flag("--cwd <path>", "Working directory for --machine or --host"),
+};
+
+const REDUNDANT_SCOPE_OPTIONS = {
+  thread: flag("--thread <id>", "", { hidden: true }),
+  environment: flag("--environment <id>", "", { hidden: true }),
+  machine: flag("--machine <id-or-name>", "", { hidden: true }),
+  host: flag("--host <id-or-name>", "", { hidden: true }),
+};
+
+const TERMINAL_ID_POSITIONAL = { terminalId: arg("<terminalId>") };
+
+function terminalListQuery(
+  scope: TerminalListScope,
+): PublicOperationInput<"terminals.list"> {
+  switch (scope.kind) {
+    case "thread":
+      return { threadId: scope.threadId };
+    case "environment":
+      return { environmentId: scope.environmentId };
+    case "host_path":
+      return {
+        hostId: scope.hostId,
+        ...(scope.cwd === undefined ? {} : { cwd: scope.cwd }),
+      };
+  }
+}
+
+function terminalCreateTarget(
+  scope: TerminalCreateScope,
+): PublicOperationInput<"terminals.create">["target"] {
+  switch (scope.kind) {
+    case "thread":
+      return { kind: "thread", threadId: scope.threadId };
+    case "environment":
+      return { kind: "environment", environmentId: scope.environmentId };
+    case "host_path":
+      return { kind: "host_path", hostId: scope.hostId, cwd: scope.cwd };
+  }
+}
+
+const terminalListCommand = publicCommand("terminals.list", {
+  path: ["terminal", "list"],
+  summary: "List terminal sessions in exactly one scope",
+  options: { ...JSON_OPTION, ...TERMINAL_SCOPE_OPTIONS },
+  prepare: async ({ options }, client) =>
+    terminalListQuery(await resolveTerminalListScope(options, client.url)),
+  print: (result) => {
+    printTerminalTable(result.sessions);
+    return null;
+  },
+});
+
+const terminalCreateCommand = clientCommand({
+  path: ["terminal", "create"],
+  summary: "Create a terminal session in exactly one scope",
+  aliases: ["start"],
+  positionals: { command: arg("[command...]") },
+  noJson: true,
+  options: {
+    title: flag("--title <title>", "Terminal title"),
+    id: flag(
+      "--id <terminal-id>",
+      "Create the terminal with this ID (term_ plus 10 characters); fails if the ID exists",
+    ),
+    command: flag(
+      "--command <command>",
+      "Command to run instead of an interactive shell",
+    ),
+    cols: flag(
+      "--cols <n>",
+      `Initial terminal columns (default: ${DEFAULT_COLS})`,
+    ),
+    rows: flag(
+      "--rows <n>",
+      `Initial terminal rows (default: ${DEFAULT_ROWS})`,
+    ),
+    attach: flag("--attach", "Attach after creating"),
+    ...JSON_OPTION,
+    ...TERMINAL_SCOPE_OPTIONS,
+  },
+  run: async ({ positionals, options }, client) => {
+    const start = resolveTerminalStart({
+      commandOption: options.command,
+      commandParts: positionals.command,
+    });
+    const cols = parsePositiveInteger(options.cols, DEFAULT_COLS, "--cols");
+    const rows = parsePositiveInteger(options.rows, DEFAULT_ROWS, "--rows");
+    const scope = await resolveTerminalCreateScope(options, client.url);
+    const session = await client.call("terminals.create", {
+      cols,
+      ...(options.id === undefined ? {} : { id: options.id }),
+      rows,
+      start,
+      target: terminalCreateTarget(scope),
+      ...(options.title === undefined ? {} : { title: options.title }),
+    });
+    if (outputJson({ json: options.json }, session)) return null;
+    client.log(`Created terminal ${session.id} (${session.title})`);
+    if (options.attach) {
+      await attachTerminal({ baseUrl: client.url, terminalId: session.id });
+    }
+    return null;
+  },
+  print: () => null,
+});
+
+const terminalRunCommand = clientCommand({
+  path: ["terminal", "run"],
+  summary:
+    "Run a command in a new terminal and return its output and exit code",
+  positionals: { command: arg("[command...]") },
+  noJson: true,
+  options: {
+    contains: flag(
+      "--contains <text>",
+      "Return once the output contains this text instead of waiting for exit",
+    ),
+    regex: flag(
+      "--regex <pattern>",
+      "Return once the output matches this regular expression instead of waiting for exit",
+    ),
+    timeout: flag(
+      "--timeout <duration>",
+      `Stop waiting after ${durationHelp("s")}; the command keeps running`,
+      { default: "30s" },
+    ),
+    maxOutputBytes: flag(
+      "--max-output-bytes <n>",
+      "Return at most the last N bytes of output",
+      { default: DEFAULT_TERMINAL_WAIT_MAX_OUTPUT_BYTES },
+    ),
+    id: flag(
+      "--id <terminal-id>",
+      "Run in a terminal with this ID (term_ plus 10 characters); a retry with the same ID fails instead of running twice",
+    ),
+    title: flag("--title <title>", "Terminal title (default: the command)"),
+    cols: flag(
+      "--cols <n>",
+      `Initial terminal columns (default: ${DEFAULT_COLS})`,
+    ),
+    rows: flag(
+      "--rows <n>",
+      `Initial terminal rows (default: ${DEFAULT_ROWS})`,
+    ),
+    ...JSON_OPTION,
+    ...TERMINAL_SCOPE_OPTIONS,
+  },
+  run: async ({ positionals, options }, client) => {
+    const argv = positionals.command;
+    if (argv.length === 0) {
+      throw new CliUsageError({
+        code: "missing_required",
+        hint: RUN_USAGE_EXAMPLE,
+        message: "Provide the command to run after --",
+      });
+    }
+    const plan: TerminalObservePlan = {
+      condition: parseTerminalOutputCondition(options),
+      maxOutputBytes: parseMaxOutputBytes(options.maxOutputBytes),
+      outputBounds: {},
+      pollDelaysMs: WAIT_POLL_DELAYS_MS,
+      sinceSeq: 0,
+      timeoutMs: parseTimeout(options.timeout),
+    };
+    const cols = parsePositiveInteger(options.cols, DEFAULT_COLS, "--cols");
+    const rows = parsePositiveInteger(options.rows, DEFAULT_ROWS, "--rows");
+    const scope = await resolveTerminalCreateScope(options, client.url);
+    const sdk = client.sdk();
+    const session = await createRunTerminal({
+      argv,
+      cols,
+      id: options.id,
+      rows,
+      scope,
+      sdk,
+      title: options.title,
+    });
+    reportTerminalObservation({
+      json: options.json,
+      report: await observeTerminal({ plan, sdk, terminalId: session.id }),
+    });
+    return null;
+  },
+  print: () => null,
+});
+
+const terminalShowCommand = publicCommand("terminals.get", {
+  path: ["terminal", "show"],
+  summary: "Show a terminal session",
+  positionals: TERMINAL_ID_POSITIONAL,
+  options: REDUNDANT_SCOPE_OPTIONS,
+  prepare: ({ positionals }) => ({ terminalId: positionals.terminalId }),
+  print: (session) => JSON.stringify(session, null, 2),
+});
+
+const terminalAttachCommand = clientCommand({
+  path: ["terminal", "attach"],
+  summary: "Attach to a running terminal session",
+  positionals: TERMINAL_ID_POSITIONAL,
+  options: { ...REDUNDANT_SCOPE_OPTIONS, ...JSON_OPTION },
+  run: async (
+    { positionals: { terminalId }, options },
+    client,
+  ): Promise<TerminalSession | null> => {
+    if (options.json) return client.call("terminals.get", { terminalId });
+    await attachTerminal({ baseUrl: client.url, terminalId });
+    return null;
+  },
+  print: () => null,
+});
+
+const terminalSendCommand = clientCommand({
+  path: ["terminal", "send"],
+  summary: "Send input to a terminal session",
+  positionals: TERMINAL_ID_POSITIONAL,
+  options: {
+    text: flag("--text <text>", "Text to send"),
+    stdin: flag("--stdin", "Read bytes from stdin"),
+    enter: flag("--enter", "Press Enter after the text"),
+    ...REDUNDANT_SCOPE_OPTIONS,
+  },
+  run: async ({ positionals: { terminalId }, options }, client) => {
+    const data = await resolveSendData(options);
+    let session: TerminalSession | null = null;
+    for (const chunk of chunkTerminalInput(data)) {
+      session = await client.call("terminals.input", {
+        terminalId,
+        dataBase64: chunk.toString("base64"),
+      });
+    }
+    if (session === null) {
+      throw new CliExitError("Terminal input cannot be empty", 1);
+    }
+    return session;
+  },
+  print: (_session, { positionals }) =>
+    `Sent input to terminal ${positionals.terminalId}`,
+});
+
+const terminalResizeCommand = publicCommand("terminals.resize", {
+  path: ["terminal", "resize"],
+  summary: "Resize a terminal session",
+  positionals: TERMINAL_ID_POSITIONAL,
+  options: {
+    cols: flag("--cols <n>", "Terminal columns", { required: true }),
+    rows: flag("--rows <n>", "Terminal rows", { required: true }),
+    ...REDUNDANT_SCOPE_OPTIONS,
+  },
+  prepare: ({ positionals, options }) => ({
+    terminalId: positionals.terminalId,
+    cols: parseRequiredPositiveInteger(options.cols, "--cols"),
+    rows: parseRequiredPositiveInteger(options.rows, "--rows"),
+  }),
+  print: (session, { terminalId }) =>
+    `Resized terminal ${terminalId} to ${session.cols}x${session.rows}`,
+});
+
+const terminalOutputCommand = clientCommand({
+  path: ["terminal", "output"],
+  summary: "Print terminal output from daemon scrollback",
+  aliases: ["read"],
+  positionals: TERMINAL_ID_POSITIONAL,
+  options: {
+    sinceSeq: flag("--since-seq <n>", "Only output chunks from this sequence"),
+    tailBytes: flag("--tail-bytes <n>", "Bound output to the latest N bytes"),
+    limitChunks: flag(
+      "--limit-chunks <n>",
+      "Bound output to the latest N chunks",
+    ),
+    plain: flag(
+      "--plain",
+      "Print plain text, with colors and progress redraws removed",
+    ),
+    ...REDUNDANT_SCOPE_OPTIONS,
+    ...JSON_OPTION,
+  },
+  run: ({ positionals: { terminalId }, options }, client) => {
+    if (options.plain && options.json) {
+      throw new CliUsageError({
+        code: "invalid_value",
+        hint: "--json returns the raw chunks; use terminal wait --json for plain output.",
+        message: "Provide only one of --plain or --json",
+      });
+    }
+    return client.call("terminals.output", {
+      terminalId,
+      ...terminalOutputQuery(options),
+    });
+  },
+  print: (output, { positionals, options }) => {
+    if (options.plain) {
+      process.stdout.write(
+        terminalPlainText(
+          Buffer.concat(
+            output.chunks.map((chunk) =>
+              Buffer.from(chunk.dataBase64, "base64"),
+            ),
+          ).toString("utf8"),
+        ),
+      );
+    } else {
+      writeOutputChunks(output.chunks);
+    }
+    if (output.status === "exited") {
+      console.error(
+        describeTerminalExit(positionals.terminalId, output.exitCode),
+      );
+    }
+    return null;
+  },
+});
+
+const terminalWaitCommand = clientCommand({
+  path: ["terminal", "wait"],
+  summary:
+    "Wait for a terminal to exit or print text, then return its output and exit code",
+  positionals: TERMINAL_ID_POSITIONAL,
+  noJson: true,
+  options: {
+    contains: flag(
+      "--contains <text>",
+      "Return once new output contains text, ignoring terminal escapes",
+    ),
+    regex: flag(
+      "--regex <pattern>",
+      "Return once new output matches a regular expression, ignoring terminal escapes",
+    ),
+    exit: flag("--exit", "Wait until the terminal exits (the default)"),
+    sinceSeq: flag(
+      "--since-seq <n>",
+      "Start from this output sequence (default: the current end for --contains or --regex, 0 otherwise)",
+    ),
+    fromStart: flag("--from-start", "Start from sequence 0"),
+    timeout: flag(
+      "--timeout <duration>",
+      `Stop waiting after ${durationHelp("s")}; the terminal keeps running`,
+      { default: "30s" },
+    ),
+    pollInterval: flag(
+      "--poll-interval <duration>",
+      `Polling interval as ${durationHelp("ms")} (default: starts at 100ms and backs off to 1s)`,
+    ),
+    maxOutputBytes: flag(
+      "--max-output-bytes <n>",
+      "Return at most the last N bytes of output",
+      { default: DEFAULT_TERMINAL_WAIT_MAX_OUTPUT_BYTES },
+    ),
+    tailBytes: flag("--tail-bytes <n>", "Bound each output poll to N bytes"),
+    limitChunks: flag(
+      "--limit-chunks <n>",
+      "Bound each output poll to N chunks",
+    ),
+    ...JSON_OPTION,
+    ...REDUNDANT_SCOPE_OPTIONS,
+  },
+  run: async ({ positionals: { terminalId }, options }, client) => {
+    const sdk = client.sdk();
+    const plan = await resolveTerminalWaitPlan({
+      opts: options,
+      sdk,
+      terminalId,
+    });
+    reportTerminalObservation({
+      json: options.json,
+      report: await observeTerminal({ plan, sdk, terminalId }),
+    });
+    return null;
+  },
+  print: () => null,
+});
+
+const terminalRenameCommand = publicCommand("terminals.update", {
+  path: ["terminal", "rename"],
+  summary: "Rename a terminal session",
+  positionals: { ...TERMINAL_ID_POSITIONAL, title: arg("<title>") },
+  options: REDUNDANT_SCOPE_OPTIONS,
+  prepare: ({ positionals: { terminalId, title } }) => ({ terminalId, title }),
+  print: (session, { terminalId }) =>
+    `Renamed terminal ${terminalId} to ${session.title}`,
+});
+
+const terminalRestartCommand = publicCommand("terminals.restart", {
+  path: ["terminal", "restart"],
+  summary: "Replace a terminal with a shell in the same scope",
+  positionals: TERMINAL_ID_POSITIONAL,
+  options: REDUNDANT_SCOPE_OPTIONS,
+  prepare: ({ positionals }) => ({ terminalId: positionals.terminalId }),
+  print: (session, { terminalId }) =>
+    `Restarted terminal ${terminalId} as ${session.id}`,
+});
+
+const terminalCloseCommand = publicCommand("terminals.close", {
+  path: ["terminal", "close"],
+  summary: "Close a terminal session",
+  aliases: ["stop"],
+  positionals: TERMINAL_ID_POSITIONAL,
+  options: {
+    ifClean: flag("--if-clean", "Only close if no user input was sent"),
+    ...REDUNDANT_SCOPE_OPTIONS,
+  },
+  prepare: ({ positionals, options }) => ({
+    terminalId: positionals.terminalId,
+    mode: options.ifClean ? ("if-clean" as const) : ("force" as const),
+    reason: "user" as const,
+  }),
+  print: (_session, { terminalId }) => `Closed terminal ${terminalId}`,
+});
+
+export const terminalCommands = [
+  terminalListCommand,
+  terminalCreateCommand,
+  terminalRunCommand,
+  terminalShowCommand,
+  terminalAttachCommand,
+  terminalSendCommand,
+  terminalResizeCommand,
+  terminalOutputCommand,
+  terminalWaitCommand,
+  terminalRenameCommand,
+  terminalRestartCommand,
+  terminalCloseCommand,
+];
+
 export function registerTerminalCommands(
   program: Command,
   getUrl: () => string,
 ): void {
-  const terminal = program
+  program
     .command("terminal")
     .description(
       "Manage terminal sessions across threads, environments, and machines",
     );
-
-  addTerminalScopeOptions(
-    terminal
-      .command("list")
-      .description("List terminal sessions in exactly one scope")
-      .option("--json", "Print machine-readable JSON output"),
-  ).action(
-    action(async (opts: TerminalListOptions) => {
-      const sdk = createCliBbSdk(getUrl());
-      const result = await sdk.terminals.list({
-        scope: await resolveTerminalListScope(opts, getUrl()),
-      });
-      if (outputJson(opts, result)) return;
-      printTerminalTable(result.sessions);
-    }),
-  );
-
-  addTerminalScopeOptions(
-    terminal
-      .command("create [command...]")
-      .alias("start")
-      .description("Create a terminal session in exactly one scope")
-      .option("--title <title>", "Terminal title")
-      .option(
-        "--id <terminal-id>",
-        "Create the terminal with this ID (term_ plus 10 characters); fails if the ID exists",
-      )
-      .option(
-        "--command <command>",
-        "Command to run instead of an interactive shell",
-      )
-      .option(
-        "--cols <n>",
-        `Initial terminal columns (default: ${DEFAULT_COLS})`,
-      )
-      .option("--rows <n>", `Initial terminal rows (default: ${DEFAULT_ROWS})`)
-      .option("--attach", "Attach after creating")
-      .option("--json", "Print machine-readable JSON output"),
-  ).action(
-    action(async (commandParts: string[], opts: TerminalStartOptions) => {
-      const sdk = createCliBbSdk(getUrl());
-      const resolvedStart = resolveTerminalStart({
-        commandOption: opts.command,
-        commandParts,
-      });
-      const session = await sdk.terminals.create({
-        cols: parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols"),
-        id: opts.id,
-        rows: parsePositiveInteger(opts.rows, DEFAULT_ROWS, "--rows"),
-        scope: await resolveTerminalCreateScope(opts, getUrl()),
-        title: opts.title,
-        start: resolvedStart,
-      });
-      if (outputJson(opts, session)) return;
-      console.log(`Created terminal ${session.id} (${session.title})`);
-      if (opts.attach) {
-        await attachTerminal({
-          baseUrl: getUrl(),
-          terminalId: session.id,
-        });
-      }
-    }),
-  );
-
-  addTerminalScopeOptions(
-    terminal
-      .command("run [command...]")
-      .description(
-        "Run a command in a new terminal and return its output and exit code",
-      )
-      .option(
-        "--contains <text>",
-        "Return once the output contains this text instead of waiting for exit",
-      )
-      .option(
-        "--regex <pattern>",
-        "Return once the output matches this regular expression instead of waiting for exit",
-      )
-      .option(
-        "--timeout <duration>",
-        `Stop waiting after ${durationHelp("s")}; the command keeps running`,
-        "30s",
-      )
-      .option(
-        "--max-output-bytes <n>",
-        "Return at most the last N bytes of output",
-        DEFAULT_TERMINAL_WAIT_MAX_OUTPUT_BYTES,
-      )
-      .option(
-        "--id <terminal-id>",
-        "Run in a terminal with this ID (term_ plus 10 characters); a retry with the same ID fails instead of running twice",
-      )
-      .option("--title <title>", "Terminal title (default: the command)")
-      .option(
-        "--cols <n>",
-        `Initial terminal columns (default: ${DEFAULT_COLS})`,
-      )
-      .option("--rows <n>", `Initial terminal rows (default: ${DEFAULT_ROWS})`)
-      .option("--json", "Print machine-readable JSON output"),
-  ).action(
-    action(async (commandParts: string[], opts: TerminalRunOptions) => {
-      if (commandParts.length === 0) {
-        throw new CliUsageError({
-          code: "missing_required",
-          hint: RUN_USAGE_EXAMPLE,
-          message: "Provide the command to run after --",
-        });
-      }
-      const plan: TerminalObservePlan = {
-        condition: parseTerminalOutputCondition(opts),
-        maxOutputBytes: parseMaxOutputBytes(opts.maxOutputBytes),
-        outputBounds: {},
-        pollDelaysMs: WAIT_POLL_DELAYS_MS,
-        sinceSeq: 0,
-        timeoutMs: parseTimeout(opts.timeout),
-      };
-      const cols = parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols");
-      const rows = parsePositiveInteger(opts.rows, DEFAULT_ROWS, "--rows");
-      const sdk = createCliBbSdk(getUrl());
-      const session = await createRunTerminal({
-        argv: commandParts,
-        cols,
-        id: opts.id,
-        rows,
-        scope: await resolveTerminalCreateScope(opts, getUrl()),
-        sdk,
-        title: opts.title,
-      });
-      reportTerminalObservation({
-        json: opts.json === true,
-        report: await observeTerminal({ plan, sdk, terminalId: session.id }),
-      });
-    }),
-  );
-
-  terminal
-    .command("show <terminalId>")
-    .description("Show a terminal session")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalJsonOptions) => {
-        const session = await createCliBbSdk(getUrl()).terminals.get({
-          terminalId,
-        });
-        if (outputJson(opts, session)) return;
-        console.log(JSON.stringify(session, null, 2));
-      }),
-    );
-
-  terminal
-    .command("attach <terminalId>")
-    .description("Attach to a running terminal session")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalJsonOptions) => {
-        if (opts.json) {
-          const session = await createCliBbSdk(getUrl()).terminals.get({
-            terminalId,
-          });
-          outputJson(opts, session);
-          return;
-        }
-        await attachTerminal({
-          baseUrl: getUrl(),
-          terminalId,
-        });
-      }),
-    );
-
-  terminal
-    .command("send <terminalId>")
-    .description("Send input to a terminal session")
-    .option("--text <text>", "Text to send")
-    .option("--stdin", "Read bytes from stdin")
-    .option("--enter", "Press Enter after the text")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalSendOptions) => {
-        const data = await resolveSendData(opts);
-        const sdk = createCliBbSdk(getUrl());
-        let session: TerminalSession | null = null;
-        for (const chunk of chunkTerminalInput(data)) {
-          session = await sdk.terminals.input({
-            terminalId,
-            dataBase64: chunk.toString("base64"),
-          });
-        }
-        if (session === null) {
-          throw new CliExitError("Terminal input cannot be empty", 1);
-        }
-        if (outputJson(opts, session)) return;
-        console.log(`Sent input to terminal ${terminalId}`);
-      }),
-    );
-
-  terminal
-    .command("resize <terminalId>")
-    .description("Resize a terminal session")
-    .requiredOption("--cols <n>", "Terminal columns")
-    .requiredOption("--rows <n>", "Terminal rows")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalResizeOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const session = await sdk.terminals.resize({
-          terminalId,
-          cols: parseRequiredPositiveInteger(opts.cols, "--cols"),
-          rows: parseRequiredPositiveInteger(opts.rows, "--rows"),
-        });
-        if (outputJson(opts, session)) return;
-        console.log(
-          `Resized terminal ${terminalId} to ${session.cols}x${session.rows}`,
-        );
-      }),
-    );
-
-  terminal
-    .command("output <terminalId>")
-    .alias("read")
-    .description("Print terminal output from daemon scrollback")
-    .option("--since-seq <n>", "Only output chunks from this sequence")
-    .option("--tail-bytes <n>", "Bound output to the latest N bytes")
-    .option("--limit-chunks <n>", "Bound output to the latest N chunks")
-    .option(
-      "--plain",
-      "Print plain text, with colors and progress redraws removed",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalReadOptions) => {
-        if (opts.plain === true && opts.json === true) {
-          throw new CliUsageError({
-            code: "invalid_value",
-            hint: "--json returns the raw chunks; use terminal wait --json for plain output.",
-            message: "Provide only one of --plain or --json",
-          });
-        }
-        const sdk = createCliBbSdk(getUrl());
-        const output = await sdk.terminals.output({
-          terminalId,
-          ...terminalOutputQuery(opts),
-        });
-        if (outputJson(opts, output)) return;
-        if (opts.plain === true) {
-          process.stdout.write(
-            terminalPlainText(
-              Buffer.concat(
-                output.chunks.map((chunk) =>
-                  Buffer.from(chunk.dataBase64, "base64"),
-                ),
-              ).toString("utf8"),
-            ),
-          );
-        } else {
-          writeOutputChunks(output.chunks);
-        }
-        if (output.status === "exited") {
-          console.error(describeTerminalExit(terminalId, output.exitCode));
-        }
-      }),
-    );
-
-  terminal
-    .command("wait <terminalId>")
-    .description(
-      "Wait for a terminal to exit or print text, then return its output and exit code",
-    )
-    .option(
-      "--contains <text>",
-      "Return once new output contains text, ignoring terminal escapes",
-    )
-    .option(
-      "--regex <pattern>",
-      "Return once new output matches a regular expression, ignoring terminal escapes",
-    )
-    .option("--exit", "Wait until the terminal exits (the default)")
-    .option(
-      "--since-seq <n>",
-      "Start from this output sequence (default: the current end for --contains or --regex, 0 otherwise)",
-    )
-    .option("--from-start", "Start from sequence 0")
-    .option(
-      "--timeout <duration>",
-      `Stop waiting after ${durationHelp("s")}; the terminal keeps running`,
-      "30s",
-    )
-    .option(
-      "--poll-interval <duration>",
-      `Polling interval as ${durationHelp("ms")} (default: starts at 100ms and backs off to 1s)`,
-    )
-    .option(
-      "--max-output-bytes <n>",
-      "Return at most the last N bytes of output",
-      DEFAULT_TERMINAL_WAIT_MAX_OUTPUT_BYTES,
-    )
-    .option("--tail-bytes <n>", "Bound each output poll to N bytes")
-    .option("--limit-chunks <n>", "Bound each output poll to N chunks")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalWaitOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const plan = await resolveTerminalWaitPlan({ opts, sdk, terminalId });
-        reportTerminalObservation({
-          json: opts.json === true,
-          report: await observeTerminal({ plan, sdk, terminalId }),
-        });
-      }),
-    );
-
-  terminal
-    .command("rename <terminalId> <title>")
-    .description("Rename a terminal session")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          terminalId: string,
-          title: string,
-          opts: TerminalJsonOptions,
-        ) => {
-          const session = await createCliBbSdk(getUrl()).terminals.rename({
-            terminalId,
-            title,
-          });
-          if (outputJson(opts, session)) return;
-          console.log(`Renamed terminal ${terminalId} to ${session.title}`);
-        },
-      ),
-    );
-
-  terminal
-    .command("restart <terminalId>")
-    .description("Replace a terminal with a shell in the same scope")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalJsonOptions) => {
-        const session = await createCliBbSdk(getUrl()).terminals.restart({
-          terminalId,
-        });
-        if (outputJson(opts, session)) return;
-        console.log(`Restarted terminal ${terminalId} as ${session.id}`);
-      }),
-    );
-
-  terminal
-    .command("close <terminalId>")
-    .alias("stop")
-    .description("Close a terminal session")
-    .option("--if-clean", "Only close if no user input was sent")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (terminalId: string, opts: TerminalCloseOptions) => {
-        const session = await createCliBbSdk(getUrl()).terminals.close({
-          terminalId,
-          mode: opts.ifClean ? "if-clean" : "force",
-        });
-        if (outputJson(opts, session)) return;
-        console.log(`Closed terminal ${terminalId}`);
-      }),
-    );
-
-  for (const command of terminal.commands) {
-    const targetsTerminalId = command.registeredArguments.some(
-      (argument) => argument.name() === "terminalId",
-    );
-    if (targetsTerminalId) acceptRedundantTerminalScopeOptions(command);
-  }
-}
-
-function acceptRedundantTerminalScopeOptions(command: Command): void {
-  for (const flags of [
-    "--thread <id>",
-    "--environment <id>",
-    "--machine <id-or-name>",
-    "--host <id-or-name>",
-  ]) {
-    command.addOption(new Option(flags).hideHelp());
-  }
-}
-
-function addTerminalScopeOptions(command: Command): Command {
-  return command
-    .option("--thread <id>", "Thread-scoped terminal")
-    .option("--environment <id>", "Environment-scoped terminal")
-    .option("--machine <id-or-name>", "Machine-scoped terminal")
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--cwd <path>", "Working directory for --machine or --host");
+  mountCommands(program, terminalCommands, { getUrl });
 }
 
 async function resolveTerminalListScope(

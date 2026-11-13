@@ -1,3 +1,4 @@
+import { streamBody } from "@bb/operations";
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -9,19 +10,14 @@ import {
   readLastServerMoveFile,
   writeLastServerMoveFile,
 } from "@bb/server-archive";
+import type { OperationCaller } from "@bb/operations";
 import {
   publicApiRoutes,
-  typedRoutes,
   type OldServerCopyDeleteJob,
-  type PublicApiSchema,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
+import type { OperationRoutes } from "../kernel/http-door.js";
 import { createJobRegistry } from "../services/lib/job-registry.js";
-import {
-  getGateAuthKind,
-  type RequestHeaderReader,
-} from "../request-context.js";
 import { callHostOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   assertUsableHostId,
@@ -37,8 +33,8 @@ import type { AppDeps } from "../types.js";
 const SERVER_EXPORT_WORK_DIR_NAME = "server-export";
 const DELETE_OLD_SERVER_COPY_TIMEOUT_MS = 5 * 60_000;
 
-function assertServerManagementAllowed(context: RequestHeaderReader): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertServerManagementAllowed(caller: OperationCaller): void {
+  if (caller.user === "machine") {
     throw new ApiError(
       403,
       "machine_host_management_forbidden",
@@ -76,43 +72,39 @@ function serverExportFileName(now: Date): string {
 }
 
 export function registerServerMoveRoutes(
-  app: Hono,
+  operations: OperationRoutes,
   deps: AppDeps,
   serverMove: ServerMoveCoordinator,
 ): void {
-  const { del, get, post } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (message) =>
-      new ApiError(400, "invalid_request", message),
-  });
   const routes = publicApiRoutes.server;
 
-  post(routes.checkMove, async (context, payload) => {
-    assertServerManagementAllowed(context);
+  operations.implement(routes.checkMove, async (payload, { caller }) => {
+    assertServerManagementAllowed(caller);
     assertServerMoveExperimentEnabled(deps);
-    return context.json(await serverMove.check(payload));
+    return serverMove.check(payload);
   });
 
-  post(routes.startMove, async (context, payload) => {
-    assertServerManagementAllowed(context);
+  operations.implement(routes.startMove, async (payload, { caller }) => {
+    assertServerManagementAllowed(caller);
     assertServerMoveExperimentEnabled(deps);
-    return context.json(await serverMove.start(payload));
+    return serverMove.start(payload);
   });
 
-  get(routes.moveStatus, async (context) => {
-    assertServerManagementAllowed(context);
-    return context.json({
+  operations.implement(routes.moveStatus, async (_input, { caller }) => {
+    assertServerManagementAllowed(caller);
+    return {
       move: serverMove.getStatus(),
       lastMove: await readLastServerMove(deps.config.dataDir),
-    });
+    };
   });
 
-  post(routes.cancelMove, (context) => {
-    assertServerManagementAllowed(context);
-    return context.json(serverMove.cancel());
+  operations.implement(routes.cancelMove, (_input, { caller }) => {
+    assertServerManagementAllowed(caller);
+    return serverMove.cancel();
   });
 
-  post(routes.export, async (context) => {
-    assertServerManagementAllowed(context);
+  operations.implement(routes.export, async (_input, { caller }) => {
+    assertServerManagementAllowed(caller);
     assertServerMoveExperimentEnabled(deps);
     if (isServerMoveInFlight(serverMove.getStatus())) {
       throw new ApiError(
@@ -157,13 +149,12 @@ export function registerServerMoveRoutes(
     stream.once("close", () => {
       void removeWorkDir();
     });
-    return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
-      status: 200,
+    return streamBody(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
+      contentType: "application/gzip",
       headers: {
         "cache-control": "no-store",
         "content-disposition": `attachment; filename="${fileName}"`,
         "content-length": String(archive.sizeBytes),
-        "content-type": "application/gzip",
         "x-bb-archive-sha256": archive.sha256,
       },
     });
@@ -180,11 +171,8 @@ export function registerServerMoveRoutes(
     notifyChanged: () => {},
   });
 
-  const startDeleteJob = async (
-    context: RequestHeaderReader,
-    hostId: string,
-  ) => {
-    assertServerManagementAllowed(context);
+  const startDeleteJob = async (caller: OperationCaller, hostId: string) => {
+    assertServerManagementAllowed(caller);
     assertServerMoveExperimentEnabled(deps);
     assertUsableHostId(deps, { hostId });
     const lastMove = await readLastServerMoveFile(deps.config.dataDir);
@@ -217,27 +205,35 @@ export function registerServerMoveRoutes(
     });
   };
 
-  del(publicApiRoutes.hosts.deleteOldServerCopy, async (context) => {
-    const job = await startDeleteJob(context, context.req.param("id"));
-    const outcome = await deleteJobs.settled(job.id);
-    if (outcome?.job.state !== "completed") throw outcome?.error;
-    return context.json({ deleted: outcome.job.deleted });
-  });
+  operations.implement(
+    publicApiRoutes.hosts.deleteOldServerCopy,
+    async ({ id }, { caller }) => {
+      const job = await startDeleteJob(caller, id);
+      const outcome = await deleteJobs.settled(job.id);
+      if (outcome?.job.state !== "completed") throw outcome?.error;
+      return { deleted: outcome.job.deleted };
+    },
+  );
 
-  post(publicApiRoutes.hosts.oldServerCopyDeleteJobStart, async (context) => {
-    const job = await startDeleteJob(context, context.req.param("id"));
-    return context.json({ job }, 202);
-  });
+  operations.implement(
+    publicApiRoutes.hosts.oldServerCopyDeleteJobStart,
+    async ({ id }, { caller }) => ({
+      job: await startDeleteJob(caller, id),
+    }),
+  );
 
-  get(publicApiRoutes.hosts.oldServerCopyDeleteJobGet, (context) => {
-    const job = deleteJobs.get(context.req.param("jobId"));
-    if (job?.hostId !== context.req.param("id")) {
-      throw new ApiError(
-        404,
-        "old_server_copy_delete_job_not_found",
-        "Unknown delete job; the server may have restarted",
-      );
-    }
-    return context.json({ job });
-  });
+  operations.implement(
+    publicApiRoutes.hosts.oldServerCopyDeleteJobGet,
+    ({ id, jobId }) => {
+      const job = deleteJobs.get(jobId);
+      if (job?.hostId !== id) {
+        throw new ApiError(
+          404,
+          "old_server_copy_delete_job_not_found",
+          "Unknown delete job; the server may have restarted",
+        );
+      }
+      return { job };
+    },
+  );
 }

@@ -491,6 +491,19 @@
         "@bb/templates#generate:plugin-scaffold"
       ]
     },
+    "@bb/server-contract#topo": {
+      "dependsOn": ["^topo", "@bb/server-contract#generate:route-index"]
+    },
+    "@bb/server-contract#generate:route-index": {
+      "dependsOn": ["^topo"],
+      "inputs": [
+        "src/**/*.ts",
+        "!src/generated/**",
+        "scripts/generate-route-index.ts",
+        "$TURBO_ROOT$/packages/hono-typed-routes/src/**/*.ts"
+      ],
+      "outputs": ["src/generated/route-index.ts"]
+    },
     "@bb/process-utils#topo": {
       "dependsOn": ["^topo", "@bb/process-utils#generate:profile-worker"]
     },

@@ -1,15 +1,8 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import type { PromptHistoryListEntry } from "@bb/domain";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
+import { flag } from "../cli-door.js";
+import { mountCommands, publicCommand } from "../operation-doors.js";
 import { columnWidths, printBorderlessTable, truncateCell } from "../table.js";
-import { outputJson } from "./helpers.js";
-
-interface PromptHistoryListOptions {
-  cursor?: string;
-  json?: boolean;
-  limit?: string;
-}
 
 const PROMPT_COLUMN_WIDTH = 80;
 
@@ -45,40 +38,38 @@ function printPromptHistoryTable(entries: PromptHistoryListEntry[]): void {
   );
 }
 
+export const promptHistoryCommands = [
+  publicCommand("promptHistory.list", {
+    path: ["prompt-history", "list"],
+    summary: "List prompt history newest first",
+    options: {
+      cursor: flag("--cursor <cursor>", "Continue from an earlier page"),
+      limit: flag("--limit <number>", "Maximum entries to return"),
+    },
+    print(result, input) {
+      if (result.entries.length === 0) {
+        console.log("No prompt history found");
+      } else {
+        printPromptHistoryTable(result.entries);
+      }
+      if (result.nextCursor !== null) {
+        const limit =
+          input.limit === undefined ? "" : ` --limit ${input.limit}`;
+        console.log(
+          `Next page: bb prompt-history list --cursor ${result.nextCursor}${limit}`,
+        );
+      }
+      return null;
+    },
+  }),
+];
+
 export function registerPromptHistoryCommands(
   program: Command,
   getUrl: () => string,
 ): void {
-  const promptHistory = program
+  program
     .command("prompt-history")
     .description("List prompt history across threads and projects");
-
-  promptHistory
-    .command("list")
-    .description("List prompt history newest first")
-    .option("--cursor <cursor>", "Continue from an earlier page")
-    .option("--limit <number>", "Maximum entries to return")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: PromptHistoryListOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const result = await sdk.experimental_promptHistory.list({
-          cursor: opts.cursor,
-          limit: opts.limit,
-        });
-        if (outputJson(opts, result)) return;
-        if (result.entries.length === 0) {
-          console.log("No prompt history found");
-        } else {
-          printPromptHistoryTable(result.entries);
-        }
-        if (result.nextCursor !== null) {
-          const limit =
-            opts.limit === undefined ? "" : ` --limit ${opts.limit}`;
-          console.log(
-            `Next page: bb prompt-history list --cursor ${result.nextCursor}${limit}`,
-          );
-        }
-      }),
-    );
+  mountCommands(program, promptHistoryCommands, { getUrl });
 }

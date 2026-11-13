@@ -1,9 +1,10 @@
+import { jsonBody } from "@bb/operations";
 import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import type { PluginUpdateJobs } from "../services/plugins/plugin-update-jobs.js";
 import { timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
-import type { Context, Hono } from "hono";
+import type { Context } from "hono";
 import type { createNodeWebSocket } from "@hono/node-ws";
 import type { WSContext, WSMessageReceive, WSEvents } from "hono/ws";
 import type {
@@ -12,7 +13,7 @@ import type {
   PluginCliExecutionResult,
 } from "@get-bb/plugin-sdk";
 import type { ServerRuntimeConfig } from "../types.js";
-import { ApiError } from "../errors.js";
+import { ApiError, JsonBodyApiError } from "../errors.js";
 import {
   browserRequestProblem,
   type BrowserRequestProblem,
@@ -43,16 +44,8 @@ import {
   hashedAssetCacheControl,
   pluginImageResponse,
 } from "./plugin-image-response.js";
-import {
-  pluginApplyUpdateRequestSchema,
-  pluginCachePruneRequestSchema,
-  pluginRpcDiscoveryQuerySchema,
-  pluginInstallRequestSchema,
-  pluginSafeModeRequestSchema,
-  pluginSettingsUpdateRequestSchema,
-  pluginTokenRequestSchema,
-  pluginUpdateCheckRequestSchema,
-} from "@bb/server-contract";
+import { publicApiRoutes } from "@bb/server-contract";
+import type { OperationRoutes } from "../kernel/http-door.js";
 
 interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
@@ -206,6 +199,24 @@ function localAuthProblem(
   return browserRequestProblem(context, deps, {
     requireJsonForMutation: true,
   });
+}
+
+function requestLocalAuthProblem(
+  request: Request | null,
+  deps: PluginRoutesDeps,
+): WireAuthProblem | null {
+  if (request === null) return null;
+  return browserRequestProblem(
+    {
+      req: {
+        url: request.url,
+        method: request.method,
+        header: (name) => request.headers.get(name) ?? undefined,
+      },
+    },
+    deps,
+    { requireJsonForMutation: true },
+  );
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -379,13 +390,15 @@ function pluginWebSocketEvents(args: {
 }
 
 export function registerPluginRoutes(
-  app: Hono,
+  routes: OperationRoutes,
   deps: PluginRoutesDeps,
   plugins: PluginService,
   installJobs: PluginInstallJobs,
   updateJobs: PluginUpdateJobs,
   upgradeWebSocket?: UpgradeWebSocket,
 ): void {
+  const app = routes.app;
+  const contract = publicApiRoutes.plugins;
   const appAssetCompressionCache = createAppAssetCompressionCache(
     MAX_CACHED_APP_ASSETS,
   );
@@ -460,50 +473,43 @@ export function registerPluginRoutes(
     });
   });
 
-  app.get("/plugins/rpc", (context) => {
-    const query = pluginRpcDiscoveryQuerySchema.safeParse(context.req.query());
-    if (!query.success)
-      return context.json({ error: "Invalid RPC discovery query" }, 400);
-    return context.json(plugins.discoverRpc(query.data));
-  });
+  routes.implement(contract.discoverRpc, (query) => plugins.discoverRpc(query));
 
-  app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
+  routes.implement(contract.list, () => ({ plugins: plugins.list() }));
 
-  app.get("/plugins/contributions", (context) =>
-    context.json({
-      cliCommands: plugins.listCliContributions(),
-      mentionProviders: plugins.listMentionProviderContributions(),
-    }),
-  );
+  routes.implement(contract.contributions, () => ({
+    cliCommands: plugins.listCliContributions(),
+    mentionProviders: plugins.listMentionProviderContributions(),
+  }));
 
-  app.get("/plugins/mentions/search", async (context) => {
-    const problem = localAuthProblem(context, deps);
+  routes.implement(contract.searchMentions, async (query, { request }) => {
+    const problem = requestLocalAuthProblem(request, deps);
     if (problem) {
-      return context.json({ ok: false, error: problem.error }, problem.status);
+      throw new JsonBodyApiError(problem.status, {
+        ok: false,
+        error: problem.error,
+      });
     }
-    const query = (context.req.query("q") ?? "").trim();
-    if (query.length === 0) {
-      return context.json({ ok: true, groups: [] });
+    const text = (query.q ?? "").trim();
+    if (text.length === 0) {
+      return { ok: true as const, groups: [] };
     }
-    const projectId = context.req.query("projectId") ?? null;
-    const threadId = context.req.query("threadId") ?? null;
-    const trigger = parsePluginMentionTrigger(context.req.query("trigger"));
+    const projectId = query.projectId ?? null;
+    const threadId = query.threadId ?? null;
+    const trigger = parsePluginMentionTrigger(query.trigger);
     if (trigger === null) {
-      return context.json(
-        {
-          ok: false,
-          error: `invalid plugin mention trigger ${JSON.stringify(context.req.query("trigger"))}`,
-        },
-        400,
-      );
+      throw new JsonBodyApiError(400, {
+        ok: false,
+        error: `invalid plugin mention trigger ${JSON.stringify(query.trigger)}`,
+      });
     }
     const groups = await plugins.searchMentions({
       trigger,
-      query,
+      query: text,
       projectId: projectId !== null && projectId.length > 0 ? projectId : null,
       threadId: threadId !== null && threadId.length > 0 ? threadId : null,
     });
-    return context.json({ ok: true, groups });
+    return { ok: true as const, groups };
   });
 
   app.post("/plugins/:id/cli", async (context) => {
@@ -659,162 +665,124 @@ export function registerPluginRoutes(
     });
   });
 
-  app.get("/plugins/:id/logs", async (context) => {
-    const rawTail = Number(context.req.query("tail") ?? "100");
+  routes.implement(contract.logs, async ({ id, tail: requestedTail }) => {
+    const rawTail = Number(requestedTail ?? "100");
     const tail = Number.isFinite(rawTail)
       ? Math.min(Math.max(Math.trunc(rawTail), 1), 10_000)
       : 100;
-    const lines = await plugins.readLogTail(context.req.param("id"), tail);
+    const lines = await plugins.readLogTail(id, tail);
     if (lines === undefined) {
-      return context.json({ ok: false, error: "unknown plugin" }, 404);
+      throw new JsonBodyApiError(404, { ok: false, error: "unknown plugin" });
     }
-    return context.json({ ok: true, lines });
+    return { ok: true as const, lines };
   });
 
-  app.post("/plugins/updates/check", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginUpdateCheckRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json({ error: 'expected { "id"?: string }' }, 400);
-    }
+  routes.implement(contract.checkUpdates, async ({ id }) => {
     try {
-      const results = await plugins.checkForUpdates(body.data.id);
-      return context.json({ results });
+      return { results: await plugins.checkForUpdates(id) };
     } catch (error) {
-      return context.json(
-        { error: error instanceof Error ? error.message : String(error) },
-        422,
-      );
+      throw new JsonBodyApiError(422, {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
-  app.get("/plugins/updates", (context) => {
+  routes.implement(contract.updates, () => {
     try {
-      return context.json({ results: plugins.listUpdateResults() });
+      return { results: plugins.listUpdateResults() };
     } catch (error) {
-      return context.json(
-        { error: error instanceof Error ? error.message : String(error) },
-        422,
-      );
+      throw new JsonBodyApiError(422, {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
-  app.post("/plugins/cache/prune", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginCachePruneRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json({ error: 'expected { "dryRun"?: boolean }' }, 400);
-    }
-    return context.json(await plugins.pruneCache({ dryRun: body.data.dryRun }));
-  });
-
-  app.post("/plugins/:id/update", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginApplyUpdateRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        { error: 'expected { "range"?: string, "expectedVersion"?: string }' },
-        400,
-      );
-    }
-    const pluginId = context.req.param("id");
-    const job = updateJobs.start({
-      pluginId,
-      displayName: plugins.getDisplayName(pluginId),
-      run: async () => {
-        const outcome = await plugins.applyUpdate(pluginId, body.data);
-        if (!outcome.ok) throw new Error(outcome.error);
-        return outcome.result;
-      },
-    });
-    if (prefersRespondAsync(context)) return context.json({ job }, 202);
-    const settled = (await updateJobs.settled(job.id)) ?? job;
-    return settled.state === "completed"
-      ? context.json(settled.result)
-      : context.json(
-          {
-            error:
-              settled.state === "failed"
-                ? settled.error
-                : "update did not complete",
-          },
-          422,
-        );
-  });
-
-  app.post("/plugins/install", async (context) => {
-    const problem = localAuthProblem(context, deps);
-    if (problem) {
-      return context.json({ ok: false, error: problem.error }, problem.status);
-    }
-    const json: unknown = await context.req.json().catch(() => null);
-    const parsed = pluginInstallRequestSchema.safeParse(json);
-    if (!parsed.success) {
-      return context.json(
-        {
-          ok: false,
-          error:
-            'expected { "source": string, "selection"?: { "kind": "root" } | { "kind": "subdirectory", "path": string } | { "kind": "entry", "name": string } }',
-        },
-        422,
-      );
-    }
-    const { source, selection } = parsed.data;
-    const job = installJobs.start({
-      target: { kind: "source", source, selection },
-      displayName: source,
-      run: () => plugins.install(source, selection),
-    });
-    return respondWithInstallJob(context, installJobs, job, (error) => ({
-      ok: false,
-      error,
-    }));
-  });
-
-  app.get("/plugins/:id/source", async (context) => {
-    const source = await plugins.getSource(context.req.param("id"));
-    if (source === undefined) {
-      return context.json({ error: "unknown plugin" }, 404);
-    }
-    return context.json(source);
-  });
-
-  app.post("/plugins/reload", async (context) => {
-    const id = context.req.query("id") ?? undefined;
-    const outcome = await plugins.reload(id);
-    if (!outcome.ok) return context.json(outcome, 422);
-    return context.json(outcome);
-  });
-
-  app.get("/plugins/safe-mode", (context) =>
-    context.json({ enabled: plugins.getSafeMode() }),
+  routes.implement(contract.pruneCache, ({ dryRun }) =>
+    plugins.pruneCache({ dryRun }),
   );
 
-  app.put("/plugins/safe-mode", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginSafeModeRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        { ok: false, error: "expected { enabled: boolean }" },
-        400,
-      );
+  routes.implement(
+    contract.applyUpdate,
+    async ({ id: pluginId, ...update }, { request }) => {
+      const job = updateJobs.start({
+        pluginId,
+        displayName: plugins.getDisplayName(pluginId),
+        run: async () => {
+          const outcome = await plugins.applyUpdate(pluginId, update);
+          if (!outcome.ok) throw new Error(outcome.error);
+          return outcome.result;
+        },
+      });
+      if (prefersRespondAsync(request)) {
+        return jsonBody({ job }, { status: 202 });
+      }
+      const settled = (await updateJobs.settled(job.id)) ?? job;
+      if (settled.state === "completed") return settled.result;
+      throw new JsonBodyApiError(422, {
+        error:
+          settled.state === "failed"
+            ? settled.error
+            : "update did not complete",
+      });
+    },
+  );
+
+  routes.implement(
+    contract.install,
+    async ({ source, selection }, { request }) => {
+      const problem = requestLocalAuthProblem(request, deps);
+      if (problem) {
+        throw new JsonBodyApiError(problem.status, {
+          ok: false,
+          error: problem.error,
+        });
+      }
+      const job = installJobs.start({
+        target: { kind: "source", source, selection },
+        displayName: source,
+        run: () => plugins.install(source, selection),
+      });
+      return respondWithInstallJob(request, installJobs, job, (error) => ({
+        ok: false,
+        error,
+      }));
+    },
+  );
+
+  routes.implement(contract.source, async ({ id }) => {
+    const source = await plugins.getSource(id);
+    if (source === undefined) {
+      throw new JsonBodyApiError(404, { error: "unknown plugin" });
     }
-    return context.json(await plugins.setSafeMode(body.data.enabled));
+    return source;
   });
 
-  app.post("/plugins/:id/enable", async (context) => {
-    const plugin = await plugins.setEnabled(context.req.param("id"), true);
-    if (!plugin)
-      return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
+  routes.implement(contract.reload, async ({ id }) => {
+    const outcome = await plugins.reload(id);
+    if (!outcome.ok) throw new JsonBodyApiError(422, { ...outcome });
+    return outcome;
   });
 
-  app.post("/plugins/:id/disable", async (context) => {
-    const plugin = await plugins.setEnabled(context.req.param("id"), false);
-    if (!plugin)
-      return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
-  });
+  routes.implement(contract.safeMode, () => ({
+    enabled: plugins.getSafeMode(),
+  }));
+
+  routes.implement(contract.setSafeMode, ({ enabled }) =>
+    plugins.setSafeMode(enabled),
+  );
+
+  for (const [route, enabled] of [
+    [contract.enable, true],
+    [contract.disable, false],
+  ] as const) {
+    routes.implement(route, async ({ id }) => {
+      const plugin = await plugins.setEnabled(id, enabled);
+      if (!plugin) {
+        throw new JsonBodyApiError(404, { ok: false, error: "unknown plugin" });
+      }
+      return { ok: true as const, plugin };
+    });
+  }
 
   const NOT_RUNNING = {
     ok: false as const,
@@ -822,77 +790,45 @@ export function registerPluginRoutes(
       "unknown plugin, or plugin is not running — settings exist once its factory has run",
   };
 
-  app.get("/plugins/:id/settings", async (context) => {
-    const view = await plugins.getSettings(context.req.param("id"));
-    if (!view) return context.json(NOT_RUNNING, 404);
-    return context.json({ ok: true, ...view });
+  routes.implement(contract.settings, async ({ id }) => {
+    const view = await plugins.getSettings(id);
+    if (!view) throw new JsonBodyApiError(404, NOT_RUNNING);
+    return { ok: true as const, ...view };
   });
 
-  app.put("/plugins/:id/settings", async (context) => {
-    const json: unknown = await context.req.json().catch(() => null);
-    const body = pluginSettingsUpdateRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        { ok: false, error: "expected { values: Record<string, unknown> }" },
-        400,
-      );
-    }
+  routes.implement(contract.updateSettings, async ({ id, values }) => {
     try {
-      const view = await plugins.updateSettings(
-        context.req.param("id"),
-        body.data.values,
-      );
-      if (!view) return context.json(NOT_RUNNING, 404);
-      return context.json({ ok: true, ...view });
+      const view = await plugins.updateSettings(id, values);
+      if (!view) throw new JsonBodyApiError(404, NOT_RUNNING);
+      return { ok: true as const, ...view };
     } catch (error) {
       if (error instanceof PluginSettingsValidationError) {
-        return context.json({ ok: false, error: error.message }, 400);
+        throw new JsonBodyApiError(400, { ok: false, error: error.message });
       }
       throw error;
     }
   });
 
-  app.delete("/plugins/:id", async (context) => {
-    const id = context.req.param("id");
+  routes.implement(contract.remove, async ({ id }) => {
     if (plugins.isBuiltin(id)) {
-      return context.json(
-        {
-          ok: false,
-          error: "Built-in plugins can be disabled, but not deleted.",
-        },
-        409,
-      );
+      throw new JsonBodyApiError(409, {
+        ok: false,
+        error: "Built-in plugins can be disabled, but not deleted.",
+      });
     }
     const removed = await plugins.remove(id);
-    if (!removed)
-      return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true });
+    if (!removed) {
+      throw new JsonBodyApiError(404, { ok: false, error: "unknown plugin" });
+    }
+    return { ok: true as const };
   });
 
-  app.post("/plugins/:id/token", async (context) => {
-    const rawBody = await context.req.text();
-    let json: unknown = {};
-    if (rawBody.trim() !== "") {
-      try {
-        json = JSON.parse(rawBody);
-      } catch {
-        json = null;
-      }
-    }
-    const body = pluginTokenRequestSchema.safeParse(json);
-    if (!body.success) {
-      return context.json(
-        { ok: false, error: "expected { rotate?: boolean }" },
-        400,
-      );
-    }
-    const token = await plugins.httpToken(context.req.param("id"), {
-      rotate: body.data.rotate,
-    });
+  routes.implement(contract.token, async ({ id, rotate }) => {
+    const token = await plugins.httpToken(id, { rotate });
     if (token === undefined) {
-      return context.json({ ok: false, error: "unknown plugin" }, 404);
+      throw new JsonBodyApiError(404, { ok: false, error: "unknown plugin" });
     }
-    return context.json({ ok: true, token });
+    return { ok: true as const, token };
   });
 
   if (upgradePluginWebSocket !== undefined) {

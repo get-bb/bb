@@ -1,11 +1,6 @@
 import { upsertHost } from "@bb/db";
 import { isLoopbackAddress } from "@bb/config/loopback";
-import {
-  hostDaemonEnrollKeyRequestSchema,
-  hostDaemonEnrollRequestSchema,
-  typedRoutes,
-  type HostDaemonInternalSchema,
-} from "@bb/host-daemon-contract";
+import { hostDaemonInternalRoutes } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
@@ -17,6 +12,7 @@ import {
 } from "../request-context.js";
 import { issueHostEnrollKey } from "../services/hosts/host-enrollment.js";
 import { requireBearerToken } from "./auth.js";
+import { mountInternalRoute } from "../kernel/http-door.js";
 
 function assertLoopbackRequest(remoteAddress: string | undefined): void {
   if (remoteAddress && isLoopbackAddress(remoteAddress)) {
@@ -45,14 +41,9 @@ export function resolveReportedConnectMachineId(
 }
 
 export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
-  const { post } = typedRoutes<HostDaemonInternalSchema>(app, {
-    onValidationError: (message) =>
-      new ApiError(400, "invalid_request", message),
-  });
-
-  post(
-    "/hosts/enroll-key",
-    hostDaemonEnrollKeyRequestSchema,
+  mountInternalRoute(
+    app,
+    hostDaemonInternalRoutes.enrollKey,
     async (context, payload) => {
       if (getGateAuthKind(context) === "machine") {
         throw new ApiError(
@@ -67,20 +58,17 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
         ...(payload.hostId ? { hostId: payload.hostId } : {}),
       });
 
-      return context.json(
-        {
-          enrollKey: issued.enrollKey.key,
-          expiresAt: issued.enrollKey.expiresAt,
-          hostId: issued.hostId,
-        },
-        201,
-      );
+      return {
+        enrollKey: issued.enrollKey.key,
+        expiresAt: issued.enrollKey.expiresAt,
+        hostId: issued.hostId,
+      };
     },
   );
 
-  post(
-    "/hosts/enroll",
-    hostDaemonEnrollRequestSchema,
+  mountInternalRoute(
+    app,
+    hostDaemonInternalRoutes.enroll,
     async (context, payload) => {
       const connectMachineId = resolveReportedConnectMachineId(context);
       const token = requireBearerToken(context.req.header("authorization"));
@@ -98,13 +86,10 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
         name: payload.hostName,
       });
 
-      return context.json(
-        {
-          hostId: enrollment.metadata.hostId,
-          hostKey: enrollment.hostKey,
-        },
-        201,
-      );
+      return {
+        hostId: enrollment.metadata.hostId,
+        hostKey: enrollment.hostKey,
+      };
     },
   );
 }

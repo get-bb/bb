@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   collectLogLines,
+  collectLogPayloads,
+  readlineMocks,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -17,6 +19,18 @@ describe("bb skill commands", () => {
       () => "http://server",
       () => ({ projectId: "project-context", serverUrl: "http://server" }),
     );
+
+  it("prints Aborted. and deletes nothing when skill delete is declined", async () => {
+    readlineMocks.question.mockResolvedValue("no");
+
+    await runCommand(["skill", "delete", "review", "--json"], register);
+
+    expect(readlineMocks.question).toHaveBeenCalledWith(
+      "Delete review? This cannot be undone. [y/N] ",
+    );
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual(["Aborted."]);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 
   it("lists installed skills through the public SDK", async () => {
     const get = vi.fn(async () => ({

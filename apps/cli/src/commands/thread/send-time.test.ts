@@ -48,12 +48,8 @@ describe("parseSendAt", () => {
   // are accepted so no such fallback can reach the server.
   it("rejects values that are neither a timestamp nor a duration", () => {
     expect(() => parseSendAt("10", NOW)).toThrow(/neither a timestamp/);
-    expect(() => parseSendAt("tomorrow", NOW)).toThrow(
-      /neither a timestamp/,
-    );
-    expect(() => parseSendAt("10 minutes", NOW)).toThrow(
-      /neither a timestamp/,
-    );
+    expect(() => parseSendAt("tomorrow", NOW)).toThrow(/neither a timestamp/);
+    expect(() => parseSendAt("10 minutes", NOW)).toThrow(/neither a timestamp/);
     expect(() => parseSendAt("", NOW)).toThrow(/It is empty/);
   });
 

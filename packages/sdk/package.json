@@ -17,6 +17,12 @@
       "import": "./dist/core.js",
       "default": "./dist/core.js"
     },
+    "./operation-call": {
+      "source": "./src/operation-call.ts",
+      "types": "./src/operation-call.ts",
+      "import": "./dist/operation-call.js",
+      "default": "./dist/operation-call.js"
+    },
     "./browser": {
       "source": "./src/browser.ts",
       "types": "./src/browser.ts",
@@ -49,6 +55,7 @@
     "@bb/core-ui": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
+    "@bb/operations": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
     "ws": "^8.22.1",

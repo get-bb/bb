@@ -690,6 +690,18 @@ describe("bb settings commands", () => {
         "Failed after 40ms: OpenRouter: bad key",
       );
       expect(process.exitCode).toBe(1);
+      process.exitCode = undefined;
+
+      test.mockResolvedValueOnce({
+        ok: false,
+        message: "OpenRouter: bad key",
+        durationMs: 40,
+      } as never);
+      await runCommand(
+        ["settings", "ai-services", "test", "thread-title", "--json"],
+        register,
+      );
+      expect(process.exitCode).toBeUndefined();
 
       await expect(
         runCommand(["settings", "ai-services", "test", "voice"], register),

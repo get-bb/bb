@@ -2,14 +2,12 @@ import { getStoredThreadTabs, replaceStoredThreadTabs } from "@bb/db";
 import {
   publicApiRoutes,
   threadTabsSchema,
-  typedRoutes,
-  type PublicApiSchema,
   type ThreadTab,
   type ThreadTabsResponse,
   type ThreadTabsWireResponse,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
 import { ApiError } from "../../errors.js";
+import type { OperationRoutes } from "../../kernel/http-door.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import type { AppDeps } from "../../types.js";
 
@@ -52,22 +50,19 @@ function readThreadTabs(deps: AppDeps, threadId: string): ThreadTabsResponse {
   };
 }
 
-export function registerThreadTabRoutes(app: Hono, deps: AppDeps): void {
-  const { get, put } = typedRoutes<PublicApiSchema>(app, {
-    onValidationError: (message) =>
-      new ApiError(400, "invalid_request", message),
-  });
+export function registerThreadTabRoutes(
+  operations: OperationRoutes,
+  deps: AppDeps,
+): void {
   const routes = publicApiRoutes.threads;
 
-  get(routes.tabs, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      toWireThreadTabsResponse(readThreadTabs(deps, thread.id)),
-    );
+  operations.implement(routes.tabs, ({ id }) => {
+    const thread = requirePublicThread(deps.db, id);
+    return toWireThreadTabsResponse(readThreadTabs(deps, thread.id));
   });
 
-  put(routes.updateTabs, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
+  operations.implement(routes.updateTabs, ({ id, ...payload }) => {
+    const thread = requirePublicThread(deps.db, id);
     const result = replaceStoredThreadTabs(deps.db, {
       expectedRevision: payload.expectedRevision,
       tabsJson: JSON.stringify(payload.tabs),
@@ -82,11 +77,9 @@ export function registerThreadTabRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     deps.hub.notifyThread(thread.id, ["tabs-changed"]);
-    return context.json(
-      toWireThreadTabsResponse({
-        revision: result.revision,
-        tabs: payload.tabs,
-      }),
-    );
+    return toWireThreadTabsResponse({
+      revision: result.revision,
+      tabs: payload.tabs,
+    });
   });
 }

@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { threadStatusSchema, threadStatusValues } from "@bb/domain";
 import {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
@@ -6,10 +6,11 @@ import {
   ThreadWaitTimeoutError,
   ThreadWaitUnreachableError,
 } from "@bb/sdk";
-import { action, CliExitError } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
+import { CliExitError } from "../../action.js";
+import { arg, flag } from "../../cli-door.js";
+import { clientCommand, mountCommand } from "../../operation-doors.js";
 import { durationHelp } from "../../duration.js";
-import { outputJson, requireThreadId } from "../helpers.js";
+import { requireThreadId } from "../helpers.js";
 import {
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitPollIntervalMs,
@@ -20,82 +21,77 @@ import {
 } from "./helpers.js";
 
 interface ThreadWaitCommandOptions {
-  status?: string;
-  event?: string;
-  timeout?: string;
-  pollInterval?: string;
-  json?: boolean;
+  status: string | undefined;
+  event: string | undefined;
 }
+
+export const threadWaitCommand = clientCommand({
+  path: ["thread", "wait"],
+  summary: "Wait for a thread status or event (defaults to --status idle)",
+  positionals: { id: arg("<id>") },
+  options: {
+    status: flag(
+      "--status <status>",
+      "Wait until the thread reaches this status",
+    ),
+    event: flag(
+      "--event <type>",
+      "Wait until the thread log includes this event type",
+    ),
+    timeout: flag(
+      "--timeout <duration>",
+      `Timeout as ${durationHelp("s")} (default: ${DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS}s)`,
+    ),
+    pollInterval: flag(
+      "--poll-interval <duration>",
+      `Polling interval as ${durationHelp("ms")} (default: ${DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS}ms)`,
+    ),
+  },
+  run: async ({ positionals, options }, client) => {
+    const threadId = requireThreadId(positionals.id);
+    const target = parseThreadWaitTarget(options);
+    const timeoutMs = parseThreadWaitTimeoutMs(options.timeout);
+    const pollIntervalMs = parseThreadWaitPollIntervalMs(options.pollInterval);
+    try {
+      return await client.sdk().threads.wait({
+        threadId,
+        timeoutMs,
+        pollIntervalMs,
+        ...(target.kind === "status"
+          ? { status: target.status }
+          : { event: target.eventType }),
+      });
+    } catch (error) {
+      if (error instanceof ThreadWaitTimeoutError) {
+        throw new CliExitError(error.message, THREAD_WAIT_EXIT_CODE_TIMEOUT);
+      }
+      if (error instanceof ThreadWaitUnreachableError) {
+        throw new CliExitError(
+          error.message,
+          THREAD_WAIT_EXIT_CODE_UNREACHABLE,
+        );
+      }
+      throw error;
+    }
+  },
+  json: (result) => ({
+    threadId: result.threadId,
+    matched: true,
+    target: result.target,
+  }),
+  print: (result) => {
+    if (!("event" in result)) {
+      return `Thread ${result.threadId} reached status ${result.target.status}.`;
+    }
+    return `Thread ${result.threadId} observed event ${result.target.eventType} at seq ${result.event.seq}.`;
+  },
+});
 
 export function registerWaitCommand(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("wait <id>")
-    .description(
-      "Wait for a thread status or event (defaults to --status idle)",
-    )
-    .option("--status <status>", "Wait until the thread reaches this status")
-    .option(
-      "--event <type>",
-      "Wait until the thread log includes this event type",
-    )
-    .option(
-      "--timeout <duration>",
-      `Timeout as ${durationHelp("s")} (default: ${DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS}s)`,
-    )
-    .option(
-      "--poll-interval <duration>",
-      `Polling interval as ${durationHelp("ms")} (default: ${DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS}ms)`,
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string | undefined, opts: ThreadWaitCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const threadId = requireThreadId(id);
-        const target = parseThreadWaitTarget(opts);
-        const timeoutMs = parseThreadWaitTimeoutMs(opts.timeout);
-        const pollIntervalMs = parseThreadWaitPollIntervalMs(opts.pollInterval);
-        const waitArgs = {
-          threadId,
-          timeoutMs,
-          pollIntervalMs,
-          ...(target.kind === "status"
-            ? { status: target.status }
-            : { event: target.eventType }),
-        };
-        let result: Awaited<ReturnType<typeof sdk.threads.wait>>;
-        try {
-          result = await sdk.threads.wait(waitArgs);
-        } catch (error) {
-          if (error instanceof ThreadWaitTimeoutError) {
-            throw new CliExitError(
-              error.message,
-              THREAD_WAIT_EXIT_CODE_TIMEOUT,
-            );
-          }
-          if (error instanceof ThreadWaitUnreachableError) {
-            throw new CliExitError(
-              error.message,
-              THREAD_WAIT_EXIT_CODE_UNREACHABLE,
-            );
-          }
-          throw error;
-        }
-
-        if (outputJson(opts, { threadId, matched: true, target })) return;
-        if (!("event" in result)) {
-          console.log(
-            `Thread ${threadId} reached status ${result.target.status}.`,
-          );
-          return;
-        }
-        console.log(
-          `Thread ${threadId} observed event ${result.target.eventType} at seq ${result.event.seq}.`,
-        );
-      }),
-    );
+  mountCommand(parent, threadWaitCommand, { getUrl });
 }
 
 function parseThreadWaitTarget(

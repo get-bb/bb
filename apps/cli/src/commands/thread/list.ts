@@ -1,131 +1,139 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
-import { action } from "../../action.js";
-import { createCliBbSdk } from "../../client.js";
+import type { PublicOperationInput } from "@bb/server-contract";
+import { flag } from "../../cli-door.js";
+import { clientCommand, mountCommand } from "../../operation-doors.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
 import {
   columnWidths,
   printBorderlessTable,
   truncateCell,
 } from "../../table.js";
-import { collectOption, outputJson } from "../helpers.js";
 import {
   resolveMachineHostId,
   resolveMachineTargetOption,
 } from "../machine.js";
+import { JSON_FLAG } from "./operation-doors.js";
 
-interface ThreadListCommandOptions {
-  environment?: string;
-  machine?: string;
-  host?: string;
-  project?: string;
-  parentThread?: string;
-  thread: string[];
-  archived?: boolean;
-  includeArchived?: boolean;
-  section?: string;
-  unsectioned?: boolean;
-  json?: boolean;
-  includeHidden?: boolean;
+interface ThreadListOutput {
+  threads: Thread[];
+  projectNames: ReadonlyMap<string, string>;
 }
+
+export const threadListCommand = clientCommand({
+  path: ["thread", "list"],
+  summary: "List threads",
+  options: {
+    project: flag(
+      "--project <id>",
+      "Filter by project ID (defaults to all projects)",
+    ),
+    environment: flag("--environment <id>", "Filter by environment ID"),
+    machine: flag(
+      "--machine <id-or-name>",
+      "Filter by machine ID or active machine name",
+    ),
+    host: flag("--host <id-or-name>", "Alias for --machine"),
+    parentThread: flag("--parent-thread <id>", "Filter by parent thread ID"),
+    thread: flag(
+      "--thread <id>",
+      "Show only this thread ID, leaving out unknown or deleted IDs (repeatable, up to 200)",
+      { type: "strings", default: [] },
+    ),
+    section: flag("--section <id>", "Filter by thread section ID"),
+    unsectioned: flag("--unsectioned", "Show only threads outside sections"),
+    archived: flag("--archived", "Show only archived threads"),
+    includeArchived: flag("--include-archived", "Include archived threads"),
+    includeHidden: flag("--include-hidden", "Include hidden threads"),
+    json: JSON_FLAG,
+  },
+  run: async ({ options }, client): Promise<ThreadListOutput> => {
+    const projectId = resolveExplicitIdFlag({
+      flagName: "--project flag",
+      value: options.project,
+    });
+    const parentThreadId = resolveExplicitIdFlag({
+      flagName: "--parent-thread",
+      value: options.parentThread,
+    });
+    const threadIds = options.thread.flatMap(
+      (value) => resolveExplicitIdFlag({ flagName: "--thread", value }) ?? [],
+    );
+    const environmentId = resolveExplicitIdFlag({
+      flagName: "--environment",
+      value: options.environment,
+    });
+    const machineTarget = resolveMachineTargetOption({
+      machine: options.machine,
+      host: options.host,
+    });
+    const hostId =
+      machineTarget === undefined
+        ? undefined
+        : machineTarget.trim().startsWith("host_")
+          ? resolveExplicitIdFlag({
+              flagName: "--machine",
+              value: machineTarget,
+            })
+          : await resolveMachineHostId({
+              serverUrl: client.url,
+              target: machineTarget,
+            });
+    if (options.archived && options.includeArchived) {
+      throw new Error("Cannot combine --archived with --include-archived.");
+    }
+    if (options.section && options.unsectioned) {
+      throw new Error("Cannot combine --section with --unsectioned.");
+    }
+    const sectionId = resolveExplicitIdFlag({
+      flagName: "--section",
+      value: options.section,
+    });
+    const archived = options.archived
+      ? true
+      : options.includeArchived || threadIds.length > 0
+        ? undefined
+        : false;
+    const query: PublicOperationInput<"threads.list"> = {
+      ...(projectId ? { projectId } : {}),
+      ...(environmentId ? { environmentId } : {}),
+      ...(hostId ? { hostId } : {}),
+      ...(parentThreadId ? { parentThreadId } : {}),
+      ...(threadIds.length > 0 ? { threadIds: threadIds.join(",") } : {}),
+      ...(archived === undefined
+        ? {}
+        : { archived: archived ? "true" : "false" }),
+      ...(sectionId ? { sectionId } : {}),
+      ...(options.unsectioned ? { unsectioned: "true" } : {}),
+      ...(options.includeHidden ? { includeHidden: "true" } : {}),
+    };
+    const threads = await client.call("threads.list", query);
+    if (options.json || threads.length === 0) {
+      return { threads, projectNames: new Map() };
+    }
+    const projects = await client.call("projects.list", {
+      includePersonal: "false",
+    });
+    return {
+      threads,
+      projectNames: new Map(
+        projects.map((project) => [project.id, project.name]),
+      ),
+    };
+  },
+  json: ({ threads }) => threads,
+  print: ({ threads, projectNames }) => {
+    if (threads.length === 0) return "No threads found";
+    printThreadTable(threads, projectNames);
+    return null;
+  },
+});
 
 export function registerListCommand(
   parent: Command,
   getUrl: () => string,
 ): void {
-  parent
-    .command("list")
-    .description("List threads")
-    .option("--project <id>", "Filter by project ID (defaults to all projects)")
-    .option("--environment <id>", "Filter by environment ID")
-    .option(
-      "--machine <id-or-name>",
-      "Filter by machine ID or active machine name",
-    )
-    .option("--host <id-or-name>", "Alias for --machine")
-    .option("--parent-thread <id>", "Filter by parent thread ID")
-    .option(
-      "--thread <id>",
-      "Show only this thread ID, leaving out unknown or deleted IDs (repeatable, up to 200)",
-      collectOption,
-      [],
-    )
-    .option("--section <id>", "Filter by thread section ID")
-    .option("--unsectioned", "Show only threads outside sections")
-    .option("--archived", "Show only archived threads")
-    .option("--include-archived", "Include archived threads")
-    .option("--include-hidden", "Include hidden threads")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: ThreadListCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const projectId = resolveExplicitIdFlag({
-          flagName: "--project flag",
-          value: opts.project,
-        });
-        const parentThreadId = resolveExplicitIdFlag({
-          flagName: "--parent-thread",
-          value: opts.parentThread,
-        });
-        const threadIds = opts.thread.flatMap(
-          (value) =>
-            resolveExplicitIdFlag({ flagName: "--thread", value }) ?? [],
-        );
-        const environmentId = resolveExplicitIdFlag({
-          flagName: "--environment",
-          value: opts.environment,
-        });
-        const machineTarget = resolveMachineTargetOption(opts);
-        const hostId =
-          machineTarget === undefined
-            ? undefined
-            : machineTarget.trim().startsWith("host_")
-              ? resolveExplicitIdFlag({
-                  flagName: "--machine",
-                  value: machineTarget,
-                })
-              : await resolveMachineHostId({
-                  serverUrl: getUrl(),
-                  target: machineTarget,
-                });
-        if (opts.archived && opts.includeArchived) {
-          throw new Error("Cannot combine --archived with --include-archived.");
-        }
-        if (opts.section && opts.unsectioned) {
-          throw new Error("Cannot combine --section with --unsectioned.");
-        }
-        const sectionId = resolveExplicitIdFlag({
-          flagName: "--section",
-          value: opts.section,
-        });
-        const archived = opts.archived
-          ? true
-          : opts.includeArchived || threadIds.length > 0
-            ? undefined
-            : false;
-        const threads = await sdk.threads.list({
-          ...(projectId ? { projectId } : {}),
-          ...(environmentId ? { environmentId } : {}),
-          ...(hostId ? { hostId } : {}),
-          ...(parentThreadId ? { parentThreadId } : {}),
-          ...(threadIds.length > 0 ? { threadIds } : {}),
-          ...(archived === undefined ? {} : { archived }),
-          ...(sectionId ? { sectionId } : {}),
-          ...(opts.unsectioned ? { unsectioned: true } : {}),
-          ...(opts.includeHidden ? { includeHidden: true } : {}),
-        });
-        if (outputJson(opts, threads)) return;
-        if (threads.length === 0) {
-          console.log("No threads found");
-          return;
-        }
-        const projects = await sdk.projects.list({ includePersonal: false });
-        const projectNames = new Map(
-          projects.map((project) => [project.id, project.name]),
-        );
-        printThreadTable(threads, projectNames);
-      }),
-    );
+  mountCommand(parent, threadListCommand, { getUrl });
 }
 
 const MAX_TITLE_WIDTH = 60;

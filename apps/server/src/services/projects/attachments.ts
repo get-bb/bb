@@ -1,6 +1,7 @@
 // oxlint-disable-next-line no-restricted-imports
 import { renameSync } from "node:fs";
-import { createFileStreamResponse } from "../files/file-stream-response.js";
+import type { OperationBody } from "@bb/operations";
+import { createFileStreamBody } from "../files/file-stream-body.js";
 import { createLocalFileSource } from "../files/local-file-source.js";
 import { and, eq, isNull } from "drizzle-orm";
 import {
@@ -358,7 +359,7 @@ export async function readAttachment(
   };
 }
 
-export async function createAttachmentContentResponse({
+export async function createAttachmentContentBody({
   dataDir,
   projectId,
   path,
@@ -368,9 +369,9 @@ export async function createAttachmentContentResponse({
   projectId: string;
   path: string;
   request: Request;
-}): Promise<Response> {
+}): Promise<OperationBody> {
   const attachment = await statAttachment(dataDir, projectId, path);
-  return createFileStreamResponse({
+  return createFileStreamBody({
     source: attachment.source,
     request,
     headers: new Headers({

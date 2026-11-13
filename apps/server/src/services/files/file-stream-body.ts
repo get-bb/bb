@@ -1,3 +1,8 @@
+import {
+  emptyBody,
+  streamBody,
+  type OperationBody,
+} from "@bb/operations";
 import { ApiError } from "../../errors.js";
 import { requestMatchesEntityTag } from "./entity-tag.js";
 import { parseSingleByteRange } from "./file-byte-range.js";
@@ -13,7 +18,7 @@ export interface FileResponseSource {
   }>;
 }
 
-export async function createFileStreamResponse({
+export async function createFileStreamBody({
   source,
   request,
   headers,
@@ -21,7 +26,7 @@ export async function createFileStreamResponse({
   source: FileResponseSource;
   request: Request;
   headers: Headers;
-}): Promise<Response> {
+}): Promise<OperationBody> {
   headers.set("accept-ranges", "bytes");
   headers.set("etag", source.entityTag);
   headers.set("last-modified", source.lastModified);
@@ -32,7 +37,7 @@ export async function createFileStreamResponse({
       source.entityTag,
     )
   ) {
-    return new Response(null, { status: 304, headers });
+    return emptyBody(304, { headers });
   }
   const ifRange = request.headers.get("if-range")?.trim();
   const rangeAllowed =
@@ -49,7 +54,7 @@ export async function createFileStreamResponse({
   if (range === "unsatisfiable") {
     headers.set("content-range", `bytes */${source.sizeBytes}`);
     headers.set("content-length", "0");
-    return new Response(null, { status: 416, headers });
+    return emptyBody(416, { headers });
   }
   const start = range?.start ?? 0;
   const end = range?.end ?? source.sizeBytes - 1;
@@ -58,7 +63,7 @@ export async function createFileStreamResponse({
   if (range)
     headers.set("content-range", `bytes ${start}-${end}/${source.sizeBytes}`);
   if (request.method === "HEAD" || source.sizeBytes === 0) {
-    return new Response(null, { status, headers });
+    return emptyBody(status, { headers });
   }
   const cancellation = new AbortController();
   const signal = AbortSignal.any([request.signal, cancellation.signal]);
@@ -133,5 +138,5 @@ export async function createFileStreamResponse({
     },
     { highWaterMark: 0 },
   );
-  return new Response(body, { status, headers });
+  return streamBody(body, { status, headers });
 }

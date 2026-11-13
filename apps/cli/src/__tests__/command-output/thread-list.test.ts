@@ -101,7 +101,9 @@ describe("bb thread list command output", () => {
 
       await runCommand(["thread", "list", ...args, "--json"], register);
 
-      expect(list).toHaveBeenCalledWith({ query });
+      expect(list).toHaveBeenCalledWith(
+        Object.keys(query).length === 0 ? {} : { query },
+      );
     },
   );
 

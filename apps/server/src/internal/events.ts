@@ -18,12 +18,10 @@ import type {
   AppendDaemonEventsResult,
 } from "@bb/db";
 import {
-  hostDaemonEventBatchRequestSchema,
   ungroupHostDaemonEvents,
-  typedRoutes,
   type HostDaemonEventBatchResponse,
   type HostDaemonEventEnvelope,
-  type HostDaemonInternalSchema,
+  hostDaemonInternalRoutes,
   type HostDaemonRejectedEvent,
 } from "@bb/host-daemon-contract";
 import {
@@ -84,6 +82,7 @@ import {
   observeStreamTraceEventBatch,
   observeTurnTraceEventBatch,
 } from "../services/system/turn-trace.js";
+import { mountInternalRoute } from "../kernel/http-door.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -1156,13 +1155,9 @@ function dropInteractionLifecycleEvents(entries: PostableEventBatchEntry[]): {
 }
 
 export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
-  const { post } = typedRoutes<HostDaemonInternalSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
-
-  post(
-    "/session/events",
-    hostDaemonEventBatchRequestSchema,
+  mountInternalRoute(
+    app,
+    hostDaemonInternalRoutes.events,
     async (context, payload) => {
       const receivedAt = performance.now();
       let session: ReturnType<typeof requireAuthenticatedDaemonSession>;

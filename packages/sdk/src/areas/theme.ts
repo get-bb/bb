@@ -1,6 +1,6 @@
 import type { AppTheme, AppThemeSelection } from "@bb/domain";
 import type { ThemeCatalogResponse } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export type ThemeGetResult = AppTheme;
 export type ThemeCatalogResult = ThemeCatalogResponse;
@@ -30,50 +30,25 @@ export interface ThemeArea {
 }
 
 export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
-  const { transport } = args;
+  const { call } = args.operations;
   return {
     async get(input = {}) {
-      const config = await transport.readJson(
-        transport.api.v1.system.config.$get(
-          {},
-          ...signalRequestArgs(input.signal),
-        ),
-      );
+      const config = await call("system.config", {}, { signal: input.signal });
       return config.appearance;
     },
-    async catalog(input = {}) {
-      return transport.readJson(
-        transport.api.v1.settings.themes.$get(
-          {},
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async resolve(input) {
-      return transport.readJson(
-        transport.api.v1.settings.themes[":id"].$get(
-          { param: { id: input.themeId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    catalog: (input = {}) =>
+      call("system.themes", {}, { signal: input.signal }),
+    resolve: ({ themeId, signal }) =>
+      call("system.resolveTheme", { id: themeId }, { signal }),
     async set(input) {
       if (typeof input === "string") {
-        const appearance = (
-          await transport.readJson(transport.api.v1.system.config.$get())
-        ).appearance;
-        return transport.readJson(
-          transport.api.v1.settings.appearance.$put({
-            json: {
-              themeId: input,
-              faviconColor: appearance.faviconColor,
-            },
-          }),
-        );
+        const { appearance } = await call("system.config", {});
+        return call("system.appearance", {
+          themeId: input,
+          faviconColor: appearance.faviconColor,
+        });
       }
-      return transport.readJson(
-        transport.api.v1.settings.appearance.$put({ json: input }),
-      );
+      return call("system.appearance", input);
     },
   };
 }

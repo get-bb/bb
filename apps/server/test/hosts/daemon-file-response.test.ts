@@ -1,10 +1,17 @@
 import { requestMatchesEntityTag } from "../../src/services/files/entity-tag.js";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
+import { operationBodyResponse } from "@bb/operations";
 import {
-  createDaemonFileContentResponse,
+  createDaemonFileContentBody,
   type DaemonFileReadResult,
 } from "../../src/services/hosts/daemon-file-response.js";
+
+function createDaemonFileContentResponse(
+  ...args: Parameters<typeof createDaemonFileContentBody>
+): Response {
+  return operationBodyResponse(createDaemonFileContentBody(...args));
+}
 
 const IMAGE_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
 const IMAGE_RESULT: DaemonFileReadResult = {
@@ -17,7 +24,7 @@ const IMAGE_RESULT: DaemonFileReadResult = {
   sha256: "abc123",
 };
 
-describe("createDaemonFileContentResponse", () => {
+describe("createDaemonFileContentBody", () => {
   it("adds validators and a revalidate-only cache policy to host file bytes", async () => {
     const response = createDaemonFileContentResponse(IMAGE_RESULT);
     expect(response.status).toBe(200);

@@ -10,7 +10,6 @@ import {
 import { BbHttpError } from "../response.js";
 import type { PluginsArea } from "./plugins.js";
 
-
 type DiffTargetArgs =
   | { target: "uncommitted" }
   | { target: "branch_committed" | "all"; mergeBaseBranch: string }
@@ -18,7 +17,10 @@ type DiffTargetArgs =
 
 type EnvironmentReadArgs = { environmentId: string; signal?: AbortSignal };
 
-type RetiredDiffFileArgs = EnvironmentReadArgs & { path: string; side: "old" | "new" } & (
+type RetiredDiffFileArgs = EnvironmentReadArgs & {
+  path: string;
+  side: "old" | "new";
+} & (
     | { target: "uncommitted" }
     | { target: "branch_committed" | "all"; mergeBaseRef: string }
     | { target: "commit"; sha: string }
@@ -120,12 +122,16 @@ function patchKey(
   ignoreWhitespace: boolean,
   path: string,
 ): string {
-  return JSON.stringify([environmentId, target, ignoreWhitespace, path, "current"]);
+  return JSON.stringify([
+    environmentId,
+    target,
+    ignoreWhitespace,
+    path,
+    "current",
+  ]);
 }
 
-export function createRetiredEnvironmentReads(
-  callRpc: PluginsArea["callRpc"],
-) {
+export function createRetiredEnvironmentReads(callRpc: PluginsArea["callRpc"]) {
   function callGit(
     method: string,
     input: JsonValue,
@@ -156,12 +162,16 @@ export function createRetiredEnvironmentReads(
     diff(args: EnvironmentReadArgs & DiffTargetArgs) {
       return callGit(
         "diff",
-        { environmentId: args.environmentId, target: toWorkspaceDiffTarget(args) },
+        {
+          environmentId: args.environmentId,
+          target: toWorkspaceDiffTarget(args),
+        },
         args.signal,
       );
     },
     diffFiles(
-      args: EnvironmentReadArgs & DiffTargetArgs & { ignoreWhitespace?: boolean },
+      args: EnvironmentReadArgs &
+        DiffTargetArgs & { ignoreWhitespace?: boolean },
     ) {
       return callGit(
         "files",
