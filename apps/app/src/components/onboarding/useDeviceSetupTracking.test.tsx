@@ -63,7 +63,7 @@ describe("useDeviceSetupTracking", () => {
   it("records the failed remote access stage and counts a retry as a new start", () => {
     const hook = render();
     act(() => hook.result.current.startRemoteAccessSetup());
-    act(() => hook.result.current.failRemoteAccessSetup("sign_in"));
+    act(() => hook.result.current.failRemoteAccessSetup("sign_in", "expired"));
     act(() => hook.result.current.startRemoteAccessSetup());
     act(() => hook.result.current.failRemoteAccessSetup("turn_on"));
 
@@ -76,6 +76,7 @@ describe("useDeviceSetupTracking", () => {
         operation: "remote_access",
         outcome: "failed",
         failure_stage: "sign_in",
+        failure_detail: "expired",
       },
       { ...devices, operation: "remote_access", outcome: "started" },
       {

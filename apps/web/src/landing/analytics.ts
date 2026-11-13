@@ -8,6 +8,7 @@ import {
   type ExperimentKey,
 } from "../experiments/flags";
 import type { ArrivalSource } from "./arrival-source";
+import { POSTHOG_PROXY_PATH, POSTHOG_UI_HOST } from "./posthog-proxy";
 import type { CtaPlacement } from "./site";
 import type { TestimonialSource } from "./testimonials";
 
@@ -97,7 +98,8 @@ export function initAnalytics(experiments?: ExperimentBootstrap): void {
     new URLSearchParams(window.location.search).get("bb_internal") === "1";
   void import("posthog-js").then(({ default: posthog }) => {
     posthog.init(key, {
-      api_host: import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      api_host: POSTHOG_PROXY_PATH,
+      ui_host: POSTHOG_UI_HOST,
       autocapture: false,
       capture_pageview: true,
       capture_pageleave: true,

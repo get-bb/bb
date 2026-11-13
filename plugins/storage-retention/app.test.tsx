@@ -83,7 +83,14 @@ function fixture(subPath = "host_test") {
       },
     },
   ];
-  const reports = vi.fn(async () => ({ hosts }));
+  const entryCleanups = new Map<
+    string,
+    import("./src/storage-types.js").EntryCleanup
+  >();
+  const reports = vi.fn(async () => ({
+    hosts,
+    entryCleanups: [...entryCleanups.values()],
+  }));
   const configure = vi.fn(async (policy: State["policy"]) => {
     state = { ...state, policy };
     return state;
@@ -97,14 +104,20 @@ function fixture(subPath = "host_test") {
       stoppedProcessCount: 1,
     }),
   );
-  const entryJobs = new Map<
-    string,
-    import("./src/storage-types.js").EntryCleanupStatus
-  >();
+  const network = { droppedNotices: 0 };
+  const settle = (
+    id: string,
+    target: import("./src/storage-types.js").EntryCleanupInput,
+    status: import("./src/storage-types.js").EntryCleanupStatus,
+  ) => {
+    entryCleanups.set(id, { id, target, status });
+    if (network.droppedNotices > 0) network.droppedNotices--;
+    else setTimeout(() => void slot.emitRealtime("changed", null), 0);
+  };
   const start = vi.fn(async () => null);
   const removeWorktree = vi.fn(async () => ({ state: "started" as const }));
   const Component = app.navPanels[0]!.component;
-  const slot = renderSlot<{ subPath: string }>(
+  const slot: ReturnType<typeof renderSlot> = renderSlot<{ subPath: string }>(
     {
       component: (props) => (
         <>
@@ -124,24 +137,26 @@ function fixture(subPath = "host_test") {
           const id = JSON.stringify(input);
           if (input.kind !== "development")
             throw new Error("Unexpected cleanup");
-          entryJobs.set(id, { state: "running" });
+          entryCleanups.set(id, {
+            id,
+            target: input,
+            status: { state: "running" },
+          });
           void remove({
             hostId: input.hostId,
             names: input.names,
             stopRunning: input.stopRunning,
           }).then(
             (result) =>
-              entryJobs.set(id, {
+              settle(id, input, {
                 state: "completed",
                 result: { kind: "development", ...result },
               }),
             (error: Error) =>
-              entryJobs.set(id, { state: "failed", message: error.message }),
+              settle(id, input, { state: "failed", message: error.message }),
           );
           return { id };
         },
-        entryCleanup: (raw) =>
-          entryJobs.get(storageRpc.entryCleanup.input.parse(raw).id),
         scanHost: start,
         startClearArchivedFiles: start,
         startClearLargeFiles: start,
@@ -149,7 +164,6 @@ function fixture(subPath = "host_test") {
         startRemoveExternalWorktree: removeWorktree,
       },
       sdk: {
-        subscribe: () => () => {},
         hosts: {
           list: async () => [
             makeHostResponse({
@@ -165,7 +179,17 @@ function fixture(subPath = "host_test") {
       },
     },
   );
-  return { slot, configure, remove, start, removeWorktree, hosts, reports };
+  return {
+    slot,
+    configure,
+    remove,
+    start,
+    removeWorktree,
+    hosts,
+    reports,
+    network,
+    entryCleanups,
+  };
 }
 
 it("stops a running development instance only after the user confirms stop and remove", async () => {
@@ -357,7 +381,7 @@ it("does not keep cleanup controls locked while the follow-up report is slow", a
   reports.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
-        finish = () => resolve({ hosts });
+        finish = () => resolve({ hosts, entryCleanups: [] });
       }),
   );
   try {
@@ -416,6 +440,7 @@ it("starts orphan cleanup in the background without locking the page and toasts 
       state: "completed",
       kind: "orphans",
       message: "Removed 1 orphaned storage folder",
+      freedBytes: 10,
     },
   ];
   await act(async () => {
@@ -483,7 +508,7 @@ it("spins the development trash button immediately and only toasts completion", 
 it.each([
   ["orphans", "Orphaned files deleted"],
   ["development", "Development data deleted"],
-  ["worktrees", "Checkout cleanup retried"],
+  ["worktrees", "Leftover worktree cleanup finished"],
 ] as const)(
   "keeps the %s completion title specific when the running update is missed",
   async (kind, title) => {
@@ -496,6 +521,7 @@ it.each([
         state: "completed",
         kind,
         message: "Test machine",
+        freedBytes: null,
       },
     ];
     await act(async () => {
@@ -524,6 +550,8 @@ it("keeps worktree removal spinning through queued and running states, then toas
       lastActivityAt: null,
       sizeBytes: 4096,
       threads: [],
+      lastUsedAt: null,
+      origin: "outsideBb",
     },
   ];
   const page = within(slot.container);
@@ -710,4 +738,244 @@ it("aggregates background completions across cleanup types while keeping failure
     document.querySelector('[data-sonner-toast][data-type="success"]')
       ?.textContent,
   ).toContain("3 storage actions completed");
+});
+
+it("finishes a row cleanup whose completion notice was lost while the connection was down", async () => {
+  const { slot, remove, reports, network } = fixture();
+  let finish = () => {};
+  remove.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = () =>
+          resolve({
+            running: [],
+            removedCount: 1,
+            removedBytes: 20,
+            skippedCount: 0,
+            stoppedProcessCount: 0,
+          });
+      }),
+  );
+  network.droppedNotices = 1;
+  const page = within(slot.container);
+  await page.findByRole("button", { name: "Remove instance: after" });
+  const loads = reports.mock.calls.length;
+  fireEvent.click(page.getByRole("button", { name: "Remove instance: after" }));
+  await waitFor(() => expect(reports.mock.calls.length).toBe(loads + 1));
+  await act(async () => finish());
+  await waitFor(() => expect(network.droppedNotices).toBe(0));
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="success"]'),
+  ).toBeNull();
+  await slot.setRealtimeConnectionState("reconnecting");
+  await slot.setRealtimeConnectionState("connected");
+  await waitFor(
+    () =>
+      expect(
+        document.querySelector('[data-sonner-toast][data-type="success"]')
+          ?.textContent,
+      ).toContain("Development data deleted"),
+    { timeout: 3000 },
+  );
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="error"]'),
+  ).toBeNull();
+});
+
+it("shows a row cleanup started before the page loaded as busy", async () => {
+  const { slot, entryCleanups } = fixture();
+  entryCleanups.set("cleanup_1", {
+    id: "cleanup_1",
+    target: {
+      kind: "development",
+      hostId: "host_test",
+      names: ["after"],
+      stopRunning: false,
+    },
+    status: { state: "running" },
+  });
+  await slot.emitRealtime("changed", null);
+  await waitFor(() =>
+    expect(
+      within(slot.container)
+        .getByRole("button", { name: "Remove instance: after" })
+        .getAttribute("aria-busy"),
+    ).toBe("true"),
+  );
+});
+
+it("does not toast scans that BB ran in the background", async () => {
+  const { slot, hosts, reports } = fixture();
+  const page = within(slot.container);
+  await page.findByRole("button", { name: "Rescan machine" });
+  hosts[0]!.scan = { state: "scanning", startedAt: Date.now() };
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await page.findByRole("button", { name: "Scanning…" });
+  const calls = reports.mock.calls.length;
+  hosts[0]!.scan = { state: "idle" };
+  hosts[0]!.report!.scannedAt += 1000;
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await page.findByRole("button", { name: "Rescan machine" });
+  expect(reports.mock.calls.length).toBeGreaterThan(calls);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+});
+
+it("omits freed space from a combined toast when one completion has no size", async () => {
+  const { slot, hosts } = fixture();
+  await within(slot.container).findByRole("button", { name: "Rescan machine" });
+  hosts[0]!.maintenanceJobs = [
+    {
+      kind: "externalWorktrees",
+      state: "completed",
+      message: "Removed 4 worktrees created outside BB; 2 kept",
+      freedBytes: null,
+    },
+  ];
+  hosts[0]!.externalWorktreeRemovals = [
+    { path: "/fixture/worktree", state: "completed", removedBytes: 0 },
+  ];
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-sonner-toast][data-type="success"]')
+        ?.textContent,
+    ).toContain("2 storage actions completed"),
+  );
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="success"]')
+      ?.textContent,
+  ).not.toContain("freed");
+});
+
+it("disables single worktree removal while a bulk worktree removal runs", async () => {
+  const { slot, hosts } = fixture();
+  hosts[0]!.report!.externalWorktrees = [
+    {
+      projectId: "proj_test",
+      repositoryPath: "/fixture/repo",
+      path: "/fixture/worktrees/heavy",
+      branch: "heavy",
+      locked: false,
+      changedFileCount: 0,
+      unsavedCommitCount: 0,
+      lastActivityAt: null,
+      sizeBytes: 4096,
+      threads: [],
+      lastUsedAt: null,
+      origin: "outsideBb",
+    },
+  ];
+  hosts[0]!.maintenanceJobs = [{ kind: "externalWorktrees", state: "running" }];
+  const button = await within(slot.container).findByRole("button", {
+    name: "Remove worktree: heavy",
+  });
+  expect(button.hasAttribute("disabled")).toBe(true);
+});
+
+it("bulk-removes worktrees unused for the chosen period in one confirmation, optionally keeping ones with changes", async () => {
+  const { slot, hosts, start } = fixture();
+  const day = 86_400_000;
+  const worktree = (name: string, ageDays: number, changed: number) => ({
+    projectId: "proj_test",
+    repositoryPath: "/fixture/repo",
+    path: `/fixture/worktrees/${name}`,
+    branch: name,
+    locked: false,
+    changedFileCount: changed,
+    unsavedCommitCount: 0,
+    lastActivityAt: null,
+    sizeBytes: 1024,
+    threads: [],
+    lastUsedAt: Date.now() - ageDays * day,
+    origin: "outsideBb" as const,
+  });
+  hosts[0]!.report!.externalWorktrees = [
+    worktree("stale-clean", 40, 0),
+    worktree("stale-dirty", 20, 3),
+    worktree("fresh", 1, 0),
+  ];
+  const page = within(slot.container);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Remove worktrees" }),
+  );
+  let confirmation = await page.findByRole("region", {
+    name: "Confirm cleanup",
+  });
+  expect(confirmation.textContent).toContain(
+    "Remove 2 worktrees not used in 1 week",
+  );
+  fireEvent.click(
+    within(confirmation).getByRole("button", {
+      name: "Keep the 1 with changes",
+    }),
+  );
+  await waitFor(() =>
+    expect(start).toHaveBeenLastCalledWith({
+      hostId: "host_test",
+      kind: "externalWorktrees",
+      paths: ["/fixture/worktrees/stale-clean"],
+      force: false,
+    }),
+  );
+  fireEvent.click(page.getByRole("button", { name: "Remove worktrees" }));
+  confirmation = await page.findByRole("region", { name: "Confirm cleanup" });
+  fireEvent.click(
+    within(confirmation).getByRole("button", { name: "Remove all 2" }),
+  );
+  await waitFor(() =>
+    expect(start).toHaveBeenLastCalledWith({
+      hostId: "host_test",
+      kind: "externalWorktrees",
+      paths: [
+        "/fixture/worktrees/stale-clean",
+        "/fixture/worktrees/stale-dirty",
+      ],
+      force: true,
+    }),
+  );
+});
+
+it("removes a whole development group from one confirmation", async () => {
+  const { slot, hosts, remove } = fixture();
+  const storage = hosts[0]!.report!.developerStorage!;
+  const template = storage.entries[0]!;
+  storage.entries = ["one", "two"].map((name) => ({
+    ...template,
+    name,
+    running: false,
+    threads: [{ threadId: `thr_${name}`, title: name, archived: true }],
+  }));
+  remove.mockResolvedValue({
+    running: [],
+    removedCount: 2,
+    removedBytes: 40,
+    skippedCount: 0,
+    stoppedProcessCount: 0,
+  });
+  const page = within(slot.container);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Remove all archived threads" }),
+  );
+  const confirmation = await page.findByRole("region", {
+    name: "Confirm cleanup",
+  });
+  fireEvent.click(
+    within(confirmation).getByRole("button", { name: "Remove instances" }),
+  );
+  await waitFor(() =>
+    expect(remove).toHaveBeenCalledWith({
+      hostId: "host_test",
+      names: ["one", "two"],
+      stopRunning: true,
+    }),
+  );
 });

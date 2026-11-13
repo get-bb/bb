@@ -518,6 +518,89 @@ describe("plugin update service and routes", () => {
     await service.install(`git:${repo}@main`, { kind: "root" });
   }
 
+  async function installSubdirectoryUpdater(): Promise<string> {
+    const pluginDir = join(repo, "plugins", "updater");
+    await mkdir(pluginDir, { recursive: true });
+    await rename(join(repo, "package.json"), join(pluginDir, "package.json"));
+    await rename(join(repo, "server.ts"), join(pluginDir, "server.ts"));
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-qm", "Move fixture into collection"]);
+    const installedCommit = await git(repo, ["rev-parse", "HEAD"]);
+    await service.install(`git:${repo}@main`, {
+      kind: "subdirectory",
+      path: "plugins/updater",
+    });
+    return installedCommit;
+  }
+
+  it("ignores unrelated commits for a branch-tracking subdirectory plugin", async () => {
+    const installedCommit = await installSubdirectoryUpdater();
+    const installedMaterializations = materializationCount;
+    const installedArtifacts = listPluginArtifacts(db, "updater").length;
+
+    await mkdir(join(repo, "plugins", "sibling"));
+    await writeFile(join(repo, "plugins", "sibling", "notes.txt"), "changed");
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-qm", "Change sibling fixture"]);
+
+    expect.soft(await service.checkForUpdates("updater")).toMatchObject([
+      {
+        id: "updater",
+        outcome: "current",
+        installed: { version: installedCommit },
+      },
+    ]);
+    expect.soft(materializationCount).toBe(installedMaterializations);
+    expect(listPluginArtifacts(db, "updater")).toHaveLength(installedArtifacts);
+    expect(getInstalledPlugin(db, "updater")).toMatchObject({
+      gitResolvedCommit: installedCommit,
+      availableCompatibleVersion: null,
+    });
+
+    await writeFile(
+      join(repo, "plugins", "updater", "server.ts"),
+      'export default function plugin() { return "changed"; }',
+    );
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-qm", "Change plugin fixture"]);
+    const nextCommit = await git(repo, ["rev-parse", "HEAD"]);
+    expect(await service.checkForUpdates("updater")).toMatchObject([
+      {
+        id: "updater",
+        outcome: "update-available",
+        candidate: { version: nextCommit },
+      },
+    ]);
+    expect(materializationCount).toBeGreaterThan(installedMaterializations);
+  });
+
+  it("checks a subdirectory update when its installed commit is missing remotely", async () => {
+    const installedCommit = await installSubdirectoryUpdater();
+    await git(repo, ["checkout", "--orphan", "replacement"]);
+    await writeFile(
+      join(repo, "plugins", "updater", "server.ts"),
+      "export default function plugin() {}",
+    );
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-qm", "Replace fixture history"]);
+    await git(repo, ["branch", "-M", "main"]);
+    await git(repo, ["reflog", "expire", "--expire=now", "--all"]);
+    await git(repo, ["prune", "--expire=now"]);
+    await expect(
+      git(repo, ["cat-file", "-e", installedCommit]),
+    ).rejects.toThrow();
+    const candidateCommit = await git(repo, ["rev-parse", "HEAD"]);
+
+    expect(await service.checkForUpdates("updater")).toMatchObject([
+      {
+        id: "updater",
+        outcome: "update-available",
+        candidate: { version: candidateCommit },
+      },
+    ]);
+    expect(materializationCount).toBe(2);
+  });
+
   it.each(["main", "semver:^1.0.0"])(
     "keeps healthy plugin results when the git remote for %s is unavailable",
     async (selector) => {
@@ -1389,6 +1472,43 @@ describe.concurrent("independent plugin update contracts", () => {
       ).toMatchObject({
         availableLabel: "1.1.0",
         lastFailure: { version: brokenCommit, label: "1.1.0" },
+      });
+    },
+  );
+
+  fixtureTest(
+    "keeps a rolled-back range release's tag version after newer releases appear",
+    async ({ fixture }) => {
+      const { service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      await writeFile(
+        join(tagged, "server.ts"),
+        'export default function plugin() { throw new Error("major activation failed"); }',
+      );
+      const brokenCommit = await releaseTag(tagged, "v2.0.0");
+      await expect(
+        service.applyUpdate("tagged", {
+          range: "^2.0.0",
+          expectedVersion: brokenCommit,
+        }),
+      ).resolves.toMatchObject({
+        ok: true,
+        result: { applied: false, outcome: "rolled-back" },
+      });
+      await writeFile(
+        join(tagged, "server.ts"),
+        'export default function plugin(bb: any) { bb.log.info("fixed"); }',
+      );
+      const fixedCommit = await releaseTag(tagged, "v2.1.0");
+
+      await service.checkForUpdates("tagged");
+
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState,
+      ).toMatchObject({
+        rangeUpgrade: { candidate: { version: fixedCommit, label: "2.1.0" } },
+        lastFailure: { version: brokenCommit, label: "2.0.0" },
       });
     },
   );

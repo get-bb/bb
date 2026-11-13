@@ -179,6 +179,16 @@ describe("client telemetry events", () => {
             entry: "first_run",
             step: "agent",
             operation: "load",
+            outcome: "succeeded",
+            duration_ms: 4200,
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "load",
             outcome: "failed",
             failure_reason: "timed_out",
           },
@@ -224,6 +234,41 @@ describe("client telemetry events", () => {
             operation: "remote_access",
             outcome: "failed",
             failure_stage: "pairing",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "devices",
+            operation: "remote_access",
+            outcome: "failed",
+            failure_stage: "sign_in",
+            failure_detail: "expired",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "install",
+            outcome: "failed",
+            resource_id: "codex",
+            failure_reason: "command_failed",
+            failure_detail: "permission",
+            exit_code: 243,
+          },
+        },
+        {
+          name: "onboarding_sign_in",
+          properties: {
+            entry: "first_run",
+            outcome: "failed",
+            resource_id: "codex",
+            failure_reason: "command_failed",
+            failure_detail: "exit_nonzero",
+            exit_code: 1,
           },
         },
         {
@@ -441,6 +486,16 @@ describe("client telemetry events", () => {
           },
         },
         {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "load",
+            outcome: "succeeded",
+            duration_ms: -1,
+          },
+        },
+        {
           name: "onboarding_agent_state",
           properties: {
             entry: "first_run",
@@ -473,6 +528,27 @@ describe("client telemetry events", () => {
             operation: "remote_access",
             outcome: "failed",
             failure_stage: "That code is invalid or has expired.",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "install",
+            outcome: "failed",
+            failure_reason: "command_failed",
+            failure_detail: "npm error code EACCES path /Users/me/.npm",
+          },
+        },
+        {
+          name: "onboarding_sign_in",
+          properties: {
+            entry: "first_run",
+            outcome: "failed",
+            resource_id: "codex",
+            failure_reason: "command_failed",
+            exit_code: 1.5,
           },
         },
         {

@@ -56,6 +56,7 @@ export const scriptedEchoOptionsSchema = z
     turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
     turnStartErrorAfterMs: z.number().int().nonnegative().optional(),
     steerResponseDelayMs: z.number().int().nonnegative().optional(),
+    steerFindsNewTurn: z.boolean().optional(),
     answerStartWithoutIdentity: z.boolean().optional(),
     identityAfterResponse: z.boolean().optional(),
     identityNotificationsBeforeTurn: z
@@ -1122,6 +1123,24 @@ const handlers: Record<string, RequestHandler> = {
     }
     if (session.activeTurn === null) {
       const message = `No active turn to steer (expected ${parsed.data.expectedTurnId})`;
+      io.sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+        recovery: {
+          kind: "staleTurn",
+          message,
+          retryable: false,
+        } satisfies ProviderRecoveryHint,
+      });
+      return;
+    }
+    if (options.steerFindsNewTurn === true) {
+      completeTurn(session, "completed", "finished before the steer");
+      session.turnCount += 1;
+      const newTurnId = `turn-${session.turnCount}`;
+      session.activeTurn = { providerTurnId: newTurnId, timer: null };
+      emitDeltas(session.threadId, [
+        { kind: "turn.open", providerTurnId: newTurnId },
+      ]);
+      const message = `expected active turn id \`${parsed.data.expectedTurnId}\` but found \`${newTurnId}\``;
       io.sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
         recovery: {
           kind: "staleTurn",

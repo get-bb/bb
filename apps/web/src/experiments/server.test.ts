@@ -11,8 +11,10 @@ import {
   uuidv7,
   withExperimentHeaders,
   type ExperimentServerConfig,
+  type ExperimentLogEntry,
   type FlagsLogEntry,
 } from "./server";
+import { parseFlagDefinitions } from "./local-flags";
 
 const KEY = "phc_test";
 const COOKIE_NAME = `ph_${KEY}_posthog`;
@@ -36,7 +38,7 @@ function flagsResponse(body: unknown, status = 200): Response {
 
 function setup(respond: (init: RequestInit) => Promise<Response>) {
   const calls: { url: string; body: unknown }[] = [];
-  const logs: FlagsLogEntry[] = [];
+  const logs: ExperimentLogEntry[] = [];
   const config: ExperimentServerConfig = {
     postHogKey: KEY,
     postHogHost: "https://flags.test/",
@@ -49,6 +51,7 @@ function setup(respond: (init: RequestInit) => Promise<Response>) {
       return respond(init ?? {});
     },
     log: (entry) => logs.push(entry),
+    localFlags: null,
     now: () => NOW,
     randomBytes: (length) => new Uint8Array(length).fill(0xab),
     timeoutMs: 20,
@@ -126,9 +129,9 @@ describe("PostHog visitor cookie", () => {
       config,
     );
     expect(resolution?.bootstrap.distinctID).toBe(EXISTING_ID);
-    expect(
-      resolution?.setCookies.some((c) => c.startsWith(COOKIE_NAME)),
-    ).toBe(false);
+    expect(resolution?.setCookies.some((c) => c.startsWith(COOKIE_NAME))).toBe(
+      false,
+    );
     expect(calls[0]?.body).toMatchObject({ distinct_id: EXISTING_ID });
   });
 
@@ -480,10 +483,7 @@ describe("site-wide experiments", () => {
     const { config } = siteSetup(async () => flagsResponse({ flags: {} }));
     const assignedAt = NOW - 23 * 60 * 60 * 1000;
     const resolution = await resolveExperiments(
-      pageRequest(
-        "/",
-        stored(`homepage-qa-check=test~${assignedAt}`),
-      ),
+      pageRequest("/", stored(`homepage-qa-check=test~${assignedAt}`)),
       config,
     );
     expect(resolution?.bootstrap.featureFlags).toMatchObject({
@@ -570,7 +570,7 @@ describe("site-wide experiments", () => {
     );
     expect(resolution?.bootstrap.featureFlags).toEqual({});
     expect(resolution?.setCookies).toEqual([]);
-    expect(logs[0]?.outcome).toBe("timeout");
+    expect(logs[0]).toMatchObject({ outcome: "timeout" });
   });
 
   it("previews forced variants on any page without storing them", async () => {
@@ -679,5 +679,124 @@ describe("experiment response headers", () => {
       headers: { "content-type": "application/json" },
     });
     expect(withExperimentHeaders(json, null)).toBe(json);
+  });
+});
+
+describe("local evaluation from cached definitions", () => {
+  const visitor = cookieFor({ distinct_id: "visitor-1" });
+  const split = {
+    variants: [
+      { key: "control", rollout_percentage: 50 },
+      { key: "test", rollout_percentage: 50 },
+    ],
+  };
+  const simple = (key: string, extra: Record<string, unknown> = {}) => ({
+    key,
+    active: true,
+    filters: {
+      groups: [{ properties: [], rollout_percentage: 100 }],
+      multivariate: split,
+      ...extra,
+    },
+  });
+  const personTargeted = (key: string) => ({
+    key,
+    active: true,
+    filters: {
+      groups: [
+        {
+          properties: [{ key: "email", value: "x", type: "person" }],
+          rollout_percentage: 100,
+        },
+      ],
+      multivariate: split,
+    },
+  });
+
+  function localSetup(
+    flags: readonly unknown[] | null,
+    respond: (init: RequestInit) => Promise<Response>,
+  ) {
+    const context = setup(respond);
+    const definitions = flags === null ? null : parseFlagDefinitions({ flags });
+    const config: ExperimentServerConfig = {
+      ...context.config,
+      localFlags: {
+        definitions: { read: async () => definitions },
+        waitUntil: () => {},
+      },
+    };
+    return { ...context, config };
+  }
+
+  const timeout = (init: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () =>
+        reject(new DOMException("aborted", "AbortError")),
+      );
+    });
+
+  it("assigns locally evaluable experiments when /flags times out", async () => {
+    const { calls, config, logs } = localSetup(
+      [simple("homepage-hero"), personTargeted("homepage-download-path")],
+      timeout,
+    );
+    const resolution = await resolveExperiments(
+      pageRequest("/", visitor),
+      config,
+    );
+    expect(resolution?.bootstrap.featureFlags).toEqual({
+      "homepage-hero": "test",
+    });
+    expect(
+      (calls[0]?.body as { flag_keys_to_evaluate: string[] })
+        .flag_keys_to_evaluate,
+    ).toEqual(EXPERIMENT_KEYS.filter((key) => key !== "homepage-hero"));
+    expect(resolution?.setCookies).toHaveLength(1);
+    expect(
+      readAssignmentCookie(
+        resolution?.setCookies[0]?.split(";")[0] ?? null,
+        EXPERIMENT_KEYS,
+        NOW,
+      ),
+    ).toEqual({ "homepage-hero": { variant: "test", value: `test~${NOW}` } });
+    expect(logs.map((entry) => entry.event)).toEqual([
+      "posthog_local_flags",
+      "posthog_flags",
+    ]);
+  });
+
+  it("skips /flags when every experiment is evaluated locally", async () => {
+    const { calls, config } = localSetup(
+      EXPERIMENT_KEYS.map((key) => simple(key)),
+      async () => flagsResponse({ flags: {} }),
+    );
+    const resolution = await resolveExperiments(
+      pageRequest("/", visitor),
+      config,
+    );
+    expect(calls).toHaveLength(0);
+    expect(Object.keys(resolution?.bootstrap.featureFlags ?? {})).toEqual(
+      EXPERIMENT_KEYS,
+    );
+  });
+
+  it("falls back to /flags for every key until definitions load", async () => {
+    const { calls, config } = localSetup(null, async () =>
+      flagsResponse({
+        flags: { "homepage-hero": { enabled: true, variant: "test" } },
+      }),
+    );
+    const resolution = await resolveExperiments(
+      pageRequest("/", visitor),
+      config,
+    );
+    expect(
+      (calls[0]?.body as { flag_keys_to_evaluate: string[] })
+        .flag_keys_to_evaluate,
+    ).toEqual(EXPERIMENT_KEYS);
+    expect(resolution?.bootstrap.featureFlags).toEqual({
+      "homepage-hero": "test",
+    });
   });
 });

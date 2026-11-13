@@ -95,7 +95,7 @@ Slot props contracts (versioned, additive-only):
   unencoded segments (bb encodes them) — browser back/forward then walks
   panel-internal history (prefer this over hash routing).
   Registration:
-  `{ id, title, icon, path, component, experimental_useBadge?, experimental_usePageTitle?, headerContent?, experimental_sidebar? }`.
+  `{ id, title, icon, path, component, experimental_useBadge?, experimental_usePageTitle?, headerContent?, experimental_sidebar?, experimental_headerTitle?, experimental_hideFromNavigation? }`.
   The host renders your compact plugin icon + `title` into the shared app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do not
@@ -105,6 +105,15 @@ Slot props contracts (versioned, additive-only):
   `p-4 md:p-5` and wrap its content in a `mx-auto w-full max-w-3xl space-y-4`
   div. `headerContent` is contained separately: a throw hides the header
   content without breaking the title bar or the panel body.
+  `experimental_headerTitle` receives `{ subPath }` and replaces the icon,
+  `title` and `experimental_usePageTitle` text in the title bar, such as a
+  `project › workspace` breadcrumb; the window title still comes from
+  `experimental_usePageTitle` or `title`, and a throw restores the default
+  title. `experimental_hideFromNavigation: true` keeps the panel out of
+  navigation (rail, list, More and the arrangement) and the command palette;
+  its route still renders with the title bar, App panel and splits, so open
+  it with `useBbNavigate().toPluginPanel(path, { subPath })`, as for a "new
+  chat in this workspace" page that should look like a thread.
 
   BB wraps every plugin page in the same host-owned App panel used by New
   thread and thread pages, with Browser and Terminal tabs (a plugin page has
@@ -234,7 +243,9 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   `experimental_threadInfoRow`, `experimental_threadInfoSection`,
   `experimental_threadContextCardRow`, `experimental_threadContextCardSection`,
   `experimental_threadAction` (menu entries and header buttons), and
-  `experimental_browserToolbarAction` are covered in frontend-registration.md.
+  `experimental_browserToolbarAction` are covered in frontend-registration.md;
+  `experimental_threadHeaderRow` and `experimental_threadHeaderTitle` in
+  frontend-thread-header-row.md.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order

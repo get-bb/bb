@@ -1172,9 +1172,15 @@ function AppShellWireframeBody({
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
             {mobile ? <MiniIcon icon="PanelLeft" className="size-5" /> : null}
-            <span className="truncate text-foreground">
-              Fix flaky checkout tests
-            </span>
+            <Mark
+              id="thread-header-title"
+              label="Plugin title in place of the thread title"
+              className="flex h-6.5 min-w-0 items-center gap-1 px-1 text-foreground"
+              showChip={false}
+            >
+              <PluginGlyph className="size-3.5" />
+              <span className="truncate">checkout › flaky-tests</span>
+            </Mark>
             <Mark
               id="thread-actions"
               label="Plugin thread actions, in the thread menu"
@@ -1195,6 +1201,22 @@ function AppShellWireframeBody({
             {mobile ? <ThreadContextCardMark compact /> : null}
             {mobile ? <MiniIcon icon="PanelRight" className="size-5" /> : null}
           </div>
+
+          <RegionMark
+            id="thread-header-row"
+            label="Plugin rows under the thread header"
+            className="flex h-8 shrink-0 items-center gap-1 border-b border-border-hairline px-4"
+            chip="side"
+          >
+            <span className="flex h-6 items-center gap-1.5 rounded-md border border-border-seam px-2 text-foreground">
+              <PluginGlyph className="size-3" />
+              Fix flaky checkout tests
+            </span>
+            <span className="flex h-6 items-center gap-1.5 px-2 text-subtle-foreground">
+              <PluginGlyph className="size-3" />
+              Review retries
+            </span>
+          </RegionMark>
 
           <div
             data-guide-fixture="app-window-timeline"

@@ -14,6 +14,7 @@ import { resolveDevInstanceConfig } from "../../../packages/config/src/runtime.j
 import hostEntry from "./host.js";
 import plugin from "./server.js";
 import { hostStorageContract } from "./host-contract.js";
+import { storageRpc } from "./contract.js";
 import {
   hostStorageListResponseSchema,
   hostStorageResponseSchema,
@@ -89,6 +90,7 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
     sdk: {
       projects: { list: async () => [] },
       hosts: {
+        list: async () => [],
         get: async ({ hostId }) => ({
           ...makeHostResponse({ id: hostId, status: "connected" }),
           threadStorageRootPath: "/storage",
@@ -130,13 +132,22 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
     pending.get("thr_other")!.resolve();
     await other;
     const queued = { kind: "thread", threadId: "thr_two" };
-    const second = await host.harness.callRpc("startEntryCleanup", queued);
+    const second = storageRpc.startEntryCleanup.output.parse(
+      await host.harness.callRpc("startEntryCleanup", queued),
+    );
     await expect(
       host.harness.callRpc("startEntryCleanup", queued),
     ).resolves.toEqual(second);
-    await expect(host.harness.callRpc("entryCleanup", second)).resolves.toEqual(
-      { state: "queued" },
-    );
+    const entryCleanup = async () =>
+      hostStorageListResponseSchema
+        .parse(await host.harness.callRpc("hosts", null))
+        .entryCleanups.find((cleanup) => cleanup.id === second.id);
+    await expect(entryCleanup()).resolves.toEqual({
+      id: second.id,
+      target: queued,
+      status: { state: "queued" },
+    });
+    const notices = host.harness.inspection.realtimeSignals.length;
     await host.harness.callRpc("startCleanup", {
       hostId: "host_test",
       kind: "orphans",
@@ -157,8 +168,13 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
     await expect.poll(() => pending.has("thr_two")).toBe(true);
     pending.get("thr_two")!.reject();
     await expect
-      .poll(() => host.harness.callRpc("entryCleanup", second))
+      .poll(async () => (await entryCleanup())?.status)
       .toEqual({ state: "failed", message: "host disconnected" });
+    expect(
+      host.harness.inspection.realtimeSignals
+        .slice(notices)
+        .filter((event) => event.channel === "changed").length,
+    ).toBeGreaterThanOrEqual(2);
     await expect
       .poll(
         async () =>
@@ -1703,6 +1719,8 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
       host.harness.callRpc("startCleanup", {
         hostId: "host_test",
         kind: "externalWorktrees",
+        paths: null,
+        force: false,
       }),
     ).resolves.toBeNull();
     expect(
@@ -1762,6 +1780,8 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     await host.harness.callRpc("startCleanup", {
       hostId: "host_test",
       kind: "externalWorktrees",
+      paths: null,
+      force: false,
     });
     await expect
       .poll(
@@ -3120,5 +3140,208 @@ it("refuses to clear storage containing a live Windows workspace with different 
     expect(worker).not.toHaveBeenCalled();
   } finally {
     await host.harness.lifecycle.dispose();
+  }
+});
+
+it("recovers interrupted checkouts without uncommitted changes and explains the ones it keeps", async () => {
+  type Environment = Awaited<
+    ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
+  >[number];
+  const interrupted =
+    "Needs recovery: Environment hook outcome is unknown after interruption.";
+  const leftover = (id: string, message: string): Environment => ({
+    id,
+    name: null,
+    projectId: "proj_work",
+    hostId: "host_test",
+    path: `/worktrees/${id}`,
+    isGitRepo: true,
+    isWorktree: false,
+    branchName: id,
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: "main",
+    status: "error",
+    environmentProviderId: "bb--environment-git-worktree",
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: {
+      phase: "teardown",
+      retireAt: 1,
+      teardown: { status: "failed", attempt: 5, message },
+    },
+    hostLifecycle: "active",
+    managed: true,
+    workspaceProvisionType: "managed-worktree",
+    createdAt: 0,
+    updatedAt: 0,
+  });
+  const cleaned: { environmentId: string; recover: boolean | undefined }[] = [];
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method !== "inspectCheckouts")
+        throw new Error("Unexpected host method");
+      const { paths } = hostStorageContract.inspectCheckouts.input.parse(
+        call.input,
+      );
+      return {
+        checkouts: paths.map((path) =>
+          path.endsWith("env_dirty")
+            ? { path, state: "changed", changedFileCount: 2 }
+            : { path, state: "clean" },
+        ),
+      };
+    },
+    sdk: {
+      hosts: {
+        get: async () =>
+          makeHostResponse({ id: "host_test", status: "connected" }),
+      },
+      environments: {
+        list: async () => [
+          leftover("env_clean", interrupted),
+          leftover("env_dirty", interrupted),
+          leftover("env_old_daemon", interrupted),
+          leftover("env_failed", "git worktree remove failed"),
+        ],
+        experimental_cleanup: async ({ environmentId, recover }) => {
+          cleaned.push({ environmentId, recover });
+          if (environmentId === "env_old_daemon")
+            throw new Error(
+              "HTTP 409: Recovery refused: process inspection is unavailable on this host",
+            );
+          return null;
+        },
+      },
+      threads: { list: async () => [] },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await expect(
+      host.harness.callRpc("retryWorktreeCleanup", {
+        hostId: "host_test",
+        includeUncommitted: false,
+      }),
+    ).resolves.toEqual({
+      retriedCount: 2,
+      failed: [],
+      kept: [
+        {
+          environmentId: "env_dirty",
+          message: "Kept because it has 2 uncommitted changes",
+        },
+        {
+          environmentId: "env_old_daemon",
+          message:
+            "Kept because this machine’s BB can’t check for running programs yet; update BB on this machine",
+        },
+      ],
+    });
+    expect(cleaned).toEqual([
+      { environmentId: "env_clean", recover: true },
+      { environmentId: "env_old_daemon", recover: true },
+      { environmentId: "env_failed", recover: false },
+    ]);
+    cleaned.length = 0;
+    await host.harness.callRpc("retryWorktreeCleanup", {
+      hostId: "host_test",
+      includeUncommitted: true,
+    });
+    expect(cleaned.map((call) => call.environmentId)).toContain("env_dirty");
+  } finally {
+    await host.harness.dispose();
+  }
+});
+
+it("clears already archived threads when deleting storage on archive is turned on", async () => {
+  const threads = [
+    makeThreadResponse({ id: "thr_archived", status: "idle", archivedAt: 1 }),
+    makeThreadResponse({
+      id: "thr_pinned",
+      status: "idle",
+      archivedAt: 1,
+      pinnedAt: 1,
+    }),
+    makeThreadResponse({ id: "thr_active", status: "idle" }),
+  ];
+  const discarded: string[] = [];
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "capacity")
+        return { totalBytes: 10000, freeBytes: 5000 };
+      if (call.method === "measure")
+        return {
+          targets: [
+            {
+              outcome: "measured",
+              path: "/storage",
+              sizeBytes: 3000,
+              children: threads.map((thread) => ({
+                name: thread.id,
+                sizeBytes: 1000,
+                empty: false,
+              })),
+            },
+          ],
+          largeFiles: [],
+        };
+      if (call.method === "discard") {
+        const { names } = hostStorageContract.discard.input.parse(call.input);
+        discarded.push(...names);
+        return { removed: names };
+      }
+      throw new Error(`Unexpected host method ${call.method}`);
+    },
+    sdk: {
+      projects: { list: async () => [] },
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host_test", status: "connected" }),
+        ],
+        get: async ({ hostId }) => ({
+          ...makeHostResponse({ id: hostId, status: "connected" }),
+          threadStorageRootPath: "/storage",
+        }),
+      },
+      threads: {
+        list: async (input) =>
+          threads.filter(
+            (thread) =>
+              input?.threadIds === undefined ||
+              input.threadIds.includes(thread.id),
+          ),
+        get: async ({ threadId }) =>
+          threads.find((thread) => thread.id === threadId)!,
+      },
+      environments: { list: async () => [] },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).report?.threadsWithStorageCount,
+      )
+      .toBe(3);
+    expect(discarded).toEqual([]);
+    await host.harness.callRpc("configure", {
+      archiveAfterDays: null,
+      deleteAfterDays: null,
+      deleteStorageOnArchive: true,
+      deleteDevDataOnCheckoutRemoval: false,
+    });
+    await expect.poll(() => discarded).toEqual(["thr_archived"]);
+  } finally {
+    await host.harness.dispose();
   }
 });

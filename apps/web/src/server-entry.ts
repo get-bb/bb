@@ -3,11 +3,16 @@ import {
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
 
+import {
+  createFlagDefinitionsSource,
+  type FlagDefinitionsSource,
+} from "./experiments/flag-definitions";
 import { NO_EXPERIMENTS, type ExperimentBootstrap } from "./experiments/flags";
 import {
   resolveExperiments,
   withExperimentHeaders,
 } from "./experiments/server";
+import { proxyPostHogRequest } from "./landing/posthog-proxy";
 import {
   marketplaceHtmlCacheControl,
   marketplaceResponseStatus,
@@ -37,15 +42,73 @@ const handleRequest = createStartHandler(async (context) => {
     : updatedResponse;
 });
 
+const postHogKey: string | undefined = import.meta.env.VITE_POSTHOG_KEY;
+const postHogHost: string =
+  import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com";
+const DEFINITIONS_CACHE = "posthog-flag-definitions";
+const PROXY_CACHE = "posthog-proxy-assets";
+let flagDefinitions: FlagDefinitionsSource | null | undefined;
+
+function logEntry(entry: object): void {
+  console.log(JSON.stringify(entry));
+}
+
+function flagDefinitionsSource(): FlagDefinitionsSource | null {
+  if (flagDefinitions === undefined) {
+    const env = getEnv();
+    flagDefinitions =
+      postHogKey && env.POSTHOG_FLAGS_SECRET_KEY
+        ? createFlagDefinitionsSource({
+            host: postHogHost,
+            projectKey: postHogKey,
+            secretKey: env.POSTHOG_FLAGS_SECRET_KEY,
+            cacheKey: `https://${env.BASE_DOMAIN}/__experiments/posthog-flag-definitions/${encodeURIComponent(postHogKey)}`,
+            fetch: (input, init) => fetch(input, init),
+            log: logEntry,
+            sharedCache: {
+              match: async (key) =>
+                (await caches.open(DEFINITIONS_CACHE)).match(key),
+              put: async (key, response) =>
+                (await caches.open(DEFINITIONS_CACHE)).put(key, response),
+              delete: async (key) =>
+                (await caches.open(DEFINITIONS_CACHE)).delete(key),
+            },
+          })
+        : null;
+  }
+  return flagDefinitions;
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(
+    request: Request,
+    _env: unknown,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const proxied = await proxyPostHogRequest(request, {
+      fetch: (input, init) => fetch(input, init),
+      cache: {
+        match: async (key) => (await caches.open(PROXY_CACHE)).match(key),
+        put: async (key, response) =>
+          (await caches.open(PROXY_CACHE)).put(key, response),
+      },
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
+    if (proxied) return proxied;
+    const definitions = flagDefinitionsSource();
     const resolution = await resolveExperiments(request, {
-      postHogKey: import.meta.env.VITE_POSTHOG_KEY,
-      postHogHost:
-        import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      postHogKey,
+      postHogHost,
       baseDomain: getEnv().BASE_DOMAIN,
       fetch: (input, init) => fetch(input, init),
-      log: (entry) => console.log(JSON.stringify(entry)),
+      log: logEntry,
+      localFlags:
+        definitions === null
+          ? null
+          : {
+              definitions,
+              waitUntil: (promise) => ctx.waitUntil(promise),
+            },
     });
     const response = await handleRequest(request, {
       context: { experiments: resolution?.bootstrap ?? NO_EXPERIMENTS },

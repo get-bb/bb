@@ -63,7 +63,10 @@ import {
 } from "./sdk-session.js";
 import { MissingClaudeCliError } from "./missing-cli-error.js";
 import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
-import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
+import {
+  createClaudeCodeBridgeModelListMemo,
+  listClaudeCodeBridgeModels,
+} from "./model-list.js";
 import {
   PROVIDER_COMMANDS_STATE_KIND,
   createClaudeCodeBridgeCommandListMemo,
@@ -806,20 +809,23 @@ function logBridgeError(message: string): void {
   process.stderr.write(`claude-code bridge: ${message}\n`);
 }
 
-function pushPromptInput(
+async function pushPromptInput(
   threadSession: ThreadSession,
   input: string,
   permissionEscalation: PermissionEscalation | null,
-): Promise<void> {
+): Promise<string> {
   const promptId = randomUUID();
   threadSession.permissionEscalationByPromptId.set(
     promptId,
     permissionEscalation,
   );
-  return threadSession.session.pushInput(input, promptId).catch((error) => {
+  try {
+    await threadSession.session.pushInput(input, promptId);
+  } catch (error) {
     threadSession.permissionEscalationByPromptId.delete(promptId);
     throw error;
-  });
+  }
+  return promptId;
 }
 
 async function applyLiveSessionSettings(
@@ -865,6 +871,7 @@ const listCommandsMemoized = createClaudeCodeBridgeCommandListMemo({
   ttlMs: PROVIDER_CATALOG_MEMO_TTL_MS,
 });
 const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
+  list: (envVars) => listClaudeCodeBridgeModels(buildSessionEnv(envVars)),
   ttlMs: PROVIDER_CATALOG_MEMO_TTL_MS,
 });
 
@@ -1029,8 +1036,10 @@ function emitCanonicalTurnInputAccepted(
   threadSession: ThreadSession,
   acceptance: CanonicalTurnAcceptance,
   threadId: string,
+  promptId: string,
 ): void {
   threadSession.contextUsageCollector.invalidate();
+  threadSession.translator.trackPushedPrompt(threadId, promptId);
   sendThreadDeltas(
     threadId,
     threadSession.translator.acceptInput(threadId, acceptance.clientRequestId),
@@ -2295,7 +2304,10 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       break;
     case "model/list":
       try {
-        sendResult(request.id, await listModelsMemoized());
+        sendResult(
+          request.id,
+          await listModelsMemoized(request.params.envVars ?? {}),
+        );
       } catch (error) {
         if (error instanceof MissingClaudeCliError) {
           sendError(
@@ -2637,12 +2649,17 @@ async function runTurnInput(
   }
 
   try {
-    await pushPromptInput(
+    const promptId = await pushPromptInput(
       threadSession,
       promptText,
       params.permissionEscalation,
     );
-    emitCanonicalTurnInputAccepted(threadSession, acceptance, params.threadId);
+    emitCanonicalTurnInputAccepted(
+      threadSession,
+      acceptance,
+      params.threadId,
+      promptId,
+    );
     threadSession.attachment.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
   } catch (error) {

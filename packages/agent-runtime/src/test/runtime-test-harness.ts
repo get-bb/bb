@@ -47,6 +47,7 @@ export interface ScriptedEchoLaunchScript {
   turnStartResponseDelayMs?: number;
   turnStartErrorAfterMs?: number;
   steerResponseDelayMs?: number;
+  steerFindsNewTurn?: boolean;
   answerStartWithoutIdentity?: boolean;
   identityAfterResponse?: boolean;
   identityNotificationsBeforeTurn?: {

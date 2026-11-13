@@ -32,7 +32,7 @@ afterEach(() => {
 const chrome = { pluginId: "demo", title: "Demo", icon: "Clock" } as const;
 const body = (
   <>
-    <PluginPanelHeaderCenter chrome={chrome} />
+    <PluginPanelHeaderCenter chrome={chrome} panel={undefined} subPath="" />
     <p>Page body survives</p>
   </>
 );

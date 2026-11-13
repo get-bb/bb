@@ -8,6 +8,7 @@ import {
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { relayDesktopAppUpdates } from "@bb/config/desktop-app-update";
+import { announceDesktopRuntimeReady } from "@bb/config/desktop-runtime-ready";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawnLoggedProcess } from "./logged-process.js";
 import {
@@ -543,6 +544,7 @@ interface SuperviseBbAppStartArgs {
   findMachineService: () => Promise<string | null>;
   isShutdownRequested: () => boolean;
   onFullStackReady?: () => Promise<void>;
+  onRuntimeReady: () => void;
   prepareFullStack: (entry: FullStackEntry) => Promise<FullStackStarters>;
   processes: ManagedFullStackProcesses;
   readServerMoveMarkers: ReadServerMoveMarkersFn;
@@ -3743,6 +3745,7 @@ export async function superviseBbAppStart(
     log(" ", formatReadyOutputRow("lock", args.context.daemonLockFile));
     process.stdout.write("\n");
     log(" ", dim("Press Ctrl+C to stop"));
+    args.onRuntimeReady();
     await args.onFullStackReady?.();
 
     return superviseFullStackProcesses({
@@ -3760,6 +3763,7 @@ export async function superviseBbAppStart(
   const enterMovedMode = async (
     movedFile: ServerMovedFile,
   ): Promise<FullStackSupervisionResult> => {
+    args.onRuntimeReady();
     const movedModeResult = await runMovedMode({
       bindHost: args.serverBindHost,
       context: args.context,
@@ -4285,6 +4289,7 @@ export async function runBbApp(
         : {
             onFullStackReady: () => appUpdateController.onFullStackReady(),
           }),
+      onRuntimeReady: announceDesktopRuntimeReady,
       prepareFullStack: async (entry) => {
         const fullStackRuntime = await resolveFullStackRuntime(entry);
         const serverEnv = createServerEnv({

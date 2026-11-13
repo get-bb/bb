@@ -49,7 +49,7 @@ import { getThreadReadToggleAction } from "@bb/client-core";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
-import { resolveThread } from "@/lib/cached-thread";
+import { lookupCachedThread, resolveThread } from "@/lib/cached-thread";
 import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
 import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
 import { planThreadSelection } from "@/lib/thread-selection-plan";
@@ -99,6 +99,15 @@ function describeThreadCount(count: number): string {
 }
 
 const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
+
+function hasRunningWork(thread: Thread): boolean {
+  return (
+    thread.archivedAt === null &&
+    (thread.status === "starting" ||
+      thread.status === "active" ||
+      thread.status === "stopping")
+  );
+}
 
 export function ThreadActionsProvider({
   children,
@@ -454,6 +463,14 @@ export function ThreadActionsProvider({
         threads: active,
         roots: plan.roots,
         childThreadCount: plan.childThreadCount,
+        stopsRunningWork:
+          active.some(hasRunningWork) ||
+          [...plan.cascadeThreadIdsByRootId.values()].some((threadIds) =>
+            threadIds.some((threadId) => {
+              const thread = lookupCachedThread(queryClient, threadId);
+              return thread !== null && hasRunningWork(thread);
+            }),
+          ),
       };
       if (confirmThreadArchive && plan.childThreadCount > 0) {
         openArchiveDialog(request);
@@ -466,6 +483,7 @@ export function ThreadActionsProvider({
       confirmThreadArchive,
       openArchiveDialog,
       performArchiveThreads,
+      queryClient,
     ],
   );
 

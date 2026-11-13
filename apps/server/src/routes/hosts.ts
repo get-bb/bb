@@ -69,6 +69,7 @@ import { emitPluginHostDeleted } from "../services/plugins/plugin-thread-events.
 const DISCOVERED_REPOS_MAX_DEPTH = 5;
 const DISCOVERED_REPOS_SINCE_DAYS = 30;
 const DISCOVERED_REPOS_LIMIT = 10;
+const DISCOVERED_REPOS_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 const PROVIDER_CLI_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -351,7 +352,8 @@ export function registerHostRoutes(
     assertUsableHostId(deps, { hostId });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
+      signal: context.req.raw.signal,
+      timeoutMs: DISCOVERED_REPOS_TIMEOUT_MS,
       command: {
         type: "host.discover_repos",
         maxDepth: DISCOVERED_REPOS_MAX_DEPTH,

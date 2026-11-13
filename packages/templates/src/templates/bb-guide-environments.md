@@ -122,7 +122,7 @@ Making your repo work with bb:
                                           provider removal completes
   bb environment cleanup <id>             Remove an unused provider-managed environment now
     --recover                             After inspection, acknowledge interrupted hooks and
-                                          retry failed cleanup (Linux same-user process guard)
+                                          retry failed cleanup (Linux and macOS same-user process guard)
   bb environment show <id>                Show environment details (path, branch, status, lifecycle, retirement deadline and teardown attempts)
 
   bb environment paths <id>               Search workspace paths
@@ -171,13 +171,17 @@ Making your repo work with bb:
   setup without a recorded hook operation. A teardown hook that never started
   still runs. A daemon reboot alone never proves a detached hook has stopped.
 
-  Recovery currently requires Linux. It refuses while a setup/hook is still
-  active, while any process owned by the daemon UID has its cwd or a mapped
-  file path under the workspace, or while any such process cannot be inspected.
-  The guard compares paths, including deleted paths, rather than shared inode
-  identity. It does not kill processes. Processes owned by other users require
-  separate inspection before recovery. Stop or move your own workspace users
-  first. Unsupported platforms and unavailable daemons refuse recovery.
+  Recovery requires a Linux or macOS host. It refuses while a setup/hook is
+  still active, while any process owned by the daemon UID has its cwd or a
+  mapped file path under the workspace, or while any such process cannot be
+  inspected. Linux reads `/proc`; macOS uses `lsof` and refuses recovery if
+  `lsof` is missing or fails. On macOS, an uninspectable setuid process that
+  runs under another effective UID, such as the `login` process behind each
+  terminal tab, counts as another user's process. The guard compares paths,
+  including deleted paths, rather than shared inode identity. It does not kill
+  processes. Processes owned by other users require separate inspection before
+  recovery. Stop or move your own workspace users first. Windows hosts and
+  unavailable daemons refuse recovery.
   Existing cleanup callers can use the additive `recover` option on
   `sdk.environments.experimental_cleanup({ environmentId, recover: true })`.
   Inspect `bb environment show <id>` after recovery to confirm removal.

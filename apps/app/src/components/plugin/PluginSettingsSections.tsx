@@ -1,4 +1,7 @@
-import type { InternalDoNotUseSetupFailureStage } from "@get-bb/plugin-sdk/app";
+import type {
+  InternalDoNotUseSetupFailureDetail,
+  InternalDoNotUseSetupFailureStage,
+} from "@get-bb/plugin-sdk/app";
 import {
   usePluginSlots,
   type PluginSettingsSectionSlot,
@@ -12,7 +15,10 @@ export function PluginSettingsSections({
 }: {
   pluginId: string;
   onSetupStarted?: () => void;
-  onSetupFailed?: (stage: InternalDoNotUseSetupFailureStage) => void;
+  onSetupFailed?: (
+    stage: InternalDoNotUseSetupFailureStage,
+    detail?: InternalDoNotUseSetupFailureDetail,
+  ) => void;
 }) {
   const { settingsSections } = usePluginSlots();
   const sections = settingsSections.filter(
@@ -51,7 +57,10 @@ function PluginSettingsSectionList({
   sections: readonly PluginSettingsSectionSlot[];
   onSetupStarted?: (() => void) | undefined;
   onSetupFailed?:
-    | ((stage: InternalDoNotUseSetupFailureStage) => void)
+    | ((
+        stage: InternalDoNotUseSetupFailureStage,
+        detail?: InternalDoNotUseSetupFailureDetail,
+      ) => void)
     | undefined;
 }) {
   return (

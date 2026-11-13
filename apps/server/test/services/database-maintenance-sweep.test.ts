@@ -3,7 +3,7 @@ import { closeSync, mkdtempSync, openSync, readSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   createProject,
@@ -339,6 +339,64 @@ describe("runDatabaseMaintenanceSweep", () => {
           writerDb.exec("ROLLBACK");
         }
         writerDb.close();
+        db.$client.close();
+      }
+    } finally {
+      tempDatabase.cleanup();
+    }
+  });
+
+  it("reports the pages already reclaimed when a WAL writer blocks a later chunk", async () => {
+    const tempDatabase = createTempDatabasePath();
+    try {
+      const { db } = setupBusyFileDatabaseWithFreelist(tempDatabase);
+      const writerDb = new Database(tempDatabase.dbPath);
+      const logger = {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      };
+      const checkpointer = startWalCheckpointer({ logger: testLogger });
+      checkpointer.attach(db.$client);
+      try {
+        const before = getDatabaseFreelistStats(db.$client);
+        expect(before.freelistCount).toBeGreaterThan(256 * 2);
+
+        await runDatabaseMaintenanceSweep({
+          db,
+          logger,
+          walCheckpointer: {
+            ...checkpointer,
+            async checkpoint(database) {
+              await checkpointer.checkpoint(database);
+              if (
+                !writerDb.inTransaction &&
+                getDatabaseFreelistStats(database).freelistCount <
+                  before.freelistCount
+              ) {
+                writerDb.exec("BEGIN IMMEDIATE");
+              }
+            },
+          },
+        });
+
+        const after = getDatabaseFreelistStats(db.$client);
+        expect(after.freelistCount).toBe(before.freelistCount - 256);
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+          {
+            err: expect.objectContaining({ code: "SQLITE_BUSY" }),
+            result: { before, after },
+          },
+          "Incremental database vacuum stopped early",
+        );
+      } finally {
+        if (writerDb.inTransaction) {
+          writerDb.exec("ROLLBACK");
+        }
+        writerDb.close();
+        await checkpointer.stop();
         db.$client.close();
       }
     } finally {

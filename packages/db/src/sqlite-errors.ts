@@ -48,3 +48,8 @@ export function isSqliteForeignKeyConstraint(error: Error): boolean {
     sqliteError.message.includes("FOREIGN KEY constraint failed")
   );
 }
+
+export function isSqliteBusyError(error: Error): boolean {
+  const code = getSqliteErrorCode(findSqliteError(error) ?? error);
+  return code !== null && code.startsWith("SQLITE_BUSY");
+}

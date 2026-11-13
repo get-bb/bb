@@ -2656,6 +2656,22 @@ async function waitForWindowsInstallerToFinish(): Promise<boolean> {
   return result === "finished" && !quitting;
 }
 
+async function waitForOwnedRuntimeReady(bbProcess: BbAppProcess): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const result = await Promise.race([
+    bbProcess.ready.then(() => "ready" as const),
+    new Promise<"timed-out">((resolveTimeout) => {
+      timer = setTimeout(() => resolveTimeout("timed-out"), STARTUP_TIMEOUT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (result === "timed-out") {
+    desktopLogger.warn(
+      `[desktop] bb-app did not report this computer connected within ${STARTUP_TIMEOUT_MS}ms; opening bb anyway`,
+    );
+  }
+}
+
 async function startOwnedRuntime(
   args: StartOwnedRuntimeArgs,
 ): Promise<DesktopRuntime | null> {
@@ -2667,10 +2683,12 @@ async function startOwnedRuntime(
       intervalMs: STARTUP_POLL_INTERVAL_MS,
       serverUrl: args.serverUrl,
       timeoutMs: STARTUP_TIMEOUT_MS,
-    }).then((result) => ({
-      kind: "server-probe",
-      result,
-    })),
+    }).then(async (result) => {
+      if (result.kind === "compatible") {
+        await waitForOwnedRuntimeReady(bbProcess);
+      }
+      return { kind: "server-probe", result };
+    }),
     bbProcess.exit.then((exit) => ({
       exit,
       kind: "process-exited",

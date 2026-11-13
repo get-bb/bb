@@ -79,10 +79,11 @@ export interface PluginSettingsSectionProps {
   /**
    * Internal to bb's bundled connect plugin; not part of the plugin API.
    * Set only when the setup guide renders the section; call it when a setup
-   * attempt fails, with the stage that failed.
+   * attempt fails, with the stage that failed and, when known, why.
    */
   internal_DO_NOT_USE_onSetupFailed?: (
     stage: InternalDoNotUseSetupFailureStage,
+    detail?: InternalDoNotUseSetupFailureDetail,
   ) => void;
 }
 
@@ -94,6 +95,26 @@ export type InternalDoNotUseSetupFailureStage =
   | "sign_in"
   | "pairing"
   | "turn_on";
+
+/**
+ * Why a setup guide section's setup attempt failed: a fixed code, never a
+ * message. Internal to bb's bundled connect plugin; not part of the plugin API.
+ */
+export type InternalDoNotUseSetupFailureDetail =
+  | "denied"
+  | "expired"
+  | "login_failed"
+  | "rate_limited"
+  | "service_unavailable"
+  | "account_unavailable"
+  | "network"
+  | "invalid_code"
+  | "expired_code"
+  | "already_used"
+  | "unauthorized"
+  | "profile_unavailable"
+  | "superseded"
+  | "other";
 
 /**
  * Props passed to an `experimental_appOverlay` component.
@@ -112,8 +133,11 @@ export interface InternalDoNotUseSetupGuideSectionProps {
   onPhone: boolean;
   /** Call when the user starts setting up this section. */
   onSetupStarted: () => void;
-  /** Call when a setup attempt fails, with the stage that failed. */
-  onSetupFailed: (stage: InternalDoNotUseSetupFailureStage) => void;
+  /** Call when a setup attempt fails, with the stage that failed and, when known, why. */
+  onSetupFailed: (
+    stage: InternalDoNotUseSetupFailureStage,
+    detail?: InternalDoNotUseSetupFailureDetail,
+  ) => void;
 }
 
 export type ExperimentalPageTitle = (
@@ -1064,6 +1088,22 @@ export interface PluginNavPanelRegistration {
    * throwing headerContent is hidden without breaking the title bar.
    */
   headerContent?: ComponentType<PluginNavPanelProps>;
+  /**
+   * Component rendered in the shared title bar instead of the panel icon,
+   * title and `experimental_usePageTitle` text, such as a breadcrumb. The
+   * window title still comes from `experimental_usePageTitle` or the panel
+   * title. A crash restores the default title without breaking the page.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_headerTitle?: ComponentType<PluginNavPanelProps>;
+  /**
+   * When true, the panel gets no navigation entry (sidebar, rail, More and
+   * the navigation arrangement) and no command palette entry. Its route
+   * `/plugins/<pluginId>/<path>/*` still renders with its title bar, right
+   * panel and splits; open it with `useBbNavigate().toPluginPanel(path)`.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_hideFromNavigation?: boolean;
 }
 
 /**
@@ -2094,6 +2134,60 @@ export interface ExperimentalThreadInfoSectionRegistration {
   group: string;
   order?: number;
   component: ComponentType<ExperimentalThreadInfoProps>;
+}
+
+/**
+ * Props passed to an `experimental_threadHeaderRow` component, rendered
+ * between a thread's header and its timeline.
+ */
+export interface ExperimentalThreadHeaderRowProps {
+  /**
+   * The thread shown in the pane. A split layout renders a header row per
+   * pane, so the component mounts once per visible thread; keep per-thread
+   * state in the component, never in a module-level singleton.
+   */
+  threadId: string;
+  projectId: string;
+  /** The thread's environment, null when it has none. */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/**
+ * A full-width row directly under the header of every thread pane, above the
+ * timeline, such as a tab strip of the threads that share an environment.
+ * Rows stack in order. Return null to take no space for this thread. A crash
+ * removes only this row for that thread.
+ */
+export interface ExperimentalThreadHeaderRowRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Ascending; unset sorts last; ties keep registration order. */
+  order?: number;
+  component: ComponentType<ExperimentalThreadHeaderRowProps>;
+}
+
+/**
+ * Props passed to an `experimental_threadHeaderTitle` component, the same
+ * props a header row receives.
+ */
+export type ExperimentalThreadHeaderTitleProps =
+  ExperimentalThreadHeaderRowProps;
+
+/**
+ * Replaces the thread title text in the header of every thread pane, such as
+ * a `project › workspace` breadcrumb. bb keeps the rest of the header: the
+ * Thread actions menu after the title, header actions, pane controls, the
+ * right-panel toggle and the window drag region. While the user renames the
+ * thread, bb shows its rename field instead. Double-click does not start a
+ * rename on a plugin title, and dragging a split pane starts only from parts
+ * that are not links, buttons or inputs. When several plugins register one,
+ * the first in plugin order wins. A crash shows bb's title for that thread.
+ * The window title stays the thread title.
+ */
+export interface ExperimentalThreadHeaderTitleRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  component: ComponentType<ExperimentalThreadHeaderTitleProps>;
 }
 
 /**
@@ -3919,6 +4013,22 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadInfoSectionRegistration,
   ): void;
   /**
+   * Add a full-width row under the header of every thread pane, above the
+   * timeline (see {@link ExperimentalThreadHeaderRowRegistration}).
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_threadHeaderRow(
+    registration: ExperimentalThreadHeaderRowRegistration,
+  ): void;
+  /**
+   * Replace the thread title text in the header of every thread pane (see
+   * {@link ExperimentalThreadHeaderTitleRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadHeaderTitle(
+    registration: ExperimentalThreadHeaderTitleRegistration,
+  ): void;
+  /**
    * Add a row to the thread context card of every thread pane (see
    * {@link ExperimentalThreadContextCardRowRegistration}). Experimental: see
    * docs/api_to_audit.md.
@@ -5374,7 +5484,9 @@ export interface BbNavigate {
    */
   openUrl(url: string): boolean;
   /** Open a live file in this surface's shared BB preview panel. */
-  experimental_openFilePreview(options: ExperimentalFilePreviewOptions): boolean;
+  experimental_openFilePreview(
+    options: ExperimentalFilePreviewOptions,
+  ): boolean;
   /** Open a live file in this client's preferred external file target. */
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,

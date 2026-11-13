@@ -10,6 +10,8 @@ import {
 import { isNodeError, removePathWithRetry } from "./helpers/remove-path.js";
 import { setupBuiltinHostBuildRecords } from "./helpers/builtin-plugin-fixture.js";
 
+import { setupTestGitRepoTemplate } from "./helpers/seed.js";
+
 const INTEGRATION_TMP_PREFIX = "bb-integration-";
 const STALE_TMP_ROOT_AGE_MS = 60 * 60_000;
 
@@ -83,17 +85,24 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await cleanupTmpRoot(tmpRoot).catch(() => undefined);
   }
   const cleanupDatabaseTemplate = setupMigratedConnectionTemplate();
+  let cleanupRepoTemplate: (() => Promise<void>) | undefined;
   try {
+    cleanupRepoTemplate = await setupTestGitRepoTemplate();
     const cleanupBuiltinRecords = await setupBuiltinHostBuildRecords();
     return async () => {
       try {
         cleanupDatabaseTemplate();
       } finally {
-        await cleanupBuiltinRecords();
+        try {
+          await cleanupBuiltinRecords();
+        } finally {
+          await cleanupRepoTemplate?.();
+        }
       }
     };
   } catch (error) {
     cleanupDatabaseTemplate();
+    await cleanupRepoTemplate?.();
     throw error;
   }
 }

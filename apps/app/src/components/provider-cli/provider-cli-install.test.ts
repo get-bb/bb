@@ -163,7 +163,6 @@ beforeEach(() => {
     if (job === undefined) throw new Error(`Unexpected wait for ${jobId}`);
     return job;
   });
-
 });
 
 afterEach(() => {
@@ -558,7 +557,11 @@ describe("onboarding agent install outcomes", () => {
     {
       success: false,
       outcome: "failed",
-      failure: { failure_reason: "command_failed" },
+      failure: {
+        failure_reason: "command_failed",
+        failure_detail: "exit_nonzero",
+        exit_code: 1,
+      },
     },
   ])(
     "records started then $outcome for a guide install",
