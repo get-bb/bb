@@ -112,6 +112,7 @@ import {
   type SetupGuide,
   type StepOutcome,
 } from "./onboarding-model";
+import type { OnboardingProgress } from "./onboarding-progress";
 import {
   recordTelemetryEvent,
   type OnboardingEntry,
@@ -1330,19 +1331,21 @@ const STEP_ORDER: readonly OnboardingStepId[] = ONBOARDING_STEPS.map(
 );
 
 export function OnboardingFlow({
-  initialStep,
+  initialProgress,
+  onProgress,
   entry,
   setupGuide,
   closing,
   onClose,
 }: {
-  initialStep: OnboardingStepId;
+  initialProgress: OnboardingProgress;
+  onProgress: (progress: OnboardingProgress) => void;
   entry: OnboardingEntry;
   setupGuide: SetupGuide;
   closing: boolean;
   onClose: (lastStep: OnboardingStepId) => void;
 }) {
-  const [step, setStep] = useState(initialStep);
+  const [step, setStep] = useState(initialProgress.step);
   const redesign = setupGuide.variant === "new";
   const onPhone = useMediaQuery(ONBOARDING_PHONE_QUERY);
   useEffect(() => {
@@ -1352,13 +1355,13 @@ export function OnboardingFlow({
   }, [onPhone, redesign]);
   const [stepOutcomes, setStepOutcomes] = useState<
     ReadonlyMap<OnboardingStepId, StepOutcome>
-  >(() => new Map());
+  >(initialProgress.outcomes);
   const queryClient = useQueryClient();
   useEffect(() => {
     if (!redesign) return;
     void queryClient.prefetchQuery(pluginCatalogSearchQueryOptions(""));
   }, [queryClient, redesign]);
-  const exposedRef = useRef(false);
+  const exposedRef = useRef(initialProgress.exposed);
   useEffect(() => {
     if (exposedRef.current) return;
     exposedRef.current = true;
@@ -1366,7 +1369,7 @@ export function OnboardingFlow({
   }, [entry]);
   const navigationProjects = useSidebarNavigation().data?.projects;
   const [projectIdsAtOpen, setProjectIdsAtOpen] =
-    useState<ReadonlySet<string> | null>(null);
+    useState<ReadonlySet<string> | null>(initialProgress.projectIdsAtOpen);
   if (projectIdsAtOpen === null && navigationProjects !== undefined) {
     setProjectIdsAtOpen(
       new Set(navigationProjects.map((project) => project.id)),
@@ -1391,12 +1394,15 @@ export function OnboardingFlow({
     ...(hostId === null ? {} : { hostId }),
   });
   const agentStates = agentStatesQuery.data?.providers;
+  const agentStatesLoaded = agentStates !== undefined;
   useAgentStateTelemetry({
     entry,
     states: agentStates,
     isError: agentStatesQuery.isError,
   });
-  const startReportedRef = useRef(entry !== "first_run");
+  const startReportedRef = useRef(
+    entry !== "first_run" || initialProgress.started,
+  );
   useEffect(() => {
     if (startReportedRef.current || agentStates === undefined) return;
     startReportedRef.current = true;
@@ -1411,7 +1417,7 @@ export function OnboardingFlow({
       },
     });
   }, [agentStates]);
-  const reachedStepsRef = useRef(new Set<OnboardingStepId>());
+  const reachedStepsRef = useRef(new Set(initialProgress.reachedSteps));
   useEffect(() => {
     if (reachedStepsRef.current.has(step)) return;
     reachedStepsRef.current.add(step);
@@ -1428,6 +1434,17 @@ export function OnboardingFlow({
   useEffect(() => {
     if (!closing) finishedRef.current = false;
   }, [closing]);
+  useEffect(() => {
+    if (finishedRef.current) return;
+    onProgress({
+      step,
+      outcomes: stepOutcomes,
+      reachedSteps: reachedStepsRef.current,
+      exposed: exposedRef.current,
+      started: startReportedRef.current,
+      projectIdsAtOpen,
+    });
+  }, [agentStatesLoaded, onProgress, projectIdsAtOpen, step, stepOutcomes]);
   const close = (outcome: "completed" | "skipped") => {
     if (finishedRef.current) return;
     finishedRef.current = true;

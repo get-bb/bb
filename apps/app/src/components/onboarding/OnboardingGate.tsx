@@ -1,4 +1,11 @@
-import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
@@ -10,6 +17,12 @@ import {
 import { operationFailureReason, type SetupGuide } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingErrorTelemetry } from "./OnboardingErrorTelemetry";
+import {
+  clearOnboardingProgress,
+  readOnboardingProgress,
+  saveOnboardingProgress,
+  type OnboardingProgress,
+} from "./onboarding-progress";
 
 const OnboardingFlow = lazy(() =>
   import("./OnboardingFlow").then((module) => ({
@@ -44,6 +57,16 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const [seenBefore] = useState(readOnboardingSeen);
 
   const settings = configQuery.data?.generalSettings;
+  const dataDir = configQuery.data?.dataDir;
+  const [savedProgress, setSavedProgress] = useState<OnboardingProgress | null>(
+    null,
+  );
+  const saveProgress = useCallback(
+    (progress: OnboardingProgress) => {
+      if (dataDir !== undefined) saveOnboardingProgress(dataDir, progress);
+    },
+    [dataDir],
+  );
   const completedAt = settings?.onboardingCompletedAt;
   const setupGuideQuery = useSetupGuideAssignment({
     enabled: completedAt === null,
@@ -56,7 +79,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     enabled: prefetchInstallInfo,
   });
   useEffect(() => {
-    if (typeof completedAt === "string") rememberOnboardingSeen();
+    if (typeof completedAt !== "string") return;
+    rememberOnboardingSeen();
+    clearOnboardingProgress();
   }, [completedAt]);
 
   if (
@@ -76,8 +101,15 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const firstRun = settings.onboardingCompletedAt === null && !firstRunClosed;
   const keepClosedGuideMounted =
     firstRunClosed && setupGuideQuery.data?.variant === "new";
-  if (!firstRun && !keepClosedGuideMounted) return children;
-  if (setupGuideQuery.isPending) return null;
+  if (!firstRun && !keepClosedGuideMounted) {
+    if (savedProgress !== null) setSavedProgress(null);
+    return children;
+  }
+  if (setupGuideQuery.isPending || dataDir === undefined) return null;
+  if (savedProgress === null) {
+    setSavedProgress(readOnboardingProgress(dataDir));
+    return null;
+  }
   const setupGuide = setupGuideQuery.data ?? CONTROL_SETUP_GUIDE;
   const entry = seenBefore ? "replay" : "first_run";
 
@@ -91,12 +123,13 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         >
           <OnboardingErrorTelemetry
             entry={entry}
-            initialStep="agent"
+            initialStep={savedProgress.step}
             closing={firstRunClosed}
           >
             <Suspense fallback={null}>
               <OnboardingFlow
-                initialStep="agent"
+                initialProgress={savedProgress}
+                onProgress={saveProgress}
                 setupGuide={setupGuide}
                 entry={entry}
                 closing={firstRunClosed}

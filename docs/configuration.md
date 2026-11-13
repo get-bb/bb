@@ -337,7 +337,13 @@ provider's current display.
 **Setup guide.** A new install opens a first-run setup guide (connect an agent,
 add projects, pick plugins, set up devices). `onboardingCompletedAt` records
 when it was finished or skipped; `bb settings replay-onboarding`, or Settings →
-General → Setup guide, clears it so the guide shows again. The projects step
+General → Setup guide, clears it so the guide shows again. A guide left before
+it's finished (window closed, page reloaded, or app quit) reopens at the step it
+was on, with the steps already done or skipped still marked, in both guides.
+That progress is kept in the browser's local storage for the server's data
+directory and cleared once setup is finished; `onboarding_exposed`,
+`onboarding_started`, and `onboarding_step_reached` aren't sent again for a
+step the guide already reached. The projects step
 lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 The guide shown is `control` (current) or `new` (redesign), from the app's
