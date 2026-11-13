@@ -102,7 +102,6 @@ export type TelemetryEvent =
         entry: "first_run" | "replay";
         setup_guide_variant: SetupGuideVariant;
         setup_guide_source: "override" | "flag" | "default";
-        $set: { setup_guide_variant: SetupGuideVariant };
       };
     }
   | {
@@ -258,6 +257,7 @@ export async function createTelemetryService(
           ...(request?.accessRoute
             ? { access_route: request.accessRoute }
             : {}),
+          $process_person_profile: false,
         },
         timestamp: new Date().toISOString(),
       });

@@ -351,6 +351,8 @@ saved in `<dataDir>/setup-guide-assignment.json` is reused.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
+Every event sets `$process_person_profile: false`, so PostHog keeps no person
+profile for an install.
 The server sends events such as `app_started`, `telemetry_disabled`, `thread_created`,
 `user_message_sent`, `turn_finished`, and `plugin_installed`. The app reports setup-guide and
 first-send events through `POST /api/v1/system/telemetry/events`
@@ -374,8 +376,7 @@ guide (by either route), and Continue on the plugins step only when a featured
 plugin is on; otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves the flag assignment, adds `setup_guide_variant`
-and `setup_guide_source` (`override`, `flag`, or `default`), sets
-`setup_guide_variant` as a person property, and sends PostHog's
+and `setup_guide_source` (`override`, `flag`, or `default`), and sends PostHog's
 `$feature_flag_called` when the flag decided the variant. The server adds
 `setup_guide_variant` to every setup-guide event (`onboarding_*` and onboarding
 `recommendation`), and once the flag assignment is known every event, including

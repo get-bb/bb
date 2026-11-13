@@ -4412,8 +4412,7 @@ the same fixed set.
 around the guide in `OnboardingGate`, which reports and rethrows render errors
 and listens for window errors only while the guide is open.
 `onboarding_exposed` (`entry`) marks the guide being shown; the server saves
-the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
-`setup_guide_variant` as a person property (`$set`), and sends
+the assignment, adds `setup_guide_variant` and `setup_guide_source`, and sends
 `$feature_flag_called` when the variant came from the PostHog flag. Every
 setup-guide event gets `setup_guide_variant` from the server.
 

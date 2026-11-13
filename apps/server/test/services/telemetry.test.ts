@@ -86,6 +86,7 @@ describe("telemetry service", () => {
       expect(payload).toMatchObject({
         api_key: "phc_test",
         distinct_id: persistedId,
+        properties: { $process_person_profile: false },
       });
     }
     expect(calls[0]?.payload).toMatchObject({
