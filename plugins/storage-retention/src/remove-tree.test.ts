@@ -39,11 +39,12 @@ describe("removeTree", () => {
     await fs.mkdir(locked, { recursive: true });
     await fs.symlink(outside, path.join(locked, "link"));
     await fs.chmod(locked, 0o555);
+    const outsideMode = (await fs.stat(outside)).mode;
 
     await removeTree(trash);
 
     await expect(fs.lstat(trash)).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await fs.stat(outside)).mode & 0o777).toBe(0o555);
+    expect((await fs.stat(outside)).mode).toBe(outsideMode);
     await fs.chmod(outside, 0o700);
   });
 });
