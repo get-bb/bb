@@ -3873,21 +3873,27 @@ export function getFirstParentedTimelineBoundarySequence(
           AND child.sequence <= ${args.maxSeq}
       ) AS end FROM parents
     )
-    SELECT min(${events.sequence}) AS sequence
-    FROM events INNER JOIN spans
-      ON ${events.sequence} > spans.start AND ${events.sequence} < spans.end
-    WHERE ${events.type} = 'client/turn/requested'
-      AND ${events.threadId} = ${args.threadId}
-      AND ${visibleTimelineRequestInputSql}
-      AND (
-        COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
-          IN ('thread-start', 'new-turn')
-        OR (
-          json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
-          AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
+    SELECT min((
+      SELECT ${events.sequence}
+      FROM events INDEXED BY events_thread_type_sequence_idx
+      WHERE ${events.threadId} = ${args.threadId}
+        AND ${events.type} = 'client/turn/requested'
+        AND ${events.sequence} > spans.start
+        AND ${events.sequence} < spans.end
+        AND ${visibleTimelineRequestInputSql}
+        AND (
+          COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
+            IN ('thread-start', 'new-turn')
+          OR (
+            json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
+            AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
+          )
         )
-      )
-      AND json_extract(${events.data}, '$.initiator') = 'user'
+        AND json_extract(${events.data}, '$.initiator') = 'user'
+      ORDER BY ${events.sequence}
+      LIMIT 1
+    )) AS sequence
+    FROM spans
   `);
   return result?.sequence ?? null;
 }

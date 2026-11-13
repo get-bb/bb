@@ -16,7 +16,6 @@ import { createQueuedThreadMessage } from "../../src/data/queued-thread-messages
 import { createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
 
-export const HISTORY_TURNS = 10_000;
 const NEIGHBOR_THREADS = 3;
 const NEIGHBOR_TURNS = 200;
 const TURNS_PER_BATCH = 250;
@@ -480,7 +479,10 @@ function appendHistory(
   return { turns, delegationItemIds, backgroundTaskItemIds };
 }
 
-export function buildHistoryFixture(db: DbConnection): HistoryFixture {
+export function buildHistoryFixture(
+  db: DbConnection,
+  historyTurns: number,
+): HistoryFixture {
   const host = upsertHost(db, noopNotifier, { name: "query-costs" });
   const { project } = createProject(db, noopNotifier, {
     name: "query-costs",
@@ -518,14 +520,14 @@ export function buildHistoryFixture(db: DbConnection): HistoryFixture {
   const history = appendHistory(db, {
     threadId: thread.id,
     providerThreadId,
-    turnCount: HISTORY_TURNS,
+    turnCount: historyTurns,
     prefix: "h",
   });
   const pendingRequestId = nextRequestId();
   const [latestSequence] = db.transaction(
     (tx) =>
       appendStoredThreadEventsInTransaction(tx, [
-        requestedEvent(thread.id, pendingRequestId, HISTORY_TURNS + 1),
+        requestedEvent(thread.id, pendingRequestId, historyTurns + 1),
       ]),
     { behavior: "immediate" },
   );

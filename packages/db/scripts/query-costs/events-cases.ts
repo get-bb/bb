@@ -213,7 +213,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listEvents`,
-    budgetMs: 1_000,
+    ceilingMs: 2_000,
     reason: "Returns every row of the thread by design; only tests call it",
     run: (db, fixture) => listEvents(db, { threadId: fixture.threadId }),
   },
@@ -553,7 +553,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listTimelineOrderingContext`,
-    budgetMs: 400,
+    ceilingMs: 500,
     reason:
       "Known linear cost: a cold timeline open reads four rows per turn and checks each request's visible input with json_each; the grouping-context cache serves later opens",
     run: (db, fixture) =>
@@ -596,9 +596,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#getFirstParentedTimelineBoundarySequence`,
-    budgetMs: 120,
-    reason:
-      "Known linear cost: the planner drives from every request in the range and evaluates its JSON before the delegation span check",
     run: (db, fixture) =>
       getFirstParentedTimelineBoundarySequence(db, {
         maxSeq: fixture.latestSequence,

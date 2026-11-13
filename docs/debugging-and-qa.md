@@ -305,15 +305,23 @@ with
 followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
 
 Plans cannot show what a query costs once a thread is long, so the workflow's
-cost job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds one thread
-with 10,000 turns (about 170,000 events) through the real event write path,
-then times every exported query function in `packages/db/src/data/events.ts`
-and `packages/db/src/data/queued-thread-messages.ts` against it, each inside a
-rolled-back savepoint. A function fails when its fastest of up to three calls
-exceeds its budget (25 ms unless its case sets `budgetMs` with a `reason`); a
-call still running after 5 seconds (or 20 times its budget) is killed and
-fails. Cases live in `packages/db/scripts/query-costs/`; the check also fails
-when an exported query function in those files has no case.
+cost job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It
+builds two databases through the real event write path, one with a 5,000-turn
+thread and one with a 10,000-turn thread (about 170,000 events), then calls
+every exported query function in `packages/db/src/data/events.ts` and
+`packages/db/src/data/queued-thread-messages.ts` against both, interleaved,
+each call inside a rolled-back savepoint. It keeps the fastest of up to three
+calls per size and fails a function when:
+
+- its time on the long thread is at least 2 ms and more than 3 times its time
+  on the short one, so its cost grows faster than history (a runner that is
+  uniformly slower changes both times alike);
+- it takes longer than its ceiling on the long thread (250 ms unless its case
+  sets `ceilingMs` with a `reason`); or
+- a single call runs for more than 5 seconds, when it is killed.
+
+Cases live in `packages/db/scripts/query-costs/`; the check also fails when an
+exported query function in those files has no case.
 
 The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
 when agents saturate the CPU:
