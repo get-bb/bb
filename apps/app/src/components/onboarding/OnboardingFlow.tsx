@@ -792,9 +792,14 @@ function ProjectsStepContainer({
       ),
     [hostProjects, scannedRepos],
   );
-  const projectAddedDuringGuide =
-    projectIdsAtOpen !== null &&
-    hostProjects.some((project) => !projectIdsAtOpen.has(project.id));
+  const [projectAddedBeforeStep, setProjectAddedBeforeStep] = useState<
+    boolean | null
+  >(null);
+  if (projectAddedBeforeStep === null && projectIdsAtOpen !== null) {
+    setProjectAddedBeforeStep(
+      hostProjects.some((project) => !projectIdsAtOpen.has(project.id)),
+    );
+  }
   const selectedPaths = useMemo(() => {
     const importable = new Set(
       (discovered ?? [])
@@ -803,11 +808,11 @@ function ProjectsStepContainer({
     );
     const chosen =
       selection ??
-      (projectAddedDuringGuide
+      (projectAddedBeforeStep === true
         ? new Set<string>()
         : defaultSelectedRepoPaths(discovered ?? [], now));
     return new Set([...chosen].filter((path) => importable.has(path)));
-  }, [discovered, now, projectAddedDuringGuide, selection]);
+  }, [discovered, now, projectAddedBeforeStep, selection]);
   const repos = useMemo((): OnboardingRepo[] => {
     const discoveredPaths = new Set(
       (discovered ?? []).map((repo) => repo.path),

@@ -411,23 +411,24 @@ describe("OnboardingFlow", () => {
         originUrl: null,
         projectId,
       });
-      const { queryClient } = renderFlow({ initialStep: "projects", variant });
+      const { queryClient } = renderFlow({ initialStep: "plugins", variant });
       await setQueryDataAndFlush(() => {
         queryClient.setQueryData(
           sidebarNavigationQueryKey(),
           sidebarNavigation(null),
         );
-        queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
-          repos: [repo("/r/imported", "prj_imported"), repo("/r/other", null)],
-          truncated: false,
-        });
       });
       await setQueryDataAndFlush(() => {
         queryClient.setQueryData(
           sidebarNavigationQueryKey(),
           sidebarNavigation("/r/imported"),
         );
+        queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
+          repos: [repo("/r/imported", "prj_imported"), repo("/r/other", null)],
+          truncated: false,
+        });
       });
+      fireEvent.click(button(/^Back$/u));
 
       expect(screen.getByText("Already added")).toBeTruthy();
       const checked = screen
@@ -436,6 +437,40 @@ describe("OnboardingFlow", () => {
       expect(checked).toHaveLength(1);
       fireEvent.click(button(/^Continue/u));
       expect(screen.getByText("Make bb yours")).toBeTruthy();
+      expect(vi.mocked(recordTelemetryEvent)).toHaveBeenCalledWith({
+        name: "onboarding_step_completed",
+        properties: { step: "projects", entry: "first_run" },
+      });
     },
   );
+
+  it("keeps the default selection when a project is added while Projects is open", async () => {
+    const { queryClient } = renderFlow({ initialStep: "projects" });
+    await setQueryDataAndFlush(() => {
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        sidebarNavigation(null),
+      );
+      queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
+        repos: [
+          {
+            path: "/r/other",
+            name: "other",
+            lastActivityAt: new Date().toISOString(),
+            originUrl: null,
+            projectId: null,
+          },
+        ],
+        truncated: false,
+      });
+    });
+    await setQueryDataAndFlush(() => {
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        sidebarNavigation("/r/imported"),
+      );
+    });
+
+    expect(button(/^Import 1 project$/u)).toBeTruthy();
+  });
 });
