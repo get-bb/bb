@@ -14,7 +14,7 @@ import {
   type NavigateFunction,
 } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { PERSONAL_PROJECT_ID, type Host } from "@bb/domain";
+import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -28,7 +28,10 @@ import {
   sidebarNavigationQueryKey,
 } from "@/hooks/queries/query-keys";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
-import { makeProject } from "../../../.ladle/story-fixtures";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -186,42 +189,36 @@ function repoScanRequests(): number {
     .length;
 }
 
-function sidebarNavigation(projects: { id: string; path: string }[]) {
-  const entry = (project: ReturnType<typeof makeProject>) => ({
-    ...project,
-    defaultExecutionOptions: null,
-    threads: [],
-  });
-  return {
-    sections: [],
-    personalProject: entry(
-      makeProject({
-        id: PERSONAL_PROJECT_ID,
-        kind: "personal",
-        name: "Personal",
-      }),
-    ),
-    projects: projects.map(({ id, path }) =>
-      entry(
-        makeProject({
-          id,
-          name: path,
-          sources: [
-            {
-              id: `src_${id}`,
-              projectId: id,
-              isDefault: true,
-              createdAt: 1,
-              updatedAt: 1,
-              type: "local_path",
-              hostId: "host_1",
-              path,
-            },
+function sidebarNavigation(importedPath: string | null) {
+  return makeSidebarBootstrapResponse({
+    projects:
+      importedPath === null
+        ? []
+        : [
+            makeProjectWithThreadsResponse({
+              id: "prj_imported",
+              sources: [
+                {
+                  id: "src_imported",
+                  projectId: "prj_imported",
+                  isDefault: true,
+                  createdAt: 1,
+                  updatedAt: 1,
+                  type: "local_path",
+                  hostId: "host_1",
+                  path: importedPath,
+                },
+              ],
+            }),
           ],
-        }),
-      ),
-    ),
-  };
+  });
+}
+
+async function setQueryDataAndFlush(update: () => void): Promise<void> {
+  await act(async () => {
+    update();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 afterEach(() => {
@@ -414,44 +411,22 @@ describe("OnboardingFlow", () => {
         originUrl: null,
         projectId,
       });
-      const onClose = vi.fn();
-      const queryClient = new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      });
-      queryClient.setQueryData(
-        sidebarNavigationQueryKey(),
-        sidebarNavigation([]),
-      );
-      queryClient.setQueryData(hostsQueryOptions(false).queryKey, [
-        makeHost({ id: "host_1", name: "bee", status: "connected" }),
-      ]);
-      queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
-        repos: [repo("/r/imported", "prj_imported"), repo("/r/other", null)],
-        truncated: false,
-      });
-      render(
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <TooltipProvider>
-              <QuickCreateProjectProvider>
-                <OnboardingFlow
-                  initialStep="projects"
-                  entry="first_run"
-                  setupGuide={{ variant }}
-                  closing={false}
-                  onClose={onClose}
-                />
-              </QuickCreateProjectProvider>
-            </TooltipProvider>
-          </MemoryRouter>
-        </QueryClientProvider>,
-      );
-      await act(async () => {
+      const { queryClient } = renderFlow({ initialStep: "projects", variant });
+      await setQueryDataAndFlush(() => {
         queryClient.setQueryData(
           sidebarNavigationQueryKey(),
-          sidebarNavigation([{ id: "prj_imported", path: "/r/imported" }]),
+          sidebarNavigation(null),
         );
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
+          repos: [repo("/r/imported", "prj_imported"), repo("/r/other", null)],
+          truncated: false,
+        });
+      });
+      await setQueryDataAndFlush(() => {
+        queryClient.setQueryData(
+          sidebarNavigationQueryKey(),
+          sidebarNavigation("/r/imported"),
+        );
       });
 
       expect(screen.getByText("Already added")).toBeTruthy();
