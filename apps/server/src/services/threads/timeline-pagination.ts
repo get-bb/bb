@@ -24,8 +24,7 @@ interface OlderThreadTimelinePageRequest {
 }
 
 export type ThreadTimelinePageRequest =
-  | LatestThreadTimelinePageRequest
-  | OlderThreadTimelinePageRequest;
+  LatestThreadTimelinePageRequest | OlderThreadTimelinePageRequest;
 
 interface TimelineLogicalSegment {
   rows: TimelineRow[];
