@@ -41,7 +41,9 @@ Each step below says what must be true when it's done, whichever way it's done.
 5. **Header fields**, after the import, because importing renames the draft:
    From, Reply-To, Subject, Preview text, and the name "What's new in bb ·
    {Month} {Year}". The body has no hidden preheader of its own: Resend builds
-   one from the Preview text field, and a second would repeat the line.
+   one from the Preview text field, and a second would repeat the line. Review
+   rounds happen on this one draft; the drafts for the other lists come at the send
+   (see "Sending").
 6. **Check the build.** Save the draft's HTML as `issues/<yyyy-mm>.resend.html`
    and its header fields as `issues/<yyyy-mm>.resend-fields.json` (`from`,
    `replyTo`, `subject`, `preview`, `name`), then compare them with the send
@@ -70,33 +72,39 @@ section before sharing it.
   Resend, and the test email's links carry `utm_campaign=monthly_releases_<ym>`
   and show up in getbb.app's analytics.
 - **Audience:** everyone subscribed, once each. A Resend broadcast goes to
-  exactly one segment, and segments are fixed lists, so the To field is one
-  segment that combines every list the reviewer names. Unsubscribes are honored.
-- **Update the segment before scheduling and again right before the send.** The
-  website signup list keeps growing, but the combined segment only changes when
-  someone adds contacts to it, and the send usually comes days after scheduling.
-  Do the update below before scheduling, and arrange for it to run again within
-  the hour before the send (by hand, or with an automation that has Resend
-  access then). To update:
-  1. Add every contact on each list the reviewer names to the combined segment.
-     Re-adding a contact is harmless. In the dashboard's contact view, select
-     each page and use bulk Edit → Add to segments; its pages can skip contacts
-     that share an import time, so re-check every row's segment tags afterwards.
-  2. Check that the combined segment's count equals the lists' union (each
-     list's count, minus contacts on more than one list). Don't schedule until
-     it does.
-  3. Set the draft's To to the combined segment and confirm it's still set after
-     a reload.
+  exactly one segment, so send one broadcast per list the reviewer names, each
+  addressed to that list directly. A list that grows on its own, such as the
+  website signup list, then reaches everyone on it at send time with no extra
+  step. Unsubscribes are honored.
+- **One draft per list.** Once the reviewer approves the checked draft,
+  duplicate it once for each other list, so there is one draft per list,
+  including the original. Name every draft "What's new in bb · {Month} {Year} ·
+  {list}", set its To to that list, and confirm To is still set after a reload.
+  Run the check in step 6 on every draft; it accepts the list suffix in the
+  name.
+- **Remove overlaps before scheduling.** Someone on two lists would get two
+  copies, since a broadcast can't skip contacts on another list. Find anyone on
+  more than one of the lists and remove them from all but the list they joined
+  most recently. This doesn't unsubscribe them; in the dashboard, open the
+  contact, Edit contact, and remove that list's tag.
 
   Never re-import contacts by CSV, which can re-subscribe people who
   unsubscribed.
 
+- **Pace the send.** Resend sends a broadcast as fast as it can; pacing is the
+  sender's job. A sudden spike to people who haven't heard from us lands some
+  copies in spam. Before scheduling, check the sending domain against Resend's
+  [warm-up guide](https://resend.com/docs/knowledge-base/warming-up) and the
+  root domain for a DMARC record (`dig +short TXT _dmarc.<domain>`). Until
+  the domain is warm, send the most engaged list first and split older lists
+  into smaller lists scheduled on later days.
 - **Test emails** go out only when the reviewer says, to the recipients they
-  name. Check every link in the received email.
-- **Schedule** after the reviewer's go-ahead on the test email: the first
-  Thursday after the month ends, 16:00 UTC, unless they pick otherwise.
-- **Changes after scheduling** need the reviewer's go-ahead. Unschedule, edit,
-  carry the edit into the JSON and re-render, then run the check in step 6 until
-  it passes. Schedule it again, check the contacts, time and links on the way,
-  and confirm the broadcast shows as scheduled. Test emails still work while
-  scheduled.
+  name, from one draft. Check every link in the received email.
+- **Schedule** every draft after the reviewer's go-ahead on the test email: the
+  first Thursday after the month ends, 16:00 UTC, unless they pick otherwise.
+  Lists split for pacing go out on the following days at the same time.
+- **Changes after scheduling** need the reviewer's go-ahead and go into every
+  draft. Unschedule, edit, carry the edit into the JSON and re-render, then run
+  the check in step 6 on each draft until it passes. Schedule them again, check
+  the contacts, time and links on the way, and confirm every draft shows as
+  scheduled. Test emails still work while scheduled.

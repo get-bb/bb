@@ -147,7 +147,7 @@ export function renderEmail(spec, { imagesBase = "", hosted } = {}) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;font-family:${FONT};color:${INK};">
 <tr><td style="padding:0 0 28px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${escapeHtml(logo)}" width="28" height="28" alt="bb" style="display:block;"></td>
-<td align="right" style="font-size:13px;color:${DIM};">${escapeHtml(spec.month)}</td></tr></table></td></tr>
+<td align="right" style="font-size:13px;color:${DIM};">${escapeHtml(spec.month.split(" ")[0])} updates</td></tr></table></td></tr>
 <tr><td><h1 style="margin:0;font-size:34px;line-height:40px;letter-spacing:-0.02em;color:${HEAD};font-weight:700;">What's new in bb</h1>
 <p style="margin:12px 0 0 0;font-size:17px;line-height:27px;color:${INK};">${escapeHtml(spec.opening)}</p></td></tr>
 ${themes}
@@ -155,7 +155,7 @@ ${themes}
 <a href="${changelog(ym, "cta")}" style="display:inline-block;padding:12px 20px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">${escapeHtml(cta.text)}</a></td></tr></table>
 <p style="margin:12px 0 0 0;font-size:14px;color:#555555;">${escapeHtml(cta.download_prefix)} <a href="${download(ym)}" style="color:#555555;">${escapeHtml(cta.download_text)}</a></p></td></tr>
 <tr><td style="padding:44px 0 0 0;"><div style="border-top:1px solid ${RULE};padding-top:24px;font-size:13px;line-height:20px;color:${DIM};text-align:center;">
-You're getting this because you signed up for bb or Terragon updates.<br><a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:${DIM};">Unsubscribe</a> · ${escapeHtml(spec.address)}</div></td></tr>
+You're getting this because you signed up for updates.<br><a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:${DIM};">Unsubscribe</a> · ${escapeHtml(spec.address)}</div></td></tr>
 </table></td></tr></table></body></html>`;
 }
 
