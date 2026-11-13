@@ -40,7 +40,7 @@ import type { HistoryFixture } from "../../src/history-fixture.js";
 import { scaled } from "./case.js";
 
 const DAY_MS = 24 * 60 * 60_000;
-const PROVIDER_ID = "codex";
+const PROVIDER_ID = "provider-a";
 const WORKTREE_PROVIDER = "git-worktree";
 const WORKTREE_PLUGIN = "environment-git-worktree";
 const CHECKOUT_PROVIDER = "project-checkout";

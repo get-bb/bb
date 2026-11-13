@@ -78,11 +78,11 @@ export const PLUGIN_IDS = [
 ] as const;
 export const BUSIEST_PLUGIN_ID = PLUGIN_IDS[0];
 export const PROVIDER_IDS = [
-  "codex",
-  "claude-code",
-  "pi",
+  "provider-a",
+  "provider-b",
+  "provider-c",
   "opencode",
-  "acp-gemini",
+  "provider-d",
 ] as const;
 export const ITEM_SWEEPS = [
   "archived-thread-teardown",
@@ -248,7 +248,7 @@ function legacyImageGenerationEvent(
     type: "provider/unhandled",
     data: {
       providerThreadId,
-      providerId: "codex",
+      providerId: "provider-a",
       rawType: "item/completed",
       rawEvent: {
         jsonrpc: "2.0",

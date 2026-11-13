@@ -329,7 +329,7 @@ const SETTINGS_CASES: readonly Case[] = [
   {
     name: `${APP_SETTINGS}#setDisabledProviderIds`,
     run: (db) =>
-      setDisabledProviderIds(db, ["opencode", "pi", "plugin:slack/assistant"]),
+      setDisabledProviderIds(db, ["opencode", "provider-c", "plugin:slack/assistant"]),
   },
   {
     name: `${APP_SETTINGS}#setDisabledPluginProviderCatalog`,

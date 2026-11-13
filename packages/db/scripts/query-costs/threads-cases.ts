@@ -193,7 +193,7 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
       createThread(db, noopNotifier, {
         projectId: fixture.projectId,
         environmentId: fixture.environmentId,
-        providerId: "codex",
+        providerId: "provider-a",
         title: "Fix flaky timeline scroll test",
         titleFallback: "Fix the flaky timeline scroll test in apps/app",
         sectionId: seed.biggestSectionId,

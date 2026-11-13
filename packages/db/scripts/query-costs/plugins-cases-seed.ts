@@ -536,7 +536,7 @@ function seedKv(
         db,
         "account-pool",
         `retry-route:${threadId}`,
-        '"codex"',
+        '"provider-a"',
       );
     }
     setPluginKvValue(

@@ -571,7 +571,7 @@ const DEFAULTS_CASES: readonly Case[] = [
     run: (db, fixture) =>
       upsertProjectExecutionDefaults(db, {
         projectId: fixture.projectId,
-        providerId: "claude-code",
+        providerId: "provider-b",
         model: "opus",
         reasoningLevel: "medium",
         permissionMode: "full",
