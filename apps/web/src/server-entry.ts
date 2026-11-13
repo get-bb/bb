@@ -60,7 +60,7 @@ function flagDefinitionsSource(): FlagDefinitionsSource | null {
             host: postHogHost,
             projectKey: postHogKey,
             secretKey: env.POSTHOG_FLAGS_SECRET_KEY,
-            cacheKey: `https://${env.BASE_DOMAIN}/__experiments/posthog-flag-definitions`,
+            cacheKey: `https://${env.BASE_DOMAIN}/__experiments/posthog-flag-definitions/${encodeURIComponent(postHogKey)}`,
             fetch: (input, init) => fetch(input, init),
             log: logEntry,
             sharedCache: {
@@ -68,6 +68,8 @@ function flagDefinitionsSource(): FlagDefinitionsSource | null {
                 (await caches.open(DEFINITIONS_CACHE)).match(key),
               put: async (key, response) =>
                 (await caches.open(DEFINITIONS_CACHE)).put(key, response),
+              delete: async (key) =>
+                (await caches.open(DEFINITIONS_CACHE)).delete(key),
             },
           })
         : null;

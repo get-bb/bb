@@ -11,6 +11,7 @@ type DefinitionsOutcome =
   | "timeout"
   | "error"
   | "http_error"
+  | "quota_limited"
   | "invalid_response";
 
 export type DefinitionsLogEntry = {
@@ -30,6 +31,7 @@ type Entry = {
 export type SharedCache = {
   match: (key: string) => Promise<Response | undefined>;
   put: (key: string, response: Response) => Promise<void>;
+  delete: (key: string) => Promise<unknown>;
 };
 
 export type FlagDefinitionsConfig = {
@@ -57,16 +59,19 @@ export function createFlagDefinitionsSource(
   let refreshing: Promise<void> | null = null;
   let lastAttemptAt = -Infinity;
 
-  async function readShared(): Promise<Entry | null> {
+  async function readShared(newerThan: number): Promise<Entry | null> {
     try {
       const response = await config.sharedCache?.match(config.cacheKey);
       if (!response) {
         return null;
       }
       const fetchedAt = Number(response.headers.get(FETCHED_AT_HEADER));
+      if (!Number.isFinite(fetchedAt) || fetchedAt <= newerThan) {
+        return null;
+      }
       const body = await response.text();
       const definitions = parseFlagDefinitions(JSON.parse(body));
-      return definitions === null || !Number.isFinite(fetchedAt)
+      return definitions === null
         ? null
         : { definitions, body, etag: response.headers.get("etag"), fetchedAt };
     } catch {
@@ -87,6 +92,14 @@ export function createFlagDefinitionsSource(
           },
         }),
       );
+    } catch {
+      return;
+    }
+  }
+
+  async function deleteShared(): Promise<void> {
+    try {
+      await config.sharedCache?.delete(config.cacheKey);
     } catch {
       return;
     }
@@ -114,6 +127,10 @@ export function createFlagDefinitionsSource(
         outcome = "not_modified";
         entry = { ...entry, fetchedAt: now() };
         await writeShared(entry);
+      } else if (response.status === 402) {
+        outcome = "quota_limited";
+        entry = null;
+        await deleteShared();
       } else if (!response.ok) {
         outcome = "http_error";
       } else {
@@ -164,12 +181,12 @@ export function createFlagDefinitionsSource(
 
   return {
     async read(waitUntil) {
-      if (entry === null || now() - entry.fetchedAt >= FRESH_MS) {
-        const shared = await readShared();
-        if (
-          shared !== null &&
-          (entry === null || shared.fetchedAt > entry.fetchedAt)
-        ) {
+      if (
+        (entry === null || now() - entry.fetchedAt >= FRESH_MS) &&
+        now() - lastAttemptAt >= FRESH_MS
+      ) {
+        const shared = await readShared(entry?.fetchedAt ?? -Infinity);
+        if (shared !== null) {
           entry = shared;
         }
       }
