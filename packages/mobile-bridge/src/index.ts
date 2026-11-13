@@ -8,10 +8,13 @@ export {
   parseBridgeServers,
   parseNativeShellHandshake,
   safeAreaInsetsSchema,
+  shellWindowLayoutSchema,
   type BridgeServer,
   type NativeCapability,
   type NativeShellHandshake,
   type SafeAreaInsets,
+  type ShellWindowLayout,
+  type ShellWindowRect,
 } from "./handshake.js";
 export {
   type NativeScreen,

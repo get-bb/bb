@@ -153,6 +153,47 @@ it("applies native bottom insets to portaled UI and updates them when the safe a
   ).toBe("");
 });
 
+it("mirrors the vertical bar onto the document and exposes the occlusions", () => {
+  const automatic = {
+    verticalBar: { edge: "trailing", behavior: "automatic" },
+    occlusions: [{ x: 382, y: 0, width: 84, height: 174 }],
+  } as const;
+  installShell({ windowLayout: automatic });
+  const root = document.documentElement;
+  const { unmount } = render(
+    createElement(MemoryRouter, null, createElement(NativeShellReporter)),
+  );
+  expect(root.getAttribute("data-bb-native-vertical-bar")).toBe("automatic");
+  expect(root.getAttribute("data-bb-native-vertical-bar-edge")).toBe(
+    "trailing",
+  );
+  const disabled = {
+    verticalBar: { edge: "none", behavior: "disabled" },
+    occlusions: [{ x: 266, y: 0, width: 200, height: 82 }],
+  };
+  act(() => {
+    new Function(
+      "window",
+      buildBridgeEventScript({ type: "window-layout", windowLayout: disabled }),
+    )(window);
+  });
+  expect(root.getAttribute("data-bb-native-vertical-bar")).toBe("disabled");
+  expect(root.getAttribute("data-bb-native-vertical-bar-edge")).toBe("none");
+  expect(getNativeShell()?.windowLayout()).toEqual(disabled);
+  unmount();
+  expect(root.hasAttribute("data-bb-native-vertical-bar")).toBe(false);
+  expect(root.hasAttribute("data-bb-native-vertical-bar-edge")).toBe(false);
+});
+
+it("reads a shell without a window layout as no layout", () => {
+  installShell();
+  expect(getNativeShell()?.windowLayout()).toBeNull();
+  render(createElement(MemoryRouter, null, createElement(NativeShellReporter)));
+  expect(
+    document.documentElement.hasAttribute("data-bb-native-vertical-bar"),
+  ).toBe(false);
+});
+
 describe("application link compatibility", () => {
   it.each([2, 3])(
     "uses an acknowledged native request only with bridge version 3 (version %s)",

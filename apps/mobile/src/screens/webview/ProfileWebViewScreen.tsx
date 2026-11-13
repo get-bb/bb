@@ -24,7 +24,12 @@ import { AppState, BackHandler, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
-import { revealApp, useProfiles } from "@/app-shell";
+import {
+  refreshWindowSafeArea,
+  revealApp,
+  useProfiles,
+  useWindowLayout,
+} from "@/app-shell";
 import { nativeSessionCache } from "@/lib/native";
 import {
   allowsSubframeLoad,
@@ -59,6 +64,7 @@ const APP_VERSION =
 const ANDROID_VERSION_CODE = Number(nativeBuildVersion);
 
 const IDLE_SESSION = { status: "idle" } as const;
+const SAFE_AREA_REFRESH_DELAY_MS = 400;
 
 export function ProfileWebViewScreen() {
   const { tokens } = useTheme();
@@ -213,6 +219,35 @@ export function ProfileWebViewScreen() {
     bridge.send({ type: "safe-area", safeArea });
   }, [bridge, safeArea]);
 
+  const windowLayout = useWindowLayout();
+  const hasSentWindowLayout = useRef(false);
+  useEffect(() => {
+    if (!hasSentWindowLayout.current) {
+      hasSentWindowLayout.current = true;
+      return;
+    }
+    if (windowLayout !== null) {
+      bridge.send({ type: "window-layout", windowLayout });
+    }
+  }, [bridge, windowLayout]);
+
+  const verticalBarKey =
+    windowLayout === null
+      ? ""
+      : `${windowLayout.verticalBar.edge}/${windowLayout.verticalBar.behavior}`;
+  const settledVerticalBarKey = useRef(verticalBarKey);
+  useFocusEffect(
+    useCallback(() => {
+      if (settledVerticalBarKey.current === verticalBarKey) return;
+      settledVerticalBarKey.current = verticalBarKey;
+      const timer = setTimeout(
+        refreshWindowSafeArea,
+        SAFE_AREA_REFRESH_DELAY_MS,
+      );
+      return () => clearTimeout(timer);
+    }, [verticalBarKey]),
+  );
+
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") bridge.send({ type: "resume" });
@@ -245,6 +280,7 @@ export function ProfileWebViewScreen() {
       profileMode: profile.mode,
       secureContext: sourceUrl.startsWith("https://"),
       safeArea,
+      ...(windowLayout === null ? {} : { windowLayout }),
       capabilities: [
         "haptic",
         "badge",
@@ -257,7 +293,7 @@ export function ProfileWebViewScreen() {
         ? { nativeDownloads: true as const }
         : {}),
     };
-  }, [profile, safeArea, sourceUrl]);
+  }, [profile, safeArea, sourceUrl, windowLayout]);
 
   const retry = useCallback(() => {
     setLoad({ kind: "loading" });

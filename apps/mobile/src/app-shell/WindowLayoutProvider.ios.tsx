@@ -1,0 +1,73 @@
+import type { ShellWindowLayout } from "@bb/mobile-bridge";
+import { requireNativeView, requireOptionalNativeModule } from "expo";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
+import {
+  StyleSheet,
+  View,
+  type NativeSyntheticEvent,
+  type ViewProps,
+} from "react-native";
+import {
+  parseNativeWindowLayout,
+  useStatusBarPlacement,
+  windowLayoutKey,
+} from "@/lib/window-layout";
+import { WindowLayoutContext } from "./window-layout-context";
+
+interface WindowLayoutModule {
+  setVerticalBarDisabled(disabled: boolean): void;
+  refreshSafeArea(): void;
+}
+
+type ProbeProps = ViewProps & {
+  onWindowLayout: (event: NativeSyntheticEvent<unknown>) => void;
+};
+
+const windowLayoutModule =
+  requireOptionalNativeModule<WindowLayoutModule>("BbWindowLayout");
+const WindowLayoutProbe: ComponentType<ProbeProps> | null =
+  windowLayoutModule === null
+    ? null
+    : requireNativeView<ProbeProps>("BbWindowLayout");
+
+export function refreshWindowSafeArea(): void {
+  windowLayoutModule?.refreshSafeArea();
+}
+
+export function WindowLayoutProvider({ children }: { children: ReactNode }) {
+  const [placement] = useStatusBarPlacement();
+  const [layout, setLayout] = useState<ShellWindowLayout | null>(null);
+
+  useEffect(() => {
+    windowLayoutModule?.setVerticalBarDisabled(placement === "top");
+  }, [placement]);
+
+  const onWindowLayout = useCallback((event: NativeSyntheticEvent<unknown>) => {
+    const next = parseNativeWindowLayout(event.nativeEvent);
+    setLayout((previous) =>
+      windowLayoutKey(previous) === windowLayoutKey(next) ? previous : next,
+    );
+  }, []);
+
+  if (WindowLayoutProbe === null) return children;
+  return (
+    <WindowLayoutContext.Provider value={layout}>
+      <View style={styles.root}>
+        <WindowLayoutProbe
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+          onWindowLayout={onWindowLayout}
+        />
+        {children}
+      </View>
+    </WindowLayoutContext.Provider>
+  );
+}
+
+const styles = StyleSheet.create({ root: { flex: 1 } });

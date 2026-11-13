@@ -6,11 +6,13 @@ import {
   parseNativeShellHandshake,
   parseShellToPageEvent,
   safeAreaInsetsSchema,
+  shellWindowLayoutSchema,
   type BridgeServer,
   type NativeScreen,
   type NativeCapability,
   type NativeShellHandshake,
   type SafeAreaInsets,
+  type ShellWindowLayout,
   type ShellToPageEvent,
 } from "@bb/mobile-bridge";
 
@@ -21,12 +23,14 @@ interface NativeBridgeGlobal {
   copyRichText?(text: string, html: string): Promise<unknown>;
   subscribe(listener: (event: unknown) => void): () => void;
   safeArea?: unknown;
+  windowLayout?: unknown;
   servers?: unknown;
 }
 
 export interface NativeShell {
   handshake: NativeShellHandshake;
   safeArea(): SafeAreaInsets;
+  windowLayout(): ShellWindowLayout | null;
   servers(): readonly BridgeServer[] | null;
   has(capability: NativeCapability): boolean;
   post(message: unknown): void;
@@ -65,6 +69,7 @@ function pickHandshakeFields(bridge: NativeBridgeGlobal): unknown {
     profileMode: source.profileMode,
     secureContext: source.secureContext,
     safeArea: source.safeArea,
+    windowLayout: source.windowLayout,
     capabilities: source.capabilities,
     nativeDownloads: source.nativeDownloads,
   };
@@ -84,6 +89,10 @@ function buildNativeShell(): NativeShell | null {
     safeArea: () => {
       const live = safeAreaInsetsSchema.safeParse(bridge.safeArea);
       return live.success ? live.data : handshake.safeArea;
+    },
+    windowLayout: () => {
+      const live = shellWindowLayoutSchema.safeParse(bridge.windowLayout);
+      return live.success ? live.data : (handshake.windowLayout ?? null);
     },
     servers: () => parseBridgeServers(bridge.servers),
     has: (capability) => capabilities.has(capability),

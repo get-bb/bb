@@ -11,6 +11,30 @@ export const safeAreaInsetsSchema = z
 
 export type SafeAreaInsets = z.infer<typeof safeAreaInsetsSchema>;
 
+const windowRectSchema = z
+  .object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number().nonnegative(),
+    height: z.number().nonnegative(),
+  })
+  .strict();
+
+export const shellWindowLayoutSchema = z
+  .object({
+    verticalBar: z
+      .object({
+        edge: z.enum(["none", "leading", "trailing"]),
+        behavior: z.enum(["automatic", "disabled"]),
+      })
+      .strict(),
+    occlusions: z.array(windowRectSchema).max(32).readonly(),
+  })
+  .strict();
+
+export type ShellWindowLayout = z.infer<typeof shellWindowLayoutSchema>;
+export type ShellWindowRect = z.infer<typeof windowRectSchema>;
+
 export const NATIVE_CAPABILITIES = [
   "haptic",
   "badge",
@@ -32,6 +56,7 @@ export const nativeShellHandshakeSchema = z
     profileMode: z.enum(["direct", "connect"]),
     secureContext: z.boolean(),
     safeArea: safeAreaInsetsSchema,
+    windowLayout: shellWindowLayoutSchema.optional(),
     capabilities: z.array(nativeCapabilitySchema).readonly(),
     nativeDownloads: z.literal(true).optional(),
   })

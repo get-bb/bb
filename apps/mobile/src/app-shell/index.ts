@@ -15,3 +15,8 @@ export {
   useRealtimeConnectionState,
 } from "./useRealtimeState";
 export { QuickActionsHandler } from "./QuickActionsHandler";
+export {
+  refreshWindowSafeArea,
+  WindowLayoutProvider,
+} from "./WindowLayoutProvider";
+export { useWindowLayout } from "./window-layout-context";

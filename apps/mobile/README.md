@@ -10,6 +10,7 @@ external links, open native screens, save files on iOS). Threads, projects, plug
 settings run in the page. The native screens cover what the page cannot
 own: first-run pairing (Direct URL and bb connect QR / code enrollment),
 saved servers, This device settings (appearance, haptics, notifications,
+the folded iPhone Duo status bar placement,
 reload the page, clear website data), push registration and notification
 taps, deep links, quick actions, share intents and the connection banner.
 External links use the web app's `shellOpenExternal` helper and the native
@@ -63,6 +64,9 @@ src/
                          connection banner derivation
     e2e/                 launch/deep-link reset logic, flow boundary tests
     haptics/             haptic(kind) over expo-haptics + the preference store
+    window-layout/       folded iPhone Duo status bar placement: preference
+                         store, native window layout parsing, settings
+                         visibility
     links/               incoming-link parsing, profile match, add-server path
     native/              RN adapters for the lib contracts (SecureStore,
                          cookies, AppState, the shared MMKV preferences) —
@@ -97,6 +101,8 @@ src/
   types/                 asset declarations
   ui/                    NativeWind primitives (Text, Button, GroupedSection,
                          ActionSheet, …; see src/ui/README.md)
+modules/bb-window-layout/ local Expo module (iOS): turns the vertical bar off,
+                         reports its edge, behavior and the window occlusions
 e2e/flows/               Maestro shell flows: shell-launch, shell-deep-link,
                          shell-send, shell-unreachable-server, shell-connect
 e2e/subflows/            shared steps (launch-app.yaml: cold start through the
@@ -607,6 +613,57 @@ payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
   confirmations (warning), the servers long-press menu (heavy), and the
   auth-required banner (warning). Screens never import expo-haptics directly.
 
+## Folded iPhone Duo status bar
+
+Folded, the iPhone Duo cover screen (466×678pt) keeps a vertical bar: a side
+rail about 84pt wide beside the camera, where iOS draws the status bar
+vertically. Apps see it as a portrait `safeAreaInsets.right` (`.left` on
+mirrored devices) with a top inset of 0.
+
+iOS 27.1 lets an app turn that bar off: a view controller returns
+`UIVerticalBarBehavior.disabled` from `preferredVerticalBarBehavior` and calls
+`setNeedsUpdateOfVerticalBarConfiguration()`. iOS then draws the status bar
+across the top (an 82pt top inset on the cover screen, with the status pill
+and camera at the top right) and removes the rail's side inset, so the app
+gets the full width.
+
+Settings → This device → Cover screen → **Status bar at top** (MMKV
+`bb.statusBar.placement`, `system` by default, `top` when on) turns the bar
+off. The section shows on iOS while the window reports a vertical bar, or
+while the option is on (a disabled bar reports no edge).
+
+The local Expo module `modules/bb-window-layout` does the native part:
+
+- `setVerticalBarDisabled(disabled)` persists the choice in `UserDefaults`
+  (`bb.verticalBarDisabled`, restored when the module is created, so a cold
+  launch draws the first frame with the bar already off) and answers
+  `.disabled` for each window's root view controller. React Native owns the
+  root view controller, so the getter is swizzled for window roots only.
+- `refreshSafeArea()` makes UIKit recompute safe areas from the window root.
+  The WebView screen calls it when it regains focus after the bar changed:
+  the bar is switched from native Settings while the WebView is covered, and
+  the covered screen otherwise keeps its old insets until the app is
+  backgrounded.
+- The `BbWindowLayout` view (mounted full-window by `WindowLayoutProvider`)
+  reports the vertical bar's edge (`traitCollection.verticalBarEdge`), its
+  behavior, and the active `reservedRegions(kind: .occlusion)` frames in
+  window points.
+
+The native code is gated with `#if compiler(>=6.4)` and
+`#available(iOS 27.1, *)`; older SDKs and iOS versions report no bar and
+ignore the setting. Android renders the provider as a passthrough.
+
+The shell passes the layout to the page: the handshake carries an optional
+`windowLayout` (`verticalBar: { edge, behavior }`, `occlusions: [{ x, y,
+width, height }]` in window points, which equal page CSS pixels because the
+WebView fills the window), and a `window-layout` event follows each change.
+Older pages ignore both. The web app mirrors the bar onto `<html>` as
+`data-bb-native-vertical-bar` (`automatic` | `disabled`) and
+`data-bb-native-vertical-bar-edge`, and exposes the layout through
+`getNativeShell().windowLayout()`. bb's own layout already keeps the header
+clear through `env(safe-area-inset-*)`; plugins such as Duo Rail use the
+occlusions to size what they draw in the rail.
+
 ### Native download verification
 
 Build and install the patched iOS client, then start the normal local QA
@@ -770,7 +827,8 @@ Beta App Review and another build of the same version usually does not.
 - Connect sessions: `expo-secure-store`, one key per profile
   (`bb.connectSession.<profileId>`) holding the last minted desktop-session
   cookie and its server URL.
-- Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`): MMKV
+- Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`, status
+  bar placement `bb.statusBar.placement`): MMKV
   store `bb.preferences`, one shared instance from
   `src/lib/native/preferences-storage.ts`. Push state shares it:
   `bb.push.enabled.<profileId>` (+ `bb.push.enabledProfiles` index),

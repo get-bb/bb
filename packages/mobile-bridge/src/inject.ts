@@ -122,6 +122,9 @@ export function buildBridgeInjectionScript(
         if (event && event.type === "safe-area" && event.safeArea) {
           native.safeArea = event.safeArea;
         }
+        if (event && event.type === "window-layout" && event.windowLayout) {
+          native.windowLayout = event.windowLayout;
+        }
         if (event && event.type === "servers" && event.servers) {
           native.servers = event.servers;
         }

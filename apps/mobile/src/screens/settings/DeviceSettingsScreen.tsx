@@ -14,6 +14,7 @@ import { HapticsSettingsRow } from "./HapticsSettingsRow";
 import { LinkRow } from "./LinkRow";
 import { settingsSectionHref } from "@/screens/shell/hrefs";
 import { SettingsSection } from "./SettingsRows";
+import { StatusBarSettingsSection } from "./StatusBarSettingsSection";
 import { useBadgeColors } from "./settings-badges";
 
 export function DeviceSettingsScreen() {
@@ -65,6 +66,8 @@ export function DeviceSettingsScreen() {
             testID="device-notifications"
           />
         </SettingsSection>
+
+        <StatusBarSettingsSection />
 
         <SettingsSection
           title="Page"

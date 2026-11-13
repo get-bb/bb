@@ -3,6 +3,7 @@ import {
   parseBridgeServers,
   parsePageToShellMessage,
   parseNativeShellHandshake,
+  parseShellToPageEvent,
   type NativeShellHandshake,
 } from "../src/index.js";
 
@@ -187,6 +188,56 @@ describe("native download support", () => {
       parseNativeShellHandshake({
         ...handshake,
         capabilities: ["native-downloads"],
+      }),
+    ).toBeNull();
+  });
+});
+
+const DUO_COVER_BAR_OFF = {
+  verticalBar: { edge: "none", behavior: "disabled" },
+  occlusions: [
+    { x: 399.67, y: 29.33, width: 37, height: 37 },
+    { x: 266, y: 0, width: 200, height: 82 },
+  ],
+} as const;
+
+describe("shell window layout", () => {
+  it("accepts the window layout as an optional handshake field", () => {
+    const withLayout = { ...handshake, windowLayout: DUO_COVER_BAR_OFF };
+    expect(parseNativeShellHandshake(withLayout)).toEqual(withLayout);
+    expect(parseNativeShellHandshake(handshake)).toEqual(handshake);
+  });
+
+  it("rejects an unknown edge or behavior, a negative size and extra fields", () => {
+    for (const windowLayout of [
+      {
+        ...DUO_COVER_BAR_OFF,
+        verticalBar: { edge: "top", behavior: "disabled" },
+      },
+      {
+        ...DUO_COVER_BAR_OFF,
+        verticalBar: { edge: "none", behavior: "hidden" },
+      },
+      {
+        ...DUO_COVER_BAR_OFF,
+        occlusions: [{ x: 0, y: 0, width: -1, height: 1 }],
+      },
+      { ...DUO_COVER_BAR_OFF, statusBar: "top" },
+    ]) {
+      expect(
+        parseNativeShellHandshake({ ...handshake, windowLayout }),
+        JSON.stringify(windowLayout),
+      ).toBeNull();
+    }
+  });
+
+  it("parses the window-layout event and drops malformed ones", () => {
+    const event = { type: "window-layout", windowLayout: DUO_COVER_BAR_OFF };
+    expect(parseShellToPageEvent(event)).toEqual(event);
+    expect(
+      parseShellToPageEvent({
+        type: "window-layout",
+        windowLayout: "disabled",
       }),
     ).toBeNull();
   });

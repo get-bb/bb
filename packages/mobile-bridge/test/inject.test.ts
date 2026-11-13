@@ -204,6 +204,31 @@ describe("buildBridgeInjectionScript", () => {
     expect(seen).toHaveLength(1);
   });
 
+  it("stores the window layout and notifies subscribers when it changes", () => {
+    const { native, run } = installBridge();
+    const seen: unknown[] = [];
+    native.subscribe((event: unknown) => seen.push(event));
+    const disabled = {
+      verticalBar: { edge: "none", behavior: "disabled" },
+      occlusions: [{ x: 266, y: 0, width: 200, height: 82 }],
+    };
+    const event = { type: "window-layout", windowLayout: disabled };
+    run(buildBridgeEventScript(event));
+    expect(native.windowLayout).toEqual(disabled);
+    expect(seen).toEqual([event]);
+    const automatic = {
+      verticalBar: { edge: "trailing", behavior: "automatic" },
+      occlusions: [{ x: 382, y: 0, width: 84, height: 174 }],
+    };
+    run(
+      buildBridgeEventScript({
+        type: "window-layout",
+        windowLayout: automatic,
+      }),
+    );
+    expect(native.windowLayout).toEqual(automatic);
+  });
+
   it("installs the server list and replaces it when the shell sends a new one", () => {
     const studio = {
       id: "profile-1",

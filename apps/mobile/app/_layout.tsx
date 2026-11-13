@@ -15,6 +15,7 @@ import {
   ShareIntentHandler,
   ThreadOpenSignalHandler,
   useAppBoot,
+  WindowLayoutProvider,
 } from "@/app-shell";
 import { PushNotificationsHost } from "@/notifications";
 import { RootNavigator, RouteErrorBoundary } from "@/screens";
@@ -42,7 +43,9 @@ export default function RootLayout() {
                 <ProfilesProvider>
                   <ServerPaletteSync />
                   <SheetProvider>
-                    <RootNavigator />
+                    <WindowLayoutProvider>
+                      <RootNavigator />
+                    </WindowLayoutProvider>
                     <ThreadOpenSignalHandler />
                     <ShareIntentHandler />
                     <QuickActionsHandler />
