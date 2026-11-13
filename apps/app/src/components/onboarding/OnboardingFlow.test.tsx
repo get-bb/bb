@@ -14,7 +14,7 @@ import {
   type NavigateFunction,
 } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import type { Host } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -22,8 +22,13 @@ import { AppToasterView } from "@/components/AppToasterView";
 import { appToast } from "@/components/ui/app-toast";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
-import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
+import {
+  hostDiscoveredReposQueryKey,
+  pluginCatalogSearchQueryKey,
+  sidebarNavigationQueryKey,
+} from "@/hooks/queries/query-keys";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
+import { makeProject } from "../../../.ladle/story-fixtures";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -179,6 +184,44 @@ function providerStateRequests(): number {
 function repoScanRequests(): number {
   return sdkCalls.filter((call) => call === "hosts.experimental_discoverRepos")
     .length;
+}
+
+function sidebarNavigation(projects: { id: string; path: string }[]) {
+  const entry = (project: ReturnType<typeof makeProject>) => ({
+    ...project,
+    defaultExecutionOptions: null,
+    threads: [],
+  });
+  return {
+    sections: [],
+    personalProject: entry(
+      makeProject({
+        id: PERSONAL_PROJECT_ID,
+        kind: "personal",
+        name: "Personal",
+      }),
+    ),
+    projects: projects.map(({ id, path }) =>
+      entry(
+        makeProject({
+          id,
+          name: path,
+          sources: [
+            {
+              id: `src_${id}`,
+              projectId: id,
+              isDefault: true,
+              createdAt: 1,
+              updatedAt: 1,
+              type: "local_path",
+              hostId: "host_1",
+              path,
+            },
+          ],
+        }),
+      ),
+    ),
+  };
 }
 
 afterEach(() => {
@@ -360,4 +403,64 @@ describe("OnboardingFlow", () => {
 
     expect(await toasterPlacement()).toBe("top-center");
   });
+
+  it.each(["new", "control"] as const)(
+    "shows imported repos as added and preselects nothing new when the %s guide returns to Projects",
+    async (variant) => {
+      const repo = (path: string, projectId: string | null) => ({
+        path,
+        name: path,
+        lastActivityAt: new Date().toISOString(),
+        originUrl: null,
+        projectId,
+      });
+      const onClose = vi.fn();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        sidebarNavigation([]),
+      );
+      queryClient.setQueryData(hostsQueryOptions(false).queryKey, [
+        makeHost({ id: "host_1", name: "bee", status: "connected" }),
+      ]);
+      queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
+        repos: [repo("/r/imported", "prj_imported"), repo("/r/other", null)],
+        truncated: false,
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <TooltipProvider>
+              <QuickCreateProjectProvider>
+                <OnboardingFlow
+                  initialStep="projects"
+                  entry="first_run"
+                  setupGuide={{ variant }}
+                  closing={false}
+                  onClose={onClose}
+                />
+              </QuickCreateProjectProvider>
+            </TooltipProvider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      await act(async () => {
+        queryClient.setQueryData(
+          sidebarNavigationQueryKey(),
+          sidebarNavigation([{ id: "prj_imported", path: "/r/imported" }]),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(screen.getByText("Already added")).toBeTruthy();
+      const checked = screen
+        .getAllByRole("checkbox")
+        .filter((box) => box.getAttribute("aria-checked") === "true");
+      expect(checked).toHaveLength(1);
+      fireEvent.click(button(/^Continue/u));
+      expect(screen.getByText("Make bb yours")).toBeTruthy();
+    },
+  );
 });
