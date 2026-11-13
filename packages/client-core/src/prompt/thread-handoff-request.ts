@@ -5,6 +5,7 @@ import type {
   ServiceTier,
 } from "@bb/domain";
 import type { AppCreateThreadRequest } from "../api-types.js";
+import type { ProviderCommandSuggestion } from "./mentions/types.js";
 import { promptDraftToInput, type PromptDraftState } from "./prompt-draft.js";
 
 export interface ThreadHandoffCreateSeed {
@@ -161,5 +162,86 @@ export function buildThreadHandoffCreateRequest({
       : {}),
     ...(sendAt === undefined ? {} : { sendAt }),
     startedOnBehalfOf: null,
+  };
+}
+
+const THREAD_HANDOFF_COMMAND_NAME = "handoff";
+
+export const THREAD_HANDOFF_COMMAND_SUGGESTION: ProviderCommandSuggestion = {
+  kind: "command",
+  name: THREAD_HANDOFF_COMMAND_NAME,
+  source: "command",
+  origin: "builtin",
+  description: "Hand off to a new thread",
+  argumentHint: null,
+};
+
+export function stripLeadingThreadHandoffCommand(
+  draft: PromptDraftState,
+): PromptDraftState | null {
+  const command = draft.mentions.find(
+    (mention) =>
+      mention.resource.kind === "command" &&
+      mention.resource.trigger === "/" &&
+      mention.resource.name === THREAD_HANDOFF_COMMAND_NAME &&
+      mention.resource.source === "command" &&
+      mention.resource.origin === "builtin",
+  );
+  if (
+    command === undefined ||
+    draft.text.slice(0, command.start).trim() !== ""
+  ) {
+    return null;
+  }
+  const rest = draft.text.slice(command.end);
+  const cut = command.end + (rest.length - rest.trimStart().length);
+  return {
+    text: draft.text.slice(cut),
+    mentions: draft.mentions
+      .filter((mention) => mention !== command)
+      .map((mention) => ({
+        ...mention,
+        start: mention.start - cut,
+        end: mention.end - cut,
+      })),
+    attachments: draft.attachments,
+  };
+}
+
+function hasThreadHandoffSourceMention(
+  seed: ThreadHandoffCreateSeed,
+  draft: PromptDraftState,
+): boolean {
+  return draft.mentions.some(
+    (mention) =>
+      mention.resource.kind === "thread" &&
+      mention.resource.threadId === seed.sourceThreadId,
+  );
+}
+
+export function threadHandoffDraftAfterSourceRemoved(
+  seed: ThreadHandoffCreateSeed,
+  previous: PromptDraftState,
+  next: PromptDraftState,
+): PromptDraftState | null {
+  if (
+    !hasThreadHandoffSourceMention(seed, previous) ||
+    hasThreadHandoffSourceMention(seed, next)
+  ) {
+    return null;
+  }
+  const remnant = /^Continue from\s*/.exec(next.text);
+  if (remnant === null) {
+    return next;
+  }
+  const cut = remnant[0].length;
+  return {
+    text: next.text.slice(cut),
+    mentions: next.mentions.map((mention) => ({
+      ...mention,
+      start: mention.start - cut,
+      end: mention.end - cut,
+    })),
+    attachments: next.attachments,
   };
 }

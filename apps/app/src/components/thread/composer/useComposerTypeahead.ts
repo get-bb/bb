@@ -4,6 +4,7 @@ import type { PromptMentionLinkResolver } from "@bb/client-core";
 import type { PromptBoxAction } from "@/components/promptbox/ComposerBox";
 import type { ProviderComposerAction } from "@bb/domain";
 import type { ProviderCommand } from "@bb/server-contract";
+import type { ProviderCommandSuggestion } from "@bb/client-core";
 import { buildProviderPromptActionProps } from "@bb/client-core";
 import { usePromptMentionTriggers } from "@/hooks/usePromptMentions";
 
@@ -18,6 +19,7 @@ interface UseComposerTypeaheadArgs {
     | readonly ProviderComposerAction[]
     | undefined;
   threadProviderCommands?: readonly ProviderCommand[] | null;
+  builtinCommands?: readonly ProviderCommandSuggestion[];
   resolveMentionLink: PromptMentionLinkResolver;
 }
 
@@ -35,6 +37,7 @@ export function useComposerTypeahead({
   currentThreadId,
   selectedProviderComposerActions,
   threadProviderCommands,
+  builtinCommands,
   resolveMentionLink,
 }: UseComposerTypeaheadArgs): UseComposerTypeaheadResult {
   const mentionTriggers = usePromptMentionTriggers();
@@ -65,11 +68,13 @@ export function useComposerTypeahead({
           skillsTriggers,
           promptActions,
           threadProviderCommands: threadProviderCommands ?? null,
+          ...(builtinCommands === undefined ? {} : { builtinCommands }),
           environmentId,
         },
       },
     }),
     [
+      builtinCommands,
       commandScope,
       currentThreadId,
       environmentId,
