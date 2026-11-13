@@ -2,8 +2,10 @@ import type { ProviderHealth } from "@bb/host-daemon-contract";
 import { getAppSettings, setAppSettings } from "@bb/db";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
-import { getProviderStates } from "../../src/services/system/provider-states.js";
-import { runSetupGuideAgentChecks } from "../../src/services/system/setup-guide-agent-checks.js";
+import {
+  getProviderStates,
+  runSetupGuideAgentChecks,
+} from "../../src/services/system/provider-states.js";
 import {
   registerHostRpcResponder,
   type HostRpcHandlerResult,

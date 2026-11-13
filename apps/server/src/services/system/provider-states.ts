@@ -5,6 +5,7 @@ import type {
 } from "@bb/server-contract";
 import type { ProviderInfo } from "@bb/domain";
 import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
+import { getAppSettings } from "@bb/db";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -32,6 +33,7 @@ import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 import { resolvePluginProviderEnvHealth } from "../plugins/plugin-agent-contributions.js";
 import { isSuspendedHostUnavailableError } from "../lib/lifecycle-api-errors.js";
+import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 function guidedSignIn(
   deps: LoggedWorkSessionDeps,
@@ -280,34 +282,42 @@ async function checkProviderStates(
   return states.filter((state): state is SystemProviderState => state !== null);
 }
 
-interface HeldProviderStateChecks {
+export const SETUP_GUIDE_AGENT_CHECKS_HOLD_MS = 30_000;
+
+interface SetupGuideAgentChecks {
   sessionId: string;
   expiresAt: number;
   taken: boolean;
-  states: Promise<SystemProviderState[]>;
-  byProviderId: Map<string, Promise<SystemProviderState | null>>;
+  settled: Promise<void>;
+  checks: Promise<{
+    states: Promise<SystemProviderState[]>;
+    byProviderId: ReadonlyMap<string, Promise<SystemProviderState | null>>;
+  }>;
 }
 
-const heldChecksByRegistry = new WeakMap<
+const setupGuideChecksByRegistry = new WeakMap<
   ProviderRegistryService,
-  Map<string, HeldProviderStateChecks>
+  Map<string, SetupGuideAgentChecks>
 >();
 
-function heldChecks(
+function setupGuideChecks(
   deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
-): Map<string, HeldProviderStateChecks> {
-  let held = heldChecksByRegistry.get(deps.providerRegistry);
-  if (held === undefined) {
-    held = new Map();
-    heldChecksByRegistry.set(deps.providerRegistry, held);
+): Map<string, SetupGuideAgentChecks> {
+  let checks = setupGuideChecksByRegistry.get(deps.providerRegistry);
+  if (checks === undefined) {
+    checks = new Map();
+    setupGuideChecksByRegistry.set(deps.providerRegistry, checks);
   }
-  return held;
+  return checks;
 }
 
-export async function checkProviderStatesForNextRead(
+async function startProviderStateChecks(
   deps: LoggedWorkSessionDeps,
-  args: { hostId: string; sessionId: string; holdMs: number },
-): Promise<SystemProviderState[]> {
+  hostId: string,
+): Promise<{
+  states: Promise<SystemProviderState[]>;
+  byProviderId: Map<string, Promise<SystemProviderState | null>>;
+}> {
   await deps.providerRegistry.whenRegistrationsSettled();
   const providers = listCheckedProviders(deps);
   const settle = new Map<
@@ -328,61 +338,78 @@ export async function checkProviderStatesForNextRead(
   for (const state of byProviderId.values()) state.catch(() => undefined);
   const states = checkProviderStates(
     deps,
-    { hostId: args.hostId },
+    { hostId },
     providers,
     (providerId, state) => settle.get(providerId)?.resolve(state),
   );
-  const held = heldChecks(deps);
-  const entry: HeldProviderStateChecks = {
-    sessionId: args.sessionId,
-    expiresAt: Date.now() + args.holdMs,
-    taken: false,
-    states,
-    byProviderId,
-  };
-  held.set(args.hostId, entry);
   states.catch((error: unknown) => {
     for (const { reject } of settle.values()) reject(error);
-    if (held.get(args.hostId) === entry) held.delete(args.hostId);
   });
-  return await states;
+  return { states, byProviderId };
 }
 
-function findHeldChecks(
+export function runSetupGuideAgentChecks(
   deps: LoggedWorkSessionDeps,
   hostId: string,
-): HeldProviderStateChecks | null {
-  const held = heldChecks(deps);
-  const entry = held.get(hostId);
-  if (entry === undefined) return null;
-  if (
+): Promise<void> {
+  if (getAppSettings(deps.db).onboardingCompletedAt !== null) {
+    return Promise.resolve();
+  }
+  const sessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+  if (sessionId === null) return Promise.resolve();
+  const existing = setupGuideChecks(deps).get(hostId);
+  if (existing?.sessionId === sessionId) return existing.settled;
+  const startedAt = Date.now();
+  const checks = startProviderStateChecks(deps, hostId);
+  const settled = checks
+    .then(({ states }) => states)
+    .then(
+      (states) => {
+        deps.logger.info(
+          {
+            hostId,
+            providerCount: states.length,
+            durationMs: Date.now() - startedAt,
+          },
+          "Setup guide agent checks finished",
+        );
+      },
+      (error: unknown) => {
+        deps.logger.warn(
+          { hostId, ...runtimeErrorLogFields(deps.config, error) },
+          "Setup guide agent checks failed",
+        );
+      },
+    );
+  setupGuideChecks(deps).set(hostId, {
+    sessionId,
+    expiresAt: Date.now() + SETUP_GUIDE_AGENT_CHECKS_HOLD_MS,
+    taken: false,
+    settled,
+    checks,
+  });
+  return settled;
+}
+
+function findSetupGuideChecks(
+  deps: LoggedWorkSessionDeps,
+  hostId: string,
+): SetupGuideAgentChecks | null {
+  const entry = setupGuideChecks(deps).get(hostId);
+  return entry !== undefined &&
     entry.expiresAt > Date.now() &&
     deps.hub.getDaemonSessionIdForHost(hostId) === entry.sessionId
-  ) {
-    return entry;
-  }
-  held.delete(hostId);
-  return null;
-}
-
-function takeHeldProviderStates(
-  deps: LoggedWorkSessionDeps,
-  hostId: string,
-): Promise<SystemProviderState[]> | null {
-  const entry = findHeldChecks(deps, hostId);
-  if (entry === null || entry.taken) return null;
-  entry.taken = true;
-  return entry.states;
+    ? entry
+    : null;
 }
 
 async function getOneProviderState(
   deps: LoggedWorkSessionDeps,
   args: { cwd?: string; hostId: string; providerId: string },
 ): Promise<SystemProviderState[]> {
-  const held =
-    args.cwd === undefined
-      ? findHeldChecks(deps, args.hostId)?.byProviderId.get(args.providerId)
-      : undefined;
+  const entry =
+    args.cwd === undefined ? findSetupGuideChecks(deps, args.hostId) : null;
+  const held = (await entry?.checks)?.byProviderId.get(args.providerId);
   if (held !== undefined) {
     const state = await held;
     return state === null ? [] : [state];
@@ -434,8 +461,10 @@ export async function getProviderStates(
       }),
     };
   }
-  const held = cwd === undefined ? takeHeldProviderStates(deps, hostId) : null;
-  return {
-    providers: await (held ?? getConnectedProviderStates(deps, args)),
-  };
+  const entry = cwd === undefined ? findSetupGuideChecks(deps, hostId) : null;
+  if (entry !== null && !entry.taken) {
+    entry.taken = true;
+    return { providers: await (await entry.checks).states };
+  }
+  return { providers: await getConnectedProviderStates(deps, args) };
 }
