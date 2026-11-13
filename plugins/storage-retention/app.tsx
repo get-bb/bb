@@ -10,10 +10,10 @@ import {
 import {
   definePluginApp,
   experimental_Icon as PluginIcon,
-  experimental_PluginRpcCallError,
   experimental_copyToClipboard,
   useBbNavigate,
   useRealtime,
+  useRealtimeConnectionState,
   useRpc,
   useSdk,
   type PluginNavPanelProps,
@@ -46,7 +46,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { EntryCleanupInput } from "./src/storage-types.js";
+import type {
+  EntryCleanup,
+  EntryCleanupInput,
+  EntryCleanupStatus,
+} from "./src/storage-types.js";
 import { describeLeftoverCleanup } from "./src/leftover-cleanup.js";
 import {
   needsForce,
@@ -91,16 +95,6 @@ function plural(count: number, noun: string, nouns = `${noun}s`) {
 }
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
-}
-const ENTRY_CLEANUP_RECONNECT_MS = 60_000;
-function isTransientRpcFailure(error: unknown) {
-  return (
-    error instanceof experimental_PluginRpcCallError &&
-    ((error.code === "transport_error" && error.status === undefined) ||
-      error.status === 502 ||
-      error.status === 503 ||
-      error.status === 504)
-  );
 }
 
 type CleanupCompletion = {
@@ -203,7 +197,10 @@ function cleanupFeedback(
       "Couldn’t delete development data",
     ],
     orphans: ["Orphaned files deleted", "Couldn’t delete orphaned files"],
-    worktrees: ["Checkout cleanup retried", "Couldn’t clean up checkouts"],
+    worktrees: [
+      "Leftover worktree cleanup finished",
+      "Couldn’t clean up leftover worktrees",
+    ],
     externalWorktrees: ["Worktrees removed", "Couldn’t remove worktrees"],
     largeFileCleanup: [
       "Large archived files deleted",
@@ -223,10 +220,15 @@ function cleanupFeedback(
     id: `storage:${hostId ?? "all"}:${kind}`,
   };
 }
+type WaitForEntryCleanup = (
+  id: string,
+) => Promise<Extract<EntryCleanupStatus, { state: "completed" }>["result"]>;
 type RequestScan = <T>(hostIds: string[], work: () => Promise<T>) => Promise<T>;
 type StorageData = {
+  request: number;
   state: State;
   hosts: Hosts;
+  entryCleanups: EntryCleanup[];
   machines: Record<string, Machine>;
   primaryHostId: string | null;
 };
@@ -259,7 +261,9 @@ function StoragePanel(props: PluginNavPanelProps) {
           revision === stateRevision.current || current === null
             ? state
             : current.state,
+        request,
         hosts: reports.hosts,
+        entryCleanups: reports.entryCleanups,
         machines: Object.fromEntries(machines.map((host) => [host.id, host])),
         primaryHostId: config.primaryHostId,
       }));
@@ -396,6 +400,48 @@ function StoragePanel(props: PluginNavPanelProps) {
       });
     }
   };
+  const entryWaiters = useRef(
+    new Map<
+      string,
+      { after: number; settle: (status: EntryCleanupStatus | null) => void }
+    >(),
+  );
+  const waitForEntryCleanup = useCallback<WaitForEntryCleanup>(
+    (id) =>
+      new Promise((resolve, reject) => {
+        entryWaiters.current.set(id, {
+          after: refreshRevision.current + 1,
+          settle: (status) => {
+            if (status === null)
+              reject(
+                new Error(
+                  "Storage was restarted before this cleanup finished. Scan the machine to see what was removed",
+                ),
+              );
+            else if (status.state === "failed")
+              reject(new Error(status.message));
+            else if (status.state === "completed") resolve(status.result);
+          },
+        });
+        void refresh();
+      }),
+    [refresh],
+  );
+  useEffect(() => {
+    if (data === null) return;
+    for (const [id, waiter] of entryWaiters.current) {
+      const entry = data.entryCleanups.find((cleanup) => cleanup.id === id);
+      if (
+        entry
+          ? entry.status.state !== "completed" &&
+            entry.status.state !== "failed"
+          : data.request < waiter.after
+      )
+        continue;
+      entryWaiters.current.delete(id);
+      waiter.settle(entry?.status ?? null);
+    }
+  }, [data]);
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -405,16 +451,14 @@ function StoragePanel(props: PluginNavPanelProps) {
   useRealtime("policy-changed", () => {
     void refreshPolicy();
   });
-  useEffect(
-    () =>
-      sdk.subscribe({
-        event: "realtime:connection",
-        callback: (event) => {
-          if (event.state === "connected" && event.reconnected) void refresh();
-        },
-      }),
-    [sdk, refresh],
-  );
+  const connection = useRealtimeConnectionState();
+  const previousConnection = useRef(connection);
+  useEffect(() => {
+    const previous = previousConnection.current;
+    previousConnection.current = connection;
+    if (previous === "reconnecting" && connection === "connected")
+      void refresh();
+  }, [connection, refresh]);
   return (
     <StoragePage
       key={props.subPath}
@@ -422,6 +466,7 @@ function StoragePanel(props: PluginNavPanelProps) {
       data={data}
       loadError={loadError}
       refresh={refresh}
+      waitForEntryCleanup={waitForEntryCleanup}
       notifySuccess={notifySuccess}
       updateState={updateState}
       requestScan={requestScan}
@@ -434,6 +479,7 @@ function StoragePage({
   data,
   loadError,
   refresh,
+  waitForEntryCleanup,
   updateState,
   notifySuccess,
   requestScan,
@@ -442,6 +488,7 @@ function StoragePage({
   data: StorageData | null;
   loadError: string | null;
   refresh: () => Promise<void>;
+  waitForEntryCleanup: WaitForEntryCleanup;
   updateState: (state: State) => void;
   notifySuccess: NotifySuccess;
   requestScan: RequestScan;
@@ -481,6 +528,14 @@ function StoragePage({
       if (removal.state === "queued" || removal.state === "running")
         busyActions.add(worktreeRemovalToastId(host.hostId, removal.path));
     }
+  }
+  for (const { target, status } of data?.entryCleanups ?? []) {
+    if (status.state !== "queued" && status.state !== "running") continue;
+    busyActions.add(
+      target.kind === "thread"
+        ? `storage:thread:${target.threadId}`
+        : developmentToastId(target.hostId, target.names),
+    );
   }
   const cleanupBusy = (kind: string) =>
     busyActions.has(`storage:${hostId ?? "all"}:${kind}`);
@@ -540,26 +595,7 @@ function StoragePage({
   }
   async function runEntryCleanup(input: EntryCleanupInput) {
     const { id } = await rpc.call("startEntryCleanup", input);
-    let unreachableSince: number | null = null;
-    for (;;) {
-      let status;
-      try {
-        status = await rpc.call("entryCleanup", { id });
-        unreachableSince = null;
-      } catch (error) {
-        unreachableSince ??= Date.now();
-        if (
-          !isTransientRpcFailure(error) ||
-          Date.now() - unreachableSince > ENTRY_CLEANUP_RECONNECT_MS
-        )
-          throw error;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        continue;
-      }
-      if (status.state === "failed") throw new Error(status.message);
-      if (status.state === "completed") return status.result;
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+    return waitForEntryCleanup(id);
   }
   async function removeDevelopment(input: {
     hostId: string;

@@ -14,6 +14,7 @@ import { resolveDevInstanceConfig } from "../../../packages/config/src/runtime.j
 import hostEntry from "./host.js";
 import plugin from "./server.js";
 import { hostStorageContract } from "./host-contract.js";
+import { storageRpc } from "./contract.js";
 import {
   hostStorageListResponseSchema,
   hostStorageResponseSchema,
@@ -89,6 +90,7 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
     sdk: {
       projects: { list: async () => [] },
       hosts: {
+        list: async () => [],
         get: async ({ hostId }) => ({
           ...makeHostResponse({ id: hostId, status: "connected" }),
           threadStorageRootPath: "/storage",
@@ -130,13 +132,22 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
     pending.get("thr_other")!.resolve();
     await other;
     const queued = { kind: "thread", threadId: "thr_two" };
-    const second = await host.harness.callRpc("startEntryCleanup", queued);
+    const second = storageRpc.startEntryCleanup.output.parse(
+      await host.harness.callRpc("startEntryCleanup", queued),
+    );
     await expect(
       host.harness.callRpc("startEntryCleanup", queued),
     ).resolves.toEqual(second);
-    await expect(host.harness.callRpc("entryCleanup", second)).resolves.toEqual(
-      { state: "queued" },
-    );
+    const entryCleanup = async () =>
+      hostStorageListResponseSchema
+        .parse(await host.harness.callRpc("hosts", null))
+        .entryCleanups.find((cleanup) => cleanup.id === second.id);
+    await expect(entryCleanup()).resolves.toEqual({
+      id: second.id,
+      target: queued,
+      status: { state: "queued" },
+    });
+    const notices = host.harness.inspection.realtimeSignals.length;
     await host.harness.callRpc("startCleanup", {
       hostId: "host_test",
       kind: "orphans",
@@ -157,8 +168,13 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
     await expect.poll(() => pending.has("thr_two")).toBe(true);
     pending.get("thr_two")!.reject();
     await expect
-      .poll(() => host.harness.callRpc("entryCleanup", second))
+      .poll(async () => (await entryCleanup())?.status)
       .toEqual({ state: "failed", message: "host disconnected" });
+    expect(
+      host.harness.inspection.realtimeSignals
+        .slice(notices)
+        .filter((event) => event.channel === "changed").length,
+    ).toBeGreaterThanOrEqual(2);
     await expect
       .poll(
         async () =>
@@ -3211,7 +3227,8 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
       }),
     ).resolves.toEqual({
       retriedCount: 2,
-      failed: [
+      failed: [],
+      kept: [
         {
           environmentId: "env_dirty",
           message: "Kept because it has 2 uncommitted changes",

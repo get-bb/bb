@@ -7,7 +7,6 @@ import {
   externalWorktreeSkipReasonSchema,
   cleanupInputSchema,
   entryCleanupInputSchema,
-  entryCleanupStatusSchema,
 } from "./storage-types.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -44,10 +43,6 @@ export const storageRpc = defineRpcContract({
   startEntryCleanup: {
     input: entryCleanupInputSchema,
     output: z.object({ id: z.string() }),
-  },
-  entryCleanup: {
-    input: z.object({ id: z.string() }).strict(),
-    output: entryCleanupStatusSchema,
   },
   startCleanup: {
     input: cleanupInputSchema,

@@ -13,13 +13,17 @@ import {
 } from "./host-contract.js";
 import { readThreadsById, readThreadsInEnvironments } from "./sdk-data.js";
 import { LARGE_FILE_MIN_BYTES } from "./rules.js";
-import { describeLeftoverCleanup } from "./leftover-cleanup.js";
+import {
+  describeLeftoverCleanup,
+  summarizeLeftoverRetry,
+} from "./leftover-cleanup.js";
 import {
   developerStorageScanSchema,
   externalWorktreeScanSchema,
 } from "./storage-types.js";
 import type {
   CleanupInput,
+  EntryCleanup,
   EntryCleanupInput,
   EntryCleanupStatus,
   HostStorageLeftoverWorktree,
@@ -262,6 +266,7 @@ function leftoverFailure(error: unknown): LeftoverCleanup {
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
 
+const FINISHED_ENTRY_CLEANUP_RETENTION_MS = 10 * 60_000;
 const plural = (count: number, noun: string) =>
   `${count.toLocaleString()} ${count === 1 ? noun : `${noun}s`}`;
 class StorageLocationUnavailable extends Error {
@@ -304,6 +309,11 @@ export function createStorage(
     Map<string, ExternalWorktreeRemoval>
   >();
   const jobs = new Set<Promise<void>>();
+  const entryJobs = new Map<
+    string,
+    EntryCleanup & { finishedAt: number | null }
+  >();
+  const pendingEntries = new Map<string, string>();
   bb.onDispose(async () => {
     lifecycle.abort();
     await Promise.allSettled(jobs);
@@ -792,6 +802,7 @@ export function createStorage(
           ...(await hostResponse(machine.id, projectsOnce)),
         })),
       ),
+      entryCleanups: entryCleanups(),
     };
   }
   function developerCandidatePaths(
@@ -1794,6 +1805,7 @@ export function createStorage(
             changes.set(checkout.path, checkout.changedFileCount);
       }
       let retriedCount = 0;
+      const kept: { environmentId: string; message: string }[] = [];
       const failed: { environmentId: string; message: string }[] = [];
       for (const env of environments) {
         lifecycle.signal.throwIfAborted();
@@ -1806,7 +1818,7 @@ export function createStorage(
             changedFileCount,
           };
           leftoverCleanups.set(env.id, cleanup);
-          failed.push({
+          kept.push({
             environmentId: env.id,
             message: describeLeftoverCleanup(cleanup),
           });
@@ -1823,14 +1835,14 @@ export function createStorage(
           lifecycle.signal.throwIfAborted();
           const cleanup = leftoverFailure(error);
           leftoverCleanups.set(env.id, cleanup);
-          failed.push({
+          (cleanup.state === "failed" ? failed : kept).push({
             environmentId: env.id,
             message: describeLeftoverCleanup(cleanup),
           });
         }
       }
       changed();
-      return { retriedCount, failed };
+      return { retriedCount, kept, failed };
     } finally {
       release();
     }
@@ -2101,11 +2113,9 @@ export function createStorage(
             },
             release,
           );
-          if (result.retriedCount === 0 && result.failed[0])
-            throw new Error(
-              `${plural(result.failed.length, "checkout")} kept: ${result.failed[0].message}`,
-            );
-          message = `Cleaned up ${plural(result.retriedCount, "checkout")}${result.failed.length > 0 ? `; ${result.failed.length} kept` : ""}`;
+          const summary = summarizeLeftoverRetry(result);
+          if (summary.state === "failed") throw new Error(summary.message);
+          message = summary.message;
         }
         setMaintenance(hostId, {
           state: "completed",
@@ -2128,13 +2138,32 @@ export function createStorage(
     void job.finally(() => jobs.delete(job));
     return null;
   }
-  const entryJobs = new Map<string, EntryCleanupStatus>();
-  const pendingEntries = new Map<string, string>();
-  function entryCleanup({ id }: { id: string }) {
-    const status = entryJobs.get(id);
-    if (!status)
-      throw new Error("Cleanup is no longer available; refresh Storage");
-    return status;
+  function setEntryCleanup(
+    id: string,
+    target: EntryCleanupInput,
+    status: EntryCleanupStatus,
+  ) {
+    entryJobs.set(id, {
+      id,
+      target,
+      status,
+      finishedAt:
+        status.state === "completed" || status.state === "failed"
+          ? Date.now()
+          : null,
+    });
+    changed();
+  }
+  function entryCleanups(): EntryCleanup[] {
+    const cutoff = Date.now() - FINISHED_ENTRY_CLEANUP_RETENTION_MS;
+    for (const [id, entry] of entryJobs)
+      if (entry.finishedAt !== null && entry.finishedAt < cutoff)
+        entryJobs.delete(id);
+    return [...entryJobs.values()].map(({ id, target, status }) => ({
+      id,
+      target,
+      status,
+    }));
   }
   function startEntryCleanup(input: EntryCleanupInput) {
     const key = JSON.stringify(
@@ -2146,8 +2175,8 @@ export function createStorage(
     if (current) return { id: current };
     const id = randomUUID();
     pendingEntries.set(key, id);
-    entryJobs.set(id, { state: "queued" });
-    const started = () => entryJobs.set(id, { state: "running" });
+    setEntryCleanup(id, input, { state: "queued" });
+    const started = () => setEntryCleanup(id, input, { state: "running" });
     const job = (async () => {
       try {
         const result =
@@ -2160,9 +2189,9 @@ export function createStorage(
                 kind: input.kind,
                 ...(await removeDevInstances(input, null, started)),
               };
-        entryJobs.set(id, { state: "completed", result });
+        setEntryCleanup(id, input, { state: "completed", result });
       } catch (error) {
-        entryJobs.set(id, {
+        setEntryCleanup(id, input, {
           state: "failed",
           message: error instanceof Error ? error.message : String(error),
         });
@@ -2176,7 +2205,6 @@ export function createStorage(
   }
   return {
     startEntryCleanup,
-    entryCleanup,
     startCleanup,
     host,
     hosts,

@@ -256,6 +256,44 @@ export const hostStorageResponseSchema = z.object({
 });
 export type HostStorageResponse = z.infer<typeof hostStorageResponseSchema>;
 
+export const entryCleanupInputSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("thread"), threadId: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("development"),
+      hostId: z.string().min(1),
+      names: z.array(z.string().min(1)).min(1).max(500),
+      stopRunning: z.boolean(),
+    })
+    .strict(),
+]);
+export type EntryCleanupInput = z.infer<typeof entryCleanupInputSchema>;
+export const entryCleanupStatusSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.enum(["queued", "running"]) }),
+  z.object({ state: z.literal("failed"), message: z.string() }),
+  z.object({
+    state: z.literal("completed"),
+    result: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("thread"), ok: z.literal(true) }),
+      z.object({
+        kind: z.literal("development"),
+        running: z.array(z.string()),
+        removedCount: byteCountSchema,
+        removedBytes: byteCountSchema,
+        skippedCount: byteCountSchema,
+        stoppedProcessCount: byteCountSchema,
+      }),
+    ]),
+  }),
+]);
+export type EntryCleanupStatus = z.infer<typeof entryCleanupStatusSchema>;
+export const entryCleanupSchema = z.object({
+  id: z.string(),
+  target: entryCleanupInputSchema,
+  status: entryCleanupStatusSchema,
+});
+export type EntryCleanup = z.infer<typeof entryCleanupSchema>;
+
 export const hostStorageListResponseSchema = z.object({
   hosts: z.array(
     z.object({
@@ -269,6 +307,7 @@ export const hostStorageListResponseSchema = z.object({
       externalWorktreeRemovals: z.array(externalWorktreeRemovalSchema),
     }),
   ),
+  entryCleanups: z.array(entryCleanupSchema),
 });
 export type HostStorageListResponse = z.infer<
   typeof hostStorageListResponseSchema
@@ -285,6 +324,7 @@ export type HostStorageRemoveOrphansResponse = z.infer<
 
 export const hostStorageRetryWorktreeCleanupResponseSchema = z.object({
   retriedCount: z.number().int().nonnegative(),
+  kept: z.array(z.object({ environmentId: z.string(), message: z.string() })),
   failed: z.array(z.object({ environmentId: z.string(), message: z.string() })),
 });
 export type HostStorageRetryWorktreeCleanupResponse = z.infer<
@@ -327,34 +367,3 @@ export const cleanupInputSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 export type CleanupInput = z.infer<typeof cleanupInputSchema>;
-export const entryCleanupInputSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("thread"), threadId: z.string().min(1) }).strict(),
-  z
-    .object({
-      kind: z.literal("development"),
-      hostId: z.string().min(1),
-      names: z.array(z.string().min(1)).min(1).max(500),
-      stopRunning: z.boolean(),
-    })
-    .strict(),
-]);
-export type EntryCleanupInput = z.infer<typeof entryCleanupInputSchema>;
-export const entryCleanupStatusSchema = z.discriminatedUnion("state", [
-  z.object({ state: z.enum(["queued", "running"]) }),
-  z.object({ state: z.literal("failed"), message: z.string() }),
-  z.object({
-    state: z.literal("completed"),
-    result: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("thread"), ok: z.literal(true) }),
-      z.object({
-        kind: z.literal("development"),
-        running: z.array(z.string()),
-        removedCount: byteCountSchema,
-        removedBytes: byteCountSchema,
-        skippedCount: byteCountSchema,
-        stoppedProcessCount: byteCountSchema,
-      }),
-    ]),
-  }),
-]);
-export type EntryCleanupStatus = z.infer<typeof entryCleanupStatusSchema>;

@@ -10,7 +10,6 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Toaster, toast } from "sonner";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeHostResponse } from "@get-bb/plugin-sdk/testing";
-import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
 import { policySchema, storageRpc } from "./src/contract.js";
 import { makeSystemConfig } from "../../apps/app/src/test/fixtures/system-config.js";
@@ -84,7 +83,14 @@ function fixture(subPath = "host_test") {
       },
     },
   ];
-  const reports = vi.fn(async () => ({ hosts }));
+  const entryCleanups = new Map<
+    string,
+    import("./src/storage-types.js").EntryCleanup
+  >();
+  const reports = vi.fn(async () => ({
+    hosts,
+    entryCleanups: [...entryCleanups.values()],
+  }));
   const configure = vi.fn(async (policy: State["policy"]) => {
     state = { ...state, policy };
     return state;
@@ -98,15 +104,20 @@ function fixture(subPath = "host_test") {
       stoppedProcessCount: 1,
     }),
   );
-  const entryJobs = new Map<
-    string,
-    import("./src/storage-types.js").EntryCleanupStatus
-  >();
-  const network = { droppedPolls: 0 };
+  const network = { droppedNotices: 0 };
+  const settle = (
+    id: string,
+    target: import("./src/storage-types.js").EntryCleanupInput,
+    status: import("./src/storage-types.js").EntryCleanupStatus,
+  ) => {
+    entryCleanups.set(id, { id, target, status });
+    if (network.droppedNotices > 0) network.droppedNotices--;
+    else setTimeout(() => void slot.emitRealtime("changed", null), 0);
+  };
   const start = vi.fn(async () => null);
   const removeWorktree = vi.fn(async () => ({ state: "started" as const }));
   const Component = app.navPanels[0]!.component;
-  const slot = renderSlot<{ subPath: string }>(
+  const slot: ReturnType<typeof renderSlot> = renderSlot<{ subPath: string }>(
     {
       component: (props) => (
         <>
@@ -126,31 +137,25 @@ function fixture(subPath = "host_test") {
           const id = JSON.stringify(input);
           if (input.kind !== "development")
             throw new Error("Unexpected cleanup");
-          entryJobs.set(id, { state: "running" });
+          entryCleanups.set(id, {
+            id,
+            target: input,
+            status: { state: "running" },
+          });
           void remove({
             hostId: input.hostId,
             names: input.names,
             stopRunning: input.stopRunning,
           }).then(
             (result) =>
-              entryJobs.set(id, {
+              settle(id, input, {
                 state: "completed",
                 result: { kind: "development", ...result },
               }),
             (error: Error) =>
-              entryJobs.set(id, { state: "failed", message: error.message }),
+              settle(id, input, { state: "failed", message: error.message }),
           );
           return { id };
-        },
-        entryCleanup: (raw) => {
-          if (network.droppedPolls > 0) {
-            network.droppedPolls--;
-            throw new experimental_PluginRpcCallError({
-              code: "transport_error",
-              message: "Failed to fetch",
-            });
-          }
-          return entryJobs.get(storageRpc.entryCleanup.input.parse(raw).id);
         },
         scanHost: start,
         startClearArchivedFiles: start,
@@ -159,7 +164,6 @@ function fixture(subPath = "host_test") {
         startRemoveExternalWorktree: removeWorktree,
       },
       sdk: {
-        subscribe: () => () => {},
         hosts: {
           list: async () => [
             makeHostResponse({
@@ -184,6 +188,7 @@ function fixture(subPath = "host_test") {
     hosts,
     reports,
     network,
+    entryCleanups,
   };
 }
 
@@ -376,7 +381,7 @@ it("does not keep cleanup controls locked while the follow-up report is slow", a
   reports.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
-        finish = () => resolve({ hosts });
+        finish = () => resolve({ hosts, entryCleanups: [] });
       }),
   );
   try {
@@ -503,7 +508,7 @@ it("spins the development trash button immediately and only toasts completion", 
 it.each([
   ["orphans", "Orphaned files deleted"],
   ["development", "Development data deleted"],
-  ["worktrees", "Checkout cleanup retried"],
+  ["worktrees", "Leftover worktree cleanup finished"],
 ] as const)(
   "keeps the %s completion title specific when the running update is missed",
   async (kind, title) => {
@@ -735,21 +740,35 @@ it("aggregates background completions across cleanup types while keeping failure
   ).toContain("3 storage actions completed");
 });
 
-it("keeps waiting for a row cleanup through a dropped connection instead of reporting failure", async () => {
-  const { slot, remove, network } = fixture();
-  remove.mockResolvedValueOnce({
-    running: [],
-    removedCount: 1,
-    removedBytes: 20,
-    skippedCount: 0,
-    stoppedProcessCount: 0,
-  });
-  network.droppedPolls = 1;
-  fireEvent.click(
-    await within(slot.container).findByRole("button", {
-      name: "Remove instance: after",
-    }),
+it("finishes a row cleanup whose completion notice was lost while the connection was down", async () => {
+  const { slot, remove, reports, network } = fixture();
+  let finish = () => {};
+  remove.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = () =>
+          resolve({
+            running: [],
+            removedCount: 1,
+            removedBytes: 20,
+            skippedCount: 0,
+            stoppedProcessCount: 0,
+          });
+      }),
   );
+  network.droppedNotices = 1;
+  const page = within(slot.container);
+  await page.findByRole("button", { name: "Remove instance: after" });
+  const loads = reports.mock.calls.length;
+  fireEvent.click(page.getByRole("button", { name: "Remove instance: after" }));
+  await waitFor(() => expect(reports.mock.calls.length).toBe(loads + 1));
+  await act(async () => finish());
+  await waitFor(() => expect(network.droppedNotices).toBe(0));
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="success"]'),
+  ).toBeNull();
+  await slot.setRealtimeConnectionState("reconnecting");
+  await slot.setRealtimeConnectionState("connected");
   await waitFor(
     () =>
       expect(
@@ -758,10 +777,31 @@ it("keeps waiting for a row cleanup through a dropped connection instead of repo
       ).toContain("Development data deleted"),
     { timeout: 3000 },
   );
-  expect(network.droppedPolls).toBe(0);
   expect(
     document.querySelector('[data-sonner-toast][data-type="error"]'),
   ).toBeNull();
+});
+
+it("shows a row cleanup started before the page loaded as busy", async () => {
+  const { slot, entryCleanups } = fixture();
+  entryCleanups.set("cleanup_1", {
+    id: "cleanup_1",
+    target: {
+      kind: "development",
+      hostId: "host_test",
+      names: ["after"],
+      stopRunning: false,
+    },
+    status: { state: "running" },
+  });
+  await slot.emitRealtime("changed", null);
+  await waitFor(() =>
+    expect(
+      within(slot.container)
+        .getByRole("button", { name: "Remove instance: after" })
+        .getAttribute("aria-busy"),
+    ).toBe("true"),
+  );
 });
 
 it("does not toast scans that BB ran in the background", async () => {

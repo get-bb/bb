@@ -86,7 +86,6 @@ export default function plugin(bb: BbPluginApi) {
   );
   bb.rpc.register(storageRpc, {
     startEntryCleanup: storage.startEntryCleanup,
-    entryCleanup: storage.entryCleanup,
     startCleanup: storage.startCleanup,
     hosts: () => storage.hosts(),
     host: storage.host,
