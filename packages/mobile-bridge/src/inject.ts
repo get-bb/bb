@@ -21,8 +21,19 @@ export function buildBridgeInjectionScript(
   handshake: NativeShellHandshake,
   servers?: readonly BridgeServer[],
 ): string {
+  const compatibleHandshake = {
+    ...handshake,
+    capabilities: handshake.capabilities.filter(
+      (capability) => capability !== "rail-expansion",
+    ),
+    ...(handshake.capabilities.includes("rail-expansion")
+      ? { railExpansion: true }
+      : {}),
+  };
   const injected =
-    servers === undefined ? handshake : { ...handshake, servers };
+    servers === undefined
+      ? compatibleHandshake
+      : { ...compatibleHandshake, servers };
   return `
 (function () {
   try {

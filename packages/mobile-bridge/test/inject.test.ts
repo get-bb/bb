@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { parseNativeShellHandshake as parseV4Handshake } from "./fixtures/handshake-v4.js";
 import {
   buildBridgeEventScript,
   buildBridgeInjectionScript,
@@ -67,6 +68,49 @@ function installBridge(
 }
 
 describe("buildBridgeInjectionScript", () => {
+  it("preserves the native bridge when a version 4 page opens a rail-capable shell", () => {
+    const { native, run } = installBridge({
+      ...handshake,
+      bridgeVersion: 7,
+      capabilities: [...handshake.capabilities, "rail-expansion"],
+      windowLayout: {
+        verticalBar: { edge: "trailing", behavior: "automatic" },
+        occlusions: [],
+        topBar: { x: 0, y: 0, width: 300, height: 44 },
+      },
+    });
+    const {
+      bridgeVersion,
+      appVersion,
+      androidVersionCode,
+      platform,
+      profileMode,
+      secureContext,
+      safeArea,
+      capabilities,
+      nativeDownloads,
+    } = native;
+    expect(
+      parseV4Handshake({
+        bridgeVersion,
+        appVersion,
+        androidVersionCode,
+        platform,
+        profileMode,
+        secureContext,
+        safeArea,
+        capabilities,
+        nativeDownloads,
+      }),
+    ).not.toBeNull();
+    expect(native.railExpansion).toBe(true);
+    const safeAreaUpdate = { top: 82, right: 0, bottom: 34, left: 0 };
+    run(
+      buildBridgeEventScript({ type: "safe-area", safeArea: safeAreaUpdate }),
+    );
+    expect(native.safeArea).toEqual(safeAreaUpdate);
+  });
+
   it.each(["image", "html"])(
     "sends Android %s copy through the request/reply bridge",
     async (format) => {

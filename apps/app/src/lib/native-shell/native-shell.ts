@@ -72,6 +72,7 @@ function pickHandshakeFields(bridge: NativeBridgeGlobal): unknown {
     windowLayout: source.windowLayout,
     capabilities: source.capabilities,
     nativeDownloads: source.nativeDownloads,
+    railExpansion: source.railExpansion,
   };
 }
 
@@ -84,6 +85,7 @@ function buildNativeShell(): NativeShell | null {
     return null;
   }
   const capabilities = new Set<NativeCapability>(handshake.capabilities);
+  if (handshake.railExpansion === true) capabilities.add("rail-expansion");
   return {
     handshake,
     safeArea: () => {

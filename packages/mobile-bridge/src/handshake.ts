@@ -61,6 +61,7 @@ export const nativeShellHandshakeSchema = z
     windowLayout: shellWindowLayoutSchema.optional(),
     capabilities: z.array(nativeCapabilitySchema).readonly(),
     nativeDownloads: z.literal(true).optional(),
+    railExpansion: z.literal(true).optional(),
   })
   .strict();
 
