@@ -288,6 +288,10 @@ export function OnboardingLayout({
   );
 }
 
+export interface AgentLoadingRow {
+  loadingKey: string;
+}
+
 export interface OnboardingAgent {
   id: string;
   name: string;
@@ -642,10 +646,25 @@ function AgentRow({
   );
 }
 
+function AgentRowSkeleton() {
+  return (
+    <li
+      data-testid="agent-row-skeleton"
+      className="flex items-center gap-3 px-3 py-3"
+    >
+      <span className="size-6 rounded-md bg-state-hover" />
+      <span className="flex flex-1 flex-col gap-1.5">
+        <span className="h-3 w-28 rounded-sm bg-state-hover" />
+        <span className="h-2.5 w-40 rounded-sm bg-state-hover" />
+      </span>
+    </li>
+  );
+}
+
 interface AgentStepProps extends AgentRowHandlers {
   quiet?: boolean;
   machineName: string | null;
-  agents: readonly OnboardingAgent[] | null;
+  agents: readonly (OnboardingAgent | AgentLoadingRow)[] | null;
   loadFailedMessage: string | null;
   onRecheck: () => void;
 }
@@ -696,25 +715,23 @@ export function AgentStep({
       ) : agents === null ? (
         <ul className={ONBOARDING_LIST_CLASS}>
           {[0, 1, 2].map((index) => (
-            <li key={index} className="flex items-center gap-3 px-3 py-3">
-              <span className="size-6 rounded-md bg-state-hover" />
-              <span className="flex flex-1 flex-col gap-1.5">
-                <span className="h-3 w-28 rounded-sm bg-state-hover" />
-                <span className="h-2.5 w-40 rounded-sm bg-state-hover" />
-              </span>
-            </li>
+            <AgentRowSkeleton key={index} />
           ))}
         </ul>
       ) : (
         <ul className={cn(ONBOARDING_LIST_CLASS, quiet && "overflow-hidden")}>
-          {agents.map((agent) => (
-            <AgentRow
-              key={agent.id}
-              agent={agent}
-              quiet={quiet}
-              {...rowHandlers}
-            />
-          ))}
+          {agents.map((agent) =>
+            "loadingKey" in agent ? (
+              <AgentRowSkeleton key={`loading:${agent.loadingKey}`} />
+            ) : (
+              <AgentRow
+                key={agent.id}
+                agent={agent}
+                quiet={quiet}
+                {...rowHandlers}
+              />
+            ),
+          )}
         </ul>
       )}
       <p className="text-xs text-muted-foreground">

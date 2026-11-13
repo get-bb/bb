@@ -1,4 +1,9 @@
-import { openSession, updateHost } from "@bb/db";
+import {
+  getAppSettings,
+  openSession,
+  setAppSettings,
+  updateHost,
+} from "@bb/db";
 import type { JsonValue } from "@bb/domain";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -53,10 +58,18 @@ interface DaemonHost {
   sessionId: string;
 }
 
+function completeSetupGuide(harness: TestAppHarness): void {
+  setAppSettings(harness.db, {
+    ...getAppSettings(harness.db),
+    onboardingCompletedAt: new Date(BASE_NOW).toISOString(),
+  });
+}
+
 async function withPrewarm(
   harness: TestAppHarness,
   run: () => Promise<void>,
 ): Promise<void> {
+  completeSetupGuide(harness);
   const prewarm = installProviderModelCatalogPrewarm(harness.deps);
   try {
     await run();
@@ -200,6 +213,42 @@ function registerClone(
 }
 
 describe("provider model catalog prewarm", () => {
+  it("waits for the setup guide's agent checks before loading model lists while the guide is pending", async () => {
+    await withTestHarness(async (harness) => {
+      installCatalogStore(harness, { clock: { now: BASE_NOW } });
+      const logLines = captureLogLines(harness);
+      const claudeHealth = createDeferredPromise<HostRpcHandlerResult>();
+      const host = seedDaemonHost(harness, "host-prewarm-guide");
+      const responder = registerResponder(harness, {
+        ...host,
+        health: (command) =>
+          command.providerId === "claude-code"
+            ? claudeHealth.promise
+            : healthAnswer("ready"),
+      });
+      const prewarm = installProviderModelCatalogPrewarm(harness.deps);
+      try {
+        await vi.waitFor(() => {
+          expect(
+            responder.commands.some(
+              (command) =>
+                command.type === "provider.health" &&
+                command.providerId === "claude-code",
+            ),
+          ).toBe(true);
+        });
+        await settleTimers(50);
+        expect(responder.listRequests()).toEqual([]);
+
+        claudeHealth.resolve(healthAnswer("ready"));
+        await waitForPasses(logLines, 1);
+        expect(responder.listRequests().length).toBeGreaterThan(0);
+      } finally {
+        prewarm.stop();
+      }
+    });
+  });
+
   it("warms available always-visible providers and the installed-only provider the listing finds, once each without a cwd", async () => {
     await withTestHarness(async (harness) => {
       installCatalogStore(harness, { clock: { now: BASE_NOW } });
@@ -537,6 +586,7 @@ describe("provider model catalog prewarm", () => {
         ...seedDaemonHost(harness, "host-prewarm-stop"),
         listModels: (_command, hostId) => hold.answer(hostId),
       });
+      completeSetupGuide(harness);
       const prewarm = installProviderModelCatalogPrewarm(harness.deps);
       await vi.waitFor(() => {
         expect(hold.outstanding).toHaveLength(2);

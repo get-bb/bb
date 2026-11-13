@@ -104,6 +104,18 @@ export const systemProvidersQuerySchema = z
   .superRefine(rejectMultipleWorkspaceSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
 
+export const systemProviderStatesQuerySchema = z
+  .object({
+    ...systemProviderHostQueryFields,
+    capability: z.enum(["usage"]),
+    providerId: z.string().min(1),
+  })
+  .partial()
+  .superRefine(rejectMultipleWorkspaceSelectors);
+export type SystemProviderStatesQuery = z.infer<
+  typeof systemProviderStatesQuerySchema
+>;
+
 export const systemExecutionOptionsQuerySchema = z
   .object({
     ...systemProviderHostQueryFields,
