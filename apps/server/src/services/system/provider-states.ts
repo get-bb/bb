@@ -336,11 +336,27 @@ async function startProviderStateChecks(
     ]),
   );
   for (const state of byProviderId.values()) state.catch(() => undefined);
-  const states = checkProviderStates(
-    deps,
-    { hostId },
-    providers,
-    (providerId, state) => settle.get(providerId)?.resolve(state),
+  const onChecked = (providerId: string, state: SystemProviderState | null) =>
+    settle.get(providerId)?.resolve(state);
+  const queues = [
+    providers.filter((entry) => entry.installedOnlyBridgeLaunch === null),
+    providers.filter((entry) => entry.installedOnlyBridgeLaunch !== null),
+  ];
+  const order = new Map(
+    providers.map(({ provider }, index) => [provider.id, index]),
+  );
+  const states = Promise.all(
+    queues.map((queue) =>
+      checkProviderStates(deps, { hostId }, queue, onChecked),
+    ),
+  ).then((checked) =>
+    checked
+      .flat()
+      .sort(
+        (left, right) =>
+          (order.get(left.providerId) ?? 0) -
+          (order.get(right.providerId) ?? 0),
+      ),
   );
   states.catch((error: unknown) => {
     for (const { reject } of settle.values()) reject(error);

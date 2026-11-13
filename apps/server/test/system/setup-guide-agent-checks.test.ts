@@ -73,7 +73,19 @@ function countById(ids: readonly string[]): Record<string, number> {
 describe("setup guide agent checks", () => {
   it("answers the guide's first agent list from the checks started when the computer connected", async () => {
     await withTestHarness(async (harness) => {
-      const { hostId, checkedProviderIds } = connectHost(harness);
+      const { hostId, checkedProviderIds } = connectHost(
+        harness,
+        (providerId) =>
+          providerId === "acp-hermes-agent"
+            ? {
+                ok: true,
+                result: {
+                  supported: true,
+                  health: { ...health(providerId), status: "ready" },
+                },
+              }
+            : healthAnswer(providerId),
+      );
 
       const checks = runSetupGuideAgentChecks(harness.deps, hostId);
       const first = await getProviderStates(harness.deps, { hostId });
@@ -84,6 +96,7 @@ describe("setup guide agent checks", () => {
         "claude-code",
         "pi",
         "acp-cursor",
+        "acp-hermes-agent",
       ]);
       expect(
         Object.values(countById(checkedProviderIds())).every(
