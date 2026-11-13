@@ -1,6 +1,8 @@
 import {
   createContext,
+  useCallback,
   useContext,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -14,13 +16,16 @@ import type {
   ExperimentalThreadContextKind,
 } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import {
+  CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+  CONTEXT_CARD_CHEVRON_CLASS,
+  CONTEXT_CARD_TOGGLE_CLASS,
+} from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { INFO_SECTION_TITLE_CLASS } from "@/components/secondary-panel/info/info-list";
 import {
   compareGroupedPlacement,
   type GroupedPlacement,
@@ -32,6 +37,10 @@ import {
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { PluginSlotMount } from "./PluginSlotMount";
+import {
+  CORE_THREAD_CONTEXT_OWNER,
+  threadContextSegmentKey,
+} from "./PluginThreadContextSegments";
 
 export interface CoreThreadContextCardRow {
   id: string;
@@ -76,6 +85,9 @@ export function resolveThreadContextCardLayout(
 }
 
 const pinnedAtom = createSyncedPreferenceAtom("threadContextCard.pinned");
+const openSectionsAtom = createSyncedPreferenceAtom(
+  "threadContextCard.openSections",
+);
 
 interface ThreadContextCardPaneState {
   props: ExperimentalThreadContextCardProps;
@@ -249,6 +261,80 @@ const SECTION_DIVIDER_CLASS =
 const SHOW_EMPTY_STATE_CLASS =
   "contents [&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))>[data-thread-context-card-empty]]:flex";
 
+const SECTION_TOGGLE_CLASS = cn(
+  CONTEXT_CARD_TOGGLE_CLASS,
+  "min-h-5 w-full min-w-0 gap-1.5 rounded px-2 text-left font-medium leading-5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:min-h-8",
+);
+
+function ThreadContextCardSectionView({
+  sectionKey,
+  title,
+  summary,
+  children,
+}: {
+  sectionKey: string;
+  title: string;
+  summary: ReactNode;
+  children: ReactNode;
+}) {
+  const [openKeys, setOpenKeys] = useAtom(openSectionsAtom);
+  const open = openKeys.includes(sectionKey);
+  const toggle = useCallback(() => {
+    const nextOpen = !open;
+    setOpenKeys((keys) => {
+      const without = keys.filter((key) => key !== sectionKey);
+      return nextOpen ? [...without, sectionKey] : without;
+    });
+  }, [open, sectionKey, setOpenKeys]);
+  const id = useId();
+  const bodyId = `${id}-body`;
+  const summaryId = `${id}-summary`;
+  const showSummary = !open && summary !== null;
+  return (
+    <section
+      data-thread-context-card-section=""
+      aria-label={title}
+      className={cn(SECTION_DIVIDER_CLASS, EMPTY_BLOCK_CLASS)}
+    >
+      <h3 className="m-0 mb-0.5 text-xs">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          aria-describedby={showSummary ? summaryId : undefined}
+          onClick={toggle}
+          className={SECTION_TOGGLE_CLASS}
+        >
+          <span className="min-w-0 max-w-[65%] shrink-0 truncate">{title}</span>
+          {showSummary ? (
+            <span
+              id={summaryId}
+              inert
+              className="pointer-events-none h-5 min-w-0 flex-1 overflow-hidden truncate whitespace-nowrap font-normal text-subtle-foreground"
+            >
+              {summary}
+            </span>
+          ) : null}
+          <Icon
+            name="ChevronDown"
+            aria-hidden="true"
+            className={cn(
+              CONTEXT_CARD_CHEVRON_CLASS,
+              "ml-auto",
+              open && "rotate-180",
+            )}
+          />
+        </button>
+      </h3>
+      <div id={bodyId} hidden={!open}>
+        <div data-thread-context-card-body="" className="contents">
+          {children}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ThreadContextCardContent({
   state,
   onHasContentChange,
@@ -303,39 +389,63 @@ function ThreadContextCardContent({
       ) : null}
       {state.sections.map((entry) => {
         const Component = entry.slot.component;
-        const key =
-          entry.owner === "core"
-            ? `core/${entry.slot.id}`
-            : `${entry.slot.pluginId}/${entry.slot.id}/${entry.slot.generation}/${props.threadId}`;
+        const { title } = entry.slot;
+        if (entry.owner === "core") {
+          const sectionKey = threadContextSegmentKey({
+            pluginId: CORE_THREAD_CONTEXT_OWNER,
+            id: entry.slot.id,
+          });
+          return (
+            <ThreadContextCardSectionView
+              key={sectionKey}
+              sectionKey={sectionKey}
+              title={title}
+              summary={null}
+            >
+              <Component {...props} />
+            </ThreadContextCardSectionView>
+          );
+        }
+        const { pluginId, id, generation } = entry.slot;
+        const Summary = entry.slot.summary;
         return (
-          <section
-            key={key}
-            data-thread-context-card-section=""
-            aria-label={entry.slot.title}
-            className={cn(SECTION_DIVIDER_CLASS, EMPTY_BLOCK_CLASS)}
-          >
-            <div className="mb-0.5 flex min-h-5 items-center px-2">
-              <h3 className={INFO_SECTION_TITLE_CLASS}>
-                <span className="truncate">{entry.slot.title}</span>
-              </h3>
-            </div>
-            <div data-thread-context-card-body="" className="contents">
-              {entry.owner === "core" ? (
-                <Component {...props} />
-              ) : (
+          <ThreadContextCardSectionView
+            key={`${pluginId}/${id}/${generation}/${props.threadId}`}
+            sectionKey={threadContextSegmentKey({ pluginId, id })}
+            title={title}
+            summary={
+              Summary === undefined ? null : (
                 <PluginSlotMount
-                  pluginId={entry.slot.pluginId}
-                  slotKind="threadContextCardSection"
-                  slotId={entry.slot.id}
+                  pluginId={pluginId}
+                  slotKind="threadContextCardSection/summary"
+                  slotId={id}
                   instanceId={props.threadId}
-                  crashResetKey={String(entry.slot.generation)}
+                  crashResetKey={String(generation)}
                   crashFallback={null}
+                  wrapRoot={false}
                 >
-                  <Component {...props} />
+                  <span
+                    data-bb-plugin-root=""
+                    data-bb-plugin={pluginId}
+                    className="contents"
+                  >
+                    <Summary {...props} />
+                  </span>
                 </PluginSlotMount>
-              )}
-            </div>
-          </section>
+              )
+            }
+          >
+            <PluginSlotMount
+              pluginId={pluginId}
+              slotKind="threadContextCardSection"
+              slotId={id}
+              instanceId={props.threadId}
+              crashResetKey={String(generation)}
+              crashFallback={null}
+            >
+              <Component {...props} />
+            </PluginSlotMount>
+          </ThreadContextCardSectionView>
         );
       })}
       <div

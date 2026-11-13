@@ -10,7 +10,7 @@ threads shown inside a panel.
 
 `app.slots.experimental_threadContextCardRow({ id, group, order?, component })`
 adds a row to the card's top block, and
-`app.slots.experimental_threadContextCardSection({ id, title, group, order?, component })`
+`app.slots.experimental_threadContextCardSection({ id, title, group, order?, component, summary? })`
 adds a section below the rows under its title and a divider: the card's
 counterparts of the Info tab's `experimental_threadInfoRow` and
 `experimental_threadInfoSection`. Rows sort by `group`, then `order` (unset
@@ -29,12 +29,34 @@ there the header button pins or unpins it (`threadContextCard.pinned`,
 default on). A pane too narrow for either shows the banner, and the header
 button opens the card as a popover; the pane switches back as it widens.
 
+bb draws each section's title as a button that folds the section, closed by
+default, and remembers the open sections across threads and restarts
+(`threadContextCard.openSections`, keyed `<pluginId>/<sectionId>`). The
+component stays mounted while the section is closed, so keep subscriptions
+cheap, and return null to hide the section whether it is open or closed. An
+optional `summary` component (same props) draws one truncated line beside the
+title while the section is closed, such as "6 PRs · 1 needs you"; it sits
+inside the title's button, so render text only, as buttons and links in it are
+inert. A crashing summary drops only the summary.
+
 ```tsx
-app.slots.experimental_threadContextCardRow({ id: "deploy", group: ROW_GROUPS.environment, order: 40, component: DeployRow });
+app.slots.experimental_threadContextCardRow({
+  id: "deploy",
+  group: ROW_GROUPS.environment,
+  order: 40,
+  component: DeployRow,
+});
 function DeployRow({ threadId }: ExperimentalThreadContextCardProps) {
   const deploy = useDeploy(threadId);
   if (!deploy) return null;
-  return <ThreadContextCardRow icon="Rocket" label={deploy.label} trailing={deploy.status} onClick={deploy.open} />;
+  return (
+    <ThreadContextCardRow
+      icon="Rocket"
+      label={deploy.label}
+      trailing={deploy.status}
+      onClick={deploy.open}
+    />
+  );
 }
 ```
 

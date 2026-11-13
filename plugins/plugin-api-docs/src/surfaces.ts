@@ -321,8 +321,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Keep a pull request, change counts, or related threads in view while messages scroll",
           "Sit among bb's own rows in the Info tab's groups, drawn with the same row",
+          "Fold a section under its title, closed by default, with a one-line summary while closed",
           "Hide a matching context segment while the pane shows the card",
-          "Leave the card, placement, and the header button to bb",
         ],
         apiSymbols: [
           "PluginAppSlots.experimental_threadContextCardRow",

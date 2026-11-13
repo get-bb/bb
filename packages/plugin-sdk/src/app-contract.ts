@@ -2192,7 +2192,8 @@ export interface ExperimentalThreadHeaderTitleRegistration {
 
 /**
  * Props passed to an `experimental_threadContextCardRow` or
- * `experimental_threadContextCardSection` component.
+ * `experimental_threadContextCardSection` component, and to a section's
+ * `summary`.
  */
 export interface ExperimentalThreadContextCardProps {
   /**
@@ -2242,9 +2243,13 @@ export interface ExperimentalThreadContextCardRowRegistration {
 
 /**
  * A titled section of the thread context card, below its rows; the card's
- * counterpart of `experimental_threadInfoSection`. bb draws the title and a
- * divider above it, and hides the section while its component renders
- * nothing. A crash removes only this section for that thread.
+ * counterpart of `experimental_threadInfoSection`. bb draws the title as a
+ * button that folds the section, and a divider above it, and hides the
+ * section while its component renders nothing. Sections start closed; bb
+ * remembers the open ones by `pluginId/id` across threads and restarts. The
+ * component stays mounted while the section is closed, so it keeps its data
+ * subscriptions and bb can tell whether it renders anything. A crash removes
+ * only this section for that thread.
  */
 export interface ExperimentalThreadContextCardSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -2261,6 +2266,17 @@ export interface ExperimentalThreadContextCardSectionRegistration {
   group: string;
   order?: number;
   component: ComponentType<ExperimentalThreadContextCardProps>;
+  /**
+   * A one-line summary bb draws beside the title while the section is closed,
+   * such as "6 PRs · 1 needs you"; without one a closed section shows only
+   * its title. It truncates to one line, so keep the key fact first. Render
+   * text only: it sits inside the title's toggle button, so bb makes it
+   * non-interactive and a button or link in it can't be clicked or focused.
+   * It receives the same props as `component`, mounts in its own crash
+   * boundary (a crash drops only the summary), and unmounts while the section
+   * is open.
+   */
+  summary?: ComponentType<ExperimentalThreadContextCardProps>;
 }
 
 /**
