@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  listQueuedCommands,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -86,6 +87,45 @@ describe("GET /hosts/:id/discovered-repos", () => {
         truncated: true,
         unreadableCount: 2,
       });
+    });
+  });
+
+  it("keeps waiting while the machine is waiting on a folder access prompt", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-repo-discovery-prompt",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const responsePromise = harness.app.request(
+          `/api/v1/hosts/${host.id}/discovered-repos`,
+        );
+        const command = await waitForQueuedCommand(
+          harness,
+          ({ command }) => command.type === "host.discover_repos",
+        );
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(listQueuedCommands(harness, "host.discover_repos")).toHaveLength(
+          1,
+        );
+        await reportQueuedCommandSuccess(harness, command, {
+          repos: [],
+          truncated: false,
+          unreadableCount: 2,
+        });
+
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        await expect(readJson(response)).resolves.toEqual({
+          repos: [],
+          truncated: false,
+          unreadableCount: 2,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
