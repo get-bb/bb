@@ -32,6 +32,7 @@ import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalV
 import { appToast } from "@/components/ui/app-toast";
 import { setToasterCompactPlacement } from "@/components/ui/app-toast-runtime";
 import { restartSystemProviderStatesLoad } from "@/hooks/cache-owners/system-cache-effects";
+import { useRefetchAfterFirstLoad } from "./useRefetchAfterFirstLoad";
 import {
   useHostDiscoveredRepos,
   useHosts,
@@ -504,15 +505,17 @@ function AgentStepContainer({
     }),
     [closeTerminalMutate, createTerminalAsync],
   );
+  const statesRefresh = useRefetchAfterFirstLoad({
+    loaded: states !== undefined || statesQuery.isError,
+    settledAt: Math.max(statesQuery.dataUpdatedAt, statesQuery.errorUpdatedAt),
+    refetch: refetchProviderStates,
+  });
   const signIns = useAgentSignIns({
     redesign,
     entry,
     hostId,
     states: shownStates,
-    statesSettledAt: Math.max(
-      statesQuery.dataUpdatedAt,
-      statesQuery.errorUpdatedAt,
-    ),
+    statesSettledAt: statesRefresh.settledAt,
     isLocalHost: redesign
       ? (targetHostId) =>
           signInBrowserIsOnMachine({
@@ -522,7 +525,7 @@ function AgentStepContainer({
           })
       : isLocalDaemonHost,
     terminals: signInTerminals,
-    refetchStates: refetchProviderStates,
+    refetchStates: statesRefresh.refetch,
   });
   const startSignIn = signIns.start;
 
