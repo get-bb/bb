@@ -1124,6 +1124,9 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredConversationOutlineEventRows`,
+    ceilingMs: 750,
+    reason:
+      "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
     run: (db, fixture) =>
       listStoredConversationOutlineEventRows(db, {
         sequenceStart: 0,
@@ -1132,6 +1135,9 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredRootConversationOutlineEventRows`,
+    ceilingMs: 750,
+    reason:
+      "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
     run: (db, fixture) =>
       listStoredRootConversationOutlineEventRows(db, {
         sequenceStart: 0,
