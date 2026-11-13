@@ -9,7 +9,9 @@ import {
 } from "../src/desktop-find-view.js";
 import {
   FIND_BAR_VIEW_HEIGHT,
+  FIND_BAR_VIEW_INSET,
   FIND_BAR_VIEW_WIDTH,
+  createFindBarViewUrl,
 } from "../src/find-bar-view.js";
 
 const electronMock = vi.hoisted(() => {
@@ -133,6 +135,20 @@ class FakeHostWindow implements FindViewHostWindow {
     }
   }
 }
+
+describe("createFindBarViewUrl", () => {
+  it("keeps the bar's shadow inside the view so its edges are not clipped", () => {
+    const html = decodeURIComponent(
+      createFindBarViewUrl().replace("data:text/html;charset=utf-8,", ""),
+    );
+    const shadow = /box-shadow: 0 (\d+)px (\d+)px/.exec(html);
+    expect(shadow).not.toBeNull();
+    const offsetY = Number(shadow?.[1]);
+    const blur = Number(shadow?.[2]);
+    expect(offsetY + blur).toBeLessThanOrEqual(FIND_BAR_VIEW_INSET);
+    expect(blur).toBeLessThanOrEqual(FIND_BAR_VIEW_INSET);
+  });
+});
 
 describe("createDesktopFindViewManager", () => {
   beforeEach(() => {
