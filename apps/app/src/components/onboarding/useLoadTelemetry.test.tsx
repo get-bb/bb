@@ -2,6 +2,7 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { BbHttpError } from "@bb/sdk/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { useLoadTelemetry } from "./useLoadTelemetry";
 
@@ -36,24 +37,29 @@ function recorded() {
 
 describe("load telemetry", () => {
   it.each(["agent", "plugins"] as const)(
-    "records each time the %s step's data starts failing to load",
+    "records the %s step's load failure once per guide, even after reopening the step",
     (step) => {
-      const view = renderHook(
-        (query: QueryState) =>
-          useLoadTelemetry({
-            entry: "replay",
-            step,
-            hostWaitFailure: null,
-            query,
-            loaded: false,
-            timedOut: false,
-          }),
-        { initialProps: loaded },
-      );
+      const reportedFailures = new Set<OnboardingStepId>();
+      const render = () =>
+        renderHook(
+          (query: QueryState) =>
+            useLoadTelemetry({
+              entry: "replay",
+              step,
+              reportedFailures,
+              hostWaitFailure: null,
+              query,
+              loaded: false,
+              timedOut: false,
+            }),
+          { initialProps: loaded },
+        );
+      const view = render();
       view.rerender(unavailable);
-      view.rerender({ ...unavailable });
       view.rerender(loaded);
       view.rerender(unavailable);
+      view.unmount();
+      render().rerender(unavailable);
 
       const failure = {
         entry: "replay",
@@ -62,7 +68,7 @@ describe("load telemetry", () => {
         outcome: "failed",
         failure_reason: "host_unavailable",
       };
-      expect(recorded()).toEqual([failure, failure]);
+      expect(recorded()).toEqual([failure]);
     },
   );
 
@@ -71,6 +77,7 @@ describe("load telemetry", () => {
       useLoadTelemetry({
         entry: "first_run",
         step: "agent",
+        reportedFailures: new Set(),
         hostWaitFailure: "no_host",
         query: loaded,
         loaded: false,
@@ -88,12 +95,14 @@ describe("load telemetry", () => {
     ]);
   });
 
-  it("records a load that timed out once per attempt, not again when it then errors", () => {
+  it("records a load that timed out once, not again when it then errors or retries", () => {
+    const reportedFailures = new Set<OnboardingStepId>();
     const view = renderHook(
       (props: { query: QueryState; timedOut: boolean }) =>
         useLoadTelemetry({
           entry: "first_run",
           step: "agent",
+          reportedFailures,
           hostWaitFailure: null,
           query: props.query,
           loaded: false,
@@ -114,7 +123,7 @@ describe("load telemetry", () => {
       outcome: "failed",
       failure_reason: "timed_out",
     };
-    expect(recorded()).toEqual([timedOut, timedOut]);
+    expect(recorded()).toEqual([timedOut]);
   });
 
   it("records the first successful load once with how long it took", () => {
@@ -124,6 +133,7 @@ describe("load telemetry", () => {
         useLoadTelemetry({
           entry: "first_run",
           step: "agent",
+          reportedFailures: new Set(),
           hostWaitFailure: null,
           query: loaded,
           loaded: loadedNow,

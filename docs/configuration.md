@@ -382,7 +382,8 @@ and `setup_guide_source` (`override`, `flag`, or `default`), sets
 `turn_finished`, carries `$feature/setup-guide-redesign`.
 `onboarding_operation` records a setup-guide action's `started`,
 `succeeded`, or `failed` outcome with counts only, the same way in both
-guides. A Projects step `scan` adds `timed_out` (true when the repo scan ran
+guides. A Projects step `scan` records nothing after the guide's first
+successful scan, such as the rescan after an import, and adds `timed_out` (true when the repo scan ran
 out of time and the list may be partial) and `unreadable_count` (how many
 folders the scan was not allowed to open, such as macOS Documents or Desktop;
 never their paths). A failed Projects `import` reports `item_count` (repos
@@ -394,10 +395,10 @@ if the guide moved to another step meanwhile; a cancelled install job records
 no outcome. `load`
 records `succeeded` once per step visit when the Agent step's agent states or
 the Plugins step's catalog first load, with `duration_ms` (time from the step
-opening to the data arriving), and `failed` once each time they start failing
-to load; in the new guide the Agent step also records `timed_out` when its
+opening to the data arriving), and `failed` the first time they fail to load,
+once per step per guide; in the new guide the Agent step also records `timed_out` when its
 agent states haven't loaded within 10 seconds of this computer connecting and
-it offers Retry, once per attempt. Both guides wait for this computer to
+it offers Retry. Both guides wait for this computer to
 connect before scanning for repos or checking agents; if it hasn't connected
 after 30 seconds, the Agent step says so in place of the agent list, the
 Projects step shows its scan error, and each guide offers its usual way to
@@ -405,7 +406,7 @@ continue. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
 `no_host` (no computer registered within 30 seconds: once per guide for
-`scan`, and once per Agent step visit for agent `load`), `host_unavailable`
+`scan` and agent `load`), `host_unavailable`
 (for `scan` and agent `load`, also when this computer didn't connect within
 30 seconds), `timed_out`,
 `not_found`, `permission`, `command_failed` (the agent install command, plugin

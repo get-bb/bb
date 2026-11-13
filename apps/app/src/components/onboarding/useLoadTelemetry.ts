@@ -10,9 +10,12 @@ import {
 } from "./onboarding-telemetry";
 import type { HostWaitFailure } from "./useReadyHost";
 
+export type ReportedLoadFailures = Set<OnboardingStepId>;
+
 export function useLoadTelemetry({
   entry,
   step,
+  reportedFailures,
   hostWaitFailure,
   query,
   loaded,
@@ -20,6 +23,7 @@ export function useLoadTelemetry({
 }: {
   entry: OnboardingEntry;
   step: OnboardingStepId;
+  reportedFailures: ReportedLoadFailures;
   hostWaitFailure: HostWaitFailure | null;
   query: { isError: boolean; error: unknown };
   loaded: boolean;
@@ -32,14 +36,9 @@ export function useLoadTelemetry({
       : timedOut
         ? "timed_out"
         : null);
-  const failingRef = useRef(false);
   useEffect(() => {
-    if (failureReason === null) {
-      failingRef.current = false;
-      return;
-    }
-    if (failingRef.current) return;
-    failingRef.current = true;
+    if (failureReason === null || reportedFailures.has(step)) return;
+    reportedFailures.add(step);
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
@@ -50,7 +49,7 @@ export function useLoadTelemetry({
         failure_reason: failureReason,
       },
     });
-  }, [entry, failureReason, step]);
+  }, [entry, failureReason, reportedFailures, step]);
   const [shownAt] = useState(() => Date.now());
   const succeededRef = useRef(false);
   useEffect(() => {

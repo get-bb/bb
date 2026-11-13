@@ -170,6 +170,33 @@ describe("projects scan telemetry", () => {
     expect(recorded()).toEqual([]);
   });
 
+  it("records only the first successful scan, not the rescan after an import", async () => {
+    let calls = 0;
+    const { view } = renderScanQuery(() => {
+      calls += 1;
+      return calls === 3
+        ? Promise.reject(hostUnavailable())
+        : Promise.resolve({ repos: [], truncated: false, unreadableCount: 0 });
+    });
+    await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+    await act(async () => {
+      await view.result.current.refetch();
+    });
+    await act(async () => {
+      await view.result.current.refetch();
+    });
+    expect(calls).toBe(3);
+    expect(recorded()).toEqual([
+      {
+        ...base,
+        outcome: "succeeded",
+        item_count: 0,
+        timed_out: false,
+        unreadable_count: 0,
+      },
+    ]);
+  });
+
   it("records each real failure once, including a repeat after a refetch", async () => {
     const { view } = renderScanQuery(() => Promise.reject(hostUnavailable()));
     await waitFor(() => expect(view.result.current.isError).toBe(true));

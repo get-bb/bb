@@ -332,7 +332,7 @@ describe("OnboardingFlow", () => {
     });
     expect(button(/^Retry$/u)).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
-    expect(agentLoadFailures()).toEqual(["timed_out", "timed_out"]);
+    expect(agentLoadFailures()).toEqual(["timed_out"]);
   });
 
   it.each([
