@@ -16,6 +16,7 @@ import {
   AgentStep,
   OnboardingLayout,
   ProjectsStep,
+  type AgentLoadingRow,
   type OnboardingAgent,
   type OnboardingRepo,
 } from "./OnboardingViews";
@@ -25,7 +26,7 @@ function agent(id: string, state: AgentSetupState): OnboardingAgent {
   return { id, name: id, provider: { id, logoUrl: null }, state };
 }
 
-function renderAgents(agents: OnboardingAgent[]) {
+function renderAgents(agents: (OnboardingAgent | AgentLoadingRow)[]) {
   const handlers = {
     onSignIn: vi.fn(),
     onInstall: vi.fn(),
@@ -47,6 +48,22 @@ function renderAgents(agents: OnboardingAgent[]) {
 afterEach(cleanup);
 
 describe("AgentStep", () => {
+  it("shows loaded agents in place while others are still loading", () => {
+    renderAgents([
+      agent("codex", { status: "install", canInstall: true }),
+      { loadingKey: "claude-code" },
+      agent("pi", { status: "install", canInstall: true }),
+      { loadingKey: "more" },
+    ]);
+
+    const rows = screen.getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    expect(within(rows[0]!).getByText("codex")).toBeTruthy();
+    expect(rows[1]!.dataset.testid).toBe("agent-row-skeleton");
+    expect(within(rows[2]!).getByText("pi")).toBeTruthy();
+    expect(rows[3]!.dataset.testid).toBe("agent-row-skeleton");
+  });
+
   it("offers the install log only on the agent whose install failed", () => {
     const handlers = renderAgents([
       agent("claude-code", { status: "install", canInstall: true }),

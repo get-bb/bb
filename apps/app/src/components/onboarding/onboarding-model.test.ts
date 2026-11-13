@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
   agentRowSetup,
+  agentRowsSoFar,
   agentSignInView,
   connectAccessUrl,
   devicesShowMachines,
@@ -733,6 +734,49 @@ describe("projectsPrimaryAction", () => {
         projectIds: ["prj_existing"],
       }),
     ).toBe("skipped");
+  });
+});
+
+describe("agentRowsSoFar", () => {
+  const codex = health({ providerId: "codex", displayName: "Codex" });
+  const pi = health({ providerId: "pi", displayName: "Pi" });
+
+  it("shows nothing until the first agent's check finishes", () => {
+    expect(
+      agentRowsSoFar([
+        { providerId: "codex", state: undefined },
+        { providerId: "pi", state: undefined },
+      ]),
+    ).toBeUndefined();
+  });
+
+  it("holds a slot for an agent still loading above one already shown", () => {
+    expect(
+      agentRowsSoFar([
+        { providerId: "codex", state: codex },
+        { providerId: "claude-code", state: undefined },
+        { providerId: "pi", state: pi },
+        { providerId: "acp-opencode", state: null },
+      ]),
+    ).toEqual([
+      { kind: "agent", state: codex },
+      { kind: "loading", key: "claude-code" },
+      { kind: "agent", state: pi },
+    ]);
+  });
+
+  it("adds one trailing placeholder while later agents may still appear", () => {
+    expect(
+      agentRowsSoFar([
+        { providerId: "codex", state: codex },
+        { providerId: "acp-opencode", state: null },
+        { providerId: "acp-hermes-agent", state: undefined },
+        { providerId: "acp-grok", state: undefined },
+      ]),
+    ).toEqual([
+      { kind: "agent", state: codex },
+      { kind: "loading", key: "more" },
+    ]);
   });
 });
 

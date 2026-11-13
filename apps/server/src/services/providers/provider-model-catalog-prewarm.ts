@@ -2,6 +2,7 @@ import type { LoggedWorkSessionDeps } from "../../types.js";
 import { installHostConnectPrewarm } from "../hosts/host-connect-prewarm.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { listSystemProviderInfosForHost } from "../system/execution-options.js";
+import { runSetupGuideAgentChecks } from "../system/setup-guide-agent-checks.js";
 
 const PER_HOST_CONCURRENCY = 2;
 const GLOBAL_CONCURRENCY = 4;
@@ -32,6 +33,8 @@ export function installProviderModelCatalogPrewarm(
   return installHostConnectPrewarm(deps, {
     failureMessage: "Provider model catalog prewarm pass failed",
     async runPass({ hostId, isCurrent }) {
+      await runSetupGuideAgentChecks(deps, hostId);
+      if (!isCurrent()) return;
       const startedAt = Date.now();
       const providers = await listSystemProviderInfosForHost(deps, hostId);
       const defaultProviderId =

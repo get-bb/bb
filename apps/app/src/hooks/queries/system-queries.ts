@@ -1,4 +1,9 @@
-import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   PermissionMode,
@@ -12,6 +17,7 @@ import type {
   SystemCliSkillsStatusResponse,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
+  SystemProviderState,
   SystemProviderStatesResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
@@ -45,6 +51,7 @@ import {
   systemProvidersQueryKey,
   systemProviderCatalogQueryKey,
   systemProviderStatesQueryKey,
+  hostProviderStateQueryKey,
   systemThemeQueryKey,
   systemVersionQueryKey,
   uiPreferencesQueryKey,
@@ -669,6 +676,45 @@ export function useSystemProviderStates(
   options: UseSystemProviderStatesOptions = {},
 ) {
   return useQuery(systemProviderStatesQueryOptions(options));
+}
+
+export function useHostProviderStatesAsTheyLoad(args: {
+  hostId: string | null;
+  providerIds: readonly string[];
+  enabled: boolean;
+}): { providerId: string; state: SystemProviderState | null | undefined }[] {
+  const { hostId } = args;
+  return useQueries({
+    queries: args.providerIds.map((providerId) => ({
+      queryKey: hostProviderStateQueryKey({
+        hostId: hostId ?? "",
+        providerId,
+      }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        sdk.system.providerStates({
+          hostId: requireEnabledQueryArg({
+            value: hostId,
+            hookName: "useHostProviderStatesAsTheyLoad",
+            argName: "hostId",
+          }),
+          providerId,
+          signal,
+        }),
+      enabled: args.enabled && hostId !== null,
+      staleTime: Infinity,
+      retry: false,
+    })),
+    combine: (results) =>
+      results.map((result, index) => ({
+        providerId: args.providerIds[index] ?? "",
+        state:
+          result.data !== undefined
+            ? (result.data.providers[0] ?? null)
+            : result.isError
+              ? null
+              : undefined,
+      })),
+  });
 }
 
 export function useSystemProviderCatalog() {
