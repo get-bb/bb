@@ -323,7 +323,8 @@ fails a function when:
 
 - its full-scale time is at least 2 ms and more than 3 times its half-scale
   time, so its cost grows faster than the data (a runner that is uniformly
-  slower changes both times alike);
+  slower changes both times alike; a case that crosses 3x is measured up to
+  eight times before it fails, so one slow call on a busy runner does not);
 - it takes longer than its ceiling at full scale (250 ms unless its case sets
   `ceilingMs` with a `reason`); or
 - a single call runs for more than 5 seconds, when it is killed.

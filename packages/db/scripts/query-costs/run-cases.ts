@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import { createConnection, type DbConnection } from "../../src/connection.js";
 import {
   GROWTH_FLOOR_MS,
+  GROWTH_LIMIT,
   type RegisteredCostCase,
   type SeedsByGroup,
 } from "./case.js";
@@ -10,6 +11,7 @@ import { QUERY_COST_CASES } from "./cases.js";
 import type { HistoryFixture } from "../../src/history-fixture.js";
 
 const ATTEMPTS = 3;
+const CONFIRMING_ATTEMPTS = 8;
 
 interface SizedHistory {
   db: DbConnection;
@@ -85,9 +87,13 @@ for (
   try {
     let smallMs = timeOnce(index, costCase, small);
     let largeMs = timeOnce(index, costCase, large);
+    const exceedsGrowth = () =>
+      largeMs >= GROWTH_FLOOR_MS && largeMs > smallMs * GROWTH_LIMIT;
     for (
       let attempt = 1;
-      attempt < ATTEMPTS && largeMs >= GROWTH_FLOOR_MS / 2;
+      largeMs >= GROWTH_FLOOR_MS / 2 &&
+      (attempt < ATTEMPTS ||
+        (attempt < CONFIRMING_ATTEMPTS && exceedsGrowth()));
       attempt += 1
     ) {
       smallMs = Math.min(smallMs, timeOnce(index, costCase, small));

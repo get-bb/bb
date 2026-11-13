@@ -230,18 +230,19 @@ function toRuntimeExecutionOptions(
     args.projectId,
     args.hostId,
   );
-  const model = args.deps.lifecycleDedupers.providerModelCatalogs.getCachedModel(
-    args.deps,
-    {
-      hostId: args.hostId,
-      providerId: args.providerId,
-      workspacePaths:
-        checkoutPath === undefined
-          ? [args.workspacePath]
-          : [args.workspacePath, checkoutPath],
-      model: args.execution.model,
-    },
-  );
+  const model =
+    args.deps.lifecycleDedupers.providerModelCatalogs.getCachedModel(
+      args.deps,
+      {
+        hostId: args.hostId,
+        providerId: args.providerId,
+        workspacePaths:
+          checkoutPath === undefined
+            ? [args.workspacePath]
+            : [args.workspacePath, checkoutPath],
+        model: args.execution.model,
+      },
+    );
   const reasoningLevel =
     model === null ||
     model.supportedReasoningEfforts.some(
@@ -449,12 +450,7 @@ function threadHasLiveChildren(
   const row = deps.db
     .select({ id: threads.id })
     .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, threadId),
-        liveThread,
-      ),
-    )
+    .where(and(eq(threads.parentThreadId, threadId), liveThread))
     .limit(1)
     .get();
   return row !== undefined;

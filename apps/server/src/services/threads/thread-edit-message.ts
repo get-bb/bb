@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import {
   deleteThreadEventSuffixInTransaction,
   deleteQueuedRetriesForThreadEventSuffixInTransaction,
@@ -240,7 +240,8 @@ function resolveEditableTurnCandidate(
     .where(
       and(
         eq(events.threadId, thread.id),
-        sql`${events.type} = 'turn/input/accepted' AND json_valid(${events.data})`,
+        eq(events.type, "turn/input/accepted"),
+        gt(events.sequence, requestRow.sequence),
         sql`json_extract(${events.data}, '$.clientRequestId') = ${request.requestId}`,
       ),
     )

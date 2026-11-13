@@ -4,9 +4,9 @@ import {
   eq,
   gt,
   inArray,
+  isNotNull,
   lt,
   lte,
-  notExists,
   notInArray,
   or,
 } from "drizzle-orm";
@@ -217,10 +217,10 @@ export function listGarbageCollectablePluginArtifacts(
     pluginId: string | null;
   },
 ): Array<typeof pluginArtifacts.$inferSelect> {
-  const activeArtifact = db
-    .select({ id: installedPlugins.id })
+  const activeArtifactIds = db
+    .select({ id: installedPlugins.activeArtifactId })
     .from(installedPlugins)
-    .where(eq(installedPlugins.activeArtifactId, pluginArtifacts.id));
+    .where(isNotNull(installedPlugins.activeArtifactId));
   const pendingRollback = inArray(pluginStateSnapshots.status, [
     "rollback-pending",
     "restoring",
@@ -232,15 +232,14 @@ export function listGarbageCollectablePluginArtifacts(
           gt(pluginStateSnapshots.retainedUntil, args.retention.now),
           pendingRollback,
         );
-  const retainingSnapshot = (
-    artifactColumn:
-      | typeof pluginStateSnapshots.fromArtifactId
-      | typeof pluginStateSnapshots.toArtifactId,
-  ) =>
-    db
-      .select({ id: pluginStateSnapshots.id })
-      .from(pluginStateSnapshots)
-      .where(and(eq(artifactColumn, pluginArtifacts.id), retaining));
+  const retainedFromArtifactIds = db
+    .select({ id: pluginStateSnapshots.fromArtifactId })
+    .from(pluginStateSnapshots)
+    .where(and(retaining, isNotNull(pluginStateSnapshots.fromArtifactId)));
+  const retainedToArtifactIds = db
+    .select({ id: pluginStateSnapshots.toArtifactId })
+    .from(pluginStateSnapshots)
+    .where(retaining);
   return db
     .select()
     .from(pluginArtifacts)
@@ -252,9 +251,9 @@ export function listGarbageCollectablePluginArtifacts(
         args.pluginId === null
           ? undefined
           : eq(pluginArtifacts.pluginId, args.pluginId),
-        notExists(activeArtifact),
-        notExists(retainingSnapshot(pluginStateSnapshots.fromArtifactId)),
-        notExists(retainingSnapshot(pluginStateSnapshots.toArtifactId)),
+        notInArray(pluginArtifacts.id, activeArtifactIds),
+        notInArray(pluginArtifacts.id, retainedFromArtifactIds),
+        notInArray(pluginArtifacts.id, retainedToArtifactIds),
       ),
     )
     .all();

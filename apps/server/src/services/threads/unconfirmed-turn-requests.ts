@@ -19,7 +19,8 @@ import {
 
 const UNCONFIRMED_STEER_MESSAGE =
   "The turn ended before the agent confirmed this steer";
-const UNSTARTED_TURN_MESSAGE = "The agent did not start a turn for this message";
+const UNSTARTED_TURN_MESSAGE =
+  "The agent did not start a turn for this message";
 
 type UnconfirmedRejectionReason =
   | typeof STEER_UNCONFIRMED_ERROR_CODE

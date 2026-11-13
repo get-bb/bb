@@ -70,7 +70,13 @@ const REQUEST_ID_BASE = 50_000_000;
 const SYNTHETIC_REQUEST_SEQUENCE_BASE = 1_000_000;
 const PROJECT_WEIGHTS = [40, 15, 10, 8, 7, 6, 5, 4, 3, 2];
 const PROJECT_HOSTS = [0, 0, 0, 0, 1, 0, 2, 0, 1, 0];
-const PROVIDERS = ["provider-a", "provider-b", "provider-a", "provider-c", "provider-b"];
+const PROVIDERS = [
+  "provider-a",
+  "provider-b",
+  "provider-a",
+  "provider-c",
+  "provider-b",
+];
 export const GITHUB_PLUGIN_ID = "github-pr-status";
 export const LINEAR_PLUGIN_ID = "linear";
 export const INSTALLED_PLUGIN_IDS = [

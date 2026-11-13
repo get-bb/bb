@@ -98,10 +98,7 @@ import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
-const isTurnRequestedEventSql = sql`${events.type} = 'client/turn/requested' AND json_valid(${events.data})`;
 const turnRequestIdSql = sql<string>`json_extract(${events.data}, '$.requestId')`;
-const isTurnInputAcceptedEventSql = sql`${events.type} = 'turn/input/accepted' AND json_valid(${events.data})`;
-const turnInputClientRequestIdSql = sql<string>`json_extract(${events.data}, '$.clientRequestId')`;
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
 );
@@ -2046,9 +2043,10 @@ export function listStoredClientTurnRequestRowsByKeys(
 ): StoredEventRow[] {
   const rows = queryInSqliteVariableBatches({
     dedupeKey: (key) => `${key.threadId}\0${key.requestId}`,
-    fixedVariableCount: 0,
+    fixedVariableCount: 1,
     maximumValueCount: CLIENT_TURN_REQUEST_KEY_BATCH_SIZE,
     queryBatch: (keys) => {
+      const requestType = "client/turn/requested" satisfies ThreadEventType;
       const requestIdsByThread = new Map<string, string[]>();
       for (const key of keys) {
         const requestIds = requestIdsByThread.get(key.threadId) ?? [];
@@ -2065,7 +2063,7 @@ export function listStoredClientTurnRequestRowsByKeys(
       return db
         .select(storedEventRowFields)
         .from(events)
-        .where(and(isTurnRequestedEventSql, or(...keyConditions)))
+        .where(and(eq(events.type, requestType), or(...keyConditions)))
         .orderBy(events.threadId, events.sequence)
         .all();
     },
@@ -2432,6 +2430,7 @@ export function getStoredTurnRequestEventForTurn(
         clientRequestId: sql<
           string | null
         >`json_extract(${events.data}, '$.clientRequestId')`,
+        sequence: events.sequence,
       })
       .from(events)
       .where(
@@ -2447,7 +2446,7 @@ export function getStoredTurnRequestEventForTurn(
   const requestIdResult = clientTurnRequestIdSchema.safeParse(
     acceptedInput?.clientRequestId,
   );
-  if (!requestIdResult.success) {
+  if (acceptedInput === null || !requestIdResult.success) {
     return null;
   }
 
@@ -2463,10 +2462,12 @@ export function getStoredTurnRequestEventForTurn(
       .where(
         and(
           eq(events.threadId, args.threadId),
-          isTurnRequestedEventSql,
+          eq(events.type, "client/turn/requested"),
+          lt(events.sequence, acceptedInput.sequence),
           eq(turnRequestIdSql, requestIdResult.data),
         ),
       )
+      .orderBy(desc(events.sequence))
       .limit(1)
       .get() ?? null
   );
@@ -2551,8 +2552,11 @@ export function listStoredTurnInputAcceptedRowsByClientRequestIds(
     .where(
       and(
         eq(events.threadId, args.threadId),
-        isTurnInputAcceptedEventSql,
-        inArray(turnInputClientRequestIdSql, [...args.clientRequestIds]),
+        eq(events.type, "turn/input/accepted"),
+        inArray(
+          sql<string>`json_extract(${events.data}, '$.clientRequestId')`,
+          [...args.clientRequestIds],
+        ),
         gt(events.sequence, args.afterSequence),
       ),
     )
@@ -3051,22 +3055,29 @@ export function hasStoredTerminalClientTurnRequestEvent(
   db: DbQueryConnection,
   args: HasStoredTerminalClientTurnRequestEventArgs,
 ): boolean {
-  const [row] = db.all<{ terminal: number }>(sql`
-    SELECT EXISTS (
-      SELECT 1
-      FROM ${events}
-      WHERE ${events.threadId} = ${args.threadId}
-        AND ${isTurnInputAcceptedEventSql}
-        AND ${turnInputClientRequestIdSql} = ${args.requestId}
-    ) OR EXISTS (
-      SELECT 1
-      FROM ${events}
-      WHERE ${events.threadId} = ${args.threadId}
-        AND ${events.type} = 'client/turn/rejected'
-        AND json_extract(${events.data}, '$.requestId') = ${args.requestId}
-    ) AS terminal
-  `);
-  return row?.terminal === 1;
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          inArray(events.type, ["turn/input/accepted", "client/turn/rejected"]),
+          or(
+            and(
+              eq(events.type, "turn/input/accepted"),
+              sql`json_extract(${events.data}, '$.clientRequestId') = ${args.requestId}`,
+            ),
+            and(
+              eq(events.type, "client/turn/rejected"),
+              sql`json_extract(${events.data}, '$.requestId') = ${args.requestId}`,
+            ),
+          ),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }
 
 export function findLatestUnresolvedClientTurnRequestIdAfterSequence(
@@ -3087,20 +3098,20 @@ export function findLatestUnresolvedClientTurnRequestIdAfterSequence(
         gt(events.sequence, args.afterSequence),
         sql`NOT EXISTS (
           SELECT 1
-          FROM events AS accepted
-          WHERE accepted.thread_id = ${events.threadId}
-            AND accepted.type = 'turn/input/accepted'
-            AND json_valid(accepted.data)
-            AND json_extract(accepted.data, '$.clientRequestId') = ${turnRequestIdSql}
-            AND accepted.sequence > ${events.sequence}
-        )`,
-        sql`NOT EXISTS (
-          SELECT 1
-          FROM events AS rejected
-          WHERE rejected.thread_id = ${events.threadId}
-            AND rejected.type = 'client/turn/rejected'
-            AND json_extract(rejected.data, '$.requestId') = ${turnRequestIdSql}
-            AND rejected.sequence > ${events.sequence}
+          FROM events AS terminal
+          WHERE terminal.thread_id = ${events.threadId}
+            AND terminal.type IN ('turn/input/accepted', 'client/turn/rejected')
+            AND terminal.sequence > ${events.sequence}
+            AND (
+              (
+                terminal.type = 'turn/input/accepted'
+                AND json_extract(terminal.data, '$.clientRequestId') = ${turnRequestIdSql}
+              )
+              OR (
+                terminal.type = 'client/turn/rejected'
+                AND json_extract(terminal.data, '$.requestId') = ${turnRequestIdSql}
+              )
+            )
         )`,
       ),
     )

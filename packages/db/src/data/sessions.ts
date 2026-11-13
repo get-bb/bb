@@ -157,6 +157,7 @@ export function listLatestClosedSessionsForHosts(
           SELECT (
             SELECT latest.id
             FROM host_daemon_sessions AS latest
+              INDEXED BY host_daemon_sessions_host_status_idx
             WHERE latest.host_id = requested.value
               AND latest.status = 'closed'
             ORDER BY latest.closed_at DESC, latest.id DESC
