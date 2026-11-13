@@ -44,7 +44,7 @@ import {
 import { noopNotifier } from "../../src/notifier.js";
 import { threads } from "../../src/schema.js";
 import type { QueryCostCase } from "./case.js";
-import type { HistoryFixture, HistoryTurn } from "./fixture.js";
+import type { HistoryFixture, HistoryTurn } from "../../src/history-fixture.js";
 
 const QUEUED = "packages/db/src/data/queued-thread-messages.ts";
 const QUEUE_DEPTH = 20;

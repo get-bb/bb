@@ -81,7 +81,7 @@ import {
   type ScopedItemRef,
 } from "../../src/data/events.js";
 import type { QueryCostCase } from "./case.js";
-import type { HistoryFixture, HistoryTurn } from "./fixture.js";
+import type { HistoryFixture, HistoryTurn } from "../../src/history-fixture.js";
 
 const EVENTS = "packages/db/src/data/events.ts";
 const TIMELINE_EXCLUDED_EVENT_TYPES = [
@@ -169,18 +169,18 @@ function startPendingTurn(db: DbConnection, fixture: HistoryFixture): void {
         threadId: fixture.threadId,
         providerThreadId: fixture.providerThreadId,
         scope: turnScope(ACTIVE_TURN_ID),
-        type: "turn/input/accepted",
-        data: {
-          providerThreadId: fixture.providerThreadId,
-          clientRequestId: fixture.pendingRequestId,
-        },
+        type: "turn/started",
+        data: { providerThreadId: fixture.providerThreadId },
       },
       {
         threadId: fixture.threadId,
         providerThreadId: fixture.providerThreadId,
         scope: turnScope(ACTIVE_TURN_ID),
-        type: "turn/started",
-        data: { providerThreadId: fixture.providerThreadId },
+        type: "turn/input/accepted",
+        data: {
+          providerThreadId: fixture.providerThreadId,
+          clientRequestId: fixture.pendingRequestId,
+        },
       },
     ]),
   );

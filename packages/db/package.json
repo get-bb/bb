@@ -8,6 +8,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./history-fixture": {
+      "source": "./src/history-fixture.ts",
+      "types": "./src/history-fixture.ts",
+      "default": "./src/history-fixture.ts"
+    },
     "./internal-environment-lifecycle": {
       "source": "./src/internal-environment-lifecycle.ts",
       "types": "./src/internal-environment-lifecycle.ts",

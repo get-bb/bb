@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import { createConnection, type DbConnection } from "../../src/connection.js";
 import { GROWTH_FLOOR_MS, type QueryCostCase } from "./case.js";
 import { QUERY_COST_CASES } from "./cases.js";
-import type { HistoryFixture } from "./fixture.js";
+import type { HistoryFixture } from "../../src/history-fixture.js";
 
 const ATTEMPTS = 3;
 

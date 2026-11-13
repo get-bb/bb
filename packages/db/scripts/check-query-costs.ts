@@ -15,7 +15,7 @@ import {
   SMALL_HISTORY_TURNS,
 } from "./query-costs/case.js";
 import { QUERY_COST_CASES } from "./query-costs/cases.js";
-import { buildHistoryFixture } from "./query-costs/fixture.js";
+import { buildHistoryFixture } from "../src/history-fixture.js";
 import { listQueryFunctions } from "./query-functions.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -131,7 +131,10 @@ function checkCoverage(): string[] {
 function buildHistory(directory: string, turns: number): HistoryFiles {
   const started = performance.now();
   const db = createMigratedConnection();
-  const fixture = buildHistoryFixture(db, turns);
+  const fixture = buildHistoryFixture(db, {
+    historyTurns: turns,
+    providerId: "query-costs",
+  });
   const eventCount = (
     db.$client.prepare("SELECT count(*) AS count FROM events").get() as {
       count: number;

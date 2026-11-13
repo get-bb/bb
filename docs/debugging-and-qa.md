@@ -323,6 +323,16 @@ calls per size and fails a function when:
 Cases live in `packages/db/scripts/query-costs/`; the check also fails when an
 exported query function in those files has no case.
 
+Both checks time single functions, so neither sees a request that calls a cheap
+query once per turn. `apps/server/test/perf/request-path-statements.test.ts`
+covers that: it builds the same fixture (`@bb/db/history-fixture`) at 100 and
+200 turns in two test servers, runs hot request paths against both (timeline,
+conversation outline, turn details, send with a queued retry, edit, stop, fork
+and others), and fails when a path executes any statement more often on the
+longer thread. The counts are exact, so the test does not depend on machine
+speed. A path that copies history by design, such as fork, declares it and may
+grow at most linearly.
+
 The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
 when agents saturate the CPU:
 

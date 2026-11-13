@@ -3,18 +3,19 @@ import {
   threadScope,
   turnScope,
   type ClientTurnRequestId,
+  type PromptInput,
 } from "@bb/domain";
-import type { DbConnection } from "../../src/connection.js";
-import { createEnvironment } from "../../src/data/environments.js";
+import type { DbConnection } from "./connection.js";
+import { createEnvironment } from "./data/environments.js";
 import {
   appendStoredThreadEventsInTransaction,
   type AppendStoredThreadEventArgs,
-} from "../../src/data/events.js";
-import { upsertHost } from "../../src/data/hosts.js";
-import { createProject } from "../../src/data/projects.js";
-import { createQueuedThreadMessage } from "../../src/data/queued-thread-messages.js";
-import { createThread } from "../../src/data/threads.js";
-import { noopNotifier } from "../../src/notifier.js";
+} from "./data/events.js";
+import { upsertHost } from "./data/hosts.js";
+import { createProject } from "./data/projects.js";
+import { createQueuedThreadMessage } from "./data/queued-thread-messages.js";
+import { createThread } from "./data/threads.js";
+import { noopNotifier } from "./notifier.js";
 
 const NEIGHBOR_THREADS = 3;
 const NEIGHBOR_TURNS = 200;
@@ -61,6 +62,18 @@ function nextRequestId(): ClientTurnRequestId {
   return id;
 }
 
+function requestInput(index: number): PromptInput[] {
+  return [
+    {
+      type: "text",
+      text: `Turn ${index}: check the failing build, fix the cause, and rerun the targeted tests. `.repeat(
+        4,
+      ),
+      mentions: [],
+    },
+  ];
+}
+
 function requestedEvent(
   threadId: string,
   requestId: ClientTurnRequestId,
@@ -76,15 +89,7 @@ function requestedEvent(
       initiator: "user",
       senderThreadId: null,
       requestId,
-      input: [
-        {
-          type: "text",
-          text: `Turn ${index}: check the failing build, fix the cause, and rerun the targeted tests. `.repeat(
-            4,
-          ),
-          mentions: [],
-        },
-      ],
+      input: requestInput(index),
       target: { kind: "new-turn" },
       request: { method: "turn/start", params: {} },
       execution: {
@@ -132,15 +137,15 @@ function turnEvents(args: TurnEventsArgs): AppendStoredThreadEventArgs[] {
       threadId,
       providerThreadId,
       scope,
-      type: "turn/input/accepted",
-      data: { providerThreadId, clientRequestId: requestId },
+      type: "turn/started",
+      data: { providerThreadId },
     },
     {
       threadId,
       providerThreadId,
       scope,
-      type: "turn/started",
-      data: { providerThreadId },
+      type: "turn/input/accepted",
+      data: { providerThreadId, clientRequestId: requestId },
     },
   ];
   const reasoning = {
@@ -276,6 +281,7 @@ function turnEvents(args: TurnEventsArgs): AppendStoredThreadEventArgs[] {
       data: {
         providerThreadId,
         status: index % 200 === 0 ? "interrupted" : "completed",
+        providerCheckpointId: `${turn.turnId}-checkpoint`,
       },
     },
   );
@@ -479,10 +485,16 @@ function appendHistory(
   return { turns, delegationItemIds, backgroundTaskItemIds };
 }
 
+export interface BuildHistoryFixtureArgs {
+  historyTurns: number;
+  providerId: string;
+}
+
 export function buildHistoryFixture(
   db: DbConnection,
-  historyTurns: number,
+  args: BuildHistoryFixtureArgs,
 ): HistoryFixture {
+  const { historyTurns, providerId } = args;
   const host = upsertHost(db, noopNotifier, { name: "query-costs" });
   const { project } = createProject(db, noopNotifier, {
     name: "query-costs",
@@ -493,13 +505,14 @@ export function buildHistoryFixture(
     hostId: host.id,
     path: "/workspace/bb",
     providerOwnsPath: false,
+    status: "ready",
   });
   const neighborThreadIds: string[] = [];
   for (let index = 0; index < NEIGHBOR_THREADS; index += 1) {
     const neighbor = createThread(db, noopNotifier, {
       projectId: project.id,
       environmentId: environment.id,
-      providerId: "query-costs",
+      providerId,
       status: "idle",
     });
     neighborThreadIds.push(neighbor.id);
@@ -513,7 +526,7 @@ export function buildHistoryFixture(
   const thread = createThread(db, noopNotifier, {
     projectId: project.id,
     environmentId: environment.id,
-    providerId: "query-costs",
+    providerId,
     status: "idle",
   });
   const providerThreadId = "provider-history";
@@ -542,7 +555,7 @@ export function buildHistoryFixture(
   const retry = createQueuedThreadMessage(db, noopNotifier, {
     ...execution,
     threadId: thread.id,
-    content: [],
+    content: requestInput(historyTurns + 1),
     waitingOn: null,
     payload: {
       kind: "retry",

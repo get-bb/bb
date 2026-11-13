@@ -1,5 +1,5 @@
 import type { DbConnection } from "../../src/connection.js";
-import type { HistoryFixture } from "./fixture.js";
+import type { HistoryFixture } from "../../src/history-fixture.js";
 
 export interface QueryCostCase {
   name: string;
