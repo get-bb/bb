@@ -240,11 +240,10 @@ export function ProfileWebViewScreen() {
   useFocusEffect(
     useCallback(() => {
       if (settledVerticalBarKey.current === verticalBarKey) return;
-      settledVerticalBarKey.current = verticalBarKey;
-      const timer = setTimeout(
-        refreshWindowSafeArea,
-        SAFE_AREA_REFRESH_DELAY_MS,
-      );
+      const timer = setTimeout(() => {
+        refreshWindowSafeArea();
+        settledVerticalBarKey.current = verticalBarKey;
+      }, SAFE_AREA_REFRESH_DELAY_MS);
       return () => clearTimeout(timer);
     }, [verticalBarKey]),
   );
