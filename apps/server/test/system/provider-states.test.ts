@@ -1,6 +1,7 @@
 import type { ProviderHealth } from "@bb/host-daemon-contract";
 import { updateHost } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
+import { listSystemProviderInfos } from "../../src/services/system/execution-options.js";
 import { getProviderStates } from "../../src/services/system/provider-states.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
@@ -184,6 +185,108 @@ describe("getProviderStates", () => {
         providerId: "codex",
         status: "ready",
       });
+    });
+  });
+
+  it("checks each provider once, in model-picker order, on a cold host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "provider.health") {
+            return {
+              ok: true,
+              result: {
+                supported: true,
+                health: healthForInstalledOnlyProvider(
+                  request.command.providerId,
+                  new Set(["acp-opencode"]),
+                ),
+              },
+            };
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+
+      const result = await getProviderStates(harness.deps, {
+        hostId: host.id,
+      });
+
+      const checked = responder.requests.flatMap((request) =>
+        request.command.type === "provider.health"
+          ? [request.command.providerId]
+          : [],
+      );
+      expect(checked.slice(0, 3)).toEqual(["codex", "claude-code", "pi"]);
+      expect([...checked].sort()).toEqual(
+        [
+          "acp-cursor",
+          "acp-grok",
+          "acp-hermes-agent",
+          "acp-omp",
+          "acp-opencode",
+          "claude-code",
+          "codex",
+          "pi",
+        ].sort(),
+      );
+      expect(result.providers.map((provider) => provider.providerId)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+        "acp-opencode",
+      ]);
+    });
+  });
+
+  it("shares its installed checks with a provider list loading at the same time", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: async (request) => {
+          if (request.command.type === "provider.health") {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            return {
+              ok: true,
+              result: {
+                supported: true,
+                health: healthForInstalledOnlyProvider(
+                  request.command.providerId,
+                  new Set(["acp-hermes-agent"]),
+                ),
+              },
+            };
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+
+      const [states, listed] = await Promise.all([
+        getProviderStates(harness.deps, { hostId: host.id }),
+        listSystemProviderInfos(harness.deps, { hostId: host.id }),
+      ]);
+
+      const hermesChecks = responder.requests.filter(
+        (request) =>
+          request.command.type === "provider.health" &&
+          request.command.providerId === "acp-hermes-agent",
+      );
+      expect(hermesChecks).toHaveLength(1);
+      expect(responder.requests).toHaveLength(8);
+      expect(states.providers.map((provider) => provider.providerId)).toEqual(
+        listed.map((provider) => provider.id),
+      );
+      expect(
+        states.providers.find(
+          (provider) => provider.providerId === "acp-hermes-agent",
+        ),
+      ).toMatchObject({ status: "ready" });
     });
   });
 
@@ -413,10 +516,7 @@ describe("getProviderStates", () => {
 
       expect(result.providers[0]?.providerId).toBe("codex");
       expect(primaryCalls).toBe(0);
-      expect(healthCwds.filter((cwd) => cwd === undefined)).toHaveLength(4);
-      expect(healthCwds.filter((cwd) => cwd !== undefined)).toEqual(
-        Array(4).fill(environment.path),
-      );
+      expect(healthCwds).toEqual(Array(8).fill(environment.path));
     });
   });
 });
