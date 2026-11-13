@@ -1,4 +1,28 @@
 const LONG_SCALE = 0xfffffffffffffff;
+const FILTER_FIELDS = new Set([
+  "version",
+  "groups",
+  "multivariate",
+  "aggregation_group_type_index",
+  "payloads",
+  "early_exit",
+  "feature_enrollment",
+  "holdout",
+  "holdout_groups",
+  "super_groups",
+  "bucketing_identifier",
+]);
+const CONDITION_FIELDS = new Set([
+  "properties",
+  "rollout_percentage",
+  "variant",
+  "users_affected",
+  "sort_key",
+  "description",
+  "aggregation_group_type_index",
+]);
+const MULTIVARIATE_FIELDS = new Set(["variants"]);
+const VARIANT_FIELDS = new Set(["key", "name", "rollout_percentage"]);
 
 type Variant = { key: string; rolloutPercentage: number };
 
@@ -34,6 +58,15 @@ function isEmpty(value: unknown): boolean {
   );
 }
 
+function hasUnknownFields(
+  value: Record<string, unknown>,
+  known: ReadonlySet<string>,
+): boolean {
+  return Object.entries(value).some(
+    ([field, fieldValue]) => !known.has(field) && !isEmpty(fieldValue),
+  );
+}
+
 function readPercentage(value: unknown): number | null | undefined {
   if (value === undefined || value === null) {
     return null;
@@ -46,6 +79,7 @@ function readPercentage(value: unknown): number | null | undefined {
 function readCondition(value: unknown): Condition | null {
   if (
     !isRecord(value) ||
+    hasUnknownFields(value, CONDITION_FIELDS) ||
     !isEmpty(value.properties) ||
     (value.aggregation_group_type_index !== undefined &&
       value.aggregation_group_type_index !== null)
@@ -71,7 +105,11 @@ function readVariants(value: unknown): Variant[] | null {
   if (isEmpty(value)) {
     return [];
   }
-  if (!isRecord(value) || !Array.isArray(value.variants)) {
+  if (
+    !isRecord(value) ||
+    hasUnknownFields(value, MULTIVARIATE_FIELDS) ||
+    !Array.isArray(value.variants)
+  ) {
     return null;
   }
   const variants: Variant[] = [];
@@ -81,6 +119,7 @@ function readVariants(value: unknown): Variant[] | null {
       : undefined;
     if (
       !isRecord(variant) ||
+      hasUnknownFields(variant, VARIANT_FIELDS) ||
       typeof variant.key !== "string" ||
       typeof rolloutPercentage !== "number"
     ) {
@@ -99,6 +138,8 @@ function readFlag(value: Record<string, unknown>): LocalFlag | "unsupported" {
     value.deleted === true ||
     value.ensure_experience_continuity === true ||
     !isRecord(filters) ||
+    hasUnknownFields(filters, FILTER_FIELDS) ||
+    !(isEmpty(filters.version) || filters.version === 1) ||
     !isEmpty(filters.aggregation_group_type_index) ||
     !isEmpty(filters.holdout) ||
     !isEmpty(filters.holdout_groups) ||

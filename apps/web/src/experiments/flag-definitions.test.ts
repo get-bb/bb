@@ -24,14 +24,23 @@ const BODY = JSON.stringify({
   ],
 });
 
-function memoryCache(): SharedCache & { store: Map<string, Response> } {
+function memoryCache(): SharedCache & {
+  store: Map<string, Response>;
+  reads: () => number;
+} {
   const store = new Map<string, Response>();
+  let reads = 0;
   return {
     store,
-    match: async (key) => store.get(key)?.clone(),
+    reads: () => reads,
+    match: async (key) => {
+      reads += 1;
+      return store.get(key)?.clone();
+    },
     put: async (key, response) => {
       store.set(key, response);
     },
+    delete: async (key) => store.delete(key),
   };
 }
 
@@ -150,6 +159,76 @@ describe("flag definitions source", () => {
     expect((await second.read())?.has("homepage-hero")).toBe(true);
     await second.settle();
     expect(second.requests).toHaveLength(0);
+  });
+
+  it("drops cached definitions when PostHog reports the quota is exceeded", async () => {
+    const sharedCache = memoryCache();
+    let quotaLimited = false;
+    const harness = setup({
+      respond: async () =>
+        quotaLimited ? new Response("quota", { status: 402 }) : ok(),
+      sharedCache,
+    });
+    await harness.read();
+    await harness.settle();
+    expect(sharedCache.store.size).toBe(1);
+    quotaLimited = true;
+    harness.advance(31_000);
+    expect(await harness.read()).not.toBeNull();
+    await harness.settle();
+    expect(harness.logs.at(-1)).toMatchObject({
+      outcome: "quota_limited",
+      status: 402,
+    });
+    expect(await harness.read()).toBeNull();
+    expect(sharedCache.store.size).toBe(0);
+  });
+
+  it("skips the shared cache while waiting to retry a failed fetch", async () => {
+    const sharedCache = memoryCache();
+    const harness = setup({
+      respond: async () => new Response("down", { status: 503 }),
+      sharedCache,
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await harness.read();
+      await harness.settle();
+      harness.advance(1000);
+    }
+    expect(sharedCache.reads()).toBe(1);
+    harness.advance(30_000);
+    await harness.read();
+    expect(sharedCache.reads()).toBe(2);
+  });
+
+  it("does not re-parse a shared copy that is no newer than its own", async () => {
+    const sharedCache = memoryCache();
+    let fail = false;
+    const harness = setup({
+      respond: async () =>
+        fail ? new Response("down", { status: 503 }) : ok(),
+      sharedCache,
+    });
+    await harness.read();
+    await harness.settle();
+    fail = true;
+    const stored = sharedCache.store.values().next().value;
+    let bodyRead = false;
+    sharedCache.match = async () => {
+      const copy = stored?.clone();
+      if (copy) {
+        const text = copy.text.bind(copy);
+        copy.text = () => {
+          bodyRead = true;
+          return text();
+        };
+      }
+      return copy;
+    };
+    harness.advance(31_000);
+    expect(await harness.read()).not.toBeNull();
+    await harness.settle();
+    expect(bodyRead).toBe(false);
   });
 
   it("retries a failing fetch at most every 30 seconds", async () => {

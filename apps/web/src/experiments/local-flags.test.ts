@@ -107,6 +107,33 @@ describe("local flag evaluation", () => {
     ]);
   });
 
+  it("ignores known metadata fields PostHog includes", async () => {
+    const defs = definitions(
+      flag({
+        version: 1,
+        payloads: { test: '{"headline":"x"}' },
+        feature_enrollment: false,
+        groups: [
+          {
+            properties: [],
+            rollout_percentage: 100,
+            variant: null,
+            users_affected: 120,
+            sort_key: "a1",
+            description: "Everyone",
+          },
+        ],
+        multivariate: {
+          variants: [
+            { key: "control", name: "Control", rollout_percentage: 50 },
+            { key: "test", name: "Test", rollout_percentage: 50 },
+          ],
+        },
+      }),
+    );
+    expect(await variantsFor(defs, ["visitor-1"])).toEqual(["test"]);
+  });
+
   it("assigns nothing for an inactive flag", async () => {
     const defs = definitions(
       flag(
@@ -221,6 +248,51 @@ describe("local flag evaluation", () => {
         flag({
           groups: [{ properties: [], rollout_percentage: 100 }],
           multivariate: { variants: [{ key: "test" }] },
+        }),
+      ],
+    ],
+    [
+      "an unknown filter field",
+      [
+        flag({
+          new_targeting: { mode: "strict" },
+          groups: [{ properties: [], rollout_percentage: 100 }],
+          multivariate: SPLIT,
+        }),
+      ],
+    ],
+    [
+      "an unknown filter version",
+      [
+        flag({
+          version: 2,
+          groups: [{ properties: [], rollout_percentage: 100 }],
+          multivariate: SPLIT,
+        }),
+      ],
+    ],
+    [
+      "an unknown condition field",
+      [
+        flag({
+          groups: [
+            { properties: [], rollout_percentage: 100, exposure_frozen: true },
+          ],
+          multivariate: SPLIT,
+        }),
+      ],
+    ],
+    [
+      "an unknown variant field",
+      [
+        flag({
+          groups: [{ properties: [], rollout_percentage: 100 }],
+          multivariate: {
+            variants: [
+              { key: "control", rollout_percentage: 50 },
+              { key: "test", rollout_percentage: 50, weight_by: "region" },
+            ],
+          },
         }),
       ],
     ],
