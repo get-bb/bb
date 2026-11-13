@@ -12,6 +12,7 @@ import {
   resolveExperiments,
   withExperimentHeaders,
 } from "./experiments/server";
+import { proxyPostHogRequest } from "./landing/posthog-proxy";
 import {
   marketplaceHtmlCacheControl,
   marketplaceResponseStatus,
@@ -83,6 +84,12 @@ export default {
     _env: unknown,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    const proxied = await proxyPostHogRequest(request, {
+      fetch: (input, init) => fetch(input, init),
+      cache: caches.default,
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
+    if (proxied) return proxied;
     const definitions = flagDefinitionsSource();
     const resolution = await resolveExperiments(request, {
       postHogKey,
