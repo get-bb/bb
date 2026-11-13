@@ -1,4 +1,5 @@
 import { spawnHostProcess as spawn } from "@bb/process-utils";
+import { isDesktopRuntimeReadyMessage } from "@bb/config/desktop-runtime-ready";
 import type { ChildProcess } from "node:child_process";
 import { posix as posixPath } from "node:path";
 import {
@@ -30,6 +31,7 @@ export interface BbAppProcess {
   exit: Promise<BbAppProcessExit>;
   logs: RuntimeLogBuffer;
   pid: number;
+  ready: Promise<void>;
   stop(args: StopBbAppProcessArgs): Promise<void>;
 }
 
@@ -114,7 +116,8 @@ async function runAppImageBridgeSupervisor(
       message !== null &&
       "channel" in message &&
       typeof message.channel === "string" &&
-      message.channel.startsWith("bb-desktop-update/")
+      (message.channel.startsWith("bb-desktop-update/") ||
+        message.channel === "bb-desktop-runtime/ready")
     ) {
       send(message);
     }
@@ -377,12 +380,22 @@ export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
   }
 
   const exit = waitForProcessExit(childProcess);
+  const ready = new Promise<void>((resolveReady) => {
+    const handleMessage = (message: unknown): void => {
+      if (isDesktopRuntimeReadyMessage(message)) {
+        childProcess.off("message", handleMessage);
+        resolveReady();
+      }
+    };
+    childProcess.on("message", handleMessage);
+  });
 
   return {
     childProcess,
     exit,
     logs,
     pid,
+    ready,
     async stop(stopArgs) {
       if (hasProcessExited(childProcess)) {
         return;
