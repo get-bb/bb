@@ -1,8 +1,18 @@
-import { turnScope, type ThreadEventType } from "@bb/domain";
+import {
+  THREAD_SESSION_OPTIONS_STATE_KIND,
+  threadScope,
+  turnScope,
+  type ThreadEventType,
+} from "@bb/domain";
 import type { DbConnection } from "../../src/connection.js";
 import {
   advanceTimelineWindowBudgetFloorSequence,
+  appendDaemonEventsInTransaction,
+  appendStoredThreadEvent,
+  appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
+  classifyStoredProviderThreadClaim,
+  copyStoredThreadEventsInTransaction,
   deleteThreadEventSuffixInTransaction,
   findLastCompletedRootStoredTurn,
   findLastRootStoredTurnStarted,
@@ -11,8 +21,10 @@ import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
+  getContextWindowUsagePruningBoundarySequence,
   getFirstParentedTimelineBoundarySequence,
   getHighWaterMarks,
+  getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getLatestCompletedThreadContextClearSequence,
   getLatestModelFallbackRowSinceTurnRequest,
@@ -25,6 +37,7 @@ import {
   getLatestTokenUsageRow,
   getStoredConversationOutlineProjectionState,
   getStoredItemLifecycleSequenceRange,
+  getStoredProviderSession,
   getStoredTurnRequestEventForTurn,
   getTimelineGroupingContextChangesInRange,
   getTurnFinalAgentMessageEventRow,
@@ -38,14 +51,16 @@ import {
   isStoredTurnContextCompactionOnly,
   isStoredTurnMainRunIdle,
   isStoredTurnProviderCompactionRunning,
+  insertEvents,
   isTimelineCursorSequencePresent,
   listActiveBackgroundTaskCountsByThreadIds,
   listAppendedEventRows,
   listCommandItemDataByItemIds,
-  listEvents,
+  listContextWindowUsageRows,
   listItemEventSpansByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
+  listLatestThreadStateEventRowsByThreadIds,
   listLatestTurnFinalAgentMessageEventRows,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
@@ -54,19 +69,23 @@ import {
   listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
+  listStoredConversationOutlineEventRows,
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRowMetadata,
   listStoredEventRows,
   listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInSequenceRange,
   listStoredItemLifecycleRowsByItems,
+  listStoredRootConversationOutlineEventRows,
   listStoredTaskTurnRequestEvents,
   listStoredTimelineThreadWindowEventRows,
   listStoredTimelineTurnEventRows,
   listStoredTimelineWindowEventRows,
+  listStoredTurnCompletedKeys,
   listStoredTurnCompletedRowsByTurnIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
+  listStoredTurnStartedKeys,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listThreadEventSuffixBackgroundSettlementRows,
   listThreadIdsStoppedSinceLastTurnStart,
@@ -77,9 +96,16 @@ import {
   listTimelineRootWindowTurnIds,
   listTimelineWindowHintsDescending,
   listTodoSnapshotEventRowsForThread,
+  pruneContextWindowUsageEventsInTransaction,
+  pruneTokenUsageEventsInTransaction,
+  resolveStoredProviderSessions,
   wouldRemoveSharedProviderSessionClaim,
+  type AppendDaemonEventInput,
+  type PruneTokenUsageEventsArgs,
   type ScopedItemRef,
+  type StoredEventRowMetadata,
 } from "../../src/data/events.js";
+import { noopNotifier } from "../../src/notifier.js";
 import type { QueryCostCase } from "./case.js";
 import type { HistoryFixture, HistoryTurn } from "../../src/history-fixture.js";
 
@@ -186,6 +212,196 @@ function startPendingTurn(db: DbConnection, fixture: HistoryFixture): void {
   );
 }
 
+const DAEMON_BACKLOG_EVENTS = 512;
+const FORK_COPY_BATCH_ROWS = 10;
+const PRUNING_CHUNK_SIZE = 16;
+
+type UsageEventType =
+  | "thread/contextWindowUsage/updated"
+  | "thread/tokenUsage/updated";
+
+let forkCopyRows: StoredEventRowMetadata[] = [];
+let pruningWindow: PruneTokenUsageEventsArgs | null = null;
+
+function daemonEvent(
+  fixture: HistoryFixture,
+  type: ThreadEventType,
+  data: Record<string, unknown>,
+  item: { itemId: string; itemKind: AppendDaemonEventInput["itemKind"] } | null,
+): AppendDaemonEventInput {
+  return {
+    data: JSON.stringify({
+      providerThreadId: fixture.providerThreadId,
+      ...data,
+    }),
+    environmentId: fixture.environmentId,
+    itemId: item?.itemId ?? null,
+    itemKind: item?.itemKind ?? null,
+    parentToolCallId: null,
+    providerThreadId: fixture.providerThreadId,
+    scope: turnScope(ACTIVE_TURN_ID),
+    threadId: fixture.threadId,
+    type,
+  };
+}
+
+function daemonBacklog(fixture: HistoryFixture): AppendDaemonEventInput[] {
+  const head = [
+    daemonEvent(fixture, "turn/started", {}, null),
+    daemonEvent(
+      fixture,
+      "turn/input/accepted",
+      { clientRequestId: fixture.pendingRequestId },
+      null,
+    ),
+  ];
+  const agentMessageId = `${ACTIVE_TURN_ID}-agent`;
+  const agentMessage = {
+    itemId: agentMessageId,
+    itemKind: "agentMessage" as const,
+  };
+  const tail = [
+    daemonEvent(
+      fixture,
+      "item/agentMessage/delta",
+      { itemId: agentMessageId, delta: "The build passes now." },
+      agentMessage,
+    ),
+    daemonEvent(
+      fixture,
+      "item/completed",
+      {
+        item: {
+          type: "agentMessage",
+          id: agentMessageId,
+          text: "The build passes now. I changed the failing query.",
+        },
+      },
+      agentMessage,
+    ),
+    daemonEvent(fixture, "turn/completed", { status: "completed" }, null),
+  ];
+  const commands: AppendDaemonEventInput[] = [];
+  for (
+    let index = 0;
+    head.length + commands.length + 3 + tail.length <= DAEMON_BACKLOG_EVENTS;
+    index += 1
+  ) {
+    const itemId = `${ACTIVE_TURN_ID}-cmd${index}`;
+    const command = {
+      type: "commandExecution",
+      id: itemId,
+      command: `pnpm exec turbo run test --filter=@bb/db -- test/${index}.test.ts`,
+      cwd: "/workspace/bb",
+      approvalStatus: null,
+    };
+    const item = { itemId, itemKind: "commandExecution" as const };
+    commands.push(
+      daemonEvent(
+        fixture,
+        "item/started",
+        { item: { ...command, status: "pending" } },
+        item,
+      ),
+      daemonEvent(
+        fixture,
+        "item/commandExecution/outputDelta",
+        {
+          itemId,
+          delta: "\u2713 test/query-plan-audit.test.ts (6 tests) 12ms\n",
+        },
+        item,
+      ),
+      daemonEvent(
+        fixture,
+        "item/completed",
+        {
+          item: {
+            ...command,
+            status: "completed",
+            exitCode: 0,
+            durationMs: 1800,
+            aggregatedOutput:
+              "\u2713 test/query-plan-audit.test.ts (6 tests) 12ms\n",
+          },
+        },
+        item,
+      ),
+    );
+  }
+  return [...head, ...commands, ...tail];
+}
+
+function selectForkCopyRows(db: DbConnection, fixture: HistoryFixture): void {
+  forkCopyRows = listStoredEventRowMetadata(db, {
+    afterSequence: 0,
+    beforeSequence: fixture.latestSequence + 1,
+    limit: FORK_COPY_BATCH_ROWS,
+    threadId: fixture.threadId,
+    types: FORK_INHERITED_EVENT_TYPES,
+  }).map((row) => ({ ...row, providerThreadId: null }));
+}
+
+function latestUsageSequence(
+  db: DbConnection,
+  fixture: HistoryFixture,
+  type: UsageEventType,
+): number {
+  return (
+    db.$client
+      .prepare<[string, string], { sequence: number }>(
+        "SELECT sequence FROM events WHERE thread_id = ? AND type = ? ORDER BY sequence DESC LIMIT 1",
+      )
+      .get(fixture.threadId, type)?.sequence ?? 0
+  );
+}
+
+function selectPruningWindow(
+  db: DbConnection,
+  fixture: HistoryFixture,
+  type: UsageEventType,
+): void {
+  const chunk = db.$client
+    .prepare<[string, string, number], { id: string; sequence: number }>(
+      "SELECT id, sequence FROM events INDEXED BY events_thread_type_sequence_idx WHERE thread_id = ? AND type = ? AND sequence > 0 ORDER BY sequence LIMIT ?",
+    )
+    .all(fixture.threadId, type, PRUNING_CHUNK_SIZE);
+  const last = chunk.at(-1);
+  if (last === undefined) throw new Error(`Expected ${type} events`);
+  const contextStep = type === "thread/contextWindowUsage/updated";
+  const latestRootSequence = latestUsageSequence(db, fixture, type);
+  pruningWindow = {
+    afterSequence: 0,
+    candidateIds: chunk.map((row) => row.id),
+    threadId: fixture.threadId,
+    throughSequence: last.sequence,
+    usageKeepers: {
+      boundarySequence: contextStep
+        ? getContextWindowUsagePruningBoundarySequence(db, fixture.threadId)
+        : 0,
+      latestContextSequence: contextStep ? latestRootSequence : 0,
+      latestRootSequence,
+    },
+  };
+}
+
+function selectedPruningWindow(): PruneTokenUsageEventsArgs {
+  if (pruningWindow === null) throw new Error("Expected a pruning window");
+  return pruningWindow;
+}
+
+function batchTurnKeys(fixture: HistoryFixture) {
+  return [
+    ...fixture.turns
+      .slice(-4)
+      .map((turn) => ({ threadId: fixture.threadId, turnId: turn.turnId })),
+    ...fixture.neighborThreadIds.map((threadId, index) => ({
+      threadId,
+      turnId: `n${index}-t1`,
+    })),
+  ];
+}
+
 export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#deleteThreadEventSuffixInTransaction`,
@@ -210,12 +426,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#getHighWaterMarks`,
     run: (db, fixture) => getHighWaterMarks(db, allThreadIds(fixture)),
-  },
-  {
-    name: `${EVENTS}#listEvents`,
-    ceilingMs: 2_000,
-    reason: "Returns every row of the thread by design; only tests call it",
-    run: (db, fixture) => listEvents(db, { threadId: fixture.threadId }),
   },
   {
     name: `${EVENTS}#listStoredEventRowMetadata`,
@@ -553,9 +763,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listTimelineOrderingContext`,
-    ceilingMs: 500,
-    reason:
-      "Known linear cost: a cold timeline open reads four rows per turn and checks each request's visible input with json_each; the grouping-context cache serves later opens",
     run: (db, fixture) =>
       listTimelineOrderingContext(db, {
         maxSeq: fixture.latestSequence,
@@ -815,5 +1022,172 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
         itemIds: lastTurn(fixture).commandItemIds,
         threadId: fixture.threadId,
       }),
+  },
+  {
+    name: `${EVENTS}#insertEvents`,
+    run: (db, fixture) =>
+      insertEvents(
+        db,
+        noopNotifier,
+        daemonBacklog(fixture).map((input, index) => ({
+          ...input,
+          sequence: fixture.latestSequence + 1 + index,
+        })),
+      ),
+  },
+  {
+    name: `${EVENTS}#appendDaemonEventsInTransaction`,
+    run: (db, fixture) =>
+      db.transaction((tx) =>
+        appendDaemonEventsInTransaction(tx, daemonBacklog(fixture)),
+      ),
+  },
+  {
+    name: `${EVENTS}#copyStoredThreadEventsInTransaction`,
+    prepare: selectForkCopyRows,
+    run: (db, fixture) =>
+      db.transaction((tx) =>
+        copyStoredThreadEventsInTransaction(tx, {
+          rows: forkCopyRows,
+          targetEnvironmentId: fixture.environmentId,
+          targetThreadId: fixture.neighborThreadIds[0] ?? fixture.threadId,
+        }),
+      ),
+  },
+  {
+    name: `${EVENTS}#appendStoredThreadEventInTransaction`,
+    run: (db, fixture) =>
+      db.transaction((tx) =>
+        appendStoredThreadEventInTransaction(tx, {
+          threadId: fixture.threadId,
+          environmentId: fixture.environmentId,
+          scope: threadScope(),
+          type: "client/turn/requested",
+          data: {
+            direction: "outbound",
+            source: "tell",
+            initiator: "user",
+            senderThreadId: null,
+            requestId: fixture.pendingRequestId,
+            input: [
+              {
+                type: "text",
+                text: "Then update the docs and rerun the targeted tests.",
+                mentions: [],
+              },
+            ],
+            target: { kind: "new-turn" },
+            request: { method: "turn/start", params: {} },
+            execution: {
+              model: "gpt-5",
+              reasoningLevel: "medium",
+              permissionMode: "full",
+              source: "client/turn/requested",
+              serviceTier: "default",
+            },
+          },
+        }),
+      ),
+  },
+  {
+    name: `${EVENTS}#appendStoredThreadEventsInTransaction`,
+    run: (db, fixture) => startPendingTurn(db, fixture),
+  },
+  {
+    name: `${EVENTS}#appendStoredThreadEvent`,
+    run: (db, fixture) =>
+      appendStoredThreadEvent(db, noopNotifier, {
+        threadId: fixture.threadId,
+        environmentId: fixture.environmentId,
+        scope: threadScope(),
+        type: "system/thread/interrupted",
+        data: { reason: "manual-stop" },
+      }),
+  },
+  {
+    name: `${EVENTS}#listLatestThreadStateEventRowsByThreadIds`,
+    run: (db, fixture) =>
+      listLatestThreadStateEventRowsByThreadIds(db, {
+        kind: THREAD_SESSION_OPTIONS_STATE_KIND,
+        threadIds: allThreadIds(fixture),
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredTurnStartedKeys`,
+    run: (db, fixture) =>
+      listStoredTurnStartedKeys(db, { keys: batchTurnKeys(fixture) }),
+  },
+  {
+    name: `${EVENTS}#listStoredTurnCompletedKeys`,
+    run: (db, fixture) =>
+      listStoredTurnCompletedKeys(db, { keys: batchTurnKeys(fixture) }),
+  },
+  {
+    name: `${EVENTS}#listStoredConversationOutlineEventRows`,
+    run: (db, fixture) =>
+      listStoredConversationOutlineEventRows(db, {
+        sequenceStart: 0,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredRootConversationOutlineEventRows`,
+    run: (db, fixture) =>
+      listStoredRootConversationOutlineEventRows(db, {
+        sequenceStart: 0,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listContextWindowUsageRows`,
+    run: (db, fixture) =>
+      listContextWindowUsageRows(db, {
+        sequenceStart: 0,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#resolveStoredProviderSessions`,
+    run: (db, fixture) =>
+      resolveStoredProviderSessions(db, { threadIds: allThreadIds(fixture) }),
+  },
+  {
+    name: `${EVENTS}#getStoredProviderSession`,
+    run: (db, fixture) => getStoredProviderSession(db, fixture.threadId),
+  },
+  {
+    name: `${EVENTS}#getLastStoredProviderThreadId`,
+    run: (db, fixture) => getLastStoredProviderThreadId(db, fixture.threadId),
+  },
+  {
+    name: `${EVENTS}#classifyStoredProviderThreadClaim`,
+    run: (db, fixture) =>
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: fixture.providerThreadId,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getContextWindowUsagePruningBoundarySequence`,
+    run: (db, fixture) =>
+      getContextWindowUsagePruningBoundarySequence(db, fixture.threadId),
+  },
+  {
+    name: `${EVENTS}#pruneContextWindowUsageEventsInTransaction`,
+    prepare: (db, fixture) =>
+      selectPruningWindow(db, fixture, "thread/contextWindowUsage/updated"),
+    run: (db) =>
+      db.transaction((tx) =>
+        pruneContextWindowUsageEventsInTransaction(tx, selectedPruningWindow()),
+      ),
+  },
+  {
+    name: `${EVENTS}#pruneTokenUsageEventsInTransaction`,
+    prepare: (db, fixture) =>
+      selectPruningWindow(db, fixture, "thread/tokenUsage/updated"),
+    run: (db) =>
+      db.transaction((tx) =>
+        pruneTokenUsageEventsInTransaction(tx, selectedPruningWindow()),
+      ),
   },
 ];

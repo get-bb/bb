@@ -4,7 +4,6 @@ import {
   updateHost,
   getQueuedThreadMessage,
   getThread,
-  listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
   setAppSettings,
@@ -62,6 +61,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 interface IdleThreadFixture {
   environment: EnvironmentRow;

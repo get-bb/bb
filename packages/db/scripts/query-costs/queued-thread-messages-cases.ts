@@ -2,6 +2,8 @@ import { inArray } from "drizzle-orm";
 import type { DbConnection } from "../../src/connection.js";
 import {
   claimNextQueuedThreadMessageGroup,
+  claimQueuedThreadMessageGroup,
+  clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
   createQueuedThreadMessageInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
@@ -16,6 +18,7 @@ import {
   hasLiveQueuedRetry,
   hasQueuedRetryOfTurnRequest,
   holdQueuedThreadMessageForEdit,
+  isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
   listQueuedThreadMessageCountsByThreadIds,
@@ -29,11 +32,14 @@ import {
   listThreadIdsWithAppUpdateQueueWaits,
   listThreadIdsWithHostOfflineQueueWaits,
   moveQueuedThreadMessageToFrontInTransaction,
+  releaseQueuedMessageClaim,
   releaseQueuedThreadMessageEditHold,
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
+  requeueClaimedQueuedThreadMessages,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
+  setQueuedThreadMessageWaitingOn,
   supersedeQueuedRetriesInTransaction,
   updateCoalescedQueuedThreadMessageInTransaction,
   updateQueuedThreadMessage,
@@ -49,6 +55,7 @@ import type { HistoryFixture, HistoryTurn } from "../../src/history-fixture.js";
 const QUEUED = "packages/db/src/data/queued-thread-messages.ts";
 const QUEUE_DEPTH = 20;
 const NEIGHBOR_QUEUE_DEPTH = 3;
+const GROUP_SIZE = 5;
 const COALESCE_KEY = "child-outcomes";
 const PLUGIN_WAIT_HOLDER = "plugin:github-pr-status";
 
@@ -116,13 +123,10 @@ function firstTurn(fixture: HistoryFixture): HistoryTurn {
   return turn;
 }
 
-function claimLeadGroup(
-  db: DbConnection,
-  fixture: HistoryFixture,
-): ClaimedQueuedThreadMessageRow[] {
+function groupQueueHead(db: DbConnection, fixture: HistoryFixture): string[] {
   fillQueues(db, fixture);
   const prefix = listQueuedThreadMessages(db, fixture.threadId)
-    .slice(0, 5)
+    .slice(0, GROUP_SIZE)
     .map((row) => row.id);
   const boundary = prefix.at(-1);
   if (boundary === undefined) {
@@ -135,6 +139,14 @@ function claimLeadGroup(
     expectedGroupedPrefixQueuedMessageIds: prefix,
     groupBoundaryQueuedMessageId: boundary,
   });
+  return prefix;
+}
+
+function claimLeadGroup(
+  db: DbConnection,
+  fixture: HistoryFixture,
+): ClaimedQueuedThreadMessageRow[] {
+  const prefix = groupQueueHead(db, fixture);
   const claimed = claimNextQueuedThreadMessageGroup(
     db,
     noopNotifier,
@@ -153,6 +165,8 @@ function requireRow(db: DbConnection, id: string): QueuedThreadMessageRow {
   return row;
 }
 
+let groupedPrefix: string[] = [];
+let groupBoundaryId: string | null = null;
 let claimedGroup: ClaimedQueuedThreadMessageRow[] = [];
 let coalescedRow: QueuedThreadMessageRow | null = null;
 let frontCandidate: QueuedThreadMessageRow | null = null;
@@ -531,5 +545,138 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
     },
     run: (db, fixture) =>
       deleteQueuedThreadMessage(db, noopNotifier, fixture.queuedMessageId),
+  },
+  {
+    name: `${QUEUED}#createQueuedThreadMessage`,
+    prepare: (db, fixture) => {
+      fillQueues(db, fixture);
+    },
+    run: (db, fixture) => enqueue(db, fixture.threadId),
+  },
+  {
+    name: `${QUEUED}#isThreadQueueAutoSendPaused`,
+    run: (db, fixture) => isThreadQueueAutoSendPaused(db, fixture.threadId),
+  },
+  {
+    name: `${QUEUED}#claimQueuedThreadMessageGroup`,
+    prepare: (db, fixture) => {
+      groupQueueHead(db, fixture);
+    },
+    run: (db, fixture) =>
+      claimQueuedThreadMessageGroup(db, noopNotifier, fixture.queuedRetryId, {
+        kind: "automatic",
+        isGroupEligible: () => true,
+        retryingFailure: false,
+      }),
+  },
+  {
+    name: `${QUEUED}#claimNextQueuedThreadMessageGroup`,
+    prepare: (db, fixture) => {
+      groupQueueHead(db, fixture);
+    },
+    run: (db, fixture) =>
+      claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        fixture.threadId,
+        () => true,
+      ),
+  },
+  {
+    name: `${QUEUED}#setQueuedThreadMessageGroupBoundary`,
+    prepare: (db, fixture) => {
+      fillQueues(db, fixture);
+      groupedPrefix = listQueuedThreadMessages(db, fixture.threadId)
+        .slice(0, GROUP_SIZE)
+        .map((row) => row.id);
+      groupBoundaryId = groupedPrefix.at(-1) ?? null;
+    },
+    run: (db, fixture) => {
+      if (groupBoundaryId === null) {
+        throw new Error("Expected a group boundary row");
+      }
+      return setQueuedThreadMessageGroupBoundary({
+        db,
+        notifier: noopNotifier,
+        threadId: fixture.threadId,
+        expectedGroupedPrefixQueuedMessageIds: groupedPrefix,
+        groupBoundaryQueuedMessageId: groupBoundaryId,
+      });
+    },
+  },
+  {
+    name: `${QUEUED}#requeueClaimedQueuedThreadMessages`,
+    prepare: (db, fixture) => {
+      claimedGroup = claimLeadGroup(db, fixture);
+    },
+    run: (db, fixture) =>
+      requeueClaimedQueuedThreadMessages(db, noopNotifier, {
+        claims: claimedGroup.map(({ id, claimToken }) => ({ id, claimToken })),
+        threadId: fixture.threadId,
+        waitingOn: { kind: "thread-busy" },
+        sendAt: null,
+      }),
+  },
+  {
+    name: `${QUEUED}#releaseQueuedMessageClaim`,
+    prepare: (db, fixture) => {
+      claimedGroup = claimLeadGroup(db, fixture);
+    },
+    run: (db) => {
+      const lead = claimedGroup[0];
+      if (lead === undefined) throw new Error("Expected a claimed lead row");
+      return releaseQueuedMessageClaim(db, noopNotifier, {
+        id: lead.id,
+        claimToken: lead.claimToken,
+      });
+    },
+  },
+  {
+    name: `${QUEUED}#setQueuedThreadMessageWaitingOn`,
+    prepare: (db, fixture) => {
+      fillQueues(db, fixture);
+    },
+    run: (db, fixture) =>
+      setQueuedThreadMessageWaitingOn(db, noopNotifier, {
+        id: fixture.queuedMessageId,
+        threadId: fixture.threadId,
+        waitingOn: { kind: "host-offline", hostName: "query-costs" },
+        sendAt: null,
+      }),
+  },
+  {
+    name: `${QUEUED}#setQueuedThreadMessageFailureReason`,
+    prepare: (db, fixture) => {
+      fillQueues(db, fixture);
+    },
+    run: (db, fixture) =>
+      setQueuedThreadMessageFailureReason(db, noopNotifier, {
+        id: fixture.queuedMessageId,
+        threadId: fixture.threadId,
+        failureReason: "Provider is still loading",
+        now: Date.now(),
+        retryDelaysMs: [5_000, 30_000],
+      }),
+  },
+  {
+    name: `${QUEUED}#clearQueuedThreadMessageWaitingOn`,
+    prepare: (db, fixture) => {
+      fillQueues(db, fixture);
+      setQueuedThreadMessageWaitingOn(db, noopNotifier, {
+        id: fixture.queuedMessageId,
+        threadId: fixture.threadId,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "github-pr-status",
+          reason: "Waiting for CI",
+        },
+        sendAt: null,
+      });
+    },
+    run: (db, fixture) =>
+      clearQueuedThreadMessageWaitingOn(db, noopNotifier, {
+        id: fixture.queuedMessageId,
+        threadId: fixture.threadId,
+      }),
   },
 ];

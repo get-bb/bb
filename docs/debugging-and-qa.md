@@ -276,13 +276,18 @@ process for each `rule`, `table`, and `caller`, when the plan:
   `terminal_sessions` through an index that matches fewer equality terms than
   another index on that table (`weaker-index`);
 - scans one of those tables in full (`full-scan`);
-- builds an automatic index (`automatic-index`); or
+- builds an automatic index (`automatic-index`);
 - searches one of those tables once per outer row, from a correlated subquery
   or an `EXISTS` subquery SQLite turned into a join, through a key that grows
   with history (`correlated-subquery`). A search that pins a unique key, or an
   `events` column whose rows are bounded per value (`turn_id`, `item_id`,
   `parent_tool_call_id`), is accepted; a search on `thread_id` and `type`
-  alone is not, because it rereads the thread's history for every outer row.
+  alone is not, because it rereads the thread's history for every outer row;
+  or
+- loops over a CTE or subquery result, without an index, once for each row of
+  a search on one of those tables through a key that grows with history
+  (`nested-loop`). `json_each` and other virtual tables over the row's own
+  JSON are not counted.
 
 `caller` is the `src/` file and function that ran the query; in the built
 server, the file comes from the module comments esbuild writes into
@@ -304,32 +309,48 @@ with
 `BB_QUERY_PLAN_REPORT=<file> pnpm exec turbo run test --filter=@bb/db --filter=@bb/server`
 followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
 
-Plans cannot show what a query costs once a thread is long, so the workflow's
-cost job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It
-builds two databases through the real event write path, one with a 5,000-turn
-thread and one with a 10,000-turn thread (about 170,000 events), then calls
-every exported query function in `packages/db/src/data/events.ts` and
-`packages/db/src/data/queued-thread-messages.ts` against both, interleaved,
-each call inside a rolled-back savepoint. It keeps the fastest of up to three
-calls per size and fails a function when:
+Plans cannot show what a query costs once data grows, so the workflow's cost
+job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds two
+worlds, at half and full scale, through the real write paths: a thread with
+5,000 or 10,000 turns (about 170,000 events at full scale), plus what each case
+group in `packages/db/scripts/query-costs/` seeds for its tables at about twice
+the size of the largest real user (for example 10,000 threads, 4,000
+environments, 50,000 prompt history entries and 15,000 terminal sessions at
+full scale). It then calls every exported query function in
+`packages/db/src/data` against both worlds, interleaved, each call inside a
+rolled-back savepoint. It keeps the fastest of up to three calls per world and
+fails a function when:
 
-- its time on the long thread is at least 2 ms and more than 3 times its time
-  on the short one, so its cost grows faster than history (a runner that is
-  uniformly slower changes both times alike);
-- it takes longer than its ceiling on the long thread (250 ms unless its case
-  sets `ceilingMs` with a `reason`); or
+- its full-scale time is at least 2 ms and more than 3 times its half-scale
+  time, so its cost grows faster than the data (a runner that is uniformly
+  slower changes both times alike);
+- it takes longer than its ceiling at full scale (250 ms unless its case sets
+  `ceilingMs` with a `reason`); or
 - a single call runs for more than 5 seconds, when it is killed.
 
-Cases live in `packages/db/scripts/query-costs/`; the check also fails when an
-exported query function in those files has no case.
+The check also fails when an exported query function in `packages/db/src/data`
+has no case. A query function is an exported function that builds a query
+itself or calls a function in the same file that does, so wrappers around a
+private query helper count too (`pnpm --filter @bb/db list:query-functions`
+lists them; the same list drives the "query functions run in tests" checks). `--group <name>[,<name>]` runs only those case groups and skips
+the coverage check. To time the cases against real data shapes, make a copy
+with `sqlite3 ~/.bb/bb.db "VACUUM INTO '/tmp/bb-copy.db'"` and run
+`pnpm --filter @bb/db check:query-costs --db /tmp/bb-copy.db`: it migrates the
+copy, seeds the full-scale world into it, and fails only on the ceiling and the
+5-second kill, since there is no second size to compare. The copy is written to;
+never point `--db` at `~/.bb/bb.db` (the check refuses), and never start a bb
+server on the copy.
 
 Both checks time single functions, so neither sees a request that calls a cheap
 query once per turn. `apps/server/test/perf/request-path-statements.test.ts`
-covers that: it builds the same fixture (`@bb/db/history-fixture`) at 100 and
-200 turns in two test servers, runs hot request paths against both (timeline,
-conversation outline, turn details, send with a queued retry, edit, stop, fork
-and others), and fails when a path executes any statement more often on the
-longer thread. The counts are exact, so the test does not depend on machine
+covers that: it builds the same fixture (`@bb/db/history-fixture`) in two test
+servers, one with 100 turns and 20 other threads and one with twice both, runs
+hot request paths against both (thread list, search and count, timeline,
+conversation outline, turn details, events, prompt history, send with a queued
+retry, edit, stop, fork and others), and fails when a path executes any
+statement more often in the larger server. Statements are counted at the
+better-sqlite3 layer, with parameter lists collapsed so a longer `IN (...)`
+list counts as the same statement. The counts are exact, so the test does not depend on machine
 speed. A path that copies history by design, such as fork, declares it and may
 grow at most linearly.
 

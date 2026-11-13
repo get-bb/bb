@@ -1626,7 +1626,7 @@ export function listThreadEnvironmentAssignmentsOnHost(
     .where(
       and(
         inArray(threads.id, [...args.threadIds]),
-        eq(environments.hostId, args.hostId),
+        sql`+${environments.hostId} = ${args.hostId}`,
       ),
     )
     .all();

@@ -137,4 +137,34 @@ describe("auditQueryPlan", () => {
       ),
     ).not.toContain("correlated-subquery:events");
   });
+
+  it("flags a loop over a CTE that runs once per history row", () => {
+    const spans = `WITH spans AS MATERIALIZED (
+      SELECT sequence AS start, sequence + 10 AS finish FROM events
+      WHERE thread_id = ? AND type = ?
+    )`;
+    const params = ["thr_1", "item/started", "thr_1", "client/turn/requested"];
+
+    expect(
+      audit(
+        `${spans}
+        SELECT min(events.sequence) FROM events
+        INNER JOIN spans ON events.sequence > spans.start AND events.sequence < spans.finish
+        WHERE events.thread_id = ? AND events.type = ?`,
+        params,
+      ),
+    ).toContain("nested-loop:events");
+    expect(
+      audit(
+        `${spans}
+        SELECT min((
+          SELECT events.sequence FROM events
+          WHERE events.thread_id = ? AND events.type = ?
+            AND events.sequence > spans.start AND events.sequence < spans.finish
+          ORDER BY events.sequence LIMIT 1
+        )) FROM spans`,
+        params,
+      ),
+    ).not.toContain("nested-loop:events");
+  });
 });

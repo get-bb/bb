@@ -1,7 +1,6 @@
 import {
   claimNextQueuedThreadMessageGroup,
   createQueuedThreadMessage,
-  listEvents,
   listQueuedThreadMessages,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
@@ -35,6 +34,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 function runTimeWake(harness: TestAppHarness, now: number): Promise<void> {
   return runQueuedMessageDispatch(harness.deps, { kind: "time-reached", now });

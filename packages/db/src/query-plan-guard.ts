@@ -86,6 +86,7 @@ const GUARDED_RULES: ReadonlySet<QueryPlanRule> = new Set([
   "weaker-index",
   "automatic-index",
   "correlated-subquery",
+  "nested-loop",
 ]);
 const PASS_THROUGH_FILES: ReadonlySet<string> = new Set([
   "packages/db/src/connection.ts",

@@ -1,0 +1,6 @@
+CREATE INDEX IF NOT EXISTS `events_turn_request_id_idx` ON `events` (`thread_id`,json_extract("data", '$.requestId'),`sequence`) WHERE "events"."type" = 'client/turn/requested' AND json_valid("events"."data");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `events_turn_input_client_request_id_idx` ON `events` (`thread_id`,json_extract("data", '$.clientRequestId'),`sequence`) WHERE "events"."type" = 'turn/input/accepted' AND json_valid("events"."data");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `host_daemon_sessions_host_closed_idx` ON `host_daemon_sessions` (`host_id`,`status`,`closed_at`,`id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `plugins_active_artifact_idx` ON `plugins` (`active_artifact_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `plugin_state_snapshots_from_artifact_idx` ON `plugin_state_snapshots` (`from_artifact_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `plugin_state_snapshots_to_artifact_idx` ON `plugin_state_snapshots` (`to_artifact_id`);

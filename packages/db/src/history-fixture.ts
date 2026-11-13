@@ -17,8 +17,6 @@ import { createQueuedThreadMessage } from "./data/queued-thread-messages.js";
 import { createThread } from "./data/threads.js";
 import { noopNotifier } from "./notifier.js";
 
-const NEIGHBOR_THREADS = 3;
-const NEIGHBOR_TURNS = 200;
 const TURNS_PER_BATCH = 250;
 
 export interface HistoryTurn {
@@ -277,6 +275,20 @@ function turnEvents(args: TurnEventsArgs): AppendStoredThreadEventArgs[] {
       threadId,
       providerThreadId,
       scope,
+      type: "thread/contextWindowUsage/updated",
+      data: {
+        providerThreadId,
+        contextWindowUsage: {
+          usedTokens: 40_000 + (index % 200) * 1_000,
+          modelContextWindow: 258_400,
+          estimated: false,
+        },
+      },
+    },
+    {
+      threadId,
+      providerThreadId,
+      scope,
       type: "turn/completed",
       data: {
         providerThreadId,
@@ -487,6 +499,8 @@ function appendHistory(
 
 export interface BuildHistoryFixtureArgs {
   historyTurns: number;
+  neighborThreads: number;
+  neighborTurns: number;
   providerId: string;
 }
 
@@ -494,7 +508,7 @@ export function buildHistoryFixture(
   db: DbConnection,
   args: BuildHistoryFixtureArgs,
 ): HistoryFixture {
-  const { historyTurns, providerId } = args;
+  const { historyTurns, neighborThreads, neighborTurns, providerId } = args;
   const host = upsertHost(db, noopNotifier, { name: "query-costs" });
   const { project } = createProject(db, noopNotifier, {
     name: "query-costs",
@@ -508,7 +522,7 @@ export function buildHistoryFixture(
     status: "ready",
   });
   const neighborThreadIds: string[] = [];
-  for (let index = 0; index < NEIGHBOR_THREADS; index += 1) {
+  for (let index = 0; index < neighborThreads; index += 1) {
     const neighbor = createThread(db, noopNotifier, {
       projectId: project.id,
       environmentId: environment.id,
@@ -519,7 +533,7 @@ export function buildHistoryFixture(
     appendHistory(db, {
       threadId: neighbor.id,
       providerThreadId: `provider-neighbor-${index}`,
-      turnCount: NEIGHBOR_TURNS,
+      turnCount: neighborTurns,
       prefix: `n${index}`,
     });
   }

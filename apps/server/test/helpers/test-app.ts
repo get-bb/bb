@@ -20,7 +20,6 @@ import {
   setAppSettings,
   startWalCheckpointer,
   type DbConnection,
-  type SlowDbQueryLogger,
 } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
 import { createMigratedConnection } from "@bb/db/testing";
@@ -109,7 +108,6 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   nativeRootsClock?: () => number;
   liveCommandsClock?: () => number;
   seedFirstPartyProviders?: boolean;
-  statementLogger?: SlowDbQueryLogger;
   tunnelIngressNow?: () => number;
   extraProviders?: readonly {
     declaration: PluginProviderDeclaration;
@@ -158,14 +156,8 @@ export function createTestDaemonHostKey(
   });
 }
 
-export function createTestDb(
-  statementLogger?: SlowDbQueryLogger,
-): DbConnection {
-  const db = createMigratedConnection(
-    statementLogger === undefined
-      ? {}
-      : { slowQueryLogger: statementLogger, slowQueryThresholdMs: 0 },
-  );
+export function createTestDb(): DbConnection {
+  const db = createMigratedConnection();
   ensurePersonalProject(db);
   return db;
 }
@@ -182,13 +174,12 @@ export async function createTestAppHarness(
     nativeRootsClock,
     liveCommandsClock,
     seedFirstPartyProviders = true,
-    statementLogger,
     tunnelIngressNow: _tunnelIngressNow,
     ...configOverrides
   } = overrides;
   const logger = createTestLogger();
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
-  const db = createTestDb(statementLogger);
+  const db = createTestDb();
   setAppSettings(db, {
     ...getAppSettings(db),
     machineGitCredentialsEnabled: false,

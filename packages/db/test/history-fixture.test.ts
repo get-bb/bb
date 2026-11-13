@@ -22,7 +22,12 @@ describe("buildHistoryFixture", () => {
   it("stores only events and queued messages the server can parse", () => {
     const db = createMigratedConnection();
     try {
-      buildHistoryFixture(db, { historyTurns: 1_000, providerId: "test" });
+      buildHistoryFixture(db, {
+        historyTurns: 1_000,
+        neighborThreads: 3,
+        neighborTurns: 20,
+        providerId: "test",
+      });
       const rows = db.$client
         .prepare(
           "SELECT data, provider_thread_id, sequence, thread_id, turn_id, type FROM events",

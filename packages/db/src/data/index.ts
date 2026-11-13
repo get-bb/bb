@@ -353,7 +353,6 @@ export {
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
   getLatestTokenUsageRow,
-  listEvents,
   listStoredConversationOutlineEventRows,
   listStoredRootConversationOutlineEventRows,
   getStoredConversationOutlineProjectionState,

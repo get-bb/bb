@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { createScriptedEchoRuntime } from "@bb/agent-runtime/test";
-import { getThread, listEvents } from "@bb/db";
+import { getThread } from "@bb/db";
 import type { PromptInput, ThreadEvent } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const bridgePath = fileURLToPath(
   new URL(

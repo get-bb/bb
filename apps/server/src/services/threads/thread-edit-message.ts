@@ -240,7 +240,7 @@ function resolveEditableTurnCandidate(
     .where(
       and(
         eq(events.threadId, thread.id),
-        eq(events.type, "turn/input/accepted"),
+        sql`${events.type} = 'turn/input/accepted' AND json_valid(${events.data})`,
         sql`json_extract(${events.data}, '$.clientRequestId') = ${request.requestId}`,
       ),
     )
@@ -369,21 +369,28 @@ function resolveEditableTurn(
     conflict("The thread has no editable user message");
   }
 
-  const requestRows = db
-    .select(TURN_REQUEST_ROW_COLUMNS)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, thread.id),
-        eq(events.type, "client/turn/requested"),
-        sql`json_extract(${events.data}, '$.initiator') = 'user'`,
-        sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
-        sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .all();
-  for (const requestRow of requestRows) {
+  let beforeSequence: number | null = null;
+  while (true) {
+    const requestRow = db
+      .select(TURN_REQUEST_ROW_COLUMNS)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, thread.id),
+          eq(events.type, "client/turn/requested"),
+          beforeSequence === null
+            ? undefined
+            : lt(events.sequence, beforeSequence),
+          sql`json_extract(${events.data}, '$.initiator') = 'user'`,
+          sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
+          sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get();
+    if (requestRow === undefined) break;
+    beforeSequence = requestRow.sequence;
     try {
       return resolveEditableTurnCandidate(db, thread, requestRow);
     } catch (error) {

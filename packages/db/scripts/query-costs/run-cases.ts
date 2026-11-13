@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { createConnection, type DbConnection } from "../../src/connection.js";
-import { GROWTH_FLOOR_MS, type QueryCostCase } from "./case.js";
+import {
+  GROWTH_FLOOR_MS,
+  type RegisteredCostCase,
+  type SeedsByGroup,
+} from "./case.js";
 import { QUERY_COST_CASES } from "./cases.js";
 import type { HistoryFixture } from "../../src/history-fixture.js";
 
@@ -10,6 +14,12 @@ const ATTEMPTS = 3;
 interface SizedHistory {
   db: DbConnection;
   fixture: HistoryFixture;
+  seeds: SeedsByGroup;
+}
+
+interface StoredWorld {
+  fixture: HistoryFixture;
+  seeds: SeedsByGroup;
 }
 
 const [smallPath, smallFixturePath, largePath, largeFixturePath, startArg] =
@@ -26,15 +36,22 @@ if (
   );
 }
 
+const fileBacked = process.argv.includes("--db");
+
 function openHistory(databasePath: string, fixturePath: string): SizedHistory {
+  const world = JSON.parse(readFileSync(fixturePath, "utf8")) as StoredWorld;
   return {
-    db: createConnection(readFileSync(databasePath)),
-    fixture: JSON.parse(readFileSync(fixturePath, "utf8")) as HistoryFixture,
+    db: createConnection(
+      fileBacked ? databasePath : readFileSync(databasePath),
+    ),
+    fixture: world.fixture,
+    seeds: world.seeds,
   };
 }
 
 const small = openHistory(smallPath, smallFixturePath);
-const large = openHistory(largePath, largeFixturePath);
+const large =
+  largePath === smallPath ? small : openHistory(largePath, largeFixturePath);
 
 function send(message: object): void {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -42,16 +59,16 @@ function send(message: object): void {
 
 function timeOnce(
   index: number,
-  costCase: QueryCostCase,
+  costCase: RegisteredCostCase,
   history: SizedHistory,
 ): number {
-  const { db, fixture } = history;
+  const { db, fixture, seeds } = history;
   db.$client.exec("SAVEPOINT query_cost");
   try {
-    costCase.prepare?.(db, fixture);
+    costCase.prepare?.(db, fixture, seeds);
     send({ kind: "call", index });
     const started = performance.now();
-    costCase.run(db, fixture);
+    costCase.run(db, fixture, seeds);
     return performance.now() - started;
   } finally {
     db.$client.exec("ROLLBACK TO query_cost");
@@ -65,15 +82,23 @@ for (
   index += 1
 ) {
   const costCase = QUERY_COST_CASES[index];
-  let smallMs = timeOnce(index, costCase, small);
-  let largeMs = timeOnce(index, costCase, large);
-  for (
-    let attempt = 1;
-    attempt < ATTEMPTS && largeMs >= GROWTH_FLOOR_MS / 2;
-    attempt += 1
-  ) {
-    smallMs = Math.min(smallMs, timeOnce(index, costCase, small));
-    largeMs = Math.min(largeMs, timeOnce(index, costCase, large));
+  try {
+    let smallMs = timeOnce(index, costCase, small);
+    let largeMs = timeOnce(index, costCase, large);
+    for (
+      let attempt = 1;
+      attempt < ATTEMPTS && largeMs >= GROWTH_FLOOR_MS / 2;
+      attempt += 1
+    ) {
+      smallMs = Math.min(smallMs, timeOnce(index, costCase, small));
+      largeMs = Math.min(largeMs, timeOnce(index, costCase, large));
+    }
+    send({ kind: "result", index, smallMs, largeMs });
+  } catch (error) {
+    send({
+      kind: "error",
+      index,
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
-  send({ kind: "result", index, smallMs, largeMs });
 }

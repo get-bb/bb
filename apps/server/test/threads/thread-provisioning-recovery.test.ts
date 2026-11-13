@@ -8,7 +8,6 @@ import {
   getEnvironment,
   getLatestSessionForHost,
   getThread,
-  listEvents,
   setThreadStartupContext,
   markThreadDeleted,
   threads,
@@ -66,6 +65,7 @@ import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { advanceEnvironmentProvisioning } from "../../src/services/environments/environment-engine.js";
 import { runThreadPurges } from "../helpers/thread-purges.js";
+import { listEvents } from "@bb/db/testing";
 
 const THREAD_START_EXECUTION = {
   model: "gpt-5",

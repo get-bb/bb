@@ -287,63 +287,69 @@ export const appSettings = sqliteTable("app_settings", {
   updatedAt: integer("updated_at").notNull(),
 });
 
-export const installedPlugins = sqliteTable("plugins", {
-  id: text("id").primaryKey(),
-  source: text("source").notNull(),
-  provenance: text("provenance", {
-    enum: ["builtin", "direct", "catalog"],
-  })
-    .notNull()
-    .default("direct"),
-  catalogEntryId: text("catalog_entry_id"),
-  catalogMarketplaceName: text("catalog_marketplace_name"),
-  sourceKind: text("source_kind", {
-    enum: ["path", "builtin", "npm", "git"],
-  })
-    .notNull()
-    .default("path"),
-  sourcePath: text("source_path"),
-  sourceBuiltinName: text("source_builtin_name"),
-  sourceNpmPackage: text("source_npm_package"),
-  sourceNpmRegistry: text("source_npm_registry"),
-  sourceNpmRequestedSpec: text("source_npm_requested_spec"),
-  sourceNpmSpecKind: text("source_npm_spec_kind", {
-    enum: ["default", "exact", "tag", "range"],
-  }),
-  sourceGitUrl: text("source_git_url"),
-  sourceGitSubdirectory: text("source_git_subdirectory"),
-  sourceGitRequestedRef: text("source_git_requested_ref"),
-  sourceGitRefKind: text("source_git_ref_kind", {
-    enum: ["branch", "tag", "commit"],
-  }),
-  sourceGitRange: text("source_git_range"),
-  sourceGitTagPrefix: text("source_git_tag_prefix"),
-  sourceGitResolvedTag: text("source_git_resolved_tag"),
-  npmResolvedVersion: text("npm_resolved_version"),
-  npmIntegrity: text("npm_integrity"),
-  gitResolvedCommit: text("git_resolved_commit"),
-  lastUpdateCheckAt: integer("last_update_check_at"),
-  availableCompatibleVersion: text("available_compatible_version"),
-  newestIncompatibleVersion: text("newest_incompatible_version"),
-  updateStatusDetail: text("update_status_detail"),
-  lastFailureVersion: text("last_failure_version"),
-  lastFailureAt: integer("last_failure_at"),
-  lastFailureDetail: text("last_failure_detail"),
-  lastFailureLabel: text("last_failure_label"),
-  activeArtifactId: text("active_artifact_id").references(
-    (): AnySQLiteColumn => pluginArtifacts.id,
-  ),
-  normalizationVersion: integer("normalization_version").notNull().default(0),
-  rootDir: text("root_dir").notNull(),
-  version: text("version").notNull(),
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-  enabledFollowsDefault: integer("enabled_follows_default", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  removedAt: integer("removed_at"),
-  installedAt: integer("installed_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
+export const installedPlugins = sqliteTable(
+  "plugins",
+  {
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    provenance: text("provenance", {
+      enum: ["builtin", "direct", "catalog"],
+    })
+      .notNull()
+      .default("direct"),
+    catalogEntryId: text("catalog_entry_id"),
+    catalogMarketplaceName: text("catalog_marketplace_name"),
+    sourceKind: text("source_kind", {
+      enum: ["path", "builtin", "npm", "git"],
+    })
+      .notNull()
+      .default("path"),
+    sourcePath: text("source_path"),
+    sourceBuiltinName: text("source_builtin_name"),
+    sourceNpmPackage: text("source_npm_package"),
+    sourceNpmRegistry: text("source_npm_registry"),
+    sourceNpmRequestedSpec: text("source_npm_requested_spec"),
+    sourceNpmSpecKind: text("source_npm_spec_kind", {
+      enum: ["default", "exact", "tag", "range"],
+    }),
+    sourceGitUrl: text("source_git_url"),
+    sourceGitSubdirectory: text("source_git_subdirectory"),
+    sourceGitRequestedRef: text("source_git_requested_ref"),
+    sourceGitRefKind: text("source_git_ref_kind", {
+      enum: ["branch", "tag", "commit"],
+    }),
+    sourceGitRange: text("source_git_range"),
+    sourceGitTagPrefix: text("source_git_tag_prefix"),
+    sourceGitResolvedTag: text("source_git_resolved_tag"),
+    npmResolvedVersion: text("npm_resolved_version"),
+    npmIntegrity: text("npm_integrity"),
+    gitResolvedCommit: text("git_resolved_commit"),
+    lastUpdateCheckAt: integer("last_update_check_at"),
+    availableCompatibleVersion: text("available_compatible_version"),
+    newestIncompatibleVersion: text("newest_incompatible_version"),
+    updateStatusDetail: text("update_status_detail"),
+    lastFailureVersion: text("last_failure_version"),
+    lastFailureAt: integer("last_failure_at"),
+    lastFailureDetail: text("last_failure_detail"),
+    lastFailureLabel: text("last_failure_label"),
+    activeArtifactId: text("active_artifact_id").references(
+      (): AnySQLiteColumn => pluginArtifacts.id,
+    ),
+    normalizationVersion: integer("normalization_version").notNull().default(0),
+    rootDir: text("root_dir").notNull(),
+    version: text("version").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    enabledFollowsDefault: integer("enabled_follows_default", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    removedAt: integer("removed_at"),
+    installedAt: integer("installed_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("plugins_active_artifact_idx").on(table.activeArtifactId)],
+);
 
 export const pluginArtifacts = sqliteTable(
   "plugin_artifacts",
@@ -437,6 +443,8 @@ export const pluginStateSnapshots = sqliteTable(
   (table) => [
     index("plugin_state_snapshots_plugin_idx").on(table.pluginId),
     index("plugin_state_snapshots_retention_idx").on(table.retainedUntil),
+    index("plugin_state_snapshots_from_artifact_idx").on(table.fromArtifactId),
+    index("plugin_state_snapshots_to_artifact_idx").on(table.toArtifactId),
   ],
 );
 
@@ -870,6 +878,24 @@ export const events = sqliteTable(
       .where(
         sql`${table.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
       ),
+    index("events_turn_request_id_idx")
+      .on(
+        table.threadId,
+        sql`json_extract(${table.data}, '$.requestId')`,
+        table.sequence,
+      )
+      .where(
+        sql`${table.type} = 'client/turn/requested' AND json_valid(${table.data})`,
+      ),
+    index("events_turn_input_client_request_id_idx")
+      .on(
+        table.threadId,
+        sql`json_extract(${table.data}, '$.clientRequestId')`,
+        table.sequence,
+      )
+      .where(
+        sql`${table.type} = 'turn/input/accepted' AND json_valid(${table.data})`,
+      ),
     index("events_environment_idx").on(table.environmentId),
     index("events_provider_identity_idx")
       .on(table.providerThreadId, table.createdAt)
@@ -1165,6 +1191,12 @@ export const hostDaemonSessions = sqliteTable(
       table.id,
     ),
     index("host_daemon_sessions_closed_prune_idx").on(
+      table.status,
+      table.closedAt,
+      table.id,
+    ),
+    index("host_daemon_sessions_host_closed_idx").on(
+      table.hostId,
       table.status,
       table.closedAt,
       table.id,

@@ -1,9 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  listEvents,
-  listQueuedThreadMessages,
-  markThreadDeleted,
-} from "@bb/db";
+import { listQueuedThreadMessages, markThreadDeleted } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { deliverLegacyDeferredThreadMessages } from "../../src/services/threads/legacy-deferred-messages.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
@@ -15,6 +11,7 @@ import {
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const WORKSPACE_PATH = "/tmp/legacy-deferred-project";
 

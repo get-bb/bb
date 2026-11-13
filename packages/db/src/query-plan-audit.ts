@@ -10,7 +10,8 @@ export type QueryPlanRule =
   | "full-scan"
   | "weaker-index"
   | "automatic-index"
-  | "correlated-subquery";
+  | "correlated-subquery"
+  | "nested-loop";
 
 export interface QueryPlanFinding {
   rule: QueryPlanRule;
@@ -146,7 +147,8 @@ function parseAccessStep(detail: string): AccessStep | null {
     name: match[2],
     index: match[4] ?? null,
     exists: match[3] !== undefined,
-    equalityTerms: terms.filter((term) => /^[^<>]+=\?$/.test(term)).length,
+    equalityTerms: terms.filter((term) => /^(?:<expr>|[^<>]+)=\?$/.test(term))
+      .length,
     equalityColumns: terms.flatMap((term) => {
       const column = /^(\w+)=\?$/.exec(term);
       return column === null ? [] : [column[1]];
@@ -287,6 +289,49 @@ function correlatedSubqueryFindings(
   return findings;
 }
 
+function nestedLoopFindings(
+  sqlite: Database.Database,
+  plan: readonly QueryPlanStep[],
+  tables: ReadonlySet<string>,
+  aliases: ReadonlyMap<string, string>,
+  options: QueryPlanAuditOptions,
+): QueryPlanFinding[] {
+  const findings: QueryPlanFinding[] = [];
+  const growingByParent = new Map<number, QueryPlanStep>();
+  for (const step of plan) {
+    const access = parseAccessStep(step.detail);
+    if (access === null) continue;
+    const table = aliases.get(access.name) ?? access.name;
+    if (options.largeTables.has(table)) {
+      if (
+        !growingByParent.has(step.parent) &&
+        !isBoundedLookup(sqlite, table, access, options)
+      ) {
+        growingByParent.set(step.parent, step);
+      }
+      continue;
+    }
+    const outer = growingByParent.get(step.parent);
+    if (
+      outer === undefined ||
+      tables.has(table) ||
+      access.index !== null ||
+      step.detail.includes("VIRTUAL TABLE")
+    ) {
+      continue;
+    }
+    findings.push({
+      rule: "nested-loop",
+      table:
+        aliases.get(parseAccessStep(outer.detail)?.name ?? "") ??
+        parseAccessStep(outer.detail)?.name ??
+        "",
+      detail: `${step.detail} runs once per row of ${outer.detail}`,
+    });
+  }
+  return findings;
+}
+
 function weakerIndexFindings(
   sqlite: Database.Database,
   sql: string,
@@ -369,5 +414,6 @@ export function auditQueryPlan(
   }
   findings.push(...weakerIndexFindings(sqlite, sql, plan, tables, options));
   findings.push(...correlatedSubqueryFindings(sqlite, plan, aliases, options));
+  findings.push(...nestedLoopFindings(sqlite, plan, tables, aliases, options));
   return { status: "audited", plan, findings };
 }

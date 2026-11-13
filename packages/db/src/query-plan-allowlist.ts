@@ -20,10 +20,6 @@ function boundedCorrelatedEvents(
 
 export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
   acceptedEventsIndex(
-    `${EVENTS}#listCommandItemDataByItemIds`,
-    "Measured faster than the type index (12.6 ms vs 21.6 ms): item ids are selective and both types are common",
-  ),
-  acceptedEventsIndex(
     `${EVENTS}#isStoredTurnMainRunIdle`,
     "turn/mainRun/updated is rare per thread; measured 0.013 ms vs 0.012 ms",
   ),

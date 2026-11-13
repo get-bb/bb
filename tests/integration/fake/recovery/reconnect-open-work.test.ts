@@ -1,4 +1,3 @@
-import { listEvents } from "@bb/db";
 import { isUserQuestionPendingInteraction } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -19,6 +18,7 @@ import {
   requireSessionId,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
+import { listEvents } from "@bb/db/testing";
 
 function dropDaemonSocket(harness: IntegrationHarness): string {
   const sessionId = requireSessionId(harness);
