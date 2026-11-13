@@ -43,7 +43,7 @@ describe("thread provisioning state", () => {
     const { db, host, hub, thread } = setup();
     const input = textInput("start this workspace");
 
-    const context = requestThreadProvision(
+    const { context } = requestThreadProvision(
       { db, hub },
       {
         originPluginId: null,

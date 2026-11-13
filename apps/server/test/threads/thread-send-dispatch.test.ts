@@ -152,6 +152,19 @@ function parseThreadMessages(
   });
 }
 
+function latestClientTurnRequestSequence(
+  harness: TestAppHarness,
+  threadId: string,
+): number {
+  const request = listEvents(harness.db, { threadId })
+    .filter((event) => event.type === "client/turn/requested")
+    .at(-1);
+  if (request === undefined) {
+    throw new Error("No client/turn/requested event was recorded");
+  }
+  return request.sequence;
+}
+
 describe("queued message dispatch hook", () => {
   it("rolls back and sends no host command when the idle thread was archived between claim and dispatch", async () => {
     await withTestHarness(async (harness) => {
@@ -710,19 +723,22 @@ describe("startup queue waits", () => {
         return null;
       });
 
-      await expect(
-        acceptThreadSendRequest(harness.deps, {
-          payload: {
-            input,
-            mode: "steer-if-active",
-            model: "gpt-5",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-        }),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input,
+          mode: "steer-if-active",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread,
+      });
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toEqual([
@@ -940,19 +956,22 @@ describe("startup queue waits", () => {
       ).toEqual({ kind: "thread-busy" });
 
       vi.spyOn(threadEvents, "getActiveTurnId").mockReturnValueOnce(null);
-      await expect(
-        acceptThreadSendRequest(harness.deps, {
-          payload: {
-            input: textInput("send after the wake scan"),
-            mode: "steer",
-            model: "gpt-5",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-        }),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("send after the wake scan"),
+          mode: "steer",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread,
+      });
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
     });
   });
 
@@ -1087,19 +1106,22 @@ describe("startup queue waits", () => {
         );
       expect(interaction).toMatchObject({ turnId: null, status: "pending" });
 
-      await expect(
-        acceptThreadSendRequest(harness.deps, {
-          payload: {
-            input: textInput("carry on without waiting for the card"),
-            mode: "auto",
-            model: "gpt-5",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-        }),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("carry on without waiting for the card"),
+          mode: "auto",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread,
+      });
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(
         harness.deps.pendingInteractions.getThreadInteraction({
@@ -2336,9 +2358,16 @@ describe("turn held open for background work", () => {
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(getThread(harness.db, thread.id)?.status).toBe("active");
 
-      await expect(
-        queueIfActive(harness, thread, "while only agents run"),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await queueIfActive(
+        harness,
+        thread,
+        "while only agents run",
+      );
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id).at(-1),
       ).toMatchObject({

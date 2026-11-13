@@ -458,7 +458,7 @@ describe("thread entity store", () => {
       queryClient: s.queryClient,
       realtimeConnected: true,
       request,
-      result: { ok: true, delivery: "sent" },
+      result: { ok: true, delivery: "sent", messageSequence: 1 },
       transaction,
     });
     await vi.waitFor(() =>
