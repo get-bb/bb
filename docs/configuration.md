@@ -382,7 +382,9 @@ and `setup_guide_source` (`override`, `flag`, or `default`), sets
 `turn_finished`, carries `$feature/setup-guide-redesign`.
 `onboarding_operation` records a setup-guide action's `started`,
 `succeeded`, or `failed` outcome with counts only, the same way in both
-guides. A Projects step `scan` adds `timed_out` (true when the repo scan ran
+guides. A Projects step `scan` records nothing after the guide's first
+successful scan, such as the rescan after an import, and adds `timed_out`
+(true when the repo scan ran
 out of time and the list may be partial) and `unreadable_count` (how many
 folders the scan was not allowed to open, such as macOS Documents or Desktop;
 never their paths). A failed Projects `import` reports `item_count` (repos
@@ -391,15 +393,16 @@ selected) and `succeeded_count` (imported before the failure). Plugins step
 `disable` carry the plugin's public id in `resource_id`; `install` succeeds or
 fails when its install job finishes, not when the request is accepted, even
 if the guide moved to another step meanwhile; a cancelled install job records
-no outcome. `load`
-records only `failed`, once each time the Agent step's agent states or the
-Plugins step's catalog start failing to load; in the new guide the Agent step
-also records `timed_out` when its agent states haven't loaded after 10
-seconds and it offers Retry, once per attempt. `finish` records only `failed`,
+no outcome. `load` records `succeeded` the first time the Agent step's agent
+states or the Plugins step's catalog load, with `duration_ms` (time from the
+step first opening to the data arriving), and `failed` the first time they
+fail to load, each at most once per step per guide; in the new guide the Agent
+step also fails with `timed_out` when its agent states haven't loaded after 10
+seconds and it offers Retry. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
-`no_host` (no computer was available: once per guide for `scan`, and each
-time the Agent step opens without one for agent `load`), `host_unavailable`, `timed_out`,
+`no_host` (no computer was available: once per guide for `scan` and agent
+`load`), `host_unavailable`, `timed_out`,
 `not_found`, `permission`, `command_failed` (the agent install command, plugin
 install job, or new machine's setup ran and failed), or `other`. A failed
 `remote_access` adds `failure_stage`: `sign_in` (getbb.app sign-in couldn't

@@ -118,7 +118,7 @@ import {
 } from "./onboarding-telemetry";
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
 import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
-import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
+import { useLoadTelemetry, type StepLoadRecords } from "./useLoadTelemetry";
 import { useOnboardingLeftTelemetry } from "./useOnboardingLeftTelemetry";
 import { useOnboardingErrorStep } from "./OnboardingErrorTelemetry";
 import {
@@ -395,6 +395,7 @@ function AgentStepContainer({
   hostId,
   noHost,
   hostName,
+  loadRecords,
   onContinue,
 }: {
   chrome: StepChrome;
@@ -403,6 +404,7 @@ function AgentStepContainer({
   hostId: string | null;
   noHost: boolean;
   hostName: string | null;
+  loadRecords: StepLoadRecords;
   onContinue: () => void;
 }) {
   const statesQuery = useSystemProviderStates({
@@ -428,11 +430,13 @@ function AgentStepContainer({
     redesign && statesLoading,
     AGENT_STATES_LOAD_TIMEOUT_MS,
   );
-  useLoadFailureTelemetry({
+  useLoadTelemetry({
     entry,
     step: "agent",
+    records: loadRecords,
     noHost,
     query: statesQuery,
+    loaded: states !== undefined,
     timedOut: statesLoad.timedOut,
   });
   const refetchProviderStates = useCallback<RefetchProviderStates>(
@@ -1044,6 +1048,7 @@ function PluginsStepContainer({
   entry: onboardingEntry,
   trackInstall,
   switches,
+  loadRecords,
   onBack,
   onContinue,
   onSkip,
@@ -1053,16 +1058,19 @@ function PluginsStepContainer({
   entry: OnboardingEntry;
   trackInstall: TrackPluginInstall;
   switches: OnboardingPluginSwitches;
+  loadRecords: StepLoadRecords;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
-  useLoadFailureTelemetry({
+  useLoadTelemetry({
     entry: onboardingEntry,
     step: "plugins",
+    records: loadRecords,
     noHost: false,
     query: catalogQuery,
+    loaded: catalogQuery.data !== undefined,
     timedOut: false,
   });
   const listQuery = usePluginList({ enabled: true });
@@ -1401,6 +1409,7 @@ export function OnboardingFlow({
   }, [entry, step]);
   const trackPluginInstall = useOnboardingPluginInstallOutcomes(entry);
   const pluginSwitches = useOnboardingPluginSwitches();
+  const [loadRecords] = useState<StepLoadRecords>(() => new Map());
   const finishedRef = useRef(false);
   useOnboardingLeftTelemetry({ entry, step, finishedRef });
   useOnboardingErrorStep(step);
@@ -1468,6 +1477,7 @@ export function OnboardingFlow({
           hostId={hostId}
           noHost={noHost}
           hostName={primaryHost?.name ?? null}
+          loadRecords={loadRecords}
           onContinue={advance(
             hasReadyAgent(agentStates) ? "completed" : "skipped",
           )}
@@ -1494,6 +1504,7 @@ export function OnboardingFlow({
           entry={entry}
           trackInstall={trackPluginInstall}
           switches={pluginSwitches}
+          loadRecords={loadRecords}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}

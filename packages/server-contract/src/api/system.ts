@@ -320,6 +320,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           succeeded_count: z.number().int().nonnegative().optional(),
           timed_out: z.boolean().optional(),
           unreadable_count: z.number().int().nonnegative().optional(),
+          duration_ms: z.number().int().nonnegative().optional(),
           failure_reason: onboardingFailureReasonTelemetrySchema.optional(),
           failure_stage: z.enum(["sign_in", "pairing", "turn_on"]).optional(),
           failure_detail: onboardingFailureDetailTelemetrySchema.optional(),
