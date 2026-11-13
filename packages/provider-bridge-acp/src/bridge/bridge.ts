@@ -1382,6 +1382,25 @@ async function discoverAcpNativeModelSupport(args: {
             );
           }
         }
+        if (!timedOut && currentValue !== undefined) {
+          try {
+            await args.connection.request({
+              method: "session/set_config_option",
+              params: {
+                sessionId: args.sessionId,
+                configId: modelOption.id,
+                value: currentValue,
+              },
+              resultSchema: acpConfigStateResultSchema,
+            });
+          } catch (error) {
+            process.stderr.write(
+              `acp bridge: restoring model "${currentValue}" after ACP-native reasoning discovery failed: ${
+                error instanceof Error ? error.message : String(error)
+              }\n`,
+            );
+          }
+        }
         return supportByModel;
       })(),
       timeoutReached,
