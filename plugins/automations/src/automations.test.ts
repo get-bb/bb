@@ -502,6 +502,12 @@ describe("startup reconciliation", () => {
       })[0]!;
       expect([testCase.id, run.status]).toEqual([testCase.id, testCase.status]);
     }
+    expect(
+      listAutomationRuns(db, { automationId: "auto_idle", limit: 1 })[0]!
+        .skipReason,
+    ).toBe(
+      "interrupted: the server restarted before the agent run was observed to finish",
+    );
     expect(getAutomation(db, "auto_error")!.consecutiveFailures).toBe(1);
     expect(getAutomation(db, "auto_gone")!.consecutiveFailures).toBe(0);
   });
@@ -3001,13 +3007,19 @@ describe("answering provider retry consent", () => {
   );
 
   it.each([
-    { label: "it joined a turn someone else was running", reader: latestRequest("steer") },
+    {
+      label: "it joined a turn someone else was running",
+      reader: latestRequest("steer"),
+    },
     { label: "it joined a turn in auto mode", reader: latestRequest("auto") },
     {
       label: "the failed turn is not the latest request",
       reader: latestRequest("new-turn", "creq_someoneelse"),
     },
-    { label: "the thread has no readable request", reader: async () => undefined },
+    {
+      label: "the thread has no readable request",
+      reader: async () => undefined,
+    },
   ])("allows a recurring run's retry when $label", async ({ reader }) => {
     const db = createTestDb();
     createScheduledAutomation(db, 1000);

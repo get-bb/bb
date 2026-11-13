@@ -364,7 +364,7 @@ export function closeAutomationRunForSettledThread(
 }
 
 type ReconcileOutcome =
-  | { status: "succeeded" }
+  | { status: "succeeded"; skipReason: string }
   | { status: "failed"; error: string }
   | { status: "skipped"; skipReason: string };
 
@@ -386,11 +386,7 @@ export async function reconcileRunningAutomationRuns(
     if (automation) changedProjects.add(automation.projectId);
     bb.log.info(
       `Automation run ${run.id} settled as ${outcome.status} on startup: ${
-        outcome.status === "succeeded"
-          ? "its thread is idle"
-          : outcome.status === "failed"
-            ? outcome.error
-            : outcome.skipReason
+        outcome.status === "failed" ? outcome.error : outcome.skipReason
       }`,
     );
   }
@@ -447,7 +443,11 @@ async function reconcileOutcome(
   }
   switch (thread.status) {
     case "idle":
-      return { status: "succeeded" };
+      return {
+        status: "succeeded",
+        skipReason:
+          "interrupted: the server restarted before the agent run was observed to finish",
+      };
     case "error":
       return {
         status: "failed",
