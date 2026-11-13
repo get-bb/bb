@@ -30,7 +30,6 @@ const SKIP_DIRECTORY_PREFIXES = ["tmp-", "tmp_"];
 
 const ACTIVITY_MARKERS = ["HEAD", "index", join("logs", "HEAD")];
 const WALK_BUDGET_MS = 3_000;
-const PRIVACY_PROMPT_BUDGET_MS = 20_000;
 const MACOS_PRIVACY_PROMPT_FOLDERS = new Set(["Desktop", "Documents"]);
 const WALK_CONCURRENCY = 32;
 const PERMISSION_ERROR_CODES = new Set(["EACCES", "EPERM"]);
@@ -49,7 +48,6 @@ interface DiscoverReposArgs {
   now?: number;
   platform?: NodeJS.Platform;
   walkBudgetMs?: number;
-  privacyPromptBudgetMs?: number;
   openDirectory?: (path: string) => Promise<Dir>;
 }
 
@@ -136,7 +134,6 @@ interface WalkOptions {
   maxDepth: number;
   deadline: number;
   walkBudgetMs: number;
-  privacyPromptDeadline: number;
   privacyPromptFolders: ReadonlySet<string>;
   openDirectory: (path: string) => Promise<Dir>;
 }
@@ -161,21 +158,25 @@ async function walkForRepos(
   const readDirectory = async (
     dir: string,
     depth: number,
-    deadline: number,
+    deadline: number | null,
   ): Promise<{
     children: string[];
     gitMarker: "directory" | "file" | null;
   } | null> => {
-    const handle = await withDeadline(
-      options.openDirectory(dir).catch(countUnreadable),
-      deadline,
-      (lateHandle) => {
-        if (lateHandle !== null) closeLateDir(lateHandle);
-      },
-      () => {
-        truncated = true;
-      },
-    );
+    const opening = options.openDirectory(dir).catch(countUnreadable);
+    const handle =
+      deadline === null
+        ? await opening
+        : await withDeadline(
+            opening,
+            deadline,
+            (lateHandle) => {
+              if (lateHandle !== null) closeLateDir(lateHandle);
+            },
+            () => {
+              truncated = true;
+            },
+          );
     if (handle === null) return null;
 
     const children: string[] = [];
@@ -210,22 +211,21 @@ async function walkForRepos(
     dir: string,
     depth: number,
     parentDeadline: number,
-    openDeadline: number,
+    waitForAccessAnswer: boolean,
   ): Promise<void> => {
     if (depth > options.maxDepth) return;
-    if (Date.now() > openDeadline) {
+    if (!waitForAccessAnswer && Date.now() > parentDeadline) {
       truncated = true;
       return;
     }
 
     const listing = await limitOpenDirectories(() =>
-      readDirectory(dir, depth, openDeadline),
+      readDirectory(dir, depth, waitForAccessAnswer ? null : parentDeadline),
     );
     if (listing === null) return;
-    const deadline =
-      openDeadline === parentDeadline
-        ? parentDeadline
-        : Math.max(parentDeadline, Date.now() + options.walkBudgetMs);
+    const deadline = waitForAccessAnswer
+      ? Math.max(parentDeadline, Date.now() + options.walkBudgetMs)
+      : parentDeadline;
 
     if (listing.gitMarker === "file") return;
     if (listing.gitMarker === "directory") {
@@ -247,15 +247,13 @@ async function walkForRepos(
           join(dir, child),
           depth + 1,
           deadline,
-          depth === 0 && options.privacyPromptFolders.has(child)
-            ? options.privacyPromptDeadline
-            : deadline,
+          depth === 0 && options.privacyPromptFolders.has(child),
         ),
       ),
     );
   };
 
-  await walk(root, 0, options.deadline, options.deadline);
+  await walk(root, 0, options.deadline, false);
   return { repos, truncated, unreadableCount };
 }
 
@@ -278,14 +276,11 @@ export async function discoverRepos(
 ): Promise<DiscoverReposResult> {
   const home = args.home ?? homedir();
   const now = args.now ?? Date.now();
-  const startedAt = Date.now();
   const walkBudgetMs = args.walkBudgetMs ?? WALK_BUDGET_MS;
   const { repos, truncated, unreadableCount } = await walkForRepos(home, {
     maxDepth: args.maxDepth,
-    deadline: startedAt + walkBudgetMs,
+    deadline: Date.now() + walkBudgetMs,
     walkBudgetMs,
-    privacyPromptDeadline:
-      startedAt + (args.privacyPromptBudgetMs ?? PRIVACY_PROMPT_BUDGET_MS),
     privacyPromptFolders:
       (args.platform ?? process.platform) === "darwin"
         ? MACOS_PRIVACY_PROMPT_FOLDERS
