@@ -22,6 +22,7 @@ import {
 } from "react";
 import { AppState, BackHandler, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supportsRailExpansion } from "@/app-shell/WindowLayoutProvider";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
 import {
@@ -288,6 +289,7 @@ export function ProfileWebViewScreen() {
         "open-external",
         "safe-area",
         "open-native",
+        ...(supportsRailExpansion ? ["rail-expansion" as const] : []),
       ],
       ...(SHELL_NATIVE_DOWNLOADS_SUPPORTED
         ? { nativeDownloads: true as const }

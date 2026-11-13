@@ -4,12 +4,10 @@ import UIKit
 public final class BbWindowLayoutModule: Module {
   public func definition() -> ModuleDefinition {
     Name("BbWindowLayout")
-    OnCreate {
-      DispatchQueue.main.async { VerticalBarPreference.restore() }
-    }
-    Function("setVerticalBarDisabled") { (disabled: Bool) in
-      DispatchQueue.main.async { VerticalBarPreference.setDisabled(disabled) }
-    }
+    Constants(["supportsRailExpansion": VerticalBarPreference.supported])
+    AsyncFunction("setVerticalBarDisabled") { (disabled: Bool) in
+      VerticalBarPreference.setDisabled(disabled)
+    }.runOnQueue(.main)
     Function("refreshSafeArea") {
       DispatchQueue.main.async { VerticalBarPreference.refreshSafeArea() }
     }
@@ -116,14 +114,18 @@ final class BbWindowLayoutView: ExpoView {
 
 enum VerticalBarPreference {
   static let didChange = Notification.Name("BbVerticalBarPreferenceDidChange")
-  private static let defaultsKey = "bb.verticalBarDisabled"
-  private(set) static var disabled = UserDefaults.standard.bool(forKey: defaultsKey)
+  static var supported: Bool {
+    #if compiler(>=6.4)
+    if #available(iOS 27.1, *) { return true }
+    #endif
+    return false
+  }
+  private(set) static var disabled = false
   private static var installed = false
 
   static func setDisabled(_ value: Bool) {
     guard value != disabled else { return }
     disabled = value
-    UserDefaults.standard.set(value, forKey: defaultsKey)
     apply()
   }
 
@@ -141,10 +143,6 @@ enum VerticalBarPreference {
         root.view.setNeedsLayout()
       }
     }
-  }
-
-  static func restore() {
-    if disabled { apply() }
   }
 
   private static func apply() {

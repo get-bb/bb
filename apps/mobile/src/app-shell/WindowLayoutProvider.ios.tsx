@@ -2,7 +2,6 @@ import type { ShellWindowLayout } from "@bb/mobile-bridge";
 import { requireNativeView, requireOptionalNativeModule } from "expo";
 import {
   useCallback,
-  useEffect,
   useState,
   type ComponentType,
   type ReactNode,
@@ -13,15 +12,12 @@ import {
   type NativeSyntheticEvent,
   type ViewProps,
 } from "react-native";
-import {
-  parseNativeWindowLayout,
-  useStatusBarPlacement,
-  windowLayoutKey,
-} from "@/lib/window-layout";
+import { parseNativeWindowLayout, windowLayoutKey } from "@/lib/window-layout";
 import { WindowLayoutContext } from "./window-layout-context";
 
 interface WindowLayoutModule {
-  setVerticalBarDisabled(disabled: boolean): void;
+  supportsRailExpansion: boolean;
+  setVerticalBarDisabled(disabled: boolean): Promise<void>;
   refreshSafeArea(): void;
 }
 
@@ -36,17 +32,21 @@ const WindowLayoutProbe: ComponentType<ProbeProps> | null =
     ? null
     : requireNativeView<ProbeProps>("BbWindowLayout");
 
+export const supportsRailExpansion =
+  windowLayoutModule?.supportsRailExpansion === true;
+
+export async function setRailExpanded(expanded: boolean): Promise<void> {
+  if (!supportsRailExpansion || !windowLayoutModule)
+    throw new Error("Native rail expansion is unavailable");
+  await windowLayoutModule.setVerticalBarDisabled(expanded);
+}
+
 export function refreshWindowSafeArea(): void {
   windowLayoutModule?.refreshSafeArea();
 }
 
 export function WindowLayoutProvider({ children }: { children: ReactNode }) {
-  const [placement] = useStatusBarPlacement();
   const [layout, setLayout] = useState<ShellWindowLayout | null>(null);
-
-  useEffect(() => {
-    windowLayoutModule?.setVerticalBarDisabled(placement === "top");
-  }, [placement]);
 
   const onWindowLayout = useCallback((event: NativeSyntheticEvent<unknown>) => {
     const next = parseNativeWindowLayout(event.nativeEvent);

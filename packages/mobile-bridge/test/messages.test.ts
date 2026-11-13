@@ -38,6 +38,11 @@ describe("parsePageToShellMessage", () => {
       { type: "open-external", url: "https://example.com/docs" },
       { type: "open-native", screen: "device-settings" },
       { type: "switch-server", id: "profile-2" },
+      ...[true, false].map((expanded) => ({
+        type: "request",
+        id: "rail-toggle",
+        request: { kind: "set-rail-expanded", payload: { expanded } },
+      })),
       {
         type: "request",
         id: "r1-app",
@@ -58,6 +63,24 @@ describe("parsePageToShellMessage", () => {
     for (const value of cases) {
       const parsed = parsePageToShellMessage(json(value));
       expect(parsed.ok, JSON.stringify(value)).toBe(true);
+    }
+  });
+
+  it("rejects malformed rail requests instead of coercing restore into expand", () => {
+    for (const payload of [
+      { expanded: "false" },
+      {},
+      { expanded: true, setting: "top" },
+    ]) {
+      expect(
+        parsePageToShellMessage(
+          json({
+            type: "request",
+            id: "rail-toggle",
+            request: { kind: "set-rail-expanded", payload },
+          }),
+        ).ok,
+      ).toBe(false);
     }
   });
 

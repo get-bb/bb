@@ -7,7 +7,11 @@ import {
   type PageToShellMessage,
   type ShellToPageEvent,
 } from "@bb/mobile-bridge";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  setRailExpanded,
+  supportsRailExpansion,
+} from "@/app-shell/WindowLayoutProvider";
 import { Linking, Platform, Share } from "react-native";
 import type { WebView, WebViewMessageEvent } from "react-native-webview";
 import { describeError } from "@/lib/describe-error";
@@ -33,6 +37,13 @@ export function useShellBridge(
 ): ShellBridge {
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
+  useEffect(
+    () => () => {
+      if (supportsRailExpansion)
+        void setRailExpanded(false).catch(() => undefined);
+    },
+    [],
+  );
 
   const send = useCallback(
     (event: ShellToPageEvent) => {
@@ -75,6 +86,15 @@ export function useShellBridge(
           return;
         }
         case "request": {
+          if (message.request.kind === "set-rail-expanded") {
+            try {
+              await setRailExpanded(message.request.payload.expanded);
+              respond(message.id, { ok: true, result: null });
+            } catch (error) {
+              respond(message.id, { ok: false, error: describeError(error) });
+            }
+            return;
+          }
           if (message.request.kind === "open-application") {
             try {
               await openApplicationUrl(message.request.payload.url);

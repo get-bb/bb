@@ -627,21 +627,22 @@ across the top (an 82pt top inset on the cover screen, with the status pill
 and camera at the top right) and removes the rail's side inset, so the app
 gets the full width.
 
-Settings → This device → Cover screen → **Status bar at top** (MMKV
-`bb.statusBar.placement`, `system` by default, `top` when on) turns the bar
-off. The section shows on iOS while the window reports a vertical bar, or
-while the option is on (a disabled bar reports no edge).
+Duo Rail calls the native bridge request `set-rail-expanded` with
+`{ expanded: true }` when expanding and `{ expanded: false }` when restoring.
+The iOS shell advertises `rail-expansion` only with native support on iOS 27.1+.
+Expansion automatically moves the status bar to the top; restore returns it
+to the system rail. There is no separate status-bar setting. The plugin owns
+the saved expansion choice and reapplies it after loading. The native state
+is session-only and resets when the WebView unmounts.
 
 The local Expo module `modules/bb-window-layout` does the native part:
 
-- `setVerticalBarDisabled(disabled)` persists the choice in `UserDefaults`
-  (`bb.verticalBarDisabled`, restored when the module is created, so a cold
-  launch draws the first frame with the bar already off) and answers
-  `.disabled` for each window's root view controller. React Native owns the
-  root view controller, so the getter is swizzled for window roots only.
+- `setVerticalBarDisabled(disabled)` applies the expansion on the main queue
+  and answers `.disabled` for each window's root view controller. React Native
+  owns the root controller, so the getter is swizzled for window roots only.
 - `refreshSafeArea()` makes UIKit recompute safe areas from the window root.
   The WebView screen calls it when it regains focus after the bar changed:
-  the bar is switched from native Settings while the WebView is covered, and
+  the bar can change while the WebView is covered, and
   the covered screen otherwise keeps its old insets until the app is
   backgrounded.
 - The `BbWindowLayout` view (mounted full-window by `WindowLayoutProvider`)
@@ -827,8 +828,7 @@ Beta App Review and another build of the same version usually does not.
 - Connect sessions: `expo-secure-store`, one key per profile
   (`bb.connectSession.<profileId>`) holding the last minted desktop-session
   cookie and its server URL.
-- Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`, status
-  bar placement `bb.statusBar.placement`): MMKV
+- Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`): MMKV
   store `bb.preferences`, one shared instance from
   `src/lib/native/preferences-storage.ts`. Push state shares it:
   `bb.push.enabled.<profileId>` (+ `bb.push.enabledProfiles` index),
