@@ -53,6 +53,8 @@ interface TopLevelSidebarSectionCollapseControl {
 export interface TopLevelSidebarSectionProps {
   label: string;
   labelEditor?: ReactNode;
+  labelClassName?: string;
+  labelStyle?: CSSProperties;
   onRename?: () => void;
   children: ReactNode;
   dropParentKey?: string;
@@ -75,6 +77,8 @@ export interface TopLevelSidebarSectionProps {
 export function TopLevelSidebarSection({
   label,
   labelEditor,
+  labelClassName,
+  labelStyle,
   onRename,
   children,
   dropParentKey,
@@ -199,7 +203,8 @@ export function TopLevelSidebarSection({
         <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
           {labelEditor ?? (
             <span
-              className="min-w-0 truncate"
+              className={cn("min-w-0 truncate", labelClassName)}
+              style={labelStyle}
               title={label}
               onDoubleClick={
                 onRename

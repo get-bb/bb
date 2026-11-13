@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  isProjectColorId,
+  projectColorIdSchema,
+  type ProjectColorId,
+} from "./project-colors.js";
 
 const STRING_MAX_LENGTH = 1_024;
 const LIST_MAX_LENGTH = 10_000;
@@ -172,6 +177,16 @@ export const preferenceDefinitions = {
     "Groups moved into More: threads, project:<id>, section:<id>, or machine:<id>.",
     "sidebar.hiddenGroups",
   ),
+  projectColors: definePreference(
+    z
+      .record(z.string().min(1).max(STRING_MAX_LENGTH), projectColorIdSchema)
+      .refine((value) => Object.keys(value).length <= LIST_MAX_LENGTH, {
+        message: `Choose at most ${LIST_MAX_LENGTH} project colors`,
+      }),
+    {},
+    "Accent colors for projects in the sidebar, keyed by project id.",
+    null,
+  ),
   rowActions: definePreference(
     z
       .array(threadRowActionKeySchema)
@@ -275,8 +290,30 @@ export function parseStoredPreferenceValue<Key extends PreferenceKey>(
 ): PreferenceParseResult<Key> {
   return parsePreferenceValue(
     key,
-    key === "rowActions" ? knownRowActions(value) : value,
+    key === "rowActions"
+      ? knownRowActions(value)
+      : key === "projectColors"
+        ? knownProjectColors(value)
+        : value,
   );
+}
+
+function knownProjectColors(value: unknown): Record<string, ProjectColorId> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  const known: Record<string, ProjectColorId> = {};
+  let count = 0;
+  for (const [projectId, colorId] of Object.entries(value)) {
+    if (count >= LIST_MAX_LENGTH) break;
+    if (projectId.length === 0 || projectId.length > STRING_MAX_LENGTH) {
+      continue;
+    }
+    if (!isProjectColorId(colorId)) continue;
+    known[projectId] = colorId;
+    count += 1;
+  }
+  return known;
 }
 
 function knownRowActions(value: unknown): unknown {

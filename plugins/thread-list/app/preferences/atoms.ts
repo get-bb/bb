@@ -32,6 +32,7 @@ export const sidebarMachineSectionOrderAtom = createSyncedPreferenceAtom(
 );
 export const sidebarHiddenGroupsAtom =
   createSyncedPreferenceAtom("hiddenGroups");
+export const projectColorsAtom = createSyncedPreferenceAtom("projectColors");
 export const threadRowActionsAtom = createSyncedPreferenceAtom("rowActions");
 export const sidebarOrganizationModeAtom =
   createSyncedPreferenceAtom("organizationMode");

@@ -346,6 +346,62 @@ describe("bb thread-list prefs", () => {
   });
 });
 
+it("persists project colors, rejects unknown palette values, and resets to empty", async () => {
+  const { bb, harness } = setup();
+  await plugin(bb);
+  await expect(
+    harness.behavior.callRpc("listPreferences", null),
+  ).resolves.toMatchObject({ preferences: { projectColors: {} } });
+
+  await expect(
+    harness.behavior.callRpc("setPreference", {
+      key: "projectColors",
+      value: { proj_a: "violet", proj_b: "teal" },
+    }),
+  ).resolves.toEqual({
+    key: "projectColors",
+    value: { proj_a: "violet", proj_b: "teal" },
+  });
+  await expect(bb.storage.kv.get("preference:projectColors")).resolves.toEqual({
+    proj_a: "violet",
+    proj_b: "teal",
+  });
+
+  await expect(
+    harness.behavior.callRpc("setPreference", {
+      key: "projectColors",
+      value: { proj_a: "neon" },
+    }),
+  ).rejects.toThrow(/Invalid value for projectColors/);
+  await expect(bb.storage.kv.get("preference:projectColors")).resolves.toEqual({
+    proj_a: "violet",
+    proj_b: "teal",
+  });
+
+  await expect(
+    harness.behavior.callRpc("resetPreference", { key: "projectColors" }),
+  ).resolves.toEqual({ key: "projectColors", value: {} });
+  await expect(
+    bb.storage.kv.get("preference:projectColors"),
+  ).resolves.toBeUndefined();
+});
+
+it("drops stale or unknown project colors from stored values", async () => {
+  const { bb, harness } = setup();
+  await bb.storage.kv.set("preference:projectColors", {
+    proj_a: "neon",
+    proj_b: "rose",
+    "": "teal",
+    proj_c: 3,
+  });
+  await plugin(bb);
+  await expect(
+    harness.behavior.callRpc("listPreferences", null),
+  ).resolves.toMatchObject({
+    preferences: { projectColors: { proj_b: "rose" } },
+  });
+});
+
 it("validates lifecycle selection through CLI and RPC and broadcasts it", async () => {
   const { bb, harness } = setup();
   await plugin(bb);

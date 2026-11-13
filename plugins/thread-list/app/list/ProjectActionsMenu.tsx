@@ -5,7 +5,10 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { ActionMenuItem, ActionMenuSeparator } from "@/components/ui/action-menu-items";
+import {
+  ActionMenuItem,
+  ActionMenuSeparator,
+} from "@/components/ui/action-menu-items";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 
@@ -14,6 +17,7 @@ export type ProjectActionsMenuSurface = "context" | "dropdown";
 interface ProjectActionsMenuBaseProps {
   project: SidebarProject;
   onRename: () => void;
+  onChangeColor: () => void;
   onRemove: () => void;
   onCloseAutoFocus?: (event: Event) => void;
   extraActions?: (surface: ProjectActionsMenuSurface) => ReactNode;
@@ -37,16 +41,24 @@ export function ProjectActionsMenuItems({
   project,
   surface,
   onRename,
+  onChangeColor,
   onRemove,
   extraActions,
 }: ProjectActionsMenuItemsProps) {
   return (
     <>
-      <ActionMenuItem surface={surface} icon="Settings" href={project.settingsHref}>
+      <ActionMenuItem
+        surface={surface}
+        icon="Settings"
+        href={project.settingsHref}
+      >
         Project settings
       </ActionMenuItem>
       <ActionMenuItem surface={surface} icon="Edit" onSelect={onRename}>
         Rename
+      </ActionMenuItem>
+      <ActionMenuItem surface={surface} icon="Palette" onSelect={onChangeColor}>
+        Change color
       </ActionMenuItem>
       {extraActions?.(surface)}
       <ActionMenuSeparator surface={surface} />
@@ -78,6 +90,7 @@ function ProjectActionsCompactLongPressMenu({
   project,
   onOpenChange,
   onRename,
+  onChangeColor,
   onRemove,
   extraActions,
 }: ProjectActionsContextMenuProps) {
@@ -91,6 +104,7 @@ function ProjectActionsCompactLongPressMenu({
           project={project}
           surface="dropdown"
           onRename={onRename}
+          onChangeColor={onChangeColor}
           onRemove={onRemove}
           extraActions={extraActions}
         />
@@ -107,6 +121,7 @@ function ProjectActionsDesktopContextMenu({
   project,
   onOpenChange,
   onRename,
+  onChangeColor,
   onRemove,
   onCloseAutoFocus,
   extraActions,
@@ -125,6 +140,7 @@ function ProjectActionsDesktopContextMenu({
           project={project}
           surface="context"
           onRename={onRename}
+          onChangeColor={onChangeColor}
           onRemove={onRemove}
           extraActions={extraActions}
         />

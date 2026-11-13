@@ -9,7 +9,7 @@ The Thread list plugin owns the sidebar's layout state. Read it with
 `bb thread-list prefs list --json`; keys are `showProviderIcons`, `showRowMetadata`, `showEmptyProjects`, `threadLifecycles`, `organizationMode`,
 `environmentGrouping`, `groupByReadStatus`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
-built-in `threads` group), `rowActions`,
+built-in `threads` group), `rowActions`, `projectColors`,
 `collapsedSections`, `collapsedProjects`, `collapsedThreads`,
 `collapsedEnvironments`, `collapsedThreadSections`, and `collapsedMachines`.
 
@@ -54,6 +54,17 @@ list across organizations, so include existing keys to keep them hidden;
 
 ```sh
 bb thread-list prefs set hiddenGroups '["threads","project:proj_example"]'
+```
+
+`projectColors` (default `{}`) overrides the automatic accent color of
+sidebar projects by project id. Values are palette ids (`rose`, `coral`,
+`amber`, `lime`, `sage`, `teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`,
+`pink`); a project without an override gets a stable color derived from its
+id. The project menu's Change color item writes the same value, and its Use
+automatic color action removes the override:
+
+```sh
+bb thread-list prefs set projectColors '{"proj_example":"violet"}'
 ```
 
 The header's Filter menu selects Active, Archived, or both; at least one must

@@ -84,6 +84,13 @@ import {
   ProjectActionsContextMenu,
   ProjectActionsMenuItems,
 } from "./ProjectActionsMenu.js";
+import { ProjectColorDialog } from "./ProjectColorDialog.js";
+import { projectColorsAtom } from "../preferences/atoms.js";
+import {
+  projectColorCss,
+  resolveProjectColorId,
+  type ProjectColorId,
+} from "../../shared/project-colors.js";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -2151,6 +2158,8 @@ function ProjectRowComponent({
   projectRowStyle,
 }: ProjectRowProps) {
   const sdk = useSdk();
+  const projectColors = useAtomValue(projectColorsAtom);
+  const setProjectColors = useSetAtom(projectColorsAtom);
   const rename = useSidebarRename({
     kind: "project",
     id: project.id,
@@ -2161,9 +2170,29 @@ function ProjectRowComponent({
   });
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
+  const [isColorDialogOpen, setIsColorDialogOpen] = useState(false);
   const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
   const [isRemovePending, setIsRemovePending] = useState(false);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
+  const projectColorId = resolveProjectColorId(project.id, projectColors);
+  const isProjectColorOverridden = projectColors[project.id] !== undefined;
+  const projectColor = projectColorCss(projectColorId);
+  const requestChangeColor = useCallback(() => setIsColorDialogOpen(true), []);
+  const handleSelectColor = useCallback(
+    (colorId: ProjectColorId | null) => {
+      setProjectColors((previous) => {
+        const next = { ...previous };
+        if (colorId === null) {
+          delete next[project.id];
+        } else {
+          next[project.id] = colorId;
+        }
+        return next;
+      });
+      setIsColorDialogOpen(false);
+    },
+    [project.id, setProjectColors],
+  );
   const projectThreads = useMemo(
     () =>
       isCollapsed && threadListState.status === "ready"
@@ -2205,6 +2234,7 @@ function ProjectRowComponent({
         project={project}
         surface="dropdown"
         onRename={rename.startEditingFromMenu}
+        onChangeColor={requestChangeColor}
         onRemove={requestRemove}
         extraActions={(surface) => (
           <ThreadListVisibilityMenuItems surface={surface} />
@@ -2222,6 +2252,7 @@ function ProjectRowComponent({
         project={project}
         disabled={rename.isEditing}
         onRename={rename.startEditingFromMenu}
+        onChangeColor={requestChangeColor}
         onRemove={requestRemove}
         onCloseAutoFocus={rename.onCloseAutoFocus}
         onOpenChange={setIsContextActionsOpen}
@@ -2229,9 +2260,12 @@ function ProjectRowComponent({
         <div
           data-sidebar-sticky-project-item=""
           data-sidebar-project-id={project.id}
+          data-project-color={projectColorId}
         >
           <TopLevelSidebarSection
             label={project.name}
+            labelClassName="font-medium"
+            labelStyle={{ color: projectColor }}
             dropParentKey={buildSidebarEntitySectionId("project", project.id)}
             labelEditor={rename.editor}
             onRename={rename.startEditingFromDoubleClick}
@@ -2277,6 +2311,14 @@ function ProjectRowComponent({
           onCancel={() => setIsRemoveDialogOpen(false)}
         />
       </ConfirmDeleteDialog>
+      <ProjectColorDialog
+        open={isColorDialogOpen}
+        projectName={project.name}
+        selectedColorId={projectColorId}
+        isOverridden={isProjectColorOverridden}
+        onOpenChange={setIsColorDialogOpen}
+        onSelectColor={handleSelectColor}
+      />
     </>
   );
 }

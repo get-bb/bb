@@ -24,6 +24,7 @@ import type { SectionThreadDndState } from "../dnd/useSectionThreadDnd.js";
 import type { ProjectThreadListState } from "./ProjectRow.js";
 import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
 import { buildSidebarEntitySectionId } from "../model/sidebar-section-order.js";
+import { projectColorIdForProject } from "../../shared/project-colors.js";
 import {
   makeSidebarEnvironment,
   makeSidebarProject,
@@ -491,6 +492,71 @@ describe("ProjectRow interactions", () => {
     );
     expect(onToggleProjectCollapsed).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("colors the project label and leaves thread labels neutral", () => {
+    const thread = makeThread({
+      id: "thr_child",
+      title: "Thread one",
+      titleFallback: "Thread one",
+    });
+    const { container } = renderProjectRow(vi.fn(), {
+      status: "ready",
+      threads: [thread],
+    });
+
+    const projectItem = container.querySelector(
+      "[data-sidebar-sticky-project-item]",
+    );
+    expect(projectItem?.getAttribute("data-project-color")).toBe(
+      projectColorIdForProject("proj_test"),
+    );
+    const projectLabel = screen.getByText("Test project");
+    expect(projectLabel.className).toContain("font-medium");
+    expect(projectLabel.getAttribute("style")).toContain("--ink");
+    expect(screen.getByText("Thread one").getAttribute("style")).toBeNull();
+  });
+
+  it("changes and resets a project color from its menu", async () => {
+    const { container } = renderProjectRow();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Change color" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Violet" }));
+    await waitFor(() =>
+      expect(
+        container
+          .querySelector("[data-sidebar-sticky-project-item]")
+          ?.getAttribute("data-project-color"),
+      ).toBe("violet"),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Change color" }),
+    );
+    const resetDialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(resetDialog).getByRole("button", {
+        name: "Use automatic color",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        container
+          .querySelector("[data-sidebar-sticky-project-item]")
+          ?.getAttribute("data-project-color"),
+      ).toBe(projectColorIdForProject("proj_test")),
+    );
   });
 
   it("links project settings and confirms removal through the SDK", async () => {
