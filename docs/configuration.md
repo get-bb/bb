@@ -396,7 +396,8 @@ if the guide moved to another step meanwhile; a cancelled install job records
 no outcome. `load` records `succeeded` the first time the Agent step's agent
 states or the Plugins step's catalog load, with `duration_ms` (time from the
 step first opening to the data arriving), and `failed` the first time they
-fail to load, each at most once per step per guide; in the new guide the Agent
+fail to load before any data arrives, each at most once per step per guide (a
+failed background refresh after the data loaded is not a load failure); in the new guide the Agent
 step also fails with `timed_out` when its agent states haven't loaded after 10
 seconds and it offers Retry. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished

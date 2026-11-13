@@ -134,6 +134,16 @@ describe("load telemetry", () => {
     ]);
   });
 
+  it("records no failure when a refetch fails after the data loaded", () => {
+    const view = openStep(new Map(), "agent", loading);
+    view.rerender({ ...loading, loaded: true });
+    view.rerender({ ...loading, query: unavailable, loaded: true });
+
+    expect(recorded()).toEqual([
+      expect.objectContaining({ step: "agent", outcome: "succeeded" }),
+    ]);
+  });
+
   it("records a failure and a later success in the same run", () => {
     const view = openStep(new Map(), "plugins", loading);
     view.rerender({ ...loading, query: unavailable });

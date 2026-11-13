@@ -49,7 +49,7 @@ export function useLoadTelemetry({
         ? "timed_out"
         : null;
   useEffect(() => {
-    if (failureReason === null || record.failed) return;
+    if (loaded || failureReason === null || record.failed) return;
     record.failed = true;
     recordTelemetryEvent({
       name: "onboarding_operation",
@@ -61,7 +61,7 @@ export function useLoadTelemetry({
         failure_reason: failureReason,
       },
     });
-  }, [entry, failureReason, record, step]);
+  }, [entry, failureReason, loaded, record, step]);
   useEffect(() => {
     if (!loaded || record.succeeded) return;
     record.succeeded = true;
