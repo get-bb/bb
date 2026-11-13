@@ -22,8 +22,16 @@ import { AppToasterView } from "@/components/AppToasterView";
 import { appToast } from "@/components/ui/app-toast";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
-import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
+import {
+  hostDiscoveredReposQueryKey,
+  pluginCatalogSearchQueryKey,
+  sidebarNavigationQueryKey,
+} from "@/hooks/queries/query-keys";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -179,6 +187,38 @@ function providerStateRequests(): number {
 function repoScanRequests(): number {
   return sdkCalls.filter((call) => call === "hosts.experimental_discoverRepos")
     .length;
+}
+
+function sidebarNavigation(importedPath: string | null) {
+  return makeSidebarBootstrapResponse({
+    projects:
+      importedPath === null
+        ? []
+        : [
+            makeProjectWithThreadsResponse({
+              id: "prj_imported",
+              sources: [
+                {
+                  id: "src_imported",
+                  projectId: "prj_imported",
+                  isDefault: true,
+                  createdAt: 1,
+                  updatedAt: 1,
+                  type: "local_path",
+                  hostId: "host_1",
+                  path: importedPath,
+                },
+              ],
+            }),
+          ],
+  });
+}
+
+async function setQueryDataAndFlush(update: () => void): Promise<void> {
+  await act(async () => {
+    update();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 afterEach(() => {
@@ -359,5 +399,78 @@ describe("OnboardingFlow", () => {
     unmount();
 
     expect(await toasterPlacement()).toBe("top-center");
+  });
+
+  it.each(["new", "control"] as const)(
+    "shows imported repos as added and preselects nothing new when the %s guide returns to Projects",
+    async (variant) => {
+      const repo = (path: string, projectId: string | null) => ({
+        path,
+        name: path,
+        lastActivityAt: new Date().toISOString(),
+        originUrl: null,
+        projectId,
+      });
+      const { queryClient } = renderFlow({ initialStep: "plugins", variant });
+      await setQueryDataAndFlush(() => {
+        queryClient.setQueryData(
+          sidebarNavigationQueryKey(),
+          sidebarNavigation(null),
+        );
+      });
+      await setQueryDataAndFlush(() => {
+        queryClient.setQueryData(
+          sidebarNavigationQueryKey(),
+          sidebarNavigation("/r/imported"),
+        );
+        queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
+          repos: [repo("/r/imported", "prj_imported"), repo("/r/other", null)],
+          truncated: false,
+        });
+      });
+      fireEvent.click(button(/^Back$/u));
+
+      expect(screen.getByText("Already added")).toBeTruthy();
+      const checked = screen
+        .getAllByRole("checkbox")
+        .filter((box) => box.getAttribute("aria-checked") === "true");
+      expect(checked).toHaveLength(1);
+      fireEvent.click(button(/^Continue/u));
+      expect(screen.getByText("Make bb yours")).toBeTruthy();
+      expect(vi.mocked(recordTelemetryEvent)).toHaveBeenCalledWith({
+        name: "onboarding_step_completed",
+        properties: { step: "projects", entry: "first_run" },
+      });
+    },
+  );
+
+  it("keeps the default selection when a project is added while Projects is open", async () => {
+    const { queryClient } = renderFlow({ initialStep: "projects" });
+    await setQueryDataAndFlush(() => {
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        sidebarNavigation(null),
+      );
+      queryClient.setQueryData(hostDiscoveredReposQueryKey("host_1"), {
+        repos: [
+          {
+            path: "/r/other",
+            name: "other",
+            lastActivityAt: new Date().toISOString(),
+            originUrl: null,
+            projectId: null,
+          },
+        ],
+        truncated: false,
+      });
+    });
+    await setQueryDataAndFlush(() => {
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        sidebarNavigation("/r/imported"),
+      );
+    });
+
+    expect(button(/^Import 1 project$/u)).toBeTruthy();
   });
 });
