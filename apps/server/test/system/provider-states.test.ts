@@ -299,6 +299,51 @@ describe("getProviderStates", () => {
     },
   );
 
+  it("hides an installed-only agent when the provider list's check it joined fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: async (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`Unexpected command ${request.command.type}`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          if (request.command.providerId === "acp-hermes-agent") {
+            return {
+              ok: false,
+              errorCode: "host_unavailable",
+              errorMessage: "Host is not connected",
+            };
+          }
+          return {
+            ok: true,
+            result: {
+              supported: true,
+              health: healthForInstalledOnlyProvider(
+                request.command.providerId,
+                new Set(),
+              ),
+            },
+          };
+        },
+      });
+
+      const [listed, states] = await Promise.all([
+        listSystemProviderInfos(harness.deps, { hostId: host.id }),
+        getProviderStates(harness.deps, { hostId: host.id }),
+      ]);
+
+      expect(listed.map((provider) => provider.id)).not.toContain(
+        "acp-hermes-agent",
+      );
+      expect(
+        states.providers.map((provider) => provider.providerId),
+      ).not.toContain("acp-hermes-agent");
+    });
+  });
+
   it("marks which provider rows run the guided sign-in, on a live and a paused host", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

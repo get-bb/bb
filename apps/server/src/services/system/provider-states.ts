@@ -190,7 +190,9 @@ async function getInstalledOnlyProviderState(
   try {
     result = await request;
   } catch (error) {
-    if (cached !== undefined) {
+    const knownInstalled =
+      cached === undefined ? false : await cached.catch(() => false);
+    if (knownInstalled) {
       return unknownProviderState(
         deps,
         provider,
