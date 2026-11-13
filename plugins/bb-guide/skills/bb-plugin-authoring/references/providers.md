@@ -219,6 +219,14 @@ Implement, following `docs/provider-bridge-protocol.md`:
 - `turn/start` driving `thread/delta` batches ("The timeline lane", "Turn
   lifecycle", "Item lifecycle");
 - `thread/stop` for both intents ("Turn lifecycle");
+- the session contract ("Session contract"): answer `turn/start` and
+  `turn/steer` with `{ admission: "accepted" | "busy" | "rejected" }` after
+  `input.accepted` is on the wire; open and settle every turn with explicit
+  `turn.open`/`turn.boundary` (never a timer or a quiet period); open a
+  `compaction` item while compacting; declare `sessionSettings` and apply
+  only what `turn/start.apply` lists, never restarting a session for a
+  settings change; declare `openWork` and answer `thread/openWork` if your
+  provider holds work that outlives a turn;
 - reply hygiene for unknown methods and invalid params ("Transport");
 - recovery hints where your provider fails recoverably ("Recovery hints").
 

@@ -147,7 +147,7 @@ describe("createAgentRuntime input accepted events", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: record.env,
+        getProcessEnv: () => (record.env),
         onEvent: (event) => events.push(event),
       },
       launch: { scripted: { steerResponseDelayMs: 1_000 } },
@@ -225,7 +225,7 @@ describe("createAgentRuntime input accepted events", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: (event) => events.push(event),
         },
         launch: {

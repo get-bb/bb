@@ -535,6 +535,19 @@ function canonicalOptions(args?: {
   };
 }
 
+interface TurnApply {
+  settings?: string[];
+  providerOptions?: string[];
+}
+
+function turnApply(apply: TurnApply | undefined): Record<string, JsonValue> {
+  return {
+    settings: apply?.settings ?? [],
+    sessionOptions: [],
+    providerOptions: apply?.providerOptions ?? [],
+  };
+}
+
 function canonicalTurnParams(args: {
   threadId: string;
   providerThreadId?: string;
@@ -542,13 +555,14 @@ function canonicalTurnParams(args: {
   input: JsonValue[];
   permissionEscalation?: "ask" | "deny";
   providerOptions?: Record<string, JsonValue>;
+  apply?: TurnApply;
 }): Record<string, JsonValue> {
   return {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId ?? args.threadId,
     ...(args.expectedTurnId !== undefined
       ? { expectedTurnId: args.expectedTurnId }
-      : {}),
+      : { apply: turnApply(args.apply) }),
     clientRequestId: "creq_abcdefghjk",
     input: args.input,
     options: canonicalOptions(args),
@@ -2390,6 +2404,7 @@ describe("bridge", () => {
       ).toHaveLength(0);
 
       bridge.sendRequest(2, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId: threadId,
         clientRequestId: "creq_abcdefghjk",
@@ -2591,6 +2606,7 @@ describe("bridge", () => {
           providerOptions: {
             additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
           },
+          apply: { providerOptions: ["additionalWorkspaceWriteRoots"] },
         }),
       );
       await readNextPrompt(getLatestQueryCall());
@@ -2837,7 +2853,9 @@ describe("bridge", () => {
             },
           },
         });
-        await bridge.waitForResponse(1);
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(1),
+        );
 
         const options = {
           ...canonicalOptions(),
@@ -2855,15 +2873,40 @@ describe("bridge", () => {
             additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
           },
         };
+        const resumesForBypass = full && !samePreset;
+        if (resumesForBypass) {
+          bridge.sendRequest(20, "thread/stop", {
+            threadId,
+            providerThreadId,
+            intent: "release",
+            activeTurnId: null,
+          });
+          await bridge.flushWork();
+          queries[0]?.finish();
+          await bridge.waitForResponse(20);
+          bridge.sendRequest(21, "thread/resume", {
+            threadId,
+            cwd: "/tmp/worktree",
+            instructionMode: "append",
+            providerThreadId,
+            options,
+          });
+          await bridge.waitForResponse(21);
+        }
         bridge.sendRequest(10, "turn/start", {
           ...canonicalTurnParams({
             threadId,
+            providerThreadId,
             input: [
               {
                 type: "text",
                 text: "Continue planning with the new permission preset after approval",
               },
             ],
+            apply:
+              samePreset || resumesForBypass
+                ? undefined
+                : { settings: ["permission"] },
           }),
           options,
         });
@@ -2960,6 +3003,7 @@ describe("bridge", () => {
                 input: [
                   { type: "text", text: "Update sandbox after approval" },
                 ],
+                apply: { providerOptions: ["sandboxEnabled"] },
               }),
               options: {
                 ...options,
@@ -3183,6 +3227,99 @@ describe("bridge", () => {
 
       await stopBridgeThread({ bridge, queries, threadId });
     } finally {
+      bridge.restore();
+    }
+  });
+
+  it("keeps an unapproved Plan mode when the runtime releases and resumes the session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-plan-carried-across-resume";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: canonicalOptions(),
+      });
+      const providerThreadId = getProviderThreadIdFromResult(
+        await bridge.waitForResponse(1),
+      );
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: planCommandInput("add a README"),
+          providerOptions: { claudeCodePermissionMode: "plan" },
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      expect(queries[0]?.setPermissionMode).toHaveBeenCalledWith("plan");
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "release",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+      bridge.sendRequest(4, "thread/resume", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        providerThreadId,
+        options: canonicalOptions({
+          providerOptions: { chromeEnabled: true },
+        }),
+      });
+      await bridge.waitForResponse(4);
+
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        permissionMode: "plan",
+        resume: providerThreadId,
+        extraArgs: expect.objectContaining({ chrome: null }),
+      });
+
+      const planPromise = getLastCanUseTool()(
+        "ExitPlanMode",
+        { plan: "# Plan" },
+        {
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID: "tool-plan-after-resume",
+        },
+      );
+      const approvalRequest = await waitForBridgeRequest(bridge, (message) =>
+        isApprovalInteraction(message),
+      );
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: approvalRequest.id,
+          result: { decision: "allow_once", grantedPermissions: null },
+        }),
+      );
+      await expect(planPromise).resolves.toMatchObject({ behavior: "allow" });
+      await bridge.flushWork();
+      expect(queries[1]?.setPermissionMode).toHaveBeenLastCalledWith(
+        "acceptEdits",
+      );
+
+      await stopBridgeThread({ bridge, queries: queries.slice(-1), threadId });
+    } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });
@@ -3413,6 +3550,7 @@ describe("bridge", () => {
       });
 
       bridge.sendRequest(collidingId, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId: threadId,
         input: [{ type: "text", text: "colliding turn", mentions: [] }],
@@ -3454,6 +3592,7 @@ describe("bridge", () => {
 
     try {
       bridge.sendRequest(11, "turn/start", {
+        apply: turnApply(undefined),
         threadId: "thread-invalid-params",
         providerThreadId: "thread-invalid-params",
         input: [{ type: "text", text: "hi", mentions: [] }],
@@ -4082,7 +4221,7 @@ describe("bridge", () => {
     }
   });
 
-  it("returns an existing live same-provider thread/resume session", async () => {
+  it("constructs a new Claude process for every thread/resume of a live session", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -4092,200 +4231,12 @@ describe("bridge", () => {
     });
 
     try {
-      const threadId = "thread-resume-idempotent";
-      const providerThreadId = "provider-thread-idempotent";
-      sendResumeThread({
-        bridge,
-        providerThreadId,
-        requestId: 1,
-        threadId,
-      });
-      const firstResponse = await bridge.waitForResponse(1);
-
-      expect(getProviderThreadIdFromResult(firstResponse)).toBe(
-        providerThreadId,
-      );
-      expect(queryMock).toHaveBeenCalledTimes(1);
-      expect(getLatestQueryOptions()).toMatchObject({
-        resume: providerThreadId,
-      });
-
-      sendResumeThread({
-        bridge,
-        providerThreadId,
-        requestId: 2,
-        threadId,
-      });
-      const duplicateResponse = await bridge.waitForResponse(2);
-
-      expect(getProviderThreadIdFromResult(duplicateResponse)).toBe(
-        providerThreadId,
-      );
-      expect(queryMock).toHaveBeenCalledTimes(1);
-      expect(queries).toHaveLength(1);
-      expect(queries[0]?.close).not.toHaveBeenCalled();
-
-      bridge.sendRequest(3, "thread/stop", {
-        threadId,
-        providerThreadId: threadId,
-        intent: "interrupt",
-        activeTurnId: null,
-      });
-      await bridge.flushWork();
-      queries[0]?.finish();
-      await bridge.waitForResponse(3);
-    } finally {
-      queries[0]?.finish();
-      bridge.restore();
-    }
-  });
-
-  it("rebuilds for enforcement changes but applies model changes live", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      const threadId = "thread-resume-reconfigure-permissions";
-      bridge.sendRequest(1, "thread/start", {
-        threadId,
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        options: {
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-          instructions: "test",
-          providerOptions: {
-            workflowsEnabled: false,
-          },
-        },
-      });
-      const startResponse = await bridge.waitForResponse(1);
-      const providerThreadId = getProviderThreadIdFromResult(startResponse);
-
-      expect(queries).toHaveLength(1);
-      expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
-
-      bridge.sendRequest(2, "thread/resume", {
-        threadId,
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        providerThreadId,
-        options: {
-          permissionMode: "accept-edits",
-          permissionScope: "workspace",
-          approvalReviewer: "user",
-          permissionEscalation: "ask",
-          instructions: "test",
-          providerOptions: {
-            workflowsEnabled: false,
-          },
-        },
-      });
-      await bridge.waitForResponse(2);
-
-      expect(queries).toHaveLength(2);
-      expect(queries[0]?.close).toHaveBeenCalledTimes(1);
-      expect(getLatestQueryOptions()).toMatchObject({
-        permissionMode: "acceptEdits",
-        resume: providerThreadId,
-        sandbox: {
-          enabled: true,
-          autoAllowBashIfSandboxed: true,
-          allowUnsandboxedCommands: true,
-        },
-      });
-
-      bridge.sendRequest(3, "thread/resume", {
-        threadId,
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        providerThreadId,
-        options: {
-          permissionMode: "auto",
-          permissionScope: "workspace",
-          approvalReviewer: "automatic",
-          permissionEscalation: "deny",
-          instructions: "test",
-          providerOptions: {
-            workflowsEnabled: false,
-          },
-        },
-      });
-      await bridge.waitForResponse(3);
-
-      expect(queries).toHaveLength(3);
-      expect(queries[1]?.close).toHaveBeenCalledTimes(1);
-      expect(getLatestQueryOptions()).toMatchObject({
-        permissionMode: "auto",
-        resume: providerThreadId,
-        sandbox: {
-          enabled: true,
-          autoAllowBashIfSandboxed: true,
-          allowUnsandboxedCommands: true,
-        },
-      });
-
-      bridge.sendRequest(4, "thread/resume", {
-        threadId,
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        providerThreadId,
-        options: {
-          permissionMode: "auto",
-          permissionScope: "workspace",
-          approvalReviewer: "automatic",
-          permissionEscalation: "deny",
-          instructions: "test",
-          model: "claude-opus-4-1",
-          providerOptions: {
-            workflowsEnabled: false,
-          },
-        },
-      });
-      await bridge.waitForResponse(4);
-
-      expect(queries).toHaveLength(3);
-      expect(queries[2]?.close).not.toHaveBeenCalled();
-      expect(queries[2]?.setModel).toHaveBeenCalledWith("claude-opus-4-1");
-
-      bridge.sendRequest(5, "thread/stop", {
-        threadId,
-        providerThreadId: threadId,
-        intent: "interrupt",
-        activeTurnId: null,
-      });
-      await bridge.flushWork();
-      queries[2]?.finish();
-      await bridge.waitForResponse(5);
-    } finally {
-      queries.forEach((query) => query.finish());
-      bridge.restore();
-    }
-  });
-
-  it("keeps a live Claude session across an escalation-only resume change", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      const threadId = "thread-resume-escalation-only";
-      const providerThreadId = "provider-thread-escalation-only";
+      const threadId = "thread-resume-always-constructs";
+      const providerThreadId = "provider-thread-always-constructs";
       sendResumeThread({ bridge, providerThreadId, requestId: 1, threadId });
-      await bridge.waitForResponse(1);
-
-      expect(queries).toHaveLength(1);
+      expect(
+        getProviderThreadIdFromResult(await bridge.waitForResponse(1)),
+      ).toBe(providerThreadId);
 
       sendResumeThread({
         bridge,
@@ -4294,19 +4245,29 @@ describe("bridge", () => {
         requestId: 2,
         threadId,
       });
-      await bridge.waitForResponse(2);
+      expect(
+        getProviderThreadIdFromResult(await bridge.waitForResponse(2)),
+      ).toBe(providerThreadId);
 
-      expect(queries).toHaveLength(1);
-      expect(queries[0]?.close).not.toHaveBeenCalled();
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+      });
+      expect(
+        bridge.messages.filter(
+          (message) => message.method === "session/replaced",
+        ),
+      ).toHaveLength(0);
 
       bridge.sendRequest(3, "thread/stop", {
         threadId,
-        providerThreadId: threadId,
+        providerThreadId,
         intent: "interrupt",
         activeTurnId: null,
       });
       await bridge.flushWork();
-      queries[0]?.finish();
+      queries[1]?.finish();
       await bridge.waitForResponse(3);
     } finally {
       queries.forEach((query) => query.finish());
@@ -4315,7 +4276,7 @@ describe("bridge", () => {
   });
 
   it.each(["chromeEnabled", "disable1MContext", "artifactsEnabled"])(
-    "restarts the Claude process before the next turn when %s changes",
+    "leaves the Claude process alone when a turn carries %s and applies it on thread/resume",
     async (setting) => {
       const bridge = createBridgeJsonRpcTestHarness(handleLine);
       const queries: ControlledClaudeQuery[] = [];
@@ -4325,22 +4286,66 @@ describe("bridge", () => {
         return query;
       });
       const threadId = `thread-${setting}`;
+      const settingOptions = (enabled: boolean) =>
+        canonicalOptions({ providerOptions: { [setting]: enabled } });
 
       try {
         bridge.sendRequest(1, "thread/start", {
           threadId,
           cwd: "/tmp/worktree",
           instructionMode: "append",
-          options: {
-            permissionMode: "accept-edits",
-            permissionScope: "workspace",
-            approvalReviewer: "user",
-            permissionEscalation: "ask",
-            instructions: "test",
-            providerOptions: { workflowsEnabled: false, [setting]: true },
-          },
+          options: settingOptions(false),
         });
-        await bridge.waitForResponse(1);
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(1),
+        );
+        expect(getLatestQueryOptions().extraArgs).toEqual({
+          "replay-user-messages": null,
+        });
+        expect(getLatestQueryOptions().env?.CLAUDE_CODE_DISABLE_1M_CONTEXT).toBe(
+          "0",
+        );
+        expect(getLatestQueryOptions().env).not.toHaveProperty(
+          "CLAUDE_CODE_ARTIFACT",
+        );
+
+        bridge.sendRequest(2, "turn/start", {
+          ...canonicalTurnParams({
+            threadId,
+            providerThreadId,
+            input: [{ type: "text", text: "setting turned on" }],
+          }),
+          options: settingOptions(true),
+        });
+        await readNextPrompt(getLatestQueryCall());
+        await bridge.waitForResponse(2);
+        expect(queries).toHaveLength(1);
+        expect(queries[0]?.close).not.toHaveBeenCalled();
+        queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
+        await bridge.flushWork();
+
+        bridge.sendRequest(3, "thread/stop", {
+          threadId,
+          providerThreadId,
+          intent: "release",
+          activeTurnId: null,
+        });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.waitForResponse(3);
+        bridge.sendRequest(4, "thread/resume", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          providerThreadId,
+          options: settingOptions(true),
+        });
+        await bridge.waitForResponse(4);
+
+        expect(queries).toHaveLength(2);
+        expect(getLatestQueryOptions()).toMatchObject({
+          resume: providerThreadId,
+        });
         if (setting === "chromeEnabled") {
           expect(getLatestQueryOptions().extraArgs).toEqual({
             chrome: null,
@@ -4353,65 +4358,13 @@ describe("bridge", () => {
             getLatestQueryOptions().env?.CLAUDE_CODE_DISABLE_1M_CONTEXT,
           ).toBe("1");
         }
-
-        bridge.sendRequest(
-          2,
-          "turn/start",
-          canonicalTurnParams({
-            threadId,
-            providerThreadId: threadId,
-            input: [{ type: "text", text: "same setting" }],
-            providerOptions: { [setting]: true },
-          }),
-        );
-        await readNextPrompt(getLatestQueryCall());
-        await bridge.waitForResponse(2);
-        expect(queries).toHaveLength(1);
-        queries[0]?.emit(createSuccessfulResultMessage(threadId));
-        await bridge.flushWork();
-
-        bridge.sendRequest(
-          3,
-          "turn/start",
-          canonicalTurnParams({
-            threadId,
-            providerThreadId: threadId,
-            input: [{ type: "text", text: "setting turned off" }],
-            providerOptions: { [setting]: false },
-          }),
-        );
-        await bridge.flushWork();
-        expect(queries).toHaveLength(2);
-        expect(queries[0]?.close).toHaveBeenCalled();
-        expect(getLatestQueryOptions()).toMatchObject({ resume: threadId });
-        expect(getLatestQueryOptions().extraArgs).toEqual({
-          "replay-user-messages": null,
-        });
-        expect(
-          getLatestQueryOptions().env?.CLAUDE_CODE_DISABLE_1M_CONTEXT,
-        ).toBe("0");
-        expect(getLatestQueryOptions().env).not.toHaveProperty(
-          "CLAUDE_CODE_ARTIFACT",
-        );
-        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-          "setting turned off",
-        );
-        await bridge.waitForResponse(3);
         expect(
           bridge.messages.filter(
             (message) => message.method === "session/replaced",
           ),
-        ).toContainEqual(
-          expect.objectContaining({
-            params: expect.objectContaining({
-              contextLost: false,
-              providerThreadId: threadId,
-              threadId,
-            }),
-          }),
-        );
+        ).toHaveLength(0);
       } finally {
-        bridge.sendRequest(4, "thread/stop", {
+        bridge.sendRequest(5, "thread/stop", {
           threadId,
           providerThreadId: threadId,
           intent: "interrupt",
@@ -4419,179 +4372,264 @@ describe("bridge", () => {
         });
         await bridge.flushWork();
         queries.at(-1)?.finish();
-        await bridge.waitForResponse(4);
+        await bridge.waitForResponse(5);
         queries.forEach((query) => query.finish());
         bridge.restore();
       }
     },
   );
 
-  it.each(["turn/start", "turn/steer"])(
-    "refreshes permissions before %s and preserves the conversation",
-    async (method) => {
-      const bridge = createBridgeJsonRpcTestHarness(handleLine);
-      const queries: ControlledClaudeQuery[] = [];
-      queryMock.mockImplementation(() => {
-        const query = createControlledClaudeQuery();
-        queries.push(query);
-        return query;
+  it("declares which Claude settings apply live and which need a resume", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    try {
+      bridge.sendRequest(1, "initialize", {
+        protocolVersion: 3,
+        client: { name: "test", version: "1" },
       });
-      const threadId = `thread-permissions-${method}`;
-      const options = (full: boolean) => ({
-        ...canonicalOptions(),
-        permissionMode: full ? "full" : "auto",
-        permissionScope: full ? "full" : "workspace",
-        approvalReviewer: full ? null : "automatic",
-        permissionEscalation: full ? null : "ask",
-        providerOptions: {
-          workflowsEnabled: false,
-          sandboxEnabled: true,
-          additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
-        },
-      });
-
-      try {
-        bridge.sendRequest(1, "thread/start", {
-          threadId,
-          cwd: "/tmp/worktree",
-          instructionMode: "append",
-          options: options(false),
-        });
-        const providerThreadId = getProviderThreadIdFromResult(
-          await bridge.waitForResponse(1),
-        );
-        expect(getLatestQueryOptions().permissionMode).toBe("auto");
-
-        bridge.sendRequest(2, "turn/start", {
-          ...canonicalTurnParams({
-            threadId,
-            providerThreadId,
-            input: [{ type: "text", text: "first" }],
-          }),
-          options: options(false),
-        });
-        await readNextPrompt(getLatestQueryCall());
-        await bridge.waitForResponse(2);
-        if (method === "turn/start") {
-          queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
-          await bridge.flushWork();
-        }
-
-        bridge.sendRequest(20, method, {
-          ...canonicalTurnParams({
-            threadId,
-            providerThreadId,
-            expectedTurnId: "active-turn",
-            input: [{ type: "text", text: "update roots before full" }],
-          }),
-          options: {
-            ...options(false),
+      const response = await bridge.waitForResponse(1);
+      expect(response.result).toMatchObject({
+        protocolVersion: 3,
+        capabilities: {
+          openWork: { list: true },
+          sessionSettings: {
+            model: { apply: "live" },
+            reasoningLevel: { apply: "live" },
+            serviceTier: { apply: "live" },
+            permission: { apply: "live", values: { full: "resume" } },
+            env: { apply: "resume" },
+            instructions: { apply: "fresh" },
+            dynamicTools: { apply: "resume" },
+            skills: { apply: "resume" },
             providerOptions: {
-              workflowsEnabled: false,
-              sandboxEnabled: true,
-              additionalWorkspaceWriteRoots: ["/tmp/other-worktree"],
+              chromeEnabled: { apply: "resume" },
+              disable1MContext: { apply: "resume" },
+              artifactsEnabled: { apply: "resume" },
+              providerSubagentsEnabled: { apply: "resume" },
+              memoryEnabled: { apply: "live" },
+              workflowsEnabled: { apply: "live" },
+              sandboxEnabled: { apply: "live" },
+              additionalWorkspaceWriteRoots: { apply: "live" },
             },
           },
+        },
+      });
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("switches permissions live, including into full access once the process was launched for bypass", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const uidSpy =
+      process.platform === "win32"
+        ? null
+        : vi.spyOn(process, "getuid").mockReturnValue(1000);
+    const threadId = "thread-permissions-live";
+    const options = (full: boolean, roots = ["/tmp/shared-worktree"]) => ({
+      ...canonicalOptions(),
+      permissionMode: full ? "full" : "auto",
+      permissionScope: full ? "full" : "workspace",
+      approvalReviewer: full ? null : "automatic",
+      permissionEscalation: full ? null : "ask",
+      providerOptions: {
+        workflowsEnabled: false,
+        sandboxEnabled: true,
+        additionalWorkspaceWriteRoots: roots,
+      },
+    });
+    const sendTurn = async (args: {
+      id: number;
+      providerThreadId: string;
+      full: boolean;
+      roots?: string[];
+      apply: TurnApply;
+    }) => {
+      bridge.sendRequest(args.id, "turn/start", {
+        ...canonicalTurnParams({
+          threadId,
+          providerThreadId: args.providerThreadId,
+          input: [{ type: "text", text: `permissions ${args.id}` }],
+          apply: args.apply,
+        }),
+        options: options(args.full, args.roots),
+      });
+      return bridge.waitForResponse(args.id);
+    };
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: options(false),
+      });
+      const startResponse = await bridge.waitForResponse(1);
+      expect(startResponse.result).not.toHaveProperty("sessionSettings");
+      const providerThreadId = getProviderThreadIdFromResult(startResponse);
+      expect(getLatestQueryOptions()).toMatchObject({ permissionMode: "auto" });
+      expect(getLatestQueryOptions()).not.toHaveProperty(
+        "allowDangerouslySkipPermissions",
+      );
+
+      const rootsChange = sendTurn({
+        id: 2,
+        providerThreadId,
+        full: false,
+        roots: ["/tmp/other-worktree"],
+        apply: { providerOptions: ["additionalWorkspaceWriteRoots"] },
+      });
+      await readNextPrompt(getLatestQueryCall());
+      await rootsChange;
+      expect(queries[0]?.applyFlagSettings).toHaveBeenLastCalledWith({
+        sandbox: expect.objectContaining({
+          enabled: true,
+          filesystem: { allowWrite: ["/tmp/other-worktree"] },
+        }),
+        permissions: { additionalDirectories: ["/tmp/other-worktree"] },
+      });
+      expect(queries[0]?.setPermissionMode).not.toHaveBeenCalled();
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "release",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+      bridge.sendRequest(4, "thread/resume", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        providerThreadId,
+        options: options(true),
+      });
+      expect((await bridge.waitForResponse(4)).result).toMatchObject({
+        sessionSettings: { permission: { apply: "live" } },
+      });
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+        permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+      });
+      expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
+
+      for (const [id, full] of [
+        [5, false],
+        [6, true],
+      ] as const) {
+        const turn = sendTurn({
+          id,
+          providerThreadId,
+          full,
+          apply: { settings: ["permission"] },
         });
         await readNextPrompt(getLatestQueryCall());
-        await bridge.waitForResponse(20);
-        expect(queries).toHaveLength(1);
-
-        for (const [id, full] of [
-          [3, true],
-          [4, false],
-          [5, true],
-        ] as const) {
-          bridge.sendRequest(id, method, {
-            ...canonicalTurnParams({
-              threadId,
-              providerThreadId,
-              expectedTurnId: "active-turn",
-              input: [{ type: "text", text: `permissions ${id}` }],
-            }),
-            options: options(full),
-          });
-          await bridge.flushWork();
-          expect(queries).toHaveLength(2);
-          expect(queries[0]?.close).toHaveBeenCalledTimes(1);
-          expect(queries[1]?.close).not.toHaveBeenCalled();
-          expect(queries[1]?.interrupt).not.toHaveBeenCalled();
-          expect(getLatestQueryOptions()).toMatchObject({
-            resume: providerThreadId,
-            allowDangerouslySkipPermissions: true,
-          });
-          if (id === 3) {
-            expect(getLatestQueryOptions().permissionMode).toBe(
-              "bypassPermissions",
-            );
-            expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
-            expect(getLatestQueryOptions().settings).toMatchObject({
-              sandbox: { enabled: false },
-              permissions: { additionalDirectories: [] },
-            });
-          } else {
-            expect(queries[1]?.setPermissionMode).toHaveBeenLastCalledWith(
-              full ? "bypassPermissions" : "auto",
-            );
-            expect(queries[1]?.applyFlagSettings).toHaveBeenLastCalledWith({
-              sandbox: full
-                ? { enabled: false }
-                : expect.objectContaining({
-                    enabled: true,
-                    filesystem: { allowWrite: ["/tmp/shared-worktree"] },
-                  }),
-              permissions: {
-                additionalDirectories: full ? [] : ["/tmp/shared-worktree"],
-              },
-            });
-          }
-          await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-            `permissions ${id}`,
-          );
-          await bridge.waitForResponse(id);
-          if (method === "turn/start") {
-            queries
-              .at(-1)
-              ?.emit(createSuccessfulResultMessage(providerThreadId));
-            await bridge.flushWork();
-          }
-        }
-        queries[1]?.setPermissionMode.mockRejectedValueOnce(
-          new Error("permission mode refused"),
-        );
-        bridge.sendRequest(6, method, {
-          ...canonicalTurnParams({
-            threadId,
-            providerThreadId,
-            expectedTurnId: "active-turn",
-            input: [{ type: "text", text: "refused input" }],
-          }),
-          options: options(false),
-        });
-        expect(await bridge.waitForResponse(6)).toMatchObject({
-          error: { message: "permission mode refused" },
-        });
-        bridge.sendRequest(7, method, {
-          ...canonicalTurnParams({
-            threadId,
-            providerThreadId,
-            expectedTurnId: "active-turn",
-            input: [{ type: "text", text: "retry input" }],
-          }),
-          options: options(false),
-        });
-        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-          "retry input",
-        );
-        await bridge.waitForResponse(7);
+        await turn;
         expect(queries).toHaveLength(2);
-        expect(queries[1]?.setPermissionMode).toHaveBeenLastCalledWith("auto");
-      } finally {
-        queries.forEach((query) => query.finish());
-        bridge.restore();
+        expect(queries[1]?.close).not.toHaveBeenCalled();
+        expect(queries[1]?.setPermissionMode).toHaveBeenLastCalledWith(
+          full ? "bypassPermissions" : "auto",
+        );
+        expect(queries[1]?.applyFlagSettings).toHaveBeenLastCalledWith({
+          sandbox: full
+            ? { enabled: false }
+            : expect.objectContaining({
+                enabled: true,
+                filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+              }),
+          permissions: {
+            additionalDirectories: full ? [] : ["/tmp/shared-worktree"],
+          },
+        });
       }
-    },
-  );
+
+      queries[1]?.setPermissionMode.mockRejectedValueOnce(
+        new Error("permission mode refused"),
+      );
+      expect(
+        await sendTurn({
+          id: 7,
+          providerThreadId,
+          full: false,
+          apply: { settings: ["permission"] },
+        }),
+      ).toMatchObject({ error: { message: "permission mode refused" } });
+      const retry = sendTurn({
+        id: 8,
+        providerThreadId,
+        full: false,
+        apply: { settings: ["permission"] },
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "permissions 8",
+      );
+      await retry;
+      expect(queries).toHaveLength(2);
+      expect(queries[1]?.setPermissionMode).toHaveBeenLastCalledWith("auto");
+    } finally {
+      uidSpy?.mockRestore();
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("applies no settings from a steer", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-steer-applies-nothing";
+      await startBridgeThread({ bridge, threadId });
+      const call = getLatestQueryCall();
+      bridge.sendRequest(2, "turn/steer", {
+        ...canonicalTurnParams({
+          threadId,
+          expectedTurnId: "turn-1",
+          input: [{ type: "text", text: "steer with other settings" }],
+        }),
+        options: {
+          ...canonicalOptions({
+            providerOptions: {
+              sandboxEnabled: false,
+              memoryEnabled: false,
+              additionalWorkspaceWriteRoots: ["/tmp/elsewhere"],
+            },
+          }),
+          model: "claude-opus-5",
+          reasoningLevel: "max",
+          permissionMode: "auto",
+          approvalReviewer: "automatic",
+        },
+      });
+      await expect(readNextPromptText(call)).resolves.toBe(
+        "steer with other settings",
+      );
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        result: { admission: "accepted" },
+      });
+      expect(queries).toHaveLength(1);
+      expect(queries[0]?.setModel).not.toHaveBeenCalled();
+      expect(queries[0]?.applyFlagSettings).not.toHaveBeenCalled();
+      expect(queries[0]?.setPermissionMode).not.toHaveBeenCalled();
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
 
   it("applies sandbox changes live without replacing the Claude process", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -4644,6 +4682,7 @@ describe("bridge", () => {
           providerThreadId: threadId,
           input: [{ type: "text", text: "sandbox turned on" }],
           providerOptions: { sandboxEnabled: true },
+          apply: { providerOptions: ["sandboxEnabled"] },
         }),
       );
       await bridge.flushWork();
@@ -4720,6 +4759,10 @@ describe("bridge", () => {
       }
 
       bridge.sendRequest(2, "turn/start", {
+        apply: turnApply({
+          settings: ["model", "reasoningLevel", "serviceTier"],
+          providerOptions: ["workflowsEnabled", "memoryEnabled"],
+        }),
         threadId,
         providerThreadId: threadId,
         input: [{ type: "text", text: "Use the new live settings" }],
@@ -4775,6 +4818,10 @@ describe("bridge", () => {
       );
 
       bridge.sendRequest(3, "turn/start", {
+        apply: turnApply({
+          settings: ["reasoningLevel", "serviceTier"],
+          providerOptions: ["workflowsEnabled", "memoryEnabled"],
+        }),
         threadId,
         providerThreadId: threadId,
         input: [{ type: "text", text: "Flip the live feature settings" }],
@@ -4826,6 +4873,32 @@ describe("bridge", () => {
         }),
       );
 
+      const flagCalls = query.applyFlagSettings.mock.calls.length;
+      bridge.sendRequest(5, "turn/start", {
+        apply: turnApply(undefined),
+        threadId,
+        providerThreadId: threadId,
+        input: [{ type: "text", text: "Nothing listed to apply" }],
+        clientRequestId: "creq_abcdefghjk",
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          model: "claude-sonnet-5",
+          reasoningLevel: "low",
+          providerOptions: {
+            workflowsEnabled: false,
+            memoryEnabled: true,
+            providerSubagentsEnabled: true,
+          },
+        },
+      });
+      await readNextPrompt(call);
+      await bridge.waitForResponse(5);
+      expect(query.setModel).toHaveBeenCalledTimes(1);
+      expect(query.applyFlagSettings).toHaveBeenCalledTimes(flagCalls);
+
       bridge.sendRequest(4, "thread/stop", {
         threadId,
         providerThreadId: threadId,
@@ -4842,7 +4915,7 @@ describe("bridge", () => {
   });
 
   it.each([false, true])(
-    "updates subagent tools across turns while preserving the conversation (initially enabled: %s)",
+    "rebuilds subagent tools when the runtime resumes with a new subagent setting (initially enabled: %s)",
     async (initiallyEnabled) => {
       const bridge = createBridgeJsonRpcTestHarness(handleLine);
       const queries: ControlledClaudeQuery[] = [];
@@ -4859,98 +4932,70 @@ describe("bridge", () => {
         instructions: "test",
         providerOptions: { providerSubagentsEnabled },
       });
-      const expectedTools = (enabled: boolean) =>
-        enabled ? undefined : ["Agent", "Task", "ListAgents"];
+      const expectSubagentTools = async (enabled: boolean) => {
+        const call = getLatestQueryCall();
+        expect(call.options.disallowedTools).toEqual(
+          enabled ? undefined : ["Agent", "Task", "ListAgents"],
+        );
+        const hooks = call.options.hooks;
+        if (!hooks) throw new Error("Expected tracking hooks");
+        for (const toolName of ["Agent", "Task", "ListAgents"]) {
+          const outputs = await invokeBridgeHooks(
+            hooks.PreToolUse,
+            {
+              hook_event_name: "PreToolUse",
+              tool_name: toolName,
+              tool_input: {},
+              tool_use_id: "subagent-probe",
+              session_id: "session-1",
+              transcript_path: "/tmp/transcript.jsonl",
+              cwd: "/tmp/worktree",
+            },
+            "subagent-probe",
+          );
+          const denial = expect.objectContaining({
+            hookSpecificOutput: expect.objectContaining({
+              permissionDecision: "deny",
+            }),
+          });
+          if (enabled) expect(outputs).not.toContainEqual(denial);
+          else expect(outputs).toContainEqual(denial);
+        }
+      };
 
       try {
-        const threadId = "thread-subagents-disabled";
-        const providerThreadId = "claude-subagent-conversation";
+        const threadId = "thread-subagents-resume";
         bridge.sendRequest(1, "thread/start", {
           threadId,
           cwd: "/tmp/worktree",
           instructionMode: "append",
           options: options(initiallyEnabled),
         });
-        await bridge.waitForResponse(1);
-        expect(getLatestQueryCall().options.disallowedTools).toEqual(
-          expectedTools(initiallyEnabled),
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(1),
         );
+        await expectSubagentTools(initiallyEnabled);
 
-        for (const [index, enabled] of [
-          initiallyEnabled,
-          !initiallyEnabled,
-          initiallyEnabled,
-        ].entries()) {
-          const requestId = index + 2;
-          bridge.sendRequest(requestId, "turn/start", {
-            threadId,
-            providerThreadId,
-            input: [
-              {
-                type: "text",
-                text: "Continue with the current subagent setting",
-              },
-            ],
-            clientRequestId: "creq_abcdefghjk",
-            options: options(enabled),
-          });
-          await vi.waitFor(() => expect(queries).toHaveLength(index + 1));
-          await readNextPrompt(getLatestQueryCall());
-          await bridge.waitForResponse(requestId);
-          expect(getLatestQueryCall().options.disallowedTools).toEqual(
-            expectedTools(enabled),
-          );
-          if (index > 0) {
-            expect(queries[index - 1]?.close).toHaveBeenCalled();
-            expect(getLatestQueryCall().options.resume).toBe(providerThreadId);
-          } else {
-            expect(queries[0]?.close).not.toHaveBeenCalled();
-          }
-          const hookEnabled = index === 0 ? !enabled : enabled;
-          if (index === 0) {
-            bridge.sendRequest(10, "turn/steer", {
-              ...canonicalTurnParams({
-                threadId,
-                providerThreadId,
-                expectedTurnId: "active-turn",
-                input: [
-                  { type: "text", text: "Change subagents during this turn" },
-                ],
-              }),
-              options: options(hookEnabled),
-            });
-            await readNextPrompt(getLatestQueryCall());
-            await bridge.waitForResponse(10);
-            expect(queries).toHaveLength(1);
-            expect(queries[0]?.close).not.toHaveBeenCalled();
-          }
-          const hooks = getLatestQueryCall().options.hooks;
-          if (!hooks) throw new Error("Expected tracking hooks");
-          for (const toolName of ["Agent", "Task", "ListAgents"]) {
-            const outputs = await invokeBridgeHooks(
-              hooks.PreToolUse,
-              {
-                hook_event_name: "PreToolUse",
-                tool_name: toolName,
-                tool_input: {},
-                tool_use_id: "subagent-probe",
-                session_id: providerThreadId,
-                transcript_path: "/tmp/transcript.jsonl",
-                cwd: "/tmp/worktree",
-              },
-              "subagent-probe",
-            );
-            const denial = expect.objectContaining({
-              hookSpecificOutput: expect.objectContaining({
-                permissionDecision: "deny",
-              }),
-            });
-            if (hookEnabled) expect(outputs).not.toContainEqual(denial);
-            else expect(outputs).toContainEqual(denial);
-          }
-          queries[index]?.emit(createSuccessfulResultMessage(providerThreadId));
-          await bridge.flushWork();
-        }
+        bridge.sendRequest(2, "thread/stop", {
+          threadId,
+          providerThreadId,
+          intent: "release",
+          activeTurnId: null,
+        });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.waitForResponse(2);
+        bridge.sendRequest(3, "thread/resume", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          providerThreadId,
+          options: options(!initiallyEnabled),
+        });
+        await bridge.waitForResponse(3);
+        expect(queries).toHaveLength(2);
+        expect(getLatestQueryCall().options.resume).toBe(providerThreadId);
+        await expectSubagentTools(!initiallyEnabled);
       } finally {
         queries.forEach((query) => query.finish());
         bridge.restore();
@@ -4993,6 +5038,7 @@ describe("bridge", () => {
       }
 
       bridge.sendRequest(2, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId: threadId,
         input: [{ type: "text", text: "Start denied background work" }],
@@ -5023,6 +5069,7 @@ describe("bridge", () => {
       await bridge.flushWork();
 
       bridge.sendRequest(3, "turn/start", {
+        apply: turnApply({ settings: ["permission"] }),
         threadId,
         providerThreadId: threadId,
         input: [{ type: "text", text: "Start interactive background work" }],
@@ -5078,6 +5125,7 @@ describe("bridge", () => {
       await bridge.flushWork();
 
       bridge.sendRequest(4, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId: threadId,
         input: [{ type: "text", text: "Return to denied work" }],
@@ -5406,6 +5454,7 @@ describe("bridge", () => {
       ).toBe(true);
 
       bridge.sendRequest(2, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId,
         input: [{ type: "text", text: inputText }],
@@ -5687,6 +5736,7 @@ describe("bridge", () => {
       await bridge.flushWork();
 
       bridge.sendRequest(2, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId,
         input: [{ type: "text", text: "" }],
@@ -5757,6 +5807,7 @@ describe("bridge", () => {
       });
 
       bridge.sendRequest(2, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId: staleProviderThreadId,
         input: [{ type: "text", text: inputText }],
@@ -5954,7 +6005,7 @@ describe("bridge", () => {
           providerThreadId: threadId,
           ...(testCase.method === "turn/steer"
             ? { expectedTurnId: "turn-1" }
-            : {}),
+            : { apply: turnApply(undefined) }),
           input: [{ type: "text", text: "Please account for the restart" }],
           clientRequestId: "creq_abcdefghjk",
           options: {
@@ -5977,7 +6028,7 @@ describe("bridge", () => {
           "Please account for the restart",
         );
         await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
-          result: { threadId },
+          result: { admission: "accepted" },
         });
 
         const events = assembleCapturedThreadEvents(
@@ -6416,6 +6467,7 @@ describe("bridge", () => {
     ): Promise<string> {
       await startBridgeThread({ bridge, threadId });
       bridge.sendRequest(2, "turn/start", {
+        apply: turnApply(undefined),
         threadId,
         providerThreadId: threadId,
         input,
@@ -6658,7 +6710,7 @@ describe("canonical skills/configure", () => {
   });
 });
 
-describe("canonical model context-window hint", () => {
+describe("canonical model context window", () => {
   const canonicalOptions = {
     permissionMode: "full",
     permissionScope: "full",
@@ -6666,7 +6718,42 @@ describe("canonical model context-window hint", () => {
     permissionEscalation: null,
   };
 
-  it("rebuilds with the same provider session when the turn environment changes", async () => {
+  function lastContextWindowUsage(bridge: BridgeJsonRpcTestHarness) {
+    return assembleCapturedThreadEvents(bridge.messages, "claude-code")
+      .filter(
+        (
+          event,
+        ): event is Extract<
+          ThreadEvent,
+          { type: "thread/contextWindowUsage/updated" }
+        > => event.type === "thread/contextWindowUsage/updated",
+      )
+      .at(-1)?.contextWindowUsage;
+  }
+
+  function assistantUsage(sessionId: string, uuid: string): SDKMessage {
+    return {
+      type: "assistant",
+      message: {
+        id: `message-${uuid}`,
+        type: "message",
+        role: "assistant",
+        container: null,
+        content: [{ type: "text", text: "ok", citations: null }],
+        context_management: null,
+        model: "claude-fable-5",
+        stop_details: null,
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { ...createResultUsage(), input_tokens: 1_000 },
+      },
+      parent_tool_use_id: null,
+      uuid,
+      session_id: sessionId,
+    } as SDKMessage;
+  }
+
+  it("reports the capacity Claude Code returns instead of guessing from the model id", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -6676,109 +6763,19 @@ describe("canonical model context-window hint", () => {
     });
 
     try {
-      const threadId = "thread-env-change";
+      const threadId = "thread-context-live";
       bridge.sendRequest(1, "thread/start", {
         threadId,
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        options: {
-          ...canonicalOptions,
-          envVars: { PLUGIN_ACCESS_TOKEN: "first" },
-          providerOptions: { disable1MContext: true, artifactsEnabled: true },
-        },
-      });
-      const startResponse = await bridge.waitForResponse(1);
-      const providerThreadId = getProviderThreadIdFromResult(startResponse);
-
-      bridge.sendRequest(2, "turn/start", {
-        threadId,
-        providerThreadId,
-        clientRequestId: "creq_23456789ab",
-        input: [{ type: "text", text: "continue", mentions: [] }],
-        options: {
-          ...canonicalOptions,
-          envVars: { PLUGIN_ACCESS_TOKEN: "second" },
-        },
-      });
-      await bridge.flushWork();
-
-      expect(queries).toHaveLength(2);
-      expect(queries[0]?.close).toHaveBeenCalledOnce();
-      expect(getLatestQueryOptions()).toMatchObject({
-        env: {
-          PLUGIN_ACCESS_TOKEN: "second",
-          CLAUDE_CODE_DISABLE_1M_CONTEXT: "1",
-          CLAUDE_CODE_ARTIFACT: "1",
-        },
-        resume: providerThreadId,
-      });
-      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-        "continue",
-      );
-      await bridge.waitForResponse(2);
-      expect(
-        bridge.messages.filter(
-          (message) => message.method === "session/replaced",
-        ),
-      ).toContainEqual(
-        expect.objectContaining({
-          params: expect.objectContaining({
-            contextLost: false,
-            providerThreadId,
-            reason:
-              "Execution settings changed; the Claude session was rebuilt to apply them.",
-            showRuntimeNote: true,
-            threadId,
-          }),
-        }),
-      );
-
-      bridge.sendRequest(3, "thread/stop", {
-        threadId,
-        providerThreadId,
-        intent: "interrupt",
-        activeTurnId: null,
-      });
-      await bridge.flushWork();
-      queries[1]?.finish();
-      await bridge.waitForResponse(3);
-    } finally {
-      queries.forEach((query) => query.finish());
-      bridge.restore();
-    }
-  });
-
-  it("uses Fable's Claude Code capacity through a custom API endpoint", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      bridge.sendRequest(1, "thread/start", {
-        threadId: "thread-context-hint",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        options: {
-          ...canonicalOptions,
-          model: "claude-fable-5",
-          envVars: {
-            ANTHROPIC_BASE_URL: "http://127.0.0.1:8317",
-          },
-        },
+        options: { ...canonicalOptions, model: "claude-fable-5" },
       });
       await bridge.waitForResponse(1);
 
-      expect(getLatestQueryOptions().env?.ANTHROPIC_BASE_URL).toBe(
-        "http://127.0.0.1:8317",
-      );
-
       bridge.sendRequest(2, "turn/start", {
-        threadId: "thread-context-hint",
-        providerThreadId: "thread-context-hint",
+        apply: turnApply(undefined),
+        threadId,
+        providerThreadId: threadId,
         clientRequestId: "creq_23456789ab",
         input: [{ type: "text", text: "hello", mentions: [] }],
         options: { ...canonicalOptions, model: "claude-fable-5" },
@@ -6786,63 +6783,44 @@ describe("canonical model context-window hint", () => {
       await readNextPrompt(getLatestQueryCall());
       await bridge.waitForResponse(2);
 
+      queries[0]?.emit(
+        assistantUsage(threadId, "00000000-0000-4000-8000-0000000000a1"),
+      );
+      await bridge.flushWork();
+      expect(lastContextWindowUsage(bridge)).toMatchObject({
+        usedTokens: 1_000,
+        modelContextWindow: null,
+      });
+
       queries[0]?.emit({
-        type: "result",
-        subtype: "success",
-        duration_ms: 1,
-        duration_api_ms: 1,
-        is_error: false,
-        num_turns: 1,
-        result: "ok",
-        stop_reason: "end_turn",
-        total_cost_usd: 0,
-        usage: {
-          input_tokens: 100,
-          output_tokens: 20,
-          cache_creation_input_tokens: 30,
-          cache_read_input_tokens: 40,
-        },
-        modelUsage: {
-          "claude-fable-5": {
-            contextWindow: 200_000,
-          },
-        },
-        session_id: "session-1",
+        ...createSuccessfulResultMessage(threadId),
+        modelUsage: { "claude-fable-5": { contextWindow: 200_000 } },
       } as unknown as SDKMessage);
       await bridge.flushWork();
-
-      const contextWindowEvents = assembleCapturedThreadEvents(
-        bridge.messages,
-        "claude-code",
-      ).filter(
-        (
-          event,
-        ): event is Extract<
-          ThreadEvent,
-          { type: "thread/contextWindowUsage/updated" }
-        > => event.type === "thread/contextWindowUsage/updated",
-      );
-
-      expect(contextWindowEvents.at(-1)?.contextWindowUsage).toMatchObject({
-        modelContextWindow: 1_000_000,
+      expect(lastContextWindowUsage(bridge)).toMatchObject({
+        modelContextWindow: 200_000,
       });
 
-      const tokenUsageEvents = assembleCapturedThreadEvents(
-        bridge.messages,
-        "claude-code",
-      ).filter(
-        (
-          event,
-        ): event is Extract<
-          ThreadEvent,
-          { type: "thread/tokenUsage/updated" }
-        > => event.type === "thread/tokenUsage/updated",
+      bridge.sendRequest(3, "turn/start", {
+        apply: turnApply({ settings: ["model"] }),
+        threadId,
+        providerThreadId: threadId,
+        clientRequestId: "creq_23456789ac",
+        input: [{ type: "text", text: "switch", mentions: [] }],
+        options: { ...canonicalOptions, model: "claude-sonnet-5" },
+      });
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(3);
+      expect(queries[0]?.setModel).toHaveBeenCalledWith("claude-sonnet-5");
+      queries[0]?.emit(
+        assistantUsage(threadId, "00000000-0000-4000-8000-0000000000a2"),
       );
-      expect(tokenUsageEvents.at(-1)?.tokenUsage).toMatchObject({
-        modelContextWindow: 1_000_000,
+      await bridge.flushWork();
+      expect(lastContextWindowUsage(bridge)).toMatchObject({
+        modelContextWindow: null,
       });
     } finally {
-      queries[0]?.finish();
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });

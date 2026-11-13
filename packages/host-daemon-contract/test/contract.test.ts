@@ -2060,7 +2060,7 @@ describe("host-daemon command schemas", () => {
       requestId: CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "hello", mentions: [] }],
       options: {
-        model: "acp-default",
+        model: "claude-sonnet-5-5",
         serviceTier: "default",
         reasoningLevel: "medium",
         providerOptions: {},
@@ -2089,7 +2089,7 @@ describe("host-daemon command schemas", () => {
       requestId: CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "follow up", mentions: [] }],
       options: {
-        model: "acp-default",
+        model: "claude-sonnet-5-5",
         serviceTier: "default",
         reasoningLevel: "medium",
         providerOptions: {},

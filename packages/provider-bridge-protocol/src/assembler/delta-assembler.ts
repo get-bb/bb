@@ -1338,11 +1338,7 @@ export function createDeltaAssembler(
           });
           return;
         }
-        const turnId =
-          state.currentTurnId ??
-          (delta.claimIfIdle === true && state.pendingAccepted.length > 0
-            ? ensureTurnOpen(state, events)
-            : undefined);
+        const turnId = state.currentTurnId;
         if (turnId === undefined) {
           return;
         }

@@ -37,7 +37,6 @@ interface BusySkillCatalogFixture {
   createRuntimeSpy: Mock<() => AgentRuntime>;
   dataDir: string;
   manager: RuntimeManager;
-  originalCatalogHash: string | null;
   runtime: FakeDispatchRuntime;
   source: HostDaemonInjectedSkillSource;
 }
@@ -85,9 +84,14 @@ async function setupBusySkillCatalogEnvironment(args: {
     createRuntime: createRuntimeSpy,
     provisionWorkspace: async () => createWorkspace(),
   });
-  const entry = await manager.ensureEnvironment({
+  await manager.ensureEnvironment({
+    environmentId: "env-1",
+    workspacePath: WORKSPACE_PATH,
+  });
+  await manager.stageThreadSkillRoots({
     environmentId: "env-1",
     injectedSkillSources: [source],
+    threadId: args.activeThreadId,
     workspacePath: WORKSPACE_PATH,
   });
   runtime.setActiveTurn(args.activeThreadId, "turn-busy-1");
@@ -96,7 +100,6 @@ async function setupBusySkillCatalogEnvironment(args: {
     createRuntimeSpy,
     dataDir,
     manager,
-    originalCatalogHash: entry.skillCatalogHash,
     runtime,
     source,
   };
@@ -170,6 +173,8 @@ function createRuntime(): FakeDispatchRuntime {
     }),
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
+    getSessionPhase: (threadId) =>
+      activeTurnsByThreadId.has(threadId) ? "turnRunning" : "idle",
     waitForActiveTurn: vi.fn(
       async (threadId: string) => activeTurnsByThreadId.get(threadId) ?? null,
     ),
@@ -471,6 +476,7 @@ describe("dispatchCommand", () => {
           throw new Error("Unexpected project attachment fetch");
         },
         ...unexpectedProviderMaintenance,
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -515,6 +521,7 @@ describe("dispatchCommand", () => {
           throw new Error("Unexpected project attachment fetch");
         },
         ...unexpectedProviderMaintenance,
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -549,6 +556,7 @@ describe("dispatchCommand", () => {
           throw new Error("Unexpected project attachment fetch");
         },
         ...unexpectedProviderMaintenance,
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -584,12 +592,13 @@ describe("dispatchCommand", () => {
             throw new Error("Unexpected project attachment fetch");
           },
           ...unexpectedProviderMaintenance,
+          fetchPluginHostArtifact: fetchDispatchTestArtifact,
           runtimeManager: manager,
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
       ),
     ).rejects.toThrow(
-      "Refusing to start a competing turn while thread-1 is still starting",
+      "Thread thread-1 is still starting a turn",
     );
     expect(runtime.runTurn).not.toHaveBeenCalled();
     expect(runtime.steerTurn).not.toHaveBeenCalled();
@@ -1736,7 +1745,7 @@ describe("dispatchCommand", () => {
     const createdRuntimeShellPaths: (string | undefined)[] = [];
     const manager = new RuntimeManager({
       createRuntime: (runtimeOptions) => {
-        createdRuntimeShellPaths.push(runtimeOptions.shellEnv?.PATH);
+        createdRuntimeShellPaths.push(runtimeOptions.getShellEnv?.().PATH);
         return runtime;
       },
       provisionWorkspace: async () => createWorkspace(),
@@ -2322,7 +2331,6 @@ describe("dispatchCommand", () => {
       dataDir: fixture.dataDir,
       injectedSkillSources: [fixture.source],
     });
-    expect(currentCatalog.catalogHash).not.toBe(fixture.originalCatalogHash);
     await expect(
       fs.readFile(
         path.join(
@@ -2338,9 +2346,6 @@ describe("dispatchCommand", () => {
     );
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.shutdown).not.toHaveBeenCalled();
-    expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(
-      fixture.originalCatalogHash,
-    );
   });
 
   it("reuses a busy runtime when turn.submit carries a changed skill catalog", async () => {
@@ -2402,9 +2407,6 @@ describe("dispatchCommand", () => {
     expect(fixture.runtime.resumeThread).not.toHaveBeenCalled();
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.shutdown).not.toHaveBeenCalled();
-    expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(
-      fixture.originalCatalogHash,
-    );
   });
 
   it("routes provider health and usage to the targeted bridge runtime", async () => {

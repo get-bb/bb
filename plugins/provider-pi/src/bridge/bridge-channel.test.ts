@@ -14,17 +14,25 @@ afterEach(() => {
   for (const channel of channels.splice(0)) channel.close();
 });
 
-function open(): { channel: PiBridgeChannel; lines: string[] } {
+function open(): {
+  channel: PiBridgeChannel;
+  lines: string[];
+  closes: () => number;
+} {
   const lines: string[] = [];
+  let closes = 0;
   const channel = new PiBridgeChannel({
     onLine: (line) => lines.push(line),
     onOverflow: () => undefined,
     onError: (error) => {
       throw error;
     },
+    onClose: () => {
+      closes += 1;
+    },
   });
   channels.push(channel);
-  return { channel, lines };
+  return { channel, lines, closes: () => closes };
 }
 
 function dial(
@@ -63,4 +71,31 @@ it("serves only the connection that presents the token", async () => {
   );
   extension.socket.write('{"kind":"ready"}\n');
   await vi.waitFor(() => expect(lines).toEqual(['{"kind":"ready"}']));
+});
+
+it("reports the extension hanging up, but not a close bb asked for", async () => {
+  const dropped = open();
+  const extension = dial(
+    dropped.channel,
+    dropped.channel.env[PI_BRIDGE_CHANNEL_TOKEN_ENV],
+  );
+  extension.socket.write('{"kind":"ready"}\n');
+  await vi.waitFor(() => expect(dropped.lines).toEqual(['{"kind":"ready"}']));
+  const stranger = dial(dropped.channel, "not-the-token");
+  await stranger.closed;
+  expect(dropped.closes()).toBe(0);
+  extension.socket.destroy();
+  await vi.waitFor(() => expect(dropped.closes()).toBe(1));
+
+  const ended = open();
+  const endedExtension = dial(
+    ended.channel,
+    ended.channel.env[PI_BRIDGE_CHANNEL_TOKEN_ENV],
+  );
+  endedExtension.socket.write('{"kind":"ready"}\n');
+  await vi.waitFor(() => expect(ended.lines).toEqual(['{"kind":"ready"}']));
+  ended.channel.end();
+  endedExtension.socket.end();
+  await endedExtension.closed;
+  expect(ended.closes()).toBe(0);
 });

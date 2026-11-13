@@ -2118,9 +2118,8 @@ describe("concurrent idle dispatch regression", () => {
   });
 });
 
-describe("competing turn refusals", () => {
-  const competingTurnMessage = (threadId: string) =>
-    `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`;
+describe("busy refusals", () => {
+  const busyMessage = "The agent is compacting context.";
 
   async function sendStartFromIdle(
     harness: TestAppHarness,
@@ -2153,7 +2152,7 @@ describe("competing turn refusals", () => {
     return { queued, requestId: queued.command.requestId };
   }
 
-  it("keeps the thread active when the daemon refuses a competing turn while a root turn is running", async () => {
+  it("queues a busy refusal behind the running root turn instead of failing the run", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
         harness,
@@ -2169,8 +2168,8 @@ describe("competing turn refusals", () => {
       });
 
       await reportQueuedCommandError(harness, queued, {
-        errorCode: "competing_turn",
-        errorMessage: competingTurnMessage(fixture.thread.id),
+        errorCode: "thread_busy",
+        errorMessage: busyMessage,
       });
 
       const events = listEvents(harness.db, { threadId: fixture.thread.id });
@@ -2179,37 +2178,26 @@ describe("competing turn refusals", () => {
       );
       expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
         requestId,
-        reason: "competing_turn",
-        message: competingTurnMessage(fixture.thread.id),
+        reason: "thread_busy",
+        message: busyMessage,
       });
       expect(events.some((event) => event.type === "system/error")).toBe(false);
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
-
-      const completed = await harness.app.request("/internal/session/events", {
-        method: "POST",
-        headers: internalAuthHeaders(harness),
-        body: JSON.stringify({
-          sessionId: fixture.sessionId,
-          eventGroups: groupHostDaemonEvents([
-            {
-              threadId: fixture.thread.id,
-              event: {
-                type: "turn/completed",
-                threadId: fixture.thread.id,
-                providerThreadId: "provider-send-dispatch-61",
-                scope: turnScope("turn-unrequested"),
-                status: "completed",
-              },
-            },
-          ]),
-        }),
+      await vi.waitFor(() => {
+        expect(
+          listQueuedThreadMessages(harness.db, fixture.thread.id),
+        ).toEqual([
+          expect.objectContaining({
+            payloadKind: "retry",
+            retryReason: "Agent was busy",
+            sendAt: null,
+          }),
+        ]);
       });
-      expect(completed.status, await completed.clone().text()).toBe(200);
-      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
     });
   });
 
-  it("fails the run when a competing-turn refusal arrives without a running root turn", async () => {
+  it("returns the thread to idle and schedules the retry when no turn is running", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
         harness,
@@ -2219,16 +2207,55 @@ describe("competing turn refusals", () => {
       const { queued } = await sendStartFromIdle(harness, fixture);
 
       await reportQueuedCommandError(harness, queued, {
-        errorCode: "competing_turn",
-        errorMessage: competingTurnMessage(fixture.thread.id),
+        errorCode: "thread_busy",
+        errorMessage: busyMessage,
       });
 
       const events = listEvents(harness.db, { threadId: fixture.thread.id });
-      expect(
-        events.some((event) => event.type === "client/turn/rejected"),
-      ).toBe(true);
-      expect(events.some((event) => event.type === "system/error")).toBe(true);
-      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+      expect(events.some((event) => event.type === "system/error")).toBe(false);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+      await vi.waitFor(() => {
+        expect(
+          listQueuedThreadMessages(harness.db, fixture.thread.id),
+        ).toEqual([
+          expect.objectContaining({
+            payloadKind: "retry",
+            retryReason: "Agent was busy",
+            sendAt: expect.any(Number),
+          }),
+        ]);
+      });
+    });
+  });
+
+  it("returns the thread to idle without a failure when the provider rejects the input", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 64,
+      });
+      const { queued, requestId } = await sendStartFromIdle(harness, fixture);
+
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "turn_rejected",
+        errorMessage: "This agent does not offer a compact command.",
+      });
+
+      const events = listEvents(harness.db, { threadId: fixture.thread.id });
+      const rejection = events.find(
+        (event) => event.type === "client/turn/rejected",
+      );
+      expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
+        requestId,
+        reason: "turn_rejected",
+        message: "This agent does not offer a compact command.",
+      });
+      expect(events.some((event) => event.type === "system/error")).toBe(false);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+      expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+        [],
+      );
     });
   });
 
@@ -2581,8 +2608,8 @@ describe("a turn request in flight when a turn ends", () => {
   ) {
     if (held.command.target.mode === "start" && daemon.activeTurnId !== null) {
       await reportQueuedCommandError(harness, held.queued, {
-        errorCode: "competing_turn",
-        errorMessage: `Refusing to start a competing turn for thread "${daemon.threadId}" while another turn is active or starting`,
+        errorCode: "thread_busy",
+        errorMessage: "Another turn is active or starting.",
       });
       return;
     }

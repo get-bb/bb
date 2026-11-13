@@ -31,20 +31,20 @@ function configureNodeProbe(script: string): void {
 describe("Pi version probe", () => {
   it("preserves configured launch arguments and parses stdout", async () => {
     configureNodeProbe(
-      'if (process.argv[1] !== "--version") process.exit(2); process.stdout.write("0.85.1\\n");',
+      'if (process.argv[1] !== "--version") process.exit(2); process.stdout.write("0.99.1\\n");',
     );
     expect(await probePiVersion()).toEqual({
-      version: "0.85.1",
+      version: "0.99.1",
       failure: null,
     });
     expect(await getPiInstallGate()).toEqual({
       ok: true,
-      installedVersion: "0.85.1",
+      installedVersion: "0.99.1",
     });
   });
 
   it("reports a non-zero exit even when stdout contains a version", async () => {
-    configureNodeProbe('process.stdout.write("0.85.1\\n"); process.exit(2);');
+    configureNodeProbe('process.stdout.write("0.99.1\\n"); process.exit(2);');
     expect(await probePiVersion()).toMatchObject({
       version: null,
       failure: expect.stringContaining("exited with 2"),
@@ -52,7 +52,7 @@ describe("Pi version probe", () => {
   });
 
   it("does not interpret stderr as a successful version response", async () => {
-    configureNodeProbe('process.stderr.write("0.85.1\\n");');
+    configureNodeProbe('process.stderr.write("0.99.1\\n");');
     expect(await probePiVersion()).toMatchObject({
       version: null,
       failure: expect.stringContaining("printed no version"),
@@ -61,7 +61,7 @@ describe("Pi version probe", () => {
 
   it("retains the 15 s timeout even when the child prints a version", async () => {
     configureNodeProbe(
-      'process.stdout.write("0.85.1\\n"); setInterval(() => {}, 1000);',
+      'process.stdout.write("0.99.1\\n"); setInterval(() => {}, 1000);',
     );
     expect(await probePiVersion()).toMatchObject({
       version: null,
@@ -100,7 +100,7 @@ describe("Pi version probe", () => {
       const cli = path.join(pkg, "cli.cjs");
       await writeFile(
         cli,
-        'if (process.argv[2] !== "--version") process.exit(2); process.stdout.write("0.85.1\\n");',
+        'if (process.argv[2] !== "--version") process.exit(2); process.stdout.write("0.99.1\\n");',
       );
       await writeFile(
         path.join(root, "pi.cmd"),
@@ -111,16 +111,16 @@ describe("Pi version probe", () => {
       vi.stubEnv(PI_BRIDGE_COMMAND_ENV, "pi");
       vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
       expect(await probePiVersion()).toEqual({
-        version: "0.85.1",
+        version: "0.99.1",
         failure: null,
       });
       expect(await getPiInstallGate()).toEqual({
         ok: true,
-        installedVersion: "0.85.1",
+        installedVersion: "0.99.1",
       });
       expect(await getPiProviderInstallationStatus(false)).toMatchObject({
         executablePath: path.join(root, "pi.cmd"),
-        currentVersion: "0.85.1",
+        currentVersion: "0.99.1",
       });
     },
   );

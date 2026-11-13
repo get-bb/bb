@@ -95,7 +95,7 @@ export function handleLine(line: string): void {
     turnCountByThreadId.set(threadId, turnCount);
     const providerTurnId = `turn-${turnCount}`;
     const key = { providerItemId: `msg-${turnCount}` };
-    writeMessage({ id, result: {} });
+    writeMessage({ id, result: { admission: "accepted" } });
     emitDeltas(threadId, [
       { kind: "turn.open", providerTurnId },
       {

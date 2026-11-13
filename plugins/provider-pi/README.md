@@ -1,7 +1,7 @@
 # Pi provider
 
 First-party plugin for the [Pi coding agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
-Pi is user-installed (`npm install -g @earendil-works/pi-coding-agent`, 0.84.0
+Pi is user-installed (`npm install -g @earendil-works/pi-coding-agent`, 0.99.0
 or newer); the plugin ships no agent tree.
 
 What lives here:
@@ -14,8 +14,9 @@ What lives here:
   (`src/native-roots.ts`).
 - `src/delta-translation.ts` — pi's session events become bb's thread deltas.
 - `src/bridge/provider-maintenance.ts` — the install gate (`pi --version`
-  ≥ 0.84.0) and the install/update actions: install through npm; update a
-  pi.dev managed install (`src/bridge/pi-managed-install.ts`) with
+  ≥ 0.99.0, the first Pi whose prompt answer says whether it started a run)
+  and the install/update actions: install through npm; update a pi.dev
+  managed install (`src/bridge/pi-managed-install.ts`) with
   `pi update --self`, a Bun or npm global install through that package
   manager, and any other install with `pi update --self`.
 - `src/bridge/extension-ui.ts` — pi extension dialogs reach the user:
@@ -88,8 +89,10 @@ The bridge tests drive `src/bridge/fake-pi-rpc.mjs`, a scripted
 pi's framing (LF-delimited JSON, raw U+2028 and U+2029). Its prompts script a
 turn: `/tool <name> <json>` runs an extension tool, `/hold` keeps the run open
 until `abort` or a steer, `/fail-run` ends it with an assistant error, `/ui
-<json>` opens an extension dialog, `/reload` reloads the extension the way
-pi's `ctx.reload()` does before answering, and `/die` exits mid-run. `FAKE_PI_*`
+<json>` opens an extension dialog, `/handled` answers with the `handled`
+disposition pi gives an extension command that runs no agent turn, `/reload`
+reloads the extension the way pi's `ctx.reload()` does before answering, and
+`/die` exits mid-run. `FAKE_PI_*`
 environment variables select the rest: the reported version (`crash` for a
 broken install), logs of spawns, commands, prompts, and tools, and the faults
 the lifecycle and steering tests inject.

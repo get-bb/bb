@@ -178,6 +178,7 @@ async function readAdvertisedMcpServer(
     threadId: "thread-1918",
     providerThreadId,
     clientRequestId: "creq_abcdefghjk",
+    apply: { settings: [], sessionOptions: [], providerOptions: [] },
     options: {
       permissionMode: "full",
       permissionScope: "full",

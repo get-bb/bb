@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import { createPiDeltaTranslator } from "../delta-translation.js";
+import { PiRpcChildExitedError } from "./rpc-child.js";
 import { PiRpcSession, type PiRpcEvent } from "./rpc-session.js";
 
 function deferred() {
@@ -30,7 +31,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-function harness(settlement = true) {
+function harness() {
   const events: PiRpcEvent[] = [];
   const aDelivered = deferred();
   const requestOk = vi.fn(async () => undefined);
@@ -57,12 +58,17 @@ function harness(settlement = true) {
     isProcessing: boolean;
     handleEvent(event: PiRpcEvent): void;
     handleChannelMessage(message: Record<string, unknown>): void;
+    handleExit(info: {
+      code: number | null;
+      signal: null;
+      stderrTail: string;
+    }): void;
     deliveryChain: Promise<void>;
     runs: Map<number, unknown>;
     pendingRunSettlements: unknown[];
   };
   control.child = { exited: false, requestOk, kill };
-  control.handleChannelMessage({ kind: "ready", agentSettled: settlement });
+  control.handleChannelMessage({ kind: "ready", agentSettled: true });
   let runId = 0;
   let previousSettlement: Record<string, unknown> | null = null;
   const event = (value: PiRpcEvent) => {
@@ -123,12 +129,12 @@ function harness(settlement = true) {
 it("keeps B processing and checkpoints run-local when A delivery is delayed", async () => {
   const h = harness();
   const a = h.session.prompt("A");
-  await a.consumed;
+  await a.admitted;
   h.event({ type: "agent_start", name: "A" });
   h.end("A", "error");
   h.event({ type: "agent_settled" });
   const b = h.session.prompt("B");
-  await b.consumed;
+  await b.admitted;
   h.event({ type: "agent_start", name: "B" });
   h.end("B");
   h.event({ type: "agent_settled" });
@@ -164,7 +170,7 @@ it.each(["retry", "overflow", "followUp"])(
   async (kind) => {
     const h = harness();
     const dispatch = h.session.prompt("native recovery");
-    await dispatch.consumed;
+    await dispatch.admitted;
     const settled = vi.fn();
     void dispatch.settled.then(settled);
     h.event({ type: "agent_start" });
@@ -216,7 +222,7 @@ it.each([false, true])(
   async (aborted) => {
     const h = harness();
     const dispatch = h.session.prompt("optional compaction");
-    await dispatch.consumed;
+    await dispatch.admitted;
     h.event({ type: "agent_start" });
     h.end("success", "stop");
     h.event({
@@ -236,7 +242,7 @@ it.each([false, true])(
   async (aborted) => {
     const h = harness();
     const dispatch = h.session.prompt("overflow");
-    await dispatch.consumed;
+    await dispatch.admitted;
     h.event({ type: "agent_start" });
     h.end("length", "length");
     h.event({
@@ -268,7 +274,7 @@ it("surfaces a failed run's error when queued work continues the same settlement
     resolveModelContextWindow: () => null,
   });
   const dispatch = h.session.prompt("original prompt");
-  await dispatch.consumed;
+  await dispatch.admitted;
   h.event({ type: "agent_start" });
   h.end("original", "error");
   h.event({ type: "queue_update", steering: [], followUp: [] });
@@ -305,7 +311,7 @@ it("surfaces a failed run's error when queued work continues the same settlement
 it("clears an earlier overflow failure only when native work continues", async () => {
   const h = harness();
   const dispatch = h.session.prompt("native recovery");
-  await dispatch.consumed;
+  await dispatch.admitted;
   h.event({ type: "agent_start" });
   h.end("attempt", "length");
   h.event({
@@ -327,7 +333,7 @@ it.each([undefined, false, true, "false", null, 0])(
   async (aborted) => {
     const h = harness();
     const dispatch = h.session.prompt("hello");
-    await dispatch.consumed;
+    await dispatch.admitted;
     h.event({ type: "agent_start" });
     h.end("A");
     h.settle("A", aborted === undefined ? {} : { aborted });
@@ -343,7 +349,7 @@ it.each([undefined, false, true, "false", null, 0])(
 it("ignores duplicate authoritative settlement without duplicate delivery", async () => {
   const h = harness();
   const dispatch = h.session.prompt("hello");
-  await dispatch.consumed;
+  await dispatch.admitted;
   h.event({ type: "agent_start" });
   h.end("A");
   h.settle("A");
@@ -412,7 +418,7 @@ it.each(["bb-first", "bb-last"])(
         if (startedB) return;
         startedB = true;
         b = h.session.prompt("B");
-        await b.consumed;
+        await b.admitted;
         runtime._isAgentRunActive = true;
         await runtime._handleAgentEvent({ type: "agent_start" });
         wireOrder.push("B started inside A extension settlement");
@@ -475,7 +481,7 @@ it.each(["bb-first", "bb-last"])(
         },
       });
       const a = h.session.prompt("A");
-      await a.consumed;
+      await a.admitted;
       runtime._isAgentRunActive = true;
       await runtime._handleAgentEvent({ type: "agent_start" });
       sessionManager.appendMessage(message("length"));
@@ -577,52 +583,58 @@ it.each(["bb-first", "bb-last"])(
   },
 );
 
-it.each(["start", "settlement"])(
-  "fails closed instead of guessing identity after a missing %s report",
+it.each(["start", "settlement", "end"])(
+  "waits for the extension's %s report and fails explicitly when Pi exits",
   async (missing) => {
-    vi.useFakeTimers();
-    try {
-      const h = harness();
-      const dispatch = h.session.prompt("A");
-      await dispatch.consumed;
-      if (missing === "start") {
-        h.control.handleEvent({ type: "agent_start" });
-      } else {
-        h.event({ type: "agent_start" });
-        h.end("A");
-        h.event({ type: "agent_settled" });
-      }
-      await vi.advanceTimersByTimeAsync(5_001);
-      expect((await dispatch.settled)?.error).toEqual(
-        new Error("Pi extension settlement identity is missing or invalid"),
-      );
-      expect(h.onDone).toHaveBeenCalledTimes(1);
-      expect(h.kill).toHaveBeenCalledTimes(1);
-      h.leaf("agent-settled-leaf", "late-A", 1);
-      await h.control.deliveryChain;
-      expect(h.events.some((event) => event.settlementOnly)).toBe(false);
-      await expect(h.session.prompt("B").consumed).rejects.toThrow(
-        "No active Pi session",
-      );
-    } finally {
-      vi.useRealTimers();
+    const h = harness();
+    const dispatch = h.session.prompt("A");
+    await dispatch.admitted;
+    const settled = vi.fn();
+    void dispatch.settled.then(settled);
+    if (missing === "start") {
+      h.control.handleEvent({ type: "agent_start" });
+    } else if (missing === "end") {
+      h.event({ type: "agent_start" });
+      h.control.handleEvent({ type: "agent_end", messages: [] });
+    } else {
+      h.event({ type: "agent_start" });
+      h.end("A");
+      h.control.handleEvent({ type: "agent_settled" });
     }
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).not.toHaveBeenCalled();
+    expect(h.events.some((event) => event.settlementOnly)).toBe(false);
+    expect(h.onDone).not.toHaveBeenCalled();
+
+    h.control.handleExit({ code: 1, signal: null, stderrTail: "" });
+    const outcome = await dispatch.settled;
+    expect(outcome?.error).toBeInstanceOf(PiRpcChildExitedError);
+    expect(outcome?.error).toMatchObject({
+      message: "pi exited (code 1, signal null)",
+    });
+    expect(h.onDone).toHaveBeenCalledTimes(1);
+    h.leaf("agent-settled-leaf", "late-A", 1);
+    await h.control.deliveryChain;
+    expect(h.events.some((event) => event.settlementOnly)).toBe(false);
+    await expect(h.session.prompt("B").admitted).rejects.toThrow(
+      "No active Pi session",
+    );
   },
 );
 
-it.each(["stop", "aborted", "error"])(
-  "retains legacy agent_end fallback for %s",
-  async (reason) => {
-    const h = harness(false);
-    const dispatch = h.session.prompt("legacy");
-    await dispatch.consumed;
-    h.event({ type: "agent_start" });
-    h.end("legacy", reason);
-    const outcome = await dispatch.settled;
-    expect(outcome?.boundaryDelivered).toBe(true);
-    expect(outcome?.error instanceof Error).toBe(reason !== "stop");
-    await h.control.deliveryChain;
-    expect(h.control.runs.size).toBe(0);
-    expect(h.events.some((e) => e.deferSettlement)).toBe(false);
-  },
-);
+it("fails closed when the extension reports the wrong run identity", async () => {
+  const h = harness();
+  const dispatch = h.session.prompt("A");
+  await dispatch.admitted;
+  h.control.handleChannelMessage({
+    kind: "agent-start",
+    runId: 7,
+    previousSettlement: null,
+  });
+  h.control.handleEvent({ type: "agent_start" });
+  expect((await dispatch.settled)?.error).toEqual(
+    new Error("Pi extension settlement identity is missing or invalid"),
+  );
+  expect(h.onDone).toHaveBeenCalledTimes(1);
+  expect(h.kill).toHaveBeenCalledTimes(1);
+});

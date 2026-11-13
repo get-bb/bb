@@ -8,6 +8,7 @@ import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridg
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -128,6 +129,7 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
   expect((await harness.waitForResponse(1)).error).toBeUndefined();
 
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
     clientRequestId: "creq_cdxrcvry22",
@@ -156,6 +158,7 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
   );
 
   harness.sendRequest(3, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
     clientRequestId: "creq_cdxrcvry23",

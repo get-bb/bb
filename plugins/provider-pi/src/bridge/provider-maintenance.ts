@@ -23,7 +23,7 @@ import { resolvePiManagedInstallRoot } from "./pi-managed-install.js";
 import { resolvePiLaunch } from "./rpc-child.js";
 
 const execFileAsync = experimental_execHostFile;
-export const PI_MINIMUM_SUPPORTED_VERSION = "0.84.0";
+export const PI_MINIMUM_SUPPORTED_VERSION = "0.99.0";
 export const PI_NPM_PACKAGE = "@earendil-works/pi-coding-agent";
 const VERSION_PROBE_TIMEOUT_MS = 15_000;
 const INSTALL_GATE_TTL_MS = 30_000;

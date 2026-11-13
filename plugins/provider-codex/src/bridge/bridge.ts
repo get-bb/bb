@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
 import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
-import { createHash } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import {
   isStandaloneBuiltinCompactCommand,
   type DynamicTool,
@@ -31,9 +29,15 @@ import {
   threadStartParamsSchema,
   threadStopParamsSchema,
   threadUnarchiveParamsSchema,
+  threadOpenWorkParamsSchema,
   turnStartParamsSchema,
   turnSteerParamsSchema,
   type BridgeExecutionOptions,
+  type OpenWorkItem,
+  type SessionSettingsDeclaration,
+  type ThreadOpenWorkResult,
+  type TurnInputResult,
+  type ClientTurnRequestId,
   type InitializeResult,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
@@ -82,6 +86,7 @@ import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
   toCodexPermissionSettings,
+  toCodexReasoningEffort,
   toCodexServiceTier,
   toCodexUserInput,
   type BbThreadForkParams,
@@ -109,6 +114,8 @@ import {
 } from "./provider-maintenance.js";
 
 type BbThreadResumeParams = ThreadResumeParams & { excludeTurns: boolean };
+
+const ACCEPTED_TURN_INPUT: TurnInputResult = { admission: "accepted" };
 
 const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -169,6 +176,10 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/goal/clear"),
     params: threadGoalClearParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/openWork"),
+    params: threadOpenWorkParamsSchema,
   }),
   z.object({
     method: z.literal("skills/configure"),
@@ -468,6 +479,11 @@ const codexThreadStatusChangedParamsSchema = z
   })
   .passthrough();
 
+interface InputAcceptanceWaiter {
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
+
 interface CodexBridgeSession {
   bbThreadId: string;
   codexThreadId: string | null;
@@ -475,12 +491,10 @@ interface CodexBridgeSession {
   connection: CodexAppServerConnection | null;
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
-  constructionSignature: string;
-  environmentHash: string;
-  turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
   unopenedCompactionDispatches: PendingCompactionDispatch[];
+  inputAcceptanceWaiters: Map<ClientTurnRequestId, InputAcceptanceWaiter>;
   turnSettledWaiters: Map<string, Array<() => void>>;
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
@@ -521,11 +535,26 @@ function currentSession(
   return session;
 }
 
+function rejectInputAcceptanceWaiters(
+  session: CodexBridgeSession,
+  message: string,
+): void {
+  const waiters = [...session.inputAcceptanceWaiters.values()];
+  session.inputAcceptanceWaiters.clear();
+  for (const waiter of waiters) {
+    waiter.reject(new Error(message));
+  }
+}
+
 function releaseSession(session: CodexBridgeSession): Promise<void> {
   if (session.releasePromise !== null) {
     return session.releasePromise;
   }
   session.closing = true;
+  rejectInputAcceptanceWaiters(
+    session,
+    "codex session was released before Codex took the input",
+  );
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -581,29 +610,6 @@ function decodeCodexOptions(
 function requestedDaybreak(options: BridgeExecutionOptions): boolean | null {
   const requested = options.sessionOptions?.[CODEX_DAYBREAK_OPTION_ID];
   return typeof requested === "boolean" ? requested : null;
-}
-
-function environmentHash(
-  envVars: Readonly<Record<string, string>> | undefined,
-): string {
-  const entries = Object.entries(envVars ?? {}).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-  return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
-}
-
-function constructionSignature(
-  cwd: string,
-  sessionOptions: CodexSessionOptions,
-  envHash: string,
-): string {
-  return JSON.stringify({
-    cwd,
-    reasoningLevel: sessionOptions.reasoningLevel ?? null,
-    memoryEnabled: sessionOptions.memoryEnabled ?? null,
-    providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
-    envHash,
-  });
 }
 
 function sendThreadDeltas(
@@ -673,6 +679,16 @@ function sendThreadDeltas(
     threadId: session.bbThreadId,
     deltas: outDeltas,
   });
+  for (const delta of outDeltas) {
+    if (delta.kind !== "input.accepted") {
+      continue;
+    }
+    const waiter = session.inputAcceptanceWaiters.get(delta.clientRequestId);
+    if (waiter !== undefined) {
+      session.inputAcceptanceWaiters.delete(delta.clientRequestId);
+      waiter.resolve();
+    }
+  }
 }
 
 function announceSessionIdentity(
@@ -969,6 +985,7 @@ function handleChildExit(
       error: { message },
     });
   }
+  rejectInputAcceptanceWaiters(session, message);
   sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
     threadId: session.bbThreadId,
     ...(session.codexThreadId !== null
@@ -1127,20 +1144,19 @@ async function saveDaybreakChoice(
     });
 }
 
-async function resolveTurnCyberAccessProgram(
-  session: CodexBridgeSession,
-  connection: CodexAppServerConnection,
-  codexThreadId: string,
-  decoded: DecodedCodexOptions,
-): Promise<CodexCyberProgram | null> {
-  if (
-    decoded.daybreak !== null &&
-    decoded.daybreak !== session.daybreakEnabled
-  ) {
+async function resolveTurnCyberAccessProgram(args: {
+  session: CodexBridgeSession;
+  connection: CodexAppServerConnection;
+  codexThreadId: string;
+  decoded: DecodedCodexOptions;
+  daybreakChanged: boolean;
+}): Promise<CodexCyberProgram | null> {
+  const { session, decoded } = args;
+  if (args.daybreakChanged && decoded.daybreak !== null) {
     await saveDaybreakChoice(
       session,
-      connection,
-      codexThreadId,
+      args.connection,
+      args.codexThreadId,
       decoded.daybreak,
     );
   }
@@ -1235,7 +1251,6 @@ async function constructThreadSession(
     })),
   );
   const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
-  const envHash = environmentHash(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
     codexThreadId:
@@ -1248,20 +1263,10 @@ async function constructThreadSession(
       instructionMode: args.instructionMode,
       dynamicTools: args.dynamicTools,
     },
-    constructionSignature: constructionSignature(
-      args.cwd,
-      decoded.sessionOptions,
-      envHash,
-    ),
-    environmentHash: envHash,
-    turnPermissionSettings: toCodexPermissionSettings({
-      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-      gitWritableRoots: [],
-      options: decoded.sessionOptions,
-    }),
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
+    inputAcceptanceWaiters: new Map(),
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
@@ -1409,11 +1414,6 @@ async function constructThreadSession(
       providerThreadId: codexThreadId,
       threadId: args.threadId,
     });
-    session.turnPermissionSettings = toCodexPermissionSettings({
-      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-      gitWritableRoots: translator.getThreadGitWritableRoots(args.threadId),
-      options: decoded.sessionOptions,
-    });
     announceSessionIdentity(session, codexThreadId);
     session.daybreakEnabled = result.thread.daybreakEnabled ?? null;
     if (args.request.kind === "start" && decoded.daybreak !== null) {
@@ -1480,12 +1480,10 @@ function registerResumableSession(session: CodexBridgeSession): void {
     connection: null,
     translator: session.translator,
     construction: session.construction,
-    constructionSignature: session.constructionSignature,
-    environmentHash: session.environmentHash,
-    turnPermissionSettings: session.turnPermissionSettings,
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
+    inputAcceptanceWaiters: new Map(),
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
@@ -1589,6 +1587,23 @@ type TurnStartParamsShape = z.infer<typeof turnStartParamsSchema>;
 type TurnSteerParamsShape = z.infer<typeof turnSteerParamsSchema>;
 type ThreadStopParamsShape = z.infer<typeof threadStopParamsSchema>;
 
+const CODEX_SESSION_SETTINGS: SessionSettingsDeclaration = {
+  model: { apply: "live" },
+  reasoningLevel: { apply: "live" },
+  serviceTier: { apply: "live" },
+  permission: { apply: "live" },
+  env: { apply: "resume" },
+  instructions: { apply: "fresh" },
+  dynamicTools: { apply: "fresh" },
+  skills: { apply: "resume" },
+  sessionOptions: { [CODEX_DAYBREAK_OPTION_ID]: { apply: "live" } },
+  providerOptions: {
+    memoryEnabled: { apply: "resume" },
+    providerSubagentsEnabled: { apply: "resume" },
+    additionalWorkspaceWriteRoots: { apply: "live" },
+  },
+};
+
 function handleInitialize(id: string | number): void {
   const result: InitializeResult = {
     protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
@@ -1603,6 +1618,8 @@ function handleInitialize(id: string | number): void {
       steerMode: "inject",
       skills: { configure: true },
       commands: { list: false },
+      openWork: { list: true },
+      sessionSettings: CODEX_SESSION_SETTINGS,
     },
   };
   sendResult(id, result);
@@ -1689,15 +1706,6 @@ async function requireLiveSessionForTurn(
     throw new Error(`No active codex session for thread "${params.threadId}"`);
   }
 
-  const decoded = decodeCodexOptions(params.options);
-  const turnEnvVars = decoded.sessionOptions.envVars ?? {};
-  const signature = constructionSignature(
-    session.construction.cwd,
-    decoded.sessionOptions,
-    Object.keys(turnEnvVars).length === 0
-      ? session.environmentHash
-      : environmentHash(turnEnvVars),
-  );
   if (session.connection === null || session.connection.exited) {
     session = await rebuildThreadSession(
       session,
@@ -1710,12 +1718,6 @@ async function requireLiveSessionForTurn(
       params.options,
       session.rebuildBeforeNextTurnReason,
     );
-  } else if (signature !== session.constructionSignature) {
-    session = await rebuildThreadSession(
-      session,
-      params.options,
-      "Execution settings changed; the codex session was rebuilt to apply them.",
-    );
   }
   if (session.connection === null) {
     throw new Error(`No active codex session for thread "${params.threadId}"`);
@@ -1727,37 +1729,30 @@ const codexTurnStartResultSchema = z
   .object({ turn: codexTurnSchema })
   .passthrough();
 
-function settleAcceptedDispatch(args: {
-  clientRequestId: TurnStartParamsShape["clientRequestId"];
-  compaction: boolean;
-  prepared: PreparedProviderCommandDispatch | null;
+function markCompactionDispatchAccepted(
+  session: CodexBridgeSession,
+  clientRequestId: ClientTurnRequestId,
+): void {
+  const dispatch = session.unopenedCompactionDispatches.find(
+    (pending) => pending.clientRequestId === clientRequestId,
+  );
+  if (dispatch === undefined) {
+    return;
+  }
+  dispatch.accepted = true;
+  if (dispatch.outcome !== null) {
+    settleUnopenedDispatch(session, dispatch, dispatch.outcome);
+  }
+}
+
+function openTurnFromStartResponse(args: {
+  clientRequestId: ClientTurnRequestId;
   session: CodexBridgeSession;
   result: unknown;
 }): void {
-  const { clientRequestId, prepared, session, result } = args;
-  if (args.compaction) {
-    const dispatch = session.unopenedCompactionDispatches.find(
-      (pending) => pending.clientRequestId === clientRequestId,
-    );
-    if (dispatch !== undefined) {
-      dispatch.accepted = true;
-      if (dispatch.outcome !== null) {
-        settleUnopenedDispatch(session, dispatch, dispatch.outcome);
-      }
-    }
-    return;
-  }
-  const parsed = codexTurnStartResultSchema.safeParse(result);
+  const { clientRequestId, session } = args;
+  const parsed = codexTurnStartResultSchema.safeParse(args.result);
   if (!parsed.success) {
-    scheduleZeroWorkTurnSettlement({
-      clientRequestId,
-      prepared,
-      session,
-      graceMs: ZERO_WORK_SETTLEMENT_GRACE_MS,
-    });
-    return;
-  }
-  if (prepared === null) {
     return;
   }
   const live = currentSession(session.bbThreadId, session.serial);
@@ -1785,6 +1780,51 @@ function settleAcceptedDispatch(args: {
       waiters: [],
     });
   }
+}
+
+function waitForInputAcceptance(
+  session: CodexBridgeSession,
+  clientRequestId: ClientTurnRequestId,
+): Promise<Error | null> {
+  return new Promise<void>((resolve, reject) => {
+    session.inputAcceptanceWaiters.set(clientRequestId, { resolve, reject });
+  }).then(
+    () => null,
+    (error: unknown) =>
+      error instanceof Error ? error : new Error(String(error)),
+  );
+}
+
+const codexErrorDataSchema = z
+  .object({
+    codexErrorInfo: z
+      .object({
+        activeTurnNotSteerable: z
+          .object({ turnKind: z.string() })
+          .passthrough(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+const CODEX_NON_STEERABLE_SUBMIT_PATTERN =
+  /\bActiveTurnNotSteerable\s*\{\s*turn_kind:\s*(\w+)/u;
+
+function codexBusyAdmission(error: unknown): TurnInputResult | null {
+  if (!(error instanceof CodexAppServerRpcError)) {
+    return null;
+  }
+  const data = codexErrorDataSchema.safeParse(error.data);
+  const turnKind = data.success
+    ? data.data.codexErrorInfo.activeTurnNotSteerable.turnKind
+    : CODEX_NON_STEERABLE_SUBMIT_PATTERN.exec(error.message)?.[1];
+  if (turnKind === undefined) {
+    return null;
+  }
+  return {
+    admission: "busy",
+    message: `Codex is running a ${turnKind.toLowerCase()} turn and cannot take new input until it finishes.`,
+  };
 }
 
 function markResponseOpenedTurnNativelyStarted(
@@ -1843,9 +1883,6 @@ function waitForNativeTurnStart(
   });
 }
 
-const ZERO_WORK_SETTLEMENT_GRACE_MS = 250;
-const GOAL_RESUME_TURN_GRACE_MS = 5_000;
-
 let syntheticZeroWorkTurnCounter = 0;
 
 function settleUnopenedDispatch(
@@ -1874,31 +1911,6 @@ function settleUnopenedDispatch(
           error: outcome.error,
         },
   ]);
-}
-
-function scheduleZeroWorkTurnSettlement(args: {
-  clientRequestId: TurnStartParamsShape["clientRequestId"];
-  prepared: PreparedProviderCommandDispatch | null;
-  session: CodexBridgeSession;
-  graceMs: number;
-}): void {
-  const { clientRequestId, prepared, session } = args;
-  if (prepared === null) {
-    return;
-  }
-  const serial = session.serial;
-  const timer = setTimeout(() => {
-    const live = currentSession(session.bbThreadId, serial);
-    if (!live || live.openCodexTurnIds.size > 0) {
-      return;
-    }
-    settleUnopenedDispatch(
-      live,
-      { clientRequestId, prepared },
-      { status: "completed" },
-    );
-  }, args.graceMs);
-  timer.unref?.();
 }
 
 function awaitCompactionTurn(args: {
@@ -2020,112 +2032,179 @@ async function handleTurnStart(
     return;
   }
 
-  const input: PromptInput[] = params.input;
-  const decoded = decodeCodexOptions(params.options);
-
   const prepared = session.translator.prepareTurnStart({
     clientRequestId: params.clientRequestId,
     providerThreadId: codexThreadId,
   });
-
-  const goalCommand = parseCodexGoalCommand(input);
-  if (goalCommand !== null) {
-    try {
-      await runCodexGoalCommand(connection, codexThreadId, goalCommand);
-    } catch (error) {
-      prepared?.rollback();
-      sendError(
-        id,
-        BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-        error instanceof Error ? error.message : String(error),
-      );
-      return;
-    }
-    sendResult(id, { threadId: params.threadId });
-    scheduleZeroWorkTurnSettlement({
-      clientRequestId: params.clientRequestId,
-      prepared,
-      session,
-      graceMs:
-        goalCommand === "resume"
-          ? GOAL_RESUME_TURN_GRACE_MS
-          : ZERO_WORK_SETTLEMENT_GRACE_MS,
-    });
+  if (prepared === null) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      `codex could not correlate the input for thread "${params.threadId}"`,
+    );
     return;
   }
+  const turn: CodexTurnDispatch = {
+    id,
+    params,
+    session,
+    connection,
+    codexThreadId,
+    prepared,
+  };
 
-  const compaction = isStandaloneBuiltinCompactCommand(input);
+  const goalCommand = parseCodexGoalCommand(params.input);
+  if (goalCommand !== null) {
+    await dispatchCodexGoalCommand(turn, goalCommand);
+    return;
+  }
+  if (isStandaloneBuiltinCompactCommand(params.input)) {
+    await dispatchCodexCompaction(turn);
+    return;
+  }
+  await dispatchCodexTurn(turn);
+}
+
+interface CodexTurnDispatch {
+  id: string | number;
+  params: TurnStartParamsShape;
+  session: CodexBridgeSession;
+  connection: CodexAppServerConnection;
+  codexThreadId: string;
+  prepared: PreparedProviderCommandDispatch;
+}
+
+function answerFailedTurnInput(turn: CodexTurnDispatch, error: unknown): void {
+  turn.prepared.rollback();
+  const busy = codexBusyAdmission(error);
+  if (busy !== null) {
+    sendResult(turn.id, busy);
+    return;
+  }
+  sendError(
+    turn.id,
+    BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+    error instanceof Error ? error.message : String(error),
+  );
+}
+
+async function dispatchCodexGoalCommand(
+  turn: CodexTurnDispatch,
+  command: CodexGoalCommand,
+): Promise<void> {
+  let refusal: string | null;
   try {
-    let result: unknown;
-    if (compaction) {
-      awaitCompactionTurn({
-        clientRequestId: params.clientRequestId,
-        prepared,
-        session,
-      });
-      result = await connection.request({
-        method: "thread/compact/start",
-        params: { threadId: codexThreadId },
-        resultSchema: ignoredChildResultSchema,
-      });
-    } else {
-      const permissionSettings = toCodexPermissionSettings({
-        additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-        gitWritableRoots: session.translator.getThreadGitWritableRoots(
-          params.threadId,
-        ),
-        options: decoded.sessionOptions,
-      });
-      const cyberAccessProgram = await resolveTurnCyberAccessProgram(
-        session,
-        connection,
-        codexThreadId,
-        decoded,
-      );
-      const previousPermissions = session.turnPermissionSettings;
-      session.turnPermissionSettings = permissionSettings;
-      result = await connection
-        .request({
-          method: "turn/start",
-          params: {
-            threadId: codexThreadId,
-            input: await resolveCodexSkillInput(session, input),
-            approvalPolicy: permissionSettings.approvalPolicy,
-            approvalsReviewer: permissionSettings.approvalsReviewer,
-            sandboxPolicy: permissionSettings.sandboxPolicy,
-            model: decoded.sessionOptions.model ?? undefined,
-            serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
-            ...(cyberAccessProgram === null ? {} : { cyberAccessProgram }),
-          },
-          resultSchema: ignoredChildResultSchema,
-        })
-        .catch((error: unknown) => {
-          if (session.turnPermissionSettings === permissionSettings) {
-            session.turnPermissionSettings = previousPermissions;
-          }
-          throw error;
-        });
-    }
-    sendResult(id, { threadId: params.threadId });
-    settleAcceptedDispatch({
-      clientRequestId: params.clientRequestId,
-      compaction,
-      prepared,
-      session,
-      result,
+    refusal = await runCodexGoalCommand(
+      turn.connection,
+      turn.codexThreadId,
+      command,
+    );
+  } catch (error) {
+    answerFailedTurnInput(turn, error);
+    return;
+  }
+  if (refusal !== null) {
+    turn.prepared.rollback();
+    sendResult(turn.id, { admission: "rejected", message: refusal });
+    return;
+  }
+  settleUnopenedDispatch(
+    turn.session,
+    { clientRequestId: turn.params.clientRequestId, prepared: turn.prepared },
+    { status: "completed" },
+  );
+  sendResult(turn.id, ACCEPTED_TURN_INPUT);
+}
+
+async function dispatchCodexCompaction(turn: CodexTurnDispatch): Promise<void> {
+  const { session, params } = turn;
+  const accepted = waitForInputAcceptance(session, params.clientRequestId);
+  awaitCompactionTurn({
+    clientRequestId: params.clientRequestId,
+    prepared: turn.prepared,
+    session,
+  });
+  try {
+    await turn.connection.request({
+      method: "thread/compact/start",
+      params: { threadId: turn.codexThreadId },
+      resultSchema: ignoredChildResultSchema,
     });
   } catch (error) {
+    session.inputAcceptanceWaiters.delete(params.clientRequestId);
     session.unopenedCompactionDispatches =
       session.unopenedCompactionDispatches.filter(
         (dispatch) => dispatch.clientRequestId !== params.clientRequestId,
       );
-    prepared?.rollback();
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      error instanceof Error ? error.message : String(error),
-    );
+    answerFailedTurnInput(turn, error);
+    return;
   }
+  markCompactionDispatchAccepted(session, params.clientRequestId);
+  const failure = await accepted;
+  if (failure !== null) {
+    sendError(turn.id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, failure.message);
+    return;
+  }
+  sendResult(turn.id, ACCEPTED_TURN_INPUT);
+}
+
+async function dispatchCodexTurn(turn: CodexTurnDispatch): Promise<void> {
+  const { session, connection, codexThreadId, params } = turn;
+  const decoded = decodeCodexOptions(params.options);
+  let result: unknown;
+  try {
+    const permissionSettings = toCodexPermissionSettings({
+      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
+      gitWritableRoots: session.translator.getThreadGitWritableRoots(
+        params.threadId,
+      ),
+      options: decoded.sessionOptions,
+    });
+    const reasoningLevel = decoded.sessionOptions.reasoningLevel;
+    const cyberAccessProgram = await resolveTurnCyberAccessProgram({
+      session,
+      connection,
+      codexThreadId,
+      decoded,
+      daybreakChanged: params.apply.sessionOptions.includes(
+        CODEX_DAYBREAK_OPTION_ID,
+      ),
+    });
+    result = await connection.request({
+      method: "turn/start",
+      params: {
+        threadId: codexThreadId,
+        input: await resolveCodexSkillInput(session, params.input),
+        approvalPolicy: permissionSettings.approvalPolicy,
+        approvalsReviewer: permissionSettings.approvalsReviewer,
+        sandboxPolicy: permissionSettings.sandboxPolicy,
+        model: decoded.sessionOptions.model ?? undefined,
+        serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
+        ...(reasoningLevel === undefined
+          ? {}
+          : { effort: toCodexReasoningEffort(reasoningLevel) }),
+        ...(cyberAccessProgram === null ? {} : { cyberAccessProgram }),
+      },
+      resultSchema: ignoredChildResultSchema,
+    });
+  } catch (error) {
+    answerFailedTurnInput(turn, error);
+    return;
+  }
+  openTurnFromStartResponse({
+    clientRequestId: params.clientRequestId,
+    session,
+    result,
+  });
+  if (turn.prepared.claim()) {
+    sendError(
+      turn.id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      "codex answered turn/start without reporting the turn it started",
+    );
+    return;
+  }
+  sendResult(turn.id, ACCEPTED_TURN_INPUT);
 }
 
 const CODEX_STALE_STEER_MESSAGE_PATTERN =
@@ -2151,40 +2230,6 @@ async function handleTurnSteer(
     return;
   }
   try {
-    const decoded = decodeCodexOptions(params.options);
-    const permissionSettings = toCodexPermissionSettings({
-      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-      gitWritableRoots: session.translator.getThreadGitWritableRoots(
-        params.threadId,
-      ),
-      options: decoded.sessionOptions,
-    });
-    if (
-      !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings)
-    ) {
-      if (!session.openCodexTurnIds.has(params.expectedTurnId)) {
-        rejectStaleSteer(id, "The turn to steer is no longer active");
-        return;
-      }
-      const failure = await interruptCodexTurn(
-        session,
-        session.codexThreadId,
-        params.expectedTurnId,
-      );
-      if (failure !== null) throw failure;
-      const settled = await waitForCodexTurnSettlement(
-        session,
-        params.expectedTurnId,
-        INTERRUPT_SETTLEMENT_TIMEOUT_MS,
-      );
-      if (!settled) {
-        throw new Error(
-          "Codex did not stop the active turn before applying new permissions",
-        );
-      }
-      await handleTurnStart(id, params);
-      return;
-    }
     await session.connection.request({
       method: "turn/steer",
       params: {
@@ -2201,7 +2246,7 @@ async function handleTurnSteer(
         providerTurnId: params.expectedTurnId,
       },
     ]);
-    sendResult(id, { threadId: params.threadId });
+    sendResult(id, ACCEPTED_TURN_INPUT);
   } catch (error) {
     if (
       error instanceof CodexAppServerRpcError &&
@@ -2209,6 +2254,11 @@ async function handleTurnSteer(
       CODEX_STALE_STEER_MESSAGE_PATTERN.test(error.message)
     ) {
       rejectStaleSteer(id, error.message);
+      return;
+    }
+    const busy = codexBusyAdmission(error);
+    if (busy !== null) {
+      sendResult(id, busy);
       return;
     }
     rejectWithCodexError(id, error);
@@ -2360,7 +2410,7 @@ async function runCodexGoalCommand(
   connection: CodexAppServerConnection,
   codexThreadId: string,
   command: CodexGoalCommand,
-): Promise<void> {
+): Promise<string | null> {
   const { goal } = await connection.request({
     method: "thread/goal/get",
     params: { threadId: codexThreadId },
@@ -2370,7 +2420,7 @@ async function runCodexGoalCommand(
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
   if (goal === null || goal === undefined) {
-    throw new Error(`This thread has no Goal to ${command}.`);
+    return `This thread has no Goal to ${command}.`;
   }
   switch (command) {
     case "clear":
@@ -2380,21 +2430,19 @@ async function runCodexGoalCommand(
         resultSchema: ignoredChildResultSchema,
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
       });
-      return;
+      return null;
     case "pause":
       if (goal.status !== "active") {
-        throw new Error(
-          "The Goal is not active, so there is nothing to pause.",
-        );
+        return "The Goal is not active, so there is nothing to pause.";
       }
       await setCodexGoalStatus(connection, codexThreadId, "paused");
-      return;
+      return null;
     case "resume":
       if (goal.status === "active" || goal.status === "complete") {
-        throw new Error(`The Goal is already ${goal.status}.`);
+        return `The Goal is already ${goal.status}.`;
       }
       await setCodexGoalStatus(connection, codexThreadId, "active");
-      return;
+      return null;
   }
 }
 
@@ -2507,6 +2555,93 @@ async function handleThreadGoalClear(
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
       }),
     );
+    sendResult(id, result);
+  } catch (error) {
+    rejectWithCodexError(id, error);
+  }
+}
+
+const codexBackgroundTerminalsListResultSchema = z
+  .object({
+    data: z.array(
+      z
+        .object({
+          itemId: z.string(),
+          processId: z.string(),
+          command: z.string(),
+        })
+        .passthrough(),
+    ),
+    nextCursor: z.string().nullable(),
+  })
+  .passthrough();
+
+async function listCodexBackgroundTerminals(
+  connection: CodexAppServerConnection,
+  codexThreadId: string,
+): Promise<OpenWorkItem[]> {
+  const items: OpenWorkItem[] = [];
+  let cursor: string | null = null;
+  do {
+    const page: z.infer<typeof codexBackgroundTerminalsListResultSchema> =
+      await connection.request({
+        method: "thread/backgroundTerminals/list",
+        params: {
+          threadId: codexThreadId,
+          ...(cursor === null ? {} : { cursor }),
+        },
+        resultSchema: codexBackgroundTerminalsListResultSchema,
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      });
+    for (const terminal of page.data) {
+      items.push({
+        id: terminal.processId,
+        kind: "terminal",
+        description: `Codex background terminal is running \`${terminal.command}\``,
+      });
+    }
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+  return items;
+}
+
+async function handleThreadOpenWork(
+  id: string | number,
+  params: z.infer<typeof threadOpenWorkParamsSchema>,
+): Promise<void> {
+  const session = sessionsByBbThreadId.get(params.threadId);
+  const connection = session?.connection ?? null;
+  if (
+    session === undefined ||
+    session.closing ||
+    connection === null ||
+    connection.exited ||
+    session.codexThreadId === null
+  ) {
+    const result: ThreadOpenWorkResult = { items: [] };
+    sendResult(id, result);
+    return;
+  }
+  const codexThreadId = session.codexThreadId;
+  try {
+    const items = await listCodexBackgroundTerminals(connection, codexThreadId);
+    for (const subAgent of session.translator.listOpenSubAgents(
+      codexThreadId,
+    )) {
+      items.push({
+        id: subAgent.callId,
+        kind: "delegation",
+        description: `Codex sub-agent ${subAgent.agentPath} is running`,
+      });
+    }
+    if (session.goalStatus === "active") {
+      items.push({
+        id: `goal:${codexThreadId}`,
+        kind: "turn",
+        description: "Codex keeps starting turns for its active Goal",
+      });
+    }
+    const result: ThreadOpenWorkResult = { items };
     sendResult(id, result);
   } catch (error) {
     rejectWithCodexError(id, error);
@@ -2734,6 +2869,9 @@ async function handleRequest(
       break;
     case "thread/goal/clear":
       await handleThreadGoalClear(request.id, request.params);
+      break;
+    case "thread/openWork":
+      await handleThreadOpenWork(request.id, request.params);
       break;
     case "skills/configure":
       await handleSkillsConfigure(request.id, request.params);

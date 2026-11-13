@@ -313,6 +313,9 @@ function createFakeRuntime(): AgentRuntime {
     listRunningProviders() {
       return [];
     },
+    getSessionPhase() {
+      return "idle";
+    },
     getActiveTurnId() {
       return null;
     },
@@ -664,17 +667,13 @@ describe("createHostDaemonApp", () => {
         },
       });
       expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(1);
-      expect(runtimeOptions.current).toEqual(
-        expect.objectContaining({
-          env: {
-            PATH: "/shell/bin:/usr/bin",
-          },
-          shellEnv: {
-            PATH: "/shell/bin:/usr/bin",
-            BB_SERVER_URL: "http://127.0.0.1:3334",
-          },
-        }),
-      );
+      expect(runtimeOptions.current?.getProcessEnv?.()).toEqual({
+        PATH: "/shell/bin:/usr/bin",
+      });
+      expect(runtimeOptions.current?.getShellEnv?.()).toEqual({
+        PATH: "/shell/bin:/usr/bin",
+        BB_SERVER_URL: "http://127.0.0.1:3334",
+      });
       expect(listModels).toHaveBeenCalledWith({
         providerId: "cursor",
         cwd: "/tmp/worktree",
@@ -770,13 +769,9 @@ describe("createHostDaemonApp", () => {
       });
 
       expect(resolveRuntimeShellEnv).not.toHaveBeenCalled();
-      expect(runtimeOptions.current).toEqual(
-        expect.objectContaining({
-          env: {
-            PATH: "/startup/bin:/usr/bin",
-          },
-        }),
-      );
+      expect(runtimeOptions.current?.getProcessEnv?.()).toEqual({
+        PATH: "/startup/bin:/usr/bin",
+      });
     } finally {
       await app.daemon.shutdown("test", 0);
     }
@@ -945,13 +940,13 @@ describe("createHostDaemonApp", () => {
           freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
           await response;
           expect(calls).toEqual([method]);
-          expect(runtimeOptions.current?.env).toEqual({
+          expect(runtimeOptions.current?.getProcessEnv?.()).toEqual({
             PATH: "/fresh/bin:/usr/bin",
           });
         } else {
           await expect(response).resolves.toMatchObject({ ok: true });
           expect(calls).toEqual([method]);
-          expect(runtimeOptions.current?.env).toEqual({
+          expect(runtimeOptions.current?.getProcessEnv?.()).toEqual({
             PATH: "/last-resolved/bin:/usr/bin",
           });
           freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
@@ -991,7 +986,7 @@ describe("createHostDaemonApp", () => {
       freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
       await expect(response).resolves.toMatchObject({ ok: true });
       expect(calls).toEqual(["listCommands"]);
-      expect(runtimeOptions.current?.env).toEqual({
+      expect(runtimeOptions.current?.getProcessEnv?.()).toEqual({
         PATH: "/fresh/bin:/usr/bin",
       });
     } finally {

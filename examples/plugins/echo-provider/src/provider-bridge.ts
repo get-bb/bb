@@ -6,6 +6,7 @@ import {
   type ProviderHealthResult,
   type ThreadDelta,
   type ThreadEventTokenUsageBreakdown,
+  type TurnInputResult,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -139,26 +140,28 @@ function runEchoTurn(args: {
   input: readonly PromptInput[];
   options: unknown;
   clientRequestId?: ClientTurnRequestId;
+  onAdmitted?: () => void;
 }): void {
   const { session } = args;
   const prompt = promptText(args.input);
-  const deltas: ThreadDelta[] = [];
+  const admission: ThreadDelta[] = [];
   if (args.clientRequestId !== undefined) {
-    deltas.push({
+    admission.push({
       kind: "input.accepted",
       clientRequestId: args.clientRequestId,
     });
   }
+  admission.push({ kind: "turn.open" });
+  emitDeltas(session.threadId, admission);
+  args.onAdmitted?.();
 
   if (/(?:^|\s)\/noop(?:\s|$)/u.test(prompt)) {
-    deltas.push({
-      kind: "turn.boundary",
-      status: "completed",
-      claimIfIdle: true,
-    });
-    emitDeltas(session.threadId, deltas);
+    emitDeltas(session.threadId, [
+      { kind: "turn.boundary", status: "completed" },
+    ]);
     return;
   }
+  const deltas: ThreadDelta[] = [];
 
   session.turnsEchoed += 1;
   const turn: TurnContext = {
@@ -170,7 +173,6 @@ function runEchoTurn(args: {
     malformedReceipt: /(?:^|\s)malformed-receipt(?:\s|$)/u.test(prompt),
     stamp: null,
   };
-  deltas.push({ kind: "turn.open" });
   deltas.push(...commandDeltas(turn));
   deltas.push(...fileReadDeltas(turn));
   deltas.push(...searchDeltas(turn));
@@ -601,6 +603,17 @@ const handlers: Record<string, RequestHandler> = {
         fork: "none",
         approvalEnforcedBy: "runtime",
         steerMode: "queue",
+        openWork: { list: false },
+        sessionSettings: {
+          model: { apply: "live" },
+          reasoningLevel: { apply: "live" },
+          dynamicTools: { apply: "resume" },
+          providerOptions: {
+            shout: { apply: "live" },
+            model: { apply: "live" },
+            promptMode: { apply: "live" },
+          },
+        },
       },
     });
   },
@@ -695,12 +708,15 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
-    io.sendResult(id, {});
     runEchoTurn({
       session,
       input: parsed.data.input,
       options: parsed.data.options.providerOptions,
       clientRequestId: parsed.data.clientRequestId,
+      onAdmitted: () => {
+        const accepted: TurnInputResult = { admission: "accepted" };
+        io.sendResult(id, accepted);
+      },
     });
   },
 

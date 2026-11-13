@@ -8,7 +8,7 @@ import { ACP_FAMILY, type AcpAgentDefinition } from "./agents.js";
 const ACP_BASE_CAPABILITIES: PluginProviderCapabilities = {
   supportsServiceTier: true,
   supportsNativeUserQuestion: false,
-  supportsManualCompaction: false,
+  supportsManualCompaction: true,
   supportsThreadArchive: false,
   supportsThreadRename: false,
   fork: "none",
@@ -93,9 +93,6 @@ export function acpProviderDeclaration(
       ...ACP_BASE_CAPABILITIES,
       fork: agent.fork ?? DEFAULT_FORK,
       permissionModes: [...ACP_BASE_CAPABILITIES.permissionModes],
-      ...(agent.supportsManualCompaction === true
-        ? { supportsManualCompaction: true }
-        : {}),
       reasoningLevels:
         agent.reasoningLevels === undefined
           ? [...ACP_BASE_CAPABILITIES.reasoningLevels]

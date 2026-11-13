@@ -10,6 +10,7 @@ import type {
   ServiceTier,
   SessionOptionSelections,
 } from "@bb/domain";
+import type { SessionSettingsApply } from "@bb/provider-bridge-protocol";
 import type {
   AgentRuntimeBridgeLaunch,
   AgentRuntimeSkillRoot,
@@ -93,6 +94,8 @@ export type AdapterCommand =
       input: PromptInput[];
       clientRequestId: ClientTurnRequestId;
       options: ProviderExecutionContext;
+      apply: SessionSettingsApply;
+      dynamicTools?: DynamicTool[];
     }
   | {
       type: "turn/steer";
@@ -111,6 +114,11 @@ export type AdapterCommand =
     }
   | {
       type: "thread/discard";
+      threadId: string;
+      providerThreadId: string;
+    }
+  | {
+      type: "thread/openWork";
       threadId: string;
       providerThreadId: string;
     }

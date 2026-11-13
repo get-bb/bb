@@ -1,5 +1,6 @@
 import {
   getFirstUnclaimedQueuedRetry,
+  getThread,
   hasQueuedRetryOfTurnRequest,
   updateQueuedThreadMessage,
   type QueuedThreadMessageRow,
@@ -275,6 +276,45 @@ export async function retryTurnAfterRestart(
       thread: args.thread,
       turnRequestId: args.request.turnRequestId,
     }),
+  });
+}
+
+const BUSY_RETRY_DELAY_MS = 5_000;
+const BUSY_RETRY_REASON = "Agent was busy";
+
+/**
+ * Puts a request the provider answered `busy` back in line.
+ *
+ * Busy is the provider's explicit "not now": nothing started and the input never
+ * entered its conversation, so the retry re-sends it verbatim. Behind a running
+ * turn it waits for that turn to end like any queued message; with no turn to
+ * wait behind it waits a short, fixed delay instead of re-asking at once.
+ */
+export async function requeueBusyTurnRequest(
+  deps: TurnRetryDeps,
+  args: {
+    requestId: ClientTurnRequestId;
+    threadId: string;
+    waitForTurnEnd: boolean;
+  },
+): Promise<void> {
+  const thread = getThread(deps.db, args.threadId);
+  if (thread === null) {
+    return;
+  }
+  const failed = loadFailedTurn(deps.db, thread.id);
+  if (failed === null || failed.request.requestId !== args.requestId) {
+    return;
+  }
+  await dispatchRetry(deps, {
+    thread,
+    request: {
+      turnRequestId: args.requestId,
+      sendAt: args.waitForTurnEnd ? null : Date.now() + BUSY_RETRY_DELAY_MS,
+      reason: BUSY_RETRY_REASON,
+    },
+    continuation: CONTINUE_ACCEPTED_TURN_TEXT,
+    failed,
   });
 }
 

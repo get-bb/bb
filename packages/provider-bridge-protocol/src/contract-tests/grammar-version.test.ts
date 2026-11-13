@@ -60,7 +60,7 @@ describe("guardrail G3: delta grammar shape is paired with the protocol version"
     );
   });
 
-  it("keeps the protocol at version 2 while v3 is additive", () => {
-    expect(PROVIDER_BRIDGE_PROTOCOL_VERSION).toBe(2);
+  it("is at version 3, the session contract (admission answers, explicit phases, declared settings)", () => {
+    expect(PROVIDER_BRIDGE_PROTOCOL_VERSION).toBe(3);
   });
 });

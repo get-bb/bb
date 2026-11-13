@@ -26,6 +26,9 @@ import {
   threadUnarchiveParamsSchema,
   turnStartParamsSchema,
   turnSteerParamsSchema,
+  openWorkItemSchema,
+  sessionSettingsDeclarationSchema,
+  threadOpenWorkParamsSchema,
   experimental_defineProviderBridge,
   providerRecoveryKindSchema,
   runBridgeRequest,
@@ -48,12 +51,14 @@ const scriptedMethodSchema = z.enum([
   "thread/unarchive",
   "thread/name/set",
   "thread/goal/clear",
+  "thread/openWork",
   "skills/configure",
 ]);
 export const scriptedEchoOptionsSchema = z
   .object({
     startDelayMs: z.number().int().nonnegative().optional(),
     turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
+    turnStartBusyMessage: z.string().min(1).optional(),
     turnStartErrorAfterMs: z.number().int().nonnegative().optional(),
     steerResponseDelayMs: z.number().int().nonnegative().optional(),
     steerFindsNewTurn: z.boolean().optional(),
@@ -103,6 +108,8 @@ export const scriptedEchoOptionsSchema = z
     uniqueProviderThreadIds: z.boolean().optional(),
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
+    sessionSettings: sessionSettingsDeclarationSchema.optional(),
+    openWork: z.array(openWorkItemSchema).optional(),
   })
   .strict();
 export type ScriptedEchoOptions = z.infer<typeof scriptedEchoOptionsSchema>;
@@ -909,6 +916,8 @@ const handlers: Record<string, RequestHandler> = {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
         skills: { configure: true },
+        openWork: { list: true },
+        sessionSettings: processOptions.sessionSettings ?? {},
       },
     });
   },
@@ -1090,9 +1099,10 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
-    const responseDelayMs = session.options.turnStartResponseDelayMs;
-    if (responseDelayMs === undefined) {
-      io.sendResult(id, {});
+    const busyMessage = session.options.turnStartBusyMessage;
+    if (busyMessage !== undefined) {
+      io.sendResult(id, { admission: "busy", message: busyMessage });
+      return;
     }
     if (session.options.swallowTurnStart !== true) {
       beginTurn({
@@ -1101,8 +1111,14 @@ const handlers: Record<string, RequestHandler> = {
         clientRequestId: parsed.data.clientRequestId,
       });
     }
-    if (responseDelayMs !== undefined) {
-      setTimeout(() => io.sendResult(id, {}), responseDelayMs);
+    const responseDelayMs = session.options.turnStartResponseDelayMs;
+    if (responseDelayMs === undefined) {
+      io.sendResult(id, { admission: "accepted" });
+    } else {
+      setTimeout(
+        () => io.sendResult(id, { admission: "accepted" }),
+        responseDelayMs,
+      );
     }
   },
 
@@ -1159,7 +1175,7 @@ const handlers: Record<string, RequestHandler> = {
           providerTurnId,
         },
       ]);
-      io.sendResult(id, {});
+      io.sendResult(id, { admission: "accepted" });
     };
     if (options.steerResponseDelayMs === undefined) {
       acceptSteer();
@@ -1191,6 +1207,21 @@ const handlers: Record<string, RequestHandler> = {
     sessions.delete(parsed.data.threadId);
     openBackgroundTasks.delete(parsed.data.threadId);
     io.sendResult(id, {});
+  },
+
+  [BRIDGE_REQUEST_METHODS.threadOpenWork]: (id, params) => {
+    const parsed = threadOpenWorkParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.threadOpenWork,
+        parsed.error.issues,
+      );
+      return;
+    }
+    const session = sessions.get(parsed.data.threadId);
+    const options = session?.options ?? processOptions;
+    io.sendResult(id, { items: options.openWork ?? [] });
   },
 
   [BRIDGE_REQUEST_METHODS.threadDiscard]: (id, params) => {

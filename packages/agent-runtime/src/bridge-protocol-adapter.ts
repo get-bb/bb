@@ -21,6 +21,7 @@ import {
   threadDeltaNotificationParamsSchema,
   threadIdentityNotificationSchema,
   type BridgeCapabilities,
+  type SessionSettingsDeclaration,
 } from "@bb/provider-bridge-protocol";
 import {
   ASSEMBLER_GRAMMAR_VERSIONS,
@@ -58,6 +59,8 @@ export interface BridgeProtocolAdapter {
   id: string;
   capabilities: BridgeEnforcedCapabilities;
   readonly approvalEnforcedBy: "runtime" | "provider";
+  readonly sessionSettings: SessionSettingsDeclaration;
+  readonly sessionRestore: boolean;
   process: { command: string; args: string[]; env?: Record<string, string> };
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
@@ -205,6 +208,12 @@ export function createBridgeProtocolAdapter(
     get approvalEnforcedBy() {
       return handshake.approvalEnforcedBy;
     },
+    get sessionSettings() {
+      return handshake.sessionSettings;
+    },
+    get sessionRestore() {
+      return handshake.sessionRestore;
+    },
     process: options.process,
 
     buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
@@ -346,6 +355,10 @@ export function createBridgeProtocolAdapter(
                 command.options,
                 options.staticProviderOptions,
               ),
+              apply: command.apply,
+              ...(command.dynamicTools !== undefined
+                ? { dynamicTools: command.dynamicTools }
+                : {}),
             },
           };
         case "turn/steer":
@@ -422,6 +435,18 @@ export function createBridgeProtocolAdapter(
               providerThreadId: command.providerThreadId,
             },
           });
+        case "thread/openWork":
+          if (!handshake.openWork.list) {
+            return { kind: "noop", reason: "openWork.list not advertised" };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.threadOpenWork,
+            params: {
+              threadId: command.threadId,
+              providerThreadId: command.providerThreadId,
+            },
+          };
         case "thread/goal/clear":
           return gate("threadGoalClear", {
             kind: "request",

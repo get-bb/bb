@@ -22,6 +22,7 @@ beforeEach(() => {
     fakeScriptPath,
     JSON.stringify({
       archiveStatePath: join(workspaceDir, "fake-codex-archived.json"),
+      initialGoalStatus: "paused",
     }),
   );
   stubFakeCodexAppServer(fakeScriptPath);
@@ -41,7 +42,9 @@ it("passes the canonical protocol suite against supervised fake app-server child
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
-      zeroWorkPromptInput: [{ type: "text", text: "/clear", mentions: [] }],
+      zeroWorkPromptInput: [
+        { type: "text", text: "/goal clear", mentions: [] },
+      ],
       interruptiblePromptInput: [
         { type: "text", text: "/wait-for-interrupt", mentions: [] },
       ],

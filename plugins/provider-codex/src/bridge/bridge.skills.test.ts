@@ -7,6 +7,7 @@ import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestH
 import { experimental_killAllChildrenForTests, handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -61,6 +62,7 @@ it("resolves selected skills for both turn start and steering through the app-se
       ],
     };
     harness.sendRequest(2, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId,
       providerThreadId,
       clientRequestId: "creq_2345678923",

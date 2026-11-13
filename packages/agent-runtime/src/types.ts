@@ -24,6 +24,7 @@ import type {
   SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
 import type { RuntimeOpenBackgroundWork } from "./runtime-background-work-state.js";
+import type { RuntimeSessionPhaseName } from "./runtime-session-state.js";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
@@ -61,9 +62,9 @@ export interface AgentRuntimeOptions {
 
   additionalWorkspaceWriteRoots?: readonly string[];
 
-  env?: Record<string, string>;
+  getProcessEnv?: () => Record<string, string> | undefined;
 
-  shellEnv?: AgentRuntimeShellEnvironment;
+  getShellEnv?: () => AgentRuntimeShellEnvironment;
 
   threadStorageRootPath?: string;
 
@@ -197,9 +198,20 @@ export interface RunTurnArgs {
   options: AgentRuntimeExecutionOptions;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   instructions?: string;
+  instructionMode?: InstructionMode;
+  dynamicTools?: DynamicTool[];
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
 }
 
-export type RunTurnResult = { status: "started" } | { status: "unconfirmed" };
+type TurnInputRefusal =
+  | { status: "busy"; message: string }
+  | { status: "rejected"; message: string };
+
+export type RunTurnResult =
+  | { status: "started" }
+  | { status: "unconfirmed" }
+  | TurnInputRefusal;
 
 export interface SteerTurnArgs {
   threadId: string;
@@ -207,8 +219,6 @@ export interface SteerTurnArgs {
   input: PromptInput[];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
-  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
-  instructions?: string;
 }
 
 interface SteerTurnAppliedResult {
@@ -227,7 +237,8 @@ interface SteerTurnUnconfirmedResult {
 export type SteerTurnResult =
   | SteerTurnAppliedResult
   | SteerTurnStaleResult
-  | SteerTurnUnconfirmedResult;
+  | SteerTurnUnconfirmedResult
+  | TurnInputRefusal;
 
 export interface StopThreadArgs {
   threadId: string;
@@ -363,6 +374,8 @@ export interface AgentRuntime {
   listRunningProviders(): string[];
 
   getActiveTurnId(threadId: string): string | null;
+
+  getSessionPhase(threadId: string): RuntimeSessionPhaseName;
 
   waitForActiveTurn(
     threadId: string,

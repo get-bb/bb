@@ -69,7 +69,6 @@ import { buildExecutionOptions } from "./thread-commands.js";
 import {
   getActiveTurnId,
   isActiveTurnMainRunIdle,
-  isManualCompactionActive,
 } from "./thread-events.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
@@ -603,10 +602,6 @@ async function runDispatchAttempt(
       return;
     }
 
-    if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
-      continued.outcome = waitOn({ kind: "thread-busy" }, null);
-      return;
-    }
     if (
       currentThread.status === "active" &&
       resolveDispatchAttemptKind(currentThread, payload.mode) === "join-turn" &&

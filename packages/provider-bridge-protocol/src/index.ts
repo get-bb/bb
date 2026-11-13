@@ -1,5 +1,6 @@
 export * from "./version.js";
 export * from "./handshake.js";
+export * from "./session-contract.js";
 export * from "./execution-options.js";
 export * from "./provider-maintenance.js";
 export * from "./requests.js";

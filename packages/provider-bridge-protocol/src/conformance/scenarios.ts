@@ -14,6 +14,8 @@ import {
   initializeResultSchema,
   negotiateGrammarVersion,
   threadIdentityResultSchema,
+  threadOpenWorkResultSchema,
+  turnInputResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   ThreadEventGrammar,
   THREAD_EVENT_GRAMMAR_RULES,
@@ -44,6 +46,7 @@ interface ScenarioContext {
     bbTurnId: string,
   ) => string | undefined;
   fork: BridgeCapabilities["fork"];
+  openWorkList: boolean;
   providerThreadId?: string;
 }
 
@@ -476,6 +479,46 @@ async function runDeclaredRequestScenario(
       ];
 }
 
+const TURN_ADMISSION_ID = "turn/admission-answered";
+const TURN_ADMISSION_TITLE =
+  "turn/start answers accepted only after input.accepted is on the wire";
+
+function checkTurnAdmissionAnswer(
+  client: ConformanceClient,
+  response: JsonRpcWireMessage | null,
+): ConformanceCheckResult {
+  if (response === null) {
+    return fail(TURN_ADMISSION_ID, TURN_ADMISSION_TITLE, "turn/start was not answered");
+  }
+  const parsed = turnInputResultSchema.safeParse(response.result);
+  if (!parsed.success) {
+    return fail(
+      TURN_ADMISSION_ID,
+      TURN_ADMISSION_TITLE,
+      `turn/start must answer {admission: "accepted" | "busy" | "rejected"}; got ${JSON.stringify(response.result ?? response.error)}`,
+    );
+  }
+  if (parsed.data.admission !== "accepted") {
+    return fail(
+      TURN_ADMISSION_ID,
+      TURN_ADMISSION_TITLE,
+      `the fixture prompt was answered ${parsed.data.admission}: ${parsed.data.message}`,
+    );
+  }
+  const responseIndex = client.log.indexOf(response);
+  const acceptedIndex =
+    client.events.find((entry) => entry.event.type === "turn/input/accepted")
+      ?.logIndex ?? -1;
+  if (acceptedIndex === -1 || acceptedIndex > responseIndex) {
+    return fail(
+      TURN_ADMISSION_ID,
+      TURN_ADMISSION_TITLE,
+      "turn/start answered accepted before its input.accepted delta",
+    );
+  }
+  return pass(TURN_ADMISSION_ID, TURN_ADMISSION_TITLE);
+}
+
 const START_IDENTITY_ANNOUNCED_ID = "session/start-identity-announced";
 const START_IDENTITY_ANNOUNCED_TITLE =
   "thread/start announces the returned session through thread/identity";
@@ -578,7 +621,8 @@ export async function runSessionLifecycleScenarios(
         (event) => event.type === "turn/completed",
       ),
     );
-    await client.waitForResponse(id);
+    const turnStartResponse = await client.waitForResponse(id);
+    results.push(checkTurnAdmissionAnswer(client, turnStartResponse));
 
     const title = "an accepted turn starts and settles";
     if (started === undefined || started === null) {
@@ -792,6 +836,7 @@ export async function runSessionLifecycleScenarios(
   results.push(...(await runArchivedResumeRecoveryScenario(context, threadId)));
   results.push(...(await runThreadsIndependentScenario(context, threadId)));
   results.push(...(await runInterruptStopScenario(context, threadId)));
+  results.push(...(await runOpenWorkScenario(context, threadId)));
 
   if (context.providerThreadId !== undefined) {
     const releaseId = client.request(BRIDGE_REQUEST_METHODS.threadStop, {
@@ -1003,6 +1048,55 @@ async function runThreadsIndependentScenario(
     ];
   }
   return [pass(THREADS_INDEPENDENT_ID, THREADS_INDEPENDENT_TITLE)];
+}
+
+const OPEN_WORK_ID = "openWork/list-declared";
+const OPEN_WORK_TITLE =
+  "thread/openWork answers a valid open-work list iff the handshake declares openWork.list";
+
+async function runOpenWorkScenario(
+  context: ScenarioContext,
+  threadId: string,
+): Promise<ConformanceCheckResult[]> {
+  const { client } = context;
+  if (context.providerThreadId === undefined) {
+    return [
+      skipped(
+        OPEN_WORK_ID,
+        OPEN_WORK_TITLE,
+        "prerequisite session/start-identity failed",
+      ),
+    ];
+  }
+  const id = client.request(BRIDGE_REQUEST_METHODS.threadOpenWork, {
+    threadId,
+    providerThreadId: context.providerThreadId,
+  });
+  const response = await client.waitForResponse(id);
+  if (response === null) {
+    return [fail(OPEN_WORK_ID, OPEN_WORK_TITLE, "thread/openWork was not answered")];
+  }
+  if (!context.openWorkList) {
+    return errorCode(response) === BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND
+      ? [pass(OPEN_WORK_ID, OPEN_WORK_TITLE)]
+      : [
+          fail(
+            OPEN_WORK_ID,
+            OPEN_WORK_TITLE,
+            `the handshake does not declare openWork.list, yet the bridge answered ${JSON.stringify(response.error ?? response.result)}`,
+          ),
+        ];
+  }
+  const parsed = threadOpenWorkResultSchema.safeParse(response.result);
+  return parsed.success
+    ? [pass(OPEN_WORK_ID, OPEN_WORK_TITLE)]
+    : [
+        fail(
+          OPEN_WORK_ID,
+          OPEN_WORK_TITLE,
+          `the handshake declares openWork.list but the answer was ${JSON.stringify(response.result ?? response.error)}`,
+        ),
+      ];
 }
 
 const INTERRUPT_SETTLES_ID = "stop/interrupt-settles-before-result";

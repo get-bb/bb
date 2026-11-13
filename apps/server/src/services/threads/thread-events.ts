@@ -3,11 +3,9 @@ import {
   createEventId,
   getActiveStoredTurnId,
   isStoredTurnMainRunIdle,
-  isStoredTurnProviderCompactionRunning,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getStoredProviderSession,
-  getStoredTurnRequestEventForTurn,
   getThread,
   listStoredTurnStartedKeys,
   noopNotifier,
@@ -20,7 +18,6 @@ import {
   CLIENT_TURN_REQUEST_ID_SUFFIX_LENGTH,
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
-  isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
   systemErrorEventDataSchema,
   threadScope,
@@ -878,41 +875,6 @@ export function isActiveTurnMainRunIdle(
       threadId: thread.id,
       turnId: activeTurnId,
     })
-  );
-}
-
-export function isManualCompactionActive(
-  deps: ThreadEventReadDeps,
-  thread: Pick<Thread, "id" | "status">,
-): boolean {
-  if (thread.status !== "active") {
-    return false;
-  }
-
-  const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
-  if (
-    activeTurnId !== null &&
-    isStoredTurnProviderCompactionRunning(deps.db, {
-      threadId: thread.id,
-      turnId: activeTurnId,
-    })
-  ) {
-    return true;
-  }
-  const requestRow = activeTurnId
-    ? (getStoredTurnRequestEventForTurn(deps.db, {
-        threadId: thread.id,
-        turnId: activeTurnId,
-      }) ?? getLastStoredTurnRequestEvent(deps.db, thread.id))
-    : getLastStoredTurnRequestEvent(deps.db, thread.id);
-  if (!requestRow) {
-    return false;
-  }
-
-  const request = parseStoredTurnRequestEvent(requestRow);
-  return (
-    request.target.kind === "new-turn" &&
-    isStandaloneBuiltinCompactCommand(request.input)
   );
 }
 

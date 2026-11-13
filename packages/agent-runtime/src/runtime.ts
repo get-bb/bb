@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   normalizeProviderThreadNameEvent,
@@ -9,7 +10,13 @@ import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
+  EMPTY_SESSION_SETTINGS_APPLY,
   commandListResultSchema,
+  mergeSessionSettingsDeclarations,
+  threadOpenWorkResultSchema,
+  turnInputResultSchema,
+  type SessionSettingsApply,
+  type SessionSettingsDeclaration,
   providerHealthResultSchema,
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
@@ -56,7 +63,19 @@ import {
 } from "./runtime-thread-identity.js";
 import { RuntimeThreadGoalState } from "./runtime-thread-goal-state.js";
 import { RuntimeBackgroundWorkState } from "./runtime-background-work-state.js";
-import { RuntimeTurnState } from "./runtime-turn-state.js";
+import {
+  RuntimeSessionStates,
+  type RuntimeSessionPhase,
+} from "./runtime-session-state.js";
+import {
+  composeSessionSettingsRecord,
+  describeSessionSettingChanges,
+  listUserSettingChanges,
+  planSessionSettings,
+  toSessionSettingsApply,
+  type PlannedSessionSettingChange,
+  type SessionSettingsRecord,
+} from "./runtime-session-settings.js";
 import type {
   AgentRuntimeContributedEnvEntry,
   AgentRuntime,
@@ -76,14 +95,7 @@ import {
 } from "./thread-shell-environment.js";
 import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 
-interface RecordThreadExecutionOptionsArgs {
-  options: AgentRuntimeExecutionOptions;
-  threadId: string;
-}
-
 interface RestartThreadBridgeArgs {
-  instructions: string | undefined;
-  options: AgentRuntimeExecutionOptions;
   threadId: string;
 }
 
@@ -145,15 +157,6 @@ interface RequestRecoveryArgs {
   threadId: string;
 }
 
-export class CompetingTurnError extends Error {
-  constructor(threadId: string) {
-    super(
-      `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`,
-    );
-    this.name = "CompetingTurnError";
-  }
-}
-
 export class AgentRuntimeRecoveryError extends Error {
   readonly code: "auth_required" | "rate_limited";
   readonly recovery: AgentRuntimeProviderRecoveryHint;
@@ -212,11 +215,20 @@ interface ThreadRuntimeConfig {
   instructions?: string;
   envVars: Record<string, string>;
   options: AgentRuntimeExecutionOptions;
+  requestedOptions: AgentRuntimeExecutionOptions;
   processKey: string;
   projectId?: string;
   providerId: string;
   sessionRestorable: boolean;
+  sessionSettings: SessionSettingsDeclaration | undefined;
+  pendingSettingsNote: string | null;
 }
+
+interface OpenWorkAssessment {
+  blockers: string[];
+}
+
+const OPEN_WORK_PROBE_TIMEOUT_MS = 5_000;
 
 interface RuntimeParsedMessageArgs {
   parsed: JsonRpcObject;
@@ -278,23 +290,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     AgentRuntimeProviderRecoveryHint
   >();
   const threadsRetryingBridgeRestartOnIdle = new Set<string>();
-  const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
-  const pendingTurnStarts = new Map<
-    string,
-    { sinceMs: number; watchdogFired: boolean }
-  >();
+  const sessions = new RuntimeSessionStates();
   const turnStartWatchdogThresholdMs =
     options.turnStartWatchdog?.thresholdMs ?? 120_000;
   const turnStartWatchdogTimer = setInterval(() => {
-    const nowMs = Date.now();
-    for (const [threadId, entry] of pendingTurnStarts) {
-      if (
-        entry.watchdogFired ||
-        nowMs - entry.sinceMs < turnStartWatchdogThresholdMs
-      ) {
-        continue;
-      }
-      entry.watchdogFired = true;
+    for (const { threadId } of sessions.takeOverdueTurnStarts(
+      turnStartWatchdogThresholdMs,
+    )) {
       options.onEvent({
         type: "system/error",
         threadId,
@@ -309,7 +311,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const stagedThreadRewinds = new Map<string, StagedThreadRewind>();
   const suppressedThreadEventIds = new Set<string>();
   const threadGoalState = new RuntimeThreadGoalState();
-  const turnState = new RuntimeTurnState();
   const toolCalls = new RuntimeToolCalls();
   const backgroundWorkState = new RuntimeBackgroundWorkState();
   const threadEventGrammar = new ThreadEventGrammar();
@@ -321,15 +322,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
     bridgeNodeExecutablePath: process.execPath,
     captureThreadExitState: (threadId) => ({
-      activeTurnId: turnState.getActiveTurnId(threadId),
-      pendingTurnStart: pendingTurnStarts.has(threadId),
+      activeTurnId: sessions.getActiveTurnId(threadId),
+      pendingTurnStart: sessions.hasTurnStart(threadId),
       providerThreadId:
         threadIdentityRegistry.getProviderThreadId(threadId) ?? null,
       threadId,
     }),
     createProviderIdentityState: (providerId) =>
       threadIdentityRegistry.createProviderState({ providerId }),
-    env: options.env,
+    getEnv: () => options.getProcessEnv?.(),
     getNextRequestId: () => nextRequestId++,
     handleDeferredEvents: (args) => {
       if (suppressedThreadEventIds.has(args.sourceThreadId)) {
@@ -348,7 +349,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       toolCalls.cancelThread(threadId);
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
-      turnState.clearThread(threadId);
+      sessions.forget(threadId);
       const settlements = backgroundWorkState.settleThread(threadId);
       if (!suppressedThreadEventIds.has(threadId)) {
         for (const event of settlements) {
@@ -732,24 +733,32 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     threadRuntimeConfigs.set(threadId, config);
   }
 
-  function updateSessionRestoreCapability(
+  function updateSessionCapabilities(
     threadId: string,
-    sessionRestorable: boolean | undefined,
+    result: {
+      sessionRestorable?: boolean | undefined;
+      sessionSettings?: SessionSettingsDeclaration | undefined;
+    },
   ): void {
-    if (sessionRestorable === undefined) {
+    const current = threadRuntimeConfigs.get(threadId);
+    if (!current) {
       return;
     }
-    const current = threadRuntimeConfigs.get(threadId);
-    if (current) {
-      threadRuntimeConfigs.set(threadId, { ...current, sessionRestorable });
-    }
+    const proc = providerProcesses.requireProviderProcess({
+      processKey: current.processKey,
+      providerId: current.providerId,
+    });
+    threadRuntimeConfigs.set(threadId, {
+      ...current,
+      sessionRestorable:
+        result.sessionRestorable ?? proc.adapter.sessionRestore,
+      sessionSettings: result.sessionSettings,
+    });
   }
 
   function clearThreadRuntimeConfig(threadId: string): void {
     threadsAwaitingBridgeRestart.delete(threadId);
     threadsRetryingBridgeRestartOnIdle.delete(threadId);
-    idleProviderSessionSinceMsByThreadId.delete(threadId);
-    pendingTurnStarts.delete(threadId);
     threadGoalState.clearThread(threadId);
     threadRuntimeConfigs.delete(threadId);
   }
@@ -765,7 +774,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const current = threadOperationCounts.get(threadId);
     if (current === undefined || current <= 1) {
       threadOperationCounts.delete(threadId);
-      resolveTurnWaitersIfSettled(threadId);
+      sessions.resolveWaitersWithoutTurn(threadId);
       retryBridgeRestartOnIdle(threadId);
       return;
     }
@@ -782,10 +791,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         threadsRetryingBridgeRestartOnIdle.delete(threadId);
         return;
       }
-      if (
-        threadHasInFlightOperation(threadId) ||
-        turnState.getActiveTurnId(threadId) !== null
-      ) {
+      if (threadHasInFlightOperation(threadId) || !sessions.isIdle(threadId)) {
         return;
       }
       threadsRetryingBridgeRestartOnIdle.delete(threadId);
@@ -797,20 +803,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     return threadOperationCounts.has(threadId);
   }
 
-  function threadMayStartTurn(threadId: string): boolean {
-    return (
-      turnState.getActiveTurnId(threadId) !== null ||
-      pendingTurnStarts.has(threadId) ||
-      threadHasInFlightOperation(threadId)
-    );
-  }
-
-  function resolveTurnWaitersIfSettled(threadId: string): void {
-    if (!threadMayStartTurn(threadId)) {
-      turnState.resolveWaitersWithoutTurn(threadId);
-    }
-  }
-
   async function runThreadOperation<TResult>(
     args: RunThreadOperationArgs<TResult>,
   ): Promise<TResult> {
@@ -819,15 +811,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return await args.work();
     } finally {
       finishThreadOperation(args.threadId);
-    }
-  }
-
-  function assertThreadCanStartTurn(threadId: string): void {
-    if (
-      turnState.getActiveTurnId(threadId) !== null ||
-      pendingTurnStarts.has(threadId)
-    ) {
-      throw new CompetingTurnError(threadId);
     }
   }
 
@@ -852,57 +835,120 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadId,
     });
     clearThreadRuntimeConfig(threadId);
-    turnState.clearThread(threadId);
+    sessions.forget(threadId);
     backgroundWorkState.clearThread(threadId);
     threadEventGrammar.clearThread(threadId);
   }
 
-  function markProviderSessionNotIdle(threadId: string): void {
-    idleProviderSessionSinceMsByThreadId.delete(threadId);
+  function describeBusyPhase(phase: RuntimeSessionPhase): string | null {
+    switch (phase.phase) {
+      case "idle":
+      case "dead":
+        return null;
+      case "starting":
+        return "the provider session is starting";
+      case "turnStarting":
+      case "turnRunning":
+        return "a turn is running";
+      case "compacting":
+        return "the agent is compacting context";
+      case "waitingOnUser":
+        return "the agent is waiting on the user";
+      case "stopping":
+        return "the provider session is stopping";
+    }
   }
 
-  function markHostedProviderSessionIdle(threadId: string): void {
-    if (
-      threadIdentityRegistry.getProviderSession(threadId) === null ||
-      turnState.getActiveTurnId(threadId) !== null ||
-      pendingTurnStarts.has(threadId)
-    ) {
-      return;
+  async function probeBridgeOpenWork(threadId: string): Promise<string[]> {
+    const config = threadRuntimeConfigs.get(threadId);
+    const providerThreadId =
+      threadIdentityRegistry.getProviderThreadId(threadId);
+    if (config === undefined || providerThreadId === undefined) {
+      return [];
     }
-    if (!idleProviderSessionSinceMsByThreadId.has(threadId)) {
-      idleProviderSessionSinceMsByThreadId.set(threadId, Date.now());
+    let proc: ProviderProcess;
+    try {
+      proc = providerProcesses.requireProviderProcess({
+        processKey: config.processKey,
+        providerId: config.providerId,
+      });
+    } catch {
+      return [];
+    }
+    const plan = proc.adapter.buildCommandPlan({
+      type: "thread/openWork",
+      threadId,
+      providerThreadId,
+    });
+    if (plan.kind === "noop") {
+      return [];
+    }
+    try {
+      const result = await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: threadOpenWorkResultSchema,
+        timeoutMs: OPEN_WORK_PROBE_TIMEOUT_MS,
+      });
+      return result.items.map((item) =>
+        item.description.trim().length > 0
+          ? item.description
+          : `${item.kind} ${item.id}`,
+      );
+    } catch (error) {
+      return [
+        `the provider did not report its open work (${error instanceof Error ? error.message : String(error)})`,
+      ];
     }
   }
 
-  function observeProviderSessionIdleState(event: ThreadEvent): void {
-    if (event.type === "turn/started") {
-      pendingTurnStarts.delete(event.threadId);
-      markProviderSessionNotIdle(event.threadId);
-      return;
+  async function assessThreadOpenWork(
+    threadId: string,
+  ): Promise<OpenWorkAssessment> {
+    const blockers: string[] = [];
+    const busyPhase = describeBusyPhase(sessions.phase(threadId));
+    if (busyPhase !== null) {
+      blockers.push(busyPhase);
     }
+    if (backgroundWorkState.hasOpenThreadWork(threadId)) {
+      blockers.push("background work is running");
+    }
+    if (toolCalls.hasThread(threadId)) {
+      blockers.push("a plugin tool call is running");
+    }
+    if (blockers.length > 0) {
+      return { blockers };
+    }
+    return { blockers: await probeBridgeOpenWork(threadId) };
+  }
 
-    if (event.type === "turn/completed") {
-      pendingTurnStarts.delete(event.threadId);
-      markHostedProviderSessionIdle(event.threadId);
-      resolveTurnWaitersIfSettled(event.threadId);
-      return;
+  async function assessProcessOpenWork(args: {
+    proc: ProviderProcess;
+    excludeThreadId: string;
+  }): Promise<{ threadId: string; blockers: string[] } | null> {
+    for (const threadId of args.proc.identity.threadIds) {
+      if (threadId === args.excludeThreadId) {
+        continue;
+      }
+      if (threadHasInFlightOperation(threadId)) {
+        return { threadId, blockers: ["a thread operation is in flight"] };
+      }
+      const assessment = await assessThreadOpenWork(threadId);
+      if (assessment.blockers.length > 0) {
+        return { threadId, blockers: assessment.blockers };
+      }
     }
-
-    if (event.type === "provider/error" && event.willRetry !== true) {
-      pendingTurnStarts.delete(event.threadId);
-      markHostedProviderSessionIdle(event.threadId);
-      resolveTurnWaitersIfSettled(event.threadId);
-    }
+    return null;
   }
 
   function findReapableIdleProviderSession(
     args: FindReapableIdleProviderSessionArgs,
   ): ReapIdleProviderSessionCandidate | null {
-    if (
-      threadHasInFlightOperation(args.threadId) ||
-      pendingTurnStarts.has(args.threadId) ||
-      turnState.getActiveTurnId(args.threadId) !== null
-    ) {
+    if (threadHasInFlightOperation(args.threadId)) {
+      return null;
+    }
+    const phase = sessions.phase(args.threadId);
+    if (phase.phase !== "idle") {
       return null;
     }
 
@@ -918,17 +964,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return null;
     }
 
-    const idleSinceMs = idleProviderSessionSinceMsByThreadId.get(args.threadId);
-    if (idleSinceMs === undefined) {
-      return null;
-    }
-
-    if (args.nowMs - idleSinceMs < args.idleForMs) {
+    if (args.nowMs - phase.sinceMs < args.idleForMs) {
       return null;
     }
 
     return {
-      idleSinceMs,
+      idleSinceMs: phase.sinceMs,
       providerThreadId,
       runtimeConfig,
       threadId: args.threadId,
@@ -969,7 +1010,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return;
     }
     threadsAwaitingBridgeRestart.set(args.threadId, args.hint);
-    if (turnState.getActiveTurnId(args.threadId) !== null) {
+    if (!sessions.isIdle(args.threadId)) {
       return;
     }
     if (threadHasInFlightOperation(args.threadId)) {
@@ -982,16 +1023,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     void runThreadOperation({
       threadId: args.threadId,
       work: async () => {
-        const currentConfig = threadRuntimeConfigs.get(args.threadId);
-        if (!currentConfig) {
+        if (!threadRuntimeConfigs.has(args.threadId)) {
           threadsAwaitingBridgeRestart.delete(args.threadId);
           return;
         }
-        await restartThreadBridgeIfRecommended({
-          threadId: args.threadId,
-          options: currentConfig.options,
-          instructions: currentConfig.instructions,
-        });
+        await restartThreadBridgeIfRecommended({ threadId: args.threadId });
       },
     }).catch((error: unknown) => {
       options.onStderr?.(
@@ -1013,32 +1049,30 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadsAwaitingBridgeRestart.delete(args.threadId);
       return;
     }
-    if (turnState.getActiveTurnId(args.threadId) !== null) {
-      return;
-    }
     const proc = providerProcesses.requireProviderProcess({
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
-    const hostedThreadIds = [...proc.identity.threadIds].filter(
-      (threadId) => threadId !== args.threadId,
-    );
-    const busyThreadId = hostedThreadIds.find(
-      (threadId) =>
-        turnState.getActiveTurnId(threadId) !== null ||
-        pendingTurnStarts.has(threadId) ||
-        threadHasInFlightOperation(threadId) ||
-        backgroundWorkState.hasOpenThreadWork(threadId),
-    );
-    if (busyThreadId !== undefined) {
+    const ownWork = await assessThreadOpenWork(args.threadId);
+    const busy =
+      ownWork.blockers.length > 0
+        ? { threadId: args.threadId, blockers: ownWork.blockers }
+        : await assessProcessOpenWork({
+            proc,
+            excludeThreadId: args.threadId,
+          });
+    if (busy !== null) {
       options.onStderr?.(
-        `Deferring the "${currentConfig.providerId}" bridge restart recommended for thread "${args.threadId}": thread "${busyThreadId}" is mid-turn or has open background work on the same process.`,
+        `Deferring the "${currentConfig.providerId}" bridge restart recommended for thread "${args.threadId}": thread "${busy.threadId}" has open work (${busy.blockers.join("; ")}).`,
         args.threadId,
       );
       return;
     }
     threadsAwaitingBridgeRestart.delete(args.threadId);
     const providerThreadId = requireProviderThreadId(args.threadId);
+    const hostedThreadIds = [...proc.identity.threadIds].filter(
+      (threadId) => threadId !== args.threadId,
+    );
     const hostedSessions = hostedThreadIds.flatMap((threadId) => {
       const config = threadRuntimeConfigs.get(threadId);
       const hostedProviderThreadId =
@@ -1055,27 +1089,25 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       processKey: proc.processKey,
       providerId: proc.providerId,
     });
-    await resumeThreadFromConfig({
-      currentConfig,
-      instructions: args.instructions,
-      options: args.options,
+    await resumeThreadFromRecord({
+      config: currentConfig,
+      contributedEnv: currentConfig.contributedEnv,
+      record: settingsRecordOf(currentConfig),
       providerThreadId,
       threadId: args.threadId,
     });
     for (const hosted of hostedSessions) {
       if (
         threadIdentityRegistry.getProviderSession(hosted.threadId) !== null ||
-        threadHasInFlightOperation(hosted.threadId) ||
-        pendingTurnStarts.has(hosted.threadId) ||
-        turnState.getActiveTurnId(hosted.threadId) !== null
+        threadHasInFlightOperation(hosted.threadId)
       ) {
         continue;
       }
       try {
-        await resumeThreadFromConfig({
-          currentConfig: hosted.config,
-          instructions: hosted.config.instructions,
-          options: hosted.config.options,
+        await resumeThreadFromRecord({
+          config: hosted.config,
+          contributedEnv: hosted.config.contributedEnv,
+          record: settingsRecordOf(hosted.config),
           providerThreadId: hosted.providerThreadId,
           threadId: hosted.threadId,
         });
@@ -1088,35 +1120,200 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
-  async function resumeThreadFromConfig(args: {
-    currentConfig: ThreadRuntimeConfig;
-    instructions: string | undefined;
-    options: AgentRuntimeExecutionOptions;
+  function settingsRecordOf(config: ThreadRuntimeConfig): SessionSettingsRecord {
+    return {
+      bridgeLaunch: config.bridgeLaunch,
+      dynamicTools: config.dynamicTools,
+      envVars: config.envVars,
+      instructionMode: config.instructionMode,
+      instructions: config.instructions,
+      options: config.options,
+      skillRoots: config.skillRoots,
+    };
+  }
+
+  async function resumeThreadFromRecord(args: {
+    config: ThreadRuntimeConfig;
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+    record: SessionSettingsRecord;
     providerThreadId: string;
     threadId: string;
   }): Promise<void> {
-    const { currentConfig } = args;
-    const resumeInstructions = args.instructions ?? currentConfig.instructions;
+    const { config, record } = args;
     await runtime.resumeThread({
-      bridgeLaunch: currentConfig.bridgeLaunch,
-      skillRoots: currentConfig.skillRoots,
-      environmentId: currentConfig.environmentId,
+      bridgeLaunch: record.bridgeLaunch,
+      skillRoots: record.skillRoots,
+      environmentId: config.environmentId,
       threadId: args.threadId,
-      ...(currentConfig.projectId !== undefined
-        ? { projectId: currentConfig.projectId }
+      ...(config.projectId !== undefined
+        ? { projectId: config.projectId }
         : {}),
       providerThreadId: args.providerThreadId,
-      providerId: currentConfig.providerId,
-      contributedEnv: currentConfig.contributedEnv,
-      options: args.options,
-      ...(resumeInstructions !== undefined
-        ? { instructions: resumeInstructions }
+      providerId: config.providerId,
+      contributedEnv: args.contributedEnv,
+      options: record.options,
+      ...(record.instructions !== undefined
+        ? { instructions: record.instructions }
         : {}),
-      ...(currentConfig.dynamicTools !== undefined
-        ? { dynamicTools: currentConfig.dynamicTools }
+      ...(record.dynamicTools !== undefined
+        ? { dynamicTools: record.dynamicTools }
         : {}),
-      instructionMode: currentConfig.instructionMode,
+      instructionMode: record.instructionMode,
     });
+  }
+
+  async function releaseAndResumeThread(args: {
+    config: ThreadRuntimeConfig;
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+    record: SessionSettingsRecord;
+    threadId: string;
+  }): Promise<void> {
+    const providerThreadId = requireProviderThreadId(args.threadId);
+    const proc = requireProviderProcessForThread(args.threadId);
+    const plan = proc.adapter.buildCommandPlan({
+      type: "thread/stop",
+      threadId: args.threadId,
+      providerThreadId,
+      activeTurnId: null,
+    });
+    sessions.markStopping(args.threadId);
+    if (plan.kind === "request") {
+      try {
+        await sendCommand({
+          proc,
+          message: plan,
+          resultSchema: providerThreadStopResultSchema,
+        });
+      } catch (error) {
+        sessions.cancelStopping(args.threadId);
+        throw error;
+      }
+    }
+    forgetThreadRuntimeStateForProviderState(proc.identity, args.threadId);
+    await resumeThreadFromRecord({
+      config: args.config,
+      contributedEnv: args.contributedEnv,
+      record: args.record,
+      providerThreadId,
+      threadId: args.threadId,
+    });
+    await releaseIdleProviderProcess(proc);
+  }
+
+  function emitSessionSettingsNote(args: {
+    threadId: string;
+    summary: string;
+    details?: string;
+  }): void {
+    const providerThreadId =
+      threadIdentityRegistry.getProviderThreadId(args.threadId);
+    if (providerThreadId === undefined) {
+      return;
+    }
+    options.onEvent({
+      type: "provider/warning",
+      threadId: args.threadId,
+      providerThreadId,
+      category: "config",
+      summary: args.summary,
+      ...(args.details === undefined ? {} : { details: args.details }),
+      scope: { kind: "thread" },
+    });
+  }
+
+  function notePendingSettings(args: {
+    threadId: string;
+    note: string | null;
+  }): void {
+    const config = threadRuntimeConfigs.get(args.threadId);
+    if (config === undefined || config.pendingSettingsNote === args.note) {
+      return;
+    }
+    setThreadRuntimeConfig(args.threadId, {
+      ...config,
+      pendingSettingsNote: args.note,
+    });
+    if (args.note !== null) {
+      emitSessionSettingsNote({ threadId: args.threadId, summary: args.note });
+    }
+  }
+
+  interface ReconciledTurnSettings {
+    apply: SessionSettingsApply;
+    record: SessionSettingsRecord;
+  }
+
+  async function reconcileThreadSettings(args: {
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+    desired: SessionSettingsRecord;
+    threadId: string;
+  }): Promise<ReconciledTurnSettings> {
+    const config = threadRuntimeConfigs.get(args.threadId);
+    if (config === undefined) {
+      throw new Error(`No runtime configuration for thread ${args.threadId}`);
+    }
+    const proc = requireProviderProcessForThread(args.threadId);
+    const applied = settingsRecordOf(config);
+    const plan = planSessionSettings({
+      applied,
+      declaration: mergeSessionSettingsDeclarations(
+        proc.adapter.sessionSettings,
+        config.sessionSettings,
+      ),
+      desired: args.desired,
+      sessionRestorable: config.sessionRestorable,
+    });
+    const pendingNotes: string[] = [];
+    if (plan.fresh.length > 0) {
+      pendingNotes.push(
+        `Changed ${describeSessionSettingChanges(plan.fresh)} can't apply to this provider session; it takes effect when the session next starts.`,
+      );
+    }
+    let resumed: PlannedSessionSettingChange[] = [];
+    if (plan.resume.length > 0) {
+      const { blockers } = await assessThreadOpenWork(args.threadId);
+      if (blockers.length > 0) {
+        pendingNotes.push(
+          `Changed ${describeSessionSettingChanges(plan.resume)} needs a provider session restart, which waits while work is open (${blockers.join("; ")}); it applies at the first turn after that.`,
+        );
+      } else {
+        resumed = plan.resume;
+      }
+    }
+    if (resumed.length > 0) {
+      const resumeRecord = composeSessionSettingsRecord({
+        applied,
+        desired: args.desired,
+        taken: [...resumed, ...plan.live],
+      });
+      await releaseAndResumeThread({
+        config,
+        contributedEnv: args.contributedEnv,
+        record: resumeRecord,
+        threadId: args.threadId,
+      });
+      emitSessionSettingsNote({
+        threadId: args.threadId,
+        summary: `Applied ${describeSessionSettingChanges([...resumed, ...plan.live])}; the provider session resumed with its history.`,
+      });
+      notePendingSettings({
+        threadId: args.threadId,
+        note: pendingNotes.length > 0 ? pendingNotes.join(" ") : null,
+      });
+      return { apply: EMPTY_SESSION_SETTINGS_APPLY, record: resumeRecord };
+    }
+    notePendingSettings({
+      threadId: args.threadId,
+      note: pendingNotes.length > 0 ? pendingNotes.join(" ") : null,
+    });
+    return {
+      apply: toSessionSettingsApply(plan.live),
+      record: composeSessionSettingsRecord({
+        applied,
+        desired: args.desired,
+        taken: plan.live,
+      }),
+    };
   }
 
   async function archiveOrUnarchiveThread(
@@ -1170,31 +1367,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     await releaseIdleProviderProcess(proc);
   }
 
-  function recordThreadExecutionOptions(
-    args: RecordThreadExecutionOptionsArgs,
-  ): void {
-    const currentConfig = threadRuntimeConfigs.get(args.threadId);
-    if (!currentConfig) {
-      return;
-    }
-    setThreadRuntimeConfig(args.threadId, {
-      ...currentConfig,
-      options: args.options,
-    });
-  }
-
-  function environmentRecordsEqual(
-    left: Readonly<Record<string, string>>,
-    right: Readonly<Record<string, string>>,
-  ): boolean {
-    const leftEntries = Object.entries(left);
-    const rightEntries = Object.entries(right);
-    return (
-      leftEntries.length === rightEntries.length &&
-      leftEntries.every(([name, value]) => right[name] === value)
-    );
-  }
-
   function emitResolvedProviderEnvironment(args: {
     droppedContributions: DroppedThreadEnvironmentContribution[];
     entries: ResolvedThreadEnvironmentEntry[];
@@ -1233,7 +1405,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     entries: ResolvedThreadEnvironmentEntry[];
   } {
     return resolveThreadEnvironment({
-      baseShellEnv: options.shellEnv,
+      baseShellEnv: options.getShellEnv?.(),
       contributedEnv: args.contributedEnv,
       environmentId: args.environmentId,
       projectId: args.projectId,
@@ -1297,9 +1469,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       ) {
         toolCalls.cancelThread(targetThreadId, normalizedEvent.scope.turnId);
       }
-      turnState.observe(normalizedEvent);
+      sessions.observe(normalizedEvent);
       backgroundWorkState.observe(normalizedEvent);
-      observeProviderSessionIdleState(normalizedEvent);
       options.onEvent(normalizedEvent);
       threadGoalState.observe(normalizedEvent);
     }
@@ -1371,7 +1542,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
     if (parsedLine.kind === "request") {
       handleRuntimeProviderRequest({
-        getActiveTurnId: (threadId) => turnState.getActiveTurnId(threadId),
+        getActiveTurnId: (threadId) => sessions.getActiveTurnId(threadId),
+        sessions,
         getThreadExecutionOptions: (threadId) =>
           threadRuntimeConfigs.get(threadId)?.options,
         onInteractiveRequest: options.onInteractiveRequest,
@@ -1599,11 +1771,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             instructionMode,
             instructions,
             options: execOpts,
+            requestedOptions: execOpts,
             processKey,
             projectId,
             providerId,
             sessionRestorable: false,
+            sessionSettings: undefined,
+            pendingSettingsNote: null,
           });
+          sessions.beginConstruction(threadId);
 
           const providerExecutionContext = toProviderExecutionContext({
             envVars: resolvedEnvironment.envVars,
@@ -1656,7 +1832,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                   }
                 : {}),
             });
-            updateSessionRestoreCapability(threadId, result.sessionRestorable);
+            updateSessionCapabilities(threadId, result);
             recordProviderThreadIdentity(
               proc,
               threadId,
@@ -1674,13 +1850,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             throw startError;
           }
 
+          sessions.markLive(threadId);
           if (input && input.length > 0) {
             if (clientRequestId === undefined) {
               throw new Error(
                 `Thread start with input requires a client request id for ${threadId}`,
               );
             }
-            await runtime.runTurn({
+            const firstTurn = await runtime.runTurn({
               threadId,
               input,
               clientRequestId,
@@ -1688,9 +1865,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               contributedEnv,
               instructions,
             });
+            if (firstTurn.status === "busy" || firstTurn.status === "rejected") {
+              throw new Error(
+                `The provider did not take the first message: ${firstTurn.message}`,
+              );
+            }
           }
 
-          markHostedProviderSessionIdle(threadId);
           return { providerThreadId: resolved };
         },
       });
@@ -1936,11 +2117,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             instructionMode,
             instructions,
             options: execOpts,
+            requestedOptions: execOpts,
             processKey,
             projectId,
             providerId,
             sessionRestorable: false,
+            sessionSettings: undefined,
+            pendingSettingsNote: null,
           });
+          sessions.beginConstruction(threadId);
 
           recordProviderThreadIdentity(proc, threadId, providerThreadId);
 
@@ -1959,6 +2144,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           };
           const plan = proc.adapter.buildCommandPlan(adapterCommand);
           if (plan.kind === "noop") {
+            sessions.markLive(threadId);
             emitResolvedProviderEnvironment({
               droppedContributions: resolvedEnvironment.droppedContributions,
               entries: resolvedEnvironment.entries,
@@ -1986,7 +2172,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               threadId,
               result.providerThreadId,
             );
-            updateSessionRestoreCapability(threadId, result.sessionRestorable);
+            updateSessionCapabilities(threadId, result);
             resolved = result.providerThreadId;
             emitResolvedProviderEnvironment({
               droppedContributions: resolvedEnvironment.droppedContributions,
@@ -1998,7 +2184,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             await abandonFailedSessionConstruction({ proc, threadId });
             throw resumeError;
           }
-          markHostedProviderSessionIdle(threadId);
+          sessions.markLive(threadId);
           return { providerThreadId: resolved };
         },
       });
@@ -2011,44 +2197,63 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       options: execOpts,
       contributedEnv,
       instructions,
+      instructionMode,
+      dynamicTools,
+      skillRoots: desiredSkillRoots,
+      bridgeLaunch: desiredBridgeLaunch,
     }) {
       return runThreadOperation({
         threadId,
         work: async () => {
           const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           requireProviderProcessForThread(threadId);
-          assertThreadCanStartTurn(threadId);
-          await restartThreadBridgeIfRecommended({
-            threadId,
-            options: execOpts,
-            instructions,
-          });
-          const proc = requireProviderProcessForThread(threadId);
+          const preAdmission = sessions.phase(threadId);
+          if (preAdmission.phase !== "idle") {
+            return {
+              status: "busy",
+              message: `The thread is not idle: ${describeBusyPhase(preAdmission) ?? "its provider session is gone"}.`,
+            } satisfies RunTurnResult;
+          }
+          await restartThreadBridgeIfRecommended({ threadId });
+          const startConfig = threadRuntimeConfigs.get(threadId);
+          if (!startConfig) {
+            throw new Error(`No runtime configuration for thread ${threadId}`);
+          }
           assertProviderSupportsExecutionOptions({
-            adapter: proc.adapter,
+            adapter: requireProviderProcessForThread(threadId).adapter,
             options: execOpts,
             providerId: pid,
           });
+          const resolvedContributedEnv =
+            contributedEnv ?? startConfig.contributedEnv;
+          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
+            contributedEnv: resolvedContributedEnv,
+            environmentId: startConfig.environmentId,
+            projectId: startConfig.projectId,
+            threadId,
+          });
+          const reconciled = await reconcileThreadSettings({
+            contributedEnv: resolvedContributedEnv,
+            threadId,
+            desired: {
+              bridgeLaunch: desiredBridgeLaunch ?? startConfig.bridgeLaunch,
+              dynamicTools: dynamicTools ?? startConfig.dynamicTools,
+              envVars: resolvedEnvironment.envVars,
+              instructionMode: instructionMode ?? startConfig.instructionMode,
+              instructions: instructions ?? startConfig.instructions,
+              options: execOpts,
+              skillRoots: desiredSkillRoots ?? startConfig.skillRoots,
+            },
+          });
+          const proc = requireProviderProcessForThread(threadId);
           const currentConfig = threadRuntimeConfigs.get(threadId);
           if (!currentConfig) {
             throw new Error(`No runtime configuration for thread ${threadId}`);
           }
-          const resolvedContributedEnv =
-            contributedEnv ?? currentConfig.contributedEnv;
-          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
-            contributedEnv: resolvedContributedEnv,
-            environmentId: currentConfig.environmentId,
-            projectId: currentConfig.projectId,
-            threadId,
-          });
-          const environmentChanged = !environmentRecordsEqual(
+          const environmentChanged = !isDeepStrictEqual(
             currentConfig.envVars,
-            resolvedEnvironment.envVars,
+            reconciled.record.envVars,
           );
-          recordThreadExecutionOptions({
-            threadId,
-            options: execOpts,
-          });
 
           const providerThreadId = requireProviderThreadId(threadId);
           const adapterCommand: AdapterCommand = {
@@ -2058,37 +2263,45 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             input,
             clientRequestId,
             options: toProviderExecutionContext({
-              envVars: resolvedEnvironment.envVars,
-              execOpts,
-              instructions,
+              envVars: reconciled.record.envVars,
+              execOpts: reconciled.record.options,
+              instructions: reconciled.record.instructions,
             }),
+            apply: reconciled.apply,
+            ...(reconciled.apply.settings.includes("dynamicTools") &&
+            reconciled.record.dynamicTools !== undefined
+              ? { dynamicTools: reconciled.record.dynamicTools }
+              : {}),
           };
           const cmd = requireProviderRequestPlan({
             commandType: adapterCommand.type,
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          assertThreadCanStartTurn(threadId);
-          const pendingTurnStart = {
-            sinceMs: Date.now(),
-            watchdogFired: false,
-          };
-          pendingTurnStarts.set(threadId, pendingTurnStart);
-          markProviderSessionNotIdle(threadId);
-          let status: RunTurnResult["status"] = "started";
+          const admission = sessions.admitTurnStart(threadId);
+          if (admission.kind !== "admitted") {
+            return {
+              status: "busy",
+              message:
+                admission.kind === "busy"
+                  ? admission.message
+                  : "Another turn is active.",
+            } satisfies RunTurnResult;
+          }
+          let result: RunTurnResult = { status: "started" };
           try {
-            await sendCommand({
+            const answer = await sendCommand({
               proc,
               message: cmd,
-              resultSchema: ignoredJsonRpcResultSchema,
+              resultSchema: turnInputResultSchema,
+              timeoutMs: turnStartWatchdogThresholdMs,
               afterTimeout: {
                 resolve: () => {},
                 reject: (error) => {
-                  if (pendingTurnStarts.get(threadId) !== pendingTurnStart) {
+                  if (!sessions.hasTurnStart(threadId)) {
                     return;
                   }
-                  pendingTurnStarts.delete(threadId);
-                  markHostedProviderSessionIdle(threadId);
+                  sessions.settleTurnStart(threadId);
                   options.onEvent({
                     type: "system/error",
                     threadId,
@@ -2104,23 +2317,32 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 threadId,
               },
             });
+            if (answer.admission !== "accepted") {
+              sessions.settleTurnStart(threadId);
+              return { status: answer.admission, message: answer.message };
+            }
           } catch (error) {
             if (!(error instanceof JsonRpcRequestTimeoutError)) {
-              pendingTurnStarts.delete(threadId);
-              markHostedProviderSessionIdle(threadId);
+              sessions.settleTurnStart(threadId);
               throw error;
             }
             options.onStderr?.(
               `Turn start for thread "${threadId}" timed out; whether the provider starts it is unconfirmed.`,
               threadId,
             );
-            status = "unconfirmed";
+            result = { status: "unconfirmed" };
           }
           setThreadRuntimeConfig(threadId, {
             ...currentConfig,
+            bridgeLaunch: reconciled.record.bridgeLaunch,
             contributedEnv: resolvedContributedEnv,
-            envVars: resolvedEnvironment.envVars,
-            options: execOpts,
+            dynamicTools: reconciled.record.dynamicTools,
+            envVars: reconciled.record.envVars,
+            instructionMode: reconciled.record.instructionMode,
+            instructions: reconciled.record.instructions,
+            options: reconciled.record.options,
+            requestedOptions: execOpts,
+            skillRoots: reconciled.record.skillRoots,
           });
           if (environmentChanged) {
             emitResolvedProviderEnvironment({
@@ -2130,7 +2352,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               threadId,
             });
           }
-          return { status };
+          return result;
         },
       });
     },
@@ -2141,57 +2363,42 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       input,
       clientRequestId,
       options: execOpts,
-      contributedEnv,
-      instructions,
     }) {
       return runThreadOperation({
         threadId,
         work: async () => {
           const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
-          const currentProc = requireProviderProcessForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
           assertProviderSupportsExecutionOptions({
-            adapter: currentProc.adapter,
+            adapter: proc.adapter,
             options: execOpts,
             providerId: pid,
           });
-
-          const activeTurnId = turnState.getActiveTurnId(threadId);
-          if (activeTurnId !== expectedTurnId) {
+          const admission = sessions.admitSteer(threadId, expectedTurnId);
+          if (admission.kind === "stale") {
             options.onStderr?.(
-              `Ignoring stale steer for thread "${threadId}" on turn "${expectedTurnId}"; active turn is ${activeTurnId ?? "none"}.`,
+              `Ignoring stale steer for thread "${threadId}" on turn "${expectedTurnId}"; active turn is ${admission.activeTurnId ?? "none"}.`,
             );
-            return {
-              status: "stale",
-              activeTurnId,
-            };
+            return { status: "stale", activeTurnId: admission.activeTurnId };
           }
-
-          await restartThreadBridgeIfRecommended({
-            threadId,
-            options: execOpts,
-            instructions,
-          });
-          const proc = requireProviderProcessForThread(threadId);
+          if (admission.kind === "busy") {
+            return { status: "busy", message: admission.message };
+          }
           const currentConfig = threadRuntimeConfigs.get(threadId);
           if (!currentConfig) {
             throw new Error(`No runtime configuration for thread ${threadId}`);
           }
-          const resolvedContributedEnv =
-            contributedEnv ?? currentConfig.contributedEnv;
-          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
-            contributedEnv: resolvedContributedEnv,
-            environmentId: currentConfig.environmentId,
-            projectId: currentConfig.projectId,
-            threadId,
-          });
-          const environmentChanged = !environmentRecordsEqual(
-            currentConfig.envVars,
-            resolvedEnvironment.envVars,
+          const settingChanges = listUserSettingChanges(
+            currentConfig.requestedOptions,
+            execOpts,
           );
-          recordThreadExecutionOptions({
-            threadId,
-            options: execOpts,
-          });
+          if (settingChanges.length > 0) {
+            return {
+              status: "busy",
+              message:
+                "This message changes the session's settings, so it runs as the next turn instead of joining the running one.",
+            };
+          }
 
           const providerThreadId = requireProviderThreadId(threadId);
           const adapterCommand: AdapterCommand = {
@@ -2202,9 +2409,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             input,
             clientRequestId,
             options: toProviderExecutionContext({
-              envVars: resolvedEnvironment.envVars,
-              execOpts,
-              instructions,
+              envVars: currentConfig.envVars,
+              execOpts: currentConfig.options,
+              instructions: currentConfig.instructions,
             }),
           };
           const cmd = requireProviderRequestPlan({
@@ -2213,53 +2420,34 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             providerId: pid,
           });
           try {
-            await sendCommand({
+            const answer = await sendCommand({
               proc,
               message: cmd,
-              resultSchema: ignoredJsonRpcResultSchema,
+              resultSchema: turnInputResultSchema,
+              timeoutMs: turnStartWatchdogThresholdMs,
               recovery: {
                 providerId: pid,
                 providerThreadId: adapterCommand.providerThreadId,
                 threadId,
               },
             });
-            setThreadRuntimeConfig(threadId, {
-              ...currentConfig,
-              contributedEnv: resolvedContributedEnv,
-              envVars: resolvedEnvironment.envVars,
-              options: execOpts,
-            });
-            if (environmentChanged) {
-              emitResolvedProviderEnvironment({
-                droppedContributions: resolvedEnvironment.droppedContributions,
-                entries: resolvedEnvironment.entries,
-                providerThreadId,
-                threadId,
-              });
+            if (answer.admission !== "accepted") {
+              return { status: answer.admission, message: answer.message };
             }
           } catch (error) {
             if (
               error instanceof JsonRpcResponseError &&
-              error.recovery?.kind === "staleTurn"
+              (error.recovery?.kind === "staleTurn" ||
+                error.code === BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN)
             ) {
               options.onStderr?.(
-                `Dropping stale steer for thread "${threadId}": ${error.recovery.message}`,
+                `Dropping stale steer for thread "${threadId}": ${error.message}`,
                 threadId,
               );
-              turnState.clearStaleTurn(threadId, expectedTurnId);
+              sessions.clearStaleTurn(threadId, expectedTurnId);
               return {
                 status: "stale",
-                activeTurnId: turnState.getActiveTurnId(threadId),
-              };
-            }
-            if (
-              error instanceof JsonRpcResponseError &&
-              error.code === BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN
-            ) {
-              turnState.clearStaleTurn(threadId, expectedTurnId);
-              return {
-                status: "stale",
-                activeTurnId: turnState.getActiveTurnId(threadId),
+                activeTurnId: sessions.getActiveTurnId(threadId),
               };
             }
             if (error instanceof JsonRpcRequestTimeoutError) {
@@ -2284,7 +2472,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
           const providerThreadId = requireProviderThreadId(threadId);
-          const activeTurnId = turnState.getActiveTurnId(threadId);
+          const activeTurnId = sessions.getActiveTurnId(threadId);
+          sessions.markStopping(threadId);
           const adapterCommand: AdapterCommand = {
             type: "thread/stop",
             threadId,
@@ -2304,11 +2493,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             return { providerCheckpointId: null };
           }
 
-          const result = await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: providerThreadStopResultSchema,
-          });
+          let result: z.infer<typeof providerThreadStopResultSchema>;
+          try {
+            result = await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: providerThreadStopResultSchema,
+            });
+          } catch (error) {
+            sessions.cancelStopping(threadId);
+            throw error;
+          }
           forgetThreadRuntimeStateForProviderState(proc.identity, threadId);
           await releaseIdleProviderProcess(proc);
           return {
@@ -2453,7 +2648,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           ...(cwd !== undefined ? { cwd } : {}),
           envVars: resolveContributedEnvironment(
             contributedEnv,
-            options.shellEnv,
+            options.getShellEnv?.(),
           ),
         }),
         providerId,
@@ -2582,14 +2777,22 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     getActiveTurnId(threadId) {
-      return turnState.getActiveTurnId(threadId);
+      return sessions.getActiveTurnId(threadId);
+    },
+
+    getSessionPhase(threadId) {
+      return sessions.phase(threadId).phase;
     },
 
     waitForActiveTurn(threadId, args) {
-      if (!threadMayStartTurn(threadId)) {
+      if (
+        sessions.getActiveTurnId(threadId) === null &&
+        !sessions.hasTurnStart(threadId) &&
+        !threadHasInFlightOperation(threadId)
+      ) {
         return Promise.resolve(null);
       }
-      return turnState.waitForActiveTurn({
+      return sessions.waitForActiveTurn({
         threadId,
         timeoutMs: args.timeoutMs,
       });
@@ -2620,7 +2823,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           } catch {
             return null;
           }
-          if (backgroundWorkState.hasOpenThreadWork(candidate.threadId)) {
+          const openWork = await assessThreadOpenWork(candidate.threadId);
+          if (openWork.blockers.length > 0) {
             return null;
           }
 
@@ -2659,8 +2863,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     getLiveThreadIds() {
       return [
         ...new Set([
-          ...turnState.getActiveThreadIds(),
-          ...pendingTurnStarts.keys(),
+          ...sessions.getActiveThreadIds(),
+          ...[...threadRuntimeConfigs.keys()].filter((threadId) =>
+            sessions.hasTurnStart(threadId),
+          ),
         ]),
       ];
     },
@@ -2680,11 +2886,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           discardStagedThreadRewind(leaseId),
         ),
       );
-      idleProviderSessionSinceMsByThreadId.clear();
-      pendingTurnStarts.clear();
       threadOperationCounts.clear();
       threadGoalState.clear();
-      turnState.clear();
+      sessions.clear();
       threadEventGrammar.clear();
       await providerProcesses.shutdown();
       for (const event of backgroundWorkState.settleAll()) {

@@ -38,7 +38,7 @@ function commandsSent(): string[] {
 }
 
 it(
-  "pins model and thinking at spawn and never sends set_model or set_thinking_level",
+  "pins construction settings at spawn and applies nothing a turn does not list",
   async () => {
     const threadId = "thr_settings";
     const start = await harness.request(1, "thread/start", {
@@ -47,15 +47,18 @@ it(
       instructionMode: "append",
       options: OPTIONS,
     });
-    const providerThreadId = (start.result as { providerThreadId?: unknown }).providerThreadId;
+    const providerThreadId = (start.result as { providerThreadId?: unknown })
+      .providerThreadId;
     expect(typeof providerThreadId).toBe("string");
-    if (typeof providerThreadId !== "string") throw new Error("missing providerThreadId");
+    if (typeof providerThreadId !== "string")
+      throw new Error("missing providerThreadId");
     expect(providerThreadId).toMatch(/^pi_/u);
     await harness.request(2, "turn/start", {
       threadId,
       providerThreadId,
       clientRequestId: "creq_ab23456789",
       input: [{ type: "text", text: "hello", mentions: [] }],
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
       options: OPTIONS,
     });
     let seen = await harness.waitForTurnBoundary(threadId, 0);
@@ -64,6 +67,7 @@ it(
       providerThreadId,
       clientRequestId: "creq_cd23456789",
       input: [{ type: "text", text: "again", mentions: [] }],
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
       options: {
         ...OPTIONS,
         model: "fake-provider/fake-model",
@@ -97,7 +101,12 @@ it(
     const sent = commandsSent();
     expect(sent.length).toBeGreaterThan(0);
     expect(
-      sent.filter((c) => c === "set_model" || c === "set_thinking_level"),
+      sent.filter(
+        (c) => c.startsWith("set_model") || c.startsWith("set_thinking_level"),
+      ),
+    ).toEqual([]);
+    expect(
+      harness.messages.filter((m) => m.method === "session/replaced"),
     ).toEqual([]);
     const contextWindows = harness.messages
       .filter((m) => m.method === "thread/delta")
@@ -107,8 +116,26 @@ it(
       )
       .filter((d) => d.kind === "contextWindow")
       .map((d) => d.size);
-    expect(contextWindows[0]).toBe(32_000);
-    expect(contextWindows.at(-1)).toBe(200_000);
+    expect(contextWindows).toEqual([32_000, 32_000]);
+    const resumedState = await harness.request(7, "turn/start", {
+      threadId,
+      providerThreadId,
+      clientRequestId: "creq_ef23456789",
+      input: [{ type: "text", text: "resumed", mentions: [] }],
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
+      options: { ...OPTIONS, model: "fake-provider/fake-model" },
+    });
+    expect(resumedState.result).toEqual({ admission: "accepted" });
+    await harness.waitForTurnBoundary(threadId, seen);
+    const resumedWindows = harness.messages
+      .filter((m) => m.method === "thread/delta")
+      .flatMap(
+        (m) =>
+          (m.params as { deltas: { kind: string; size?: number }[] }).deltas,
+      )
+      .filter((d) => d.kind === "contextWindow")
+      .map((d) => d.size);
+    expect(resumedWindows.at(-1)).toBe(200_000);
   },
   SETTINGS_PROCESS_TEST_TIMEOUT_MS,
 );

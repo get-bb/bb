@@ -1486,11 +1486,6 @@ export interface ListStoredClientTurnRequestIdsInRangeArgs {
   threadId: string;
 }
 
-export interface GetStoredTurnRequestEventForTurnArgs {
-  threadId: string;
-  turnId: string;
-}
-
 export interface FindLastRootStoredTurnStartedArgs {
   atOrBeforeSequence?: number;
   threadId: string;
@@ -2418,59 +2413,6 @@ export function listStoredClientTurnRequestIdsInRange(
     .all();
 
   return rows.map((row) => clientTurnRequestIdSchema.parse(row.requestId));
-}
-
-export function getStoredTurnRequestEventForTurn(
-  db: DbQueryConnection,
-  args: GetStoredTurnRequestEventForTurnArgs,
-): StoredTurnRequestEventRow | null {
-  const acceptedInput =
-    db
-      .select({
-        clientRequestId: sql<
-          string | null
-        >`json_extract(${events.data}, '$.clientRequestId')`,
-        sequence: events.sequence,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.turnId, args.turnId),
-          eq(events.type, "turn/input/accepted"),
-        ),
-      )
-      .orderBy(desc(events.sequence))
-      .limit(1)
-      .get() ?? null;
-  const requestIdResult = clientTurnRequestIdSchema.safeParse(
-    acceptedInput?.clientRequestId,
-  );
-  if (acceptedInput === null || !requestIdResult.success) {
-    return null;
-  }
-
-  return (
-    db
-      .select({
-        data: events.data,
-        sequence: events.sequence,
-        threadId: events.threadId,
-        type: events.type,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.type, "client/turn/requested"),
-          lt(events.sequence, acceptedInput.sequence),
-          eq(turnRequestIdSql, requestIdResult.data),
-        ),
-      )
-      .orderBy(desc(events.sequence))
-      .limit(1)
-      .get() ?? null
-  );
 }
 
 export interface StoredThreadEventDataRow {
@@ -4480,40 +4422,6 @@ export function isStoredTurnMainRunIdle(
     .limit(1)
     .get();
   return latest?.idle === 1;
-}
-
-export function isStoredTurnProviderCompactionRunning(
-  db: DbQueryConnection,
-  args: ThreadTurnKey,
-): boolean {
-  const inTurn = and(
-    eq(events.threadId, args.threadId),
-    eq(events.turnId, args.turnId),
-  );
-  const latestCompaction = db
-    .select({ type: sql<ThreadEventType>`${events.type}` })
-    .from(sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`)
-    .where(
-      and(
-        inTurn,
-        inArray(events.type, ["item/started", "item/completed"]),
-        eq(events.itemKind, "contextCompaction"),
-        isNull(events.parentToolCallId),
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-  if (latestCompaction?.type !== "item/started") {
-    return false;
-  }
-  const acceptedInput = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(and(inTurn, eq(events.type, "turn/input/accepted")))
-    .limit(1)
-    .get();
-  return !acceptedInput;
 }
 
 export function isStoredTurnContextCompactionOnly(

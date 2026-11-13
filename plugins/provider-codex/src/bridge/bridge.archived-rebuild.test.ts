@@ -11,6 +11,7 @@ import {
 } from "./bridge-process.test-support.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -21,11 +22,6 @@ const ARCHIVED_ERROR_TEXT = `session ${PROVIDER_THREAD_ID} is archived; unarchiv
 const sessionOptions = {
   ...FULL_ACCESS_SESSION_OPTIONS,
   reasoningLevel: "low",
-} as const;
-
-const changedSessionOptions = {
-  ...sessionOptions,
-  reasoningLevel: "high",
 } as const;
 
 const turnInput = [{ type: "text", text: "hello", mentions: [] }];
@@ -78,9 +74,10 @@ function archiveOutsideBb(): void {
 
 async function startTurn(
   id: number,
-  options: typeof sessionOptions | typeof changedSessionOptions,
+  options: typeof sessionOptions,
 ): Promise<BridgeJsonRpcOutputMessage> {
   harness.sendRequest(id, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
     clientRequestId: "creq_abcdefghjk",
@@ -128,7 +125,7 @@ async function expectArchivedHint(
 }
 
 async function expectRetryAfterUnarchiveSucceeds(
-  options: typeof sessionOptions | typeof changedSessionOptions,
+  options: typeof sessionOptions,
 ): Promise<void> {
   harness.sendRequest(3, "thread/unarchive", {
     threadId: THREAD_ID,
@@ -138,7 +135,7 @@ async function expectRetryAfterUnarchiveSucceeds(
 
   const retried = await startTurn(4, options);
   expect(retried.error).toBeUndefined();
-  expect(retried.result).toEqual({ threadId: THREAD_ID });
+  expect(retried.result).toEqual({ admission: "accepted" });
   expect(sessionReplacedNotifications()).toHaveLength(1);
   expect(sessionReplacedNotifications()[0]?.params).toMatchObject({
     threadId: THREAD_ID,
@@ -147,14 +144,6 @@ async function expectRetryAfterUnarchiveSucceeds(
   });
   await waitForTurnBoundary();
 }
-
-it("keeps the thread resumable when a settings-change rebuild hits an externally archived rollout", async () => {
-  await resumeThread();
-  archiveOutsideBb();
-
-  await expectArchivedHint(await startTurn(2, changedSessionOptions));
-  await expectRetryAfterUnarchiveSucceeds(changedSessionOptions);
-}, 30_000);
 
 it("keeps the thread resumable when the rebuild after the child died hits an externally archived rollout", async () => {
   await resumeThread();

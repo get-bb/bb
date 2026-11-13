@@ -240,6 +240,7 @@ function createFakeRuntime(): AgentRuntime {
     }),
     listRunningProviders: vi.fn(() => []),
     getActiveTurnId: vi.fn(() => null),
+    getSessionPhase: vi.fn(() => "idle" as const),
     waitForActiveTurn: vi.fn(async () => null),
     getProviderSession: vi.fn(() => null),
     reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),
@@ -1512,9 +1513,9 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
-    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
-    expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
+    expect(
+      harness.runtimeManager.get("env-1")?.terminals.has("term-1"),
+    ).toBe(false);
   });
 
   it("acknowledges closing a terminal that is already gone", async () => {
@@ -1564,8 +1565,9 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
-    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
+    expect(
+      harness.runtimeManager.get("env-1")?.terminals.has("term-1"),
+    ).toBe(false);
   });
 
   it("kills all terminals on shutdown", async () => {

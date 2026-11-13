@@ -60,7 +60,7 @@ describe("createAgentRuntime command contracts", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: { ...record.env, ...args.env },
+        getProcessEnv: () => ({ ...record.env, ...args.env }),
         ...(args.additionalWorkspaceWriteRoots !== undefined
           ? {
               additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
@@ -68,7 +68,9 @@ describe("createAgentRuntime command contracts", () => {
           : {}),
         onEvent: args.onEvent ?? (() => {}),
         ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
-        ...(args.shellEnv !== undefined ? { shellEnv: args.shellEnv } : {}),
+        ...(args.shellEnv !== undefined
+          ? { getShellEnv: () => args.shellEnv ?? {} }
+          : {}),
         onToolCall: async () => ({
           contentItems: [{ type: "inputText", text: "ok" }],
           success: true,
@@ -392,17 +394,37 @@ describe("createAgentRuntime command contracts", () => {
     10_000,
   );
 
-  it.each([
-    {
-      method: "turn/start",
-      send: (runtime: LaunchBoundAgentRuntime) =>
+  it("answers turn/start busy while thread/start has not returned a providerThreadId", async () => {
+    const { record, runtime } = createContractRuntime({
+      launch: { scripted: { startDelayMs: 1_000 } },
+    });
+    try {
+      const start = runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await vi.waitFor(() => {
+        expect(record.last("thread/start")).toBeDefined();
+      });
+      await expect(
         runtime.runTurn({
           clientRequestId: "creq_222222224t",
           threadId: "t1",
           input: [promptTextInput({ text: "hello" })],
           options: fullRuntimeOptions,
         }),
-    },
+      ).resolves.toMatchObject({ status: "busy" });
+      expect(record.last("turn/start")).toBeUndefined();
+      await start;
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it.each([
     {
       method: "thread/name/set",
       send: (runtime: LaunchBoundAgentRuntime) =>

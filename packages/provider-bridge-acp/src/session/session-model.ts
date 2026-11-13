@@ -474,6 +474,9 @@ export function createAcpSessionModel(
   ): AcpSessionEvent[] {
     const state = readString(update, "state");
     if (state === "running" || state === "requires_action") {
+      if (!agentReportsState && promptsInFlight === 0) {
+        agentWorking = true;
+      }
       return setWork({
         state,
         initiator: work.initiator ?? "agent",
@@ -482,6 +485,7 @@ export function createAcpSessionModel(
       });
     }
     if (state === "idle") {
+      agentWorking = false;
       return setWork({
         state: "idle",
         initiator: null,
@@ -582,9 +586,7 @@ export function createAcpSessionModel(
         return [{ type: "usage", replay: replaying, usage }];
       }
       case "state_update":
-        return agentReportsState
-          ? applyStateUpdate(sessionUpdate, update)
-          : unhandled("unknown-variant", sessionUpdate, update);
+        return applyStateUpdate(sessionUpdate, update);
       default:
         return unhandled("unknown-variant", sessionUpdate, update);
     }

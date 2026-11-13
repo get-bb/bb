@@ -47,6 +47,7 @@ export interface ExtensionUiCoordinator {
   handle(args: HandleExtensionUiRequestArgs): void;
   handleRuntimeResponse(response: RuntimeInteractionUiResponse): boolean;
   cancelPendingForScope(scope: object): void;
+  pendingForScope(scope: object): { interactionId: string; title: string }[];
 }
 
 function rawMethod(request: Record<string, unknown>): unknown {
@@ -151,6 +152,15 @@ export function createExtensionUiCoordinator(
           : { cancelled: true },
       );
       return true;
+    },
+
+    pendingForScope(scope) {
+      return [...pending]
+        .filter(([, entry]) => entry.scope === scope)
+        .map(([interactionId, entry]) => ({
+          interactionId,
+          title: entry.request.title,
+        }));
     },
 
     cancelPendingForScope(scope) {

@@ -1,5 +1,5 @@
 {
-  "protocolVersion": 2,
+  "protocolVersion": 3,
   "deltaKinds": {
     "command.outputSnapshot": {
       "kind": "required",
@@ -147,7 +147,6 @@
       "status": "required",
       "error": "optional",
       "providerCheckpointId": "optional",
-      "claimIfIdle": "optional",
       "providerTurnId": "optional"
     },
     "turn.diff": {
@@ -308,7 +307,9 @@
     "grammarVersions": "default",
     "steerMode": "default",
     "skills": "default",
-    "commands": "default"
+    "commands": "default",
+    "openWork": "default",
+    "sessionSettings": "default"
   },
   "recoveryNotification": {
     "threadId": "optional",
@@ -330,6 +331,7 @@
     "thread/fork",
     "thread/goal/clear",
     "thread/name/set",
+    "thread/openWork",
     "thread/resume",
     "thread/start",
     "thread/stop",

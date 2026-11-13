@@ -66,7 +66,7 @@ import {
 } from "./runtime-shell-env-cache.js";
 import type {
   AgentRuntime,
-  AgentRuntimeOptions,
+  AgentRuntimeShellEnvironment,
   RuntimeOpenBackgroundWork,
 } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
@@ -163,11 +163,9 @@ interface CreateHostDaemonAppOptions {
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
-  runtimeShellEnv?: AgentRuntimeOptions["shellEnv"];
+  runtimeShellEnv?: AgentRuntimeShellEnvironment;
   runtimeShellEnvResolvedAtMs?: number;
-  resolveRuntimeShellEnv?: () => Promise<
-    NonNullable<AgentRuntimeOptions["shellEnv"]>
-  >;
+  resolveRuntimeShellEnv?: () => Promise<AgentRuntimeShellEnvironment>;
   nowMs?: () => number;
   hostWatcher?: HostWatcher;
   fetchFn?: FetchFn;

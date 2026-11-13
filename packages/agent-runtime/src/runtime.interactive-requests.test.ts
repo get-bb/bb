@@ -1,3 +1,4 @@
+import { RuntimeSessionStates } from "./runtime-session-state.js";
 import { RuntimeToolCalls } from "./runtime-provider-requests.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -96,7 +97,7 @@ async function answerDirectRequest(args: {
   });
   const [initialize] = adapter.buildPostInitializeRequests();
   initialize?.onResult({
-    protocolVersion: 2,
+    protocolVersion: 3,
     capabilities: { grammarVersions: [3, 3], ...args.handshake },
   });
   const id = args.rawRequest.id;
@@ -106,6 +107,7 @@ async function answerDirectRequest(args: {
   try {
     handleRuntimeProviderRequest({
       toolCalls: new RuntimeToolCalls(),
+      sessions: new RuntimeSessionStates(),
       getActiveTurnId: args.getActiveTurnId ?? (() => "bb-turn-1"),
       getThreadExecutionOptions:
         args.getThreadExecutionOptions ?? (() => undefined),
@@ -327,7 +329,7 @@ describe("createAgentRuntime interactive requests", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: scriptedEchoProcessEnv({ approvalEnforcedBy: "provider" }),
+        getProcessEnv: () => (scriptedEchoProcessEnv({ approvalEnforcedBy: "provider" })),
         onEvent: (event) => events.push(event),
         onInteractiveRequest: async (request) => {
           requests.push(request);

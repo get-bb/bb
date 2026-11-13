@@ -110,9 +110,10 @@ it("stop{release} ends the child after a local-file-only turn", async () => {
         mimeType: "text/markdown",
       },
     ],
+    apply: { settings: [], sessionOptions: [], providerOptions: [] },
     options: FULL_PERMISSION_OPTIONS,
   });
-  expect(turn.result).toEqual({ threadId });
+  expect(turn.result).toEqual({ admission: "accepted" });
   await harness.waitForTurnBoundary(threadId, 0);
   expect(
     harness
@@ -145,6 +146,7 @@ it("stop{interrupt} of a live run ends the child, and the turn settled before th
     providerThreadId: providerThreadIdFor("thr_lc_interrupt"),
     clientRequestId: "creq_cd23456789",
     input: [{ type: "text", text: "/hold", mentions: [] }],
+    apply: { settings: [], sessionOptions: [], providerOptions: [] },
     options: FULL_PERMISSION_OPTIONS,
   });
   const stop = await harness.request((nextId += 1), "thread/stop", {
@@ -383,6 +385,7 @@ it("release_resume_preserves_pi_session_and_replaces_configuration", async () =>
     providerThreadId,
     clientRequestId: "creq_facet23456",
     input: [{ type: "text", text: "plan this change", mentions: [] }],
+    apply: { settings: [], sessionOptions: [], providerOptions: [] },
     options: FULL_PERMISSION_OPTIONS,
   });
   expect(turn.error).toBeUndefined();
@@ -467,6 +470,7 @@ it("release_resume_preserves_pi_session_and_replaces_configuration", async () =>
     providerThreadId,
     clientRequestId: "creq_facet34567",
     input: [{ type: "text", text: "implement the change", mentions: [] }],
+    apply: { settings: [], sessionOptions: [], providerOptions: [] },
     options: FULL_PERMISSION_OPTIONS,
   });
   expect(resumedTurn.error).toBeUndefined();

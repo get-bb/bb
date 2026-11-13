@@ -120,7 +120,7 @@ describe("skills/configure handshake capability", () => {
     const runtime = withBridgeLaunch(
       createAgentRuntime({
         workspacePath,
-        env: record.env,
+        getProcessEnv: () => (record.env),
         skillRoots: originalRoots,
         onEvent: (event) => events.push(event),
         onToolCall: async () => ({ contentItems: [], success: true }),

@@ -59,6 +59,7 @@ export async function runBridgeConformance(
       resolveProviderTurnId: (threadId, bbTurnId) =>
         collector.assembler.getProviderTurnId(threadId, bbTurnId),
       fork: handshake.capabilities?.fork ?? "none",
+      openWorkList: handshake.capabilities?.openWork.list ?? false,
     })),
   );
 

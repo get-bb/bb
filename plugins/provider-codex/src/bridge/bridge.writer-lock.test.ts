@@ -124,20 +124,24 @@ async function resumeThread(id: number): Promise<void> {
   expect((await harness.waitForResponse(id)).error).toBeUndefined();
 }
 
-it("waits for the previous writer before resuming during a settings rebuild", async () => {
+it("waits for the previous writer before a resume replaces the live session", async () => {
   await resumeThread(1);
 
-  harness.sendRequest(2, "turn/start", {
+  harness.sendRequest(2, "thread/resume", {
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
-    clientRequestId: "creq_abcdefghjk",
-    input: [{ type: "text", text: "hello", mentions: [] }],
+    cwd: workspaceDir,
+    instructionMode: "append",
     options: changedSessionOptions,
   });
-  const rebuiltTurn = await harness.waitForResponse(2);
+  const resumed = await harness.waitForResponse(2);
 
-  expect(rebuiltTurn.error).toBeUndefined();
-  expect(rebuiltTurn.result).toEqual({ threadId: THREAD_ID });
+  expect(resumed.error).toBeUndefined();
+  expect(resumed.result).toEqual({
+    providerThreadId: PROVIDER_THREAD_ID,
+    sessionRestorable: true,
+  });
+  expect(spawnedAppServerPids(processLogPath)).toHaveLength(2);
 }, 30_000);
 
 it("finishes releasing the writer before acknowledging thread stop", async () => {
@@ -160,11 +164,11 @@ it("does not install a replacement after a concurrent release is acknowledged", 
   try {
     await resumeThread(1);
 
-    harness.sendRequest(2, "turn/start", {
+    harness.sendRequest(2, "thread/resume", {
       threadId: THREAD_ID,
       providerThreadId: PROVIDER_THREAD_ID,
-      clientRequestId: "creq_abcdefghjk",
-      input: [{ type: "text", text: "hello", mentions: [] }],
+      cwd: workspaceDir,
+      instructionMode: "append",
       options: changedSessionOptions,
     });
     await writer.exited;
@@ -181,13 +185,8 @@ it("does not install a replacement after a concurrent release is acknowledged", 
     expect((await harness.waitForResponse(3)).error).toBeUndefined();
     expect(existsSync(writerLockPath)).toBe(false);
 
-    const rebuiltTurn = await harness.waitForResponse(2);
-    expect(rebuiltTurn.error).toBeDefined();
-    expect(
-      harness.messages.filter(
-        (message) => message.method === "session/replaced",
-      ),
-    ).toHaveLength(0);
+    const replacement = await harness.waitForResponse(2);
+    expect(replacement.error).toBeDefined();
     expect(spawnedAppServerPids(processLogPath)).toHaveLength(1);
   } finally {
     writer.release();
@@ -199,11 +198,11 @@ it("does not install a replacement after concurrent discard maintenance settles"
   try {
     await resumeThread(1);
 
-    harness.sendRequest(2, "turn/start", {
+    harness.sendRequest(2, "thread/resume", {
       threadId: THREAD_ID,
       providerThreadId: PROVIDER_THREAD_ID,
-      clientRequestId: "creq_abcdefghjk",
-      input: [{ type: "text", text: "hello", mentions: [] }],
+      cwd: workspaceDir,
+      instructionMode: "append",
       options: changedSessionOptions,
     });
     await writer.exited;
@@ -219,13 +218,8 @@ it("does not install a replacement after concurrent discard maintenance settles"
     expect((await harness.waitForResponse(3)).result).toEqual({ ok: true });
     expect(existsSync(writerLockPath)).toBe(false);
 
-    const rebuiltTurn = await harness.waitForResponse(2);
-    expect(rebuiltTurn.error).toBeDefined();
-    expect(
-      harness.messages.filter(
-        (message) => message.method === "session/replaced",
-      ),
-    ).toHaveLength(0);
+    const replacement = await harness.waitForResponse(2);
+    expect(replacement.error).toBeDefined();
     expect(spawnedAppServerPids(processLogPath)).toHaveLength(2);
   } finally {
     writer.release();

@@ -161,6 +161,14 @@ export function buildWorkspaceWriteSandbox(
   };
 }
 
+export function buildWorkspaceWriteDirectories(
+  params: WorkspaceWriteSandboxArgs,
+): string[] {
+  return isWorkspaceWriteSession(params)
+    ? [...(params.additionalWorkspaceWriteRoots ?? [])]
+    : [];
+}
+
 const CLAUDE_WINDOWS_EXECUTABLE_NAME = "claude.exe";
 
 function isExecutableFile(candidatePath: string): boolean {
@@ -236,9 +244,7 @@ export function buildSessionOptions(
         };
   const model = params.model;
   const sandbox = buildWorkspaceWriteSandbox(params);
-  const additionalDirectories = isWorkspaceWriteSession(params)
-    ? (params.additionalWorkspaceWriteRoots ?? [])
-    : [];
+  const additionalDirectories = buildWorkspaceWriteDirectories(params);
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   const flagSettings = buildFlagSettings(params);
   const effort =
@@ -264,8 +270,6 @@ export function buildSessionOptions(
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     ...(sandbox ? { sandbox } : {}),
-    ...(additionalDirectories.length > 0
-      ? { additionalDirectories: [...additionalDirectories] }
-      : {}),
+    ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
   };
 }

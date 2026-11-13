@@ -69,15 +69,6 @@ const CLAUDE_EXIT_CODE_HEADER_PATTERN = /^(?:Error: )?Exit code ([1-9]\d*)$/;
 const CLAUDE_EMPTY_BASH_OUTPUT_PLACEHOLDERS = [
   "(Bash completed with no output)",
 ] as const;
-const LARGE_CLAUDE_CONTEXT_WINDOW = 1_000_000;
-const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
-  "best",
-  "claude-fable-5",
-  "claude-fable-5-1",
-  "claude-mythos-5",
-  "claude-mythos-5-1",
-  "fable",
-]);
 
 export function getNestedParentToolUseId(message: unknown): string | undefined {
   if (typeof message !== "object" || message === null) {
@@ -381,31 +372,13 @@ function extractModelContextWindow(
   if (!modelUsage) return null;
 
   let largestContextWindow: number | null = null;
-  for (const [model, usage] of Object.entries(modelUsage)) {
-    const reportedContextWindow = toPositiveNumber(usage.contextWindow);
-    if (reportedContextWindow === undefined) continue;
-
-    const modelContextWindow = resolveClaudeModelContextWindowHint(model);
-    const contextWindow =
-      modelContextWindow === null
-        ? reportedContextWindow
-        : Math.max(reportedContextWindow, modelContextWindow);
+  for (const usage of Object.values(modelUsage)) {
+    const contextWindow = toPositiveNumber(usage.contextWindow);
+    if (contextWindow === undefined) continue;
     if (largestContextWindow === null || contextWindow > largestContextWindow) {
       largestContextWindow = contextWindow;
     }
   }
 
   return largestContextWindow;
-}
-
-export function resolveClaudeModelContextWindowHint(
-  selectedModel: string,
-): number | null {
-  if (
-    selectedModel.endsWith("[1m]") ||
-    LARGE_CLAUDE_CONTEXT_MODELS.has(selectedModel)
-  ) {
-    return LARGE_CLAUDE_CONTEXT_WINDOW;
-  }
-  return null;
 }

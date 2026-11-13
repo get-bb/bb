@@ -34,8 +34,6 @@ function respondError(id, code, message) {
   send({ jsonrpc: "2.0", id, error: { code, message } });
 }
 
-const ZERO_WORK_PROMPT_TEXT = "/clear";
-
 const COMPACTION_TURN_DELAY_MS = Number(
   process.env.FAKE_CODEX_COMPACTION_TURN_DELAY_MS ?? "20",
 );
@@ -58,6 +56,10 @@ const INTERRUPT_BEFORE_START_PROMPT_TEXT = "/interrupt-before-start";
 const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
 
 const SUBAGENT_THEN_CRASH_PROMPT_TEXT = "/subagent-then-crash";
+
+const TURNLESS_RESPONSE_PROMPT_TEXT = "/turnless-response";
+
+const SUBAGENT_OUTLIVES_TURN_PROMPT_TEXT = "/subagent-outlives-turn";
 
 function firstInputText(input) {
   const first = Array.isArray(input) ? input[0] : undefined;
@@ -190,6 +192,7 @@ function runScriptedTurn(threadId, presetTurnId) {
     turn: { id: turnId, status: "completed" },
   });
   openTurnIdsByThreadId.delete(threadId);
+  return { id: turnId, status: "completed" };
 }
 
 function scriptPathFromArgs(args) {
@@ -408,6 +411,8 @@ function takeScriptedTurnIndex() {
 
 async function runScriptFileTurn(threadId) {
   const turn = scriptedTurns[takeScriptedTurnIndex()] ?? [];
+  turnCounter += 1;
+  let reported = { id: `turn-fx-script-${turnCounter}`, status: "completed" };
   for (const entry of turn) {
     const params = withThreadId(entry.params ?? {}, threadId);
     if (entry.kind === "request") {
@@ -416,12 +421,15 @@ async function runScriptFileTurn(threadId) {
     }
     if (entry.method === "turn/started") {
       openTurnIdsByThreadId.set(threadId, params.turn.id);
+      reported = { id: params.turn.id, status: "inProgress" };
     }
     if (entry.method === "turn/completed") {
       openTurnIdsByThreadId.delete(threadId);
+      reported = { id: params.turn.id, status: params.turn.status };
     }
     notify(entry.method, params);
   }
+  return reported;
 }
 
 function replayLastTurnUsage(threadId) {
@@ -547,6 +555,13 @@ async function handleRequest(message) {
             : { daybreakEnabled: script.resumedDaybreakEnabled }),
         },
       });
+      if (script?.initialGoalStatus && !goalsByThreadId.has(params.threadId)) {
+        notify("thread/goal/updated", {
+          threadId: params.threadId,
+          turnId: null,
+          goal: setFakeGoalStatus(params.threadId, script.initialGoalStatus),
+        });
+      }
       return;
     }
     case "thread/metadata/update":
@@ -583,7 +598,15 @@ async function handleRequest(message) {
       return;
     }
     case "turn/start": {
-      if (firstInputText(params.input) === ZERO_WORK_PROMPT_TEXT) {
+      if (script?.turnStartError) {
+        respondError(
+          id,
+          script.turnStartError.code,
+          script.turnStartError.message,
+        );
+        return;
+      }
+      if (firstInputText(params.input) === TURNLESS_RESPONSE_PROMPT_TEXT) {
         respond(id, {});
         return;
       }
@@ -606,8 +629,33 @@ async function handleRequest(message) {
             agentPath: "reviewer",
           },
         });
-        respond(id, {});
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
         setTimeout(() => process.exit(1), 20);
+        return;
+      }
+      if (firstInputText(params.input) === SUBAGENT_OUTLIVES_TURN_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "inProgress" },
+        });
+        notify("item/completed", {
+          threadId: params.threadId,
+          turnId,
+          item: {
+            type: "subAgentActivity",
+            id: `call-fx-${turnCounter}`,
+            kind: "started",
+            agentThreadId: `codex-fx-sub-${turnCounter}`,
+            agentPath: "reviewer",
+          },
+        });
+        notify("turn/completed", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "completed" },
+        });
+        respond(id, { turn: { id: turnId, status: "completed" } });
         return;
       }
       if (firstInputText(params.input) === LATE_TURN_START_PROMPT_TEXT) {
@@ -671,20 +719,21 @@ async function handleRequest(message) {
           threadId: params.threadId,
           turn: { id: turnId, status: "inProgress" },
         });
-        setTimeout(() => respond(id, {}), script?.startResponseDelayMs ?? 0);
+        setTimeout(
+          () => respond(id, { turn: { id: turnId, status: "inProgress" } }),
+          script?.startResponseDelayMs ?? 0,
+        );
         return;
       }
-      if (scriptedTurns) {
-        await runScriptFileTurn(params.threadId);
-      } else {
-        runScriptedTurn(params.threadId);
-      }
-      respond(id, {});
+      const turn = scriptedTurns
+        ? await runScriptFileTurn(params.threadId)
+        : runScriptedTurn(params.threadId);
+      respond(id, { turn });
       return;
     }
     case "turn/steer":
       if (script?.steerError) {
-        respondError(id, script.steerError.code, script.steerError.message);
+        send({ jsonrpc: "2.0", id, error: script.steerError });
         return;
       }
       respond(id, {});
@@ -821,6 +870,19 @@ async function handleRequest(message) {
       if (params.status === "active" && !script?.goalResumeStartsNoTurn) {
         setTimeout(() => runScriptedTurn(params.threadId), 0);
       }
+      return;
+    }
+    case "thread/backgroundTerminals/list": {
+      if (script?.backgroundTerminalsError) {
+        respondError(id, -32600, script.backgroundTerminalsError);
+        return;
+      }
+      const pages = script?.backgroundTerminalPages ?? [[]];
+      const pageIndex = params.cursor ? Number(params.cursor) : 0;
+      respond(id, {
+        data: pages[pageIndex] ?? [],
+        nextCursor: pageIndex + 1 < pages.length ? String(pageIndex + 1) : null,
+      });
       return;
     }
     case "thread/goal/get":

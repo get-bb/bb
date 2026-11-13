@@ -1856,9 +1856,6 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(runRequestId);
     expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
     expect(harness.runtimeState.steeredClientRequestId).toBe(steerRequestId);
-    expect(harness.runtimeState.steeredTurnInstructions).toBe(
-      "Be a helpful coding agent.",
-    );
   });
 
   it("reports a resident thread idle after its turn completes and active again on the next turn.submit", async () => {

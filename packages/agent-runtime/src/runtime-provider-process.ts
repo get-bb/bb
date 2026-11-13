@@ -68,7 +68,7 @@ interface RuntimeProviderProcessManagerArgs {
   createProviderIdentityState: (
     providerId: string,
   ) => RuntimeProviderIdentityState;
-  env: Record<string, string> | undefined;
+  getEnv: () => Record<string, string> | undefined;
   getNextRequestId: () => number;
   handleDeferredEvents: (args: RuntimeProviderDeferredEventsArgs) => void;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
@@ -381,7 +381,7 @@ export class RuntimeProviderProcessManager {
     const processConfig = args.adapter.process;
     const env: NodeJS.ProcessEnv = {
       ...sanitizeInheritedChildProcessEnv({ env: process.env }),
-      ...this.args.env,
+      ...this.args.getEnv(),
       ...processConfig.env,
     };
     const recordRoot = env[PROVIDER_BRIDGE_RECORD_DIR_ENV];

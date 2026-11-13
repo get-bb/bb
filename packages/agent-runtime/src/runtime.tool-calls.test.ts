@@ -1,3 +1,4 @@
+import { RuntimeSessionStates } from "./runtime-session-state.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -247,6 +248,7 @@ describe("createAgentRuntime tool calls", () => {
     try {
       handleRuntimeProviderRequest({
         toolCalls: new RuntimeToolCalls(),
+        sessions: new RuntimeSessionStates(),
         getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({
@@ -311,6 +313,7 @@ describe("createAgentRuntime tool calls", () => {
     try {
       handleRuntimeProviderRequest({
         toolCalls: new RuntimeToolCalls(),
+        sessions: new RuntimeSessionStates(),
         getActiveTurnId: () => "turn-1",
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({

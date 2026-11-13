@@ -71,30 +71,7 @@ describe("delta assembler", () => {
     ]);
   });
 
-  it("claimIfIdle boundary opens and settles a turn only when input is pending", () => {
-    const assembler = createAssembler();
-    expect(
-      assemble(assembler, {
-        kind: "turn.boundary",
-        status: "completed",
-        claimIfIdle: true,
-      }),
-    ).toEqual([]);
-
-    assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ });
-    const events = assemble(assembler, {
-      kind: "turn.boundary",
-      status: "completed",
-      claimIfIdle: true,
-    });
-    expect(events.map((event) => event.type)).toEqual([
-      "turn/started",
-      "turn/input/accepted",
-      "turn/completed",
-    ]);
-  });
-
-  it("a non-claiming boundary without an open turn settles nothing", () => {
+  it("a boundary without an open turn settles nothing, even with accepted input pending", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ });
     expect(
@@ -911,11 +888,11 @@ describe("delta assembler", () => {
         item: { type: "command", command: "", cwd: "" },
       }),
     ).toEqual([]);
-    const events = assemble(assembler, {
-      kind: "turn.boundary",
-      status: "completed",
-      claimIfIdle: true,
-    });
+    const events = assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "turn.boundary", status: "completed" },
+    );
     expect(events.map((event) => event.type)).toEqual([
       "turn/started",
       "turn/input/accepted",

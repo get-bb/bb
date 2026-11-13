@@ -66,7 +66,10 @@ const piPromptSettledEnvelopeSchema = z.object({
   }),
 });
 
-const PI_IGNORED_EVENT_TYPES = new Set(["agent_settled"]);
+const PI_IGNORED_EVENT_TYPES = new Set([
+  "agent_settled",
+  "thinking_level_changed",
+]);
 
 const piIgnoredEventSchema = z
   .object({ type: z.string() })
@@ -526,10 +529,12 @@ export function createPiDeltaTranslator(
   const promptCacheTtlMsByThreadId = new Map<string, number>();
   const closedAssistantStreams = new Set<string>();
   const openThinkingStreams = new Map<string, Set<number>>();
+  const openCompactionThreads = new Set<string>();
 
   function resetThread(threadId: string): void {
     cumulativeTokensByThreadId.delete(threadId);
     promptCacheTtlMsByThreadId.delete(threadId);
+    openCompactionThreads.delete(threadId);
     clearThreadToolShapes({ threadId });
     const prefix = `${threadId} `;
     for (const key of [...closedAssistantStreams]) {
@@ -551,16 +556,14 @@ export function createPiDeltaTranslator(
     const thinkingIndexes = openThinkingStreams.get(streamKey) ?? [];
     openThinkingStreams.delete(streamKey);
     return [
-      ...[...thinkingIndexes].map(
-        (contentIndex): ThreadDelta => ({
-          kind: "item.textClose",
-          key: {
-            channel: thinkingStreamChannel(contentIndex),
-            ...parentRefField,
-          },
-          channel: "reasoningText",
-        }),
-      ),
+      ...[...thinkingIndexes].map((contentIndex): ThreadDelta => ({
+        kind: "item.textClose",
+        key: {
+          channel: thinkingStreamChannel(contentIndex),
+          ...parentRefField,
+        },
+        channel: "reasoningText",
+      })),
       {
         kind: "item.textClose",
         key: { channel: ASSISTANT_STREAM_KEY, ...parentRefField },
@@ -715,7 +718,6 @@ export function createPiDeltaTranslator(
           ...(promptSettledEnvelope.data.params.error !== undefined
             ? { error: { message: promptSettledEnvelope.data.params.error } }
             : {}),
-          claimIfIdle: true,
         },
       ];
     }
@@ -832,6 +834,7 @@ export function createPiDeltaTranslator(
         if (!parsed.success) {
           return unexpectedSdkEventDeltas(event, context);
         }
+        openCompactionThreads.add(context?.threadId ?? "");
         const open: ThreadDelta = {
           kind: "item.open",
           key: { channel: "compaction" },
@@ -856,14 +859,31 @@ export function createPiDeltaTranslator(
           kind: "context.compacted",
           noTurnFallback: noTurnFallbackFor(event, context),
         };
+        const compactionNoopDetail =
+          !parsed.data.aborted &&
+          parsed.data.errorMessage !== undefined &&
+          isPiCompactionNoop(parsed.data.errorMessage)
+            ? parsed.data.errorMessage
+            : undefined;
+        const closeCompaction: ThreadDelta[] = openCompactionThreads.delete(
+          context?.threadId ?? "",
+        )
+          ? [
+              {
+                kind: "item.close",
+                key: { channel: "compaction" },
+                status:
+                  succeeded || compactionNoopDetail !== undefined
+                    ? "completed"
+                    : parsed.data.aborted
+                      ? "interrupted"
+                      : "failed",
+                item: { type: "compaction" },
+              },
+            ]
+          : [];
         if (parsed.data.reason === "manual") {
           clearThreadToolShapes(context);
-          const compactionNoopDetail =
-            !parsed.data.aborted &&
-            parsed.data.errorMessage !== undefined &&
-            isPiCompactionNoop(parsed.data.errorMessage)
-              ? parsed.data.errorMessage
-              : undefined;
           if (compactionNoopDetail !== undefined) {
             return [
               {
@@ -873,11 +893,13 @@ export function createPiDeltaTranslator(
                 details: compactionNoopDetail,
                 vouchedTurn: true,
               },
+              ...closeCompaction,
               { kind: "turn.boundary", status: "completed" },
             ];
           }
           return [
             ...(succeeded ? [compacted] : []),
+            ...closeCompaction,
             {
               kind: "turn.boundary",
               status: parsed.data.aborted
@@ -892,9 +914,10 @@ export function createPiDeltaTranslator(
           ];
         }
         if (succeeded) {
-          return [compacted];
+          return [compacted, ...closeCompaction];
         }
         return [
+          ...closeCompaction,
           {
             kind: "provider.error",
             message: parsed.data.aborted
@@ -1018,7 +1041,6 @@ export function createPiDeltaTranslator(
           ...(piEvent.data.providerCheckpointId !== undefined
             ? { providerCheckpointId: piEvent.data.providerCheckpointId }
             : {}),
-          claimIfIdle: true,
         });
         return deltas;
       }

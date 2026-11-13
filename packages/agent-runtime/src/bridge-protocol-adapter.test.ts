@@ -1,4 +1,5 @@
 import type { ThreadEvent } from "@bb/domain";
+import { EMPTY_SESSION_SETTINGS_APPLY } from "@bb/provider-bridge-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
@@ -25,7 +26,7 @@ function completeHandshake(
   const requests = adapter.buildPostInitializeRequests();
   expect(requests).toHaveLength(1);
   requests[0]?.onResult({
-    protocolVersion: 2,
+    protocolVersion: 3,
     capabilities: { grammarVersions: [3, 3], ...capabilities },
   });
 }
@@ -47,7 +48,7 @@ describe("handshake version gate", () => {
     expect(() =>
       requests[0]?.onResult({ protocolVersion: 1, capabilities: {} }),
     ).toThrowError(
-      /speaks Provider Bridge Protocol version 1.*requires version 2.*fake-bridge/s,
+      /speaks Provider Bridge Protocol version 1.*requires version 3.*fake-bridge/s,
     );
   });
 
@@ -70,7 +71,7 @@ describe("handshake version gate", () => {
     });
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [4, 5] },
       }),
     ).toThrowError(
@@ -78,22 +79,22 @@ describe("handshake version gate", () => {
     );
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [2, 2] },
       }),
     ).toThrowError(/grammar versions 2-2.*assembles versions 3-3/s);
     expect(() =>
-      requests[0]?.onResult({ protocolVersion: 2, capabilities: {} }),
+      requests[0]?.onResult({ protocolVersion: 3, capabilities: {} }),
     ).toThrowError(/grammar versions 2-2.*assembles versions 3-3/s);
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [3, 3] },
       }),
     ).not.toThrow();
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [2, 4] },
       }),
     ).not.toThrow();
@@ -236,7 +237,7 @@ describe("options mapping", () => {
         model: "gpt-5.6-sol",
         promptMode: "plan",
         providerOptions: { memoryEnabled: false },
-      },
+      },      apply: EMPTY_SESSION_SETTINGS_APPLY,
     });
     expect(plan).toMatchObject({
       kind: "request",

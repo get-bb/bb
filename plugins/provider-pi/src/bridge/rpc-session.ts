@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { PI_MINIMUM_SUPPORTED_VERSION } from "./provider-maintenance.js";
 import { runSettlementError } from "./run-settlement.js";
 import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
@@ -65,9 +66,34 @@ export interface PiPromptRunOutcome {
   error?: unknown;
 }
 
+export type PiInputAdmission =
+  | { admission: "accepted" }
+  | { admission: "busy"; message: string };
+
 export interface PiInputDispatch {
-  consumed: Promise<void>;
+  admitted: Promise<PiInputAdmission>;
   settled: Promise<PiPromptRunOutcome | null>;
+}
+
+export type PiCompactionStart =
+  | { admission: "accepted"; compactionEndDelivered: Promise<boolean> }
+  | { admission: "busy"; message: string };
+
+type PromptDispatchOutcome =
+  | { kind: "started" | "queued" | "handled" }
+  | { kind: "busy"; message: string }
+  | { kind: "failed"; error: unknown };
+
+const PI_COMPACTING_BUSY_MESSAGE = "Pi is compacting the context.";
+const PI_PROCESSING_BUSY_MESSAGE = "Pi is processing a turn.";
+
+function promptDisposition(data: unknown): string | null {
+  return typeof data === "object" &&
+    data !== null &&
+    "disposition" in data &&
+    typeof data.disposition === "string"
+    ? data.disposition
+    : null;
 }
 
 interface PendingRunSettlement {
@@ -118,7 +144,6 @@ const PI_TRANSIENT_AUTH_RETRY_DELAY_MS = 250;
 const PI_TRANSIENT_AUTH_MAX_RETRIES = 8;
 const PI_COMPACTION_PROMPT_REJECTION =
   "Cannot submit a prompt while compaction is in progress.";
-const PI_COMPACTION_PROMPT_MAX_RETRIES = 8;
 
 function isPiCompactionPromptRejection(error: unknown): boolean {
   return (
@@ -132,7 +157,6 @@ function readinessTimeoutMs(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
 }
 const CHANNEL_REQUEST_TIMEOUT_MS = 30_000;
-const AGENT_END_LEAF_TIMEOUT_MS = 5_000;
 
 type PiSessionConstructionOutcome = { ok: true } | { ok: false; error: Error };
 
@@ -166,13 +190,13 @@ export interface PiRpcSessionState {
   thinkingLevel?: string;
   isStreaming: boolean;
   isCompacting: boolean;
+  pendingMessageCount?: number;
   sessionFile?: string;
 }
 
 export class PiRpcSession {
   private child: PiRpcChild | undefined;
   private isProcessing = false;
-  private supportsSettlement = false;
   private agentRunsStarted = 0;
   private agentRunsSettled = 0;
   private readonly runs = new Map<
@@ -187,7 +211,7 @@ export class PiRpcSession {
   private deliveredRunActive = false;
   private isCompacting = false;
   private piManualCompactionActive = false;
-  private piManualCompactionWaiters: (() => void)[] = [];
+  private readonly heldManualCompactionEvents: PiRpcEvent[] = [];
   private manualCompactionCompletionCount = 0;
   private lastCompactionEndDelivery: Promise<void> = Promise.resolve();
   private deliveryChain: Promise<void> = Promise.resolve();
@@ -196,7 +220,6 @@ export class PiRpcSession {
     followUp: [],
     steering: [],
   };
-  private autoRetryInProgress = false;
   private terminalSteerSettlement: Promise<void> | null = null;
   private readonly pendingRunSettlements: PendingRunSettlement[] = [];
   private readonly channelReplies = new Map<string, ChannelReply>();
@@ -230,15 +253,15 @@ export class PiRpcSession {
     private readonly onDone: PiSessionDoneHandler,
   ) {}
 
-  getIsCompacting(): boolean {
-    return this.isCompacting;
-  }
-
   respondToExtensionUi(
     id: string | number,
     fields: Record<string, unknown>,
   ): void {
     this.child?.respondToExtensionUi(id, fields);
+  }
+
+  get alive(): boolean {
+    return !this.closed && this.child !== undefined && !this.child.exited;
   }
 
   getLiveModel(): PiRpcSessionState["model"] | undefined {
@@ -399,16 +422,24 @@ export class PiRpcSession {
   prompt(text: string, images?: ImageContent[]): PiInputDispatch {
     const child = this.child;
     if (this.closed || !child || child.exited) {
-      const consumed = Promise.reject(new Error("No active Pi session"));
-      void consumed.catch(() => undefined);
-      return { consumed, settled: Promise.resolve(null) };
+      const admitted = Promise.reject(new Error("No active Pi session"));
+      void admitted.catch(() => undefined);
+      return { admitted, settled: Promise.resolve(null) };
     }
+    const busy = this.inputBusyMessage();
+    if (busy !== null) {
+      return {
+        admitted: Promise.resolve({ admission: "busy", message: busy }),
+        settled: Promise.resolve(null),
+      };
+    }
+    const wasProcessing = this.isProcessing;
     this.isProcessing = true;
     const tracked = this.trackPendingInputConsumption("followUp");
     const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
       this.pendingRunSettlements.push({ resolve });
     });
-    const settled = this.dispatchPromptAfterManualCompaction(
+    const outcome = this.dispatchWithTransientAuthRetry(
       child,
       {
         type: "prompt",
@@ -416,37 +447,82 @@ export class PiRpcSession {
         ...(images && images.length > 0 ? { images } : {}),
         streamingBehavior: "followUp",
       },
-      tracked.pending,
+      NO_REQUEST_TIMEOUT,
     ).then(
-      async (): Promise<PiPromptRunOutcome | null> => {
+      (data): PromptDispatchOutcome => {
+        if (promptDisposition(data) === "handled") {
+          this.isProcessing = wasProcessing;
+          this.dropRunSettlement();
+          this.resolvePendingInputConsumption(tracked.pending);
+          return { kind: "handled" };
+        }
         if (tracked.pending.queuedText !== null) {
           this.dropRunSettlement();
-          return null;
+          return { kind: "queued" };
         }
         this.resolvePendingInputConsumption(tracked.pending);
-        const outcome = await settlement;
-        return outcome;
+        return { kind: "started" };
       },
-      (error: unknown): PiPromptRunOutcome | null => {
-        this.isProcessing = false;
+      (error: unknown): PromptDispatchOutcome => {
         this.dropRunSettlement();
-        const queued = tracked.pending.queuedText !== null;
         this.rejectPendingInputConsumption(tracked.pending, asError(error));
+        if (isPiCompactionPromptRejection(error)) {
+          this.isProcessing = wasProcessing;
+          return { kind: "busy", message: asError(error).message };
+        }
+        this.isProcessing = false;
         this.rejectPendingInputConsumptions(
           "Pi prompt failed before input was consumed",
         );
         this.onDone(error);
-        return queued ? null : { error };
+        return { kind: "failed", error };
       },
     );
-    return { consumed: tracked.promise, settled };
+    const admitted = outcome.then(async (result): Promise<PiInputAdmission> => {
+      switch (result.kind) {
+        case "busy":
+          return { admission: "busy", message: result.message };
+        case "failed":
+          throw result.error;
+        case "handled":
+          return { admission: "accepted" };
+        case "started":
+        case "queued":
+          await tracked.promise;
+          return { admission: "accepted" };
+      }
+    });
+    void admitted.catch(() => undefined);
+    const settled = outcome.then(
+      async (result): Promise<PiPromptRunOutcome | null> => {
+        switch (result.kind) {
+          case "started":
+            return await settlement;
+          case "handled":
+            return {};
+          case "queued":
+          case "busy":
+          case "failed":
+            return null;
+        }
+      },
+    );
+    return { admitted, settled };
   }
 
-  async steer(text: string, images?: ImageContent[]): Promise<void> {
+  async steer(
+    text: string,
+    images?: ImageContent[],
+  ): Promise<PiInputAdmission> {
     const child = this.requireChild();
+    const busy = this.inputBusyMessage();
+    if (busy !== null) {
+      return { admission: "busy", message: busy };
+    }
     const tracked = this.trackPendingInputConsumption("steering");
+    let data: unknown;
     try {
-      await this.dispatchWithTransientAuthRetry(child, {
+      data = await this.dispatchWithTransientAuthRetry(child, {
         type: "prompt",
         message: text,
         ...(images && images.length > 0 ? { images } : {}),
@@ -454,40 +530,87 @@ export class PiRpcSession {
       });
     } catch (error) {
       this.rejectPendingInputConsumption(tracked.pending, asError(error));
+      if (isPiCompactionPromptRejection(error)) {
+        return { admission: "busy", message: asError(error).message };
+      }
       this.onDone(error);
       throw error;
     }
-    if (tracked.pending.queuedText === null) {
+    if (
+      promptDisposition(data) === "handled" ||
+      tracked.pending.queuedText === null
+    ) {
       this.resolvePendingInputConsumption(tracked.pending);
-      return;
+      return { admission: "accepted" };
     }
     void tracked.promise.catch((error) => {
       this.onDone(error);
     });
+    return { admission: "accepted" };
   }
 
-  async compact(): Promise<void> {
+  async startCompaction(): Promise<PiCompactionStart> {
     const child = this.requireChild();
-    if (this.isProcessing) {
-      throw new Error("Cannot compact context while Pi is processing a turn");
+    let busy = this.compactionBusyMessage();
+    if (busy === null && (await this.getState()).isStreaming) {
+      busy = PI_PROCESSING_BUSY_MESSAGE;
     }
-    if ((await this.getState()).isStreaming) {
-      throw new Error("Cannot compact context while Pi is processing a turn");
+    busy ??= this.compactionBusyMessage();
+    if (busy !== null) {
+      return { admission: "busy", message: busy };
     }
     const completionCount = this.manualCompactionCompletionCount;
     this.isProcessing = true;
     this.isCompacting = true;
-    try {
-      await child.requestOk({ type: "compact" }, 10 * 60_000);
-    } catch (error) {
-      if (this.manualCompactionCompletionCount === completionCount) {
-        throw error;
-      }
-    } finally {
-      this.isProcessing = false;
-      this.isCompacting = false;
-    }
-    await this.lastCompactionEndDelivery;
+    const compactionEndDelivered = child
+      .requestOk({ type: "compact" }, NO_REQUEST_TIMEOUT)
+      .then(
+        () => undefined,
+        (error: unknown) => {
+          if (this.manualCompactionCompletionCount === completionCount) {
+            throw error;
+          }
+        },
+      )
+      .finally(() => {
+        this.isProcessing = false;
+        this.isCompacting = false;
+      })
+      .then(async () => {
+        await this.lastCompactionEndDelivery;
+        return this.manualCompactionCompletionCount !== completionCount;
+      });
+    return { admission: "accepted", compactionEndDelivered };
+  }
+
+  async setModel(model: {
+    provider: string;
+    id: string;
+  }): Promise<PiRpcSessionState["model"]> {
+    const data = await this.requireChild().requestOk({
+      type: "set_model",
+      provider: model.provider,
+      modelId: model.id,
+    });
+    this.liveModel = (data ?? undefined) as PiRpcSessionState["model"];
+    return this.liveModel;
+  }
+
+  async setThinkingLevel(level: string): Promise<void> {
+    await this.requireChild().requestOk({ type: "set_thinking_level", level });
+  }
+
+  inputBusyMessage(): string | null {
+    return this.isCompacting || this.piManualCompactionActive
+      ? PI_COMPACTING_BUSY_MESSAGE
+      : null;
+  }
+
+  private compactionBusyMessage(): string | null {
+    return (
+      this.inputBusyMessage() ??
+      (this.isProcessing ? PI_PROCESSING_BUSY_MESSAGE : null)
+    );
   }
 
   async closeGracefully(timeoutMs: number): Promise<string | undefined> {
@@ -496,7 +619,7 @@ export class PiRpcSession {
       "Pi session closed before input was consumed",
     );
     this.closed = true;
-    this.releasePiManualCompactionWaiters();
+    this.clearManualCompactionState();
     if (!child || child.exited) {
       return this.lastKnownLeafId ?? undefined;
     }
@@ -588,67 +711,19 @@ export class PiRpcSession {
     return { args, paths };
   }
 
-  private async dispatchPromptAfterManualCompaction(
-    child: PiRpcChild,
-    command: Record<string, unknown>,
-    pending: PendingInputConsumption,
-  ): Promise<void> {
-    for (let attempt = 0; ; attempt += 1) {
-      if (this.piManualCompactionActive) {
-        this.resolvePendingInputConsumption(pending);
-        await this.waitForPiManualCompactionEnd();
-      }
-      if (this.closed) {
-        throw new Error("Pi session closed before queued input was sent");
-      }
-      this.isProcessing = true;
-      try {
-        await this.dispatchWithTransientAuthRetry(
-          child,
-          command,
-          NO_REQUEST_TIMEOUT,
-        );
-        return;
-      } catch (error) {
-        if (
-          !isPiCompactionPromptRejection(error) ||
-          attempt >= PI_COMPACTION_PROMPT_MAX_RETRIES
-        ) {
-          throw error;
-        }
-        this.resolvePendingInputConsumption(pending);
-        if (!this.piManualCompactionActive) {
-          await waitForPiTransientAuthRetry();
-        }
-      }
-    }
-  }
-
-  private waitForPiManualCompactionEnd(): Promise<void> {
-    if (!this.piManualCompactionActive || this.closed) {
-      return Promise.resolve();
-    }
-    return new Promise((resolve) => {
-      this.piManualCompactionWaiters.push(resolve);
-    });
-  }
-
-  private releasePiManualCompactionWaiters(): void {
+  private clearManualCompactionState(): void {
     this.piManualCompactionActive = false;
-    for (const resolve of this.piManualCompactionWaiters.splice(0)) {
-      resolve();
-    }
+    this.heldManualCompactionEvents.length = 0;
   }
 
   private async dispatchWithTransientAuthRetry(
     child: PiRpcChild,
     command: Record<string, unknown>,
     timeoutMs?: number,
-  ): Promise<void> {
+  ): Promise<unknown> {
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await child.requestOk(command, timeoutMs);
-        return;
+        return await child.requestOk(command, timeoutMs);
       } catch (error) {
         if (
           !(error instanceof Error) ||
@@ -668,7 +743,7 @@ export class PiRpcSession {
       return;
     }
     const event = raw as PiRpcEvent;
-    if (event.type === "agent_settled" && this.supportsSettlement) {
+    if (event.type === "agent_settled") {
       void this.deliverInOrder(async () => {
         this.deliverSettlement(await this.takeAgentSettledLeaf());
       });
@@ -676,8 +751,7 @@ export class PiRpcSession {
     }
     this.trackProcessingState(event);
     this.observeInputConsumption(event);
-    this.observeTerminalSteerSettlement(event);
-    if (event.type === "agent_start" && this.supportsSettlement) {
+    if (event.type === "agent_start") {
       const runId = this.agentRunsStarted;
       void this.deliverInOrder(async () => {
         const report = await this.takeAgentStart();
@@ -700,6 +774,7 @@ export class PiRpcSession {
       if (observedRun) observedRun.end = event;
       void this.deliverInOrder(async () => {
         const leafId = await this.takeAgentEndLeaf();
+        if (this.closed) return;
         if (leafId !== null) this.lastKnownLeafId = leafId;
         const run = this.runs.get(runId) ?? {};
         run.end = event;
@@ -707,13 +782,9 @@ export class PiRpcSession {
         this.runs.set(runId, run);
         this.onEvent({
           ...event,
-          ...(this.supportsSettlement ? { deferSettlement: true } : {}),
+          deferSettlement: true,
           ...(leafId === null ? {} : { providerCheckpointId: leafId }),
         });
-        if (!this.supportsSettlement) {
-          this.settleRun(event);
-          if (event.willRetry !== true) this.retireRunsThrough(runId);
-        }
       });
       return;
     }
@@ -757,7 +828,7 @@ export class PiRpcSession {
     if (event.type === "turn_end" || event.type === "compaction_end") {
       const delivery = this.deliverInOrder(async () => {
         await this.refreshContextUsage().catch(() => undefined);
-        this.onEvent(event);
+        this.deliverAfterRunSettles(event);
       });
       if (event.type === "compaction_end" && event.reason === "manual") {
         this.manualCompactionCompletionCount += 1;
@@ -766,8 +837,20 @@ export class PiRpcSession {
       return;
     }
     void this.deliverInOrder(() => {
-      this.onEvent(event);
+      this.deliverAfterRunSettles(event);
     });
+  }
+
+  private deliverAfterRunSettles(event: PiRpcEvent): void {
+    if (
+      this.deliveredRunActive &&
+      (event.type === "compaction_start" || event.type === "compaction_end") &&
+      event.reason === "manual"
+    ) {
+      this.heldManualCompactionEvents.push(event);
+      return;
+    }
+    this.onEvent(event);
   }
 
   private deliverInOrder(deliver: () => void | Promise<void>): Promise<void> {
@@ -823,6 +906,9 @@ export class PiRpcSession {
     this.retireRunsThrough(runId);
     this.onEvent(finalEvent);
     this.onEvent({ ...event, type: "agent_settled" });
+    for (const held of this.heldManualCompactionEvents.splice(0)) {
+      this.onEvent(held);
+    }
     this.settleRun(finalEvent);
     if (this.agentRunsStarted === runId) this.scheduleTerminalSteerSettlement();
   }
@@ -893,57 +979,28 @@ export class PiRpcSession {
 
   private takeAgentEndLeaf(): Promise<string | null> {
     const queued = this.agentEndLeafReports.shift();
-    if (queued !== undefined) {
-      return Promise.resolve(queued);
-    }
-    return new Promise<string | null>((resolve) => {
-      const timer = setTimeout(() => {
-        if (this.agentEndLeafWaiter === settle) {
-          this.agentEndLeafWaiter = null;
-        }
-        resolve(null);
-      }, AGENT_END_LEAF_TIMEOUT_MS);
-      timer.unref?.();
-      const settle = (leafId: string | null) => {
-        clearTimeout(timer);
-        resolve(leafId);
-      };
-      this.agentEndLeafWaiter = settle;
+    if (queued !== undefined) return Promise.resolve(queued);
+    if (this.closed) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      this.agentEndLeafWaiter = resolve;
     });
   }
 
   private takeAgentStart(): Promise<StartReport | null> {
     const queued = this.agentStartReports.shift();
     if (queued !== undefined) return Promise.resolve(queued);
+    if (this.closed) return Promise.resolve(null);
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        if (this.agentStartWaiter === settle) this.agentStartWaiter = null;
-        resolve(null);
-      }, AGENT_END_LEAF_TIMEOUT_MS);
-      timer.unref?.();
-      const settle = (report: StartReport | null) => {
-        clearTimeout(timer);
-        resolve(report);
-      };
-      this.agentStartWaiter = settle;
+      this.agentStartWaiter = resolve;
     });
   }
 
   private takeAgentSettledLeaf(): Promise<SettlementReport | null> {
     const queued = this.agentSettledLeafReports.shift();
     if (queued !== undefined) return Promise.resolve(queued);
-    return new Promise<SettlementReport | null>((resolve) => {
-      const timer = setTimeout(() => {
-        if (this.agentSettledLeafWaiter === settle)
-          this.agentSettledLeafWaiter = null;
-        resolve(null);
-      }, AGENT_END_LEAF_TIMEOUT_MS);
-      timer.unref?.();
-      const settle = (report: SettlementReport | null) => {
-        clearTimeout(timer);
-        resolve(report);
-      };
-      this.agentSettledLeafWaiter = settle;
+    if (this.closed) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      this.agentSettledLeafWaiter = resolve;
     });
   }
 
@@ -969,12 +1026,18 @@ export class PiRpcSession {
   private handleChannelMessage(message: Record<string, unknown>): void {
     const child = this.child;
     if (message.kind === "ready") {
-      this.supportsSettlement = message.agentSettled === true;
-      this.ready.resolve();
+      if (message.agentSettled === true) {
+        this.ready.resolve();
+      } else {
+        this.ready.reject(
+          new Error(
+            `This Pi does not report run settlement. Update Pi to ${PI_MINIMUM_SUPPORTED_VERSION} or newer.`,
+          ),
+        );
+      }
       return;
     }
     if (message.kind === "agent-start") {
-      if (!this.supportsSettlement) return;
       const previousSettlement = parseSettlementReport(
         message.previousSettlement,
       );
@@ -1121,7 +1184,7 @@ export class PiRpcSession {
     }
     this.isProcessing = false;
     this.isCompacting = false;
-    this.releasePiManualCompactionWaiters();
+    this.clearManualCompactionState();
     if (!wasClosed) {
       this.onDone(new PiRpcChildExitedError(info));
     }
@@ -1141,16 +1204,9 @@ export class PiRpcSession {
       this.agentRunsStarted += 1;
       this.runs.set(this.agentRunsStarted, {});
     }
-    if (
-      !this.supportsSettlement &&
-      event.type === "agent_end" &&
-      event.willRetry !== true
-    ) {
-      this.isProcessing = false;
-    }
     if (event.type === "compaction_end" && event.reason === "manual") {
-      this.isProcessing = this.piManualCompactionWaiters.length > 0;
-      this.releasePiManualCompactionWaiters();
+      this.isProcessing = false;
+      this.piManualCompactionActive = false;
     }
   }
 
@@ -1209,30 +1265,6 @@ export class PiRpcSession {
     }
   }
 
-  private observeTerminalSteerSettlement(event: PiRpcEvent): void {
-    if (this.supportsSettlement) return;
-    if (event.type === "agent_end") {
-      if (event.willRetry !== true) {
-        this.scheduleTerminalSteerSettlement();
-      }
-      return;
-    }
-    if (event.type === "auto_retry_start") {
-      this.autoRetryInProgress = true;
-      this.clearTerminalSteerSettlement();
-      return;
-    }
-    if (event.type === "auto_retry_end") {
-      this.autoRetryInProgress = false;
-      if (event.success !== true) {
-        this.rejectPendingInputConsumptions(
-          "Pi auto retry ended before steer was consumed",
-          "steering",
-        );
-      }
-    }
-  }
-
   private scheduleTerminalSteerSettlement(): void {
     if (
       !this.pendingInputConsumptions.some(
@@ -1258,7 +1290,7 @@ export class PiRpcSession {
           return;
         }
         this.terminalSteerSettlement = null;
-        if (this.autoRetryInProgress || streaming) {
+        if (streaming) {
           return;
         }
         this.rejectPendingInputConsumptions(

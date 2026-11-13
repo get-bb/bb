@@ -864,7 +864,7 @@ export function createTestRuntime(
   });
 
   const runtime = createAgentRuntime({
-    env: createRuntimeProcessEnv({ providerId, tmpDir }),
+    getProcessEnv: () => (createRuntimeProcessEnv({ providerId, tmpDir })),
     skillRoots: opts?.skillRoots,
     workspacePath: tmpDir,
     onEvent: (e) => events.push(e),

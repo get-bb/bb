@@ -18,7 +18,6 @@ afterEach(async () => {
 async function start(
   options: {
     version?: string;
-    settlement?: boolean;
     aborted?: string;
     duplicate?: boolean;
   } = {},
@@ -29,8 +28,7 @@ async function start(
     processLog: true,
   });
   h = harness;
-  vi.stubEnv("FAKE_PI_SETTLEMENT", options.settlement === false ? "0" : "1");
-  vi.stubEnv("FAKE_PI_VERSION", options.version ?? "0.84.0");
+  vi.stubEnv("FAKE_PI_VERSION", options.version ?? "0.99.0");
   vi.stubEnv("FAKE_PI_FINAL_LEAF", "settled-leaf");
   vi.stubEnv("FAKE_PI_COMMAND_LOG", join(harness.workspaceDir, "commands.log"));
   vi.stubEnv("FAKE_PI_EVENT_LOG", join(harness.workspaceDir, "events.jsonl"));
@@ -59,6 +57,7 @@ async function start(
       clientRequestId:
         ++turnCount === 1 ? "creq_ab23456789" : "creq_ef23456789",
       input: [{ type: "text", text, mentions: [] }],
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
       options: FULL_PERMISSION_OPTIONS,
     });
     expect(response.error).toBeUndefined();
@@ -87,7 +86,7 @@ async function start(
   return { harness, send, turn, run, deltas, wireEvents, commands };
 }
 
-it.each(["0.84.0", "1.0.2"])(
+it.each(["0.99.0", "1.0.2"])(
   "uses authoritative settlement and its checkpoint on Pi %s",
   async (version) => {
     const t = await start({ version, duplicate: true });
@@ -171,7 +170,11 @@ it("shows a failed run's error when queued work continues to a completed turn", 
         d.kind === "item.textClose" && String(d.text).includes("Response to:"),
     ),
   ).toHaveLength(1);
-  expect(deltas.filter((d) => d.kind === "turn.open")).toHaveLength(1);
+  expect(
+    deltas
+      .slice(deltas.findIndex((d) => d.kind === "turn.boundary"))
+      .some((d) => d.kind === "turn.open"),
+  ).toBe(false);
 });
 
 it.each([
@@ -212,19 +215,25 @@ it.each(["/threshold-cancel", "/stop-overflow-cancel", "/stop-overflow-error"])(
   },
 );
 
-it.each(["hello", "/unexpected-abort"])(
-  "retains legacy fallback without settlement events for %s",
-  async (text) => {
-    const t = await start({ settlement: false, version: "0.83.0" });
-    const deltas = await t.run(text);
-    expect(deltas.filter((d) => d.kind === "turn.boundary")).toEqual([
-      expect.objectContaining({
-        status: text === "hello" ? "completed" : "failed",
-      }),
-    ]);
-    expect(t.wireEvents().some((e) => e.type === "agent_settled")).toBe(false);
-  },
-);
+it("refuses to start a Pi that does not report run settlement", async () => {
+  const harness = await startFakePiBridge({
+    prefix: "bb-pi-settlement-",
+    initialize: true,
+    processLog: true,
+  });
+  h = harness;
+  vi.stubEnv("FAKE_PI_SETTLEMENT", "0");
+  const response = await harness.startThread("thread");
+  expect(response.error).toMatchObject({
+    message: expect.stringContaining(
+      "This Pi does not report run settlement. Update Pi to 0.99.0 or newer.",
+    ),
+  });
+  await harness.waitFor(
+    () => harness.runningChildPids().length === 0,
+    "the refused Pi child to exit",
+  );
+});
 
 it("Stop interrupts intentionally and release never starts a new run", async () => {
   const t = await start();

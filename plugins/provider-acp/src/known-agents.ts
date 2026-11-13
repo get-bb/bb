@@ -95,7 +95,6 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     dialect: "opencode",
     modelCatalogScope: "workspace",
     providerUsage: true,
-    supportsManualCompaction: true,
     fork: "tip",
     launch: {
       displayName: "opencode",
@@ -121,7 +120,6 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     signInCommand: "omp login",
     installUrl: "https://github.com/can1357/omp",
     visibility: "installed",
-    supportsManualCompaction: true,
     fork: "tip",
     launch: {
       displayName: "omp",
@@ -155,7 +153,6 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     installUrl: "https://docs.x.ai/docs/grok-build",
     visibility: "installed",
     dialect: "grok",
-    supportsManualCompaction: true,
     fork: "none",
     reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
     launch: {

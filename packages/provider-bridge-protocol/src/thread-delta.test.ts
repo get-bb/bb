@@ -10,7 +10,7 @@ describe("thread delta schemas", () => {
     const deltas = [
       { kind: "input.accepted", clientRequestId: "creq_abcdefghjk" },
       { kind: "turn.open" },
-      { kind: "turn.boundary", status: "completed", claimIfIdle: true },
+      { kind: "turn.boundary", status: "completed" },
       {
         kind: "item.open",
         key: { providerItemId: "tc-1" },

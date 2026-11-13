@@ -48,15 +48,18 @@ Hygiene rules:
 ## Versioning and capabilities
 
 `initialize` exchanges `{protocolVersion, capabilities}` in both directions.
-The current version is **2**; the runtime rejects a bridge answering another
-version with a legible startup error. The version bumps only for breaking
+The current version is **3** (the session contract: admission answers,
+explicit phases, declared settings and open work; see "Session contract"
+below); the runtime rejects a bridge answering another version with a legible
+startup error. The version bumps only for breaking
 changes; everything additive rides capability tolerance: unknown methods
 answer `-32601`, unknown notifications are ignored, unknown capability fields
 pass through. Bridges version with their plugin, not with the daemon.
 
 Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 `threadArchive`, `threadRename`, `threadGoalClear`, `fork`,
-`approvalEnforcedBy`, `grammarVersions`, `steerMode`, `skills`). They are
+`approvalEnforcedBy`, `grammarVersions`, `steerMode`, `skills`, `commands`,
+`openWork`, `sessionSettings`). They are
 reported by the code that implements them, so they cannot drift from
 behavior. The runtime never sends a capability-gated method to a bridge that
 did not advertise it. A handshake fact may only _narrow_ what the provider's
@@ -130,8 +133,10 @@ do `bb machine provider-cli status` and `bb updates`.
 Every handshake capability gates a request method, which is why the set holds
 no compaction fact: there is no compact request method. Compaction is a
 standalone builtin `/compact` prompt travelling the normal turn pipeline,
-which each bridge maps to its provider's compaction command, and the
-affordance is gated solely by the declaration's `supportsManualCompaction`.
+which each bridge maps to its provider's compaction command. The
+declaration's `supportsManualCompaction` decides whether bb offers it; the
+live session decides whether it runs, and a bridge whose provider cannot
+compact answers that `/compact` with `{ admission: "rejected" }`.
 
 ## The timeline lane: `thread/delta`
 
@@ -161,10 +166,10 @@ deltas and owns every timeline invariant:
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
   the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).
-- **Turn lifecycle.** Only `turn.open`, a claiming `turn.boundary`
-  (`claimIfIdle`), and accepted-input lifecycle settlement ever open a
-  turn; item/stream deltas never do. Accepted input queues until a turn
-  opens and drains into it.
+- **Turn lifecycle.** Only `turn.open` opens a turn; boundaries,
+  item/stream deltas and accepted input never do. Accepted input queues until
+  a turn opens and drains into it, and a `turn.boundary` with no open turn
+  settles nothing.
 - **Held turns.** A bridge that keeps a logical turn open after the
   provider's main run ended (Claude Code holds it while background agents
   or workflows run) sends `turn.mainRun { state: "idle" }`, and
@@ -464,13 +469,11 @@ it:
    so follow-up input can steer into that turn; a prompt the provider never
    took must not open a turn, and stopping after it was taken must settle the
    turn even if no output arrived. Settlement rides `turn.boundary
-{ status }`; a boundary with `claimIfIdle: true` owns a turn only when
-   accepted input is pending, so a provider-terminal fallback signal on an
-   idle thread settles nothing. A prompt the provider handles without doing
-   work (claude `/clear`) still produces a `turn.open` + `turn.boundary`
-   pair, or the thread hangs. Conformance rule
-   `turn/settles-without-activity` checks this for bridges that opt in with a
-   `zeroWorkPromptInput` fixture prompt.
+{ status }`, and it settles only a turn the bridge opened. A prompt the
+   provider handles without doing work (claude `/clear`) still produces an
+   explicit `turn.open` + `turn.boundary` pair, or the thread hangs.
+   Conformance rule `turn/settles-without-activity` checks this for bridges
+   that opt in with a `zeroWorkPromptInput` fixture prompt.
 2. Item and stream deltas never open a turn. A turn-requiring delta that
    arrives with no turn open surfaces its `noTurnFallback` payload as a
    thread-scoped `provider/unhandled`, or is dropped when the bridge
@@ -478,17 +481,18 @@ it:
 3. A turn the user did not initiate (provider-internal activity such as
    auto-compaction) either becomes an explicit bridge-emitted `turn.open`
    with its own deltas or rides `provider/raw` / `unhandled` diagnostics.
-   The ACP bridge opens one when an agent streams output, starts a tool
-   call, or asks for permission with no prompt in flight, keeps it open
-   while a tool call or permission request is unsettled, and settles it
-   after five quiet seconds; a `turn/steer` during it runs as a prompt
-   inside the same turn.
+   The ACP bridge opens one when an agent starts work with no prompt in
+   flight and settles it only on an explicit signal: the agent's
+   `state_update` to `idle`, the prompt response of input steered into it, a
+   new `turn/start`, or `thread/stop`. It never settles a turn because the
+   agent went quiet.
    Turn-scoping is vouched: only turn keys the bridge itself opened may
    scope a delta (`vouchedTurn`, keyed `providerTurnId`s) — a provider's
    own internal turn labels must never be forwarded as scoping.
 4. The runtime backstops the bridge with a turn-start watchdog: an accepted
    turn with no `turn/started` within a bound becomes a visible
-   `system/provider-turn-watchdog` event, not a silently hung thread.
+   `system/provider-turn-watchdog` event, not a silently hung thread. The
+   watchdog is a backstop only; it never changes a phase.
 5. `thread/stop` semantics follow its `intent`: `interrupt` settles the
    active turn as interrupted (the bridge emits the settling deltas —
    `turn.boundary { interrupted }` plus explicit closes for provider-owned
@@ -550,26 +554,29 @@ content.
    `sessionRestorable` refines the handshake default and is re-reported by a
    replacement session — a stale `true` lets the idle sweep release a
    session that cannot come back.
-2. **Session replacement is never silent.** Whenever the bridge tears down
-   and rebuilds a live provider session — an option it cannot apply in
-   place, a resume fallback, internal recovery — it first emits any
-   settlement deltas for in-flight work, then `session/replaced` with a
-   human-readable reason and `contextLost` when provider-side context did
-   not survive.
-3. Execution options ride every command. The bridge reconciles them
-   internally; the runtime never diffs. Instructions are frozen for the life
-   of a session and apply at the next construction. A bridge whose provider
-   restores its own conversation does not send them again: the ACP bridge
-   skips them after a successful `session/resume` or `session/load`, because
-   the agent already holds them, and sends them when it had to fall back to
-   a fresh agent session.
+2. **Session replacement is never silent.** A bridge rebuilds a live
+   provider session only for its own recovery (a resume fallback, an
+   authentication failure, a provider stream that ended), never for a
+   settings change. When it does, it first emits any settlement deltas for
+   in-flight work, then `session/replaced` with a human-readable reason and
+   `contextLost` when provider-side context did not survive.
+3. Settings are reconciled by the runtime, not the bridge (see "Session
+   contract → Settings"). The bridge declares how each setting applies,
+   applies the live ones `turn/start.apply` lists, and never compares
+   settings itself. A bridge whose provider restores its own conversation
+   does not send instructions again: the ACP bridge skips them after a
+   successful `session/resume` or `session/load`, because the agent already
+   holds them, and sends them when it had to fall back to a fresh agent
+   session.
 4. Fork: absent `sourceProviderCheckpointId` means fork at the tip. A
    `fork: "tip"` bridge rejects checkpoint forks with
    `FORK_CHECKPOINT_UNSUPPORTED` rather than cloning history the bb timeline
    does not show.
-5. Open work is what the timeline says it is. A `backgroundTask` item and a
-   `delegation` item that are still pending are live provider work, and the
-   runtime will not reap the session while one is open. Model a native
+5. Open work is what the timeline says plus what the bridge reports. A
+   `backgroundTask` item and a `delegation` item that are still pending are
+   live provider work, and so is every item a bridge that declares
+   `openWork.list` returns from `thread/openWork`. The runtime will not reap,
+   restart or resume a session while any of it is open. Model a native
    sub-agent as a `delegation` (codex does), re-open it when the agent works
    again, and settle it — as failed — when your provider child dies, or the
    runtime keeps refusing to reap a thread that no longer exists on your
@@ -578,6 +585,117 @@ content.
    `backgroundTask` still pending on the bridge's threads as `interrupted`
    with `taskStatus: "stopped"`; a bridge that outlives its provider child
    still settles that child's work itself.
+
+## Session contract
+
+The runtime owns one session state machine per thread. Bridges report facts;
+the runtime decides.
+
+### Phases
+
+`starting → idle → turn running (turn id) → compacting / waiting on user →
+idle … stopping → dead`. Every transition is driven by an explicit report:
+
+| Phase             | Entered on                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| `starting`        | the runtime sends `thread/start`, `thread/resume` or `thread/fork`                          |
+| `idle`            | that request's result, or the `turn.boundary` that settles the open turn                   |
+| `turnStarting`    | the runtime admits a `turn/start` (the watchdog measures from here)                        |
+| `turnRunning`     | `turn.open`                                                                                 |
+| `compacting`      | a `compaction` item opens in the running turn; its `item.close` returns to `turnRunning`    |
+| `waitingOnUser`   | an `interaction/request` is pending; its resolution returns to the turn                    |
+| `stopping`        | the runtime sends `thread/stop`; a failed stop returns to the previous phase               |
+| `dead`            | the stop is answered, or the bridge process exits                                          |
+
+Nothing is inferred from silence: a bridge never settles a turn, opens one,
+or leaves compaction because its provider went quiet or a grace timer fired.
+Waiting for an explicit provider message is fine; if the channel dies while
+waiting, fail then. A manual `/compact` opens its `compaction` item together
+with its `turn.open`, so input that arrives during compaction is answered
+`busy` instead of being steered into it.
+
+### Admission
+
+Every input goes through one gate. The server sends every send, steer, queued
+message and parent notice as a `turn.submit`; the runtime admits a
+`turn/start` only from `idle` and a `turn/steer` only into the running turn
+it names, and answers `busy` itself while the session is starting, stopping
+or compacting, or when a steer asks for a settings change its turn did not
+already request (it then runs as the next turn, where the change applies). An admitted input is forwarded and
+the bridge answers it:
+
+```
+turn/start, turn/steer → { admission: "accepted" }
+                       | { admission: "busy", message }
+                       | { admission: "rejected", message }
+```
+
+- `accepted`: the provider took the input. Its `input.accepted` delta (and,
+  for `turn/start`, its `turn.open`) is on the wire before the answer.
+  Conformance rule `turn/admission-answered`.
+- `busy`: the provider cannot take input now. Nothing started. The daemon
+  reports `thread_busy`; the server records the request as refused and queues
+  a retry of it behind the running turn (or a few seconds later when no turn
+  is running). A bridge never sleeps and retries inside itself.
+- `rejected`: the provider refuses this input (an unsupported command, for
+  example). Nothing started; the daemon reports `turn_rejected`.
+
+Transport and session failures stay JSON-RPC errors with recovery hints, and
+a stale steer keeps answering `NO_ACTIVE_TURN` with a `staleTurn` hint.
+
+### Open work
+
+A bridge whose provider holds work that outlives a turn (background
+terminals, live sub-agents, pending questions, an agent-initiated turn)
+declares `openWork: { list: true }` and answers `thread/openWork
+{ threadId, providerThreadId }` with `{ items: [{ id, kind, description }] }`
+(`kind`: `backgroundTask`, `delegation`, `terminal`, `interaction`, `turn`).
+Conformance rule `openWork/list-declared` pins both directions. Before the
+runtime reaps an idle session, restarts a bridge for a `restartRecommended`
+hint, or resumes a session to apply a setting, it checks the thread's phase,
+its open `backgroundTask`/`delegation` items, in-flight plugin tool calls, and
+the bridge's list. A probe that fails or times out counts as busy. A bridge's
+own recovery rebuild after an authentication failure is not gated: the old
+session cannot work.
+
+### Settings
+
+The handshake declares, per setting and per value, how a change applies:
+
+```
+capabilities.sessionSettings = {
+  model?, reasoningLevel?, serviceTier?, permission?, env?, instructions?,
+  dynamicTools?, skills?: { apply: "live" | "resume" | "fresh",
+                            values?: { [value]: "live" | "resume" | "fresh" } },
+  sessionOptions?:  { [optionId]: rule },
+  providerOptions?: { [key]: rule },
+}
+```
+
+`permission` values are keyed by `permissionMode`, option values by
+`String(value)`. A `thread/start`, `thread/resume` or `thread/fork` result may
+return `sessionSettings` to narrow the declaration for that session (the ACP
+bridge does when a model is chosen by launch flag). An undeclared setting
+defaults to `live`, except `env`, `dynamicTools` and `skills` (`resume`) and
+`instructions` (`fresh`). A provider plugin build change is always `resume`.
+
+At each `turn/start` the runtime diffs what the server asked for against what
+the session runs and classifies every change:
+
+- **live**: applied on this turn. `turn/start.apply` lists the changed live
+  settings (`{ settings, sessionOptions, providerOptions }`); the bridge
+  applies exactly those, reading values from `options` (and `dynamicTools`
+  when listed). `options` still carries the whole applied record.
+- **resume**: the runtime checks open work; if none, it releases the session
+  (`thread/stop { release }`) and resumes it with the new record (on a new
+  bridge process when skills or the build changed), then starts the turn. If
+  work is open, the turn runs on the old values and a thread note says what
+  waits and why; it is retried at the next turn.
+- **fresh**: never applied to a live session, because history would be lost.
+  It takes effect at the next construction, and a thread note says so once.
+  A `resume` change on a session that cannot be restored is `fresh`.
+
+`turn/steer` never applies settings.
 
 ## Ordering guarantees
 

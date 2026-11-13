@@ -227,7 +227,7 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
               },
               { kind: "turn.boundary", status: "completed" },
             ]);
-            reply(message.id, { result: { threadId: params.threadId } });
+            reply(message.id, { result: { admission: "accepted" } });
             return;
           }
           default:

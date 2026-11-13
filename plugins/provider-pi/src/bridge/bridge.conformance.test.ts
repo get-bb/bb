@@ -56,6 +56,8 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
     "session/fork-identity-announced": "pass",
     "session/threads-independent": "pass",
     "stop/interrupt-settles-before-result": "pass",
+    "turn/admission-answered": "pass",
+    "openWork/list-declared": "pass",
   });
   expect(
     report.results

@@ -10,7 +10,7 @@ interface RawAgentModel {
 export interface AcpNativeReasoningSupport {
   reasoningDiscovery: AvailableModel["reasoningDiscovery"];
   supportedReasoningEfforts: AvailableModel["supportedReasoningEfforts"];
-  defaultReasoningEffort: ReasoningLevel;
+  defaultReasoningEffort?: ReasoningLevel;
 }
 
 export interface AcpNativeModelSupport extends AcpNativeReasoningSupport {
@@ -153,11 +153,7 @@ export function buildAcpNativeReasoningSupport(
     });
   }
   if (supportedReasoningEfforts.length === 0) {
-    return {
-      reasoningDiscovery: "known",
-      supportedReasoningEfforts: [],
-      defaultReasoningEffort: "medium",
-    };
+    return { reasoningDiscovery: "known", supportedReasoningEfforts: [] };
   }
   const currentValue = thoughtLevelOption?.currentValue;
   return {
@@ -182,11 +178,9 @@ export function buildModelCatalogFromConfigOptions(
   const models = options.map((option, index): AvailableModel => {
     const isDefault =
       currentValue !== undefined ? option.value === currentValue : index === 0;
-    const reasoning = supportByModel?.get(option.value) ?? {
-      reasoningDiscovery: "unknown" as const,
-      supportedReasoningEfforts: [],
-      defaultReasoningEffort: "medium" as ReasoningLevel,
-    };
+    const reasoning: AcpNativeReasoningSupport = supportByModel?.get(
+      option.value,
+    ) ?? { reasoningDiscovery: "unknown", supportedReasoningEfforts: [] };
     return {
       id: option.value,
       model: option.value,
@@ -194,7 +188,9 @@ export function buildModelCatalogFromConfigOptions(
       description: readOptionDescription(option) ?? "",
       reasoningDiscovery: reasoning.reasoningDiscovery,
       supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
-      defaultReasoningEffort: reasoning.defaultReasoningEffort,
+      ...(reasoning.defaultReasoningEffort === undefined
+        ? {}
+        : { defaultReasoningEffort: reasoning.defaultReasoningEffort }),
       supportedServiceTiers:
         supportByModel?.get(option.value)?.supportedServiceTiers ?? [],
       isDefault,
@@ -227,7 +223,6 @@ export function buildModelCatalogFromSessionModels(
       description: model.description ?? "",
       reasoningDiscovery: "unknown",
       supportedReasoningEfforts: [],
-      defaultReasoningEffort: "medium",
       supportedServiceTiers: [],
       isDefault,
     };

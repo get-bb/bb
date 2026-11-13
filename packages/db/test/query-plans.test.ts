@@ -37,7 +37,6 @@ import {
   getLastStoredProviderThreadId,
   insertEvents,
   isStoredTurnContextCompactionOnly,
-  isStoredTurnProviderCompactionRunning,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
@@ -1027,96 +1026,6 @@ describe("slow query index plans", () => {
       "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=?)",
     );
     expectNoThreadOnlyEventSeek(details);
-
-    db.$client.close();
-  });
-
-  it("finds a turn's running provider compaction through the turn index", () => {
-    const { db, thread } = setup();
-    const compactionEvent = (args: {
-      sequence: number;
-      turnId: string;
-      type: "item/started" | "item/completed";
-      itemId: string;
-      parentToolCallId?: string;
-    }) => ({
-      threadId: thread.id,
-      sequence: args.sequence,
-      type: args.type,
-      scope: turnScope(args.turnId),
-      itemId: args.itemId,
-      itemKind: "contextCompaction" as const,
-      parentToolCallId: args.parentToolCallId ?? null,
-      data: JSON.stringify({
-        providerThreadId: "provider-plan",
-        item: { type: "contextCompaction", id: args.itemId },
-      }),
-    });
-    insertEvents(db, noopNotifier, [
-      compactionEvent({
-        sequence: 1,
-        turnId: "turn-running",
-        type: "item/started",
-        itemId: "compaction-running",
-      }),
-      compactionEvent({
-        sequence: 2,
-        turnId: "turn-completed",
-        type: "item/started",
-        itemId: "compaction-completed",
-      }),
-      compactionEvent({
-        sequence: 3,
-        turnId: "turn-completed",
-        type: "item/completed",
-        itemId: "compaction-completed",
-      }),
-      compactionEvent({
-        sequence: 4,
-        turnId: "turn-nested",
-        type: "item/started",
-        itemId: "compaction-nested",
-        parentToolCallId: "call-child-agent",
-      }),
-      {
-        threadId: thread.id,
-        sequence: 5,
-        type: "turn/input/accepted",
-        scope: turnScope("turn-accepted"),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ providerThreadId: "provider-plan" }),
-      },
-      compactionEvent({
-        sequence: 6,
-        turnId: "turn-accepted",
-        type: "item/started",
-        itemId: "compaction-accepted",
-      }),
-    ]);
-
-    const isRunning = (turnId: string) =>
-      isStoredTurnProviderCompactionRunning(db, {
-        threadId: thread.id,
-        turnId,
-      });
-    const captured = captureStatements(db, () => {
-      expect(isRunning("turn-running")).toBe(true);
-    });
-    expect(isRunning("turn-completed")).toBe(false);
-    expect(isRunning("turn-nested")).toBe(false);
-    expect(isRunning("turn-accepted")).toBe(false);
-    expect(isRunning("turn-without-compaction")).toBe(false);
-
-    expect(captured).toHaveLength(2);
-    const [compactionQuery] = captured;
-    expect(queryPlanDetails({ db, ...compactionQuery! })).toContain(
-      "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
-    );
-    for (const query of captured) {
-      expectNoThreadOnlyEventSeek(queryPlanDetails({ db, ...query }));
-    }
 
     db.$client.close();
   });

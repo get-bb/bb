@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createBridgeJsonRpcTestHarness } from "../testing/bridge-json-rpc-test-helpers.js";
 import { assembleCapturedThreadEvents } from "../testing/bridge-delta-assembly.js";
+import type { RuntimePermissionPolicy } from "@bb/domain";
+import {
+  mergeSessionSettingsDeclarations,
+  sessionSettingsDeclarationSchema,
+  type SessionSettingsDeclaration,
+} from "../session-contract.js";
 import {
   permissionChangeCases,
   runPermissionChangeCase,
@@ -178,6 +184,16 @@ function createSuccessfulResultMessage(
   };
 }
 
+const SESSION_SETTINGS_RESULT = z
+  .object({
+    capabilities: z.object({ sessionSettings: sessionSettingsDeclarationSchema }),
+  })
+  .passthrough();
+
+const THREAD_RESULT = z
+  .object({ sessionSettings: sessionSettingsDeclarationSchema.optional() })
+  .passthrough();
+
 describe("cross-provider permission changes: Codex", () => {
   const THREAD_ID = "thr_permission_contract";
   let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
@@ -227,12 +243,26 @@ describe("cross-provider permission changes: Codex", () => {
       );
   }
   it.each(permissionChangeCases(["accept-edits", "auto", "full"]))(
-    "permission contract: $before -> $after on $method",
+    "permission contract: $before -> $after",
     async (scenario) => {
       let providerThreadId = "";
       let id = 100;
+      let handshake: SessionSettingsDeclaration = {};
       await runPermissionChangeCase(
         {
+          async initialize() {
+            harness.sendRequest(++id, "initialize", {
+              protocolVersion: 3,
+              client: { name: "permission-contract", version: "0" },
+              grammarVersions: [3, 3],
+            });
+            const response = await harness.waitForResponse(id);
+            handshake = SESSION_SETTINGS_RESULT.parse(response.result)
+              .capabilities.sessionSettings;
+          },
+          declaration() {
+            return handshake;
+          },
           async start(options) {
             harness.sendRequest(++id, "thread/start", {
               threadId: THREAD_ID,
@@ -246,29 +276,41 @@ describe("cross-provider permission changes: Codex", () => {
               .object({ providerThreadId: z.string() })
               .parse(response.result));
           },
-          async dispatch(method, options, hold) {
-            harness.sendRequest(++id, method, {
+          async resume(options) {
+            harness.sendRequest(++id, "thread/stop", {
               threadId: THREAD_ID,
               providerThreadId,
-              expectedTurnId: "turn-fx-1",
-              clientRequestId: "creq_abcdefghjk",
-              input: [
-                {
-                  type: "text",
-                  text: hold ? "/wait-for-interrupt" : "permission probe",
-                  mentions: [],
-                },
-              ],
+              intent: "release",
+              activeTurnId: null,
+            });
+            expect((await harness.waitForResponse(id)).error).toBeUndefined();
+            harness.sendRequest(++id, "thread/resume", {
+              threadId: THREAD_ID,
+              cwd: workspaceDir,
+              providerThreadId,
+              instructionMode: "append",
               options,
+            });
+            expect((await harness.waitForResponse(id)).error).toBeUndefined();
+          },
+          async turn(options, apply) {
+            harness.sendRequest(++id, "turn/start", {
+              threadId: THREAD_ID,
+              providerThreadId,
+              clientRequestId: "creq_abcdefghjk",
+              input: [{ type: "text", text: "permission probe", mentions: [] }],
+              options,
+              apply: {
+                settings: [...apply.settings],
+                sessionOptions: [...apply.sessionOptions],
+                providerOptions: [...apply.providerOptions],
+              },
             });
             const response = await harness.waitForResponse(id);
             expect(response.error).toBeUndefined();
-            if (!hold) {
-              await harness.flushWork();
-            }
+            await harness.flushWork();
           },
           async observe() {
-            const requests = recordedRequests();
             const params = z
               .object({
                 sandboxPolicy: z.object({
@@ -278,7 +320,7 @@ describe("cross-provider permission changes: Codex", () => {
                 approvalsReviewer: z.enum(["user", "auto_review"]),
               })
               .parse(
-                requests
+                recordedRequests()
                   .filter((request) => request.method === "turn/start")
                   .at(-1)?.params,
               );
@@ -286,20 +328,6 @@ describe("cross-provider permission changes: Codex", () => {
             expect(params.approvalPolicy).toBe(
               sandbox ? "on-request" : "never",
             );
-            if (
-              scenario.method === "turn/steer" &&
-              requests.filter((request) => request.method === "turn/start")
-                .length > 1
-            ) {
-              expect(
-                requests.filter((request) => request.method === "turn/steer"),
-              ).toHaveLength(0);
-              expect(
-                requests.filter(
-                  (request) => request.method === "turn/interrupt",
-                ),
-              ).toHaveLength(1);
-            }
             return {
               mode: !sandbox
                 ? "full"
@@ -319,7 +347,7 @@ describe("cross-provider permission changes: Codex", () => {
 
 describe("cross-provider permission changes: Claude", () => {
   it.each(permissionChangeCases(["accept-edits", "auto", "full"]))(
-    "permission contract: $before -> $after on $method",
+    "permission contract: $before -> $after",
     async (scenario) => {
       const threadId = "thread-permission-contract";
       const bridge = createBridgeJsonRpcTestHarness(
@@ -327,54 +355,90 @@ describe("cross-provider permission changes: Claude", () => {
       );
       const queries: ReturnType<typeof createControlledClaudeQuery>[] = [];
       let id = 100;
+      let narrowing: SessionSettingsDeclaration | undefined;
+      let handshake: SessionSettingsDeclaration = {};
       queryMock.mockImplementation(() => {
         const query = createControlledClaudeQuery();
         queries.push(query);
         return query;
       });
+      async function construct(
+        method: "thread/start" | "thread/resume",
+        options: RuntimePermissionPolicy,
+      ) {
+        bridge.sendRequest(++id, method, {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options,
+          ...(method === "thread/resume" ? { providerThreadId: threadId } : {}),
+        });
+        const response = await bridge.waitForResponse(id);
+        expect(response.error).toBeUndefined();
+        narrowing = THREAD_RESULT.parse(response.result).sessionSettings;
+      }
       try {
         await runPermissionChangeCase(
           {
+            async initialize() {
+              bridge.sendRequest(++id, "initialize", {
+                protocolVersion: 3,
+                client: { name: "permission-contract", version: "0" },
+                grammarVersions: [3, 3],
+              });
+              const response = await bridge.waitForResponse(id);
+              handshake = SESSION_SETTINGS_RESULT.parse(response.result)
+                .capabilities.sessionSettings;
+            },
+            declaration() {
+              return mergeSessionSettingsDeclarations(handshake, narrowing);
+            },
             async start(options) {
-              bridge.sendRequest(++id, "thread/start", {
+              await construct("thread/start", options);
+            },
+            async resume(options) {
+              bridge.sendRequest(++id, "thread/stop", {
                 threadId,
-                cwd: "/tmp/worktree",
-                instructionMode: "append",
-                options,
+                providerThreadId: threadId,
+                intent: "release",
+                activeTurnId: null,
               });
               expect((await bridge.waitForResponse(id)).error).toBeUndefined();
+              await construct("thread/resume", options);
             },
-            async dispatch(method, options, hold) {
+            async turn(options, apply) {
               const completed = assembleCapturedThreadEvents(
                 bridge.messages,
                 "claude-code",
               ).filter((event) => event.type === "turn/completed").length;
-              bridge.sendRequest(++id, method, {
+              bridge.sendRequest(++id, "turn/start", {
                 threadId,
                 providerThreadId: threadId,
-                expectedTurnId: "turn-1",
                 clientRequestId: "creq_abcdefghjk",
                 input: [
                   { type: "text", text: "permission probe", mentions: [] },
                 ],
                 options,
+                apply: {
+                  settings: [...apply.settings],
+                  sessionOptions: [...apply.sessionOptions],
+                  providerOptions: [...apply.providerOptions],
+                },
               });
               await bridge.flushWork();
               expect(await readNextPromptText(getLatestQueryCall())).toBe(
                 "permission probe",
               );
               expect((await bridge.waitForResponse(id)).error).toBeUndefined();
-              if (!hold) {
-                queries.at(-1)?.emit(createSuccessfulResultMessage(threadId));
-                await vi.waitFor(() => {
-                  const events = assembleCapturedThreadEvents(
-                    bridge.messages,
-                    "claude-code",
-                  ).filter((event) => event.type === "turn/completed");
-                  expect(events.length).toBeGreaterThan(completed);
-                  expect(events.at(-1)).toMatchObject({ status: "completed" });
-                });
-              }
+              queries.at(-1)?.emit(createSuccessfulResultMessage(threadId));
+              await vi.waitFor(() => {
+                const events = assembleCapturedThreadEvents(
+                  bridge.messages,
+                  "claude-code",
+                ).filter((event) => event.type === "turn/completed");
+                expect(events.length).toBeGreaterThan(completed);
+                expect(events.at(-1)).toMatchObject({ status: "completed" });
+              });
             },
             async observe() {
               const query = queries.at(-1);

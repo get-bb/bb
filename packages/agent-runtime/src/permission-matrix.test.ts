@@ -1,3 +1,4 @@
+import { RuntimeSessionStates } from "./runtime-session-state.js";
 import { RuntimeToolCalls } from "./runtime-provider-requests.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
@@ -283,7 +284,7 @@ function adapterFor(enforcer: Enforcer): BridgeProtocolAdapter {
     throw new Error("bridge adapter exposes no initialize handshake");
   }
   initialize.onResult({
-    protocolVersion: 2,
+    protocolVersion: 3,
     capabilities: { grammarVersions: [3, 3], approvalEnforcedBy: enforcer },
   });
   if (adapter.approvalEnforcedBy !== enforcer) {
@@ -386,6 +387,7 @@ async function runCell(
   const rawRequest = interactionRequest(requestId, payload);
   handleRuntimeProviderRequest({
     toolCalls: new RuntimeToolCalls(),
+    sessions: new RuntimeSessionStates(),
     getActiveTurnId: () => "turn-1",
     getThreadExecutionOptions: () => executionOptions,
     onInteractiveRequest,
