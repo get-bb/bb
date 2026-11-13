@@ -2,10 +2,16 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createServer, type Server, type Socket } from "node:net";
+import { existsSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import type { DynamicTool } from "@bb/domain";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildAcpMcpServerConfig } from "./tool-proxy-mcp.js";
+import {
+  buildAcpMcpServerConfig,
+  type AcpMcpServerConfig,
+} from "./tool-proxy-mcp.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BRIDGE_MODULE = resolve(here, "bridge.ts");
@@ -103,8 +109,11 @@ async function listenFakeBridge(args: {
   };
 }
 
-async function connectLikeOpenCode(port: number): Promise<Client> {
-  const config = buildAcpMcpServerConfig({
+function testMcpConfig(
+  port: number,
+  tools?: DynamicTool[],
+): AcpMcpServerConfig {
+  return buildAcpMcpServerConfig({
     bridgeArgs: [
       "--conditions=source",
       "--import",
@@ -113,7 +122,7 @@ async function connectLikeOpenCode(port: number): Promise<Client> {
       "--mcp-stdio",
     ],
     command: process.execPath,
-    dynamicTools: [
+    dynamicTools: tools ?? [
       {
         name: "AskUserQuestion",
         description: "Ask the user a question.",
@@ -126,6 +135,21 @@ async function connectLikeOpenCode(port: number): Promise<Client> {
     threadId: "thread-ask",
     token: "secret-token",
   });
+}
+
+async function connectLikeOpenCode(
+  port: number,
+  tools?: DynamicTool[],
+  existingConfig?: AcpMcpServerConfig,
+): Promise<Client> {
+  const config = existingConfig ?? testMcpConfig(port, tools);
+  const toolsFile = config.env.find(
+    ({ name }) => name === "BB_ACP_DYNAMIC_TOOLS_FILE",
+  )?.value;
+  if (toolsFile && process.platform !== "win32") {
+    expect(statSync(toolsFile).mode & 0o777).toBe(0o600);
+    expect(statSync(dirname(toolsFile)).mode & 0o777).toBe(0o700);
+  }
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value;
@@ -148,6 +172,75 @@ async function connectLikeOpenCode(port: number): Promise<Client> {
 }
 
 describe("bb-bridge MCP server keeps long tool calls alive", () => {
+  it("starts with tool definitions larger than the Linux environment entry limit and supports reconnect", async () => {
+    const fakeBridge = await listenFakeBridge({ responseDelayMs: 0 });
+    const tools = Array.from({ length: 160 }, (_, i) => ({
+      name: `large_tool_${i}`,
+      description: "x".repeat(1_000),
+      inputSchema: { type: "object", properties: {} },
+    }));
+    expect(Buffer.byteLength(JSON.stringify(tools))).toBeGreaterThan(131_072);
+    const config = testMcpConfig(fakeBridge.port, tools);
+    const client = await connectLikeOpenCode(fakeBridge.port, tools, config);
+    expect(config.env.some(({ name }) => name === "BB_ACP_DYNAMIC_TOOLS")).toBe(
+      false,
+    );
+    expect((await client.listTools()).tools).toEqual(tools);
+    expect(
+      (await client.callTool({ name: "large_tool_0", arguments: {} })).isError,
+    ).toBeFalsy();
+    const second = await connectLikeOpenCode(fakeBridge.port, tools, config);
+    expect((await second.listTools()).tools).toEqual(tools);
+  }, 20_000);
+
+  it("removes catalog files when the owning launcher exits", () => {
+    const module = new URL("./tool-proxy-mcp.ts", import.meta.url).href;
+    const code = `
+      import { buildAcpMcpServerConfig } from ${JSON.stringify(module)};
+      const config = buildAcpMcpServerConfig({ command: process.execPath,
+        bridgeArgs: [], dynamicTools: [], host: "127.0.0.1", port: 1,
+        runtimeEnv: [], threadId: "cleanup-test", token: "test-token" });
+      console.log(config.env.find(({ name }) => name === "BB_ACP_DYNAMIC_TOOLS_FILE").value);
+    `;
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--conditions=source",
+        "--import",
+        TSX_LOADER,
+        "--input-type=module",
+        "-e",
+        code,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const file = result.stdout.trim();
+    expect(file).toContain("bb-acp-tools-");
+    expect(existsSync(dirname(file))).toBe(false);
+  });
+
+  it("accepts the legacy environment format", async () => {
+    const fakeBridge = await listenFakeBridge({ responseDelayMs: 0 });
+    const tools = [
+      {
+        name: "legacy",
+        description: "Legacy tool",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ];
+    const config = testMcpConfig(fakeBridge.port, tools);
+    config.env = config.env.filter(
+      ({ name }) => name !== "BB_ACP_DYNAMIC_TOOLS_FILE",
+    );
+    config.env.push({
+      name: "BB_ACP_DYNAMIC_TOOLS",
+      value: JSON.stringify(tools),
+    });
+    const client = await connectLikeOpenCode(fakeBridge.port, tools, config);
+    expect((await client.listTools()).tools).toEqual(tools);
+  });
+
   it("sends progress notifications so an OpenCode-style client does not time out while the user answers", async () => {
     const fakeBridge = await listenFakeBridge({ responseDelayMs: 2_500 });
     const client = await connectLikeOpenCode(fakeBridge.port);

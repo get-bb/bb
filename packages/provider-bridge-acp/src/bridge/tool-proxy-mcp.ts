@@ -6,6 +6,10 @@ import {
   PROVIDER_TOOL_CALL_CANCELLED_METHOD,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createConnection } from "node:net";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 
@@ -16,6 +20,7 @@ const ENV_PORT = "BB_ACP_DYNAMIC_TOOL_PORT";
 const ENV_TOKEN = "BB_ACP_DYNAMIC_TOOL_TOKEN";
 const ENV_THREAD_ID = "BB_ACP_DYNAMIC_TOOL_THREAD_ID";
 const ENV_TOOLS = "BB_ACP_DYNAMIC_TOOLS";
+const ENV_TOOLS_FILE = "BB_ACP_DYNAMIC_TOOLS_FILE";
 const ENV_PROGRESS_INTERVAL_MS = "BB_ACP_DYNAMIC_TOOL_PROGRESS_INTERVAL_MS";
 
 export interface AcpMcpServerConfig {
@@ -106,6 +111,22 @@ let nextMcpToolCallId = 0;
 
 const TOOL_CALL_PROGRESS_INTERVAL_MS = 15_000;
 
+let toolsDirectory: string | undefined;
+
+function writeToolsFile(tools: readonly DynamicTool[]): string {
+  if (toolsDirectory === undefined) {
+    toolsDirectory = mkdtempSync(join(tmpdir(), "bb-acp-tools-"));
+    process.once("exit", () => {
+      if (toolsDirectory !== undefined) {
+        rmSync(toolsDirectory, { recursive: true, force: true });
+      }
+    });
+  }
+  const path = join(toolsDirectory, `${randomUUID()}.json`);
+  writeFileSync(path, JSON.stringify(tools), { mode: 0o600, flag: "wx" });
+  return path;
+}
+
 export function buildAcpMcpServerConfig(
   args: BuildAcpMcpServerConfigArgs,
 ): AcpMcpServerConfig {
@@ -119,7 +140,7 @@ export function buildAcpMcpServerConfig(
       { name: ENV_PORT, value: String(args.port) },
       { name: ENV_TOKEN, value: args.token },
       { name: ENV_THREAD_ID, value: args.threadId },
-      { name: ENV_TOOLS, value: JSON.stringify(args.dynamicTools) },
+      { name: ENV_TOOLS_FILE, value: writeToolsFile(args.dynamicTools) },
     ],
   };
 }
@@ -132,7 +153,10 @@ function readEnvironment(): McpServerEnvironment {
   const host = process.env[ENV_HOST];
   const token = process.env[ENV_TOKEN];
   const threadId = process.env[ENV_THREAD_ID];
-  const toolsJson = process.env[ENV_TOOLS];
+  const toolsFile = process.env[ENV_TOOLS_FILE];
+  const toolsJson = toolsFile
+    ? readFileSync(toolsFile, "utf8")
+    : process.env[ENV_TOOLS];
   if (!host || !token || !threadId || !toolsJson) {
     throw new Error("Missing ACP dynamic tool MCP server environment");
   }
