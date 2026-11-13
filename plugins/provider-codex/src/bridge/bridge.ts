@@ -49,6 +49,7 @@ import {
   type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { resumeWithProviderMigration } from "./provider-migration.js";
 import {
   CODEX_GOAL_EXTENSION_KIND,
   CODEX_MACOS_PERMISSION_EXTENSION_KIND,
@@ -1398,13 +1399,43 @@ async function constructThreadSession(
       }
     }
 
-    const result = await requestThreadConstructionWithWriterRetry(
-      connection,
+    const result = await resumeWithProviderMigration({
       method,
       params,
-    );
+      currentProvider: async () => {
+        const result = await connection.request({
+          method: "config/read",
+          params: {},
+          resultSchema: z.object({
+            config: z.object({ model_provider: z.string().nullish() }),
+          }),
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        return result.config.model_provider ?? "openai";
+      },
+      request: (nextMethod, nextParams) =>
+        requestThreadConstructionWithWriterRetry(
+          connection,
+          nextMethod,
+          nextParams,
+        ),
+    });
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
+    if (
+      args.request.kind === "resume" &&
+      args.request.providerThreadId !== codexThreadId
+    ) {
+      session.identityAnnounced = false;
+      announceSessionIdentity(session, codexThreadId);
+      sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+        threadId: args.threadId,
+        providerThreadId: codexThreadId,
+        reason:
+          "Codex provider routing changed; conversation history was preserved.",
+        contextLost: false,
+      });
+    }
     translator.activateThreadGitWritableRoots({
       providerThreadId: codexThreadId,
       threadId: args.threadId,

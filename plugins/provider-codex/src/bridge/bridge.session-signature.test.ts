@@ -442,3 +442,160 @@ it("applies follow-up permission changes in both directions without replacing th
     recordedRequests().filter((request) => request.method === "initialize"),
   ).toHaveLength(1);
 }, 30_000);
+
+it("keeps the BB thread when routing changes provider", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      resumeProviderMismatch: {
+        modelProvider: "openai",
+        currentModelProvider: "bb-account-pool",
+      },
+    }),
+  );
+  harness.sendRequest(1, "thread/resume", {
+    threadId: THREAD_ID,
+    providerThreadId: "source-with-history",
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  const result = await harness.waitForResponse(1);
+  expect(result.error).toBeUndefined();
+  const resumed = z
+    .object({ providerThreadId: z.string() })
+    .parse(result.result);
+  expect(resumed.providerThreadId).not.toBe("source-with-history");
+  const requests = readFileSync(requestLogPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(requests).toContainEqual(
+    expect.objectContaining({
+      method: "thread/fork",
+      params: expect.objectContaining({
+        threadId: "source-with-history",
+        modelProvider: "bb-account-pool",
+      }),
+    }),
+  );
+  expect(harness.messages).toContainEqual(
+    expect.objectContaining({
+      method: "session/replaced",
+      params: expect.objectContaining({
+        threadId: THREAD_ID,
+        providerThreadId: resumed.providerThreadId,
+        contextLost: false,
+      }),
+    }),
+  );
+});
+
+it("restores a pooled session through local login when the pool is not configured", async () => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      resumeProviderMissing: true,
+      configRead: { config: { model_provider: "openai" } },
+    }),
+  );
+  harness.sendRequest(1, "thread/resume", {
+    threadId: THREAD_ID,
+    providerThreadId: "pooled-history",
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  const result = await harness.waitForResponse(1);
+  expect(result.error).toBeUndefined();
+  const resumed = z
+    .object({ providerThreadId: z.string() })
+    .parse(result.result);
+  expect(harness.messages).toContainEqual(
+    expect.objectContaining({
+      method: "session/replaced",
+      params: expect.objectContaining({
+        threadId: THREAD_ID,
+        providerThreadId: resumed.providerThreadId,
+        contextLost: false,
+      }),
+    }),
+  );
+});
+
+it("publishes the migrated identity when routing changes during a turn", async () => {
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  const started = await harness.waitForResponse(1);
+  const original = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      resumeProviderMismatch: {
+        modelProvider: "openai",
+        currentModelProvider: "bb-account-pool",
+      },
+    }),
+  );
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId: original.providerThreadId,
+    clientRequestId: "creq_rutemigr23",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: {
+      ...FULL_ACCESS_SESSION_OPTIONS,
+      envVars: { BB_TEST_ROUTE: "pool" },
+    },
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  const turn = recordedRequests()
+    .filter((request) => request.method === "turn/start")
+    .at(-1);
+  const migrated = z
+    .object({ params: z.object({ threadId: z.string() }) })
+    .parse(turn).params.threadId;
+  expect(migrated).not.toBe(original.providerThreadId);
+  expect(
+    harness.messages
+      .filter((message) => message.method === "thread/identity")
+      .at(-1),
+  ).toMatchObject({
+    params: {
+      threadId: THREAD_ID,
+      providerThreadId: migrated,
+      sessionRestorable: true,
+    },
+  });
+  harness.sendRequest(3, "thread/stop", {
+    threadId: THREAD_ID,
+    providerThreadId: migrated,
+    intent: "release",
+    activeTurnId: null,
+  });
+  expect((await harness.waitForResponse(3)).error).toBeUndefined();
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
+  harness.sendRequest(4, "thread/resume", {
+    threadId: THREAD_ID,
+    providerThreadId: migrated,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  expect((await harness.waitForResponse(4)).result).toMatchObject({
+    providerThreadId: migrated,
+  });
+  expect(
+    recordedRequests()
+      .filter((request) => request.method === "thread/resume")
+      .at(-1),
+  ).toMatchObject({ params: { threadId: migrated } });
+});
