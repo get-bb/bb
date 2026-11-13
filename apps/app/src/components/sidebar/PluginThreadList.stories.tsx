@@ -3,7 +3,6 @@ import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -21,6 +20,7 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { loadPluginAppDefinition } from "../../../.ladle/plugin-app-module";
 import {
   PROJECT_IDS,
+  PROJECT_NAMES,
   makeProject,
   makeThreadListEntry,
 } from "../../../.ladle/story-fixtures";
@@ -30,7 +30,6 @@ import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { SidebarThreadEntriesProvider } from "@/lib/sidebar-thread-entries";
 
-installTestPluginRuntime();
 const threadListApp = await loadPluginAppDefinition(
   import.meta.glob<unknown>("../../../../../plugins/thread-list/app.tsx"),
 );
@@ -333,6 +332,87 @@ export function ActionAlignment() {
     <QueryClientProvider client={queryClient}>
       <ThreadActionsProvider>
         <ActionSidebar />
+      </ThreadActionsProvider>
+    </QueryClientProvider>
+  );
+}
+
+const PROJECT_COLOR_PROJECTS = [
+  {
+    project: makeProject(),
+    threads: [
+      inboxEntry("thr_colors_bb", "Sidebar project colors", 900, false),
+      inboxEntry("thr_colors_bb_notes", "Color notes", 800, false, {
+        parentThreadId: "thr_colors_bb",
+      }),
+    ],
+  },
+  {
+    project: makeProject({
+      id: PROJECT_IDS.pierre,
+      name: PROJECT_NAMES.pierre,
+    }),
+    threads: [
+      inboxEntry("thr_colors_pierre", "Review renderer diffs", 700, true, {
+        projectId: PROJECT_IDS.pierre,
+      }),
+    ],
+  },
+  {
+    project: makeProject({
+      id: PROJECT_IDS.ingest,
+      name: PROJECT_NAMES.ingest,
+    }),
+    threads: [
+      inboxEntry("thr_colors_ingest", "Retry failed imports", 600, false, {
+        projectId: PROJECT_IDS.ingest,
+      }),
+    ],
+  },
+];
+
+function projectColorNavigation(): SidebarBootstrapResponse {
+  return {
+    sections: [INBOX],
+    projects: PROJECT_COLOR_PROJECTS.map(({ project, threads }) => ({
+      ...project,
+      defaultExecutionOptions: null,
+      threads,
+    })),
+    personalProject: {
+      ...makeProject({
+        id: PERSONAL_PROJECT_ID,
+        kind: "personal",
+        name: "Personal",
+        sources: [],
+      }),
+      defaultExecutionOptions: null,
+      threads: [],
+    },
+  };
+}
+
+const PROJECT_COLOR_PREFERENCES = {
+  organizationMode: "project",
+  sectionOrder: ["pinned", "projects", "threads"],
+  projectColors: { [PROJECT_IDS.pierre]: "sky" },
+};
+
+export function ProjectColors() {
+  const [queryClient] = useState(() => {
+    const client = createThreadListQueryClient();
+    client.setQueryData(sidebarNavigationQueryKey(), projectColorNavigation());
+    return client;
+  });
+  const ready = useThreadListPreferenceRpc(PROJECT_COLOR_PREFERENCES);
+  useThreadListPlugin();
+  if (!ready) return null;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThreadActionsProvider>
+        <main className="flex gap-6 p-6">
+          <ThreadListSidebar />
+        </main>
       </ThreadActionsProvider>
     </QueryClientProvider>
   );
