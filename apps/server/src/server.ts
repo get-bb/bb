@@ -91,7 +91,6 @@ import {
   resolveRequestAppSurface,
 } from "./request-context.js";
 import { runEventLoopWork } from "./services/system/event-loop-work.js";
-import { setTurnTelemetryDeps } from "./services/system/turn-telemetry.js";
 import { runWithTelemetryRequest } from "./services/system/telemetry.js";
 import {
   onClientSocketClose,
@@ -844,7 +843,6 @@ export function createApp(
       threadId,
     });
   });
-  setTurnTelemetryDeps(deps);
   setPluginThreadEventEmitter(pluginService.events);
   setPathPluginPreserver(deps.db, (directory) =>
     pluginService.preservePathPluginsInside(directory),

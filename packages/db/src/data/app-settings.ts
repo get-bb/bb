@@ -14,7 +14,7 @@ import {
   type AppKeybindingOverrides,
   type AppSettings,
 } from "@bb/domain";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   prepareCachedQuery,
   type DbConnection,
@@ -35,7 +35,6 @@ const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
 const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
 const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
-const INSTALL_TURN_NUMBER_KEY = "installTurnNumber";
 const APP_UPDATE_SEND_HOLD_KEY = "appUpdateSendHold";
 const SKIPPED_APP_UPDATE_KEY = "skippedAppUpdate";
 const AUTO_APP_UPDATE_KEY = "autoAppUpdate";
@@ -337,22 +336,6 @@ export function deletePluginRecommendationId(
   db.delete(appSettingsValues)
     .where(eq(appSettingsValues.key, pluginRecommendationKey(pluginId)))
     .run();
-}
-
-export function claimInstallTurnNumber(db: DbQueryConnection, now: number): number {
-  const row = db
-    .insert(appSettingsValues)
-    .values({ key: INSTALL_TURN_NUMBER_KEY, value: "1", updatedAt: now })
-    .onConflictDoUpdate({
-      target: appSettingsValues.key,
-      set: {
-        value: sql`CAST(CAST(${appSettingsValues.value} AS INTEGER) + 1 AS TEXT)`,
-        updatedAt: now,
-      },
-    })
-    .returning({ value: appSettingsValues.value })
-    .get();
-  return Number(row!.value);
 }
 
 export function isAppUpdateSendHoldSet(db: DbQueryConnection): boolean {

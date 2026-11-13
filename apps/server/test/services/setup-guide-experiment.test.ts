@@ -213,7 +213,6 @@ describe("setup guide experiment", () => {
             entry: "first_run",
             setup_guide_variant: "new",
             setup_guide_source: "flag",
-            $set: { setup_guide_variant: "new" },
           },
         },
       ],
@@ -270,7 +269,6 @@ describe("setup guide experiment", () => {
         entry: "replay",
         setup_guide_variant: "control",
         setup_guide_source: "default",
-        $set: { setup_guide_variant: "control" },
       },
     });
   });
