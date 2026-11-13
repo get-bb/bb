@@ -28,8 +28,10 @@ signaled, with process start times checked before signaling; the managed runtime
 is released even on failure.
 
 The guard covers processes owned by the daemon UID. Processes owned by other
-users require separate inspection. This test requires Linux process inspection;
-it does not exercise native Windows termination failure.
+users require separate inspection. The daemon guard supports Linux and macOS,
+but this script reads `/proc` and therefore runs only on Linux; the macOS
+`lsof` path is covered by `apps/host-daemon/src/workspace-processes-darwin.test.ts`.
+It does not exercise native Windows termination failure.
 
 Each run retains `results.log` (head and assertions only) and `diagnostics.log`
 (raw CLI output) inside its generated directory. Publish only the reviewed
