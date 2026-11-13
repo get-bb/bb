@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const DESKTOP_RUNTIME_READY_CHANNEL = "bb-desktop-runtime/ready";
+const DESKTOP_RUNTIME_READY_CHANNEL = "bb-desktop-runtime/ready";
 
 const desktopRuntimeReadyMessageSchema = z.object({
   channel: z.literal(DESKTOP_RUNTIME_READY_CHANNEL),
