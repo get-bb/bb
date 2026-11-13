@@ -3,6 +3,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { defaultAppSettings, type AppSettings } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingGate } from "./OnboardingGate";
+import {
+  freshOnboardingProgress,
+  readOnboardingProgress,
+  saveOnboardingProgress,
+} from "./onboarding-progress";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -25,25 +30,29 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
 }));
 vi.mock("./OnboardingFlow", () => ({
   OnboardingFlow: ({
-    initialStep,
+    initialProgress,
     setupGuide,
     onClose,
   }: {
-    initialStep: string;
+    initialProgress: { step: string };
     setupGuide: { variant: string };
     onClose: () => void;
   }) => (
     <button type="button" onClick={onClose}>
-      Setup guide at {initialStep} ({setupGuide.variant})
+      Setup guide at {initialProgress.step} ({setupGuide.variant})
     </button>
   ),
 }));
 
 const COMPLETED_AT = "2026-10-01T00:00:00.000Z";
+const DATA_DIR = "/data/bb";
 
 function configWith(settings: Partial<AppSettings>) {
   mocks.useSystemConfig.mockReturnValue({
-    data: { generalSettings: { ...defaultAppSettings, ...settings } },
+    data: {
+      generalSettings: { ...defaultAppSettings, ...settings },
+      dataDir: DATA_DIR,
+    },
     isError: false,
   });
 }
@@ -221,6 +230,37 @@ describe("OnboardingGate", () => {
       hostId: "host-1",
       enabled: true,
     });
+  });
+
+  it("reopens the guide at the step it was left on", async () => {
+    configWith({ onboardingCompletedAt: null });
+    saveOnboardingProgress(DATA_DIR, freshOnboardingProgress("plugins"));
+
+    renderGate();
+
+    expect(
+      await screen.findByText("Setup guide at plugins (control)"),
+    ).toBeTruthy();
+  });
+
+  it("starts over when the saved progress belongs to another data directory", async () => {
+    configWith({ onboardingCompletedAt: null });
+    saveOnboardingProgress("/other/bb", freshOnboardingProgress("devices"));
+
+    renderGate();
+
+    expect(
+      await screen.findByText("Setup guide at agent (control)"),
+    ).toBeTruthy();
+  });
+
+  it("forgets saved progress once setup is finished", () => {
+    saveOnboardingProgress(DATA_DIR, freshOnboardingProgress("devices"));
+    configWith({ onboardingCompletedAt: COMPLETED_AT });
+
+    renderGate();
+
+    expect(readOnboardingProgress(DATA_DIR).step).toBe("agent");
   });
 
   it("falls back to the app when settings cannot be loaded", () => {

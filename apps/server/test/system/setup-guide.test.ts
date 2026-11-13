@@ -122,6 +122,32 @@ describe("setup guide route", () => {
     });
   });
 
+  it("drops a repeat first-run exposure, start, and step from another browser", async () => {
+    await withTestHarness(async (harness) => {
+      const { capture } = await useFlagVariant(harness);
+      const firstRun = [
+        { name: "onboarding_exposed", properties: { entry: "first_run" } },
+        {
+          name: "onboarding_started",
+          properties: { agent_installed: true, agent_ready: false },
+        },
+        {
+          name: "onboarding_step_reached",
+          properties: { step: "agent", entry: "first_run" },
+        },
+      ];
+      for (const event of firstRun) await postEvent(harness, event);
+      const sent = capture.mock.calls.length;
+
+      for (const event of firstRun) {
+        const response = await postEvent(harness, event);
+        expect(response.status).toBe(200);
+      }
+
+      expect(capture.mock.calls).toHaveLength(sent);
+    });
+  });
+
   it("rejects an exposure event with extra properties", async () => {
     await withTestHarness(async (harness) => {
       const response = await postEvent(harness, {

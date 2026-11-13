@@ -25,6 +25,10 @@ import { hostsQueryOptions } from "@/hooks/queries/host-queries";
 import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import type { OnboardingStepId } from "./onboarding-model";
+import {
+  freshOnboardingProgress,
+  type OnboardingProgress,
+} from "./onboarding-progress";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
 
@@ -85,11 +89,15 @@ function agentLoadFailures(): unknown[] {
 
 function renderFlow({
   initialStep,
+  progress = freshOnboardingProgress(initialStep),
+  onProgress = vi.fn(),
   onClose = vi.fn(),
   variant = "new",
   hostStatus = "connected",
 }: {
   initialStep: OnboardingStepId;
+  progress?: OnboardingProgress;
+  onProgress?: (progress: OnboardingProgress) => void;
   onClose?: () => void;
   variant?: "control" | "new";
   hostStatus?: Host["status"];
@@ -107,7 +115,8 @@ function renderFlow({
         <TooltipProvider>
           <QuickCreateProjectProvider>
             <OnboardingFlow
-              initialStep={initialStep}
+              initialProgress={progress}
+              onProgress={onProgress}
               entry="first_run"
               setupGuide={{ variant }}
               closing={closing}
@@ -224,6 +233,36 @@ describe("OnboardingFlow", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(finishedOutcomes()).toEqual(["skipped"]);
   });
+
+  it.each(["control", "new"] as const)(
+    "resumes the %s guide at its saved step and keeps saving progress",
+    (variant) => {
+      const onProgress = vi.fn<(progress: OnboardingProgress) => void>();
+      renderFlow({
+        initialStep: "plugins",
+        variant,
+        onProgress,
+        progress: {
+          ...freshOnboardingProgress("plugins"),
+          outcomes: new Map([
+            ["agent", "completed"],
+            ["projects", "skipped"],
+          ]),
+        },
+      });
+
+      expect(screen.getByText("Make bb yours")).toBeTruthy();
+      fireEvent.click(button(/^Continue/u));
+
+      const saved = onProgress.mock.lastCall?.[0];
+      expect(saved?.step).toBe("devices");
+      expect([...(saved?.outcomes ?? [])]).toEqual([
+        ["agent", "completed"],
+        ["projects", "skipped"],
+        ["plugins", "skipped"],
+      ]);
+    },
+  );
 
   it.each([
     ["control", false],

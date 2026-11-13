@@ -4258,7 +4258,10 @@ and listens for window errors only while the guide is open.
 the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
 `setup_guide_variant` as a person property (`$set`), and sends
 `$feature_flag_called` when the variant came from the PostHog flag. Every
-setup-guide event gets `setup_guide_variant` from the server.
+setup-guide event gets `setup_guide_variant` from the server. The server
+drops a repeat `onboarding_started`, `first_run` `onboarding_exposed`, or
+`first_run` `onboarding_step_reached` for a step it already sent for this
+install.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.

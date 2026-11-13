@@ -223,7 +223,7 @@ describe("setup guide experiment", () => {
       JSON.parse(
         await readFile(join(dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME), "utf8"),
       ),
-    ).toEqual(saved);
+    ).toEqual({ ...saved, firstRunEvents: [] });
 
     const restartedFetch = vi.fn<typeof globalThis.fetch>();
     const restarted = createTelemetry();
@@ -237,6 +237,37 @@ describe("setup guide experiment", () => {
     );
     await expect(afterRestart.resolve()).resolves.toEqual(saved);
     expect(restartedFetch).not.toHaveBeenCalled();
+  });
+
+  it("lets each first-run event through once per install, across restarts", async () => {
+    const reached = {
+      name: "onboarding_step_reached",
+      properties: { step: "agent", entry: "first_run" },
+    } as const;
+    const experiment = await create({
+      fetch: respondWith(flagBody({ variant: "new" })),
+      telemetry: createTelemetry().telemetry,
+    });
+    await expect(experiment.claimFirstRunEvent(reached)).resolves.toBe(true);
+    await expect(experiment.claimFirstRunEvent(reached)).resolves.toBe(false);
+
+    const restarted = await create({
+      fetch: respondWith(flagBody({ variant: "new" })),
+      telemetry: createTelemetry().telemetry,
+    });
+    await expect(restarted.claimFirstRunEvent(reached)).resolves.toBe(false);
+    await expect(
+      restarted.claimFirstRunEvent({
+        ...reached,
+        properties: { step: "projects", entry: "first_run" },
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      restarted.claimFirstRunEvent({
+        ...reached,
+        properties: { step: "agent", entry: "replay" },
+      }),
+    ).resolves.toBe(true);
   });
 
   it("does not save an override", async () => {
