@@ -243,52 +243,61 @@ describe("getProviderStates", () => {
     });
   });
 
-  it("shares its installed checks with a provider list loading at the same time", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
-      const responder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: async (request) => {
-          if (request.command.type === "provider.health") {
-            await new Promise((resolve) => setTimeout(resolve, 5));
-            return {
-              ok: true,
-              result: {
-                supported: true,
-                health: healthForInstalledOnlyProvider(
-                  request.command.providerId,
-                  new Set(["acp-hermes-agent"]),
-                ),
-              },
-            };
-          }
-          throw new Error(`Unexpected command ${request.command.type}`);
-        },
+  it.each([{ first: "agent states" }, { first: "provider list" }])(
+    "checks Hermes once when $first starts first",
+    async ({ first }) => {
+      await withTestHarness(async (harness) => {
+        const { host, session } = seedHostSession(harness.deps);
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: async (request) => {
+            if (request.command.type === "provider.health") {
+              await new Promise((resolve) => setTimeout(resolve, 5));
+              return {
+                ok: true,
+                result: {
+                  supported: true,
+                  health: healthForInstalledOnlyProvider(
+                    request.command.providerId,
+                    new Set(["acp-hermes-agent"]),
+                  ),
+                },
+              };
+            }
+            throw new Error(`Unexpected command ${request.command.type}`);
+          },
+        });
+
+        const loadStates = () =>
+          getProviderStates(harness.deps, { hostId: host.id });
+        const loadList = () =>
+          listSystemProviderInfos(harness.deps, { hostId: host.id });
+        const [states, listed] =
+          first === "agent states"
+            ? await Promise.all([loadStates(), loadList()])
+            : await Promise.all([loadList(), loadStates()]).then(
+                ([list, state]) => [state, list] as const,
+              );
+
+        const hermesChecks = responder.requests.filter(
+          (request) =>
+            request.command.type === "provider.health" &&
+            request.command.providerId === "acp-hermes-agent",
+        );
+        expect(hermesChecks).toHaveLength(1);
+        expect(responder.requests).toHaveLength(8);
+        expect(states.providers.map((provider) => provider.providerId)).toEqual(
+          listed.map((provider) => provider.id),
+        );
+        expect(
+          states.providers.find(
+            (provider) => provider.providerId === "acp-hermes-agent",
+          ),
+        ).toMatchObject({ status: "ready" });
       });
-
-      const [states, listed] = await Promise.all([
-        getProviderStates(harness.deps, { hostId: host.id }),
-        listSystemProviderInfos(harness.deps, { hostId: host.id }),
-      ]);
-
-      const hermesChecks = responder.requests.filter(
-        (request) =>
-          request.command.type === "provider.health" &&
-          request.command.providerId === "acp-hermes-agent",
-      );
-      expect(hermesChecks).toHaveLength(1);
-      expect(responder.requests).toHaveLength(8);
-      expect(states.providers.map((provider) => provider.providerId)).toEqual(
-        listed.map((provider) => provider.id),
-      );
-      expect(
-        states.providers.find(
-          (provider) => provider.providerId === "acp-hermes-agent",
-        ),
-      ).toMatchObject({ status: "ready" });
-    });
-  });
+    },
+  );
 
   it("marks which provider rows run the guided sign-in, on a live and a paused host", async () => {
     await withTestHarness(async (harness) => {

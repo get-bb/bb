@@ -12,13 +12,9 @@ import {
   type ProviderInfo,
 } from "@bb/domain";
 import { getAppSettings } from "@bb/db";
-import type {
-  HostDaemonBridgeLaunch,
-  HostDaemonOnlineRpcResult,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import {
   requireConnectedHostSession,
@@ -45,10 +41,13 @@ import type {
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
+import {
+  requestProviderHealth,
+  type ProviderHealthResult,
+} from "./provider-health-requests.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 
 type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
-type ProviderHealthResult = HostDaemonOnlineRpcResult<"provider.health">;
 
 interface BuildModelLoadErrorArgs {
   error: ApiError;
@@ -87,7 +86,8 @@ type AppendCustomModelsResult = Pick<
 >;
 
 type ProviderCapabilityFilter =
-  NonNullable<SystemProvidersQuery["capability"]> | "installation";
+  | NonNullable<SystemProvidersQuery["capability"]>
+  | "installation";
 type ListSystemProviderInfosRequest = Omit<
   SystemProvidersQuery,
   "capability"
@@ -192,14 +192,11 @@ export function probeInstalledProvider(
     budget: ProviderListingBudget;
   },
 ): Promise<boolean> {
-  return callHostRetryableOnlineRpc(deps, {
+  return requestProviderHealth(deps, {
     hostId: args.hostId,
+    providerId: args.providerId,
+    bridgeLaunch: args.bridgeLaunch,
     timeoutMs: args.budget.remainingMs(),
-    command: {
-      type: "provider.health",
-      providerId: args.providerId,
-      bridgeLaunch: args.bridgeLaunch,
-    },
   }).then(isInstalledProviderHealth);
 }
 
