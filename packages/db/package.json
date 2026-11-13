@@ -35,6 +35,7 @@
     "test": "vitest run --config vitest.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
+    "check:query-costs": "tsx scripts/check-query-costs.ts",
     "check:query-plan-report": "tsx scripts/check-query-plan-report.ts",
     "list:query-functions": "tsx scripts/list-query-functions.ts"
   },

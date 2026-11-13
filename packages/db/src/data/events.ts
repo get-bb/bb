@@ -3131,6 +3131,8 @@ export function findLatestUnresolvedClientTurnRequestIdAfterSequence(
           SELECT 1
           FROM events AS terminal
           WHERE terminal.thread_id = ${events.threadId}
+            AND terminal.type IN ('turn/input/accepted', 'client/turn/rejected')
+            AND terminal.sequence > ${events.sequence}
             AND (
               (
                 terminal.type = 'turn/input/accepted'
@@ -5253,6 +5255,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
           SELECT MAX(latest.sequence)
           FROM events latest
           WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_kind = 'backgroundTask'
             AND latest.item_id = ${events.itemId}
             AND latest.type IN (${startedType}, ${progressType})
         )`,
@@ -5349,6 +5352,7 @@ export function listOpenBackgroundTaskItemRowsForThread(
           SELECT MAX(latest.sequence)
           FROM events latest
           WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_kind = 'backgroundTask'
             AND latest.item_id = ${events.itemId}
             AND latest.type IN (${startedType}, ${progressType})
         )`,

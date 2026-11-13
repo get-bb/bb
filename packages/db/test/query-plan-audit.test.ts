@@ -12,6 +12,7 @@ function audit(sql: string, params: readonly QueryPlanParameter[]) {
   try {
     const result = auditQueryPlan(db.$client, sql, {
       largeTables: LARGE_TABLES,
+      boundedKeyColumns: new Map([["events", new Set(["turn_id"])]]),
       params,
     });
     if (result.status !== "audited") throw new Error(result.reason);
@@ -72,5 +73,68 @@ describe("auditQueryPlan", () => {
         ["thr_1", 4, "turn/started"],
       ),
     ).toEqual([]);
+  });
+
+  it("flags a correlated subquery that re-searches events for each outer row", () => {
+    const acceptedFilter = `accepted.thread_id = ? and accepted.type = ?`;
+    const chainFilter = `request.thread_id = ? and request.type = ?
+      and (json_extract(request.data, '$.requestId') = ?
+        or json_extract(request.data, '$.retryOfRequestId') = ?)`;
+    const params = [
+      "thr_1",
+      "turn/input/accepted",
+      "thr_1",
+      "client/turn/requested",
+      "req_1",
+      "req_1",
+      1,
+    ];
+
+    expect(
+      audit(
+        `select accepted.sequence from events accepted
+        where ${acceptedFilter} and exists (
+          select request.sequence from events request
+          where ${chainFilter}
+            and json_extract(request.data, '$.requestId') = json_extract(accepted.data, '$.clientRequestId'))
+        limit ?`,
+        params,
+      ),
+    ).toEqual(["correlated-subquery:events"]);
+    expect(
+      audit(
+        `select accepted.sequence from events accepted
+        where ${acceptedFilter} and json_extract(accepted.data, '$.clientRequestId') in (
+          select json_extract(request.data, '$.requestId') from events request
+          where ${chainFilter})
+        limit ?`,
+        params,
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts correlated lookups whose key does not grow with history", () => {
+    expect(
+      audit(
+        `select accepted.sequence from events accepted
+        where accepted.thread_id = ? and accepted.type = ? and exists (
+          select 1 from events started
+          where started.thread_id = accepted.thread_id
+            and started.sequence = accepted.sequence + 1
+            and started.type = ?)`,
+        ["thr_1", "turn/input/accepted", "turn/started"],
+      ),
+    ).toEqual([]);
+    expect(
+      audit(
+        `select started.sequence from events started
+        where started.thread_id = ? and started.type = ? and not exists (
+          select 1 from events completed
+          where completed.thread_id = started.thread_id
+            and completed.turn_id = started.turn_id
+            and completed.type = ?)`,
+        ["thr_1", "turn/started", "turn/completed"],
+      ),
+    ).not.toContain("correlated-subquery:events");
   });
 });

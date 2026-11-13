@@ -2,11 +2,15 @@ name: Query Plan Audit
 on:
   schedule:
     - cron: "37 5 * * *"
+  pull_request:
+    paths:
+      - "packages/db/**"
+      - ".github/workflows/query-plan-audit.yml"
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: query-plan-audit
+  group: query-plan-audit-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
   PRIMARY_NODE_VERSION: "22.x"
@@ -63,3 +67,33 @@ jobs:
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
 
+  costs:
+    name: Query costs on a 10k-turn thread (ubuntu-latest, Node 22.x)
+    if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup workspace tools
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore pnpm cache
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        env:
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter bb --filter '@bb/db...'
+
+      - name: Time query functions against the fixture
+        run: pnpm --filter @bb/db check:query-costs

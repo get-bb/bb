@@ -275,8 +275,14 @@ process for each `rule`, `table`, and `caller`, when the plan:
 - walks `events`, `thread_search_segments`, `prompt_history_entries`, or
   `terminal_sessions` through an index that matches fewer equality terms than
   another index on that table (`weaker-index`);
-- scans one of those tables in full (`full-scan`); or
-- builds an automatic index (`automatic-index`).
+- scans one of those tables in full (`full-scan`);
+- builds an automatic index (`automatic-index`); or
+- searches one of those tables once per outer row, from a correlated subquery
+  or an `EXISTS` subquery SQLite turned into a join, through a key that grows
+  with history (`correlated-subquery`). A search that pins a unique key, or an
+  `events` column whose rows are bounded per value (`turn_id`, `item_id`,
+  `parent_tool_call_id`), is accepted; a search on `thread_id` and `type`
+  alone is not, because it rereads the thread's history for every outer row.
 
 `caller` is the `src/` file and function that ran the query; in the built
 server, the file comes from the module comments esbuild writes into
@@ -289,13 +295,25 @@ set `BB_QUERY_PLAN_EXECUTED`, so `@bb/db` and `@bb/server` record the query
 functions they run in `.query-plan/executed.jsonl` (a Turbo test output, so
 cached runs restore it). The `Query functions run in tests` job then fails when
 an exported query function in a `packages/db/src/data` file the PR changed never
-ran. The nightly `Query Plan Audit` workflow
-(`.github/workflows/query-plan-audit.yml`, also runnable by hand) checks main
-for allowlist entries no test reports and for exported query functions in
+ran. The `Query Plan Audit` workflow
+(`.github/workflows/query-plan-audit.yml`) runs nightly on main, on pull
+requests that change `packages/db`, and by hand. Its audit job checks for
+allowlist entries no test reports and for exported query functions in
 `packages/db/src/data` that no `@bb/db` or `@bb/server` test runs; reproduce it
 with
 `BB_QUERY_PLAN_REPORT=<file> pnpm exec turbo run test --filter=@bb/db --filter=@bb/server`
 followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
+
+Plans cannot show what a query costs once a thread is long, so the workflow's
+cost job runs `pnpm --filter @bb/db check:query-costs`. It builds one thread
+with 10,000 turns (about 170,000 events) through the real event write path,
+then times every exported query function in `packages/db/src/data/events.ts`
+and `packages/db/src/data/queued-thread-messages.ts` against it, each inside a
+rolled-back savepoint. A function fails when its fastest of up to three calls
+exceeds its budget (25 ms unless its case sets `budgetMs` with a `reason`); a
+call still running after 5 seconds (or 20 times its budget) is killed and
+fails. Cases live in `packages/db/scripts/query-costs/`; the check also fails
+when an exported query function in those files has no case.
 
 The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
 when agents saturate the CPU:

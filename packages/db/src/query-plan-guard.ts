@@ -78,10 +78,14 @@ const LARGE_TABLES: ReadonlySet<string> = new Set([
   "prompt_history_entries",
   "terminal_sessions",
 ]);
+const BOUNDED_KEY_COLUMNS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["events", new Set(["turn_id", "item_id", "parent_tool_call_id"])],
+]);
 const GUARDED_RULES: ReadonlySet<QueryPlanRule> = new Set([
   "full-scan",
   "weaker-index",
   "automatic-index",
+  "correlated-subquery",
 ]);
 const PASS_THROUGH_FILES: ReadonlySet<string> = new Set([
   "packages/db/src/connection.ts",
@@ -315,6 +319,7 @@ export function createQueryPlanAuditor(
   function audit(sql: string, caller: string, params: readonly unknown[]) {
     const result = auditQueryPlan(options.auditDatabase, sql, {
       largeTables: LARGE_TABLES,
+      boundedKeyColumns: BOUNDED_KEY_COLUMNS,
       ...(isParameterList(params) ? { params } : {}),
     });
     if (result.status !== "audited") return;

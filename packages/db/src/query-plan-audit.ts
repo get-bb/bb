@@ -1,10 +1,16 @@
 import type Database from "better-sqlite3";
 
 export interface QueryPlanStep {
+  id: number;
+  parent: number;
   detail: string;
 }
 
-export type QueryPlanRule = "full-scan" | "weaker-index" | "automatic-index";
+export type QueryPlanRule =
+  | "full-scan"
+  | "weaker-index"
+  | "automatic-index"
+  | "correlated-subquery";
 
 export interface QueryPlanFinding {
   rule: QueryPlanRule;
@@ -16,6 +22,7 @@ export type QueryPlanParameter = string | number | bigint | Buffer | null;
 
 export interface QueryPlanAuditOptions {
   largeTables: ReadonlySet<string>;
+  boundedKeyColumns: ReadonlyMap<string, ReadonlySet<string>>;
   params?: readonly QueryPlanParameter[];
 }
 
@@ -43,8 +50,10 @@ interface AccessStep {
   name: string;
   index: string | null;
   equalityTerms: number;
+  equalityColumns: string[];
   rangeTerms: number;
   rowid: boolean;
+  exists: boolean;
 }
 
 const EXPLAINABLE_STATEMENT = /^\s*(?:with|select|insert|update|delete)\b/i;
@@ -79,8 +88,9 @@ const NON_ALIAS_WORDS = new Set([
   "intersect",
 ]);
 const ACCESS_STEP =
-  /^(SCAN|SEARCH) (\S+)(?: USING (?:(?:COVERING |PRIMARY KEY )?INDEX (\S+)|INTEGER PRIMARY KEY)(?: \((.*)\))?)?/;
+  /^(SCAN|SEARCH) (\S+)( EXISTS)?(?: USING (?:(?:COVERING |PRIMARY KEY )?INDEX (\S+)|INTEGER PRIMARY KEY)(?: \((.*)\))?)?/;
 const AUTOMATIC_INDEX = /AUTOMATIC (?:PARTIAL )?COVERING INDEX/;
+const CORRELATED_SUBQUERY = /^CORRELATED (?:SCALAR|LIST) SUBQUERY\b/;
 
 export function isExplainableStatement(sql: string): boolean {
   return EXPLAINABLE_STATEMENT.test(sql);
@@ -129,13 +139,18 @@ function explain(
 function parseAccessStep(detail: string): AccessStep | null {
   const match = ACCESS_STEP.exec(detail);
   if (match === null) return null;
-  const constraints = match[4] ?? "";
+  const constraints = match[5] ?? "";
   const terms = constraints === "" ? [] : constraints.split(" AND ");
   return {
     kind: match[1] === "SCAN" ? "SCAN" : "SEARCH",
     name: match[2],
-    index: match[3] ?? null,
+    index: match[4] ?? null,
+    exists: match[3] !== undefined,
     equalityTerms: terms.filter((term) => /^[^<>]+=\?$/.test(term)).length,
+    equalityColumns: terms.flatMap((term) => {
+      const column = /^(\w+)=\?$/.exec(term);
+      return column === null ? [] : [column[1]];
+    }),
     rangeTerms: terms.filter((term) => /[<>]\?$/.test(term)).length,
     rowid: detail.includes("INTEGER PRIMARY KEY"),
   };
@@ -172,12 +187,35 @@ function indexesOf(sqlite: Database.Database, table: string): IndexListRow[] {
     .all(table) as IndexListRow[];
 }
 
-function indexColumnCount(sqlite: Database.Database, index: string): number {
+function indexColumns(sqlite: Database.Database, index: string): string[] {
   return (
     sqlite
       .prepare("SELECT name FROM pragma_index_info(?)")
       .all(index) as IndexInfoRow[]
-  ).length;
+  ).flatMap((row) => (row.name === null ? [] : [row.name]));
+}
+
+function indexColumnCount(sqlite: Database.Database, index: string): number {
+  return indexColumns(sqlite, index).length;
+}
+
+function isBoundedLookup(
+  sqlite: Database.Database,
+  table: string,
+  access: AccessStep,
+  options: QueryPlanAuditOptions,
+): boolean {
+  if (access.rowid && access.equalityTerms > 0) return true;
+  const equal = new Set(access.equalityColumns);
+  const boundedKeys = options.boundedKeyColumns.get(table);
+  if (boundedKeys !== undefined && [...equal].some((c) => boundedKeys.has(c))) {
+    return true;
+  }
+  return indexesOf(sqlite, table).some(
+    (index) =>
+      index.unique === 1 &&
+      indexColumns(sqlite, index.name).every((column) => equal.has(column)),
+  );
 }
 
 function stepsNamed(
@@ -208,6 +246,45 @@ function isBestPossible(
         uniqueIndexes.has(step.index) &&
         step.equalityTerms === indexColumnCount(sqlite, step.index)),
   );
+}
+
+function correlatedSubquery(
+  plan: readonly QueryPlanStep[],
+  step: QueryPlanStep,
+  access: AccessStep,
+): string | null {
+  if (access.exists) return "EXISTS subquery joined per outer row";
+  const byId = new Map(plan.map((candidate) => [candidate.id, candidate]));
+  let current = byId.get(step.parent);
+  while (current !== undefined) {
+    if (CORRELATED_SUBQUERY.test(current.detail)) return current.detail;
+    current = byId.get(current.parent);
+  }
+  return null;
+}
+
+function correlatedSubqueryFindings(
+  sqlite: Database.Database,
+  plan: readonly QueryPlanStep[],
+  aliases: ReadonlyMap<string, string>,
+  options: QueryPlanAuditOptions,
+): QueryPlanFinding[] {
+  const findings: QueryPlanFinding[] = [];
+  for (const step of plan) {
+    const access = parseAccessStep(step.detail);
+    if (access === null) continue;
+    const table = aliases.get(access.name) ?? access.name;
+    if (!options.largeTables.has(table)) continue;
+    const subquery = correlatedSubquery(plan, step, access);
+    if (subquery === null) continue;
+    if (isBoundedLookup(sqlite, table, access, options)) continue;
+    findings.push({
+      rule: "correlated-subquery",
+      table,
+      detail: `${subquery} re-runs ${step.detail} for each outer row`,
+    });
+  }
+  return findings;
 }
 
 function weakerIndexFindings(
@@ -291,5 +368,6 @@ export function auditQueryPlan(
     }
   }
   findings.push(...weakerIndexFindings(sqlite, sql, plan, tables, options));
+  findings.push(...correlatedSubqueryFindings(sqlite, plan, aliases, options));
   return { status: "audited", plan, findings };
 }
