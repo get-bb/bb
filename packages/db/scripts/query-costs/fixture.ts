@@ -497,7 +497,7 @@ export function buildHistoryFixture(db: DbConnection): HistoryFixture {
     const neighbor = createThread(db, noopNotifier, {
       projectId: project.id,
       environmentId: environment.id,
-      providerId: "codex",
+      providerId: "query-costs",
       status: "idle",
     });
     neighborThreadIds.push(neighbor.id);
@@ -511,7 +511,7 @@ export function buildHistoryFixture(db: DbConnection): HistoryFixture {
   const thread = createThread(db, noopNotifier, {
     projectId: project.id,
     environmentId: environment.id,
-    providerId: "codex",
+    providerId: "query-costs",
     status: "idle",
   });
   const providerThreadId = "provider-history";

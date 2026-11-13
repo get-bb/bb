@@ -305,7 +305,7 @@ with
 followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
 
 Plans cannot show what a query costs once a thread is long, so the workflow's
-cost job runs `pnpm --filter @bb/db check:query-costs`. It builds one thread
+cost job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds one thread
 with 10,000 turns (about 170,000 events) through the real event write path,
 then times every exported query function in `packages/db/src/data/events.ts`
 and `packages/db/src/data/queued-thread-messages.ts` against it, each inside a

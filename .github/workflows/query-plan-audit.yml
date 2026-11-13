@@ -93,7 +93,7 @@ jobs:
         timeout-minutes: 5
         env:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter bb --filter '@bb/db...'
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/db...'
 
       - name: Time query functions against the fixture
-        run: pnpm --filter @bb/db check:query-costs
+        run: pnpm exec turbo run check:query-costs --filter=@bb/db --output-logs=new-only
