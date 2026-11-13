@@ -33,9 +33,12 @@ Messaging:
   turn. A target that is awaiting user interaction (an open question or
   approval) cannot take a prompt; tell then adds the message to the thread's
   queue and dispatches it once the interaction settles. That outcome is not a
-  failure, so do not resend. `--json` reports `delivery` as `sent` or `queued`,
-  and a queued answer carries the complete row as `queuedMessage`, including
-  its `id`, `waitingOn`, and `sendAt`. A deferred message waits for a thread
+  failure, so do not resend. `--json` reports `delivery` as `sent` or `queued`.
+  A sent answer carries `messageSequence`, the thread event sequence of the
+  delivered message (a timeline whose `maxSeq` reaches it already shows the
+  message), or null when nothing was recorded, such as `/clear`. A queued answer
+  carries the complete row as `queuedMessage`, including its `id`, `waitingOn`,
+  and `sendAt`. A deferred message waits for a thread
   that failed while it was deferred, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
