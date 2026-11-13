@@ -1361,7 +1361,7 @@ export function OnboardingFlow({
     if (!redesign) return;
     void queryClient.prefetchQuery(pluginCatalogSearchQueryOptions(""));
   }, [queryClient, redesign]);
-  const exposedRef = useRef(initialProgress.exposed);
+  const exposedRef = useRef(false);
   useEffect(() => {
     if (exposedRef.current) return;
     exposedRef.current = true;
@@ -1394,15 +1394,12 @@ export function OnboardingFlow({
     ...(hostId === null ? {} : { hostId }),
   });
   const agentStates = agentStatesQuery.data?.providers;
-  const agentStatesLoaded = agentStates !== undefined;
   useAgentStateTelemetry({
     entry,
     states: agentStates,
     isError: agentStatesQuery.isError,
   });
-  const startReportedRef = useRef(
-    entry !== "first_run" || initialProgress.started,
-  );
+  const startReportedRef = useRef(entry !== "first_run");
   useEffect(() => {
     if (startReportedRef.current || agentStates === undefined) return;
     startReportedRef.current = true;
@@ -1417,7 +1414,7 @@ export function OnboardingFlow({
       },
     });
   }, [agentStates]);
-  const reachedStepsRef = useRef(new Set(initialProgress.reachedSteps));
+  const reachedStepsRef = useRef(new Set<OnboardingStepId>());
   useEffect(() => {
     if (reachedStepsRef.current.has(step)) return;
     reachedStepsRef.current.add(step);
@@ -1436,15 +1433,8 @@ export function OnboardingFlow({
   }, [closing]);
   useEffect(() => {
     if (finishedRef.current) return;
-    onProgress({
-      step,
-      outcomes: stepOutcomes,
-      reachedSteps: reachedStepsRef.current,
-      exposed: exposedRef.current,
-      started: startReportedRef.current,
-      projectIdsAtOpen,
-    });
-  }, [agentStatesLoaded, onProgress, projectIdsAtOpen, step, stepOutcomes]);
+    onProgress({ step, outcomes: stepOutcomes, projectIdsAtOpen });
+  }, [onProgress, projectIdsAtOpen, step, stepOutcomes]);
   const close = (outcome: "completed" | "skipped") => {
     if (finishedRef.current) return;
     finishedRef.current = true;

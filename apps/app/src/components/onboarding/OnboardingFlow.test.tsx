@@ -74,16 +74,6 @@ function finishedOutcomes(): unknown[] {
     );
 }
 
-function recordedEventNames(): string[] {
-  return vi
-    .mocked(recordTelemetryEvent)
-    .mock.calls.map(([event]) =>
-      event.name === "onboarding_step_reached"
-        ? `${event.name}:${event.properties.step}`
-        : event.name,
-    );
-}
-
 function agentLoadFailures(): unknown[] {
   return vi
     .mocked(recordTelemetryEvent)
@@ -245,7 +235,7 @@ describe("OnboardingFlow", () => {
   });
 
   it.each(["control", "new"] as const)(
-    "resumes the %s guide where it was left without reporting a second start",
+    "resumes the %s guide at its saved step and keeps saving progress",
     (variant) => {
       const onProgress = vi.fn<(progress: OnboardingProgress) => void>();
       renderFlow({
@@ -258,24 +248,12 @@ describe("OnboardingFlow", () => {
             ["agent", "completed"],
             ["projects", "skipped"],
           ]),
-          reachedSteps: new Set(["agent", "projects", "plugins"]),
-          exposed: true,
-          started: true,
         },
       });
 
       expect(screen.getByText("Make bb yours")).toBeTruthy();
-      expect(recordedEventNames()).not.toContain("onboarding_exposed");
-      expect(recordedEventNames()).not.toContain("onboarding_started");
-      expect(
-        recordedEventNames().filter((name) =>
-          name.startsWith("onboarding_step_reached"),
-        ),
-      ).toEqual([]);
-
       fireEvent.click(button(/^Continue/u));
 
-      expect(recordedEventNames()).toContain("onboarding_step_reached:devices");
       const saved = onProgress.mock.lastCall?.[0];
       expect(saved?.step).toBe("devices");
       expect([...(saved?.outcomes ?? [])]).toEqual([
@@ -283,29 +261,8 @@ describe("OnboardingFlow", () => {
         ["projects", "skipped"],
         ["plugins", "skipped"],
       ]);
-      expect([...(saved?.reachedSteps ?? [])]).toEqual([
-        "agent",
-        "projects",
-        "plugins",
-        "devices",
-      ]);
     },
   );
-
-  it("saves the opened step and that the guide was shown", () => {
-    const onProgress = vi.fn<(progress: OnboardingProgress) => void>();
-    renderFlow({ initialStep: "agent", onProgress });
-
-    expect(recordedEventNames()).toEqual([
-      "onboarding_exposed",
-      "onboarding_step_reached:agent",
-    ]);
-    expect(onProgress.mock.lastCall?.[0]).toMatchObject({
-      step: "agent",
-      exposed: true,
-      started: false,
-    });
-  });
 
   it.each([
     ["control", false],

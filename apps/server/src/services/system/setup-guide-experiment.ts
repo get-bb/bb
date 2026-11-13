@@ -33,6 +33,7 @@ export interface SetupGuideAssignments {
 export interface SetupGuideExperiment {
   resolve(): Promise<SetupGuideAssignments>;
   recordExposure(entry: "first_run" | "replay"): Promise<void>;
+  claimFirstRunEvent(event: RecordTelemetryEventRequest): Promise<boolean>;
   annotate(event: RecordTelemetryEventRequest): Promise<TelemetryEvent>;
 }
 
@@ -55,6 +56,7 @@ const persistedGuideSchema = z
 
 const persistedAssignmentsSchema = z.object({
   guide: persistedGuideSchema.nullable(),
+  firstRunEvents: z.array(z.string()).default([]),
 });
 
 type PersistedAssignments = z.infer<typeof persistedAssignmentsSchema>;
@@ -75,6 +77,21 @@ function isSetupGuideTelemetryEvent(
     return event.properties.surface === "onboarding";
   }
   return event.name.startsWith("onboarding_");
+}
+
+function firstRunEventKey(event: RecordTelemetryEventRequest): string | null {
+  switch (event.name) {
+    case "onboarding_started":
+      return event.name;
+    case "onboarding_exposed":
+      return event.properties.entry === "first_run" ? event.name : null;
+    case "onboarding_step_reached":
+      return event.properties.entry === "first_run"
+        ? `${event.name}:${event.properties.step}`
+        : null;
+    default:
+      return null;
+  }
 }
 
 function parseJsonText(text: string): unknown {
@@ -162,8 +179,22 @@ export async function createSetupGuideExperiment(
   args: CreateSetupGuideExperimentArgs,
 ): Promise<SetupGuideExperiment> {
   const assignmentPath = join(args.dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME);
-  let persisted = await readPersistedAssignments(assignmentPath, args.logger);
+  const persisted = await readPersistedAssignments(assignmentPath, args.logger);
+  let savedGuide = persisted?.guide ?? null;
+  const sentFirstRunEvents = new Set(persisted?.firstRunEvents ?? []);
   let resolution: Promise<SetupGuideAssignments> | null = null;
+  let writes: Promise<void> = Promise.resolve();
+
+  function persist(): Promise<void> {
+    const write = writes.then(() =>
+      writePersistedAssignments(assignmentPath, {
+        guide: savedGuide,
+        firstRunEvents: [...sentFirstRunEvents],
+      }),
+    );
+    writes = write.catch(() => undefined);
+    return write;
+  }
 
   function tagFlagVariant(guide: FlagAssignment | null): void {
     if (guide?.source === "flag") {
@@ -175,7 +206,7 @@ export async function createSetupGuideExperiment(
   }
 
   if (persisted !== null && args.override === null) {
-    tagFlagVariant(persisted.guide);
+    tagFlagVariant(savedGuide);
   }
 
   async function fetchFlagAssignments(
@@ -214,7 +245,7 @@ export async function createSetupGuideExperiment(
     if (identity === null || !args.telemetry.isEnabled()) {
       return { guide: override ?? DEFAULT_GUIDE };
     }
-    const saved = override ?? persisted?.guide ?? null;
+    const saved = override ?? savedGuide;
     if (saved !== null) return { guide: saved };
     return fetchFlagAssignments(identity);
   }
@@ -232,13 +263,10 @@ export async function createSetupGuideExperiment(
     async recordExposure(entry) {
       const { guide } = await resolve();
       if (!args.telemetry.isEnabled()) return;
-      const toPersist: PersistedAssignments = {
-        guide: persisted?.guide ?? persistedGuide(guide),
-      };
-      if (toPersist.guide !== (persisted?.guide ?? null)) {
+      if (savedGuide === null && persistedGuide(guide) !== null) {
+        savedGuide = persistedGuide(guide);
         try {
-          await writePersistedAssignments(assignmentPath, toPersist);
-          persisted = toPersist;
+          await persist();
         } catch (error) {
           args.logger.warn(
             { err: error },
@@ -264,6 +292,21 @@ export async function createSetupGuideExperiment(
           $set: { setup_guide_variant: guide.variant },
         },
       });
+    },
+    async claimFirstRunEvent(event) {
+      const key = firstRunEventKey(event);
+      if (key === null || !args.telemetry.isEnabled()) return true;
+      if (sentFirstRunEvents.has(key)) return false;
+      sentFirstRunEvents.add(key);
+      try {
+        await persist();
+      } catch (error) {
+        args.logger.warn(
+          { err: error },
+          "Setup guide first-run events could not be saved",
+        );
+      }
+      return true;
     },
     async annotate(event) {
       if (!args.telemetry.isEnabled() || !isSetupGuideTelemetryEvent(event)) {

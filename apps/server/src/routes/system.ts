@@ -363,6 +363,9 @@ export function registerSystemRoutes(
         payload.properties.recommendation_id,
       );
     }
+    if (!(await deps.setupGuideExperiment.claimFirstRunEvent(payload))) {
+      return context.json({ ok: true });
+    }
     if (payload.name === "onboarding_exposed") {
       await deps.setupGuideExperiment.recordExposure(payload.properties.entry);
       return context.json({ ok: true });

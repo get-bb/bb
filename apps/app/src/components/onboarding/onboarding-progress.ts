@@ -9,18 +9,12 @@ const storedProgressSchema = z.object({
   dataDir: z.string(),
   step: stepIdSchema,
   outcomes: z.array(z.tuple([stepIdSchema, z.enum(["completed", "skipped"])])),
-  reachedSteps: z.array(stepIdSchema),
-  exposed: z.boolean(),
-  started: z.boolean(),
   projectIdsAtOpen: z.array(z.string()).nullable(),
 });
 
 export interface OnboardingProgress {
   step: OnboardingStepId;
   outcomes: ReadonlyMap<OnboardingStepId, StepOutcome>;
-  reachedSteps: ReadonlySet<OnboardingStepId>;
-  exposed: boolean;
-  started: boolean;
   projectIdsAtOpen: ReadonlySet<string> | null;
 }
 
@@ -30,9 +24,6 @@ export function freshOnboardingProgress(
   return {
     step,
     outcomes: new Map(),
-    reachedSteps: new Set(),
-    exposed: false,
-    started: false,
     projectIdsAtOpen: null,
   };
 }
@@ -48,9 +39,6 @@ export function readOnboardingProgress(dataDir: string): OnboardingProgress {
     return {
       step: stored.data.step,
       outcomes: new Map(stored.data.outcomes),
-      reachedSteps: new Set(stored.data.reachedSteps),
-      exposed: stored.data.exposed,
-      started: stored.data.started,
       projectIdsAtOpen:
         stored.data.projectIdsAtOpen === null
           ? null
@@ -69,9 +57,6 @@ export function saveOnboardingProgress(
     dataDir,
     step: progress.step,
     outcomes: [...progress.outcomes],
-    reachedSteps: [...progress.reachedSteps],
-    exposed: progress.exposed,
-    started: progress.started,
     projectIdsAtOpen:
       progress.projectIdsAtOpen === null
         ? null
