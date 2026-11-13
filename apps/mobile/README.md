@@ -629,7 +629,9 @@ gets the full width.
 
 Duo Rail calls the native bridge request `set-rail-expanded` with
 `{ expanded: true }` when expanding and `{ expanded: false }` when restoring.
-The iOS shell advertises `rail-expansion` only with native support on iOS 27.1+.
+The iOS shell reports `railExpansion: true` only with native support on iOS 27.1+.
+The injected capability array keeps its existing values so older pages continue
+accepting the handshake. New pages map this optional field to `rail-expansion`.
 Expansion automatically moves the status bar to the top; restore returns it
 to the system rail. There is no separate status-bar setting. The plugin owns
 the saved expansion choice and reapplies it after loading. The native state
