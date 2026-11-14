@@ -135,9 +135,16 @@ describe("startWalCheckpointer", () => {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 250));
-        const [pinned] = db.$client.pragma(
-          "wal_checkpoint(PASSIVE)",
-        ) as CheckpointRow[];
+        // The worker can be mid-checkpoint here; SQLite then answers busy=1, log=-1.
+        let pinned: CheckpointRow | undefined;
+        const busyUntil = performance.now() + 5_000;
+        for (;;) {
+          [pinned] = db.$client.pragma(
+            "wal_checkpoint(PASSIVE)",
+          ) as CheckpointRow[];
+          if (pinned?.busy !== 1 || performance.now() > busyUntil) break;
+          await new Promise<void>((resolve) => setTimeout(resolve, 5));
+        }
         expect(pinned?.log).toBeGreaterThan(32_768);
         expect(pinned?.checkpointed).toBeLessThan(pinned?.log ?? 0);
 
