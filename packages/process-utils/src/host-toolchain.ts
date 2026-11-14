@@ -142,7 +142,7 @@ function runProbe(
 async function readShellEnvironment(
   env: NodeJS.ProcessEnv,
   retainPrevious: boolean,
-): Promise<NodeJS.ProcessEnv | null> {
+): Promise<{ env: NodeJS.ProcessEnv; partial: boolean } | null> {
   if (process.platform === "win32") {
     const registry = join(
       envValue(env, "SystemRoot") ?? "C:\\Windows",
@@ -186,7 +186,10 @@ async function readShellEnvironment(
     };
     return paths.length === 0
       ? null
-      : { PATH: mergePath(...paths.map(expand), envValue(env, "PATH")) };
+      : {
+          env: { PATH: mergePath(...paths.map(expand), envValue(env, "PATH")) },
+          partial: false,
+        };
   }
   const shell =
     env.SHELL?.trim() ||
@@ -216,7 +219,8 @@ async function readShellEnvironment(
       if (key === "PATH" || NETWORK_KEYS.includes(key))
         values[key] = line.slice(separator + 1);
     }
-    if (values.PATH) return values;
+    if (values.PATH)
+      return { env: values, partial: arg === "-lc" && shellArgs.length > 1 };
   }
   return null;
 }
@@ -228,6 +232,7 @@ export class HostToolchain {
   private nodePath: string;
   private refreshing: Promise<void> | null = null;
   private refreshedAt = 0;
+  private partial = false;
 
   constructor(
     private readonly baseEnv: NodeJS.ProcessEnv = process.env,
@@ -243,8 +248,10 @@ export class HostToolchain {
     this.refreshedAt = Date.now();
     const retainPrevious = this.shellEnv.PATH !== undefined;
     this.refreshing = readShellEnvironment(this.baseEnv, retainPrevious)
-      .then((env) => {
-        if (env !== null) this.shellEnv = env;
+      .then((result) => {
+        if (result === null) return;
+        this.shellEnv = result.env;
+        this.partial = result.partial;
       })
       .finally(() => {
         this.refreshing = null;
@@ -259,7 +266,15 @@ export class HostToolchain {
       "code" in errorOrCode
         ? errorOrCode.code
         : errorOrCode;
-    if (code === "ENOENT" || code === 127) void this.refresh();
+    if (
+      code === "ENOENT" ||
+      code === 127 ||
+      (this.partial &&
+        typeof code === "number" &&
+        code !== 0 &&
+        Date.now() - this.refreshedAt >= 30_000)
+    )
+      void this.refresh();
   }
 
   private searchPath(env: NodeJS.ProcessEnv): string {
