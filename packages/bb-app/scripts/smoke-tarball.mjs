@@ -625,6 +625,23 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
   });
 }
 
+function isolatedHomeEnv(name) {
+  const home = join(tempRoot, "home", name);
+  const homeEnv = {
+    HOME: home,
+    USERPROFILE: home,
+    APPDATA: join(home, "AppData", "Roaming"),
+    XDG_CONFIG_HOME: join(home, ".config"),
+    CLAUDE_CONFIG_DIR: join(home, ".claude"),
+    CODEX_HOME: join(home, ".codex"),
+    PI_CODING_AGENT_DIR: join(home, ".pi", "agent"),
+  };
+  for (const directory of Object.values(homeEnv)) {
+    mkdirSync(directory, { recursive: true });
+  }
+  return homeEnv;
+}
+
 /**
  * Bridges are never spawned directly: the runtime runs the packed bootstrap
  * and hands it the bridge module plus the plugin scope. Driving it the same
@@ -633,6 +650,7 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
 function spawnPackedBridge({ bridgePath, packageDir, pluginId }) {
   const dataDir = join(tempRoot, "bridge-data", pluginId);
   mkdirSync(dataDir, { recursive: true });
+  const homeEnv = isolatedHomeEnv(`bridge-${pluginId}`);
   return spawn(
     process.execPath,
     [
@@ -641,7 +659,11 @@ function spawnPackedBridge({ bridgePath, packageDir, pluginId }) {
       pluginId,
       dataDir,
     ],
-    { cwd: tempRoot, stdio: ["pipe", "pipe", "pipe"] },
+    {
+      cwd: tempRoot,
+      env: { ...process.env, ...homeEnv, ...smokeProcessEnv },
+      stdio: ["pipe", "pipe", "pipe"],
+    },
   );
 }
 
@@ -1115,6 +1137,7 @@ async function smokeFullStackAttempt(binDir, sdkDir, attempt) {
         String(daemonPort),
       ]),
       env: {
+        ...isolatedHomeEnv(`full-stack-${attempt}`),
         BB_LOG_LEVEL: "info",
       },
       label: "bb-app full stack",
@@ -1239,6 +1262,7 @@ async function smokeDaemonJoinAttempt(binDir, attempt) {
         String(firstDaemonReservation.port),
       ]),
       env: {
+        ...isolatedHomeEnv(`join-server-${attempt}`),
         BB_LOG_LEVEL: "warn",
         BB_SERVER_LAUNCH_ID: serverLaunchId,
       },
@@ -1266,6 +1290,7 @@ async function smokeDaemonJoinAttempt(binDir, attempt) {
           String(spec.reservation.port),
         ]),
         env: {
+          ...isolatedHomeEnv(basename(spec.dataDir)),
           BB_LOG_LEVEL: "info",
           BB_SERVER_URL: staleEnvServerUrl,
         },
