@@ -1,7 +1,7 @@
 {
   "provider": "acp-opencode",
   "cell": "settings-steer",
-  "threadId": "thr_59c2097baa",
+  "threadId": "thr_db9ad7d1af",
   "scope": "thread",
   "cliVersion": "opencode 2.0.22",
   "recordedAt": "2026-11-14",
@@ -9,9 +9,9 @@
   "note": "",
   "bridgeRuns": 1,
   "lines": {
-    "runtime→bridge": 9,
-    "bridge→runtime": 100,
-    "provider→bridge": 89,
-    "bridge→provider": 25
+    "runtime→bridge": 13,
+    "bridge→runtime": 122,
+    "provider→bridge": 111,
+    "bridge→provider": 29
   }
 }

@@ -79,12 +79,26 @@ values. Native questions have no ACP interaction handler in BB; agents use the
 ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
 custom agents with `dialect: "opencode"` and does not change OpenCode config files.
 
-BB also sets `OPENCODE_PERMISSION` from the thread's permission mode, which
-OpenCode merges over the `permission` keys of its own config. In `accept-edits`
-OpenCode edits files without asking and asks before shell commands, web fetches
-and paths outside the workspace; BB shows those requests as approvals. In `full`
-all four are allowed. Changing a thread's permission mode restarts the OpenCode
-session with the new policy; the conversation is restored.
+BB applies the thread's permission mode to OpenCode. OpenCode 1.x reads it
+from `OPENCODE_PERMISSION`, which BB sets and OpenCode merges over the
+`permission` keys of its own config. OpenCode 2.x ignores that variable, so BB
+writes the same rules (`edit`, `shell`, `webfetch` and `external_directory`, each
+on `*`) to the session itself with `opencode api PATCH /api/session/<id>` before
+the first prompt, ahead of the session's other rules such as allowed additional
+directories. In `accept-edits` OpenCode edits files without asking and asks
+before shell commands, web fetches and paths outside the workspace; BB shows
+those requests as approvals. In `full` all four are allowed. Changing a thread's
+permission mode restarts the OpenCode session with the new policy; the
+conversation is restored. If the launch command does not end in `acp`, or
+OpenCode 2.x rejects the rules, the session fails to start instead of running
+without them.
+
+Approving a request "for session" is remembered by BB for that thread's ACP
+session: the agent is answered with its allow-once option, and later requests
+with the same subject (the same command, write scope, or tool) are approved
+without asking. BB sends an agent's allow-always option only when the agent
+offers no allow-once option, so agents such as Cursor do not write the grant to
+their global config, and a new thread asks again.
 
 OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
 does not expose compatible compaction. Check the actual agent's capabilities
