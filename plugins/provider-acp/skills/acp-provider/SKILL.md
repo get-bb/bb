@@ -89,9 +89,10 @@ directories. In `accept-edits` OpenCode edits files without asking and asks
 before shell commands, web fetches and paths outside the workspace; BB shows
 those requests as approvals. In `full` all four are allowed. Changing a thread's
 permission mode restarts the OpenCode session with the new policy; the
-conversation is restored. If the launch command does not end in `acp`, or
-OpenCode 2.x rejects the rules, the session fails to start instead of running
-without them.
+conversation is restored. In `accept-edits`, if the launch command does not
+end in `acp` or OpenCode 2.x rejects the rules, the session fails to start
+instead of running without them. In `full` there is nothing to enforce, so a
+launch command that does not end in `acp` only logs a warning once.
 
 Approving a request "for session" is remembered by BB for that thread's ACP
 session: the agent is answered with its allow-once option, and later requests

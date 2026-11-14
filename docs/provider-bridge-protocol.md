@@ -747,7 +747,8 @@ directories pointed at a temporary directory seeded with copies of the files
 the CLI needs to sign in and pick models (OpenCode also gets its own service
 port and a copy of its active credentials); a refreshed `auth.json` is copied
 back. Claude Code keeps its sign-in in the macOS keychain under its config
-directory, so it cannot be moved: the recorder instead deletes what the run
-created under `~/.claude` (the run workspace's `projects` entry and that
-session's `session-env`, `file-history`, `todos` and `debug` entries) and the
-workspace's key in `~/.claude.json`.
+directory, so it cannot be moved: the recorder instead deletes the directories
+the run created under `~/.claude` (the run workspace's `projects` entry and that
+session's `session-env`, `file-history`, `todos` and `debug` entries). It never
+rewrites `~/.claude.json`, which other Claude Code sessions write concurrently,
+so the run workspace's project key stays there; it is harmless.

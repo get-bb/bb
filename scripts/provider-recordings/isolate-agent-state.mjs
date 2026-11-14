@@ -263,31 +263,11 @@ function removeClaudeRunState(env, before) {
       }
     }
   }
-  const statePath = env.CLAUDE_CONFIG_DIR
-    ? join(env.CLAUDE_CONFIG_DIR, ".claude.json")
-    : join(homedir(), ".claude.json");
-  if (!existsSync(statePath)) return;
-  const state = JSON.parse(readFileSync(statePath, "utf8"));
-  const runProjects = Object.keys(state.projects ?? {}).filter(
-    (key) =>
-      key.includes(RUN_WORKSPACE_MARKER) && !before.stateProjects.includes(key),
-  );
-  if (runProjects.length === 0) return;
-  for (const key of runProjects) delete state.projects[key];
-  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function cleanUpClaude(env) {
   const claudeDir = env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
-  const statePath = env.CLAUDE_CONFIG_DIR
-    ? join(env.CLAUDE_CONFIG_DIR, ".claude.json")
-    : join(homedir(), ".claude.json");
-  const before = {
-    ...claudeRunEntries(claudeDir),
-    stateProjects: existsSync(statePath)
-      ? Object.keys(JSON.parse(readFileSync(statePath, "utf8")).projects ?? {})
-      : [],
-  };
+  const before = claudeRunEntries(claudeDir);
   return { env: {}, finish: async () => removeClaudeRunState(env, before) };
 }
 

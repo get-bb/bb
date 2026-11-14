@@ -1862,6 +1862,38 @@ describe("acp bridge", () => {
     },
   );
 
+  it.each([
+    { permissionMode: "accept-edits" as const, starts: false },
+    { permissionMode: "full" as const, starts: true },
+  ])(
+    "starts a custom OpenCode 2 agent whose launch does not end in acp: $permissionMode -> $starts",
+    async ({ permissionMode, starts }) => {
+      const thread = startThread({
+        dialectId: "opencode",
+        permissionMode,
+        permissionEscalation: "ask",
+        envVars: { FAKE_ACP_AGENT_VERSION: "2.0.22" },
+      });
+      if (!starts) {
+        await expect(thread).rejects.toThrow(
+          'the launch command must end with "acp"',
+        );
+        return;
+      }
+      const { providerThreadId } = await thread;
+      expect(
+        await completeTurnWith(
+          providerThreadId,
+          "hi",
+          executionOptions({
+            permissionMode,
+            envVars: { FAKE_ACP_AGENT_VERSION: "2.0.22" },
+          }),
+        ),
+      ).toBe("echo:hi");
+    },
+  );
+
   it("gives agents other than OpenCode no OpenCode permission policy", async () => {
     const { providerThreadId } = await startThread();
     expect(

@@ -54,6 +54,8 @@ export function mergeOpenCodePermissionRules(
   return [...managed, ...current.filter((rule) => !isManaged(rule))];
 }
 
+let reportedUnmanagedLaunch = false;
+
 export async function applyOpenCodeSessionPermissions(args: {
   agentCommand: string;
   agentArgs: readonly string[];
@@ -64,9 +66,17 @@ export async function applyOpenCodeSessionPermissions(args: {
 }): Promise<void> {
   const sessionPath = `/api/session/${encodeURIComponent(args.sessionId)}`;
   if (args.agentArgs.at(-1) !== "acp") {
-    throw new Error(
-      `bb cannot apply its permission mode to OpenCode ${args.agentCommand} ${args.agentArgs.join(" ")}: the launch command must end with "acp".`,
-    );
+    const problem = `bb cannot apply its permission mode to OpenCode ${args.agentCommand} ${args.agentArgs.join(" ")}: the launch command must end with "acp".`;
+    if (args.permissionMode !== "full") {
+      throw new Error(problem);
+    }
+    if (!reportedUnmanagedLaunch) {
+      reportedUnmanagedLaunch = true;
+      process.stderr.write(
+        `acp bridge: ${problem} Full Access has nothing to enforce, so the session continues without bb's rules.\n`,
+      );
+    }
+    return;
   }
   const api = (apiArgs: string[]) =>
     execPortableFile(
