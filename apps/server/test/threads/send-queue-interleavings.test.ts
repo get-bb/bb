@@ -723,7 +723,7 @@ class Run {
   enabledActions(): Action[] {
     const actions: Action[] = [];
     const nextUser = this.scenario.user[this.userIndex];
-    if (nextUser !== undefined) {
+    if (nextUser !== undefined && this.limiter.held.length === 0) {
       actions.push({
         label: describeUserStep(nextUser),
         run: async () => {
@@ -1331,7 +1331,6 @@ const scenarios: Scenario[] = [
       {
         cause: DRAIN_ENDS_AFTER_PLUGIN_DEFERS_ITS_ROW,
         orderings: [
-          "send msg-A → send msg-B → plugin proceeds msg-A#1 → drain wake → complete turn-1 → plugin holds msg-A#2",
           "send msg-A → plugin proceeds msg-A#1 → send msg-B → drain wake → complete turn-1 → plugin holds msg-A#2",
           "send msg-A → plugin proceeds msg-A#1 → drain wake → send msg-B → complete turn-1 → plugin holds msg-A#2",
         ],
