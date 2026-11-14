@@ -811,12 +811,13 @@ async function rebuildThreadSession(
   threadId: string,
   previous: ThreadSession,
   params: PiSessionParams,
+  providerThreadId: string,
 ): Promise<ThreadSession> {
   let replacement: ThreadSession;
   try {
     replacement = await constructPiThreadSession(
       threadId,
-      previous.providerThreadId,
+      providerThreadId,
       params,
     );
   } catch (error) {
@@ -1037,14 +1038,45 @@ async function reconcileTurnOptions(
   ) {
     return threadSession;
   }
-  const replacement = await rebuildThreadSession(threadId, threadSession, {
+  const rebuildParams: PiSessionParams = {
     ...construction,
     ...(shellEnvOverrides === undefined ? {} : { shellEnvOverrides }),
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
       ? {}
       : { thinkingLevel: turnOptions.thinkingLevel }),
-  });
+  };
+  const sessionFileMissing = !existsSync(
+    resolvePiSessionFilePath({
+      env: process.env,
+      threadId: threadSession.providerThreadId,
+    }),
+  );
+  let replacement: ThreadSession;
+  let reason = sessionFileMissing
+    ? "pi's session file was missing, so the conversation continues without its earlier context."
+    : piExited
+      ? "pi exited; the session was restored from its session file."
+      : "Execution settings changed; the pi session was rebuilt to apply them.";
+  let contextLost = sessionFileMissing;
+  try {
+    replacement = await rebuildThreadSession(
+      threadId,
+      threadSession,
+      rebuildParams,
+      threadSession.providerThreadId,
+    );
+  } catch (error) {
+    if (!piExited) throw error;
+    replacement = await rebuildThreadSession(
+      threadId,
+      threadSession,
+      rebuildParams,
+      `pi_${randomUUID()}`,
+    );
+    reason = `pi could not reopen its session (${error instanceof Error ? error.message : String(error)}), so the conversation continues in a new session without its earlier context.`;
+    contextLost = true;
+  }
   sendThreadIdentity(threadId, replacement.providerThreadId);
   sendSessionResetBoundary(threadId);
   send({
@@ -1053,10 +1085,8 @@ async function reconcileTurnOptions(
     params: {
       threadId,
       providerThreadId: replacement.providerThreadId,
-      reason: piExited
-        ? "pi exited; the session was restored from its session file."
-        : "Execution settings changed; the pi session was rebuilt to apply them.",
-      contextLost: false,
+      reason,
+      contextLost,
     },
   });
   return replacement;
@@ -1130,6 +1160,10 @@ async function handleTurnSteer(
     sendError(id, -32000, "Cannot steer while context compaction is active");
     return;
   }
+  if (threadSession.session.hasExited()) {
+    rejectStaleSteer(id);
+    return;
+  }
   try {
     await threadSession.session.steer(
       text,
@@ -1140,12 +1174,23 @@ async function handleTurnSteer(
     ]);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
+    if (threadSession.session.hasExited()) {
+      rejectStaleSteer(id);
+      return;
+    }
     sendError(
       id,
       -32000,
       error instanceof Error ? error.message : String(error),
     );
   }
+}
+
+function rejectStaleSteer(id: string | number): void {
+  const message = "pi exited before it took the steer";
+  sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+    recovery: { kind: "staleTurn", message, retryable: false },
+  });
 }
 
 async function handleThreadStop(

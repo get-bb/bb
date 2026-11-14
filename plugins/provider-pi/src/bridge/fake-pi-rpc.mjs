@@ -63,6 +63,17 @@ if (sessionFile !== undefined) {
       cwd: process.cwd(),
     };
     writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, "utf8");
+  } else {
+    let header = null;
+    try {
+      header = JSON.parse(readFileSync(sessionFile, "utf8").split("\n")[0]);
+    } catch {}
+    if (header?.type !== "session") {
+      process.stderr.write(
+        `Error: Session file is not a valid pi session: ${sessionFile}\n`,
+      );
+      process.exit(1);
+    }
   }
 }
 
