@@ -315,7 +315,7 @@ it("pins an archived thread optimistically in the archived list", async () => {
   await waitFor(() => expect(server.archivedPinnedAt("t3")).toBeNull());
 });
 
-it("reverts an acknowledged unpin when the rest of its move fails", async () => {
+it("keeps an acknowledged unpin when the rest of its move fails", async () => {
   const server = serve([{ ...entry("t1", 50), sectionId: "old" }]);
   await waitFor(() => expect(server.pinnedAt("t1")).toEqual([50, 50, 50]));
   const update = createDeferredPromise<never>();
@@ -345,9 +345,9 @@ it("reverts an acknowledged unpin when the rest of its move fails", async () => 
   });
 
   await waitFor(() =>
-    expect(sidebarRow()).toMatchObject({ pinnedAt: 50, sectionId: "old" }),
+    expect(sidebarRow()).toMatchObject({ pinnedAt: null, sectionId: "old" }),
   );
-  expect(server.pinnedAt("t1")).toEqual([50, 50, 50]);
+  expect(server.pinnedAt("t1")).toEqual([null, null, null]);
 });
 
 async function acknowledgedPin(server: ReturnType<typeof serve>) {
