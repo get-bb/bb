@@ -32,6 +32,16 @@ export default defineWorkspaceTestConfig({
       {
         extends: true,
         test: {
+          name: "@bb/integration-tests:git-process-budget",
+          fileParallelism: false,
+          isolate: true,
+          globalSetup: ["./global-setup.ts"],
+          include: ["git-process-budget/**/*.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: "@bb/integration-tests:native-roots-golden",
           include: ["native-roots-golden/**/*.test.ts"],
         },

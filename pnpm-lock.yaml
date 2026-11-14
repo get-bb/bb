@@ -6416,6 +6416,9 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/host-watcher':
+        specifier: workspace:*
+        version: link:../../packages/host-watcher
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -6428,6 +6431,9 @@ importers:
       '@bb/test-helpers':
         specifier: workspace:*
         version: link:../../packages/test-helpers
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@hono/node-server':
         specifier: ^1.19.18
         version: 1.19.18(hono@4.13.16)
