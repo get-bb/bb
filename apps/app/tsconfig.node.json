@@ -13,6 +13,7 @@
     "vite-bundle-stats.ts",
     "vite-font-preload.ts",
     "vite-split-prefetch.ts",
+    "vite-download-before-import.ts",
     "vite-route-modulepreload.ts",
     "vite-journey-chunks.ts",
     "vite-forkable-plugin-paths.ts",

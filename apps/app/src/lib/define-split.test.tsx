@@ -10,9 +10,23 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { downloadSplit } from "./split-prefetch";
 import { defineSplit } from "./define-split";
+import {
+  recoverFromVisibleModuleImportFailure,
+  reloadAfterModuleImportFailure,
+} from "./stale-chunk-recovery";
+
+vi.mock("./stale-chunk-recovery", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./stale-chunk-recovery")>()),
+  reloadAfterModuleImportFailure: vi.fn(() => true),
+  recoverFromVisibleModuleImportFailure: vi.fn(),
+}));
+
+const downloadFailure = () =>
+  new TypeError("Unable to download module script: /assets/editor.js");
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
   vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -196,52 +210,41 @@ it.each(["preload", "previous mount"])(
   },
 );
 
-it.each([
-  new TypeError(
-    "Failed to fetch dynamically imported module: /assets/editor.js",
-  ),
-  new TypeError("error loading dynamically imported module: /assets/editor.js"),
-  new TypeError("Importing a module script failed."),
-])(
-  "shares bounded automatic download retries across preload and render: %s",
-  async (error) => {
-    vi.useFakeTimers();
-    const load = vi
-      .fn<() => Promise<React.ComponentType>>()
-      .mockRejectedValueOnce(error)
-      .mockRejectedValueOnce(error)
-      .mockResolvedValue(() => <p>Recovered editor</p>);
-    const Split = defineSplit({
-      id: "automatic-retry",
-      load,
-      loading: () => <p>Loading editor</p>,
-      tier: "intent",
-    });
-    const warm = Split.preload();
-    render(<Split />);
-    await act(async () => {});
-    expect(load).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("alert")).toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(499));
-    expect(load).toHaveBeenCalledOnce();
-    await act(async () => vi.advanceTimersByTimeAsync(1));
-    expect(load).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Loading editor")).toBeTruthy();
-    await act(async () => vi.advanceTimersByTimeAsync(1500));
-    await warm;
-    expect(load).toHaveBeenCalledTimes(3);
-    expect(screen.getByText("Recovered editor")).toBeTruthy();
-  },
-);
+it("shares bounded automatic download retries across preload and render", async () => {
+  vi.useFakeTimers();
+  const load = vi
+    .fn<() => Promise<React.ComponentType>>()
+    .mockRejectedValueOnce(downloadFailure())
+    .mockRejectedValueOnce(downloadFailure())
+    .mockResolvedValue(() => <p>Recovered editor</p>);
+  const Split = defineSplit({
+    id: "automatic-retry",
+    load,
+    loading: () => <p>Loading editor</p>,
+    tier: "intent",
+  });
+  const warm = Split.preload();
+  render(<Split />);
+  await act(async () => {});
+  expect(load).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("alert")).toBeNull();
+  await act(async () => vi.advanceTimersByTimeAsync(499));
+  expect(load).toHaveBeenCalledOnce();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("Loading editor")).toBeTruthy();
+  await act(async () => vi.advanceTimersByTimeAsync(1500));
+  await warm;
+  expect(load).toHaveBeenCalledTimes(3);
+  expect(screen.getByText("Recovered editor")).toBeTruthy();
+});
 
-it("stops automatic retries after three attempts and permits a new manual attempt", async () => {
+it("retries a failed download in place, by hand or when the browser comes back online", async () => {
   vi.useFakeTimers();
   vi.spyOn(console, "error").mockImplementation(() => {});
   const load = vi
     .fn<() => Promise<React.ComponentType>>()
-    .mockRejectedValue(
-      new TypeError("Failed to fetch dynamically imported module: /editor.js"),
-    );
+    .mockRejectedValue(downloadFailure());
   const Split = defineSplit({
     id: "exhausted-retry",
     load,
@@ -254,12 +257,51 @@ it("stops automatic retries after three attempts and permits a new manual attemp
   expect(screen.getByRole("alert")).toBeTruthy();
   await act(async () => vi.advanceTimersByTimeAsync(60000));
   expect(load).toHaveBeenCalledTimes(3);
-  load.mockResolvedValue(() => <p>Recovered editor</p>);
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   await act(async () => vi.runAllTimersAsync());
+  expect(load).toHaveBeenCalledTimes(6);
+  expect(screen.getByRole("alert")).toBeTruthy();
+  load.mockResolvedValue(() => <p>Recovered editor</p>);
+  await act(async () => {
+    window.dispatchEvent(new Event("online"));
+    await vi.runAllTimersAsync();
+  });
   expect(screen.getByText("Recovered editor")).toBeTruthy();
-  expect(load).toHaveBeenCalledTimes(4);
+  expect(load).toHaveBeenCalledTimes(7);
+  expect(reloadAfterModuleImportFailure).not.toHaveBeenCalled();
+  expect(recoverFromVisibleModuleImportFailure).not.toHaveBeenCalled();
 });
+
+it.each([
+  new TypeError(
+    "Failed to fetch dynamically imported module: /assets/editor.js",
+  ),
+  new TypeError("error loading dynamically imported module: /assets/editor.js"),
+  new TypeError("Importing a module script failed."),
+])(
+  "reloads instead of re-importing after the browser rejects an import: %s",
+  async (error) => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const load = vi
+      .fn<() => Promise<React.ComponentType>>()
+      .mockRejectedValue(error);
+    const Split = defineSplit({
+      id: "import-failure",
+      load,
+      loading: () => null,
+      tier: "intent",
+    });
+    render(<Split />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(load).toHaveBeenCalledOnce();
+    expect(recoverFromVisibleModuleImportFailure).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await act(async () => vi.runAllTimersAsync());
+    expect(reloadAfterModuleImportFailure).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledOnce();
+  },
+);
 
 it.each([
   new SyntaxError("Unexpected token in feature module"),
@@ -282,6 +324,7 @@ it.each([
     await act(async () => vi.runAllTimersAsync());
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(load).toHaveBeenCalledOnce();
+    expect(recoverFromVisibleModuleImportFailure).not.toHaveBeenCalled();
   },
 );
 
@@ -308,6 +351,32 @@ it("mounts only when wanted and keeps a retained split mounted after it closes",
     "value",
     "kept",
   );
+});
+
+it("drops a retained split that never loaded once it closes, so reopening tries again", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const load = vi
+    .fn<() => Promise<React.ComponentType<{ open: boolean }>>>()
+    .mockRejectedValue(downloadFailure());
+  const Split = defineSplit<{ open: boolean }>({
+    id: "retained-failure",
+    load,
+    loading: () => null,
+    unmounted: () => <p>Closed shell</p>,
+    mountWhen: ({ open }) => open,
+    keepMounted: true,
+    tier: "intent",
+  });
+  const view = render(<Split open />);
+  await act(async () => vi.runAllTimersAsync());
+  expect(screen.getByRole("alert")).toBeTruthy();
+  view.rerender(<Split open={false} />);
+  expect(screen.getByText("Closed shell")).toBeTruthy();
+  load.mockResolvedValue(() => <p>Reopened editor</p>);
+  view.rerender(<Split open />);
+  await act(async () => vi.runAllTimersAsync());
+  expect(screen.getByText("Reopened editor")).toBeTruthy();
 });
 
 it.each([true, false])(

@@ -1,4 +1,9 @@
-import { isChunkDownloadError } from "./stale-chunk-recovery";
+import {
+  isModuleDownloadFailure,
+  isModuleImportFailure,
+  recoverFromVisibleModuleImportFailure,
+  reloadAfterModuleImportFailure,
+} from "./stale-chunk-recovery";
 import {
   prepareSplitImport,
   queueSplitPreload,
@@ -8,6 +13,7 @@ import {
   Component,
   lazy,
   Suspense,
+  useEffect,
   useState,
   type ComponentType,
   type ReactNode,
@@ -28,18 +34,43 @@ export function SplitLoadFailure({ retry }: FailureProps) {
   );
 }
 
-class SplitErrorBoundary extends Component<
-  { children: ReactNode; fallback: ReactNode },
-  { failed: boolean }
-> {
-  override state = { failed: false };
+function RetryWhenOnline({
+  error,
+  retry,
+  children,
+}: {
+  error: unknown;
+  retry: () => void;
+  children: ReactNode;
+}) {
+  const retryWhenOnline = isModuleDownloadFailure(error);
+  useEffect(() => {
+    if (!retryWhenOnline) return;
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [retryWhenOnline, retry]);
+  return children;
+}
 
-  static getDerivedStateFromError() {
-    return { failed: true };
+class SplitErrorBoundary extends Component<
+  { children: ReactNode; fallback: (error: unknown) => ReactNode },
+  { failure: { error: unknown } | null }
+> {
+  override state: { failure: { error: unknown } | null } = { failure: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { failure: { error } };
+  }
+
+  override componentDidCatch(error: unknown) {
+    if (isModuleImportFailure(error)) recoverFromVisibleModuleImportFailure();
   }
 
   override render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
+    const { failure } = this.state;
+    return failure === null
+      ? this.props.children
+      : this.props.fallback(failure.error);
   }
 }
 
@@ -51,7 +82,7 @@ async function loadWithDownloadRetries<T>(load: () => Promise<T>): Promise<T> {
       return await load();
     } catch (error) {
       const delay = DOWNLOAD_RETRY_DELAYS[attempt];
-      if (delay === undefined || !isChunkDownloadError(error)) throw error;
+      if (delay === undefined || !isModuleDownloadFailure(error)) throw error;
       await new Promise<void>((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -105,17 +136,27 @@ export function defineSplit<P extends object>({
       number: 0,
       View: loaded ?? lazy(renderModule),
     }));
-    const retry = () => {
+    const retryInPlace = () => {
       setAttempt((previous) => ({
         number: previous.number + 1,
         View: loaded ?? lazy(renderModule),
       }));
     };
+    const retry = (error: unknown) => {
+      if (isModuleImportFailure(error) && reloadAfterModuleImportFailure()) {
+        return;
+      }
+      retryInPlace();
+    };
     const View = attempt.View;
     return (
       <SplitErrorBoundary
         key={attempt.number}
-        fallback={<ErrorView {...props} retry={retry} />}
+        fallback={(error) => (
+          <RetryWhenOnline error={error} retry={retryInPlace}>
+            <ErrorView {...props} retry={() => retry(error)} />
+          </RetryWhenOnline>
+        )}
       >
         <Suspense fallback={<Loading {...props} />}>
           <View {...props} />
@@ -128,7 +169,7 @@ export function defineSplit<P extends object>({
     const wanted = mountWhen?.(props) ?? true;
     const [mountedBefore, setMountedBefore] = useState(wanted);
     if (wanted && !mountedBefore) setMountedBefore(true);
-    if (wanted || (keepMounted && mountedBefore)) {
+    if (wanted || (keepMounted && mountedBefore && loaded !== null)) {
       return <SplitContent {...props} />;
     }
     return Unmounted ? <Unmounted {...props} /> : null;
