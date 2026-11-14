@@ -31,9 +31,8 @@ function plugin(overrides: Partial<PluginListItem>): PluginListItem {
   });
 }
 
-function renderGlyph(plugins: PluginListItem[]) {
-  usePluginListMock.mockReturnValue({ data: { plugins } });
-  return render(
+function glyphTree() {
+  return (
     <Provider>
       <MemoryRouter>
         <TooltipProvider delayDuration={300} disableHoverableContent>
@@ -42,8 +41,15 @@ function renderGlyph(plugins: PluginListItem[]) {
           </SidebarProvider>
         </TooltipProvider>
       </MemoryRouter>
-    </Provider>,
+    </Provider>
   );
+}
+
+function renderGlyph(plugins: PluginListItem[] | undefined) {
+  usePluginListMock.mockReturnValue({
+    data: plugins === undefined ? undefined : { plugins },
+  });
+  return render(glyphTree());
 }
 
 const glyph = () => screen.queryByTestId("sidebar-plugin-attention-glyph");
@@ -89,6 +95,19 @@ describe("SidebarPluginAttentionGlyph", () => {
     expect(glyph()?.getAttribute("aria-label")).toBe(
       "2 plugins are not running",
     );
+  });
+
+  it("keeps a dismissal while the plugin list loads after a reload", () => {
+    renderGlyph([plugin({})]);
+    fireEvent.click(glyph()!);
+    cleanup();
+
+    const { rerender } = renderGlyph(undefined);
+    expect(glyph()).toBeNull();
+    usePluginListMock.mockReturnValue({ data: { plugins: [plugin({})] } });
+    rerender(glyphTree());
+
+    expect(glyph()).toBeNull();
   });
 
   it("clears the acknowledgement when the count drops to zero", () => {
