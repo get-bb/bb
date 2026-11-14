@@ -3453,6 +3453,95 @@ describe("busy-refused messages bb re-sends", () => {
     ]);
   });
 
+  it("places each delivered message in the turn its retry ran in", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const sentDuringCompaction = (text: string) =>
+      event.clientTurnRequested({
+        target: { kind: "steer", expectedTurnId: "turn-compact" },
+        text,
+      });
+    const retryOf = (
+      original: ReturnType<typeof sentDuringCompaction>,
+      text: string,
+    ) =>
+      event.clientTurnRequested({
+        initiator: "system",
+        retryOf: { attempt: 2, requestId: original.data.requestId },
+        input: [{ type: "text", text, mentions: [], visibility: "agent-only" }],
+        target: { kind: "new-turn" },
+        text,
+      });
+    const busy = (request: ReturnType<typeof sentDuringCompaction>) =>
+      event.clientTurnRejected({
+        requestId: request.data.requestId,
+        reason: "thread_busy",
+        message: "The agent is compacting context.",
+      });
+    const runRetry = (
+      retry: ReturnType<typeof retryOf>,
+      turnId: string,
+      reply: string,
+    ) => [
+      retry,
+      event.turnStarted({ turnId }),
+      event.inputAccepted({ clientRequestId: retry.data.requestId, turnId }),
+      event.assistantCompleted({ text: reply, turnId }),
+      event.turnCompleted({ turnId }),
+    ];
+
+    const compactionTurn = event.turnStarted({ turnId: "turn-compact" });
+    const alpha = sentDuringCompaction("Reply with only: alpha-during-compact");
+    const beta = sentDuringCompaction("Reply with only: beta-during-compact");
+    const refusals = [
+      busy(alpha),
+      busy(beta),
+      event.turnCompleted({ turnId: "turn-compact" }),
+    ];
+    const alphaRetry = retryOf(alpha, "Reply with only: alpha-during-compact");
+    const alphaTurn = runRetry(
+      alphaRetry,
+      "turn-alpha",
+      "alpha-during-compact",
+    );
+    const betaRetry = retryOf(beta, "Reply with only: beta-during-compact");
+    const betaTurn = runRetry(betaRetry, "turn-beta", "beta-during-compact");
+
+    const rows = buildTimelineRows(
+      fromRows([
+        compactionTurn,
+        alpha,
+        beta,
+        ...refusals,
+        ...alphaTurn,
+        ...betaTurn,
+      ]),
+      "idle",
+    );
+
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "conversation"
+          ? [[row.role, row.turnId, row.sourceSeqStart, row.text]]
+          : [],
+      ),
+    ).toEqual([
+      [
+        "user",
+        "turn-alpha",
+        alphaRetry.seq,
+        "Reply with only: alpha-during-compact",
+      ],
+      ["assistant", "turn-alpha", expect.any(Number), "alpha-during-compact"],
+      [
+        "user",
+        "turn-beta",
+        betaRetry.seq,
+        "Reply with only: beta-during-compact",
+      ],
+      ["assistant", "turn-beta", expect.any(Number), "beta-during-compact"],
+    ]);
+  });
+
   it("shows the original as pending while bb is still re-sending it", () => {
     const { busyRejection, refusedPrefix, retry } = busyRefusedChain();
     const secondAttempt = retry(2);

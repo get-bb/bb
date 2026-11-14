@@ -430,6 +430,35 @@ function canUseAcceptedClientRequestForVisibleProjection(
   }
 }
 
+function clientRequestDeliveredByBusyRetry(
+  lookups: ProjectionFoldLookups,
+  retry: ClientTurnRequestedEvent,
+): {
+  acceptedClientRequest: AcceptedClientRequest;
+  request: ClientTurnRequestedWithMeta;
+} | null {
+  if (retry.retryOfRequestId === undefined) {
+    return null;
+  }
+  const acceptedClientRequest = lookups.acceptedClientRequestById.get(
+    retry.retryOfRequestId,
+  );
+  const request = lookups.clientRequestById.get(retry.retryOfRequestId);
+  if (
+    acceptedClientRequest?.deliveredByBusyRetry?.requestId !==
+      retry.requestId ||
+    request === undefined ||
+    !canUseAcceptedClientRequestForVisibleProjection(
+      acceptedClientRequest,
+      request.event,
+      lookups.selectedStartedTurnIds,
+    )
+  ) {
+    return null;
+  }
+  return { acceptedClientRequest, request };
+}
+
 function appendProjectedUserMessage(
   state: ProjectionState,
   projectedClientUser: ProjectedUserMessage,
@@ -784,10 +813,30 @@ function foldProjectionEvent(
     return;
   }
 
+  if (decoded.type === "client/turn/requested") {
+    const deliveredOriginal = clientRequestDeliveredByBusyRetry(
+      lookups,
+      decoded,
+    );
+    if (deliveredOriginal) {
+      for (const userFromClientRequest of parseUsersFromClientRequest({
+        acceptedClientRequest: deliveredOriginal.acceptedClientRequest,
+        decoded: deliveredOriginal.request.event,
+        meta: deliveredOriginal.request.meta,
+        options: options,
+      })) {
+        appendProjectedUserMessage(state, userFromClientRequest);
+      }
+    }
+  }
+
   const acceptedClientRequest =
     decoded.type === "client/turn/requested"
       ? acceptedClientRequestById.get(decoded.requestId)
       : undefined;
+  if (acceptedClientRequest?.deliveredByBusyRetry) {
+    return;
+  }
   const visibleProjectionAcceptedClientRequest =
     acceptedClientRequest &&
     decoded.type === "client/turn/requested" &&

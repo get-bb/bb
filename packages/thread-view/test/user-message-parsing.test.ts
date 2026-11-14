@@ -81,6 +81,7 @@ function acceptedClientRequest(
   args: AcceptedClientRequestFixtureArgs = {},
 ): AcceptedClientRequest {
   return {
+    deliveredByBusyRetry: null,
     meta: {
       id: "event-accepted",
       seq: 2,

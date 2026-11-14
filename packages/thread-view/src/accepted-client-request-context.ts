@@ -7,7 +7,13 @@ export interface ThreadEventWithMetaLike {
   meta: EventMeta;
 }
 
+export interface DeliveringBusyRetry {
+  requestId: ClientTurnRequestId;
+  requestMeta: EventMeta;
+}
+
 export interface AcceptedClientRequest {
+  deliveredByBusyRetry: DeliveringBusyRetry | null;
   meta: EventMeta;
   turnId: string;
 }
@@ -60,7 +66,7 @@ function addBusyRefusedRequestsDeliveredByRetry(
   if (busyRejectedRequestIds.size === 0) {
     return;
   }
-  for (const { event } of events) {
+  for (const { event, meta } of events) {
     if (
       event.type !== "client/turn/requested" ||
       event.retryOfRequestId === undefined ||
@@ -71,7 +77,11 @@ function addBusyRefusedRequestsDeliveredByRetry(
     }
     const acceptedRetry = acceptedById.get(event.requestId);
     if (acceptedRetry !== undefined) {
-      acceptedById.set(event.retryOfRequestId, acceptedRetry);
+      acceptedById.set(event.retryOfRequestId, {
+        deliveredByBusyRetry: { requestId: event.requestId, requestMeta: meta },
+        meta: acceptedRetry.meta,
+        turnId: acceptedRetry.turnId,
+      });
     }
   }
 }
@@ -203,6 +213,7 @@ export function buildAcceptedClientRequestById({
       return;
     }
     acceptedById.set(accepted.requestId, {
+      deliveredByBusyRetry: null,
       meta: accepted.meta,
       turnId: accepted.turnId,
     });

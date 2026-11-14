@@ -308,9 +308,10 @@ function buildClientUserMessage({
     acceptedClientRequest,
   );
   const rowMeta =
-    acceptedClientRequest && turnRequest.kind === "steer"
+    acceptedClientRequest?.deliveredByBusyRetry?.requestMeta ??
+    (acceptedClientRequest && turnRequest.kind === "steer"
       ? acceptedClientRequest.meta
-      : meta;
+      : meta);
   const agentEnvelope = parseAgentMessageEnvelope(parsedInput.text);
   const initiator =
     decoded.initiator === "user" && agentEnvelope !== null
