@@ -20,6 +20,7 @@ const ISSUE_PAGE = 100;
 const CLOSED_ISSUE_PAGE = 50;
 const PR_PAGE = 50;
 const CLOSED_PR_PAGE = 30;
+const MAX_OPEN_PAGES = 10;
 
 const GH_HINT =
   "Install the GitHub CLI (https://cli.github.com) and run `gh auth login`, " +
@@ -438,25 +439,28 @@ const listNodeSchema = z.object({
   body: z.string(),
   updatedAt: z.string(),
 });
+const pageInfoSchema = z.discriminatedUnion("hasNextPage", [
+  z.object({ hasNextPage: z.literal(true), endCursor: z.string() }),
+  z.object({ hasNextPage: z.literal(false), endCursor: z.string().nullable() }),
+]);
+const openConnectionSchema = (size: number) =>
+  z.object({
+    nodes: z
+      .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
+      .max(size),
+    pageInfo: pageInfoSchema,
+  });
 const repositoryListsSchema = z.object({
   data: z.object({
     repository: z.object({
       hasIssuesEnabled: z.boolean(),
-      openIssues: z.object({
-        nodes: z
-          .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
-          .max(ISSUE_PAGE),
-      }),
+      openIssues: openConnectionSchema(ISSUE_PAGE),
       closedIssues: z.object({
         nodes: z
           .array(listNodeSchema.extend({ state: z.literal("CLOSED") }))
           .max(CLOSED_ISSUE_PAGE),
       }),
-      openPrs: z.object({
-        nodes: z
-          .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
-          .max(PR_PAGE),
-      }),
+      openPrs: openConnectionSchema(PR_PAGE),
       closedPrs: z.object({
         nodes: z
           .array(listNodeSchema.extend({ state: z.enum(["CLOSED", "MERGED"]) }))
@@ -477,18 +481,70 @@ const repositoryListsQuery = `query RepositoryLists($owner: String!, $name: Stri
     hasIssuesEnabled
     openIssues: issues(first: ${ISSUE_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { ${listFields} }
+      pageInfo { hasNextPage endCursor }
     }
     closedIssues: issues(first: ${CLOSED_ISSUE_PAGE}, states: [CLOSED], orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { ${listFields} }
     }
     openPrs: pullRequests(first: ${PR_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { ${listFields} }
+      pageInfo { hasNextPage endCursor }
     }
     closedPrs: pullRequests(first: ${CLOSED_PR_PAGE}, states: [CLOSED, MERGED], orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { ${listFields} }
     }
   }
 }`;
+
+const openPageQuery = (
+  connection: "issues" | "pullRequests",
+  size: number,
+) => `query OpenPage($owner: String!, $name: String!, $after: String!) {
+  repository(owner: $owner, name: $name) {
+    page: ${connection}(first: ${size}, after: $after, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { ${listFields} }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`;
+
+async function fetchRemainingOpen(
+  gh: GhRunner,
+  owner: string,
+  name: string,
+  connection: "issues" | "pullRequests",
+  size: number,
+  first: z.infer<ReturnType<typeof openConnectionSchema>>,
+): Promise<z.infer<typeof listNodeSchema>[]> {
+  const pageSchema = z.object({
+    data: z.object({
+      repository: z.object({ page: openConnectionSchema(size) }),
+    }),
+    errors: z.array(z.unknown()).max(0).optional(),
+  });
+  const nodes = [...first.nodes];
+  let pageInfo = first.pageInfo;
+  for (let pages = 1; pageInfo.hasNextPage && pages < MAX_OPEN_PAGES; pages++) {
+    const raw = await gh([
+      "api",
+      "graphql",
+      "--hostname",
+      GH_HOST,
+      "-f",
+      `query=${openPageQuery(connection, size)}`,
+      "-f",
+      `owner=${owner}`,
+      "-f",
+      `name=${name}`,
+      "-f",
+      `after=${pageInfo.endCursor}`,
+    ]);
+    const { page } = pageSchema.parse(JSON.parse(raw)).data.repository;
+    nodes.push(...page.nodes);
+    pageInfo = page.pageInfo;
+  }
+  return nodes;
+}
 
 async function fetchRepoItems(
   gh: GhRunner,
@@ -529,14 +585,32 @@ async function fetchRepoItems(
       body: entry.body,
       updatedAt: entry.updatedAt,
     }));
+  const openIssues = repository.hasIssuesEnabled
+    ? await fetchRemainingOpen(
+        gh,
+        owner,
+        name,
+        "issues",
+        ISSUE_PAGE,
+        repository.openIssues,
+      )
+    : [];
+  const openPrs = await fetchRemainingOpen(
+    gh,
+    owner,
+    name,
+    "pullRequests",
+    PR_PAGE,
+    repository.openPrs,
+  );
   return [
     ...(repository.hasIssuesEnabled
       ? [
-          ...toItems(repository.openIssues.nodes, "issue"),
+          ...toItems(openIssues, "issue"),
           ...toItems(repository.closedIssues.nodes, "issue"),
         ]
       : []),
-    ...toItems(repository.openPrs.nodes, "pr"),
+    ...toItems(openPrs, "pr"),
     ...toItems(repository.closedPrs.nodes, "pr"),
   ];
 }
