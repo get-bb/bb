@@ -43,13 +43,6 @@ vi.mock("../../../src/services/threads/timeline.js", async (importOriginal) => {
       builds.profiles.push(result.profile);
       return result;
     },
-    readThreadTimelineWindow: (
-      ...args: Parameters<typeof original.readThreadTimelineWindow>
-    ) => {
-      const result = original.readThreadTimelineWindow(...args);
-      if (result.built !== null) builds.profiles.push(result.built.profile);
-      return result;
-    },
   };
 });
 

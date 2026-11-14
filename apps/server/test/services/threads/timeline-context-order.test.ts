@@ -9,6 +9,7 @@ import {
   getThreadEventRewriteGeneration,
 } from "@bb/db";
 import {
+  clearTimelineOrderingContextLogs,
   createTimelineOrderingContextLog,
   getTimelineGroupingContext,
   readTimelineGroupingContext,
@@ -55,7 +56,11 @@ function expectIncrementalEqualsFresh(
     kept = {
       dataVersion,
       generation,
-      log: createTimelineOrderingContextLog(threadId, sequenceStart),
+      log: createTimelineOrderingContextLog(
+        testThread.db,
+        threadId,
+        sequenceStart,
+      ),
     };
     byStart.set(sequenceStart, kept);
   }
@@ -64,6 +69,7 @@ function expectIncrementalEqualsFresh(
     kept.log,
     maxSeq,
   );
+  clearTimelineOrderingContextLogs(testThread.coldDb);
   expect(incremental, JSON.stringify(args)).toEqual(
     getTimelineGroupingContext(testThread.coldDb, args),
   );

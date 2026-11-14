@@ -17,7 +17,6 @@ import {
 import {
   getTimelineGroupingContext,
   orderTimelineRowsUsingContext,
-  readTimelineGroupingContext,
   type TimelineGroupingContext,
 } from "./timeline-context-order.js";
 import {
@@ -131,10 +130,9 @@ import {
 } from "./timeline-turn-details-cache.js";
 import {
   chargeDerivedRows,
-  NO_PREVIOUS_DERIVED,
+  noPreviousDerived,
   decodeRowWithProjection,
   decodeStoredEventRow,
-  findServingTimelineProjection,
   peekTimelineProjection,
   readWithHeadStateDecoder,
   projectionFold,
@@ -142,7 +140,6 @@ import {
   selectTimelineWindowStart,
   takeFoldedEventCount,
   type ProjectedPageableRows,
-  type ProjectedWindow,
   type ProjectedTimeline,
   type StandardTimelineEventRowSelection,
   type ThreadTimelineEventSelectionStrategy,
@@ -1349,15 +1346,12 @@ function readGroupingContext(
 ): TimelineGroupingContext {
   const projection = peekTimelineProjection(db, threadId);
   if (
-    projection === undefined ||
-    projection.scope.epochSequenceStart !== sequenceStart
+    projection?.scope.epochSequenceStart === sequenceStart &&
+    projection.groupingContext?.maxSeq === maxSeq
   ) {
-    return getTimelineGroupingContext(db, { maxSeq, sequenceStart, threadId });
-  }
-  if (projection.groupingContext?.maxSeq === maxSeq) {
     return projection.groupingContext.context;
   }
-  return readTimelineGroupingContext(db, projection.orderingLog, maxSeq);
+  return getTimelineGroupingContext(db, { maxSeq, sequenceStart, threadId });
 }
 
 interface TimelineBuildSource {
@@ -1717,10 +1711,12 @@ function buildThreadTimelineInternal(
       : unexpiredDerivedValue(
           projection.derived.pageableRows,
           timelineKey,
-          () =>
-            mapPageableRows(
-              projection.previousDerived.pageableRows.get(timelineKey),
-            ),
+          () => {
+            const previous = projection.previousDerived.pageableRows;
+            const mapped = mapPageableRows(previous.get(timelineKey));
+            previous.delete(timelineKey);
+            return mapped;
+          },
         );
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
@@ -1799,8 +1795,7 @@ function chargeProjectedRows(
   }
   if (!chargeDerivedRows(db, projection, bytes)) {
     projection.derived.pageableRows.clear();
-    projection.derived.windows.clear();
-    projection.previousDerived = NO_PREVIOUS_DERIVED;
+    projection.previousDerived = noPreviousDerived();
     chargeDerivedRows(db, projection, 0);
   }
 }
@@ -1901,81 +1896,6 @@ export function buildThreadTimelineWithProfile(
       ),
     );
     return { ...built, cost: finishMainThreadCost(started) };
-  });
-}
-
-export interface ReadThreadTimelineWindowResult {
-  built: {
-    cost: MainThreadCost;
-    profile: ThreadTimelineBuildProfile;
-  } | null;
-  response: ThreadTimelineResponse;
-}
-
-export function readThreadTimelineWindow(
-  db: DbConnection,
-  thread: Thread,
-  options: ThreadTimelineBuildOptions,
-  finish: (
-    window: ThreadTimelineWindow,
-    previous: ThreadTimelineResponse | undefined,
-  ) => ThreadTimelineResponse,
-): ReadThreadTimelineWindowResult {
-  const windowKeyOf = (surface: ThreadTimelineSurface) =>
-    JSON.stringify([
-      surface.cacheKey,
-      thread.status,
-      options.page.segmentLimit,
-      options.responseByteBudget ?? null,
-    ]);
-  const unexpired = (kept: ProjectedWindow | undefined) =>
-    kept !== undefined &&
-    (kept.expiresAt === null || Date.now() < kept.expiresAt);
-  if (options.maxInlineOutputChars !== null && options.maxSeq > 0) {
-    const serving = findServingTimelineProjection(db, {
-      eventBudget: options.eventBudget,
-      excludeDiagnosticEvents: !options.includeDiagnosticOperations,
-      maxInlineOutputChars: options.maxInlineOutputChars,
-      maxSeq: options.maxSeq,
-      segmentLimit: options.page.segmentLimit,
-      threadId: thread.id,
-    });
-    const kept = serving?.derived.windows.get(
-      windowKeyOf(resolveThreadTimelineSurface(db, thread, options)),
-    );
-    if (kept !== undefined && unexpired(kept)) {
-      return { built: null, response: kept.response };
-    }
-  }
-  return runEventLoopWorkSync(`timeline-build ${thread.id}`, () => {
-    const started = startMainThreadCost();
-    return db.transaction((): ReadThreadTimelineWindowResult => {
-      const resolved = resolveTimelineBuild(db, thread, options);
-      const { projection } = resolved.source;
-      const windowKey = windowKeyOf(resolved.surface);
-      const kept = projection?.derived.windows.get(windowKey);
-      if (kept !== undefined && unexpired(kept)) {
-        return { built: null, response: kept.response };
-      }
-      const result = buildThreadTimelineWithOlderFallback(
-        db,
-        thread,
-        options,
-        resolved,
-      );
-      const response = finish(
-        result.response,
-        projection?.previousDerived.windows.get(windowKey)?.response,
-      );
-      projection?.derived.windows.set(windowKey, {
-        expiresAt: result.expiresAt,
-        response,
-      });
-      return {
-        built: { cost: finishMainThreadCost(started), profile: result.profile },
-        response,
-      };
-    });
   });
 }
 

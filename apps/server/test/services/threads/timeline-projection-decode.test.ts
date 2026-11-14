@@ -7,11 +7,12 @@ import {
   createThread,
   deleteThreadEventSuffixInTransaction,
   getLatestThreadSequence,
-  listStoredEventRows,
   noopNotifier,
   type DbConnection,
 } from "@bb/db";
 import { parseStoredEvent } from "../../../src/services/threads/thread-data.js";
+import { readThreadHeadState } from "../../../src/services/threads/thread-head-state.js";
+import { resolveProviderPlanCommand } from "../../../src/services/providers/provider-plan-command.js";
 import {
   decodeStoredEventRow,
   forgetTimelineProjection,
@@ -213,6 +214,35 @@ describe("timeline projection decoding", () => {
     });
   });
 
+  it("decodes a row again when its data changed before a rebuild", () => {
+    withTestThread((testThread) => {
+      const { db, thread } = testThread;
+      appendRows(testThread, [...openTurn(), agentMessage("message-2", "old")]);
+      buildLatest(testThread);
+      const [before] = projectionsOf(db, thread.id);
+      const index = before!.selection.rows.findIndex(
+        (row) => row.itemId === "message-2",
+      );
+      const rowId = before!.selection.rows[index]!.id;
+      db.$client
+        .prepare(
+          "UPDATE events SET data = json_set(data, '$.item.text', 'new') WHERE id = ?",
+        )
+        .run(rowId);
+      appendRows(testThread, [
+        { data: { reason: "manual-stop" }, type: "system/thread/interrupted" },
+      ]);
+      buildLatest(testThread);
+      const [after] = projectionsOf(db, thread.id);
+      expect(after).not.toBe(before);
+      const rebuilt = after!.events.find((event) => event.meta.id === rowId);
+      expect(rebuilt).not.toBe(before!.events[index]);
+      const item =
+        rebuilt!.event.type === "item/completed" ? rebuilt!.event.item : null;
+      expect(item?.type === "agentMessage" ? item.text : null).toBe("new");
+    });
+  });
+
   it("freezes decoded events while the server suite enables the test seam", () => {
     withTestThread((testThread) => {
       appendRows(testThread, openTurn());
@@ -359,12 +389,24 @@ describe("timeline projection decoding", () => {
       expect(projection!.hints.length).toBeLessThanOrEqual(
         projection!.coverageSegmentLimit + 1,
       );
-      const headStateRowIds = [...projection!.headStateEvents.keys()];
-      const rowIds = new Set(
-        listStoredEventRows(db, { threadId: thread.id }).map((row) => row.id),
+      const decodedByFreshRead = new Set<string>();
+      readThreadHeadState(
+        db,
+        thread,
+        {
+          compactionOfferEnabled: false,
+          extensionStateKinds: [],
+          planCommand: resolveProviderPlanCommand(registry, thread.providerId),
+        },
+        projection!.maxSeq,
+        (row) => {
+          decodedByFreshRead.add(row.id);
+          return decodeStoredEventRow(row);
+        },
       );
-      for (const id of headStateRowIds) expect(rowIds.has(id)).toBe(true);
-      expect(headStateRowIds.length).toBeLessThan(20);
+      expect(new Set(projection!.headStateEvents.keys())).toEqual(
+        decodedByFreshRead,
+      );
     });
   });
 

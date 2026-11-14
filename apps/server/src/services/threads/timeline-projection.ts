@@ -6,11 +6,7 @@ import {
   type EventProjectionFold,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import type {
-  ThreadHeadStateResponse,
-  ThreadTimelineResponse,
-  TimelineRow,
-} from "@bb/server-contract";
+import type { ThreadHeadStateResponse, TimelineRow } from "@bb/server-contract";
 import type { ThreadEventItemType, ThreadEventType } from "@bb/domain";
 import {
   advanceTimelineWindowBudgetFloorSequence,
@@ -35,7 +31,8 @@ import {
 import { parseStoredEvent } from "./thread-data.js";
 import {
   advanceTimelineOrderingContextLog,
-  createTimelineOrderingContextLog,
+  clearTimelineOrderingContextLogs,
+  orderingContextLogFor,
   extendTimelineOrderingContextLog,
   readTimelineGroupingContext,
   type TimelineGroupingContext,
@@ -162,29 +159,44 @@ export interface ProjectedPageableRows {
   rows: TimelineRow[];
 }
 
-export interface ReleasedEvent {
-  bytes: number;
-  event: ThreadEventWithMeta;
+export interface DecodedRow {
+  readonly data: string;
+  readonly event: ThreadEventWithMeta;
+}
+
+export interface ReleasedEvent extends DecodedRow {
+  readonly bytes: number;
+}
+
+function decodeReusing(
+  kept: DecodedRow | undefined,
+  row: StoredEventRow,
+): ThreadEventWithMeta {
+  return kept !== undefined && kept.data === row.data
+    ? kept.event
+    : decodeStoredEventRow(row);
 }
 
 export interface PreviousDerived {
-  readonly pageableRows: ReadonlyMap<string, ProjectedPageableRows>;
-  readonly windows: ReadonlyMap<string, ProjectedWindow>;
+  readonly pageableRows: Map<string, ProjectedPageableRows>;
 }
 
-export const NO_PREVIOUS_DERIVED: PreviousDerived = {
-  pageableRows: new Map(),
-  windows: new Map(),
-};
+export function previousDerivedOf(
+  derived: ThreadTimelineProjectionDerived,
+  fallback: PreviousDerived,
+): PreviousDerived {
+  return derived.pageableRows.size > 0
+    ? { pageableRows: new Map(derived.pageableRows) }
+    : fallback;
+}
+
+export function noPreviousDerived(): PreviousDerived {
+  return { pageableRows: new Map() };
+}
 
 export interface ProjectedGroupingContext {
   context: TimelineGroupingContext;
   maxSeq: number;
-}
-
-export interface ProjectedWindow {
-  expiresAt: number | null;
-  response: ThreadTimelineResponse;
 }
 
 export interface ThreadTimelineProjectionDerived {
@@ -192,7 +204,6 @@ export interface ThreadTimelineProjectionDerived {
   readonly headStates: Map<string, ThreadHeadStateResponse>;
   readonly pageableRows: Map<string, ProjectedPageableRows>;
   readonly timelines: Map<string, ProjectedTimeline>;
-  readonly windows: Map<string, ProjectedWindow>;
 }
 
 export interface ThreadTimelineProjection {
@@ -206,14 +217,14 @@ export interface ThreadTimelineProjection {
   readonly dataVersion: number;
   derived: ThreadTimelineProjectionDerived;
   events: ThreadEventWithMeta[];
-  readonly eventsById: Map<string, ThreadEventWithMeta>;
+  readonly eventsById: Map<string, DecodedRow>;
   readonly releasedEvents: Map<string, ReleasedEvent>;
   releasedBytes: number;
   fold: TimelineProjectionFoldState | null;
   foldedEventCount: number;
   readonly generation: number;
   groupingContext: ProjectedGroupingContext | null;
-  headStateEvents: ReadonlyMap<string, ThreadEventWithMeta>;
+  headStateEvents: ReadonlyMap<string, DecodedRow>;
   hints: TimelineWindowHint[];
   maxSeq: number;
   readonly orderingLog: TimelineOrderingContextLog;
@@ -284,6 +295,7 @@ function projectionsOfThread(
 
 export function clearTimelineProjections(db: DbConnection): void {
   projectionsByDb.delete(db);
+  clearTimelineOrderingContextLogs(db);
 }
 
 export function forgetTimelineProjection(
@@ -306,31 +318,6 @@ export function peekTimelineProjection(
     .find((projection) => isProjectionCurrent(db, projection));
 }
 
-export interface ServingProjectionArgs {
-  eventBudget: number;
-  excludeDiagnosticEvents: boolean;
-  maxInlineOutputChars: number;
-  maxSeq: number;
-  segmentLimit: number;
-  threadId: string;
-}
-
-export function findServingTimelineProjection(
-  db: DbConnection,
-  args: ServingProjectionArgs,
-): ThreadTimelineProjection | undefined {
-  return projectionsOfThread(db, args.threadId).find(
-    (projection) =>
-      projection.servedSegmentLimits.has(args.segmentLimit) &&
-      projection.maxSeq === args.maxSeq &&
-      projection.scope.eventBudget === args.eventBudget &&
-      projection.scope.excludeDiagnosticEvents ===
-        args.excludeDiagnosticEvents &&
-      projection.scope.maxInlineOutputChars === args.maxInlineOutputChars &&
-      isProjectionCurrent(db, projection),
-  );
-}
-
 export function decodeRowWithProjection(
   db: DbConnection,
   threadId: string,
@@ -345,18 +332,30 @@ export function decodeRowWithProjection(
   }
   const byId = projectionEventsById(projection);
   return (row) =>
-    byId.get(row.id) ??
-    projection.releasedEvents.get(row.id)?.event ??
-    decodeStoredEventRow(row);
+    decodeReusing(
+      byId.get(row.id) ?? projection.releasedEvents.get(row.id),
+      row,
+    );
+}
+
+function decodedRowsOf(
+  projection: ThreadTimelineProjection,
+): Map<string, DecodedRow> {
+  const decoded = new Map<string, DecodedRow>();
+  for (const [index, row] of projection.selection.rows.entries()) {
+    const event = projection.events[index];
+    if (event !== undefined) decoded.set(row.id, { data: row.data, event });
+  }
+  return decoded;
 }
 
 function projectionEventsById(
   projection: ThreadTimelineProjection,
-): ReadonlyMap<string, ThreadEventWithMeta> {
+): ReadonlyMap<string, DecodedRow> {
   if (projection.eventsById.size !== projection.events.length) {
     projection.eventsById.clear();
-    for (const event of projection.events) {
-      projection.eventsById.set(event.meta.id, event);
+    for (const [id, decoded] of decodedRowsOf(projection)) {
+      projection.eventsById.set(id, decoded);
     }
   }
   return projection.eventsById;
@@ -367,15 +366,11 @@ export function readWithHeadStateDecoder<T>(
   read: (decode: (row: StoredEventRow) => ThreadEventWithMeta) => T,
 ): T {
   const previous = projection.headStateEvents;
-  const used = new Map<string, ThreadEventWithMeta>();
+  const used = new Map<string, DecodedRow>();
   const value = read((row) => {
-    const kept = previous.get(row.id);
-    const decoded =
-      kept !== undefined && kept.meta.seq === row.sequence
-        ? kept
-        : decodeStoredEventRow(row);
-    used.set(row.id, decoded);
-    return decoded;
+    const event = decodeReusing(previous.get(row.id), row);
+    used.set(row.id, { data: row.data, event });
+    return event;
   });
   projection.headStateEvents = used;
   return value;
@@ -719,17 +714,14 @@ function createDerived(): ThreadTimelineProjectionDerived {
     headStates: new Map(),
     pageableRows: new Map(),
     timelines: new Map(),
-    windows: new Map(),
   };
 }
 
 function startNextVersion(projection: ThreadTimelineProjection): void {
-  if (projection.derived.pageableRows.size > 0) {
-    projection.previousDerived = {
-      pageableRows: projection.derived.pageableRows,
-      windows: projection.derived.windows,
-    };
-  }
+  projection.previousDerived = previousDerivedOf(
+    projection.derived,
+    projection.previousDerived,
+  );
   projection.derived = createDerived();
 }
 
@@ -891,9 +883,11 @@ interface ProjectionBuild {
 
 function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
   const { db, maxSeq, previous, scope } = build;
-  const orderingLog =
-    previous?.orderingLog ??
-    createTimelineOrderingContextLog(scope.threadId, scope.epochSequenceStart);
+  const orderingLog = orderingContextLogFor(
+    db,
+    scope.threadId,
+    scope.epochSequenceStart,
+  );
   const groupingContext = readTimelineGroupingContext(db, orderingLog, maxSeq);
   const result = build.select(
     build.segmentLimit,
@@ -901,9 +895,8 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     build.source,
   );
   const rows = result.selection.rows;
-  const decodedById = new Map(
-    previous?.events.map((event) => [event.meta.id, event]) ?? [],
-  );
+  const decodedById =
+    previous === null ? new Map<string, DecodedRow>() : decodedRowsOf(previous);
   const released = releaseDroppedEvents(previous, rows);
   return {
     budgetFloorSequence: result.budgetFloorSequence,
@@ -922,9 +915,7 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     dataBytes: dataBytesOfRows(rows),
     dataVersion: getDatabaseDataVersion(db),
     derived: createDerived(),
-    events: rows.map(
-      (row) => decodedById.get(row.id) ?? decodeStoredEventRow(row),
-    ),
+    events: rows.map((row) => decodeReusing(decodedById.get(row.id), row)),
     eventsById: new Map(),
     releasedBytes: released.bytes,
     releasedEvents: released.events,
@@ -942,11 +933,8 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     orderingLog,
     previousDerived:
       previous === null
-        ? NO_PREVIOUS_DERIVED
-        : {
-            pageableRows: previous.derived.pageableRows,
-            windows: previous.derived.windows,
-          },
+        ? noPreviousDerived()
+        : previousDerivedOf(previous.derived, previous.previousDerived),
     derivedBytes: 0,
     scope,
     scopeKey: scopeKeyOf(scope),
@@ -968,7 +956,7 @@ function releaseDroppedEvents(
       continue;
     }
     const rowBytes = Buffer.byteLength(row.data, "utf8");
-    events.set(row.id, { bytes: rowBytes, event });
+    events.set(row.id, { bytes: rowBytes, data: row.data, event });
     bytes += rowBytes;
   }
   for (const id of kept) {

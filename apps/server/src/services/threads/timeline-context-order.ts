@@ -5,7 +5,9 @@ import {
   type ExternalUserBoundaryTurnSpan,
 } from "@bb/thread-view";
 import {
+  getDatabaseDataVersion,
   getFirstParentedTimelineBoundarySequence,
+  getThreadEventRewriteGeneration,
   listTimelineOrderingContext,
   type DbConnection,
 } from "@bb/db";
@@ -41,7 +43,9 @@ type TimelineOrderingContextRow = ReturnType<
 >[number];
 
 export interface TimelineOrderingContextLog {
-  computed: ComputedTimelineGroupingContext | null;
+  readonly computed: Map<number, ComputedTimelineGroupingContext>;
+  readonly dataVersion: number;
+  readonly generation: number;
   readonly rows: TimelineOrderingContextRow[];
   readonly sequenceStart: number;
   readonly threadId: string;
@@ -50,16 +54,56 @@ export interface TimelineOrderingContextLog {
 
 interface ComputedTimelineGroupingContext {
   readonly context: TimelineGroupingContext;
-  readonly cut: number;
   readonly ordering: TimelineOrderingContext;
 }
 
+const ORDERING_CONTEXT_LOG_LIMIT = 128;
+const COMPUTED_CONTEXTS_PER_LOG = 4;
+
+const orderingContextLogs = new WeakMap<
+  DbConnection,
+  Map<string, TimelineOrderingContextLog>
+>();
+
+export function orderingContextLogFor(
+  db: DbConnection,
+  threadId: string,
+  sequenceStart: number,
+): TimelineOrderingContextLog {
+  let logs = orderingContextLogs.get(db);
+  if (logs === undefined) {
+    logs = new Map();
+    orderingContextLogs.set(db, logs);
+  }
+  const key = JSON.stringify([threadId, sequenceStart]);
+  const kept = logs.get(key);
+  logs.delete(key);
+  const log =
+    kept !== undefined &&
+    kept.generation === getThreadEventRewriteGeneration(threadId) &&
+    kept.dataVersion === getDatabaseDataVersion(db)
+      ? kept
+      : createTimelineOrderingContextLog(db, threadId, sequenceStart);
+  logs.set(key, log);
+  if (logs.size > ORDERING_CONTEXT_LOG_LIMIT) {
+    logs.delete(logs.keys().next().value!);
+  }
+  return log;
+}
+
+export function clearTimelineOrderingContextLogs(db: DbConnection): void {
+  orderingContextLogs.delete(db);
+}
+
 export function createTimelineOrderingContextLog(
+  db: DbConnection,
   threadId: string,
   sequenceStart: number,
 ): TimelineOrderingContextLog {
   return {
-    computed: null,
+    computed: new Map(),
+    dataVersion: getDatabaseDataVersion(db),
+    generation: getThreadEventRewriteGeneration(threadId),
     rows: [],
     sequenceStart,
     threadId,
@@ -114,12 +158,13 @@ export function readTimelineGroupingContext(
 ): TimelineGroupingContext {
   extendTimelineOrderingContextLog(db, log, maxSeq);
   const cut = sequenceCut(log.rows, maxSeq);
+  const kept = log.computed.get(cut);
+  log.computed.delete(cut);
   const ordering =
-    log.computed?.cut === cut
-      ? log.computed.ordering
-      : computeTimelineOrderingContext(
-          cut === log.rows.length ? log.rows : log.rows.slice(0, cut),
-        );
+    kept?.ordering ??
+    computeTimelineOrderingContext(
+      cut === log.rows.length ? log.rows : log.rows.slice(0, cut),
+    );
   const parentedBoundary = getFirstParentedTimelineBoundarySequence(db, {
     maxSeq,
     sequenceStart: log.sequenceStart,
@@ -130,19 +175,20 @@ export function readTimelineGroupingContext(
     parentedBoundary <= ordering.boundaryScanThroughSequence
       ? parentedBoundary
       : (ordering.boundarySequence ?? parentedBoundary);
-  if (
-    log.computed?.cut === cut &&
-    log.computed.context.orderingBoundarySequence === orderingBoundarySequence
-  ) {
-    return log.computed.context;
+  const context: TimelineGroupingContext =
+    kept !== undefined &&
+    kept.context.orderingBoundarySequence === orderingBoundarySequence
+      ? kept.context
+      : {
+          clientRequestIdsBySequence: ordering.clientRequestIdsBySequence,
+          acceptedTurnIds: ordering.acceptedTurnIds,
+          clientRequests: ordering.clientRequests,
+          orderingBoundarySequence,
+        };
+  log.computed.set(cut, { context, ordering });
+  if (log.computed.size > COMPUTED_CONTEXTS_PER_LOG) {
+    log.computed.delete(log.computed.keys().next().value!);
   }
-  const context: TimelineGroupingContext = {
-    clientRequestIdsBySequence: ordering.clientRequestIdsBySequence,
-    acceptedTurnIds: ordering.acceptedTurnIds,
-    clientRequests: ordering.clientRequests,
-    orderingBoundarySequence,
-  };
-  log.computed = { context, cut, ordering };
   return context;
 }
 
@@ -152,7 +198,7 @@ export function getTimelineGroupingContext(
 ): TimelineGroupingContext {
   return readTimelineGroupingContext(
     db,
-    createTimelineOrderingContextLog(args.threadId, args.sequenceStart),
+    orderingContextLogFor(db, args.threadId, args.sequenceStart),
     args.maxSeq,
   );
 }

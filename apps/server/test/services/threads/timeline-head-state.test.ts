@@ -18,7 +18,11 @@ import {
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
-import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
+import {
+  buildThreadTimelineWithProfile,
+  readProjectedThreadHeadState,
+} from "../../../src/services/threads/timeline.js";
+import { peekTimelineProjection } from "../../../src/services/threads/timeline-projection.js";
 import { readThreadHeadState } from "../../../src/services/threads/thread-head-state.js";
 
 const providerThreadId = "provider-root";
@@ -557,6 +561,61 @@ describe("readThreadHeadState", () => {
 
     expect(headState.pendingTodos).toBeNull();
     expect(headState.providerCommands).not.toBeNull();
+    db.$client.close();
+  });
+});
+
+describe("readProjectedThreadHeadState", () => {
+  it("matches a fresh head-state read across appends and status changes", () => {
+    const { db, thread } = setup();
+    seedThreadWithEarlyHeadState(db, thread, 3, 2, true);
+    const headStateOptions = {
+      compactionOfferEnabled: false,
+      extensionStateKinds: [CODEX_GOAL_KIND],
+      planCommand: null,
+    };
+    const buildLatest = (current: Thread) =>
+      buildThreadTimelineWithProfile(db, current, {
+        ...baseOptions,
+        completedTurnDisplay: "collapse",
+        eventBudget: 1_000_000,
+        maxInlineOutputChars: 32_000,
+        maxSeq: getLatestThreadSequence(db, { threadId: current.id }),
+      });
+    const expectFresh = (current: Thread, projected: boolean) => {
+      const projection = peekTimelineProjection(db, current.id);
+      expect(
+        projection !== undefined &&
+          projection.maxSeq ===
+            getLatestThreadSequence(db, { threadId: current.id }),
+      ).toBe(projected);
+      const result = readProjectedThreadHeadState(
+        db,
+        current,
+        headStateOptions,
+      );
+      expect(result).toEqual(
+        readThreadHeadState(db, current, headStateOptions),
+      );
+      return result;
+    };
+
+    buildLatest(thread);
+    const initial = expectFresh(thread, true);
+    expect(initial.extensionStates[CODEX_GOAL_KIND]).toBeDefined();
+
+    insertExtensionState(db, thread, THREAD_PROVIDER_COMMANDS_STATE_KIND, {
+      commands: [{ name: "review", description: "Review changes" }],
+    });
+    expectFresh(thread, false);
+    buildLatest(thread);
+    const appended = expectFresh(thread, true);
+    expect(appended.providerCommands).not.toEqual(initial.providerCommands);
+
+    const idle: Thread = { ...thread, status: "idle" };
+    const afterStatus = expectFresh(idle, true);
+    expect(afterStatus.pendingTodos).toBeNull();
+    expect(appended.pendingTodos).not.toBeNull();
     db.$client.close();
   });
 });

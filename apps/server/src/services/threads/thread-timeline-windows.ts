@@ -24,9 +24,7 @@ import type { ThreadTimelineSubscriber } from "../../ws/hub.js";
 import { observeTimelinePushTrace } from "../system/turn-trace.js";
 import {
   buildThreadTimelineWithProfile,
-  readThreadTimelineWindow,
   resolveThreadTimelineSurface,
-  type ThreadTimelineWindow,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
 } from "./timeline.js";
@@ -156,37 +154,6 @@ export function createThreadTimelineWindows(
       providerDisplayName,
       summarizeShellCommands: settings.summarizeShellCommands,
     };
-    const buildOptions = {
-      ...surfaceOptions,
-      eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
-      maxSeq,
-      page: request.page,
-    };
-    const finish = (
-      built: ThreadTimelineWindow,
-      previous: ThreadTimelineResponse | undefined,
-    ): ThreadTimelineResponse => {
-      const window = reuseUnchangedTimelineWindowParts(
-        shortenTimelineResponseOutputs(built, {
-          maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-          preview: !request.includeNestedRows,
-        }),
-        previous,
-      );
-      return { ...window, tag: timelineWindowTag(window) };
-    };
-    if (request.page.kind === "latest") {
-      const latest = readThreadTimelineWindow(
-        deps.db,
-        thread,
-        buildOptions,
-        finish,
-      );
-      if (latest.built !== null) {
-        slowTimelineBuildLogger.log({ ...latest.built, threadId: thread.id });
-      }
-      return latest.response;
-    }
     return timelineCache.getOrBuild(
       thread.id,
       buildThreadTimelineCacheKey({
@@ -209,9 +176,24 @@ export function createThreadTimelineWindows(
           expiresAt,
           profile,
           response: built,
-        } = buildThreadTimelineWithProfile(deps.db, thread, buildOptions);
+        } = buildThreadTimelineWithProfile(deps.db, thread, {
+          ...surfaceOptions,
+          eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
+          maxSeq,
+          page: request.page,
+        });
         slowTimelineBuildLogger.log({ cost, profile, threadId: thread.id });
-        return { expiresAt, response: finish(built, previous) };
+        const window = reuseUnchangedTimelineWindowParts(
+          shortenTimelineResponseOutputs(built, {
+            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+            preview: !request.includeNestedRows,
+          }),
+          previous,
+        );
+        return {
+          expiresAt,
+          response: { ...window, tag: timelineWindowTag(window) },
+        };
       },
     );
   }
@@ -382,8 +364,6 @@ export function createThreadTimelineWindows(
       pushSchedulesByThreadId.delete(message.id);
       return;
     }
-    const rewritten = message.changes.includes("history-rewritten");
-    const compacted = message.changes.includes("history-compacted");
     if (
       message.changes.includes("events-appended") &&
       deps.hub
@@ -392,7 +372,8 @@ export function createThreadTimelineWindows(
     ) {
       schedulePush(message.id);
     }
-    if (!rewritten && !compacted) {
+    const rewritten = message.changes.includes("history-rewritten");
+    if (!rewritten && !message.changes.includes("history-compacted")) {
       return;
     }
     forgetTimelineProjection(deps.db, message.id);
