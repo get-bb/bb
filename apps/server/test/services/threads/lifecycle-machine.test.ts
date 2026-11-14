@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadTurnRequestState } from "@bb/db";
 import {
+  THREAD_LIFECYCLE,
+  THREAD_LIFECYCLE_EVENT_PREDICATES,
+  threadStatusValues,
+  type ThreadStatusMove,
+} from "@bb/domain";
+import {
+  nextThreadStatus,
   transitionThreadLifecycle,
   type ThreadLifecycleEffect,
   type ThreadLifecycleState,
@@ -386,5 +393,96 @@ describe("turn requests", () => {
       request({ kind: "steer", phase: "unconfirmed" }),
     ]);
     expect(kinds(transition.effects)).toEqual([]);
+  });
+});
+
+const STATUS_MOVES: readonly ThreadStatusMove[] = [
+  "run.preparing",
+  "run.started",
+  "run.succeeded",
+  "run.failed",
+  "stop.requested",
+  "stop.settled",
+];
+
+const CLEAN = { archived: false, deleted: false };
+
+describe("nextThreadStatus", () => {
+  it("applies every table cell on a clean row", () => {
+    for (const status of threadStatusValues) {
+      for (const move of STATUS_MOVES) {
+        const to = THREAD_LIFECYCLE[status][move];
+        if (to === undefined) continue;
+        expect(nextThreadStatus({ ...CLEAN, status }, move)).toBe(to);
+      }
+    }
+  });
+
+  it("leaves the status for every absent cell on a clean row", () => {
+    for (const status of threadStatusValues) {
+      for (const move of STATUS_MOVES) {
+        if (THREAD_LIFECYCLE[status][move] !== undefined) continue;
+        expect(nextThreadStatus({ ...CLEAN, status }, move)).toBeNull();
+      }
+    }
+  });
+
+  it("supersedes or ignores each record flag exactly as declared", () => {
+    for (const move of STATUS_MOVES) {
+      const status = threadStatusValues.find(
+        (candidate) => THREAD_LIFECYCLE[candidate][move] !== undefined,
+      );
+      if (status === undefined) throw new Error(`No cell for ${move}`);
+      const predicates = THREAD_LIFECYCLE_EVENT_PREDICATES[move];
+      expect(
+        nextThreadStatus({ archived: false, deleted: true, status }, move),
+      ).toBe(predicates.notDeleted ? null : THREAD_LIFECYCLE[status][move]);
+      expect(
+        nextThreadStatus({ archived: true, deleted: false, status }, move),
+      ).toBe(predicates.notArchived ? null : THREAD_LIFECYCLE[status][move]);
+    }
+  });
+});
+
+describe("record flags in lifecycle inputs", () => {
+  it("refuses to start a run on a deleted or archived thread and leaves the state as it was", () => {
+    const send = {
+      type: "request.sent" as const,
+      request: {
+        hostId: "host-1",
+        kind: "new-turn" as const,
+        requestId: "req-1",
+        syncTitle: false,
+      },
+      now: 1,
+    };
+    const deleted = transitionThreadLifecycle(
+      state({ status: "idle", deleted: true }),
+      send,
+    );
+    expect(deleted.refusal).toBe("deleted");
+    expect(deleted.next).toEqual({
+      status: "idle",
+      requests: [],
+      heldCompletion: null,
+      stop: null,
+    });
+    expect(
+      transitionThreadLifecycle(state({ status: "idle", archived: true }), send)
+        .refusal,
+    ).toBe("archived");
+  });
+
+  it("still fails provisioning on an archived thread but not on a deleted one", () => {
+    expect(
+      transitionThreadLifecycle(state({ status: "starting", archived: true }), {
+        type: "provisioning.failed",
+      }).next.status,
+    ).toBe("error");
+    expect(
+      transitionThreadLifecycle(state({ status: "starting", deleted: true }), {
+        type: "provisioning.failed",
+      }).refusal,
+    ).toBe("not-settleable");
   });
 });

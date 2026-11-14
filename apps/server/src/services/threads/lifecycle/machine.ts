@@ -172,6 +172,16 @@ const UNCONFIRMED_STEER_MESSAGE =
   "The turn ended before the agent confirmed this steer";
 const UNSTARTED_TURN_MESSAGE = "The agent did not start a turn for this message";
 
+export function nextThreadStatus(
+  thread: { archived: boolean; deleted: boolean; status: ThreadStatus },
+  move: ThreadStatusMove,
+): ThreadStatus | null {
+  const predicates = THREAD_LIFECYCLE_EVENT_PREDICATES[move];
+  if (predicates.notDeleted && thread.deleted) return null;
+  if (predicates.notArchived && thread.archived) return null;
+  return THREAD_LIFECYCLE[thread.status][move] ?? null;
+}
+
 class Draft {
   readonly effects: ThreadLifecycleEffect[] = [];
   heldCompletion: HeldTurnCompletion | null;
@@ -189,11 +199,15 @@ class Draft {
   }
 
   move(move: ThreadStatusMove): boolean {
-    const predicates = THREAD_LIFECYCLE_EVENT_PREDICATES[move];
-    if (predicates.notDeleted && this.state.deleted) return false;
-    if (predicates.notArchived && this.state.archived) return false;
-    const to = THREAD_LIFECYCLE[this.status][move];
-    if (to === undefined) return false;
+    const to = nextThreadStatus(
+      {
+        archived: this.state.archived,
+        deleted: this.state.deleted,
+        status: this.status,
+      },
+      move,
+    );
+    if (to === null) return false;
     this.status = to;
     return true;
   }
