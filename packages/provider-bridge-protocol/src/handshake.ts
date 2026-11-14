@@ -44,7 +44,7 @@ export const bridgeCapabilitiesSchema = z
     openWork: z
       .object({ list: z.boolean().default(false) })
       .default({ list: false }),
-    sessionSettings: sessionSettingsDeclarationSchema.default({}),
+    sessionSettings: sessionSettingsDeclarationSchema.optional(),
   })
   .passthrough();
 

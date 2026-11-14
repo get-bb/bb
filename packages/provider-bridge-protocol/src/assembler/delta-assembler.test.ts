@@ -7,6 +7,7 @@ import {
   type DeltaAssembler,
 } from "./delta-assembler.js";
 import { createBridgeDeltaEventCollector } from "../testing/bridge-delta-assembly.js";
+import { parseProtocolV2ThreadDeltaParams } from "./protocol-v2.js";
 
 const THREAD_ID = "thr_1";
 const CREQ = "creq_abcdefghjk" as ClientTurnRequestId;
@@ -101,6 +102,39 @@ describe("delta assembler", () => {
       "item/completed",
     ]);
     expect(events.some((event) => event.type === "turn/started")).toBe(false);
+    expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
+  });
+
+  it("opens and closes a tool call attached to the last turn after it settled", () => {
+    const assembler = createAssembler();
+    const opened = assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "turn.boundary", status: "completed" },
+    );
+    const turnId = opened.find((event) => event.type === "turn/started")?.scope;
+    const item = { type: "command", command: "npm run build", cwd: "/repo" } as const;
+    const events = assemble(
+      assembler,
+      {
+        kind: "item.open",
+        key: { providerItemId: "tc-later" },
+        item,
+        attach: "currentOrLast",
+      },
+      {
+        kind: "item.close",
+        key: { providerItemId: "tc-later" },
+        status: "completed",
+        exitCode: 0,
+        item,
+        attach: "currentOrLast",
+      },
+    );
+    expect(events.map((event) => [event.type, event.scope])).toEqual([
+      ["item/started", turnId],
+      ["item/completed", turnId],
+    ]);
     expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
   });
 
@@ -2787,5 +2821,64 @@ describe("delta assembler text-delta batching", () => {
     expect(events[1]).toMatchObject({
       item: { type: "agentMessage", text: "partial answer" },
     });
+  });
+});
+
+describe("protocol 2 claimIfIdle boundaries", () => {
+  function assembleV2(
+    assembler: DeltaAssembler,
+    ...deltas: unknown[]
+  ): ThreadEvent[] {
+    const batch = parseProtocolV2ThreadDeltaParams({
+      threadId: THREAD_ID,
+      deltas,
+    });
+    if (batch === null) {
+      throw new Error("protocol 2 batch did not parse");
+    }
+    return assembler.assemble(batch);
+  }
+
+  const claim = {
+    kind: "turn.boundary",
+    status: "completed",
+    claimIfIdle: true,
+  };
+
+  it("opens and settles a turn only when no turn is open and accepted input is pending", () => {
+    const assembler = createAssembler();
+    expect(assembleV2(assembler, claim)).toEqual([]);
+
+    expect(
+      assembleV2(
+        assembler,
+        { kind: "input.accepted", clientRequestId: CREQ },
+        claim,
+      ).map((event) => event.type),
+    ).toEqual(["turn/started", "turn/input/accepted", "turn/completed"]);
+
+    const settlesOpenTurn = assembleV2(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "input.accepted", clientRequestId: CREQ_2 },
+      claim,
+    );
+    expect(settlesOpenTurn.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "turn/completed",
+    ]);
+    expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
+  });
+
+  it("leaves a vouched boundary to its provider turn id", () => {
+    const assembler = createAssembler();
+    expect(
+      assembleV2(
+        assembler,
+        { kind: "input.accepted", clientRequestId: CREQ },
+        { ...claim, providerTurnId: "p-turn-1" },
+      ).map((event) => event.type),
+    ).toEqual(["turn/completed"]);
   });
 });

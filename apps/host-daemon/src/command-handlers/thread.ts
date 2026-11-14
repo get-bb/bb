@@ -90,7 +90,6 @@ interface RequireSupportedProviderCliArgs {
   options: CommandDispatchOptions;
 }
 
-
 async function cleanupAfterPostStagingFailure(
   cleanup: () => Promise<void>,
 ): Promise<void> {
@@ -429,6 +428,8 @@ async function steerSubmittedTurn(
       input: command.input,
       clientRequestId: command.requestId,
       options: command.options,
+      contributedEnv: command.resumeContext.contributedEnv,
+      instructions: command.resumeContext.instructions,
     });
 
     if (result.status === "steered") {

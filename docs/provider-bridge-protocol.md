@@ -50,7 +50,10 @@ Hygiene rules:
 `initialize` exchanges `{protocolVersion, capabilities}` in both directions.
 The current version is **3** (the session contract: admission answers,
 explicit phases, declared settings and open work; see "Session contract"
-below); the runtime rejects a bridge answering another version with a legible
+below). A protocol 3 bridge must declare `capabilities.sessionSettings` (`{}`
+keeps every default); that declaration is how a bridge says it implements the
+session contract. The runtime also runs protocol 2 bridges, unchanged (see
+"Protocol 2 compatibility"), and rejects any other version with a legible
 startup error. The version bumps only for breaking
 changes; everything additive rides capability tolerance: unknown methods
 answer `-32601`, unknown notifications are ignored, unknown capability fields
@@ -133,10 +136,11 @@ do `bb machine provider-cli status` and `bb updates`.
 Every handshake capability gates a request method, which is why the set holds
 no compaction fact: there is no compact request method. Compaction is a
 standalone builtin `/compact` prompt travelling the normal turn pipeline,
-which each bridge maps to its provider's compaction command. The
-declaration's `supportsManualCompaction` decides whether bb offers it; the
-live session decides whether it runs, and a bridge whose provider cannot
-compact answers that `/compact` with `{ admission: "rejected" }`.
+which each bridge maps to its provider's compaction command. bb offers it when
+the declaration sets `supportsManualCompaction` or the thread's live
+`bb/provider-commands` state lists a `compact` command; the live session
+decides whether it runs, and a bridge whose provider cannot compact answers
+that `/compact` with `{ admission: "rejected" }`.
 
 ## The timeline lane: `thread/delta`
 
@@ -596,16 +600,16 @@ the runtime decides.
 `starting → idle → turn running (turn id) → compacting / waiting on user →
 idle … stopping → dead`. Every transition is driven by an explicit report:
 
-| Phase             | Entered on                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------- |
-| `starting`        | the runtime sends `thread/start`, `thread/resume` or `thread/fork`                          |
-| `idle`            | that request's result, or the `turn.boundary` that settles the open turn                   |
-| `turnStarting`    | the runtime admits a `turn/start` (the watchdog measures from here)                        |
-| `turnRunning`     | `turn.open`                                                                                 |
-| `compacting`      | a `compaction` item opens in the running turn; its `item.close` returns to `turnRunning`    |
-| `waitingOnUser`   | an `interaction/request` is pending; its resolution returns to the turn                    |
-| `stopping`        | the runtime sends `thread/stop`; a failed stop returns to the previous phase               |
-| `dead`            | the stop is answered, or the bridge process exits                                          |
+| Phase           | Entered on                                                                               |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `starting`      | the runtime sends `thread/start`, `thread/resume` or `thread/fork`                       |
+| `idle`          | that request's result, or the `turn.boundary` that settles the open turn                 |
+| `turnStarting`  | the runtime admits a `turn/start` (the watchdog measures from here)                      |
+| `turnRunning`   | `turn.open`                                                                              |
+| `compacting`    | a `compaction` item opens in the running turn; its `item.close` returns to `turnRunning` |
+| `waitingOnUser` | an `interaction/request` is pending; its resolution returns to the turn                  |
+| `stopping`      | the runtime sends `thread/stop`; a failed stop returns to the previous phase             |
+| `dead`          | the stop is answered, or the bridge process exits                                        |
 
 Nothing is inferred from silence: a bridge never settles a turn, opens one,
 or leaves compaction because its provider went quiet or a grace timer fired.
@@ -613,6 +617,13 @@ Waiting for an explicit provider message is fine; if the channel dies while
 waiting, fail then. A manual `/compact` opens its `compaction` item together
 with its `turn.open`, so input that arrives during compaction is answered
 `busy` instead of being steered into it.
+
+Output a provider sends with no prompt in flight opens no turn unless the
+provider reports its agent running (ACP `state_update running`, settled by
+`idle`). Otherwise the bridge marks that output `attach: "currentOrLast"` on
+`item.textDelta`, `item.textClose`, `item.open` and `item.close`, and the
+assembler records it as completed activity on the last turn, so an agent with
+no idle signal never leaves the thread working.
 
 ### Admission
 
@@ -650,7 +661,8 @@ a stale steer keeps answering `NO_ACTIVE_TURN` with a `staleTurn` hint.
 ### Open work
 
 A bridge whose provider holds work that outlives a turn (background
-terminals, live sub-agents, pending questions, an agent-initiated turn)
+terminals, live sub-agents, pending questions, a turn the agent reports
+running on its own)
 declares `openWork: { list: true }` and answers `thread/openWork
 { threadId, providerThreadId }` with `{ items: [{ id, kind, description }] }`
 (`kind`: `backgroundTask`, `delegation`, `terminal`, `interaction`, `turn`).
@@ -706,6 +718,55 @@ the session runs and classifies every change:
 including raising permissions, joins the running turn on its current settings;
 the runtime notes on the thread that the change applies from the next turn,
 where the reconciler applies it like any other change.
+
+## Protocol 2 compatibility
+
+Bridges published for protocol 2 keep working exactly as they did before
+protocol 3. The runtime picks the path from the `initialize` answer:
+
+| Answer                                                      | Path                                                                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `protocolVersion: 3` with `capabilities.sessionSettings`    | protocol 3, the session contract above                                 |
+| `protocolVersion: 3` without `capabilities.sessionSettings` | protocol 2, with a stderr line naming the bridge and the missing field |
+| `protocolVersion: 2`                                        | protocol 2                                                             |
+| anything else                                               | refused at spawn with a legible error                                  |
+
+A bridge that answers 3 without the declaration is run as protocol 2 rather
+than refused because the usual cause is a protocol 2 bridge that reports the
+SDK's `PROVIDER_BRIDGE_PROTOCOL_VERSION` constant and was rebuilt against a
+newer SDK: its code still behaves as protocol 2 (`claimIfIdle`, results with
+no admission answer), so running it as protocol 2 keeps it working, while
+refusing it would break a plugin whose source did not change. Conformance
+fails such a bridge (`handshake/session-contract`) so its author fixes the
+declaration.
+
+On the protocol 2 path the runtime sends and reads what protocol 2 defined:
+
+- `turn.boundary { claimIfIdle: true }` with no turn open and accepted input
+  pending opens a turn and settles it, as the protocol 2 assembler did. The
+  inference lives only in this path; protocol 3 bridges open every turn.
+- Any `turn/start` or `turn/steer` result (`{}`, `{ threadId }`, …) means
+  `accepted`. A result that is already an admission answer is read as one.
+- `turn/start` carries the full `options` on every turn and no `apply` or
+  `dynamicTools`; `turn/steer` carries the options, environment and
+  instructions of the message that steered, permission changes included.
+- Model, reasoning, tier, permission, option and instructions changes pass
+  through in `options` and never restart the session. When the environment,
+  skills, plugin tools or the provider plugin build changed since the session
+  was built, the runtime releases and resumes the session with the new record
+  before that turn's `turn/start` (at most once per turn, never in the
+  background), with the same thread notes as protocol 3, as bb restarted idle
+  protocol 2 bridges for these changes before. There is no open-work probe, no
+  `busy` for a settings change, and `thread/openWork` is never sent.
+- The runtime's own admission gate, phases (compacting and stopping answer
+  `busy` without sending anything), the turn-start watchdog and recovery
+  hints work as for protocol 3; none of them changes what the bridge sees.
+
+Removal: the protocol 2 path, including its `claimIfIdle` inference, is
+deleted once no published plugin answers `initialize` with protocol 2, or with
+3 and no `sessionSettings`: when the Community marketplace has no such
+provider plugin at its latest version, the path and this section go in the
+next protocol bump.
 
 ## Ordering guarantees
 

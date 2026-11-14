@@ -22,6 +22,7 @@ export interface CreateBridgeAdapterOptions {
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
+  onNotice?: (message: string) => void;
 }
 
 export type ProviderExecutionContext = {

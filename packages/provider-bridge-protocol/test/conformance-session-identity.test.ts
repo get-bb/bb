@@ -50,7 +50,10 @@ function startWithoutIdentityTransport(): BridgeConformanceTransport {
           reply(message.id, {
             result: {
               protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-              capabilities: { grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS },
+              capabilities: {
+                grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS,
+                sessionSettings: {},
+              },
             },
           });
           return;
@@ -87,6 +90,8 @@ interface StubBridgeOptions {
   blankResume?: boolean;
   blankFork?: boolean;
   announceIdentity?: "match" | "none" | "other-id";
+  handshake?: "v3" | "v2" | "v3WithoutSessionSettings";
+  turns?: "explicit" | "claimIfIdle";
 }
 
 interface StubBridge {
@@ -150,17 +155,21 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
         const message = request.data;
         const params = message.params ?? {};
         switch (message.method) {
-          case BRIDGE_REQUEST_METHODS.initialize:
+          case BRIDGE_REQUEST_METHODS.initialize: {
+            const handshake = options.handshake ?? "v3";
             reply(message.id, {
               result: {
-                protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+                protocolVersion:
+                  handshake === "v2" ? 2 : PROVIDER_BRIDGE_PROTOCOL_VERSION,
                 capabilities: {
                   grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS,
                   fork: options.fork,
+                  ...(handshake === "v3" ? { sessionSettings: {} } : {}),
                 },
               },
             });
             return;
+          }
           case BRIDGE_REQUEST_METHODS.threadStart:
             reply(message.id, { result: identity(params.threadId) });
             return;
@@ -200,6 +209,21 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
             reply(message.id, { result: {} });
             return;
           case BRIDGE_REQUEST_METHODS.turnStart: {
+            if (options.turns === "claimIfIdle") {
+              delta(params.threadId ?? "", [
+                {
+                  kind: "input.accepted",
+                  clientRequestId: params.clientRequestId,
+                },
+                {
+                  kind: "turn.boundary",
+                  status: "completed",
+                  claimIfIdle: true,
+                },
+              ]);
+              reply(message.id, { result: {} });
+              return;
+            }
             serial += 1;
             const key = { providerItemId: `stub-msg-${serial}` };
             delta(params.threadId ?? "", [
@@ -413,5 +437,47 @@ describe("conformance session/fork-identity", () => {
     expect(
       bridge.stops.filter((stop) => stop.threadId === "thr_conformance_1_fork"),
     ).toEqual([]);
+  });
+});
+
+describe("conformance protocol 2 compatibility", () => {
+  it("drives a protocol 2 bridge through the compatibility path: claimIfIdle turns settle and any turn/start result is accepted", async () => {
+    const { report } = await runStub({
+      fork: "none",
+      handshake: "v2",
+      turns: "claimIfIdle",
+    });
+    const results = byId(report);
+    expect(results.get("handshake/session-contract")).toMatchObject({
+      status: "pass",
+      detail: expect.stringContaining("protocol 2 compatibility path"),
+    });
+    expect(results.get("turn/lifecycle")?.status).toBe("pass");
+    expect(results.get("turn/admission-answered")?.status).toBe("pass");
+    expect(results.has("openWork/list-declared")).toBe(false);
+    expect(failedIds(report)).toEqual([]);
+    expect(report.passed).toBe(true);
+  });
+
+  it("gives a protocol 3 bridge no claimIfIdle inference and requires its admission answer", async () => {
+    const { report } = await runStub({ fork: "none", turns: "claimIfIdle" });
+    expect(failedIds(report)).toEqual(
+      expect.arrayContaining(["turn/lifecycle", "turn/admission-answered"]),
+    );
+  });
+
+  it("fails a bridge that claims protocol 3 without sessionSettings and runs the rest on the protocol 2 path", async () => {
+    const { report } = await runStub({
+      fork: "none",
+      handshake: "v3WithoutSessionSettings",
+      turns: "claimIfIdle",
+    });
+    expect(byId(report).get("handshake/session-contract")).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining(
+        "without capabilities.sessionSettings, which protocol 3 requires",
+      ),
+    });
+    expect(failedIds(report)).toEqual(["handshake/session-contract"]);
   });
 });

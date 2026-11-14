@@ -258,6 +258,12 @@ semantics in [provider-bridge-protocol.md](provider-bridge-protocol.md),
 }
 ```
 
+A protocol 3 bridge must send `sessionSettings` (`{}` keeps the defaults);
+it is how the bridge says it implements the session contract. A bridge that
+answers protocol 3 without it, or answers protocol 2, runs on the runtime's
+protocol 2 compatibility path ([provider-bridge-protocol.md](provider-bridge-protocol.md),
+"Protocol 2 compatibility").
+
 `supportsManualCompaction` and the `model/list` catalog are display hints:
 the live session decides. A bridge answers a `/compact` its live provider
 cannot run with `{ admission: "rejected" }`, and a model's context window

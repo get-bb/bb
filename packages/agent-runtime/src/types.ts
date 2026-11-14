@@ -219,6 +219,8 @@ export interface SteerTurnArgs {
   input: PromptInput[];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
+  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  instructions?: string;
 }
 
 interface SteerTurnAppliedResult {

@@ -50,6 +50,7 @@ it("passes the canonical protocol suite", async () => {
     "rpc/non-json-ignored": "pass",
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
+    "handshake/session-contract": "pass",
     "session/start-identity": "pass",
     "session/start-identity-announced": "pass",
     "turn/lifecycle": "pass",

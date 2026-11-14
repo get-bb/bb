@@ -491,6 +491,8 @@ describe("dispatchCommand", () => {
         clientRequestId: "creq_turn_submit",
         expectedTurnId: "turn-starting",
         threadId: "thread-1",
+        contributedEnv: [],
+        instructions: "Be concise.",
       }),
     );
     expect(runtime.runTurn).not.toHaveBeenCalled();
@@ -597,12 +599,65 @@ describe("dispatchCommand", () => {
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
       ),
-    ).rejects.toThrow(
-      "Thread thread-1 is still starting a turn",
-    );
+    ).rejects.toMatchObject({
+      code: "thread_busy",
+      message: "Thread thread-1 is still starting a turn",
+    });
     expect(runtime.runTurn).not.toHaveBeenCalled();
     expect(runtime.steerTurn).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["start", "busy", "thread_busy"],
+    ["start", "rejected", "turn_rejected"],
+    ["steer", "busy", "thread_busy"],
+    ["steer", "rejected", "turn_rejected"],
+  ] as const)(
+    "reports a runtime %s refusal of status %s with the %s error code",
+    async (path, status, code) => {
+      const runtime = createRuntime();
+      const manager = new RuntimeManager({
+        createRuntime: () => runtime,
+        provisionWorkspace: async () => createWorkspace(),
+      });
+      await manager.ensureEnvironment({
+        environmentId: "env-1",
+        workspacePath: WORKSPACE_PATH,
+      });
+      const refusal = { status, message: `The agent refused (${status}).` };
+      if (path === "start") {
+        runtime.setIdle("thread-1");
+        vi.mocked(runtime.runTurn).mockResolvedValueOnce(refusal);
+      } else {
+        runtime.setActiveTurn("thread-1", "turn-1");
+        vi.mocked(runtime.steerTurn).mockResolvedValueOnce(refusal);
+      }
+
+      await expect(
+        dispatchCommand(
+          createTurnSubmitCommand({
+            mode: "auto",
+            expectedTurnId: path === "start" ? null : "turn-1",
+          }),
+          {
+            dataDir: "/tmp/bb-data",
+            logger: silentLogger,
+            eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+            fetchProjectAttachment: async () => {
+              throw new Error("Unexpected project attachment fetch");
+            },
+            ...unexpectedProviderMaintenance,
+            fetchPluginHostArtifact: fetchDispatchTestArtifact,
+            runtimeManager: manager,
+            threadStorageRootPath: "/tmp/bb-thread-storage",
+          },
+        ),
+      ).rejects.toMatchObject({ code, message: refusal.message });
+      expect(
+        path === "start" ? runtime.runTurn : runtime.steerTurn,
+      ).toHaveBeenCalledOnce();
+    },
+  );
 
   it("flushes buffered events before reporting thread.stop success", async () => {
     const runtime = createRuntime();

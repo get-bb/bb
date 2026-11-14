@@ -7,6 +7,12 @@ import {
   createDeltaAssembler,
   type DeltaAssembler,
 } from "../assembler/delta-assembler.js";
+import { parseProtocolV2ThreadDeltaParams } from "../assembler/protocol-v2.js";
+import {
+  PROVIDER_BRIDGE_PROTOCOL_V2,
+  type BridgeProtocolVersion,
+} from "../protocol-v2.js";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "../version.js";
 
 export interface CapturedBridgeNotification {
   method?: string;
@@ -16,6 +22,7 @@ export interface CapturedBridgeNotification {
 export interface BridgeDeltaEventCollector {
   assembler: DeltaAssembler;
   assembleMessage(message: CapturedBridgeNotification): ThreadEvent[];
+  setProtocolVersion(version: BridgeProtocolVersion): void;
 }
 
 export function createBridgeDeltaEventCollector(
@@ -26,11 +33,21 @@ export function createBridgeDeltaEventCollector(
     textDeltaFlushMs: 0,
     now: () => 0,
   });
+  let protocolVersion: BridgeProtocolVersion = PROVIDER_BRIDGE_PROTOCOL_VERSION;
   return {
     assembler,
+    setProtocolVersion(version) {
+      protocolVersion = version;
+    },
     assembleMessage(message) {
       if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
         return [];
+      }
+      if (protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2) {
+        const batch = parseProtocolV2ThreadDeltaParams(message.params);
+        if (batch !== null) {
+          return assembler.assemble(batch);
+        }
       }
       const parsed = threadDeltaNotificationParamsSchema.safeParse(
         message.params,

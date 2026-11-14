@@ -51,6 +51,9 @@ export function createProviderForId(
       },
     },
     ...buildPluginStaticProviderOptions(adapterOptions),
+    ...(adapterOptions.onNotice !== undefined
+      ? { onNotice: adapterOptions.onNotice }
+      : {}),
   });
 }
 

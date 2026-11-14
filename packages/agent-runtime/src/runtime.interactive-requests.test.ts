@@ -98,7 +98,11 @@ async function answerDirectRequest(args: {
   const [initialize] = adapter.buildPostInitializeRequests();
   initialize?.onResult({
     protocolVersion: 3,
-    capabilities: { grammarVersions: [3, 3], ...args.handshake },
+    capabilities: {
+      grammarVersions: [3, 3],
+      sessionSettings: {},
+      ...args.handshake,
+    },
   });
   const id = args.rawRequest.id;
   if (typeof id !== "string" && typeof id !== "number") {
@@ -329,7 +333,8 @@ describe("createAgentRuntime interactive requests", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        getProcessEnv: () => (scriptedEchoProcessEnv({ approvalEnforcedBy: "provider" })),
+        getProcessEnv: () =>
+          scriptedEchoProcessEnv({ approvalEnforcedBy: "provider" }),
         onEvent: (event) => events.push(event),
         onInteractiveRequest: async (request) => {
           requests.push(request);

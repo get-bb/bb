@@ -285,7 +285,11 @@ function adapterFor(enforcer: Enforcer): BridgeProtocolAdapter {
   }
   initialize.onResult({
     protocolVersion: 3,
-    capabilities: { grammarVersions: [3, 3], approvalEnforcedBy: enforcer },
+    capabilities: {
+      grammarVersions: [3, 3],
+      approvalEnforcedBy: enforcer,
+      sessionSettings: {},
+    },
   });
   if (adapter.approvalEnforcedBy !== enforcer) {
     throw new Error(

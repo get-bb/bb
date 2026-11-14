@@ -12,10 +12,10 @@ import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   EMPTY_SESSION_SETTINGS_APPLY,
+  PROVIDER_BRIDGE_PROTOCOL_V2,
   commandListResultSchema,
   mergeSessionSettingsDeclarations,
   threadOpenWorkResultSchema,
-  turnInputResultSchema,
   type SessionSettingsApply,
   type SessionSettingsDeclaration,
   providerHealthResultSchema,
@@ -1135,7 +1135,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
-  function settingsRecordOf(config: ThreadRuntimeConfig): SessionSettingsRecord {
+  function settingsRecordOf(
+    config: ThreadRuntimeConfig,
+  ): SessionSettingsRecord {
     return {
       bridgeLaunch: config.bridgeLaunch,
       dynamicTools: config.dynamicTools,
@@ -1235,8 +1237,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     summary: string;
     details?: string;
   }): void {
-    const providerThreadId =
-      threadIdentityRegistry.getProviderThreadId(args.threadId);
+    const providerThreadId = threadIdentityRegistry.getProviderThreadId(
+      args.threadId,
+    );
     if (providerThreadId === undefined) {
       return;
     }
@@ -1244,7 +1247,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       type: "provider/warning",
       threadId: args.threadId,
       providerThreadId,
-      category: "config",
+      category: "general",
       summary: args.summary,
       ...(args.details === undefined ? {} : { details: args.details }),
       scope: { kind: "thread" },
@@ -1265,6 +1268,54 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     });
     if (args.note !== null) {
       emitSessionSettingsNote({ threadId: args.threadId, summary: args.note });
+    }
+  }
+
+  interface ProtocolV2SteerSettings {
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+    environment: ReturnType<typeof resolveRuntimeThreadEnvironment>;
+  }
+
+  function resolveProtocolV2SteerSettings(args: {
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[] | undefined;
+    currentConfig: ThreadRuntimeConfig;
+    threadId: string;
+  }): ProtocolV2SteerSettings {
+    const contributedEnv =
+      args.contributedEnv ?? args.currentConfig.contributedEnv;
+    return {
+      contributedEnv,
+      environment: resolveRuntimeThreadEnvironment({
+        contributedEnv,
+        environmentId: args.currentConfig.environmentId,
+        projectId: args.currentConfig.projectId,
+        threadId: args.threadId,
+      }),
+    };
+  }
+
+  function recordProtocolV2Steer(args: {
+    currentConfig: ThreadRuntimeConfig;
+    execOpts: AgentRuntimeExecutionOptions;
+    providerThreadId: string;
+    steer: ProtocolV2SteerSettings;
+    threadId: string;
+  }): void {
+    const { environment } = args.steer;
+    setThreadRuntimeConfig(args.threadId, {
+      ...args.currentConfig,
+      contributedEnv: args.steer.contributedEnv,
+      envVars: environment.envVars,
+      options: args.execOpts,
+      requestedOptions: args.execOpts,
+    });
+    if (!isDeepStrictEqual(args.currentConfig.envVars, environment.envVars)) {
+      emitResolvedProviderEnvironment({
+        droppedContributions: environment.droppedContributions,
+        entries: environment.entries,
+        providerThreadId: args.providerThreadId,
+        threadId: args.threadId,
+      });
     }
   }
 
@@ -1359,6 +1410,40 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         taken: plan.live,
       }),
     };
+  }
+
+  async function reconcileProtocolV2Settings(args: {
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+    desired: SessionSettingsRecord;
+    threadId: string;
+  }): Promise<ReconciledTurnSettings> {
+    const config = threadRuntimeConfigs.get(args.threadId);
+    if (config === undefined) {
+      throw new Error(`No runtime configuration for thread ${args.threadId}`);
+    }
+    const { resume } = planSessionSettings({
+      applied: settingsRecordOf(config),
+      declaration: {},
+      desired: args.desired,
+      sessionRestorable: config.sessionRestorable,
+    });
+    if (resume.length > 0) {
+      emitSessionSettingsNote({
+        threadId: args.threadId,
+        summary: `Restarting the provider session to apply ${describeSessionSettingChanges(resume)}. Background processes the agent started that bb does not track may stop.`,
+      });
+      await releaseAndResumeThread({
+        config,
+        contributedEnv: args.contributedEnv,
+        record: args.desired,
+        threadId: args.threadId,
+      });
+      emitSessionSettingsNote({
+        threadId: args.threadId,
+        summary: `Applied ${describeSessionSettingChanges(resume)}; the provider session resumed with its history.`,
+      });
+    }
+    return { apply: EMPTY_SESSION_SETTINGS_APPLY, record: args.desired };
   }
 
   async function archiveOrUnarchiveThread(
@@ -1911,7 +1996,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               contributedEnv,
               instructions,
             });
-            if (firstTurn.status === "busy" || firstTurn.status === "rejected") {
+            if (
+              firstTurn.status === "busy" ||
+              firstTurn.status === "rejected"
+            ) {
               throw new Error(
                 `The provider did not take the first message: ${firstTurn.message}`,
               );
@@ -2279,19 +2367,28 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             projectId: startConfig.projectId,
             threadId,
           });
-          const reconciled = await reconcileThreadSettings({
-            contributedEnv: resolvedContributedEnv,
-            threadId,
-            desired: {
-              bridgeLaunch: desiredBridgeLaunch ?? startConfig.bridgeLaunch,
-              dynamicTools: dynamicTools ?? startConfig.dynamicTools,
-              envVars: resolvedEnvironment.envVars,
-              instructionMode: instructionMode ?? startConfig.instructionMode,
-              instructions: instructions ?? startConfig.instructions,
-              options: execOpts,
-              skillRoots: desiredSkillRoots ?? startConfig.skillRoots,
-            },
-          });
+          const desired: SessionSettingsRecord = {
+            bridgeLaunch: desiredBridgeLaunch ?? startConfig.bridgeLaunch,
+            dynamicTools: dynamicTools ?? startConfig.dynamicTools,
+            envVars: resolvedEnvironment.envVars,
+            instructionMode: instructionMode ?? startConfig.instructionMode,
+            instructions: instructions ?? startConfig.instructions,
+            options: execOpts,
+            skillRoots: desiredSkillRoots ?? startConfig.skillRoots,
+          };
+          const reconciled =
+            requireProviderProcessForThread(threadId).adapter
+              .protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2
+              ? await reconcileProtocolV2Settings({
+                  contributedEnv: resolvedContributedEnv,
+                  desired,
+                  threadId,
+                })
+              : await reconcileThreadSettings({
+                  contributedEnv: resolvedContributedEnv,
+                  desired,
+                  threadId,
+                });
           const proc = requireProviderProcessForThread(threadId);
           const currentConfig = threadRuntimeConfigs.get(threadId);
           if (!currentConfig) {
@@ -2340,7 +2437,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             const answer = await sendCommand({
               proc,
               message: cmd,
-              resultSchema: turnInputResultSchema,
+              resultSchema: proc.adapter.turnInputResultSchema,
               timeoutMs: turnStartWatchdogThresholdMs,
               afterTimeout: {
                 resolve: () => {},
@@ -2410,6 +2507,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       input,
       clientRequestId,
       options: execOpts,
+      contributedEnv,
+      instructions,
     }) {
       return runThreadOperation({
         threadId,
@@ -2435,11 +2534,22 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           if (!currentConfig) {
             throw new Error(`No runtime configuration for thread ${threadId}`);
           }
-          const settingChanges = listUserSettingChanges(
-            currentConfig.requestedOptions,
-            execOpts,
-          );
-          if (lowersPermissions(currentConfig.options, execOpts)) {
+          const protocolV2Steer =
+            proc.adapter.protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2
+              ? resolveProtocolV2SteerSettings({
+                  contributedEnv,
+                  currentConfig,
+                  threadId,
+                })
+              : null;
+          const settingChanges =
+            protocolV2Steer === null
+              ? listUserSettingChanges(currentConfig.requestedOptions, execOpts)
+              : [];
+          if (
+            protocolV2Steer === null &&
+            lowersPermissions(currentConfig.options, execOpts)
+          ) {
             return {
               status: "busy",
               message:
@@ -2455,11 +2565,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             expectedTurnId,
             input,
             clientRequestId,
-            options: toProviderExecutionContext({
-              envVars: currentConfig.envVars,
-              execOpts: currentConfig.options,
-              instructions: currentConfig.instructions,
-            }),
+            options:
+              protocolV2Steer === null
+                ? toProviderExecutionContext({
+                    envVars: currentConfig.envVars,
+                    execOpts: currentConfig.options,
+                    instructions: currentConfig.instructions,
+                  })
+                : toProviderExecutionContext({
+                    envVars: protocolV2Steer.environment.envVars,
+                    execOpts,
+                    instructions: instructions ?? currentConfig.instructions,
+                  }),
           };
           const cmd = requireProviderRequestPlan({
             commandType: adapterCommand.type,
@@ -2470,7 +2587,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             const answer = await sendCommand({
               proc,
               message: cmd,
-              resultSchema: turnInputResultSchema,
+              resultSchema: proc.adapter.turnInputResultSchema,
               timeoutMs: turnStartWatchdogThresholdMs,
               recovery: {
                 providerId: pid,
@@ -2505,6 +2622,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               return { status: "unconfirmed" };
             }
             throw error;
+          }
+          if (protocolV2Steer !== null) {
+            recordProtocolV2Steer({
+              currentConfig,
+              execOpts,
+              providerThreadId,
+              steer: protocolV2Steer,
+              threadId,
+            });
           }
           if (settingChanges.length > 0) {
             setThreadRuntimeConfig(threadId, {

@@ -369,6 +369,7 @@ export class RuntimeProviderProcessManager {
       ...(this.args.bridgeNodeExecutablePath !== undefined
         ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
         : {}),
+      onNotice: (message: string) => this.args.onStderr?.(message),
     };
 
     return (this.args.createAdapter ?? createProviderForId)(

@@ -5596,6 +5596,92 @@ describe("bridge", () => {
     }
   });
 
+  it("lists a running background task as open work until Claude reports it finished", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-open-work-background-task";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          instructions: "test",
+          providerOptions: {
+            workflowsEnabled: false,
+          },
+        },
+      });
+      const providerThreadId = getProviderThreadIdFromResult(
+        await bridge.waitForResponse(1),
+      );
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: [{ type: "text", text: "Run the dev server in the background" }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      queries[0]?.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "bg-dev-server",
+        description: "npm run dev",
+        task_type: "local_bash",
+        uuid: "00000000-0000-4000-8000-000000000011",
+        session_id: providerThreadId,
+      });
+      queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
+      await bridge.flushWork();
+
+      bridge.sendRequest(3, "thread/openWork", { threadId, providerThreadId });
+      expect(await bridge.waitForResponse(3)).toMatchObject({
+        result: {
+          items: [
+            {
+              id: "bg-dev-server",
+              kind: "backgroundTask",
+              description: "npm run dev",
+            },
+          ],
+        },
+      });
+
+      queries[0]?.emit({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "bg-dev-server",
+        status: "completed",
+        output_file: "",
+        summary: "Dev server exited",
+        uuid: "00000000-0000-4000-8000-000000000012",
+        session_id: providerThreadId,
+      });
+      await bridge.flushWork();
+
+      bridge.sendRequest(4, "thread/openWork", { threadId, providerThreadId });
+      expect(await bridge.waitForResponse(4)).toMatchObject({
+        result: { items: [] },
+      });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("restarts a Claude session before the next turn after an authentication failure", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import {
+  createScriptedEchoLaunch,
   createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
   fullRuntimeOptions,
@@ -464,5 +465,141 @@ describe("provider session contract", () => {
 
     expect(result.reapedSessions).toEqual([]);
     expect(methods(record)).not.toContain("thread/stop");
+  });
+
+  it("fails the turn when the settings resume fails and resumes cleanly afterwards", async () => {
+    const { record, runtime } = createRuntime({
+      process: { sessionSettings: { model: { apply: "resume" } } },
+      thread: {
+        failMethods: [
+          { method: "thread/resume", message: "resume refused", times: 1 },
+        ],
+      },
+    });
+    const { providerThreadId } = await runtime.startThread({
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: PROVIDER_ID,
+      threadId: "t1",
+      options: fullRuntimeOptions,
+    });
+    const changed = { ...fullRuntimeOptions, model: "test-model-2" };
+
+    await expect(
+      runtime.runTurn({
+        clientRequestId: "creq_sessctx222",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: changed,
+      }),
+    ).rejects.toThrow("resume refused");
+    expect(methods(record)).not.toContain("turn/start");
+    expect(runtime.getSessionPhase("t1")).toBe("dead");
+
+    await runtime.resumeThread({
+      bridgeLaunch: createScriptedEchoLaunch(),
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: PROVIDER_ID,
+      threadId: "t1",
+      providerThreadId,
+      options: changed,
+    });
+    await expect(
+      runtime.runTurn({
+        clientRequestId: "creq_sessctz222",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello again" })],
+        options: changed,
+      }),
+    ).resolves.toEqual({ status: "started" });
+    expect(record.last("turn/start")?.params).toMatchObject({
+      options: { model: "test-model-2" },
+    });
+  });
+
+  it("carries the turn's live model change into a resume another setting forced", async () => {
+    const { events, record, runtime } = createRuntime({});
+    const token = (value: string) => [
+      {
+        name: "GH_TOKEN",
+        value,
+        source: { core: "machine-git" as const },
+        reason: "Server gh login",
+      },
+    ];
+    await runtime.startThread({
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: PROVIDER_ID,
+      threadId: "t1",
+      contributedEnv: token("first"),
+      options: fullRuntimeOptions,
+    });
+    const before = methods(record).length;
+
+    await runtime.runTurn({
+      clientRequestId: "creq_sessctm333",
+      threadId: "t1",
+      input: [promptTextInput({ text: "hello" })],
+      contributedEnv: token("rotated"),
+      options: { ...fullRuntimeOptions, model: "test-model-2" },
+    });
+
+    expect(methods(record).slice(before)).toEqual([
+      "thread/openWork",
+      "thread/stop",
+      "thread/resume",
+      "turn/start",
+    ]);
+    expect(record.last("thread/resume")?.params).toMatchObject({
+      options: { model: "test-model-2", envVars: { GH_TOKEN: "rotated" } },
+    });
+    expect(record.last("turn/start")?.params).toMatchObject({
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
+      options: { model: "test-model-2" },
+    });
+    expect(
+      warnings(events).filter((summary) => summary.startsWith("Applied")),
+    ).toEqual([expect.stringMatching(/environment.*model|model.*environment/)]);
+  });
+
+  it("keeps the old model on a session it cannot restore and says so once", async () => {
+    const { events, record, runtime } = createRuntime({
+      process: { sessionSettings: { model: { apply: "resume" } } },
+      thread: { sessionRestorable: false },
+    });
+    await startThread(runtime);
+    const changed = { ...fullRuntimeOptions, model: "test-model-2" };
+
+    for (const clientRequestId of ["creq_sessctn333", "creq_sessctp333"]) {
+      await runtime.runTurn({
+        clientRequestId,
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: changed,
+      });
+      await vi.waitFor(() =>
+        expect(runtime.getSessionPhase("t1")).toBe("idle"),
+      );
+    }
+
+    expect(methods(record)).not.toContain("thread/stop");
+    expect(methods(record)).not.toContain("thread/resume");
+    const turnStarts = record
+      .read()
+      .filter((entry) => entry.method === "turn/start");
+    expect(turnStarts).toHaveLength(2);
+    for (const entry of turnStarts) {
+      expect(entry.params).toMatchObject({
+        apply: { settings: [] },
+        options: { model: "test-model" },
+      });
+    }
+    expect(
+      warnings(events).filter((summary) =>
+        summary.includes("can't apply to this provider session"),
+      ),
+    ).toHaveLength(1);
   });
 });

@@ -49,7 +49,7 @@ export function handleLine(line: string): void {
       id,
       result: {
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-        capabilities: { grammarVersions: [2, 3] },
+        capabilities: { grammarVersions: [2, 3], sessionSettings: {} },
       },
     });
     return;

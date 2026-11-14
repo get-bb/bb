@@ -270,6 +270,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
       approvalStatus: z.literal("denied").optional(),
       item: deltaItemShapeSchema,
       presentation: deltaPresentationSchema.optional(),
+      attach: deltaAttachSchema.optional(),
       providerTurnId: providerTurnIdSchema.optional(),
       noTurnFallback: deltaNoTurnFallbackSchema.optional(),
     })

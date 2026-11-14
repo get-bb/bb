@@ -16,10 +16,14 @@ import {
   threadIdentityResultSchema,
   threadOpenWorkResultSchema,
   turnInputResultSchema,
+  describeSessionContractMissing,
+  resolveBridgeProtocol,
+  PROVIDER_BRIDGE_PROTOCOL_V2,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   ThreadEventGrammar,
   THREAD_EVENT_GRAMMAR_RULES,
   type BridgeCapabilities,
+  type BridgeProtocolVersion,
 } from "../index.js";
 import { ASSEMBLER_GRAMMAR_VERSIONS } from "../assembler/delta-assembler.js";
 import {
@@ -47,6 +51,7 @@ interface ScenarioContext {
   ) => string | undefined;
   fork: BridgeCapabilities["fork"];
   openWorkList: boolean;
+  protocolVersion: BridgeProtocolVersion;
   providerThreadId?: string;
 }
 
@@ -372,7 +377,12 @@ export async function runRpcHygieneScenarios(
 export interface HandshakeScenarioOutcome {
   results: ConformanceCheckResult[];
   capabilities: BridgeCapabilities | null;
+  protocolVersion: BridgeProtocolVersion | null;
 }
+
+const SESSION_CONTRACT_ID = "handshake/session-contract";
+const SESSION_CONTRACT_TITLE =
+  "initialize states which session contract the bridge implements";
 
 export async function runHandshakeScenario(
   client: ConformanceClient,
@@ -388,6 +398,7 @@ export async function runHandshakeScenario(
   const failed = (detail: string): HandshakeScenarioOutcome => ({
     results: [fail("handshake/initialize", title, detail)],
     capabilities: null,
+    protocolVersion: null,
   });
   if (response === null) {
     return failed("no response");
@@ -402,11 +413,25 @@ export async function runHandshakeScenario(
         )} (got ${JSON.stringify(response.result ?? response.error)})`,
     );
   }
-  if (parsed.data.protocolVersion !== PROVIDER_BRIDGE_PROTOCOL_VERSION) {
+  const protocol = resolveBridgeProtocol(parsed.data);
+  if (protocol.version === null) {
     return failed(
-      `bridge answered protocol version ${parsed.data.protocolVersion}; this kit (and the runtime) require ${PROVIDER_BRIDGE_PROTOCOL_VERSION}`,
+      `bridge answered protocol version ${protocol.claimedVersion}; this kit (and the runtime) accept ${PROVIDER_BRIDGE_PROTOCOL_VERSION} and, through the protocol ${PROVIDER_BRIDGE_PROTOCOL_V2} compatibility path, ${PROVIDER_BRIDGE_PROTOCOL_V2}`,
     );
   }
+  const sessionContract =
+    protocol.version === PROVIDER_BRIDGE_PROTOCOL_VERSION
+      ? pass(SESSION_CONTRACT_ID, SESSION_CONTRACT_TITLE)
+      : protocol.claimedVersion === PROVIDER_BRIDGE_PROTOCOL_V2
+        ? {
+            ...pass(SESSION_CONTRACT_ID, SESSION_CONTRACT_TITLE),
+            detail: `protocol ${PROVIDER_BRIDGE_PROTOCOL_V2}: the runtime drives this bridge through its protocol ${PROVIDER_BRIDGE_PROTOCOL_V2} compatibility path`,
+          }
+        : fail(
+            SESSION_CONTRACT_ID,
+            SESSION_CONTRACT_TITLE,
+            describeSessionContractMissing("bridge"),
+          );
   const [bridgeMin, bridgeMax] = parsed.data.capabilities.grammarVersions;
   if (
     negotiateGrammarVersion(
@@ -422,6 +447,7 @@ export async function runHandshakeScenario(
   return {
     results: [
       pass("handshake/initialize", title),
+      sessionContract,
       ...(await runDeclaredRequestScenario(client, {
         id: "skills/configure-declared",
         method: BRIDGE_REQUEST_METHODS.skillsConfigure,
@@ -438,6 +464,7 @@ export async function runHandshakeScenario(
       })),
     ],
     capabilities: parsed.data.capabilities,
+    protocolVersion: protocol.version,
   };
 }
 
@@ -484,11 +511,25 @@ const TURN_ADMISSION_TITLE =
   "turn/start answers accepted only after input.accepted is on the wire";
 
 function checkTurnAdmissionAnswer(
-  client: ConformanceClient,
+  context: ScenarioContext,
   response: JsonRpcWireMessage | null,
 ): ConformanceCheckResult {
+  const { client } = context;
   if (response === null) {
-    return fail(TURN_ADMISSION_ID, TURN_ADMISSION_TITLE, "turn/start was not answered");
+    return fail(
+      TURN_ADMISSION_ID,
+      TURN_ADMISSION_TITLE,
+      "turn/start was not answered",
+    );
+  }
+  if (context.protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2) {
+    return response.error === undefined
+      ? pass(TURN_ADMISSION_ID, TURN_ADMISSION_TITLE)
+      : fail(
+          TURN_ADMISSION_ID,
+          TURN_ADMISSION_TITLE,
+          `turn/start failed: ${JSON.stringify(response.error)}`,
+        );
   }
   const parsed = turnInputResultSchema.safeParse(response.result);
   if (!parsed.success) {
@@ -622,7 +663,7 @@ export async function runSessionLifecycleScenarios(
       ),
     );
     const turnStartResponse = await client.waitForResponse(id);
-    results.push(checkTurnAdmissionAnswer(client, turnStartResponse));
+    results.push(checkTurnAdmissionAnswer(context, turnStartResponse));
 
     const title = "an accepted turn starts and settles";
     if (started === undefined || started === null) {
@@ -1059,6 +1100,9 @@ async function runOpenWorkScenario(
   threadId: string,
 ): Promise<ConformanceCheckResult[]> {
   const { client } = context;
+  if (context.protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2) {
+    return [];
+  }
   if (context.providerThreadId === undefined) {
     return [
       skipped(
@@ -1074,7 +1118,9 @@ async function runOpenWorkScenario(
   });
   const response = await client.waitForResponse(id);
   if (response === null) {
-    return [fail(OPEN_WORK_ID, OPEN_WORK_TITLE, "thread/openWork was not answered")];
+    return [
+      fail(OPEN_WORK_ID, OPEN_WORK_TITLE, "thread/openWork was not answered"),
+    ];
   }
   if (!context.openWorkList) {
     return errorCode(response) === BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND

@@ -50,6 +50,7 @@
       "approvalStatus": "optional",
       "item": "required",
       "presentation": "optional",
+      "attach": "optional",
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
@@ -311,7 +312,7 @@
     "skills": "default",
     "commands": "default",
     "openWork": "default",
-    "sessionSettings": "default"
+    "sessionSettings": "optional"
   },
   "recoveryNotification": {
     "threadId": "optional",

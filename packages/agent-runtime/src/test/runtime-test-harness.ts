@@ -87,6 +87,7 @@ export interface ScriptedEchoLaunchScript {
   emitIdentityOnSigterm?: boolean;
   sessionSettings?: SessionSettingsDeclaration;
   openWork?: OpenWorkItem[];
+  legacyBridge?: { protocolVersion: 2 | 3 };
 }
 
 export interface CreateScriptedEchoLaunchOptions {
