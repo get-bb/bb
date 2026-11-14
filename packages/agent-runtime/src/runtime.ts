@@ -3,6 +3,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
+  permissionModeRank,
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
@@ -1200,6 +1201,21 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     await releaseIdleProviderProcess(proc);
   }
 
+  function lowersPermissions(
+    applied: AgentRuntimeExecutionOptions,
+    requested: AgentRuntimeExecutionOptions,
+  ): boolean {
+    const appliedRank = permissionModeRank(applied.permissionMode);
+    const requestedRank = permissionModeRank(requested.permissionMode);
+    if (requestedRank !== appliedRank) {
+      return requestedRank < appliedRank;
+    }
+    return (
+      applied.permissionEscalation === "ask" &&
+      requested.permissionEscalation === "deny"
+    );
+  }
+
   function emitSessionSettingsNote(args: {
     threadId: string;
     summary: string;
@@ -2392,11 +2408,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             currentConfig.requestedOptions,
             execOpts,
           );
-          if (settingChanges.length > 0) {
+          if (lowersPermissions(currentConfig.options, execOpts)) {
             return {
               status: "busy",
               message:
-                "This message changes the session's settings, so it runs as the next turn instead of joining the running one.",
+                "This message lowers the thread's permissions, so it runs as the next turn instead of joining a turn that has broader access.",
             };
           }
 
@@ -2458,6 +2474,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               return { status: "unconfirmed" };
             }
             throw error;
+          }
+          if (settingChanges.length > 0) {
+            setThreadRuntimeConfig(threadId, {
+              ...currentConfig,
+              requestedOptions: execOpts,
+            });
+            emitSessionSettingsNote({
+              threadId,
+              summary: `Changed ${describeSessionSettingChanges(
+                settingChanges.map((change) => ({ change, apply: "live" })),
+              )} applies from the next turn; this message joined the running turn on its current settings.`,
+            });
           }
           return { status: "steered" };
         },

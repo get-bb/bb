@@ -250,14 +250,28 @@ describe("provider session contract", () => {
     ).toHaveLength(1);
   });
 
-  it("answers a steer busy when it asks for a settings change", async () => {
-    const { events, record, runtime } = createRuntime({});
+  const acceptEditsOptions = {
+    ...fullRuntimeOptions,
+    permissionMode: "accept-edits",
+    permissionScope: "workspace",
+    approvalReviewer: "user",
+    permissionEscalation: "deny",
+  } as const;
+
+  async function steerIntoRunningTurn(
+    contract: ContractRuntime,
+    options: Parameters<LaunchBoundAgentRuntime["steerTurn"]>[0]["options"],
+    turnOptions: Parameters<
+      LaunchBoundAgentRuntime["runTurn"]
+    >[0]["options"] = fullRuntimeOptions,
+  ) {
+    const { events, runtime } = contract;
     await startThread(runtime);
     await runtime.runTurn({
-      clientRequestId: "creq_sessctg222",
+      clientRequestId: "creq_sessctp222",
       threadId: "t1",
       input: [promptTextInput({ text: "delay:500" })],
-      options: fullRuntimeOptions,
+      options: turnOptions,
     });
     const { turnId } = await waitForThreadTurnStarted({
       events,
@@ -265,25 +279,66 @@ describe("provider session contract", () => {
       runtime,
       threadId: "t1",
     });
+    const result = await runtime.steerTurn({
+      clientRequestId: "creq_sessctq222",
+      threadId: "t1",
+      expectedTurnId: turnId,
+      input: [promptTextInput({ text: "and also this" })],
+      options,
+    });
+    return result;
+  }
 
-    await expect(
-      runtime.steerTurn({
-        clientRequestId: "creq_sesscth222",
-        threadId: "t1",
-        expectedTurnId: turnId,
-        input: [promptTextInput({ text: "switch to full access" })],
-        options: {
-          ...fullRuntimeOptions,
-          permissionMode: "accept-edits",
-          permissionScope: "workspace",
-          approvalReviewer: "user",
-          permissionEscalation: "deny",
-        },
-      }),
-    ).resolves.toMatchObject({ status: "busy" });
-    expect(methods(record)).not.toContain("turn/steer");
+  it("joins a steer that changes the model to the running turn and applies the change next turn", async () => {
+    const contract = createRuntime({});
+    const { events, record, runtime } = contract;
+    const changed = { ...fullRuntimeOptions, model: "test-model-2" };
+
+    await expect(steerIntoRunningTurn(contract, changed)).resolves.toEqual({
+      status: "steered",
+    });
+    expect(record.last("turn/steer")?.params).toMatchObject({
+      options: { model: "test-model" },
+    });
+    expect(warnings(events)).toContainEqual(
+      expect.stringContaining("model applies from the next turn"),
+    );
+
+    await waitForThreadTurnCompleted({ events, threadId: "t1" });
+    await runtime.runTurn({
+      clientRequestId: "creq_sessctr222",
+      threadId: "t1",
+      input: [promptTextInput({ text: "next" })],
+      options: changed,
+    });
+    expect(record.last("turn/start")?.params).toMatchObject({
+      apply: { settings: ["model"] },
+      options: { model: "test-model-2" },
+    });
   });
 
+  it("joins a steer that raises permissions to the running turn", async () => {
+    const contract = createRuntime({});
+    await expect(
+      steerIntoRunningTurn(contract, fullRuntimeOptions, acceptEditsOptions),
+    ).resolves.toEqual({ status: "steered" });
+    expect(contract.record.last("turn/steer")?.params).toMatchObject({
+      options: { permissionMode: "accept-edits" },
+    });
+    expect(warnings(contract.events)).toContainEqual(
+      expect.stringContaining("permissions applies from the next turn"),
+    );
+  });
+
+  it("runs a steer that lowers permissions as the next turn", async () => {
+    const contract = createRuntime({});
+    await expect(
+      steerIntoRunningTurn(contract, acceptEditsOptions),
+    ).resolves.toMatchObject({ status: "busy" });
+    expect(contract.record.read().map((entry) => entry.method)).not.toContain(
+      "turn/steer",
+    );
+  });
   it("still takes steers while a requested change waits on open work", async () => {
     const { events, record, runtime } = createRuntime({
       process: { sessionSettings: { model: { apply: "resume" } } },

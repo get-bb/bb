@@ -620,8 +620,9 @@ Every input goes through one gate. The server sends every send, steer, queued
 message and parent notice as a `turn.submit`; the runtime admits a
 `turn/start` only from `idle` and a `turn/steer` only into the running turn
 it names, and answers `busy` itself while the session is starting, stopping
-or compacting, or when a steer asks for a settings change its turn did not
-already request (it then runs as the next turn, where the change applies). An admitted input is forwarded and
+or compacting, or when a steer lowers the thread's permissions below what the
+running turn has (it then runs as the next turn, so a turn never keeps
+broader access than the user asked for). An admitted input is forwarded and
 the bridge answers it:
 
 ```
@@ -695,7 +696,10 @@ the session runs and classifies every change:
   It takes effect at the next construction, and a thread note says so once.
   A `resume` change on a session that cannot be restored is `fresh`.
 
-`turn/steer` never applies settings.
+`turn/steer` never applies settings. A steer that asks for other changes,
+including raising permissions, joins the running turn on its current settings;
+the runtime notes on the thread that the change applies from the next turn,
+where the reconciler applies it like any other change.
 
 ## Ordering guarantees
 

@@ -1206,16 +1206,7 @@ describe("createAgentRuntime lifecycle", () => {
           input: [promptTextInput({ text: "apply a new setup now" })],
           options: { ...fullRuntimeOptions, model: "fake-model-2" },
         }),
-      ).resolves.toMatchObject({ status: "busy" });
-      expect(recordedMethods(record).slice(methodsBeforeSteer)).toEqual([]);
-
-      await runtime.steerTurn({
-        clientRequestId: "creq_222222223y",
-        threadId: "t1",
-        expectedTurnId: turnId,
-        input: [promptTextInput({ text: "keep going" })],
-        options: { ...fullRuntimeOptions, model: "fake-model" },
-      });
+      ).resolves.toEqual({ status: "steered" });
 
       expect(recordedMethods(record).slice(methodsBeforeSteer)).toEqual([
         "turn/steer",
@@ -1223,7 +1214,7 @@ describe("createAgentRuntime lifecycle", () => {
       expect(record.last("turn/steer")?.params).toMatchObject({
         threadId: "t1",
         expectedTurnId: "turn-1",
-        clientRequestId: "creq_222222223y",
+        clientRequestId: "creq_222222223x",
         options: {
           instructions: "Initial instructions",
           model: "fake-model",
