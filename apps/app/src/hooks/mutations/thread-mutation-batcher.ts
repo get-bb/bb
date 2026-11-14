@@ -99,9 +99,9 @@ export function createThreadMutationBatcher(
       const result = results[index]!;
       return [
         request.acknowledge(
-          failure === undefined && result.status === "fulfilled"
+          result.status === "fulfilled"
             ? Promise.resolve(result.value)
-            : Promise.reject(failure?.reason),
+            : Promise.reject(result.reason),
         ),
       ];
     });

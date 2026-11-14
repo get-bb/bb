@@ -315,7 +315,7 @@ it("pins an archived thread optimistically in the archived list", async () => {
   await waitFor(() => expect(server.archivedPinnedAt("t3")).toBeNull());
 });
 
-it("reverts an acknowledged unpin when the rest of its move fails", async () => {
+it("keeps an acknowledged unpin when the rest of its move fails", async () => {
   const server = serve([{ ...entry("t1", 50), sectionId: "old" }]);
   await waitFor(() => expect(server.pinnedAt("t1")).toEqual([50, 50, 50]));
   const update = createDeferredPromise<never>();
@@ -345,9 +345,67 @@ it("reverts an acknowledged unpin when the rest of its move fails", async () => 
   });
 
   await waitFor(() =>
+    expect(sidebarRow()).toMatchObject({ pinnedAt: null, sectionId: "old" }),
+  );
+  expect(server.pinnedAt("t1")).toEqual([null, null, null]);
+});
+
+it("reverts a failed unpin and never sends the move chained after it", async () => {
+  const server = serve([{ ...entry("t1", 50), sectionId: "old" }]);
+  await waitFor(() => expect(server.pinnedAt("t1")).toEqual([50, 50, 50]));
+  vi.mocked(sdk.threads.unpin).mockRejectedValueOnce(new Error("unpin refused"));
+  const threads = createThreadMutationBatcher(sdk.threads, server.queryClient);
+  const sidebarRow = () =>
+    listSidebarNavigationThreads(server.view.result.current.sidebar.data!)[0];
+  const never = new Promise<never>(() => {});
+  vi.mocked(request).mockReturnValue(never);
+  vi.mocked(sdk.threads.list).mockReturnValue(never);
+  vi.mocked(sdk.threads.get).mockReturnValue(never);
+
+  await act(async () => {
+    await Promise.all([
+      threads.unpin({ threadId: "t1" }),
+      threads.update({ threadId: "t1", sectionId: "new" }),
+    ]).catch(() => {});
+  });
+
+  await waitFor(() =>
     expect(sidebarRow()).toMatchObject({ pinnedAt: 50, sectionId: "old" }),
   );
-  expect(server.pinnedAt("t1")).toEqual([50, 50, 50]);
+  expect(sdk.threads.update).not.toHaveBeenCalled();
+});
+
+it("keeps another thread's acknowledged unpin when an update in its batch fails", async () => {
+  const server = serve([
+    { ...entry("t1", 50), sectionId: "old" },
+    { ...entry("t2", null), sectionId: "old" },
+  ]);
+  await waitFor(() => expect(server.pinnedAt("t1")).toEqual([50, 50, 50]));
+  vi.mocked(sdk.threads.unpin).mockResolvedValue(
+    makeThreadResponse({ ...entry("t1", null), sectionId: "old" }),
+  );
+  vi.mocked(sdk.threads.update).mockRejectedValueOnce(new Error("move refused"));
+  const threads = createThreadMutationBatcher(sdk.threads, server.queryClient);
+  const sidebarRow = (id: string) =>
+    listSidebarNavigationThreads(server.view.result.current.sidebar.data!).find(
+      (row) => row.id === id,
+    );
+  const never = new Promise<never>(() => {});
+  vi.mocked(request).mockReturnValue(never);
+  vi.mocked(sdk.threads.list).mockReturnValue(never);
+  vi.mocked(sdk.threads.get).mockReturnValue(never);
+
+  await act(async () => {
+    await Promise.allSettled([
+      threads.unpin({ threadId: "t1" }),
+      threads.update({ threadId: "t2", sectionId: "new" }),
+    ]);
+  });
+
+  await waitFor(() =>
+    expect(sidebarRow("t1")).toMatchObject({ pinnedAt: null }),
+  );
+  expect(sidebarRow("t2")).toMatchObject({ pinnedAt: null, sectionId: "old" });
 });
 
 async function acknowledgedPin(server: ReturnType<typeof serve>) {
