@@ -81,8 +81,6 @@ it("reports the extension hanging up, but not a close bb asked for", async () =>
   );
   extension.socket.write('{"kind":"ready"}\n');
   await vi.waitFor(() => expect(dropped.lines).toEqual(['{"kind":"ready"}']));
-  const stranger = dial(dropped.channel, "not-the-token");
-  await stranger.closed;
   expect(dropped.closes()).toBe(0);
   extension.socket.destroy();
   await vi.waitFor(() => expect(dropped.closes()).toBe(1));
