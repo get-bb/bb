@@ -1,4 +1,5 @@
 import { providerRawEventSchema, threadUsageCostSchema } from "@bb/domain";
+import { z } from "zod";
 import type { ProviderRawEvent, ThreadUsageCost } from "@bb/domain";
 import {
   COMPACTION_PRESENTATION,
@@ -73,7 +74,20 @@ import {
 
 interface AcpDeltaTranslationContext {
   threadId?: string;
+  externalUserInput?: boolean;
 }
+
+const externalUserChunkSchema = z.object({
+  content: z.object({ type: z.literal("text"), text: z.string() }),
+});
+
+const USER_INPUT_BOUNDARY_UPDATE_KINDS = new Set([
+  "agent_message_chunk",
+  "agent_thought_chunk",
+  "tool_call",
+  "tool_call_update",
+  "plan",
+]);
 
 export interface AcpDeltaTranslatorOptions {
   cwd?: string | undefined;
@@ -176,6 +190,7 @@ export function createAcpDeltaTranslator(
   const mergedToolCalls = new Map<string, AcpOpenToolCall>();
   const fileExistence = new Map<string, Map<string, boolean | undefined>>();
   const filesAddedThisTurn = new Set<string>();
+  const pendingUserInputs = new Map<string, string>();
 
   function noteEditedPaths(key: string, event: AcpToolCallUpdateEvent): void {
     const fileCreatedThisTurn = options.fileCreatedThisTurn;
@@ -632,8 +647,18 @@ export function createAcpDeltaTranslator(
     return [
       closeThoughtStream(),
       closeAssistantStream(),
+      ...flushUserInput(context),
       ...drainOpenToolCalls(context, status),
     ];
+  }
+
+  function flushUserInput(
+    context: AcpDeltaTranslationContext | undefined,
+  ): ThreadDelta[] {
+    const key = context?.threadId ?? "";
+    const text = pendingUserInputs.get(key);
+    pendingUserInputs.delete(key);
+    return text ? [{ kind: "input.provider", text }] : [];
   }
 
   function translateUpdate(
@@ -643,6 +668,21 @@ export function createAcpDeltaTranslator(
     const rawEvent = updateEnvelope(context, update);
 
     switch (update.sessionUpdate) {
+      case "user_message_chunk": {
+        if (context?.externalUserInput !== true) {
+          return [];
+        }
+        const parsed = externalUserChunkSchema.safeParse(update);
+        if (parsed.success) {
+          const key = context.threadId ?? "";
+          pendingUserInputs.set(
+            key,
+            (pendingUserInputs.get(key) ?? "") + parsed.data.content.text,
+          );
+        }
+        return [];
+      }
+
       case "agent_message_chunk": {
         const parsed = acpAgentMessageChunkUpdateSchema.safeParse(update);
         const text = parsed.success
@@ -1085,7 +1125,18 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
-        return translateUpdate(params.data.update, context);
+        const pending = USER_INPUT_BOUNDARY_UPDATE_KINDS.has(
+          params.data.update.sessionUpdate,
+        )
+          ? flushUserInput(context)
+          : [];
+        return [
+          ...(pending.length === 0
+            ? []
+            : [closeThoughtStream(), closeAssistantStream()]),
+          ...pending,
+          ...translateUpdate(params.data.update, context),
+        ];
       }
 
       case ACP_FS_WRITE_METHOD: {

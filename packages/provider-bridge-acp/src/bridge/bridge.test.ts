@@ -5218,6 +5218,95 @@ describe("acp bridge: work the agent starts on its own", () => {
     expect(turnStatuses()).toEqual(["completed", "completed"]);
   });
 
+  it.each([false, true])(
+    "preserves external user chunks as one message (quiet: %s)",
+    async (quiet) => {
+      const { providerThreadId } = await startThread();
+      vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+      try {
+        await runPromptedTurn(
+          providerThreadId,
+          quiet ? "then-external-input-quiet" : "then-external-input",
+        );
+        await waitForTurnStartedCount(2);
+        if (!quiet) {
+          await waitFor(
+            () =>
+              agentMessageTexts().includes("remote answer") ? true : undefined,
+            "external answer",
+          );
+        }
+        await vi.advanceTimersByTimeAsync(5_000);
+        await waitFor(
+          () => (turnStatuses().length === 2 ? true : undefined),
+          "external turn completion",
+        );
+
+        const messages = threadEventsOfType("item/completed")
+          .map((event) => event.item)
+          .filter(
+            (item) =>
+              typeof item === "object" &&
+              item !== null &&
+              "type" in item &&
+              (item.type === "userMessage" || item.type === "agentMessage"),
+          );
+        expect(messages).toMatchObject([
+          { type: "agentMessage", text: "initial answer" },
+          {
+            type: "userMessage",
+            content: [{ type: "text", text: "Remote question continued" }],
+          },
+          ...(quiet ? [] : [{ type: "agentMessage", text: "remote answer" }]),
+        ]);
+        expect(turnStatuses()).toEqual(["completed", "completed"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("does not duplicate prompted input, compaction input, or loaded user history", async () => {
+    const envVars = {
+      FAKE_ACP_ECHO_USER_INPUT: "1",
+      FAKE_ACP_LOAD_SESSION: "1",
+    };
+    const { bbThreadId, providerThreadId } = await startThread({ envVars });
+    await runPromptedTurn(providerThreadId, "hello");
+    const compactId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(compactId)).error).toBeUndefined();
+    await waitFor(
+      () => (turnStatuses().length === 2 ? true : undefined),
+      "compaction completion",
+    );
+    await stopThread(providerThreadId);
+    const resumeId = sendRequest("thread/resume", {
+      threadId: bbThreadId,
+      providerThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+    });
+    expect((await waitForResponse(resumeId)).error).toBeUndefined();
+    await runPromptedTurn(providerThreadId, "after load");
+    expect(emittedDeltaKinds()).not.toContain("input.provider");
+    expect(
+      threadEventsOfType("item/completed").filter((event) => {
+        const item = event.item;
+        return (
+          typeof item === "object" &&
+          item !== null &&
+          "type" in item &&
+          item.type === "userMessage"
+        );
+      }),
+    ).toEqual([]);
+  });
+
   it("opens a turn for unprompted output and closes it after a quiet window", async () => {
     const { providerThreadId } = await startThread();
     vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
