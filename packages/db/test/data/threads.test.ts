@@ -5,6 +5,8 @@ import { createConnection } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import { threads } from "../../src/schema.js";
+import { writeThreadLifecycleStateInTransaction } from "../../src/data/thread-run-state.js";
+import type { ThreadStatus } from "@bb/domain";
 import {
   createThread,
   countNonDeletedAssignedChildThreads,
@@ -26,8 +28,6 @@ import {
   reorderPinnedThread,
   unpinThread,
   unarchiveThread,
-  applyThreadLifecycleEvent,
-  requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
 import { createPendingInteraction } from "../../src/data/pending-interactions.js";
 import {
@@ -43,6 +43,25 @@ import {
   environmentHasLiveThreads,
 } from "../../src/data/environments.js";
 import { createMigratedConnection } from "../../src/testing.js";
+
+function moveThreadStatus(
+  db: ReturnType<typeof createMigratedConnection>,
+  threadId: string,
+  from: ThreadStatus,
+  to: ThreadStatus,
+) {
+  const empty = { heldCompletion: null, requests: [], stop: null };
+  const result = db.transaction((tx) =>
+    writeThreadLifecycleStateInTransaction(tx, {
+      expectedStatus: from,
+      next: { ...empty, status: to },
+      previous: empty,
+      threadId,
+    }),
+  );
+  if (result.kind !== "written") throw new Error("status move conflicted");
+  return result.thread;
+}
 
 function setup() {
   const db = createMigratedConnection();
@@ -1333,12 +1352,10 @@ describe("threads", () => {
       environmentId: otherEnvironment.id,
       providerId: "codex",
     });
-    requireThreadLifecycleEventApplied(
-      applyThreadLifecycleEvent(db, {
-        event: { type: "stop.requested" },
-        threadId: stoppingThread.id,
-      }),
-    );
+    db.update(threads)
+      .set({ status: "stopping" })
+      .where(eq(threads.id, stoppingThread.id))
+      .run();
     expect(getThread(db, stoppingThread.id)?.status).toBe("stopping");
 
     expect(listHostThreadIds(db, { hostId: host.id })).toEqual([
@@ -1413,12 +1430,7 @@ describe("thread lifecycle transitions and read state", () => {
       });
 
       vi.setSystemTime(2_000);
-      const idleThread = requireThreadLifecycleEventApplied(
-        applyThreadLifecycleEvent(db, {
-          event: { type: "run.succeeded" },
-          threadId: activeThread.id,
-        }),
-      );
+      const idleThread = moveThreadStatus(db, activeThread.id, "active", "idle");
       expect(idleThread.status).toBe("idle");
       expect(idleThread.updatedAt).toBe(2_000);
       expect(idleThread.latestAttentionAt).toBe(2_000);
@@ -1428,12 +1440,7 @@ describe("thread lifecycle transitions and read state", () => {
         lastReadAt: idleThread.latestAttentionAt,
       });
       vi.setSystemTime(3_000);
-      const activeAgainThread = requireThreadLifecycleEventApplied(
-        applyThreadLifecycleEvent(db, {
-          event: { type: "run.started" },
-          threadId: activeThread.id,
-        }),
-      );
+      const activeAgainThread = moveThreadStatus(db, activeThread.id, "idle", "active");
       expect(activeAgainThread.status).toBe("active");
       expect(activeAgainThread.updatedAt).toBe(3_000);
       expect(activeAgainThread.latestAttentionAt).toBe(2_000);
@@ -1458,12 +1465,7 @@ describe("thread lifecycle transitions and read state", () => {
       });
 
       vi.setSystemTime(2_000);
-      const erroredThread = requireThreadLifecycleEventApplied(
-        applyThreadLifecycleEvent(db, {
-          event: { type: "run.failed" },
-          threadId: stoppingThread.id,
-        }),
-      );
+      const erroredThread = moveThreadStatus(db, stoppingThread.id, "stopping", "error");
       expect(erroredThread.status).toBe("error");
       expect(erroredThread.updatedAt).toBe(2_000);
       expect(erroredThread.latestAttentionAt).toBe(1_000);

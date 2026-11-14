@@ -22,18 +22,13 @@ import type {
   JsonObject,
   ReasoningLevel,
   ThreadChangeKind,
-  ThreadLifecycleEvent,
-  ThreadLifecycleNoopReason,
   ThreadOriginKind,
   ThreadParentNotifications,
   ThreadSearchSourceKind,
   ThreadStatus,
   ThreadVisibility,
 } from "@bb/domain";
-import {
-  evaluateThreadLifecycleEvent,
-  threadSearchSourceKindSchema,
-} from "@bb/domain";
+import { threadSearchSourceKindSchema } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
@@ -734,24 +729,6 @@ export interface ListActiveHostThreadsArgs {
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
-}
-
-interface StatusTransition {
-  currentStatus: ThreadStatus;
-  newStatus: ThreadStatus;
-  parentThreadId: string | null;
-}
-
-function statusTransitionNeedsAttention(args: StatusTransition): boolean {
-  if (args.currentStatus === "active" && args.newStatus === "idle") {
-    return args.parentThreadId === null;
-  }
-
-  if (args.newStatus !== "error") {
-    return false;
-  }
-
-  return args.currentStatus === "active" || args.currentStatus === "starting";
 }
 
 function buildListThreadsFilters(options: ListThreadsOptions) {
@@ -2309,128 +2286,6 @@ export function unarchiveThread(
     });
   }
   return updated ?? null;
-}
-
-export type ApplyThreadLifecycleEventNoopReason =
-  | ThreadLifecycleNoopReason
-  | "not-found"
-  | "cas-conflict";
-
-export type ApplyThreadLifecycleEventOutcome =
-  | { applied: true; thread: ThreadRow }
-  | {
-      applied: false;
-      detail: string;
-      reason: ApplyThreadLifecycleEventNoopReason;
-    };
-
-export interface ApplyThreadLifecycleEventArgs {
-  event: ThreadLifecycleEvent;
-  threadId: string;
-}
-
-interface ThreadLifecycleEventNotAppliedErrorArgs {
-  detail: string;
-  reason: ApplyThreadLifecycleEventNoopReason;
-}
-
-export class ThreadLifecycleEventNotAppliedError extends Error {
-  readonly detail: string;
-  readonly reason: ApplyThreadLifecycleEventNoopReason;
-
-  constructor(args: ThreadLifecycleEventNotAppliedErrorArgs) {
-    super(
-      `Thread lifecycle event not applied (${args.reason}): ${args.detail}`,
-    );
-    this.name = "ThreadLifecycleEventNotAppliedError";
-    this.detail = args.detail;
-    this.reason = args.reason;
-  }
-}
-
-export function requireThreadLifecycleEventApplied(
-  outcome: ApplyThreadLifecycleEventOutcome,
-) {
-  if (!outcome.applied) {
-    throw new ThreadLifecycleEventNotAppliedError(outcome);
-  }
-  return outcome.thread;
-}
-
-export function applyThreadLifecycleEventInTransaction(
-  db: DbTransaction,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  const thread = db
-    .select()
-    .from(threads)
-    .where(eq(threads.id, args.threadId))
-    .get();
-  if (!thread) {
-    return {
-      applied: false,
-      detail: `thread not found: ${args.threadId}`,
-      reason: "not-found",
-    };
-  }
-
-  const evaluation = evaluateThreadLifecycleEvent({
-    event: args.event,
-    thread,
-  });
-  if ("noop" in evaluation) {
-    return {
-      applied: false,
-      detail: evaluation.detail,
-      reason: evaluation.noop,
-    };
-  }
-
-  const now = Date.now();
-  const set: Partial<typeof threads.$inferInsert> = {
-    status: evaluation.to,
-    statusChangedAt: now,
-    updatedAt: now,
-  };
-  if (evaluation.to === "idle" && thread.environmentId !== null) {
-    set.startupContext = null;
-  }
-  if (
-    statusTransitionNeedsAttention({
-      currentStatus: thread.status,
-      newStatus: evaluation.to,
-      parentThreadId: thread.parentThreadId,
-    })
-  ) {
-    set.latestAttentionAt = now;
-  }
-
-  const updated = db
-    .update(threads)
-    .set(set)
-    .where(
-      and(eq(threads.id, args.threadId), eq(threads.status, thread.status)),
-    )
-    .returning()
-    .get();
-  if (!updated) {
-    return {
-      applied: false,
-      detail: `status changed from ${thread.status} while applying ${args.event.type}`,
-      reason: "cas-conflict",
-    };
-  }
-  return { applied: true, thread: updated };
-}
-
-export function applyThreadLifecycleEvent(
-  db: DbConnection,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  return db.transaction(
-    (tx) => applyThreadLifecycleEventInTransaction(tx, args),
-    { behavior: "immediate" },
-  );
 }
 
 export interface TurnStartDeadlineCandidate {

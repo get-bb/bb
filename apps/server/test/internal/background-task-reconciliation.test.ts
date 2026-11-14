@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
+import { runThreadLifecycleTransaction } from "../../src/services/threads/lifecycle/run.js";
 import {
   internalAuthHeaders,
   listQueuedThreadCommands,
@@ -30,6 +31,7 @@ import {
   seedThread,
   seedThreadFixture,
   seedThreadRuntimeState,
+  seedThreadStop,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
@@ -197,6 +199,7 @@ function seedStoppedTurnStillRunning(harness: TestAppHarness) {
     scope: threadScope(),
     data: { reason: "manual-stop" },
   });
+  seedThreadStop(harness.deps, { acked: false, threadId: fixture.thread.id });
   return fixture;
 }
 
@@ -1158,22 +1161,15 @@ describe("active thread disconnect reconciliation triggers", () => {
     await withTestHarness(async (harness) => {
       const fixture = seedStoppedTurnStillRunning(harness);
       const sessionId = await reopenSessionBeforeSlowSocket(harness, fixture);
-      seedStoredEvent(harness.deps, {
-        threadId: fixture.thread.id,
-        environmentId: fixture.environment.id,
-        sequence: 3,
-        type: "client/turn/requested",
-        scope: threadScope(),
-        data: {
-          direction: "outbound",
+      runThreadLifecycleTransaction(harness.deps, fixture.thread.id, {
+        type: "request.sent",
+        request: {
+          hostId: fixture.host.id,
+          kind: "new-turn",
           requestId: "creq_after_missed_stop",
-          input: [{ type: "text", text: "Next task" }],
-          target: { kind: "new-turn" },
-          initiator: "user",
-          senderThreadId: null,
-          request: { method: "turn/start", params: {} },
-          source: "tell",
+          syncTitle: false,
         },
+        now: Date.now(),
       });
 
       openDaemonSocket(harness, { hostId: fixture.host.id, sessionId });

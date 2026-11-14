@@ -70,8 +70,8 @@ describe("child outcomes without provider completion", () => {
       });
 
       vi.useFakeTimers();
-      finalizeStoppedThread(harness.deps, { threadId: child.id });
-      finalizeStoppedThread(harness.deps, { threadId: child.id });
+      finalizeStoppedThread(harness.deps, { fence: true, threadId: child.id });
+      finalizeStoppedThread(harness.deps, { fence: true, threadId: child.id });
       await vi.advanceTimersByTimeAsync(2_000);
 
       expect(parentSystemRequests(harness, parent.id)).toHaveLength(0);

@@ -22,7 +22,7 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { sendQueuedMessageNow } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
@@ -251,10 +251,7 @@ function seedDoorRejection(
 }
 
 function failThread(harness: TestAppHarness, threadId: string): void {
-  applyLoggedThreadLifecycleEvent(harness.deps, {
-    event: { type: "run.failed" },
-    threadId,
-  });
+  moveThreadStatus(harness.deps, { move: "run.failed", threadId });
 }
 
 function turnRequests(harness: TestAppHarness, threadId: string) {
@@ -363,10 +360,7 @@ async function drainRecoveries(
     )
   ) {
     await sweepPastResume(harness);
-    applyLoggedThreadLifecycleEvent(harness.deps, {
-      event: { type: "run.succeeded" },
-      threadId,
-    });
+    moveThreadStatus(harness.deps, { move: "run.succeeded", threadId });
     await runQueuedMessageDispatch(harness.deps, {
       kind: "thread-ready",
       threadId,
@@ -472,10 +466,7 @@ describe("the turn.failed announcement", () => {
       const succeeding = seedFailableThread(harness, "host-ok").thread;
       const failing = seedFailableThread(harness, "host-not-ok").thread;
 
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.succeeded" },
-        threadId: succeeding.id,
-      });
+      moveThreadStatus(harness.deps, { move: "run.succeeded", threadId: succeeding.id });
       expect(announced).toEqual([]);
 
       failThread(harness, failing.id);
@@ -1060,10 +1051,7 @@ describe("a queued retry", () => {
         "Do something else",
       ]);
 
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.succeeded" },
-        threadId: thread.id,
-      });
+      moveThreadStatus(harness.deps, { move: "run.succeeded", threadId: thread.id });
       await sendQueuedMessageNow(harness.deps, {
         mode: "auto",
         queuedMessageId: notSent.id,
@@ -1128,10 +1116,7 @@ describe("a queued retry", () => {
       expect(notSent?.waitingOn).toEqual({ kind: "superseded" });
       expect(queued?.payload.kind).toBe("inline");
 
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.succeeded" },
-        threadId: thread.id,
-      });
+      moveThreadStatus(harness.deps, { move: "run.succeeded", threadId: thread.id });
       await runQueuedMessageDispatch(harness.deps, {
         kind: "thread-ready",
         threadId: thread.id,

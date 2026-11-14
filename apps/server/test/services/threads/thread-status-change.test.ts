@@ -21,11 +21,10 @@ import {
   type ThreadChangedMessage,
   type ThreadStatus,
 } from "@bb/domain";
-import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../../helpers/thread-status.js";
 import { NotificationHub } from "../../../src/ws/hub.js";
 import { createMockHubSocket } from "../../helpers/mock-hub-socket.js";
 import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
-import { testLogger } from "../../helpers/test-app.js";
 
 const providerRegistry = await createTestProviderRegistry();
 
@@ -173,17 +172,14 @@ function lastThreadListMessage(
   return message;
 }
 
-describe("applyLoggedThreadLifecycleEvent", () => {
+describe("announceThreadStatusChange", () => {
   it("broadcasts status-changed with the post-transition row and runtime", () => {
     const { db, hostId, hub, projectId, threadId } = setup("idle");
     connectDaemon(db, hub, hostId);
     const socket = createMockHubSocket();
     hub.subscribe(socket, { kind: "thread-list" });
 
-    const outcome = applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger, providerRegistry },
-      { event: { type: "run.started" }, threadId },
-    );
+    const outcome = moveThreadStatus({ db, hub, providerRegistry }, { move: "run.started", threadId });
 
     expect(outcome.applied).toBe(true);
     const row = getThread(db, threadId);
@@ -214,10 +210,7 @@ describe("applyLoggedThreadLifecycleEvent", () => {
     const socket = createMockHubSocket();
     hub.subscribe(socket, { kind: "thread-list" });
 
-    applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger, providerRegistry },
-      { event: { type: "run.started" }, threadId },
-    );
+    moveThreadStatus({ db, hub, providerRegistry }, { move: "run.started", threadId });
 
     expect(
       lastThreadListMessage(socket.messages).metadata?.statusChange?.runtime
@@ -232,18 +225,12 @@ describe("applyLoggedThreadLifecycleEvent", () => {
     const socket = createMockHubSocket();
     hub.subscribe(socket, { kind: "thread-list" });
 
-    applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger, providerRegistry },
-      { event: { type: "run.started" }, threadId },
-    );
+    moveThreadStatus({ db, hub, providerRegistry }, { move: "run.started", threadId });
     expect(
       lastThreadListMessage(socket.messages).metadata?.statusChange?.activity,
     ).toEqual({ ...NO_ACTIVITY, activePlanModeCount: 1 });
 
-    applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger, providerRegistry },
-      { event: { type: "run.succeeded" }, threadId },
-    );
+    moveThreadStatus({ db, hub, providerRegistry }, { move: "run.succeeded", threadId });
     expect(
       lastThreadListMessage(socket.messages).metadata?.statusChange,
     ).toMatchObject({
@@ -252,15 +239,12 @@ describe("applyLoggedThreadLifecycleEvent", () => {
     });
   });
 
-  it("does not broadcast when the event is not applied", () => {
+  it("does not broadcast when the status move is not applied", () => {
     const { db, hub, threadId } = setup("idle");
     const socket = createMockHubSocket();
     hub.subscribe(socket, { kind: "thread-list" });
 
-    const outcome = applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger, providerRegistry },
-      { event: { type: "run.succeeded" }, threadId },
-    );
+    const outcome = moveThreadStatus({ db, hub, providerRegistry }, { move: "run.succeeded", threadId });
 
     expect(outcome.applied).toBe(false);
     expect(socket.messages).toHaveLength(0);

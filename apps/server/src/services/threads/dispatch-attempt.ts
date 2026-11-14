@@ -64,7 +64,7 @@ import {
   settleQueueRowDispatched,
   type QueuedDispatchMessage,
 } from "./queue-waits.js";
-import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import { runThreadLifecycleInTransaction } from "./lifecycle/run.js";
 import { buildExecutionOptions } from "./thread-commands.js";
 import {
   getActiveTurnId,
@@ -932,11 +932,12 @@ async function admitPendingThread(
             args.respectManualStopPause,
           )({ tx });
         }
-        const prepared = applyLoggedThreadLifecycleEventInTransaction(
-          { db: tx, logger: deps.logger },
-          { threadId: args.thread.id, event: { type: "run.preparing" } },
+        const prepared = runThreadLifecycleInTransaction(
+          { db: tx, hub: deps.hub, logger: deps.logger },
+          args.thread.id,
+          { type: "provisioning.started" },
         );
-        if (!prepared.applied) {
+        if (prepared.refusal !== null) {
           throw new PendingThreadAdmissionLost();
         }
         const starting = getThread(tx, args.thread.id);

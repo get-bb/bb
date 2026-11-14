@@ -885,7 +885,7 @@ describe("editThreadMessage", () => {
         threadStatus: "active",
       });
 
-      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      requestThreadStopForCurrentState(harness.deps, thread);
       const stop = await waitForQueuedCommand(
         harness,
         (queued) => queued.command.type === "thread.stop",

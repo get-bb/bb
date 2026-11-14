@@ -1,11 +1,8 @@
-import {
-  getEnvironment,
-  getThread,
-  requireThreadLifecycleEventApplied,
-} from "@bb/db";
+import { getEnvironment, getThread } from "@bb/db";
 import type { DbConnection, DbTransaction, EnvironmentRow } from "@bb/db";
 import type {
   ClientTurnRequestId,
+  ThreadTurnRequestKind,
   PromptInput,
   QueuedMessageSystemNotice,
   ResolvedThreadExecutionOptions,
@@ -42,17 +39,13 @@ import {
   ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
 } from "./thread-lifecycle.js";
-import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   dispatchTurnDuringReprovision,
   requireReadyThreadEnvironment,
 } from "./thread-turn-dispatch.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
-import {
-  buildThreadStatusChangeMetadata,
-  resolveThreadRuntimeState,
-} from "./thread-runtime-display.js";
+import { resolveThreadRuntimeState } from "./thread-runtime-display.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
@@ -72,9 +65,11 @@ import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js
 import { clearThreadContext } from "./thread-context-clear.js";
 import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
 import {
-  settleInFlightTurnRequest,
-  trackInFlightTurnRequest,
-} from "../../internal/turn-completed-events.js";
+  runThreadLifecycleInTransaction,
+  type ThreadLifecycleOutcome,
+  type ThreadLifecycleTransactionDeps,
+} from "./lifecycle/run.js";
+import { finishThreadLifecycleInBackground } from "./lifecycle/finish.js";
 import {
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
@@ -145,7 +140,7 @@ interface SendThreadMessageQueueRequestArgs {
 }
 
 interface SendThreadMessageQueueRequestResult {
-  activeThread: Thread | null;
+  lifecycle: ThreadLifecycleOutcome;
 }
 
 export interface SendThreadMessageTransactionPreflight {
@@ -178,7 +173,7 @@ interface AppendAndQueueSendThreadMessageArgs {
 }
 
 interface AppendAndQueueSendThreadMessageResult {
-  activeThread: Thread | null;
+  lifecycle: ThreadLifecycleOutcome;
   request: AppendedClientTurnRequestWithNotification;
 }
 
@@ -432,7 +427,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   target,
   thread,
 }: AppendAndQueueSendThreadMessageArgs): AppendAndQueueSendThreadMessageResult {
-  let activeThread: Thread | null = null;
+  let lifecycle: ThreadLifecycleOutcome | null = null;
   const request = db.transaction(
     (tx) => {
       assertThreadHostAcceptsWork(tx, thread);
@@ -477,15 +472,44 @@ function appendAndQueueSendThreadMessageInTransaction({
         requestEventSequence: appended.sequence,
         tx,
       });
-      activeThread = queueResult.activeThread;
+      lifecycle = queueResult.lifecycle;
       return appended;
     },
     { behavior: "immediate" },
   );
-  return {
-    activeThread,
-    request,
-  };
+  if (lifecycle === null) {
+    throw new Error(`Thread ${thread.id} send recorded no lifecycle outcome`);
+  }
+  return { lifecycle, request };
+}
+
+function recordSentTurnRequestInTransaction(
+  deps: ThreadLifecycleTransactionDeps,
+  args: {
+    hostId: string;
+    kind: ThreadTurnRequestKind;
+    requestId: ClientTurnRequestId;
+    threadId: string;
+  },
+): ThreadLifecycleOutcome {
+  const outcome = runThreadLifecycleInTransaction(deps, args.threadId, {
+    type: "request.sent",
+    request: {
+      hostId: args.hostId,
+      kind: args.kind,
+      requestId: args.requestId,
+      syncTitle: false,
+    },
+    now: Date.now(),
+  });
+  if (outcome.refusal !== null) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `Thread ${args.threadId} cannot take a ${args.kind} request (${outcome.refusal})`,
+    );
+  }
+  return outcome;
 }
 
 export async function sendThreadMessage(
@@ -730,50 +754,38 @@ async function sendThreadMessageWithoutContextClear(
       input,
       inputGroups,
       originPluginId: args.originPluginId,
-      queueInTransaction: ({ tx }) => {
-        const dispatchKind = command.mode;
-        const currentThread = getThread(tx, thread.id);
-        if (
-          dispatchKind === "turn.submit" ||
-          currentThread?.status === "error" ||
-          currentThread?.status === "idle"
-        ) {
-          return {
-            activeThread: requireThreadLifecycleEventApplied(
-              applyLoggedThreadLifecycleEventInTransaction(
-                { db: tx, logger: deps.logger },
-                { event: { type: "run.started" }, threadId: thread.id },
-              ),
-            ),
-          };
-        }
-        return { activeThread: null };
-      },
+      queueInTransaction: ({ tx }) => ({
+        lifecycle: recordSentTurnRequestInTransaction(
+          { db: tx, hub: deps.hub, logger: deps.logger },
+          {
+            hostId: readyEnvironment.hostId,
+            kind: command.mode === "turn.submit" ? "new-turn" : "thread-start",
+            requestId,
+            threadId: thread.id,
+          },
+        ),
+      }),
       requestId,
       senderThreadId,
       systemNotice: args.systemNotice,
       target,
       thread,
     });
-    trackInFlightTurnRequest(thread.id);
     deps.hub.notifyThread(
       thread.id,
       queuedRequest.request.notificationChanges,
       queuedRequest.request.notificationMetadata,
     );
+    finishThreadLifecycleInBackground(deps, queuedRequest.lifecycle);
     const onHistoryReplacementSettled =
       args.historyReplacement?.onCommandSettled;
     startLiveHostCommand(deps, {
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onSettled: async () => {
-        try {
-          await onHistoryReplacementSettled?.();
-        } finally {
-          await settleInFlightTurnRequest(deps, thread.id);
-        }
-      },
+      ...(onHistoryReplacementSettled !== undefined
+        ? { onSettled: onHistoryReplacementSettled }
+        : {}),
       onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },
@@ -781,13 +793,6 @@ async function sendThreadMessageWithoutContextClear(
         );
       },
     });
-    if (queuedRequest.activeThread) {
-      deps.hub.notifyThread(
-        thread.id,
-        ["status-changed"],
-        buildThreadStatusChangeMetadata(deps, queuedRequest.activeThread),
-      );
-    }
     if (shouldCaptureUserMessageSent) {
       captureUserMessageSentTelemetry(deps, {
         isChildThread: thread.parentThreadId !== null,
@@ -833,21 +838,29 @@ async function sendThreadMessageWithoutContextClear(
     input,
     inputGroups,
     originPluginId: args.originPluginId,
-    queueInTransaction: () => {
-      return { activeThread: null };
-    },
+    queueInTransaction: ({ tx }) => ({
+      lifecycle: recordSentTurnRequestInTransaction(
+        { db: tx, hub: deps.hub, logger: deps.logger },
+        {
+          hostId: readyEnvironment.hostId,
+          kind: "steer",
+          requestId,
+          threadId: thread.id,
+        },
+      ),
+    }),
     requestId,
     senderThreadId,
     systemNotice: args.systemNotice,
     target,
     thread,
   });
-  trackInFlightTurnRequest(thread.id);
   deps.hub.notifyThread(
     thread.id,
     queuedRequest.request.notificationChanges,
     queuedRequest.request.notificationMetadata,
   );
+  finishThreadLifecycleInBackground(deps, queuedRequest.lifecycle);
   startLiveHostCommand(deps, {
     command,
     hostId: readyEnvironment.hostId,
@@ -858,7 +871,6 @@ async function sendThreadMessageWithoutContextClear(
         "Live turn submit command failed",
       );
     },
-    onSettled: () => settleInFlightTurnRequest(deps, thread.id),
   });
   if (shouldCaptureUserMessageSent) {
     captureUserMessageSentTelemetry(deps, {

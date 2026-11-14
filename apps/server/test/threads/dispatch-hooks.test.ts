@@ -30,7 +30,7 @@ import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { createClientTurnRequestId } from "../../src/services/threads/thread-events.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -352,10 +352,7 @@ describe("thread status races under a send", () => {
         handler: () => {
           passes += 1;
           if (passes === 1) {
-            applyLoggedThreadLifecycleEvent(harness.deps, {
-              event: { type: "run.started" },
-              threadId: thread.id,
-            });
+            moveThreadStatus(harness.deps, { move: "run.started", threadId: thread.id });
             seedTurnStarted(harness.deps, {
               environmentId: environment.id,
               providerThreadId: "provider-host-status-flap",
@@ -364,10 +361,7 @@ describe("thread status races under a send", () => {
             });
           }
           if (passes === 2) {
-            applyLoggedThreadLifecycleEvent(harness.deps, {
-              event: { type: "run.succeeded" },
-              threadId: thread.id,
-            });
+            moveThreadStatus(harness.deps, { move: "run.succeeded", threadId: thread.id });
           }
           return { action: "proceed" } as const;
         },
@@ -1401,10 +1395,7 @@ describe("message.dispatch hooks on the queue drain", () => {
       });
       await entered.promise;
       try {
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.started" },
-          threadId: thread.id,
-        });
+        moveThreadStatus(harness.deps, { move: "run.started", threadId: thread.id });
         seedTurnStarted(harness.deps, {
           environmentId: thread.environmentId,
           providerThreadId: "provider-host-hook-stop-race",

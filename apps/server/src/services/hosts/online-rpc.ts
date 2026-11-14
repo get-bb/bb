@@ -21,6 +21,7 @@ import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
 import {
   HostOnlineRpcCancelledError,
+  HostOnlineRpcConnectionLostError,
   HostOnlineRpcTimeoutError,
   HostOnlineRpcUnavailableError,
 } from "../../ws/hub.js";
@@ -359,6 +360,19 @@ async function waitForRetryableHostRpcTransport(
   await prepareHostForWork(deps, args, false);
 }
 
+export function isDeliveryUnknownApiError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.body.code === "command_timeout") return true;
+  const details = error.body.details;
+  return (
+    error.body.code === "host_unavailable" &&
+    typeof details === "object" &&
+    details !== null &&
+    "deliveryUnknown" in details &&
+    details.deliveryUnknown === true
+  );
+}
+
 export function isHostUnavailableApiError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
@@ -419,6 +433,15 @@ function throwOnlineRpcError(error: unknown): never {
       "request_cancelled",
       "Request was cancelled by the client",
       false,
+    );
+  }
+
+  if (error instanceof HostOnlineRpcConnectionLostError) {
+    throw new ApiError(
+      502,
+      "host_unavailable",
+      "Host disconnected before it answered",
+      { details: { deliveryUnknown: true }, retryable: false },
     );
   }
 

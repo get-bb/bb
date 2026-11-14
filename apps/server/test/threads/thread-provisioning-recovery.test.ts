@@ -868,11 +868,7 @@ it.each(["success", "failure"])(
         harness,
         ({ command }) => command.type === "environment.attach",
       );
-      requestThreadStopForCurrentState(
-        harness.deps,
-        getThread(harness.db, thread.id)!,
-        environment,
-      );
+      requestThreadStopForCurrentState(harness.deps, getThread(harness.db, thread.id)!);
       const cancel = await waitForQueuedCommand(
         harness,
         ({ command }) => command.type === "environment.attach.cancel",

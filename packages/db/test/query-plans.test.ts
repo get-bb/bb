@@ -6,12 +6,7 @@ import {
 } from "../src/data/environments.js";
 import { performance } from "node:perf_hooks";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  encodeClientTurnRequestIdNumber,
-  threadScope,
-  turnScope,
-  type ClientTurnRequestId,
-} from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import {
   type DbConnection,
   type SlowDbQueryLogger,
@@ -32,7 +27,6 @@ import {
   getTimelineGroupingContextChangesInRange,
   getUnfinishedCommandItemData,
   hasStoredSpawnAgentToolCall,
-  hasStoredTerminalClientTurnRequestEvent,
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
   insertEvents,
@@ -977,56 +971,6 @@ describe("slow query index plans", () => {
       );
       expectNoThreadOnlyEventSeek(details);
     }
-
-    db.$client.close();
-  });
-
-  it("finds a terminal client turn request event through the type index", () => {
-    const { db, thread } = setup();
-    const acceptedRequestId = encodeClientTurnRequestIdNumber({ value: 1 });
-    const rejectedRequestId = encodeClientTurnRequestIdNumber({ value: 2 });
-    const pendingRequestId = encodeClientTurnRequestIdNumber({ value: 3 });
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "turn/input/accepted",
-        scope: turnScope("turn-1"),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ clientRequestId: acceptedRequestId }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 2,
-        type: "client/turn/rejected",
-        scope: threadScope(),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ requestId: rejectedRequestId }),
-      },
-    ]);
-
-    const has = (requestId: ClientTurnRequestId) =>
-      hasStoredTerminalClientTurnRequestEvent(db, {
-        requestId,
-        threadId: thread.id,
-      });
-    const [query] = captureStatements(db, () => {
-      expect(has(pendingRequestId)).toBe(false);
-    });
-    expect(has(acceptedRequestId)).toBe(true);
-    expect(has(rejectedRequestId)).toBe(true);
-    if (!query) {
-      throw new Error("Expected the terminal client turn request SQL");
-    }
-    const details = queryPlanDetails({ db, ...query });
-    expect(details).toContain(
-      "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=?)",
-    );
-    expectNoThreadOnlyEventSeek(details);
 
     db.$client.close();
   });
