@@ -469,8 +469,7 @@ interface PendingCompactionDispatch extends UnopenedDispatch {
 }
 
 type UnopenedDispatchOutcome =
-  | { status: "completed" }
-  | { status: "failed"; error: { message: string } };
+  { status: "completed" } | { status: "failed"; error: { message: string } };
 
 const codexThreadStatusChangedParamsSchema = z
   .object({
@@ -2092,6 +2091,10 @@ async function dispatchCodexGoalCommand(
   turn: CodexTurnDispatch,
   command: CodexGoalCommand,
 ): Promise<void> {
+  if (command === "resume") {
+    await dispatchCodexGoalResume(turn);
+    return;
+  }
   let refusal: string | null;
   try {
     refusal = await runCodexGoalCommand(
@@ -2113,6 +2116,57 @@ async function dispatchCodexGoalCommand(
     { clientRequestId: turn.params.clientRequestId, prepared: turn.prepared },
     { status: "completed" },
   );
+  sendResult(turn.id, ACCEPTED_TURN_INPUT);
+}
+
+async function dispatchCodexGoalResume(turn: CodexTurnDispatch): Promise<void> {
+  const { session, connection, codexThreadId, params } = turn;
+  const accepted = waitForInputAcceptance(session, params.clientRequestId);
+  let goalTurnId: string | null;
+  try {
+    const refusal = goalResumeRefusal(
+      await readCodexGoal(connection, codexThreadId),
+    );
+    if (refusal !== null) {
+      session.inputAcceptanceWaiters.delete(params.clientRequestId);
+      turn.prepared.rollback();
+      sendResult(turn.id, { admission: "rejected", message: refusal });
+      return;
+    }
+    const goal = await setCodexGoalStatus(connection, codexThreadId, "active");
+    goalTurnId =
+      goal.status === "active"
+        ? await readCodexActiveTurnId(connection, codexThreadId)
+        : null;
+  } catch (error) {
+    session.inputAcceptanceWaiters.delete(params.clientRequestId);
+    answerFailedTurnInput(turn, error);
+    return;
+  }
+  if (goalTurnId === null) {
+    settleUnopenedDispatch(
+      session,
+      { clientRequestId: params.clientRequestId, prepared: turn.prepared },
+      { status: "completed" },
+    );
+  } else if (
+    session.openCodexTurnIds.has(goalTurnId) &&
+    turn.prepared.claim()
+  ) {
+    sendThreadDeltas(session, [
+      {
+        kind: "input.accepted",
+        clientRequestId: params.clientRequestId,
+        providerTurnId: goalTurnId,
+      },
+    ]);
+  }
+  const failure = await accepted;
+  if (failure !== null) {
+    turn.prepared.rollback();
+    sendError(turn.id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, failure.message);
+    return;
+  }
   sendResult(turn.id, ACCEPTED_TURN_INPUT);
 }
 
@@ -2406,11 +2460,10 @@ function parseCodexGoalCommand(
   return command.success ? command.data : null;
 }
 
-async function runCodexGoalCommand(
+async function readCodexGoal(
   connection: CodexAppServerConnection,
   codexThreadId: string,
-  command: CodexGoalCommand,
-): Promise<string | null> {
+): Promise<z.infer<typeof codexThreadGoalSchema> | null> {
   const { goal } = await connection.request({
     method: "thread/goal/get",
     params: { threadId: codexThreadId },
@@ -2419,7 +2472,68 @@ async function runCodexGoalCommand(
       .passthrough(),
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
-  if (goal === null || goal === undefined) {
+  return goal ?? null;
+}
+
+function goalResumeRefusal(
+  goal: z.infer<typeof codexThreadGoalSchema> | null,
+): string | null {
+  if (goal === null) {
+    return "This thread has no Goal to resume.";
+  }
+  if (goal.status === "active" || goal.status === "complete") {
+    return `The Goal is already ${goal.status}.`;
+  }
+  return null;
+}
+
+const CODEX_ACTIVE_TURN_PROBE_ID = "bb-active-turn-probe";
+const CODEX_ACTIVE_TURN_MISMATCH_PATTERN =
+  /^expected active turn id `[^`]+` but found `([^`]+)`$/u;
+
+async function readCodexActiveTurnId(
+  connection: CodexAppServerConnection,
+  codexThreadId: string,
+): Promise<string | null> {
+  try {
+    await connection.request({
+      method: "turn/steer",
+      params: {
+        threadId: codexThreadId,
+        expectedTurnId: CODEX_ACTIVE_TURN_PROBE_ID,
+        input: [],
+      },
+      resultSchema: ignoredChildResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (!(error instanceof CodexAppServerRpcError)) {
+      throw error;
+    }
+    const activeTurnId = CODEX_ACTIVE_TURN_MISMATCH_PATTERN.exec(
+      error.message,
+    )?.[1];
+    if (activeTurnId !== undefined) {
+      return activeTurnId;
+    }
+    if (
+      error.message === "no active turn to steer" ||
+      codexBusyAdmission(error) !== null
+    ) {
+      return null;
+    }
+    throw error;
+  }
+  throw new Error("codex accepted the active-turn probe steer");
+}
+
+async function runCodexGoalCommand(
+  connection: CodexAppServerConnection,
+  codexThreadId: string,
+  command: Exclude<CodexGoalCommand, "resume">,
+): Promise<string | null> {
+  const goal = await readCodexGoal(connection, codexThreadId);
+  if (goal === null) {
     return `This thread has no Goal to ${command}.`;
   }
   switch (command) {
@@ -2436,12 +2550,6 @@ async function runCodexGoalCommand(
         return "The Goal is not active, so there is nothing to pause.";
       }
       await setCodexGoalStatus(connection, codexThreadId, "paused");
-      return null;
-    case "resume":
-      if (goal.status === "active" || goal.status === "complete") {
-        return `The Goal is already ${goal.status}.`;
-      }
-      await setCodexGoalStatus(connection, codexThreadId, "active");
       return null;
   }
 }

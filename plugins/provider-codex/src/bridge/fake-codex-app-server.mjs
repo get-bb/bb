@@ -731,13 +731,30 @@ async function handleRequest(message) {
       respond(id, { turn });
       return;
     }
-    case "turn/steer":
+    case "turn/steer": {
       if (script?.steerError) {
         send({ jsonrpc: "2.0", id, error: script.steerError });
         return;
       }
+      const activeTurnId = openTurnIdsByThreadId.get(params.threadId);
+      if (activeTurnId === undefined && script?.steerRequiresActiveTurn) {
+        respondError(id, -32600, "no active turn to steer");
+        return;
+      }
+      if (
+        activeTurnId !== undefined &&
+        activeTurnId !== params.expectedTurnId
+      ) {
+        respondError(
+          id,
+          -32600,
+          `expected active turn id \`${params.expectedTurnId}\` but found \`${activeTurnId}\``,
+        );
+        return;
+      }
       respond(id, {});
       return;
+    }
     case "turn/interrupt": {
       interruptAttempts += 1;
       if (
@@ -868,7 +885,17 @@ async function handleRequest(message) {
       respond(id, { goal });
       notify("thread/goal/updated", { threadId: params.threadId, goal });
       if (params.status === "active" && !script?.goalResumeStartsNoTurn) {
-        setTimeout(() => runScriptedTurn(params.threadId), 0);
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        openTurnIdsByThreadId.set(params.threadId, turnId);
+        if (script?.goalTurnStartDelayMs === undefined) {
+          runScriptedTurn(params.threadId, turnId);
+        } else {
+          setTimeout(
+            () => runScriptedTurn(params.threadId, turnId),
+            script.goalTurnStartDelayMs,
+          );
+        }
       }
       return;
     }

@@ -88,6 +88,7 @@ async function startThread(
     scriptPath,
     JSON.stringify({
       requestLogPath,
+      steerRequiresActiveTurn: true,
       ...script,
       ...(initialGoalStatus === null ? {} : { initialGoalStatus }),
     }),
@@ -192,7 +193,7 @@ function acceptedBeforeResponse(clientRequestId: string, requestId: number) {
   return acceptedIndex !== -1 && acceptedIndex < responseIndex;
 }
 
-function zeroWorkLifecycleFor(clientRequestId: string) {
+function turnLifecycleFor(clientRequestId: string) {
   const turnId = acceptedTurnIdFor(clientRequestId);
   return deltasSent()
     .filter(
@@ -209,42 +210,48 @@ function zeroWorkLifecycleFor(clientRequestId: string) {
     );
 }
 
-it("settles /goal resume when Codex confirms the resume and leaves the Goal turn Codex starts to Codex", async () => {
-  const providerThreadId = await startThread("paused");
+it.each([
+  { order: "before", script: {} },
+  { order: "after", script: { goalTurnStartDelayMs: 50 } },
+])(
+  "binds /goal resume to the Goal turn Codex starts when Codex reports that turn $order it answers which turn is active",
+  async ({ script }) => {
+    const providerThreadId = await startThread("paused", script);
 
-  const response = await sendUserTurn(
-    providerThreadId,
-    2,
-    "creq_garesume5z",
-    "/goal resume",
-  );
+    const response = await sendUserTurn(
+      providerThreadId,
+      2,
+      "creq_garesume5z",
+      "/goal resume",
+    );
 
-  expect(response.result).toEqual({ admission: "accepted" });
-  expect(acceptedBeforeResponse("creq_garesume5z", 2)).toBe(true);
-  expect(acceptedTurnIdFor("creq_garesume5z")).toMatch(/^zero-work-/u);
-  expect(zeroWorkLifecycleFor("creq_garesume5z")).toEqual([
-    "turn.open",
-    "input.accepted",
-    "turn.boundary:completed",
-  ]);
-  await vi.waitFor(() =>
+    expect(response.result).toEqual({ admission: "accepted" });
+    expect(acceptedBeforeResponse("creq_garesume5z", 2)).toBe(true);
+    expect(acceptedTurnIdFor("creq_garesume5z")).toMatch(/^turn-fx-/u);
+    await vi.waitFor(() =>
+      expect(turnLifecycleFor("creq_garesume5z")).toEqual([
+        "turn.open",
+        "input.accepted",
+        "turn.boundary:completed",
+      ]),
+    );
     expect(
-      deltasSent().filter(
+      deltasSent().some(
         (delta) =>
-          delta.kind === "turn.boundary" &&
-          String(delta.providerTurnId).startsWith("turn-fx-"),
+          delta.kind === "turn.open" &&
+          String(delta.providerTurnId).startsWith("zero-work-"),
       ),
-    ).toHaveLength(1),
-  );
-  expect(goalSetParams()).toEqual([
-    { threadId: providerThreadId, origin: "user", status: "active" },
-  ]);
-  expect(
-    recordedRequests().some((request) => request.method === "turn/start"),
-  ).toBe(false);
-});
+    ).toBe(false);
+    expect(goalSetParams()).toEqual([
+      { threadId: providerThreadId, origin: "user", status: "active" },
+    ]);
+    expect(
+      recordedRequests().some((request) => request.method === "turn/start"),
+    ).toBe(false);
+  },
+);
 
-it("finishes /goal resume without waiting when Codex starts no Goal turn", async () => {
+it("finishes /goal resume with an empty turn when Codex starts no Goal turn", async () => {
   const providerThreadId = await startThread("paused", {
     goalResumeStartsNoTurn: true,
   });
@@ -258,11 +265,13 @@ it("finishes /goal resume without waiting when Codex starts no Goal turn", async
 
   expect(response.result).toEqual({ admission: "accepted" });
   expect(acceptedBeforeResponse("creq_garesume2z", 2)).toBe(true);
-  expect(zeroWorkLifecycleFor("creq_garesume2z")).toEqual([
+  expect(acceptedTurnIdFor("creq_garesume2z")).toMatch(/^zero-work-/u);
+  expect(turnLifecycleFor("creq_garesume2z")).toEqual([
     "turn.open",
     "input.accepted",
     "turn.boundary:completed",
   ]);
+  expect(goalStatesSent().at(-1)).toBe("active");
 });
 
 it.each([
@@ -282,7 +291,7 @@ it.each([
 
     expect(response.result).toEqual({ admission: "accepted" });
     expect(acceptedBeforeResponse("creq_gawipe22zz", 2)).toBe(true);
-    expect(zeroWorkLifecycleFor("creq_gawipe22zz")).toEqual([
+    expect(turnLifecycleFor("creq_gawipe22zz")).toEqual([
       "turn.open",
       "input.accepted",
       "turn.boundary:completed",
