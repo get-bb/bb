@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "settings-steer",
+  "threadId": "thr_0f15480d79",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.323 (Agent SDK 0.3.318)",
+  "recordedAt": "2026-11-14",
+  "description": "Long turns, each steered with one changed setting: model, env var, permission mode, reasoning level.",
+  "note": "Dropped 10 control_response lines the CLI echoed back for its own hook callbacks; the replay child would wait on them as answers to bridge requests.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 9,
+    "bridge\u2192runtime": 111,
+    "provider\u2192bridge": 286,
+    "bridge\u2192provider": 25
+  }
+}

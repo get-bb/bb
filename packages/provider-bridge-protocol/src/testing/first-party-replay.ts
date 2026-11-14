@@ -226,10 +226,13 @@ function rewriteAcpLaunchSpec(line: string, replayCommand: string[]): string {
     return line;
   }
   const { modelCli: _modelCli, ...rest } = spec as Record<string, unknown>;
+  const agentArgs = Array.isArray(rest["args"])
+    ? rest["args"].filter((arg): arg is string => typeof arg === "string")
+    : [];
   providerOptions.acpLaunchSpec = {
     ...rest,
     command: replayCommand[0],
-    args: replayCommand.slice(1),
+    args: [...replayCommand.slice(1), ...agentArgs],
     env: {},
   };
   return JSON.stringify(parsed);

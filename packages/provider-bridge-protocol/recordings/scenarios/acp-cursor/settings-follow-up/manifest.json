@@ -1,0 +1,17 @@
+{
+  "provider": "acp-cursor",
+  "cell": "settings-follow-up",
+  "threadId": "thr_894ba1296b",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.06.19-20-24-33-653a7fb",
+  "recordedAt": "2026-11-14",
+  "description": "Follow-up turns that each change one setting: model, env var, permission mode, reasoning level.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 7,
+    "bridge→runtime": 79,
+    "provider→bridge": 75,
+    "bridge→provider": 19
+  }
+}
