@@ -4,6 +4,7 @@ import ts from "typescript";
 
 const PACKAGE_NAME = "@get-bb/plugin-sdk";
 const HIDDEN_NAME = /^(?:InternalDoNotUse|internal_DO_NOT_USE_)/u;
+const LINE_WIDTH = 100;
 
 export const API_INDEX_FILES = [
   {
@@ -275,10 +276,26 @@ function importSpecifier(subpath) {
   return subpath === "." ? PACKAGE_NAME : `${PACKAGE_NAME}/${subpath.slice(2)}`;
 }
 
+function wrapNames(names) {
+  const lines = [];
+  let line = "";
+  for (const [index, name] of names.entries()) {
+    const item = `\`${name}\`${index === names.length - 1 ? "" : ","}`;
+    if (line !== "" && line.length + 1 + item.length > LINE_WIDTH) {
+      lines.push(line);
+      line = item;
+      continue;
+    }
+    line = line === "" ? item : `${line} ${item}`;
+  }
+  if (line !== "") lines.push(line);
+  return lines;
+}
+
 function renderList(heading, names) {
   const visible = names.filter((name) => !HIDDEN_NAME.test(name));
   if (visible.length === 0) return [];
-  return [`### ${heading}`, "", ...visible.map((name) => `- \`${name}\``), ""];
+  return [`### ${heading}`, "", ...wrapNames(visible), ""];
 }
 
 export function renderApiIndexes(sdkRoot) {

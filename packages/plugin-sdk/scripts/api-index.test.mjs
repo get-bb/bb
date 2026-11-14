@@ -123,14 +123,22 @@ describe("plugin SDK API index", () => {
     );
   });
 
-  it("renders an entry point under its import path without the host-only names", () => {
+  it("renders every export of an entry point under its import path without the host-only names", () => {
     const frontend = renderApiIndexes(packageRoot).find(
       (file) => file.filename === "frontend-api-index.md",
     );
-    expect(frontend?.content).toContain("## `@get-bb/plugin-sdk/app`");
-    expect(frontend?.content).toContain("- `definePluginApp`\n");
-    expect(frontend?.content).not.toMatch(
-      /InternalDoNotUse|internal_DO_NOT_USE_/u,
+    const app = readPublicEntries(packageRoot).find(
+      (entry) => entry.subpath === "./app",
     );
+    const { values, types } = collectEntryExports(app.source);
+    const rendered = [
+      ...frontend.content.matchAll(/`([A-Za-z_$][\w$]*)`/gu),
+    ].map((match) => match[1]);
+    const hidden = /^(?:InternalDoNotUse|internal_DO_NOT_USE_)/u;
+    expect(frontend.content).toContain("## `@get-bb/plugin-sdk/app`");
+    expect(rendered.sort()).toEqual(
+      [...values, ...types].filter((name) => !hidden.test(name)).sort(),
+    );
+    expect(frontend.content).not.toMatch(hidden);
   });
 });
