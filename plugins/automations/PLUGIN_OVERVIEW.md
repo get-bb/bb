@@ -4,7 +4,7 @@ Schedule work once or on a repeat, and let bb run it while you do something else
 
 - An Automations panel in the sidebar. Create, edit, pause, resume, and run automations there. Each automation shows its run history.
 - Two schedule types. Use a cron expression with a timezone for repeating work. Use a date, or a delay such as `2h`, for one-shot work.
-- Agent mode. Pick the provider, model, reasoning level, and permission mode. Start a new thread, re-prompt an existing thread, or create a new worktree for each run.
+- Agent mode. Pick the provider, model, reasoning level, and permission mode. Start a new thread, re-prompt an existing thread, or create a new worktree for each run. Choose whether new threads start visible or hidden.
 - Script mode. Store a bash, sh, node, or python3 script. Each run records stdout, stderr, and the exit code. A script that prints nothing is recorded as a silent tick.
 
 ## For agents

@@ -21,6 +21,8 @@ export {
 
 export const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
+export const threadVisibilitySchema = z.enum(["visible", "hidden"]);
+export type ThreadVisibility = z.infer<typeof threadVisibilitySchema>;
 export const reasoningLevelSchema = z.string().min(1);
 export type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;
 export const serviceTierSchema = z.string().min(1);
@@ -163,6 +165,7 @@ const automationAgentExecutionSchema = z
     reasoningLevel: reasoningLevelSchema.default("medium"),
     serviceTier: serviceTierSchema.optional(),
     permissionMode: permissionModeSchema,
+    visibility: threadVisibilitySchema.default("visible"),
     environment: agentEnvironmentSchema,
     targetThreadId: z.string().min(1).optional(),
   })
@@ -301,6 +304,7 @@ const agentExecutionUpdateSchema = z
     reasoningLevel: reasoningLevelSchema.optional(),
     serviceTier: serviceTierSchema.nullable().optional(),
     permissionMode: permissionModeSchema.optional(),
+    visibility: threadVisibilitySchema.optional(),
     target: agentExecutionTargetSchema.optional(),
   })
   .strict()
@@ -312,6 +316,7 @@ const agentExecutionUpdateSchema = z
       value.reasoningLevel !== undefined ||
       value.serviceTier !== undefined ||
       value.permissionMode !== undefined ||
+      value.visibility !== undefined ||
       value.target !== undefined,
     { message: "at least one agent execution field is required" },
   );

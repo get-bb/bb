@@ -42,6 +42,7 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
         model: "claude-opus-5",
         reasoningLevel: "medium",
         permissionMode: "auto",
+        visibility: "visible",
         environment: { type: "host", workspace: { type: "personal" } },
       },
       origin: "human",
