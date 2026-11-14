@@ -84,6 +84,7 @@
       "key": "required",
       "channel": "required",
       "text": "optional",
+      "attach": "optional",
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
@@ -92,6 +93,7 @@
       "key": "required",
       "channel": "required",
       "text": "required",
+      "attach": "optional",
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },

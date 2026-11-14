@@ -71,6 +71,39 @@ describe("delta assembler", () => {
     ]);
   });
 
+  it("streams text attached to the last turn after it settled, without reopening it", () => {
+    const assembler = createAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "turn.boundary", status: "completed" },
+    );
+    const key = { channel: "assistant" };
+    const events = assemble(
+      assembler,
+      {
+        kind: "item.textDelta",
+        key,
+        channel: "agentMessage",
+        text: "later",
+        attach: "currentOrLast",
+      },
+      {
+        kind: "item.textClose",
+        key,
+        channel: "agentMessage",
+        attach: "currentOrLast",
+      },
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+      "item/completed",
+    ]);
+    expect(events.some((event) => event.type === "turn/started")).toBe(false);
+    expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
+  });
+
   it("a boundary without an open turn settles nothing, even with accepted input pending", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ });

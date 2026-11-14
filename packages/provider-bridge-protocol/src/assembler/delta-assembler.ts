@@ -1615,7 +1615,9 @@ export function createDeltaAssembler(
         const turnId =
           delta.providerTurnId !== undefined
             ? resolveVouchedTurnId(state, delta.providerTurnId)
-            : state.currentTurnId;
+            : delta.attach === "currentOrLast"
+              ? currentOrLastTurnId(state)
+              : state.currentTurnId;
         if (turnId === undefined) {
           pushNoTurnFallback(
             state,
@@ -1698,7 +1700,9 @@ export function createDeltaAssembler(
         const turnId =
           delta.providerTurnId !== undefined
             ? resolveVouchedTurnId(state, delta.providerTurnId)
-            : state.currentTurnId;
+            : delta.attach === "currentOrLast"
+              ? currentOrLastTurnId(state)
+              : state.currentTurnId;
         if (turnId === undefined) {
           pushNoTurnFallback(
             state,

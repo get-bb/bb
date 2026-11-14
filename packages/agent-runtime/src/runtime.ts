@@ -1327,6 +1327,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         desired: args.desired,
         taken: [...resumed, ...plan.live],
       });
+      emitSessionSettingsNote({
+        threadId: args.threadId,
+        summary: `Restarting the provider session to apply ${describeSessionSettingChanges(resumed)}. Background processes the agent started that bb does not track may stop.`,
+      });
       await releaseAndResumeThread({
         config,
         contributedEnv: args.contributedEnv,
