@@ -109,7 +109,7 @@ function isolateCodex(root, env) {
   copyIfPresent(real, home, ["config.toml", "auth.json"]);
   return {
     env: { CODEX_HOME: home },
-    finish: () =>
+    finish: async () =>
       writeBackIfChanged(join(home, "auth.json"), join(real, "auth.json")),
   };
 }
@@ -125,7 +125,7 @@ function isolatePi(root, env) {
   ]);
   return {
     env: { PI_CODING_AGENT_DIR: agentDir },
-    finish: () =>
+    finish: async () =>
       writeBackIfChanged(join(agentDir, "auth.json"), join(real, "auth.json")),
   };
 }
@@ -150,7 +150,7 @@ function isolateCursor(root, env) {
     : null;
   return {
     env: { CURSOR_CONFIG_DIR: config, CURSOR_DATA_DIR: data },
-    finish: () => {
+    finish: async () => {
       if (manifestBefore === null) {
         rmSync(skillManifest, { force: true });
       } else {
@@ -288,7 +288,7 @@ function cleanUpClaude(env) {
       ? Object.keys(JSON.parse(readFileSync(statePath, "utf8")).projects ?? {})
       : [],
   };
-  return { env: {}, finish: () => removeClaudeRunState(env, before) };
+  return { env: {}, finish: async () => removeClaudeRunState(env, before) };
 }
 
 export async function isolateAgentState(providerId, env, directories) {
