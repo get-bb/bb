@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import type {
   Label,
   Project,
@@ -163,8 +163,8 @@ export const TaskRow = memo(function TaskRow({
         />
         <span
           title={task.key}
-          style={{ width: keyWidth }}
-          className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:shrink-0"
+          style={{ "--key-w": keyWidth } as CSSProperties}
+          className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-(--key-w) @md:shrink-0"
         >
           {task.key}
         </span>

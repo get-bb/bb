@@ -204,8 +204,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     );
   }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds, search]);
   const keyWidth = useMemo(
-    () => keyColumnWidth(displayTasks ?? []),
-    [displayTasks],
+    () => keyColumnWidth(tasksQuery.data ?? []),
+    [tasksQuery.data],
   );
   const groups = useMemo(
     () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),

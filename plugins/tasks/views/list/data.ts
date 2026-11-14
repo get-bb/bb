@@ -70,7 +70,7 @@ export function keyColumnWidth(tasks: readonly Task[]): string {
     (max, task) => Math.max(max, task.key.length),
     0,
   );
-  return `${Math.max(longest, 5) + 1}ch`;
+  return `${Math.max(longest, 5) + 2}ch`;
 }
 
 export function listTasksQuery(

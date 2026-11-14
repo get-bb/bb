@@ -137,7 +137,7 @@ function SearchInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="relative w-56 shrink-0 @max-md:w-40">
+    <div className="relative min-w-24 max-w-56 flex-1">
       <Icon
         name="Search"
         className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"

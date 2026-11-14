@@ -306,7 +306,7 @@ describe("list search and key column", () => {
       }),
     ]);
     const key = await slot.findByText("AGENTS-223");
-    expect(key.style.width).toBe("11ch");
+    expect(key.style.getPropertyValue("--key-w")).toBe("12ch");
     expect(key.title).toBe("AGENTS-223");
   });
 });
