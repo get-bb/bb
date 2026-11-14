@@ -112,6 +112,48 @@ async function rowFor(slot: ReturnType<typeof renderList>, key: string) {
 }
 
 describe("inline row editing", () => {
+  it("exposes the complete key when a row label is constrained", async () => {
+    const current = task({
+      id: "01HZT1ZZZZZZZZZZZZZZZZZZT1",
+      number: 12345,
+      key: "VALIDATION-12345",
+    });
+    const slot = renderList([current]);
+    const row = await rowFor(slot, current.key);
+    expect(within(row).getByText(current.key).getAttribute("title")).toBe(
+      current.key,
+    );
+  });
+
+  it("searches task keys and titles without case or surrounding whitespace", async () => {
+    const slot = renderList([
+      task({
+        id: "01HZT1ZZZZZZZZZZZZZZZZZZT1",
+        number: 1,
+        title: "Repair toolbar",
+      }),
+      task({
+        id: "01HZT1ZZZZZZZZZZZZZZZZZZT2",
+        number: 2,
+        title: "Check layout",
+      }),
+    ]);
+    await slot.findByText("TSK-1");
+    const search = slot.getByRole("searchbox", { name: "Search tasks" });
+    fireEvent.change(search, { target: { value: "  tSk-2  " } });
+    expect(slot.queryByText("TSK-1")).toBeNull();
+    expect(slot.getByText("TSK-2")).toBeTruthy();
+    fireEvent.change(search, { target: { value: "TOOLBAR" } });
+    expect(slot.getByText("TSK-1")).toBeTruthy();
+    expect(slot.queryByText("TSK-2")).toBeNull();
+    fireEvent.change(search, { target: { value: "nothing-matches" } });
+    expect(slot.getByText("No tasks match these filters")).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Clear filters" }));
+    expect(slot.getByText("TSK-1")).toBeTruthy();
+    expect(slot.getByText("TSK-2")).toBeTruthy();
+    expect(search).toHaveProperty("value", "");
+  });
+
   it("opens a windowed row using its task key", async () => {
     const slot = renderList([
       task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 }),

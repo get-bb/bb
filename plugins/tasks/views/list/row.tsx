@@ -159,7 +159,10 @@ export const TaskRow = memo(function TaskRow({
           onOpenChange={(next) => setOpenMenu(next ? "priority" : null)}
           className="col-start-1 row-start-2"
         />
-        <span className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
+        <span
+          title={task.key}
+          className="col-start-2 row-start-2 min-w-0 whitespace-nowrap text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @max-md:truncate @md:min-w-[15ch] @md:shrink-0"
+        >
           {task.key}
         </span>
         <StatusEditor
