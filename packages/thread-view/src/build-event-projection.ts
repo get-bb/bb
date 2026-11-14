@@ -42,7 +42,9 @@ import {
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
   type AcceptedClientRequest,
   type AcceptedClientRequestContext,
+  type ThreadEventWithMetaLike,
 } from "./accepted-client-request-context.js";
+import { eventProjectionMessageThreadScopeFields } from "./message-scope.js";
 import {
   parseAcceptedSteersFromClientRequest,
   parseRejectedUsersFromClientRequest,
@@ -334,7 +336,7 @@ function selectActiveBackgroundCommandMessages(
 }
 
 function buildClientTurnRequestById(
-  events: ThreadEventWithMeta[],
+  events: readonly ThreadEventWithMetaLike[],
 ): Map<string, ClientTurnRequestedWithMeta> {
   const requestById = new Map<string, ClientTurnRequestedWithMeta>();
   for (const eventWithMeta of events) {
@@ -443,7 +445,9 @@ function clientRequestDeliveredByBusyRetry(
   const acceptedClientRequest = lookups.acceptedClientRequestById.get(
     retry.retryOfRequestId,
   );
-  const request = lookups.clientRequestById.get(retry.retryOfRequestId);
+  const request =
+    lookups.clientRequestById.get(retry.retryOfRequestId) ??
+    lookups.contextClientRequestById.get(retry.retryOfRequestId);
   if (
     acceptedClientRequest?.deliveredByBusyRetry?.requestId !==
       retry.requestId ||
@@ -608,6 +612,7 @@ interface ProjectionFoldLookups {
   acceptedRootClientTurnIds: ReadonlySet<string>;
   busyRetryingClientRequestIds: ReadonlySet<string>;
   clientRequestById: Map<string, ClientTurnRequestedWithMeta>;
+  contextClientRequestById: Map<string, ClientTurnRequestedWithMeta>;
   rejectedClientRequestIds: ReadonlySet<string>;
   selectedStartedTurnIds: ReadonlySet<string>;
 }
@@ -637,6 +642,9 @@ function createProjectionFoldLookups(
       clientRequestById,
     ),
     clientRequestById,
+    contextClientRequestById: buildClientTurnRequestById(
+      context.requestedClientRequestEvents,
+    ),
     rejectedClientRequestIds: buildRejectedClientRequestIds(
       orderedEvents,
       acceptedClientRequestById,
@@ -800,7 +808,16 @@ function foldProjectionEvent(
           ? "pending"
           : "rejected",
       })) {
-        appendProjectedUserMessage(state, rejectedMessage);
+        appendProjectedUserMessage(
+          state,
+          rejectedMessage.scope.kind === "turn" &&
+            !selectedStartedTurnIds.has(rejectedMessage.scope.turnId)
+            ? {
+                ...rejectedMessage,
+                ...eventProjectionMessageThreadScopeFields(),
+              }
+            : rejectedMessage,
+        );
       }
     }
     return;

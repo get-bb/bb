@@ -372,6 +372,8 @@ export {
   isTimelineCursorSequencePresent,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
+  listStoredClientTurnRetryRequestRows,
+  listStoredSystemErrorRowsWithCode,
   listStoredEventRowsByParentToolCallIds,
   listStoredEventRows,
   listItemEventSpansByItems,

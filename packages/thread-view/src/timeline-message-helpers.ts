@@ -29,6 +29,9 @@ export function isTimelineUngroupableMessage(
   if (message.kind === "command") {
     return parseSentThreadMessage(message) !== null;
   }
+  if (message.kind === "operation") {
+    return message.opType === "session-settings";
+  }
   return false;
 }
 

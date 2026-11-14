@@ -16,7 +16,7 @@ import {
   threadEventSearchModeSchema,
   threadEventTokenUsageBreakdownSchema,
   threadEventTurnStatusSchema,
-  threadEventWarningCategorySchema,
+  providerWarningCategorySchema,
   threadUsageCostSchema,
   workflowProgressSnapshotSchema,
 } from "@bb/domain";
@@ -401,7 +401,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("provider.warning"),
     summary: z.string().optional(),
     details: z.string().optional(),
-    category: threadEventWarningCategorySchema.optional(),
+    category: providerWarningCategorySchema.optional(),
     vouchedTurn: z.boolean().optional(),
   }),
 

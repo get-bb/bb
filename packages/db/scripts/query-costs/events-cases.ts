@@ -78,6 +78,8 @@ import {
   listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
+  listStoredClientTurnRetryRequestRows,
+  listStoredSystemErrorRowsWithCode,
   listStoredConversationOutlineEventRows,
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRowMetadata,
@@ -781,6 +783,26 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
             threadId: fixture.threadId,
           },
         ],
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredClientTurnRetryRequestRows`,
+    run: (db, fixture) => {
+      const turn = turnAt(fixture, 0);
+      return listStoredClientTurnRetryRequestRows(db, {
+        afterSequence: turn.completedSequence,
+        retryOfRequestIds: [turn.requestId],
+        threadId: fixture.threadId,
+      });
+    },
+  },
+  {
+    name: `${EVENTS}#listStoredSystemErrorRowsWithCode`,
+    run: (db, fixture) =>
+      listStoredSystemErrorRowsWithCode(db, {
+        afterSequence: turnAt(fixture, 0).completedSequence,
+        code: "provider_busy",
+        threadId: fixture.threadId,
       }),
   },
   {

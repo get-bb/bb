@@ -1247,7 +1247,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       type: "provider/warning",
       threadId: args.threadId,
       providerThreadId,
-      category: "general",
+      category: "session-settings",
       summary: args.summary,
       ...(args.details === undefined ? {} : { details: args.details }),
       scope: { kind: "thread" },

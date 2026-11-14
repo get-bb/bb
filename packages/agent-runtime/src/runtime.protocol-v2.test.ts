@@ -172,15 +172,23 @@ describe("protocol 2 bridges", () => {
     });
     expect(
       warnings(events).map((event) =>
-        event.type === "provider/warning" ? event.summary : undefined,
+        event.type === "provider/warning"
+          ? [event.category, event.summary]
+          : undefined,
       ),
     ).toEqual([
-      expect.stringMatching(
-        /^Restarting the provider session to apply environment\. Background processes/,
-      ),
-      expect.stringMatching(
-        /^Applied environment; the provider session resumed/,
-      ),
+      [
+        "session-settings",
+        expect.stringMatching(
+          /^Restarting the provider session to apply environment\. Background processes/,
+        ),
+      ],
+      [
+        "session-settings",
+        expect.stringMatching(
+          /^Applied environment; the provider session resumed/,
+        ),
+      ],
     ]);
   });
 

@@ -231,6 +231,8 @@ function operationKindForMessage(
     case "warning":
     case "deprecation":
       return message.opType;
+    case "session-settings":
+      return "warning";
     case "provider-environment":
       return "generic";
     case "operation":

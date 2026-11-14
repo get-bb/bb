@@ -26,7 +26,9 @@ interface ContractRuntime {
 
 function warnings(events: readonly ThreadEvent[]): string[] {
   return events.flatMap((event) =>
-    event.type === "provider/warning" && event.summary !== undefined
+    event.type === "provider/warning" &&
+    event.category === "session-settings" &&
+    event.summary !== undefined
       ? [event.summary]
       : [],
   );

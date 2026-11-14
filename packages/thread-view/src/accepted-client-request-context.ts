@@ -20,14 +20,39 @@ export interface AcceptedClientRequest {
 
 export interface AcceptedClientRequestContext {
   acceptedClientRequestEvents: readonly ThreadEventWithMetaLike[];
+  busyRetryGiveUpEvents: readonly ThreadEventWithMetaLike[];
   rejectedClientRequestEvents: readonly ThreadEventWithMetaLike[];
+  requestedClientRequestEvents: readonly ThreadEventWithMetaLike[];
 }
 
 export const EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT: AcceptedClientRequestContext =
   {
     acceptedClientRequestEvents: [],
+    busyRetryGiveUpEvents: [],
     rejectedClientRequestEvents: [],
+    requestedClientRequestEvents: [],
   };
+
+type ClientTurnRequestedEventWithMeta = {
+  event: Extract<ThreadEvent, { type: "client/turn/requested" }>;
+  meta: EventMeta;
+};
+
+function contextAndWindowClientRequestedEvents(
+  context: AcceptedClientRequestContext,
+  events: readonly ThreadEventWithMetaLike[],
+): ClientTurnRequestedEventWithMeta[] {
+  const requested: ClientTurnRequestedEventWithMeta[] = [];
+  for (const { event, meta } of [
+    ...events,
+    ...context.requestedClientRequestEvents,
+  ]) {
+    if (event.type === "client/turn/requested") {
+      requested.push({ event, meta });
+    }
+  }
+  return requested;
+}
 
 const BUSY_REJECTION_REASON = "thread_busy";
 const BUSY_RETRIES_EXHAUSTED_ERROR_CODE = "provider_busy";
@@ -66,9 +91,11 @@ function addBusyRefusedRequestsDeliveredByRetry(
   if (busyRejectedRequestIds.size === 0) {
     return;
   }
-  for (const { event, meta } of events) {
+  for (const { event, meta } of contextAndWindowClientRequestedEvents(
+    context,
+    events,
+  )) {
     if (
-      event.type !== "client/turn/requested" ||
       event.retryOfRequestId === undefined ||
       !busyRejectedRequestIds.has(event.retryOfRequestId) ||
       acceptedById.has(event.retryOfRequestId)
@@ -102,11 +129,11 @@ export function buildBusyRetryingClientRequestIds(
     ClientTurnRequestId,
     ClientTurnRequestId
   >();
-  for (const { event } of events) {
-    if (
-      event.type === "client/turn/requested" &&
-      event.retryOfRequestId !== undefined
-    ) {
+  for (const { event } of contextAndWindowClientRequestedEvents(
+    context,
+    events,
+  )) {
+    if (event.retryOfRequestId !== undefined) {
       originalRequestIdByRetryId.set(event.requestId, event.retryOfRequestId);
     }
   }
@@ -114,7 +141,9 @@ export function buildBusyRetryingClientRequestIds(
   let lastBusyOriginalRequestId: ClientTurnRequestId | null = null;
   const orderedEvents = [
     ...rejectionEvents,
-    ...events.filter(({ event }) => event.type === "system/error"),
+    ...[...events, ...context.busyRetryGiveUpEvents].filter(
+      ({ event }) => event.type === "system/error",
+    ),
   ].sort((left, right) => left.meta.seq - right.meta.seq);
   for (const { event } of orderedEvents) {
     if (event.type === "client/turn/rejected") {

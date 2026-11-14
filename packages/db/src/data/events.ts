@@ -1474,6 +1474,18 @@ export interface ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs {
   threadId: string;
 }
 
+export interface ListStoredSystemErrorRowsWithCodeArgs {
+  afterSequence: number;
+  code: string;
+  threadId: string;
+}
+
+export interface ListStoredClientTurnRetryRequestRowsArgs {
+  afterSequence: number;
+  retryOfRequestIds: readonly ClientTurnRequestId[];
+  threadId: string;
+}
+
 export interface ListStoredTurnRejectedRowsByClientRequestIdsArgs {
   afterSequence: number;
   clientRequestIds: readonly ClientTurnRequestId[];
@@ -2030,6 +2042,50 @@ export function listOpenTurnInputAcceptedRowsByThreadIds(
       left.threadId.localeCompare(right.threadId) ||
       left.sequence - right.sequence,
   );
+}
+
+export function listStoredSystemErrorRowsWithCode(
+  db: DbQueryConnection,
+  args: ListStoredSystemErrorRowsWithCodeArgs,
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "system/error"),
+        gt(events.sequence, args.afterSequence),
+        sql`json_extract(${events.data}, '$.code') = ${args.code}`,
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredClientTurnRetryRequestRows(
+  db: DbQueryConnection,
+  args: ListStoredClientTurnRetryRequestRowsArgs,
+): StoredEventRow[] {
+  if (args.retryOfRequestIds.length === 0) {
+    return [];
+  }
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+        gt(events.sequence, args.afterSequence),
+        inArray(
+          sql<string>`json_extract(${events.data}, '$.retryOfRequestId')`,
+          [...args.retryOfRequestIds],
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
 }
 
 export function listStoredClientTurnRequestRowsByKeys(
