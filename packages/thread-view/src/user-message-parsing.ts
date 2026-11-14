@@ -190,6 +190,10 @@ interface ParseRejectedUsersFromClientRequestArgs {
   decoded: ThreadEvent;
   meta: EventMeta;
   options?: BuildEventProjectionMessagesOptions;
+  requestStatus: Extract<
+    EventProjectionTurnRequest["status"],
+    "pending" | "rejected"
+  >;
 }
 
 type ClientTurnRequestedEvent = Extract<
@@ -460,7 +464,7 @@ export function parseAcceptedSteersFromClientRequest(
 export function parseRejectedUsersFromClientRequest(
   args: ParseRejectedUsersFromClientRequestArgs,
 ): EventProjectionUserMessage[] {
-  const { decoded, meta, options, requestMeta } = args;
+  const { decoded, meta, options, requestMeta, requestStatus } = args;
   if (decoded.type !== "client/turn/requested") {
     return [];
   }
@@ -473,7 +477,7 @@ export function parseRejectedUsersFromClientRequest(
     acceptedClientRequest: undefined,
     decoded,
     meta,
-    requestStatus: "rejected",
+    requestStatus,
   });
 }
 

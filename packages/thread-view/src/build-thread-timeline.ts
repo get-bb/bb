@@ -53,6 +53,7 @@ import {
 } from "./build-event-projection.js";
 import {
   buildAcceptedClientRequestById,
+  buildBusyRetryingClientRequestIds,
   buildRejectedClientRequestById,
   type AcceptedClientRequestContext,
 } from "./accepted-client-request-context.js";
@@ -934,6 +935,11 @@ export function buildPendingSteerMessagesFromEvents(
     acceptedClientRequestContext,
     orderedEvents,
   );
+  const busyRetryingClientRequestIds = buildBusyRetryingClientRequestIds(
+    acceptedClientRequestContext,
+    orderedEvents,
+    acceptedClientRequestById,
+  );
   const inWindowRejectedClientRequestIds = new Set(
     orderedEvents.flatMap(({ event }) =>
       event.type === "client/turn/rejected" ? [event.requestId] : [],
@@ -1016,6 +1022,9 @@ export function buildPendingSteerMessagesFromEvents(
           requestMeta: meta,
           meta: rejectedMeta,
           options,
+          requestStatus: busyRetryingClientRequestIds.has(event.requestId)
+            ? "pending"
+            : "rejected",
         }),
       );
       continue;
@@ -1031,6 +1040,7 @@ export function buildPendingSteerMessagesFromEvents(
           requestMeta: meta,
           meta: legacyRejectedMeta,
           options,
+          requestStatus: "rejected",
         }),
       );
       continue;

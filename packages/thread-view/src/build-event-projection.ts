@@ -38,6 +38,7 @@ export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
 import { shouldSuppressLowValueToolCall } from "./tool-call-suppression.js";
 import {
   buildAcceptedClientRequestById,
+  buildBusyRetryingClientRequestIds,
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
   type AcceptedClientRequest,
   type AcceptedClientRequestContext,
@@ -576,6 +577,7 @@ function getCompactionTurnFinalization(
 interface ProjectionFoldLookups {
   acceptedClientRequestById: ReturnType<typeof buildAcceptedClientRequestById>;
   acceptedRootClientTurnIds: ReadonlySet<string>;
+  busyRetryingClientRequestIds: ReadonlySet<string>;
   clientRequestById: Map<string, ClientTurnRequestedWithMeta>;
   rejectedClientRequestIds: ReadonlySet<string>;
   selectedStartedTurnIds: ReadonlySet<string>;
@@ -587,6 +589,7 @@ const PROJECTION_FOLD_LOOKUP_EVENT_TYPES: ReadonlySet<ThreadEvent["type"]> =
     "client/turn/rejected",
     "turn/input/accepted",
     "turn/started",
+    "system/error",
   ]);
 
 function createProjectionFoldLookups(
@@ -609,6 +612,11 @@ function createProjectionFoldLookups(
       orderedEvents,
       acceptedClientRequestById,
     ),
+    busyRetryingClientRequestIds: buildBusyRetryingClientRequestIds(
+      context,
+      orderedEvents,
+      acceptedClientRequestById,
+    ),
     selectedStartedTurnIds: buildSelectedStartedTurnIds(orderedEvents),
   };
 }
@@ -622,6 +630,7 @@ function foldProjectionEvent(
   const {
     acceptedClientRequestById,
     acceptedRootClientTurnIds,
+    busyRetryingClientRequestIds,
     clientRequestById,
     rejectedClientRequestIds,
     selectedStartedTurnIds,
@@ -758,6 +767,9 @@ function foldProjectionEvent(
         requestMeta: clientRequest.meta,
         meta,
         options: options,
+        requestStatus: busyRetryingClientRequestIds.has(decoded.requestId)
+          ? "pending"
+          : "rejected",
       })) {
         appendProjectedUserMessage(state, rejectedMessage);
       }
