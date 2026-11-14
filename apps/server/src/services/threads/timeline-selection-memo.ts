@@ -10,6 +10,7 @@ import {
   getThreadEventRewriteGeneration,
   listLatestBackgroundTaskStateRowsByItemIds,
   listStoredDelegatingItemRowsByItemIds,
+  listStoredStandaloneThreadTimelineRows,
   listStoredEventRowsByParentToolCallIds,
   listAppendedEventRows,
   listStoredTimelineTurnEventRows,
@@ -78,7 +79,13 @@ export interface TimelineSelectionRowSource {
   listParentRows(
     args: Parameters<typeof listStoredDelegatingItemRowsByItemIds>[1],
   ): StoredEventRow[];
+  listStandaloneThreadRows(
+    args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
+  ): StoredEventRow[];
   listRootWindowTurnIds(
+    args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
+  ): string[];
+  listWindowParentToolCallIds(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
   ): string[];
   listThreadWindowRows(
@@ -713,6 +720,14 @@ function acceptsBackgroundTask(
     }).every((stateRow) => selectionHasRow(rows, stateRow));
   }
   if (row.type !== "item/backgroundTask/completed") return false;
+  if (
+    !rows.some(
+      (selected) =>
+        selected.itemId === itemId && selected.type === "item/started",
+    )
+  ) {
+    return false;
+  }
   return rows.every(
     (selected) =>
       selected.itemKind !== "backgroundTask" ||
@@ -887,6 +902,19 @@ function createTrimmedSelectionRowSource(
         }
       }
       return [...turnIds];
+    },
+    listStandaloneThreadRows(query) {
+      return listStoredStandaloneThreadTimelineRows(db, query);
+    },
+    listWindowParentToolCallIds(query) {
+      const sequenceStart = expectLatestBounds(query);
+      const parentToolCallIds = new Set<string>();
+      for (const row of rows) {
+        if (row.parentToolCallId !== null && row.sequence >= sequenceStart) {
+          parentToolCallIds.add(row.parentToolCallId);
+        }
+      }
+      return [...parentToolCallIds];
     },
     listThreadWindowRows(query) {
       const sequenceStart = expectLatestBounds(query);

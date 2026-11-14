@@ -2756,6 +2756,55 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     .all();
 }
 
+export interface ListStartedBackgroundItemRowsByItemIdsArgs {
+  backgroundTaskItemIds: readonly string[];
+  delegatingItemIds: readonly string[];
+  maxInlineOutputChars: InlineOutputCharLimit;
+  threadId: string;
+}
+
+export function listStartedBackgroundItemRowsByItemIds(
+  db: DbConnection,
+  args: ListStartedBackgroundItemRowsByItemIdsArgs,
+): StoredEventRow[] {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const backgroundTaskRows =
+    args.backgroundTaskItemIds.length === 0
+      ? []
+      : db
+          .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+          .from(
+            sql`${events} INDEXED BY events_background_task_thread_type_item_sequence_idx`,
+          )
+          .where(
+            and(
+              eq(events.threadId, args.threadId),
+              eq(events.type, startedType),
+              sql`${events.itemKind} = 'backgroundTask'`,
+              inArray(events.itemId, [...args.backgroundTaskItemIds]),
+            ),
+          )
+          .all();
+  const delegationRows =
+    args.delegatingItemIds.length === 0
+      ? []
+      : db
+          .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+          .from(sql`${events} INDEXED BY events_delegating_item_lookup_idx`)
+          .where(
+            and(
+              eq(events.threadId, args.threadId),
+              inArray(events.itemId, [...args.delegatingItemIds]),
+              sql`${events.itemKind} IN ('toolCall', 'delegation')`,
+              eq(events.type, startedType),
+            ),
+          )
+          .all();
+  return [...backgroundTaskRows, ...delegationRows].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+}
+
 export function listLatestOpenBackgroundTaskStateRowsForThread(
   db: DbConnection,
   args: ListLatestOpenBackgroundTaskStateRowsForThreadArgs,
@@ -3649,6 +3698,21 @@ const TIMELINE_ORDERING_CONTEXT_EVENT_TYPES = [
   "turn/completed",
 ] as const satisfies readonly ThreadEventType[];
 
+const lateRootItemStartSql = sql`(
+  events.type = 'item/started'
+  AND events.item_kind = 'delegation'
+  AND events.parent_tool_call_id IS NULL
+  AND events.turn_id IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM events AS completed
+    INDEXED BY events_thread_turn_type_item_sequence_idx
+    WHERE completed.thread_id = events.thread_id
+      AND completed.turn_id = events.turn_id
+      AND completed.type = 'turn/completed'
+      AND completed.sequence < events.sequence
+  )
+)`;
+
 interface TimelineOrderingContextRow {
   sequence: number;
   turnId: string | null;
@@ -3696,7 +3760,24 @@ export function listTimelineOrderingContext(
         TIMELINE_ORDERING_CONTEXT_EVENT_TYPES.map((type) => sql`${type}`),
         sql`, `,
       )})
-    ORDER BY events.sequence
+    UNION ALL
+    SELECT
+      events.sequence AS sequence,
+      events.turn_id AS turnId,
+      events.type AS type,
+      events.parent_tool_call_id AS parentToolCallId,
+      NULL AS requestId,
+      NULL AS clientRequestId,
+      NULL AS expectedTurnId,
+      0 AS hasVisibleUserInput
+    FROM ${events} INDEXED BY events_thread_type_item_kind_sequence_idx
+    WHERE events.thread_id = ${args.threadId}
+      AND events.type = 'item/started'
+      AND events.item_kind = 'delegation'
+      AND events.sequence >= ${args.sequenceStart}
+      AND events.sequence <= ${args.maxSeq}
+      AND ${lateRootItemStartSql}
+    ORDER BY sequence
   `);
 }
 
@@ -3706,7 +3787,7 @@ export function getTimelineGroupingContextChangesInRange(
 ): { ordering: boolean; parented: boolean } {
   const row = db
     .select({
-      ordering: sql<number>`COALESCE(MAX(CASE WHEN ${inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES])} THEN 1 ELSE 0 END), 0)`,
+      ordering: sql<number>`COALESCE(MAX(CASE WHEN ${inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES])} OR ${lateRootItemStartSql} THEN 1 ELSE 0 END), 0)`,
       parented: sql<number>`COALESCE(MAX(CASE WHEN ${events.parentToolCallId} is not null THEN 1 ELSE 0 END), 0)`,
     })
     .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
@@ -4053,6 +4134,27 @@ export function listTimelineRootWindowTurnIds(
     .map((row) => row.turnId);
 }
 
+export function listTimelineWindowParentToolCallIds(
+  db: DbConnection,
+  args: { beforeSequence: number; sequenceStart: number; threadId: string },
+): string[] {
+  return db
+    .selectDistinct({
+      parentToolCallId: sql<string>`${events.parentToolCallId}`,
+    })
+    .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.sequenceStart),
+        lt(events.sequence, args.beforeSequence),
+        isNotNull(events.parentToolCallId),
+      ),
+    )
+    .all()
+    .map((row) => row.parentToolCallId);
+}
+
 export function listStoredTimelineThreadWindowEventRows(
   db: DbConnection,
   args: ListStoredTimelineWindowEventRowsArgs,
@@ -4063,6 +4165,30 @@ export function listStoredTimelineThreadWindowEventRows(
     )
     .from(events)
     .where(and(...storedTimelineWindowConditions(args), isNull(events.turnId)))
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredStandaloneThreadTimelineRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs,
+): StoredEventRow[] {
+  return db
+    .select(
+      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+    )
+    .from(events)
+    .where(
+      and(
+        ...storedTimelineWindowConditions(args),
+        isNull(events.turnId),
+        isNull(events.itemKind),
+        notInArray(events.type, [
+          "client/turn/requested",
+          "client/turn/rejected",
+        ]),
+      ),
+    )
     .orderBy(events.sequence)
     .all();
 }

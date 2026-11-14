@@ -371,6 +371,16 @@ function mergeLatestIntoLoadedRows({
   if (olderRowsSourceSeqEnd !== null && olderRowsSourceSeqEnd > loadedEnd) {
     return { canMerge: false, droppedLoadedRows: true, rows: [...latestRows] };
   }
+  const currentStarts = new Map(
+    current.rows.map((row) => [row.id, row.sourceSeqStart]),
+  );
+  if (
+    olderRowUpdates?.some(
+      (row) => currentStarts.get(row.id) !== row.sourceSeqStart,
+    )
+  ) {
+    return { canMerge: false, droppedLoadedRows: true, rows: [...latestRows] };
+  }
   const loadedRows = applyOlderRowUpdates(current.rows, olderRowUpdates).filter(
     (row) => !isOptimisticTimelineRowId(row.id),
   );
@@ -383,13 +393,50 @@ function mergeLatestIntoLoadedRows({
       (olderRowsSourceSeqEnd !== null &&
         row.sourceSeqEnd <= olderRowsSourceSeqEnd) ||
       updatedRowIds.has(row.id));
+  const latestStarts = new Map(
+    latestRows.map((row) => [row.id, row.sourceSeqStart]),
+  );
+  const latestTurnRows = latestRows.filter(
+    (row) => row.kind === "turn" && row.turnId !== null,
+  );
+  const reportedTurnRowIds = new Set(
+    [...latestRows, ...(olderRowUpdates ?? [])].flatMap((row) =>
+      row.kind === "turn" ? [row.id] : [],
+    ),
+  );
+  const turnsWithUpdatedTurnRows = new Set(
+    (olderRowUpdates ?? []).flatMap((row) =>
+      row.kind === "turn" && row.turnId !== null ? [row.turnId] : [],
+    ),
+  );
+  const isRemovedTurnRow = (row: TimelineRow) =>
+    row.kind === "turn" &&
+    row.turnId !== null &&
+    turnsWithUpdatedTurnRows.has(row.turnId) &&
+    !reportedTurnRowIds.has(row.id);
+  const isFoldedIntoLatestTurn = (row: TimelineRow) =>
+    latestTurnRows.some(
+      (turn) =>
+        turn.id !== row.id &&
+        turn.turnId === row.turnId &&
+        row.sourceSeqStart >= turn.sourceSeqStart &&
+        row.sourceSeqEnd <= turn.sourceSeqEnd,
+    );
   const rowsToRetain: TimelineRow[] = [];
   const sharedLoadedRowsById = new Map<string, TimelineRow>();
   for (const row of loadedRows) {
+    const latestStart = latestStarts.get(row.id);
+    if (latestStart !== undefined && latestStart !== row.sourceSeqStart) {
+      continue;
+    }
     if (latestRowIds.has(row.id)) {
       sharedLoadedRowsById.set(row.id, row);
       rowsToRetain.push(row);
-    } else if (isOlderThanWindow(row)) {
+    } else if (
+      isOlderThanWindow(row) &&
+      !isFoldedIntoLatestTurn(row) &&
+      !isRemovedTurnRow(row)
+    ) {
       rowsToRetain.push(row);
     }
   }

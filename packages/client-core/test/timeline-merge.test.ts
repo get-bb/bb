@@ -978,7 +978,6 @@ describe("snapshot content pagination", () => {
     latestTimeline.timelinePage.olderRowsSourceSeqEnd = 1;
     latestTimeline.timelinePage.olderRowUpdates = [
       { ...summary, sourceSeqEnd: 12, children: [updatedChild, newChild] },
-      commandRow({ id: "unloaded", sequence: 5, endSequence: 12 }),
     ];
 
     const next = mergeLoadedTimelineWithLatest({
@@ -1005,6 +1004,149 @@ describe("snapshot content pagination", () => {
     expect(refreshed.rows).toEqual(expectedRows);
     expect(next.olderCursor).toEqual(walkCursor);
     expect(next.latestWindowEndSequence).toBe(12);
+  });
+
+  it("drops loaded rows a returned turn summary absorbed even when they end before olderRowsSourceSeqEnd", () => {
+    const prompt = userRow({ id: "prompt", sequence: 1 });
+    const flatCommands = [3, 4].map((sequence) =>
+      commandRow({ id: `command-${sequence}`, sequence }),
+    );
+    const tail = userRow({ id: "tail", sequence: 8 });
+    const current = {
+      ...makeLoadedTimelineState(
+        [prompt, ...flatCommands, tail],
+        timelineCursor({ id: "walk-cursor", sequence: 1 }),
+        10,
+      ),
+      historySnapshot: "snapshot-10",
+    };
+    const latestTimeline = makeTimelineResponse(
+      [turnSummaryRow({ id: "summary", sequence: 2, endSequence: 6 }), tail],
+      timelineCursor({ id: "latest-cursor", sequence: 2 }),
+      11,
+    );
+    latestTimeline.timelinePage.historySnapshot = "snapshot-11";
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = 6;
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "prompt",
+      "summary",
+      "tail",
+    ]);
+  });
+
+  it("drops a loaded turn summary row that a turn's updated summary rows no longer include", () => {
+    const prompt = userRow({ id: "prompt", sequence: 1 });
+    const first = turnSummaryRow({
+      id: "turn-1:turn:0",
+      sequence: 2,
+      endSequence: 4,
+    });
+    const second = turnSummaryRow({
+      id: "turn-1:turn:1",
+      sequence: 5,
+      endSequence: 6,
+    });
+    const tail = userRow({ id: "tail", sequence: 8 });
+    const current = {
+      ...makeLoadedTimelineState(
+        [prompt, first, second, tail],
+        timelineCursor({ id: "walk-cursor", sequence: 1 }),
+        8,
+      ),
+      historySnapshot: "snapshot-8",
+    };
+    const latestTimeline = makeTimelineResponse(
+      [tail],
+      timelineCursor({ id: "latest-cursor", sequence: 8 }),
+      9,
+    );
+    latestTimeline.timelinePage.historySnapshot = "snapshot-9";
+    latestTimeline.timelinePage.olderRowUpdates = [
+      { ...first, sourceSeqEnd: 6 },
+    ];
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "prompt",
+      "turn-1:turn:0",
+      "tail",
+    ]);
+  });
+
+  it("replaces loaded rows when an update moves a loaded row", () => {
+    const prompt = userRow({ id: "prompt", sequence: 1 });
+    const summary = turnSummaryRow({
+      id: "turn-1:turn:0",
+      sequence: 5,
+      endSequence: 6,
+    });
+    const tail = userRow({ id: "tail", sequence: 8 });
+    const current = {
+      ...makeLoadedTimelineState(
+        [prompt, summary, tail],
+        timelineCursor({ id: "walk-cursor", sequence: 1 }),
+        8,
+      ),
+      historySnapshot: "snapshot-8",
+    };
+    const latestCursor = timelineCursor({ id: "latest-cursor", sequence: 8 });
+    const latestTimeline = makeTimelineResponse([tail], latestCursor, 9);
+    latestTimeline.timelinePage.historySnapshot = "snapshot-9";
+    latestTimeline.timelinePage.olderRowUpdates = [
+      { ...summary, sourceSeqStart: 3 },
+    ];
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual(["tail"]);
+    expect(next.olderCursor).toEqual(latestCursor);
+  });
+
+  it("replaces loaded rows when an update names a row the client does not hold", () => {
+    const prompt = userRow({ id: "prompt", sequence: 1 });
+    const flatCommands = [2, 3].map((sequence) =>
+      commandRow({ id: `command-${sequence}`, sequence }),
+    );
+    const latestUser = userRow({ id: "latest-user", sequence: 10 });
+    const current = {
+      ...makeLoadedTimelineState(
+        [prompt, ...flatCommands, latestUser],
+        timelineCursor({ id: "walk-cursor", sequence: 1 }),
+        10,
+      ),
+      historySnapshot: "snapshot-10",
+    };
+    const latestCursor = timelineCursor({ id: "latest-cursor", sequence: 10 });
+    const latestTimeline = makeTimelineResponse([latestUser], latestCursor, 11);
+    latestTimeline.timelinePage.historySnapshot = "snapshot-11";
+    latestTimeline.timelinePage.olderRowUpdates = [
+      turnSummaryRow({ id: "collapsed-turn", sequence: 2, endSequence: 11 }),
+    ];
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual(["latest-user"]);
+    expect(next.olderCursor).toEqual(latestCursor);
   });
 
   it("keeps loaded order when an older page repeats the loaded conversation group", () => {

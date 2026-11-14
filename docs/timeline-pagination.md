@@ -11,11 +11,33 @@ completed context clear is the history floor unless the
 `keepHistoryAfterContextClear` general setting is on; then pages continue
 across it to the start of the thread.
 
-A page owns an event window `[start, end)`. It returns projected rows whose
-`sourceSeqStart` falls inside that window, in display order. Context loaded
-outside the window helps render those rows but does not change ownership. Each
-response returns a row identity once, including when repeated lifecycle events
-produce the same projected row more than once.
+A page owns an event window `[start, end)`. It returns the projected rows whose
+display position falls inside that window, in display order. A row's display
+position is the greatest `sourceSeqStart` among the rows a full build shows at
+or before it, so pages concatenated in cursor order show rows in the order of
+one full build. For most rows this is their own `sourceSeqStart`. It is later
+when the full build shows the row after a row that starts later: a turn's rows
+are shown together at the turn's `turn/started` event, so a thread operation
+recorded while a turn ran, or a turn that started while another was still open,
+is shown after that turn and belongs to the page that holds the turn's last
+row. A thread operation recorded between a request and its `turn/started`, such
+as thread provisioning, is shown before that turn. A turn's rows can start
+after its completion when an item is started again in it, as Codex does when it
+reuses a delegation, so a turn's display ends at the later of its completion
+and its last item start. The server computes these positions from the
+whole-thread turn spans it keeps for ordering. Context
+loaded outside the window helps render the rows a page owns but does not
+change ownership. Each response returns a row identity once, including when
+repeated lifecycle events produce the same projected row more than once.
+
+To render the rows it owns the same way a full build does, a page also loads
+whatever those rows are part of: the turns and thread rows its window owns by
+display position, the turn that was running when a grouped thread message such
+as a warning or permission prompt was recorded, the whole turn that started a
+background task or delegation whose progress, completion or child events are
+in the window (a latest page only; an older page drops such state rows instead,
+since they render on the page that owns the turn), and the turn a steer targets,
+including a steer that was rejected.
 Visible user rows, including accepted steers, define conversation segments
 inside the window; the leading segment can be partial. Hidden and empty
 requests do not count as visible segments. The response takes up to
@@ -40,12 +62,25 @@ boundaries and leaf offsets can differ. Older history is only advertised with
 a cursor, including when an edge contains no visible rows.
 
 Display order is turn-by-turn until a user message lands inside another turn:
-after that message everything is ordered by source sequence. A turn spans from
+after that message everything is ordered by source sequence. Delegated child
+turns count as turns here: a user message sent while a child turn is still
+open, including one that never completes, sets the boundary. A steer counts at
+the sequence where it was accepted, and the earliest such message in display
+order sets the boundary. A turn's summary rows also split at those messages; the
+server passes each loaded turn's split points from its whole-thread context, so
+a page splits and numbers a turn's summary rows the way a full build does even
+when it has not loaded the other turns. A turn spans from
 its first event or accepted request to its `turn/completed` event, or stays
 open while it is running; events that arrive after completion, such as a
 background command finishing, do not extend it. The projection applies this
 rule to the events it loaded, and the server evaluates the same rule over the
 whole thread so a budgeted page orders rows the way the full history does.
+Later events can reorder rows on pages the client already loaded: a turn
+completing can move the boundary, and a row past the boundary in an earlier
+turn, such as a delegation started again in a completed turn, moves where the
+ordered suffix begins. A latest page whose window holds such an event, when the
+reordered rows reach before the window, raises `olderRowsSourceSeqEnd` to that
+event's sequence, so a client that loaded its rows before it reloads them.
 
 `timelinePage.historySnapshot` identifies the history tip, grouping version,
 and display surface. A walk excludes subsequent appends. Earlier events can
@@ -65,8 +100,17 @@ kept only when it is older than the page: it ends before the window start, ends
 at or before `olderRowsSourceSeqEnd`, or arrives in `olderRowUpdates`. Any other
 loaded row is gone from the window, for example a running turn's rows that the
 completed turn folded into its summary; the merge drops it and the walk
-restarts from the latest page's cursor. When nothing is dropped the deeper of
-the loaded and latest cursors is kept. After a stale-cursor 400,
+restarts from the latest page's cursor. A loaded row that lies inside a turn row
+of the same turn returned by the latest page was folded into that summary and
+is dropped the same way, even when it ends before `olderRowsSourceSeqEnd`; so is
+a loaded turn row of a turn whose updated turn rows no longer include it (the
+latest page reports all of a turn's omitted turn rows when any of them
+changed). A loaded
+row whose `sourceSeqStart` changed, as when a steer is accepted after later
+rows, is taken from the latest page at its new position instead of being kept
+at the old one. An update for a row the client has not loaded, or one that moves
+a loaded row, means its loaded rows no longer match the history, so it replaces
+them with the latest page. When nothing is dropped the deeper of the loaded and latest cursors is kept. After a stale-cursor 400,
 `recoverLoadedTimelineAfterStaleCursor` reloads from the latest page when the
 snapshot changed, and otherwise merges and takes the latest cursor.
 
@@ -77,13 +121,21 @@ walk. The Ladle story `thread/timeline/Scrollback` with
 the open story) checks that the scrolled-back row stays put while the latest
 window changes and that a full walk shows every row once, in order.
 
-A latest page sends omitted rows whose `sourceSeqEnd` reaches its window start
-in `timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as
-a running background delegation that started on an older page. Each update
-keeps only the nested children that reach the window start.
+A latest page sends omitted rows that changed at or after its window start in
+`timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as a
+running background delegation that started on an older page. A row changed
+there when its `sourceSeqEnd` reaches the window start, or when a loaded event
+that renders into it does: a background task's or delegation's latest progress,
+child event or completion, and for a turn row any change to the rows it groups,
+the turn's completion, or the acceptance of a request sent during the turn. Rows owned before the window count changes from the
+window start even when a content cut returns only the window's newest leaves.
+Each update keeps
+only the nested children that reach the window start. When the latest window
+has no visible rows and the server returns an older window in its place, that
+response still reports updates the way a latest page does.
 `mergeLoadedTimelineWithLatest` joins each update into the loaded row with the
-same id and ignores rows it has not loaded, including on repeat refreshes of
-the same snapshot. Updates share the page byte budget
+same id; an update for a row it has not loaded replaces the loaded rows as
+described above. Updates share the page byte budget
 with the returned rows. Updates that do not fit the remaining budget, and leaves
 omitted by a content cut, still count toward `olderRowsSourceSeqEnd`.
 
