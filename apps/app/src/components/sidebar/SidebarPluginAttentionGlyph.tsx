@@ -28,7 +28,11 @@ export function SidebarPluginAttentionGlyph({
   onNavigate?: () => void;
 }) {
   const pluginList = usePluginList({ enabled: true }).data;
-  const loaded = pluginList !== undefined;
+  const settled =
+    pluginList !== undefined &&
+    !pluginList.plugins.some(
+      (plugin) => plugin.enabled && plugin.status === "starting",
+    );
   const plugins = pluginsNeedingAttention(pluginList?.plugins ?? []);
   const [acknowledgedKey, setAcknowledgedKey] = useAtom(
     acknowledgedAttentionKeyAtom,
@@ -43,10 +47,10 @@ export function SidebarPluginAttentionGlyph({
         );
 
   useEffect(() => {
-    if (loaded && key === null && acknowledgedKey !== null) {
+    if (settled && key === null && acknowledgedKey !== null) {
       setAcknowledgedKey(null);
     }
-  }, [loaded, key, acknowledgedKey, setAcknowledgedKey]);
+  }, [settled, key, acknowledgedKey, setAcknowledgedKey]);
 
   if (key === null || key === acknowledgedKey) return null;
   const label = pluginAttentionLabel(plugins);

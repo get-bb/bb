@@ -286,11 +286,11 @@ describe("AppUpdateHost", () => {
     vi.mocked(sdk.system.acknowledgeAppUpdate).mockRejectedValue(
       new BbHttpError({
         status: 409,
-        code: "app_update_result_not_found",
-        message: "That update result is no longer current.",
+        code: "app_update_rejected",
+        message: "The bb-app launcher did not respond.",
         body: {
-          code: "app_update_result_not_found",
-          message: "That update result is no longer current.",
+          code: "app_update_rejected",
+          message: "The bb-app launcher did not respond.",
         },
       }),
     );
@@ -304,7 +304,7 @@ describe("AppUpdateHost", () => {
       expect(appToast.error).toHaveBeenCalledWith(
         "Couldn't dismiss the update result",
         expect.objectContaining({
-          description: "That update result is no longer current.",
+          description: "The bb-app launcher did not respond.",
         }),
       );
     });

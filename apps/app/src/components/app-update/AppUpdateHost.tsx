@@ -121,7 +121,7 @@ export function AppUpdateHost({
                 appToast.error("Couldn't dismiss the update result", {
                   description: getMutationErrorMessage({
                     error,
-                    fallbackMessage: String(error),
+                    fallbackMessage: "Try again.",
                   }),
                 });
               },

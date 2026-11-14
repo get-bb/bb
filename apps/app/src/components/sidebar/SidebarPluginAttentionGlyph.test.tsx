@@ -110,6 +110,21 @@ describe("SidebarPluginAttentionGlyph", () => {
     expect(glyph()).toBeNull();
   });
 
+  it("keeps a dismissal while the plugin restarts with the server", () => {
+    renderGlyph([plugin({})]);
+    fireEvent.click(glyph()!);
+    cleanup();
+
+    const { rerender } = renderGlyph([
+      plugin({ status: "starting", statusDetail: null }),
+    ]);
+    expect(glyph()).toBeNull();
+    usePluginListMock.mockReturnValue({ data: { plugins: [plugin({})] } });
+    rerender(glyphTree());
+
+    expect(glyph()).toBeNull();
+  });
+
   it("clears the acknowledgement when the count drops to zero", () => {
     renderGlyph([plugin({})]);
     fireEvent.click(glyph()!);
