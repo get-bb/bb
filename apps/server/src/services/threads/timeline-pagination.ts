@@ -24,7 +24,8 @@ interface OlderThreadTimelinePageRequest {
 }
 
 export type ThreadTimelinePageRequest =
-  LatestThreadTimelinePageRequest | OlderThreadTimelinePageRequest;
+  | LatestThreadTimelinePageRequest
+  | OlderThreadTimelinePageRequest;
 
 interface TimelineLogicalSegment {
   rows: TimelineRow[];
@@ -46,6 +47,10 @@ export interface PaginateTimelineRowsArgs {
   maxBytes: number;
   ownedSequenceStart: number;
   ownedSequenceEnd: number;
+  ownershipSequenceOf: (row: TimelineRow) => number;
+  changedThroughSequenceOf: (row: TimelineRow) => number;
+  orderChangedThroughSequence: (windowStart: number) => number | null;
+  reportsOlderRowChanges: boolean;
   hasOlderSegments: boolean;
   page: ThreadTimelinePageRequest;
   rows: readonly TimelineRow[];
@@ -61,18 +66,19 @@ function timelineWindowCursor(sequenceStart: number): TimelinePaginationCursor {
 function buildTimelineLogicalSegments(
   args: PaginateTimelineRowsArgs,
 ): TimelineLogicalSegment[] {
-  const { ownedSequenceStart, ownedSequenceEnd } = args;
+  const { ownedSequenceStart, ownedSequenceEnd, ownershipSequenceOf } = args;
   const bounds = [
     ownedSequenceStart,
     ...new Set(
-      args.rows.flatMap((row) =>
-        row.kind === "conversation" &&
-        row.role === "user" &&
-        row.sourceSeqStart > ownedSequenceStart &&
-        row.sourceSeqStart < ownedSequenceEnd
-          ? [row.sourceSeqStart]
-          : [],
-      ),
+      args.rows.flatMap((row) => {
+        const sequence = ownershipSequenceOf(row);
+        return row.kind === "conversation" &&
+          row.role === "user" &&
+          sequence > ownedSequenceStart &&
+          sequence < ownedSequenceEnd
+          ? [sequence]
+          : [];
+      }),
     ),
   ].sort((left, right) => left - right);
   const segments = bounds.map((sequenceStart): TimelineLogicalSegment => ({
@@ -80,17 +86,15 @@ function buildTimelineLogicalSegments(
     sequenceStart,
   }));
   for (const row of args.rows) {
-    if (
-      row.sourceSeqStart < ownedSequenceStart ||
-      row.sourceSeqStart >= ownedSequenceEnd
-    ) {
+    const sequence = ownershipSequenceOf(row);
+    if (sequence < ownedSequenceStart || sequence >= ownedSequenceEnd) {
       continue;
     }
     let start = 0;
     let end = bounds.length;
     while (start + 1 < end) {
       const middle = Math.floor((start + end) / 2);
-      if (bounds[middle]! <= row.sourceSeqStart) start = middle;
+      if (bounds[middle]! <= sequence) start = middle;
       else end = middle;
     }
     segments[start]!.rows.push(row);
@@ -114,25 +118,32 @@ function firstLeafSourceSeqStart(rows: readonly TimelineRow[]): number | null {
 function timelineRowChangesFrom(
   row: TimelineRow,
   sequence: number,
+  changedThroughSequenceOf: (row: TimelineRow) => number,
 ): TimelineRow {
   const children = timelineRowChildren(row);
   return children === null
     ? row
-    : withTimelineRowChildren(row, timelineRowsChangedFrom(children, sequence));
+    : withTimelineRowChildren(
+        row,
+        timelineRowsChangedFrom(children, sequence, changedThroughSequenceOf),
+      );
 }
 
 function timelineRowsChangedFrom(
   rows: readonly TimelineRow[],
   sequence: number,
+  changedThroughSequenceOf: (row: TimelineRow) => number,
 ): TimelineRow[] {
   const firstChangedIndex = rows.findIndex(
-    (row) => row.sourceSeqEnd >= sequence,
+    (row) => changedThroughSequenceOf(row) >= sequence,
   );
   return firstChangedIndex === -1
     ? []
     : rows
         .slice(firstChangedIndex)
-        .map((row) => timelineRowChangesFrom(row, sequence));
+        .map((row) =>
+          timelineRowChangesFrom(row, sequence, changedThroughSequenceOf),
+        );
 }
 
 export function paginateTimelineRows(
@@ -155,29 +166,57 @@ export function paginateTimelineRows(
   const omittedRows = (
     omittedContentSourceSeqEnd: number | null,
     windowStart: number,
+    segmentStart: number,
   ): Pick<
     PaginatedTimelineRowsResult,
     "olderRowUpdates" | "olderRowsSourceSeqEnd"
   > => {
     const omitted = rows.filter(
       (row) =>
-        row.sourceSeqStart < args.ownedSequenceEnd && !returnedRows.has(row.id),
+        args.ownershipSequenceOf(row) < args.ownedSequenceEnd &&
+        !returnedRows.has(row.id),
     );
-    const changed =
-      page.kind === "latest"
-        ? omitted.filter((row) => row.sourceSeqEnd >= windowStart)
-        : [];
+    const changedSince = (row: TimelineRow) =>
+      args.ownershipSequenceOf(row) < segmentStart ? segmentStart : windowStart;
+    const changedRows = args.reportsOlderRowChanges
+      ? omitted.filter(
+          (row) => args.changedThroughSequenceOf(row) >= changedSince(row),
+        )
+      : [];
+    const turnsWithChangedTurnRows = new Set(
+      changedRows.flatMap((row) =>
+        row.kind === "turn" && row.turnId !== null ? [row.turnId] : [],
+      ),
+    );
+    const changedRowSet = new Set(changedRows);
+    const changed = omitted.filter(
+      (row) =>
+        changedRowSet.has(row) ||
+        (row.kind === "turn" &&
+          row.turnId !== null &&
+          turnsWithChangedTurnRows.has(row.turnId)),
+    );
     const updates = changed.map((row) =>
-      timelineRowChangesFrom(row, windowStart),
+      timelineRowChangesFrom(
+        row,
+        changedSince(row),
+        args.changedThroughSequenceOf,
+      ),
     );
     const reported =
       timelineRowsJsonBytes(updates) > remainingBytes ? [] : changed;
+    const orderChangedThrough = args.reportsOlderRowChanges
+      ? args.orderChangedThroughSequence(segmentStart)
+      : null;
     return {
       olderRowsSourceSeqEnd: omitted
         .filter((row) => !reported.includes(row))
         .reduce<number | null>(
-          (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
-          omittedContentSourceSeqEnd,
+          (sourceSeqEnd, row) =>
+            Math.max(sourceSeqEnd ?? 0, args.changedThroughSequenceOf(row)),
+          orderChangedThrough === null
+            ? omittedContentSourceSeqEnd
+            : Math.max(omittedContentSourceSeqEnd ?? 0, orderChangedThrough),
         ),
       ...(reported.length > 0 ? { olderRowUpdates: updates } : {}),
     };
@@ -187,7 +226,7 @@ export function paginateTimelineRows(
       olderCursor: hasOlderSegments
         ? timelineWindowCursor(args.ownedSequenceStart)
         : null,
-      ...omittedRows(null, args.ownedSequenceStart),
+      ...omittedRows(null, args.ownedSequenceStart, args.ownedSequenceStart),
       returnedSegmentCount: 0,
       rows: [],
     };
@@ -223,6 +262,7 @@ export function paginateTimelineRows(
           contents.start > 0
             ? (firstLeafSourceSeqStart(contents.rows) ?? segment.sequenceStart)
             : segment.sequenceStart,
+          segment.sequenceStart,
         ),
         contentCursor:
           contents.start > 0
@@ -244,6 +284,10 @@ export function paginateTimelineRows(
     olderCursor: hasOlderRows
       ? timelineWindowCursor(selectedSegments[0]!.sequenceStart)
       : null,
-    ...omittedRows(null, selectedSegments[0]!.sequenceStart),
+    ...omittedRows(
+      null,
+      selectedSegments[0]!.sequenceStart,
+      selectedSegments[0]!.sequenceStart,
+    ),
   };
 }

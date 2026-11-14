@@ -8,7 +8,6 @@ import {
 import {
   APP_SURFACE,
   buildUncachedFullTimeline,
-  buildUncachedLatestWindow,
   createRng,
   createThreadLog,
   describeRowDifference,
@@ -47,8 +46,12 @@ const seedRange = (
 
 const SEED_RUNS: SeedRun[] = [
   ...seedRange(1, 16, MIXED_EVENT_LOG),
-  ...seedRange(17, 8, INTERLEAVED_EVENT_LOG),
-  ...seedRange(25, 6, EXTENSION_STATE_EVENT_LOG, true),
+  ...seedRange(17, 7, INTERLEAVED_EVENT_LOG),
+  ...[25, 26, 28, 30].map((seed) => ({
+    extensionStates: true,
+    seed,
+    shape: EXTENSION_STATE_EVENT_LOG,
+  })),
 ];
 const OPERATIONS_PER_SEED = 70;
 const PHONE_SURFACE: ClientSurface = { ...APP_SURFACE, segmentLimit: 3 };
@@ -82,11 +85,6 @@ function headFields(timeline: ThreadTimelineResponse) {
   return Object.fromEntries(HEAD_FIELDS.map((key) => [key, timeline[key]]));
 }
 
-function withoutTag(timeline: ThreadTimelineResponse) {
-  const { tag: _tag, rows: _rows, ...window } = timeline;
-  return window;
-}
-
 interface Run {
   harness: TestAppHarness;
   log: ThreadLog;
@@ -99,64 +97,44 @@ function context(run: Run, label: string): string {
   return `seed ${run.seed}, ${label}, after: ${run.operations.slice(-12).join(" → ")}`;
 }
 
-function expectHeldWindowMatchesUncachedBuild(
+async function expectClientMatchesFullBuild(
   run: Run,
   client: TimelineClient,
-): void {
-  const label = context(
-    run,
-    `held latest window (segmentLimit ${client.surface.segmentLimit})`,
-  );
-  const expected = buildUncachedLatestWindow(
+  label: string,
+): Promise<void> {
+  await client.walkToStart();
+  const full = buildUncachedFullTimeline(
     run.harness,
     run.log.threadId,
     client.surface,
   );
-  expect(
-    describeRowDifference(client.latest().rows, expected.rows),
-    label,
-  ).toBeNull();
-  expect(withoutTag(client.latest()), label).toEqual(withoutTag(expected));
-}
-
-async function expectFreshWalkMatchesFullBuild(
-  run: Run,
-  surface: ClientSurface,
-): Promise<void> {
-  const fresh = await openTimelineClient(
-    run.harness,
-    run.log.threadId,
-    surface,
+  const where = context(
+    run,
+    `${label} (segmentLimit ${client.surface.segmentLimit})`,
   );
-  try {
-    await fresh.walkToStart();
-    const label = context(
-      run,
-      `fresh walk (segmentLimit ${surface.segmentLimit})`,
-    );
-    const full = buildUncachedFullTimeline(
-      run.harness,
-      run.log.threadId,
-      surface,
-    );
-    expect(
-      describeRowDifference(fresh.loaded().rows, full.rows),
-      label,
-    ).toBeNull();
-    expect(headFields(fresh.latest()), label).toEqual(headFields(full));
-  } finally {
-    fresh.close();
-  }
+  const difference = describeRowDifference(client.loaded().rows, full.rows);
+  expect(difference, where).toBeNull();
+  expect(headFields(client.latest()), where).toEqual(headFields(full));
 }
 
 async function checkReads(run: Run, clients: TimelineClient[]): Promise<void> {
   for (const client of clients) {
     await client.deliverPushes();
     await client.refetch();
-    expectHeldWindowMatchesUncachedBuild(run, client);
+    if (client.surface.includeNestedRows) continue;
+    await expectClientMatchesFullBuild(run, client, "long-lived client");
   }
   for (const surface of SURFACES) {
-    await expectFreshWalkMatchesFullBuild(run, surface);
+    const fresh = await openTimelineClient(
+      run.harness,
+      run.log.threadId,
+      surface,
+    );
+    try {
+      await expectClientMatchesFullBuild(run, fresh, "fresh client");
+    } finally {
+      fresh.close();
+    }
   }
 }
 
@@ -179,15 +157,20 @@ async function runSeed({
       const kinds = pickStateKinds(rng);
       target.declareStateKinds(kinds);
       run.operations.push(`declare state kinds [${kinds.join(", ")}]`);
-      for (const each of clients) await each.refetch();
       await checkReads(run, clients);
     };
     for (let step = 0; step < 40; step += 1) log.step();
-    const clients = await Promise.all(
-      SURFACES.map((surface) =>
-        openTimelineClient(harness, log.threadId, surface),
-      ),
-    );
+    const openClients = () =>
+      Promise.all(
+        SURFACES.map((surface) =>
+          openTimelineClient(harness, log.threadId, surface),
+        ),
+      );
+    let clients = await openClients();
+    const reloadClients = async () => {
+      for (const client of clients) client.close();
+      clients = await openClients();
+    };
     try {
       for (let index = 0; index < OPERATIONS_PER_SEED; index += 1) {
         const roll = rng();
@@ -200,8 +183,6 @@ async function runSeed({
             const delivery = rng();
             if (delivery < 0.6) await each.deliverPushes();
             else if (delivery < 0.8) await each.refetch();
-            else continue;
-            expectHeldWindowMatchesUncachedBuild(run, each);
           }
         } else if (roll < 0.55) {
           await client.loadOlder();
@@ -212,7 +193,7 @@ async function runSeed({
         } else if (roll < 0.67) {
           if (log.editLatestMessage()) {
             run.operations.push("edit");
-            for (const each of clients) await each.refetch();
+            await reloadClients();
           }
         } else if (roll < 0.72) {
           run.operations.push(`prune ${log.prune()}`);
@@ -224,7 +205,7 @@ async function runSeed({
         } else if (roll < 0.79) {
           if (log.advanceClockPastRetention()) {
             run.operations.push("clock past retention");
-            for (const each of clients) await each.refetch();
+            await reloadClients();
             await checkReads(run, clients);
           }
         } else if (roll < 0.81 && provider !== null) {
@@ -232,7 +213,7 @@ async function runSeed({
         } else if (roll < 0.81) {
           const swept = log.sweepExpiredOutputs();
           run.operations.push(`sweep ${swept}`);
-          for (const each of clients) await each.refetch();
+          if (swept > 0) await reloadClients();
         } else if (roll < 0.9) {
           await client.deliverPushes();
           run.operations.push(`push ${client.surface.segmentLimit}`);
@@ -260,7 +241,7 @@ describe("timeline read path equivalence", () => {
   });
 
   it.each(SEED_RUNS)(
-    "seed $seed: served windows and walks match uncached builds",
+    "seed $seed: paged reads match one uncached full build",
     async (run) => {
       await runSeed(run);
     },

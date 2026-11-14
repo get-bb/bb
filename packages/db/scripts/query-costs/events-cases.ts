@@ -75,6 +75,8 @@ import {
   listOpenBackgroundTaskItemRowsForThread,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOwnerStoppedBackgroundTaskRowsForHost,
+  listStartedBackgroundItemRowsByItemIds,
+  listStoredStandaloneThreadTimelineRows,
   listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
@@ -104,6 +106,7 @@ import {
   listTimelineOrderingContext,
   listTimelineRootWindowTurnIds,
   listTimelineWindowHintsDescending,
+  listTimelineWindowParentToolCallIds,
   listTodoSnapshotEventRowsForThread,
   pruneContextWindowUsageEventsInTransaction,
   pruneTokenUsageEventsInTransaction,
@@ -628,6 +631,13 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
       listTimelineRootWindowTurnIds(db, liveTimelineArgs(fixture)),
   },
   {
+    name: `${EVENTS}#listTimelineWindowParentToolCallIds`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowStart,
+    run: (db, fixture) =>
+      listTimelineWindowParentToolCallIds(db, liveTimelineArgs(fixture)),
+  },
+  {
     name: `${EVENTS}#listTimelineWindowHintsDescending`,
     variant: LIVE_TURN,
     run: (db, fixture) =>
@@ -950,6 +960,27 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
           ...fixture.backgroundTaskItemIds,
           ...fixture.delegationItemIds.slice(-1),
         ],
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredStandaloneThreadTimelineRows`,
+    run: (db, fixture) =>
+      listStoredStandaloneThreadTimelineRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: Math.max(0, fixture.latestSequence - 2_000),
+        beforeSequence: fixture.latestSequence + 1,
+        excludeDiagnosticEvents: true,
+        maxInlineOutputChars: 32_000,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStartedBackgroundItemRowsByItemIds`,
+    run: (db, fixture) =>
+      listStartedBackgroundItemRowsByItemIds(db, {
+        backgroundTaskItemIds: fixture.backgroundTaskItemIds,
+        delegatingItemIds: fixture.delegationItemIds.slice(-1),
+        maxInlineOutputChars: 32_000,
         threadId: fixture.threadId,
       }),
   },

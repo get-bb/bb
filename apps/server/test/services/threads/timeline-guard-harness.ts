@@ -49,10 +49,7 @@ import {
   resolveThreadProviderDisplayName,
 } from "../../../src/services/threads/thread-timeline-windows.js";
 import { resolveThreadHeadStateOptions } from "../../../src/services/threads/thread-head-state.js";
-import {
-  buildThreadTimelineWithProfile,
-  THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
-} from "../../../src/services/threads/timeline.js";
+import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -107,8 +104,9 @@ const execution = {
 } as const;
 
 interface OpenTurn {
+  abandonedDelegations: number;
   delegations: OpenDelegation[];
-  pendingSteerAcceptance: string | null;
+  pendingSteerAcceptances: string[];
   turnId: string;
 }
 
@@ -149,6 +147,7 @@ export interface EventLogShape {
   largeOutputChance: number;
   lateBackgroundWork: boolean;
   messageWeight: number;
+  pendingWorkWhileIdle: boolean;
   requestFreeRunsInsideTurns: boolean;
   requestFreeRunWeight: number;
   steerWeight: number;
@@ -158,19 +157,20 @@ export interface EventLogShape {
 export const MIXED_EVENT_LOG: EventLogShape = {
   abandonedDelegationChance: 0,
   abandonedTurnChance: 0,
-  backgroundTasksAcrossConcurrentTurns: false,
+  backgroundTasksAcrossConcurrentTurns: true,
   backgroundTaskWeight: 2,
   commandWeight: 4,
   compactionWeight: 0.5,
   concurrentTurnWeight: 0,
-  deferredSteerAcceptanceChance: 0,
+  deferredSteerAcceptanceChance: 0.3,
   delegationWeight: 2,
   extensionStateWeight: 0,
   hiddenRequestWeight: 0,
   largeOutputChance: 0.04,
-  lateBackgroundWork: false,
+  lateBackgroundWork: true,
   messageWeight: 4,
-  requestFreeRunsInsideTurns: false,
+  pendingWorkWhileIdle: false,
+  requestFreeRunsInsideTurns: true,
   requestFreeRunWeight: 0,
   steerWeight: 1.5,
   turnCompleteWeight: 2,
@@ -286,6 +286,12 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
   let openTurns: OpenTurn[] = [];
   let backgroundTasks: OpenBackgroundTask[] = [];
   let backgroundDelegations: OpenDelegation[] = [];
+  let completedTurns: { completedAt: number; turnId: string }[] = [];
+  const turnStartSequences = new Map<string, number>();
+  const delegationFinishes = new Map<
+    OpenDelegation,
+    { abandoned: boolean; finishedAt: number | null }
+  >();
   let requests: UserRequest[] = [];
   let bulkInputs: EventInput[] | null = null;
   vi.setSystemTime(now);
@@ -387,11 +393,20 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
       text,
       turnCount === 1 ? { kind: "thread-start" } : { kind: "new-turn" },
     );
-    openTurns.push({ delegations: [], pendingSteerAcceptance: null, turnId });
+    openTurns.push({
+      abandonedDelegations: 0,
+      delegations: [],
+      pendingSteerAcceptances: [],
+      turnId,
+    });
     setStatus("active");
+    const provisioning = turnCount === 1 || rng() < 0.3 ? requestFreeRun() : [];
+    const started = event("turn/started", turnScope(turnId), {});
+    turnStartSequences.set(turnId, started.sequence);
     return [
       input,
-      event("turn/started", turnScope(turnId), {}),
+      ...provisioning,
+      started,
       event("turn/input/accepted", turnScope(turnId), {
         clientRequestId: requestId,
       }),
@@ -468,7 +483,7 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
       expectedTurnId: turn.turnId,
     });
     if (chance(rng, shape.deferredSteerAcceptanceChance)) {
-      turn.pendingSteerAcceptance = requestId;
+      turn.pendingSteerAcceptances.push(requestId);
       return [input];
     }
     return [
@@ -499,7 +514,11 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
       ownerTurnId: turn.turnId,
       startSequence: sequence + 1,
     };
-    if (!sometimes(rng, shape.abandonedDelegationChance)) {
+    trackDelegation(delegation);
+    if (sometimes(rng, shape.abandonedDelegationChance)) {
+      turn.abandonedDelegations += 1;
+      delegationFinishes.set(delegation, { abandoned: true, finishedAt: null });
+    } else {
       turn.delegations.push(delegation);
     }
     return [
@@ -513,10 +532,43 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     ];
   }
 
+  function startDelegationInCompletedTurn(turnId: string): EventInput[] {
+    const id = nextId("delegation");
+    const delegation: OpenDelegation = {
+      background: true,
+      childTurnId: `${id}-turn`,
+      id,
+      ownerTurnId: turnId,
+      startSequence: sequence + 1,
+    };
+    trackDelegation(delegation);
+    backgroundDelegations.push(delegation);
+    return [
+      event("item/started", turnScope(turnId), {
+        item: delegationItem(delegation, "pending"),
+      }),
+      event("turn/started", turnScope(delegation.childTurnId), {
+        parentToolCallId: id,
+      }),
+      ...message(delegation.childTurnId, id),
+    ];
+  }
+
+  function trackDelegation(delegation: OpenDelegation): void {
+    delegationFinishes.set(delegation, {
+      abandoned: false,
+      finishedAt: null,
+    });
+  }
+
   function finishDelegation(
     delegation: OpenDelegation,
     ownerOpen: boolean,
   ): EventInput[] {
+    delegationFinishes.set(delegation, {
+      abandoned: delegationFinishes.get(delegation)?.abandoned ?? false,
+      finishedAt: sequence + 1,
+    });
     const inputs = [
       ...message(delegation.childTurnId, delegation.id),
       event("turn/completed", turnScope(delegation.childTurnId), {
@@ -607,14 +659,14 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
 
   function completeTurn(turn: OpenTurn): EventInput[] {
     const inputs: EventInput[] = [];
-    if (turn.pendingSteerAcceptance !== null) {
+    for (const clientRequestId of turn.pendingSteerAcceptances) {
       inputs.push(
         event("turn/input/accepted", turnScope(turn.turnId), {
-          clientRequestId: turn.pendingSteerAcceptance,
+          clientRequestId,
         }),
       );
-      turn.pendingSteerAcceptance = null;
     }
+    turn.pendingSteerAcceptances = [];
     if (!shape.lateBackgroundWork) {
       for (const task of backgroundTasks) {
         if (task.ownerTurnId === turn.turnId) {
@@ -630,20 +682,64 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
       }
     }
     inputs.push(...message(turn.turnId, null));
+    const interrupted =
+      turn.abandonedDelegations > 0 && !shape.pendingWorkWhileIdle;
+    if (interrupted) {
+      for (const [delegation, finish] of delegationFinishes) {
+        if (delegation.ownerTurnId === turn.turnId && finish.abandoned) {
+          finish.finishedAt = sequence + 1;
+        }
+      }
+    }
     inputs.push(
-      event("turn/completed", turnScope(turn.turnId), { status: "completed" }),
+      event("turn/completed", turnScope(turn.turnId), {
+        status: interrupted ? "interrupted" : "completed",
+      }),
     );
+    completedTurns.push({ completedAt: sequence, turnId: turn.turnId });
     openTurns = openTurns.filter((open) => open !== turn);
+    if (openTurns.length === 0 && !shape.pendingWorkWhileIdle) {
+      for (const [delegation, { finishedAt }] of delegationFinishes) {
+        if (finishedAt === null) {
+          inputs.push(...finishDelegation(delegation, false));
+        }
+      }
+      backgroundDelegations = [];
+    }
     if (openTurns.length === 0) setStatus("idle");
     return inputs;
   }
 
   function startConcurrentTurn(turn: OpenTurn): EventInput[] {
-    const inputs = shape.backgroundTasksAcrossConcurrentTurns
+    const inputs: EventInput[] = shape.backgroundTasksAcrossConcurrentTurns
       ? []
       : backgroundTasks.flatMap(finishBackgroundTask);
-    if (sometimes(rng, shape.abandonedTurnChance)) {
+    if (
+      sometimes(rng, shape.abandonedTurnChance) &&
+      (shape.pendingWorkWhileIdle || turn.abandonedDelegations === 0)
+    ) {
+      if (!shape.pendingWorkWhileIdle) {
+        for (const delegation of turn.delegations) {
+          inputs.push(...finishDelegation(delegation, true));
+        }
+        turn.delegations = [];
+      }
       openTurns = openTurns.filter((open) => open !== turn);
+      for (const requestId of turn.pendingSteerAcceptances) {
+        inputs.push(
+          event(
+            "client/turn/rejected",
+            threadScope(),
+            {
+              requestId,
+              reason: "command_failed",
+              message: "The turn ended before the steer was delivered",
+            },
+            null,
+          ),
+        );
+      }
+      turn.pendingSteerAcceptances = [];
     }
     return [...inputs, ...startTurn(`User message ${turnCount + 1}`)];
   }
@@ -694,9 +790,9 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
   }
 
   function turnStep(turn: OpenTurn, keepTurnOpen: boolean): EventInput[] {
-    if (turn.pendingSteerAcceptance !== null && chance(rng, 0.6)) {
-      const clientRequestId = turn.pendingSteerAcceptance;
-      turn.pendingSteerAcceptance = null;
+    const clientRequestId = turn.pendingSteerAcceptances[0];
+    if (clientRequestId !== undefined && chance(rng, 0.6)) {
+      turn.pendingSteerAcceptances.shift();
       return [
         event("turn/input/accepted", turnScope(turn.turnId), {
           clientRequestId,
@@ -743,6 +839,12 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
         },
       ]);
     }
+    if (shape.lateBackgroundWork && completedTurns.length > 0) {
+      options.push([
+        shape.delegationWeight / 4,
+        () => startDelegationInCompletedTurn(pick(rng, completedTurns).turnId),
+      ]);
+    }
     const progressing = shape.lateBackgroundWork
       ? backgroundTasks
       : backgroundTasks.filter((task) => task.ownerTurnId === turn.turnId);
@@ -785,6 +887,14 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     backgroundDelegations = backgroundDelegations.filter(
       (delegation) => delegation.startSequence < cutoff,
     );
+    completedTurns = completedTurns.filter((turn) => turn.completedAt < cutoff);
+    for (const [delegation, finish] of delegationFinishes) {
+      if (delegation.startSequence >= cutoff) {
+        delegationFinishes.delete(delegation);
+      } else if (finish.finishedAt !== null && finish.finishedAt >= cutoff) {
+        finish.finishedAt = null;
+      }
+    }
     requests = requests.filter((entry) => entry.sequence < cutoff);
   }
 
@@ -832,7 +942,15 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     },
     editLatestMessage() {
       if (openTurns.length > 0) return false;
-      const target = requests.filter((entry) => entry.editable).at(-1);
+      const completesAfter = (cutoff: number) =>
+        completedTurns.some(
+          (turn) =>
+            turn.completedAt >= cutoff &&
+            (turnStartSequences.get(turn.turnId) ?? cutoff) < cutoff,
+        );
+      const target = requests
+        .filter((entry) => entry.editable && !completesAfter(entry.sequence))
+        .at(-1);
       if (target === undefined || target.sequence <= 1) return false;
       editCount += 1;
       const oldMaxSequence = sequence;
@@ -1223,19 +1341,6 @@ export function buildUncachedFullTimeline(
     throw new Error("the uncached full build did not cover the thread");
   }
   return response;
-}
-
-export function buildUncachedLatestWindow(
-  harness: TestAppHarness,
-  threadId: string,
-  surface: ClientSurface,
-): ThreadTimelineResponse {
-  return buildUncachedTimeline(harness, {
-    eventBudget: harness.deps.config.featureFlags.timelineWindowEventBudget,
-    segmentLimit: surface.segmentLimit ?? THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
-    surface,
-    threadId,
-  });
 }
 
 export function describeRowDifference(

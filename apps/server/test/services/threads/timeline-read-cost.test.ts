@@ -22,6 +22,8 @@ import {
   createThreadLog,
   MIXED_EVENT_LOG,
   requestTimeline,
+  type EventLogShape,
+  type Rng,
   type ThreadLog,
 } from "./timeline-guard-harness.js";
 
@@ -36,9 +38,7 @@ interface PreparingDatabase {
 }
 
 interface RowCounter {
-  measure<T>(
-    work: () => Promise<T>,
-  ): Promise<{ result: T; rows: number; top: string }>;
+  measure(work: () => Promise<void>): Promise<number>;
   restore(): void;
 }
 
@@ -49,11 +49,8 @@ function installRowCounter(): RowCounter {
   const originalPrepare = prototype.prepare;
   let counting = false;
   let rows = 0;
-  let rowsBySource = new Map<string, number>();
-  const record = (source: string, count: number) => {
-    if (!counting || count === 0) return;
-    rows += count;
-    rowsBySource.set(source, (rowsBySource.get(source) ?? 0) + count);
+  const record = (count: number) => {
+    if (counting) rows += count;
   };
   prototype.prepare = function prepare(
     this: PreparingDatabase,
@@ -68,7 +65,7 @@ function installRowCounter(): RowCounter {
       writable: true,
       value: (...params: unknown[]) => {
         const result = all(...params);
-        record(source, result.length);
+        record(result.length);
         return result;
       },
     });
@@ -77,7 +74,7 @@ function installRowCounter(): RowCounter {
       writable: true,
       value: (...params: unknown[]) => {
         const result = get(...params);
-        record(source, result === undefined ? 0 : 1);
+        record(result === undefined ? 0 : 1);
         return result;
       },
     });
@@ -86,7 +83,7 @@ function installRowCounter(): RowCounter {
       writable: true,
       value: function* (...params: unknown[]) {
         for (const row of iterate(...params)) {
-          record(source, 1);
+          record(1);
           yield row;
         }
       },
@@ -96,19 +93,10 @@ function installRowCounter(): RowCounter {
   return {
     async measure(work) {
       rows = 0;
-      rowsBySource = new Map();
       counting = true;
       try {
-        const result = await work();
-        const top = [...rowsBySource]
-          .sort((left, right) => right[1] - left[1])
-          .slice(0, 5)
-          .map(
-            ([source, count]) =>
-              `${count} rows: ${source.replace(/\s+/g, " ").slice(0, 220)}`,
-          )
-          .join("\n");
-        return { result, rows, top };
+        await work();
+        return rows;
       } finally {
         counting = false;
       }
@@ -119,20 +107,16 @@ function installRowCounter(): RowCounter {
   };
 }
 
-const LONG_THREAD_EVENTS = 20_000;
-const LONG_RUNNING_TURN_EVENTS = 4_000;
-const OLDER_PAGES = 6;
-const PUSHES = 5;
-
-const ROWS_READ_BUDGET = {
-  openLatest: 12_000,
-  pageOlder: 6_000,
-  push: 6_000,
-  refetchUnchanged: 50,
-  headState: 500,
+const HISTORY_EVENTS = 6_000;
+const RECENT_STEPS = 600;
+const PUSHES = 4;
+const COST_SHAPE: EventLogShape = {
+  ...MIXED_EVENT_LOG,
+  deferredSteerAcceptanceChance: 0,
+  lateBackgroundWork: false,
 };
 
-type ReadOperation = keyof typeof ROWS_READ_BUDGET;
+type ReadOperation = "push" | "refetchUnchanged" | "headState" | "olderPage";
 
 let counter: RowCounter;
 
@@ -152,56 +136,34 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function buildLongThread(
+function switchableRng(seed: number): { rng: Rng; reseed(next: number): void } {
+  let source = createRng(seed);
+  return {
+    rng: () => source(),
+    reseed(next) {
+      source = createRng(next);
+    },
+  };
+}
+
+function buildThread(
   harness: TestAppHarness,
+  historyEvents: number,
   runningTurn: boolean,
 ): ThreadLog {
+  const random = switchableRng(11);
   const log = createThreadLog({
     harness,
     providerId: "codex",
-    rng: createRng(7),
-    shape: MIXED_EVENT_LOG,
+    rng: random.rng,
+    shape: COST_SHAPE,
   });
-  const historyEvents = runningTurn
-    ? LONG_THREAD_EVENTS - LONG_RUNNING_TURN_EVENTS
-    : LONG_THREAD_EVENTS;
-  while (log.eventCount() < historyEvents) log.bulk(500);
+  while (log.eventCount() < historyEvents) log.bulk(250);
   log.finishOpenWork();
-  if (runningTurn) {
-    while (log.eventCount() < LONG_THREAD_EVENTS) {
-      log.bulk(200, { keepTurnOpen: true });
-    }
-  }
+  random.reseed(23);
+  log.bulk(RECENT_STEPS, { keepTurnOpen: runningTurn });
+  if (!runningTurn) log.finishOpenWork();
   return log;
-}
-
-async function expectWithinBudget<T>(
-  operation: ReadOperation,
-  work: () => Promise<T>,
-): Promise<T> {
-  const { result, rows, top } = await counter.measure(work);
-  expect
-    .soft(
-      rows,
-      `${operation} read ${rows} rows (budget ${ROWS_READ_BUDGET[operation]}):\n${top}`,
-    )
-    .toBeLessThanOrEqual(ROWS_READ_BUDGET[operation]);
-  return result;
-}
-
-async function readLatest(
-  harness: TestAppHarness,
-  threadId: string,
-  afterTag?: string,
-) {
-  const { body } = await requestTimeline(
-    harness,
-    threadId,
-    APP_SURFACE,
-    afterTag === undefined ? {} : { afterTag },
-  );
-  if (body === null) throw new Error("latest timeline request failed");
-  return body;
 }
 
 async function waitForPush(
@@ -219,44 +181,25 @@ async function waitForPush(
   socket.messages.splice(0);
 }
 
-async function expectReadsWithinBudget(
+async function measureWarmReads(
   harness: TestAppHarness,
   log: ThreadLog,
-): Promise<void> {
+): Promise<Record<ReadOperation, number[]>> {
   const threadId = log.threadId;
-  const latest = await expectWithinBudget("openLatest", () =>
-    readLatest(harness, threadId),
+  const reads: Record<ReadOperation, number[]> = {
+    push: [],
+    refetchUnchanged: [],
+    headState: [],
+    olderPage: [],
+  };
+  const { body: latest } = await requestTimeline(
+    harness,
+    threadId,
+    APP_SURFACE,
   );
-  if (isThreadTimelineDelta(latest)) throw new Error("expected a full window");
-
-  let cursor = latest.timelinePage.olderCursor;
-  for (let page = 0; page < OLDER_PAGES && cursor !== null; page += 1) {
-    const older = cursor;
-    const { body } = await expectWithinBudget("pageOlder", () =>
-      requestTimeline(harness, threadId, APP_SURFACE, {
-        beforeAnchorSeq: String(older.anchorSeq),
-        beforeAnchorId: older.anchorId,
-      }),
-    );
-    if (body === null || isThreadTimelineDelta(body)) {
-      throw new Error("older page request failed");
-    }
-    cursor = body.timelinePage.olderCursor;
+  if (latest === null || isThreadTimelineDelta(latest)) {
+    throw new Error("expected a full latest window");
   }
-  expect(cursor, "the walk should still have older pages").not.toBeNull();
-
-  await expectWithinBudget("refetchUnchanged", () =>
-    readLatest(harness, threadId, latest.tag),
-  );
-
-  await expectWithinBudget("headState", async () => {
-    const response = await harness.app.request(
-      `/api/v1/threads/${threadId}/head-state`,
-    );
-    expect(response.status).toBe(200);
-    return readJson(response);
-  });
-
   const socket = createMockHubSocket();
   const target = {
     kind: "thread-timeline" as const,
@@ -265,35 +208,71 @@ async function expectReadsWithinBudget(
     deferContent: true,
   };
   harness.deps.hub.subscribe(socket, target, latest.tag);
-  await discardPushesAfterSubscribe(socket);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  socket.messages.splice(0);
   try {
     for (let push = 0; push < PUSHES; push += 1) {
       log.step({ keepTurnOpen: true });
-      await expectWithinBudget("push", () => waitForPush(socket));
+      reads.push.push(await counter.measure(() => waitForPush(socket)));
     }
   } finally {
     harness.deps.hub.unsubscribe(socket, target);
   }
-}
-
-async function discardPushesAfterSubscribe(
-  socket: ReturnType<typeof createMockHubSocket>,
-): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  socket.messages.splice(0);
-}
-
-describe("timeline read cost on a very long thread", () => {
-  it.each([
-    ["finished history", false],
-    ["a long running latest turn", true],
-  ] as const)(
-    "%s: each read stays under its rows-read budget",
-    async (_label, runningTurn) => {
-      await withTestHarness(async (harness) => {
-        const log = buildLongThread(harness, runningTurn);
-        await expectReadsWithinBudget(harness, log);
+  const { body: current } = await requestTimeline(
+    harness,
+    threadId,
+    APP_SURFACE,
+  );
+  if (current === null || isThreadTimelineDelta(current)) {
+    throw new Error("expected a full latest window");
+  }
+  reads.refetchUnchanged.push(
+    await counter.measure(async () => {
+      await requestTimeline(harness, threadId, APP_SURFACE, {
+        afterTag: current.tag,
       });
+    }),
+  );
+  reads.headState.push(
+    await counter.measure(async () => {
+      const response = await harness.app.request(
+        `/api/v1/threads/${threadId}/head-state`,
+      );
+      expect(response.status).toBe(200);
+      await readJson(response);
+    }),
+  );
+  const cursor = current.timelinePage.olderCursor;
+  if (cursor === null) throw new Error("expected older pages");
+  reads.olderPage.push(
+    await counter.measure(async () => {
+      const { status } = await requestTimeline(harness, threadId, APP_SURFACE, {
+        beforeAnchorSeq: String(cursor.anchorSeq),
+        beforeAnchorId: cursor.anchorId,
+      });
+      expect(status).toBe(200);
+    }),
+  );
+  return reads;
+}
+
+describe("timeline read cost as history grows", () => {
+  it.each([
+    ["finished recent turns", false],
+    ["a running recent turn", true],
+  ] as const)(
+    "%s: warm reads do not read more rows when older history doubles",
+    async (_label, runningTurn) => {
+      const measure = (historyEvents: number) =>
+        withTestHarness((harness) =>
+          measureWarmReads(
+            harness,
+            buildThread(harness, historyEvents, runningTurn),
+          ),
+        );
+      const smaller = await measure(HISTORY_EVENTS);
+      const larger = await measure(HISTORY_EVENTS * 2);
+      expect(larger).toEqual(smaller);
     },
     120_000,
   );

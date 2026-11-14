@@ -221,6 +221,7 @@ describe("timeline grouping context cache", () => {
         },
         turnStarted("turn-b"),
         userRequest("request-before-parent"),
+        accepted("request-before-parent", "turn-b"),
         turnCompleted("turn-b"),
         rootToolCall("parent", "turn-a", "item/started"),
         userRequest("request-inside-parent"),
@@ -229,15 +230,80 @@ describe("timeline grouping context cache", () => {
       ]);
       expect(
         expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
-      ).toBe(8);
+      ).toBe(9);
       expect(
         expectCachedEqualsCold(
           testThread,
           appendRows(testThread, [child("parent", 2)]),
         ).orderingBoundarySequence,
-      ).toBe(8);
+      ).toBe(9);
     });
   });
+
+  it("keeps the earliest boundary when a late accepted steer is scanned first", () => {
+    withTestThread((testThread) => {
+      const steer = userRequest("steer");
+      const maxSeq = appendRows(testThread, [
+        turnStarted("turn-a"),
+        turnCompleted("turn-a"),
+        {
+          ...steer,
+          data: {
+            ...steer.data,
+            target: { kind: "steer", expectedTurnId: "turn-a" },
+          },
+        },
+        turnStarted("turn-b"),
+        userRequest("request-before-parent"),
+        turnCompleted("turn-b"),
+        rootToolCall("parent", "turn-a", "item/started"),
+        userRequest("request-inside-parent"),
+        child("parent", 1),
+        accepted("steer", "turn-a"),
+      ]);
+      expect(
+        expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+      ).toBe(5);
+      expect(
+        expectCachedEqualsCold(
+          testThread,
+          appendRows(testThread, [child("parent", 2)]),
+        ).orderingBoundarySequence,
+      ).toBe(5);
+    });
+  });
+
+  it.each([
+    { childTurnCompletes: false, boundary: 7 },
+    { childTurnCompletes: true, boundary: null },
+  ])(
+    "counts a delegated child turn that is open when a user message arrives (child turn completes: $childTurnCompletes)",
+    ({ childTurnCompletes, boundary }) => {
+      withTestThread((testThread) => {
+        const maxSeq = appendRows(testThread, [
+          userRequest("first"),
+          turnStarted("turn-a"),
+          accepted("first", "turn-a"),
+          rootToolCall("parent", "turn-a", "item/started"),
+          {
+            parentToolCallId: "parent",
+            turnId: "child-turn",
+            type: "turn/started",
+          },
+          ...(childTurnCompletes
+            ? [{ ...turnCompleted("child-turn"), parentToolCallId: "parent" }]
+            : []),
+          turnCompleted("turn-a"),
+          userRequest("second"),
+          turnStarted("turn-b"),
+          accepted("second", "turn-b"),
+        ]);
+        expect(
+          expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+        ).toBe(boundary);
+      });
+    },
+  );
 
   it("updates parented boundaries without rereading unchanged request and turn history", () => {
     withTestThread((testThread) => {
