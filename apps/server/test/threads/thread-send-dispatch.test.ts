@@ -2153,7 +2153,7 @@ describe("competing turn refusals", () => {
     return { queued, requestId: queued.command.requestId };
   }
 
-  it("keeps the thread active when the daemon refuses a competing turn while a root turn is running", async () => {
+  it("delivers the message into the running turn when the daemon refuses a competing start", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
         harness,
@@ -2173,17 +2173,26 @@ describe("competing turn refusals", () => {
         errorMessage: competingTurnMessage(fixture.thread.id),
       });
 
-      const events = listEvents(harness.db, { threadId: fixture.thread.id });
-      const rejection = events.find(
-        (event) => event.type === "client/turn/rejected",
+      const redelivered = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate !== queued &&
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === fixture.thread.id,
       );
-      expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
+      expect(redelivered.command).toMatchObject({
         requestId,
-        reason: "competing_turn",
-        message: competingTurnMessage(fixture.thread.id),
+        target: { mode: "auto", expectedTurnId: null },
       });
+      const events = listEvents(harness.db, { threadId: fixture.thread.id });
+      expect(
+        events.some((event) => event.type === "client/turn/rejected"),
+      ).toBe(false);
       expect(events.some((event) => event.type === "system/error")).toBe(false);
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+      await reportQueuedCommandSuccess(harness, redelivered, {
+        trace: { spans: [] },
+      });
 
       const completed = await harness.app.request("/internal/session/events", {
         method: "POST",

@@ -405,6 +405,8 @@ export {
   getUnfinishedCommandItemData,
   listCommandItemDataByItemIds,
   listThreadEventSuffixBackgroundSettlementRows,
+  getLatestThreadStopAim,
+  isTurnAimedAtByEarlierStop,
   listThreadIdsStoppedSinceLastTurnRequest,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,

@@ -264,8 +264,7 @@ async function callHostOnlineRpcWithRetry(
   },
 ): Promise<HostDaemonRpcResultForCommand> {
   const retryArgs = (): CallHostOnlineRpcArgs<HostDaemonRpcCommand> =>
-    options.retryCommand !== undefined &&
-    args.command.type === "plugin.host.call"
+    options.retryCommand !== undefined && args.command.type === "plugin.host.call"
       ? { ...args, command: options.retryCommand(args.command) }
       : args;
   const timeoutRetryDeadline =

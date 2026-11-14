@@ -9,9 +9,16 @@ import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   groupHostDaemonEvents,
+  hostDaemonOnlineRpcResponseMessageSchema,
   hostDaemonServerWsMessageSchema,
+  type HostDaemonOnlineRpcRequestMessage,
 } from "@bb/host-daemon-contract";
-import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnRequestEventDataSchema,
+  turnScope,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
@@ -1085,10 +1092,21 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
   });
 
+  function stopCommands(
+    requests: readonly HostDaemonOnlineRpcRequestMessage[],
+  ) {
+    return requests.flatMap((request) =>
+      request.command.type === "thread.stop" ? [request.command] : [],
+    );
+  }
+
   async function reopenSameInstanceSession(
     harness: TestAppHarness,
     fixture: ReturnType<typeof seedThreadFixture>,
-  ): Promise<string[]> {
+  ): Promise<{
+    requests: HostDaemonOnlineRpcRequestMessage[];
+    sessionId: string;
+  }> {
     handleDaemonSocketClosed(harness.deps, { sessionId: fixture.session.id });
     harness.hub.cancelPendingDaemonDisconnect(fixture.session.id);
     const response = await harness.app.request("/internal/session/open", {
@@ -1109,22 +1127,22 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
     expect(response.status).toBe(201);
     const { sessionId } = (await response.json()) as { sessionId: string };
-    const commandTypes: string[] = [];
+    const requests: HostDaemonOnlineRpcRequestMessage[] = [];
     harness.hub.registerDaemon(sessionId, fixture.host.id, {
       close() {},
       send(data) {
         const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
         if (message.type === "host-rpc.request") {
-          commandTypes.push(message.command.type);
+          requests.push(message);
         }
       },
     });
-    return commandTypes;
+    return { requests, sessionId };
   }
 
   function seedStopThenTurn(
     harness: TestAppHarness,
-    args: { requestAfterStop: boolean },
+    args: { requestAfterStop: boolean; requestFinishedBeforeStop?: boolean },
   ) {
     const fixture = seedThreadFixture(harness, { thread: { status: "idle" } });
     const { environment, thread } = fixture;
@@ -1134,6 +1152,29 @@ describe("active thread disconnect reconciliation triggers", () => {
         providerThreadId: "provider-thread-after-stop",
         sequenceStart: 1,
         threadId: thread.id,
+      });
+    }
+    if (args.requestFinishedBeforeStop) {
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        type: "turn/started",
+        scope: turnScope("turn-before-stop"),
+        providerThreadId: "provider-thread-after-stop",
+        data: { providerThreadId: "provider-thread-after-stop" },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 4,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-before-stop"),
+        providerThreadId: "provider-thread-after-stop",
+        data: {
+          providerThreadId: "provider-thread-after-stop",
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        },
       });
     }
     seedStoredEvent(harness.deps, {
@@ -1168,12 +1209,12 @@ describe("active thread disconnect reconciliation triggers", () => {
     await withTestHarness(async (harness) => {
       const fixture = seedStopThenTurn(harness, { requestAfterStop: true });
 
-      const commandTypes = await reopenSameInstanceSession(harness, fixture);
+      const { requests } = await reopenSameInstanceSession(harness, fixture);
 
       expect(getThread(harness.deps.db, fixture.thread.id)?.status).toBe(
         "active",
       );
-      expect(commandTypes).not.toContain("thread.stop");
+      expect(stopCommands(requests)).toEqual([]);
     });
   });
 
@@ -1181,11 +1222,54 @@ describe("active thread disconnect reconciliation triggers", () => {
     await withTestHarness(async (harness) => {
       const fixture = seedStopThenTurn(harness, { requestAfterStop: false });
 
-      const commandTypes = await reopenSameInstanceSession(harness, fixture);
+      const { requests } = await reopenSameInstanceSession(harness, fixture);
 
-      await vi.waitFor(() => expect(commandTypes).toContain("thread.stop"));
+      await vi.waitFor(() => expect(stopCommands(requests)).toHaveLength(1));
+      expect(stopCommands(requests)[0]?.aimedAt).toEqual({
+        turnId: null,
+        requestIds: [encodeClientTurnRequestIdNumber({ value: 1 })],
+      });
       expect(getThread(harness.deps.db, fixture.thread.id)?.status).toBe(
         "idle",
+      );
+    });
+  });
+
+  it("aims a re-sent stop at the turn it stopped and revives the thread when the daemon keeps the agent's own turn", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedStopThenTurn(harness, {
+        requestAfterStop: false,
+        requestFinishedBeforeStop: true,
+      });
+
+      const { requests, sessionId } = await reopenSameInstanceSession(
+        harness,
+        fixture,
+      );
+
+      await vi.waitFor(() => expect(stopCommands(requests)).toHaveLength(1));
+      expect(stopCommands(requests)[0]?.aimedAt).toEqual({
+        turnId: "turn-before-stop",
+        requestIds: [encodeClientTurnRequestIdNumber({ value: 1 })],
+      });
+      const [stopRequest] = requests.filter(
+        (request) => request.command.type === "thread.stop",
+      );
+      harness.hub.recordHostOnlineRpcResponse({
+        message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+          type: "host-rpc.response",
+          requestId: stopRequest?.requestId,
+          commandType: "thread.stop",
+          ok: true,
+          result: { providerCheckpointId: null, activeTurnRetained: true },
+        }),
+        sessionId,
+      });
+
+      await vi.waitFor(() =>
+        expect(getThread(harness.deps.db, fixture.thread.id)?.status).toBe(
+          "active",
+        ),
       );
     });
   });

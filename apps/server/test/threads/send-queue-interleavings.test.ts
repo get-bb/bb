@@ -102,6 +102,8 @@ interface DaemonTurn {
   id: string;
   inputs: number;
   labels: string[];
+  requestIds: string[];
+  startedAfterStop: boolean;
   startedBy: "request" | "provider";
 }
 
@@ -343,8 +345,33 @@ class FakeDaemon {
       return;
     }
     if (command.type === "thread.stop") {
+      const { aimedAt } = command;
+      const turn = this.activeTurn;
+      if (
+        command.intent === "interrupt" &&
+        aimedAt !== null &&
+        turn !== null &&
+        turn.id !== aimedAt.turnId &&
+        !turn.requestIds.some((requestId) =>
+          aimedAt.requestIds.includes(requestId),
+        )
+      ) {
+        this.respond(held.request, held.sessionId, {
+          ok: true,
+          result: { providerCheckpointId: null, activeTurnRetained: true },
+        });
+        return;
+      }
       const retained = command.intent === "release" && this.activeTurn !== null;
       if (command.intent === "interrupt" && this.activeTurn !== null) {
+        if (
+          this.activeTurn.startedBy === "provider" &&
+          this.activeTurn.startedAfterStop
+        ) {
+          this.violations.push(
+            `${this.activeTurn.id}, which the agent started after the stop, was stopped`,
+          );
+        }
         await this.endTurn("interrupted");
       }
       this.respond(held.request, held.sessionId, {
@@ -373,6 +400,7 @@ class FakeDaemon {
       turn.labels.push(...labels);
       turn.inputs += command.input.length;
     }
+    turn.requestIds.push(command.requestId);
     this.deliveryOrder.push(...labels);
     await this.post([
       {
@@ -398,6 +426,8 @@ class FakeDaemon {
       id: `turn-${this.turns.length + 1}`,
       inputs,
       labels: [...labels],
+      requestIds: [],
+      startedAfterStop: false,
       startedBy,
     };
     this.turns.push(turn);
@@ -428,9 +458,9 @@ class FakeDaemon {
     ]);
   }
 
-  async runProviderTurn(): Promise<void> {
-    await this.startTurn("provider", [], 0);
-    await this.endTurn("completed");
+  async startProviderTurn(afterStop: boolean): Promise<void> {
+    const turn = await this.startTurn("provider", [], 0);
+    turn.startedAfterStop = afterStop;
   }
 
   disconnect(): void {
@@ -453,7 +483,9 @@ class FakeDaemon {
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads:
-          this.activeTurn === null ? [] : [{ threadId: this.threadId }],
+          this.activeTurn === null
+            ? []
+            : [{ threadId: this.threadId, turnId: this.activeTurn.id }],
         openThreadWork: [],
         undeliveredEventThreadIds:
           this.bufferedEvents.length === 0 ? [] : [this.threadId],
@@ -843,10 +875,15 @@ class Run {
     }
     if (this.remainingEvents.includes("provider-turn") && activeTurn === null) {
       actions.push({
-        label: "provider turn",
+        label: "agent starts a turn",
         run: async () => {
           consume("provider-turn");
-          await this.daemon.runProviderTurn();
+          await this.daemon.startProviderTurn(
+            this.outcomes.some(
+              (outcome) =>
+                outcome.step.kind === "stop" && outcome.settled !== "pending",
+            ),
+          );
         },
       });
     }
@@ -894,6 +931,12 @@ class Run {
         continue;
       }
       if (this.daemon.activeTurn !== null) {
+        const status = getThread(this.harness.db, this.threadId)?.status;
+        if (status === "idle" || status === "error") {
+          this.tailViolations.push(
+            `${this.daemon.activeTurn.id} ran while the thread showed ${status}`,
+          );
+        }
         await this.daemon.endTurn("completed");
         continue;
       }
@@ -1356,6 +1399,24 @@ const scenarios: Scenario[] = [
     pluginHeldLabels: [],
     user: [steer("msg-A"), send("msg-B"), retry],
     events: ["fail-turn"],
+  },
+  {
+    name: "a stop aimed at a message still on its way, across a daemon reconnect",
+    start: "idle",
+    holdPreparation: false,
+    pluginGatedLabels: [],
+    pluginHeldLabels: [],
+    user: [steer("msg-A"), stop],
+    events: ["reconnect"],
+  },
+  {
+    name: "a turn the agent starts after a stop, across a daemon reconnect",
+    start: "running-turn",
+    holdPreparation: false,
+    pluginGatedLabels: [],
+    pluginHeldLabels: [],
+    user: [stop],
+    events: ["provider-turn", "reconnect"],
   },
 ];
 
