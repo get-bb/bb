@@ -1289,7 +1289,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               manifest,
               entry,
               base: marketplaceRowIconBase(marketplace),
-              warn: (message) => logger.warn(message),
             }),
             collections: marketplaceEntryCollections(manifest, entry.id),
           });

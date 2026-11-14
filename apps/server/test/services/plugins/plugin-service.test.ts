@@ -976,142 +976,157 @@ describe("plugin service", () => {
     });
   });
 
-  it("adds marketplace discovery metadata to an installed plugin", () => {
-    upsertPluginMarketplace(db, {
-      name: "acme",
-      sourceKind: "https",
-      manifestUrl: "https://plugins.acme.test/marketplace.json",
-      sourceGitRef: null,
-      sourceGitSubdirectory: null,
-      sourceGitCommit: null,
-      manifestJson: JSON.stringify({
-        schemaVersion: 2,
+  it.each(["https", "git", "path"] as const)(
+    "adds marketplace discovery metadata to an installed plugin from %s without logging on reads",
+    (sourceKind) => {
+      upsertPluginMarketplace(db, {
         name: "acme",
-        displayName: "Acme",
-        categories: [
-          {
-            id: "acme-tools",
-            displayName: "Acme tools",
-            description: "Tools from Acme.",
-          },
-        ],
-        collections: [
-          {
-            id: "featured",
-            displayName: "Featured",
-            pluginIds: ["missing-plugin", "installed-tool"],
-          },
-        ],
-        plugins: [
-          {
-            id: "installed-tool",
-            displayName: "Installed tool",
-            description: "An installed tool.",
-            icon: "Zap",
-            category: "acme-tools",
-            screenshots: ["./screenshots/installed-tool/installed-tool.png"],
-            publishedAt: "2026-08-20T11:47:04-07:00",
-            updatedAt: "2026-08-27T16:12:00Z",
-            author: { name: "Acme" },
-            source: {
-              git: {
-                url: "https://github.com/acme/plugins.git",
-                ref: "v1.0.0",
+        sourceKind,
+        manifestUrl: "https://plugins.acme.test/marketplace.json",
+        sourceGitRef: null,
+        sourceGitSubdirectory: null,
+        sourceGitCommit: null,
+        manifestJson: JSON.stringify({
+          schemaVersion: 2,
+          name: "acme",
+          displayName: "Acme",
+          categories: [
+            {
+              id: "acme-tools",
+              displayName: "Acme tools",
+              description: "Tools from Acme.",
+            },
+          ],
+          collections: [
+            {
+              id: "featured",
+              displayName: "Featured",
+              pluginIds: ["missing-plugin", "installed-tool"],
+            },
+          ],
+          plugins: [
+            {
+              id: "installed-tool",
+              displayName: "Installed tool",
+              description: "An installed tool.",
+              icon: "Zap",
+              category: "acme-tools",
+              screenshots: [
+                "./screenshots/installed-tool/installed-tool.png",
+                "https://images.acme.test/installed-tool.png",
+              ],
+              publishedAt: "2026-08-20T11:47:04-07:00",
+              updatedAt: "2026-08-27T16:12:00Z",
+              author: { name: "Acme" },
+              source: {
+                git: {
+                  url: "https://github.com/acme/plugins.git",
+                  ref: "v1.0.0",
+                },
               },
             },
-          },
-        ],
-      }),
-      statsJson: null,
-      etag: null,
-      lastModified: null,
-      lastSuccessfulRefreshAt: 1,
-      lastAttemptedRefreshAt: 1,
-      lastError: null,
-    });
-    upsertInstalledPlugin(db, {
-      id: "installed-tool",
-      source: "git:https://github.com/acme/plugins.git@v1.0.0",
-      provenance: {
-        kind: "catalog",
-        marketplace: "acme",
-        entryId: "installed-tool",
-      },
-      sourceIntent: {
-        kind: "git",
-        url: "https://github.com/acme/plugins.git",
-        subdirectory: null,
-        selector: { kind: "ref", ref: "v1.0.0", refKind: "tag" },
-      },
-      exactResolution: { kind: "git", commit: "a".repeat(40) },
-      updateState: {
-        lastCheckAt: null,
-        availableCompatibleVersion: null,
-        newestIncompatibleVersion: null,
-        statusDetail: null,
-      },
-      activeArtifactId: null,
-      rootDir: "/managed/installed-tool",
-      version: "1.0.0",
-      enabled: false,
-      enabledFollowsDefault: false,
-    });
+          ],
+        }),
+        statsJson: null,
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: 1,
+        lastAttemptedRefreshAt: 1,
+        lastError: null,
+      });
+      upsertInstalledPlugin(db, {
+        id: "installed-tool",
+        source: "git:https://github.com/acme/plugins.git@v1.0.0",
+        provenance: {
+          kind: "catalog",
+          marketplace: "acme",
+          entryId: "installed-tool",
+        },
+        sourceIntent: {
+          kind: "git",
+          url: "https://github.com/acme/plugins.git",
+          subdirectory: null,
+          selector: { kind: "ref", ref: "v1.0.0", refKind: "tag" },
+        },
+        exactResolution: { kind: "git", commit: "a".repeat(40) },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: "/managed/installed-tool",
+        version: "1.0.0",
+        enabled: false,
+        enabledFollowsDefault: false,
+      });
 
-    expect(
-      service.list().find((entry) => entry.id === "installed-tool"),
-    ).toMatchObject({
-      categoryId: "acme-tools",
-      category: "Acme tools",
-      screenshots: [
-        "https://plugins.acme.test/screenshots/installed-tool/installed-tool.png",
-      ],
-      collections: [{ id: "featured", rank: 0 }],
-      publishedAt: "2026-08-20T11:47:04-07:00",
-      updatedAt: "2026-08-27T16:12:00Z",
-    });
+      const warnSpy = vi.spyOn(logger, "warn");
+      for (let listCall = 0; listCall < 3; listCall += 1) {
+        expect(
+          service.list().find((entry) => entry.id === "installed-tool"),
+        ).toMatchObject({
+          categoryId: "acme-tools",
+          category: "Acme tools",
+          screenshots: [
+            ...(sourceKind === "https"
+              ? [
+                  "https://plugins.acme.test/screenshots/installed-tool/installed-tool.png",
+                ]
+              : []),
+            "https://images.acme.test/installed-tool.png",
+          ],
+          collections: [{ id: "featured", rank: 0 }],
+          publishedAt: "2026-08-20T11:47:04-07:00",
+          updatedAt: "2026-08-27T16:12:00Z",
+        });
+      }
+      expect(warnSpy.mock.calls).toEqual([]);
 
-    upsertPluginMarketplace(db, {
-      name: "acme",
-      sourceKind: "https",
-      manifestUrl: "https://plugins.acme.test/marketplace.json",
-      sourceGitRef: null,
-      sourceGitSubdirectory: null,
-      sourceGitCommit: null,
-      manifestJson: JSON.stringify({
-        schemaVersion: 2,
+      upsertPluginMarketplace(db, {
         name: "acme",
-        displayName: "Acme",
-        categories: [
-          {
-            id: "acme-tools",
-            displayName: "Updated Acme tools",
-            description: "Updated tools from Acme.",
-          },
-        ],
-        plugins: [
-          {
-            id: "installed-tool",
-            displayName: "Installed tool",
-            description: "An installed tool.",
-            icon: "Zap",
-            category: "acme-tools",
-            author: { name: "Acme" },
-            source: { npm: { package: "bb-plugin-installed-tool" } },
-          },
-        ],
-      }),
-      statsJson: null,
-      etag: null,
-      lastModified: null,
-      lastSuccessfulRefreshAt: 2,
-      lastAttemptedRefreshAt: 2,
-      lastError: null,
-    });
+        sourceKind: "https",
+        manifestUrl: "https://plugins.acme.test/marketplace.json",
+        sourceGitRef: null,
+        sourceGitSubdirectory: null,
+        sourceGitCommit: null,
+        manifestJson: JSON.stringify({
+          schemaVersion: 2,
+          name: "acme",
+          displayName: "Acme",
+          categories: [
+            {
+              id: "acme-tools",
+              displayName: "Updated Acme tools",
+              description: "Updated tools from Acme.",
+            },
+          ],
+          plugins: [
+            {
+              id: "installed-tool",
+              displayName: "Installed tool",
+              description: "An installed tool.",
+              icon: "Zap",
+              category: "acme-tools",
+              author: { name: "Acme" },
+              source: { npm: { package: "bb-plugin-installed-tool" } },
+            },
+          ],
+        }),
+        statsJson: null,
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: 2,
+        lastAttemptedRefreshAt: 2,
+        lastError: null,
+      });
 
-    expect(
-      service.list().find((entry) => entry.id === "installed-tool")?.category,
-    ).toBe("Updated Acme tools");
-  });
+      expect(
+        service.list().find((entry) => entry.id === "installed-tool")?.category,
+      ).toBe("Updated Acme tools");
+    },
+  );
 
   it("times out a hung factory and reports error", async () => {
     const rootDir = await writePlugin(workDir, {
