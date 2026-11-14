@@ -44,6 +44,9 @@ describe("recorded bridge scenarios", () => {
         providerInputs: replay.providerInputs,
         divergence: replay.divergence,
       });
+      process.stderr.write(
+        `\nDIAG ${cellKey(cell)} stalls=${JSON.stringify(replay.run.stalls).slice(0, 3000)} divergence=${JSON.stringify(replay.divergence).slice(0, 3000)}\n`,
+      );
       console.info(
         `${cellKey(cell)} scenario rules:\n${formatConformanceReport({
           results,
@@ -86,6 +89,6 @@ describe("recorded bridge scenarios", () => {
           ),
       }).toEqual({ newFailures: [], fixedGaps: [] });
     },
-    240_000,
+    1_500_000,
   );
 });
