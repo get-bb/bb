@@ -120,7 +120,7 @@ function readProviderInputs(logDir: string): ProviderProcessInputs[] {
     .filter((file) => file.endsWith(".ndjson"))
     .map((file) =>
       parseProviderProcessInputs({
-        pid: Number(file.replace(/\.ndjson$/, "")),
+        pid: Number(file.split("-")[0]),
         entries: readFileSync(join(logDir, file), "utf8")
           .split("\n")
           .filter((line) => line !== "")

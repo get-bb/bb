@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   appendFileSync,
   createWriteStream,
@@ -100,7 +101,8 @@ if (args.command.includes("api")) {
   process.exit(call.status ?? 1);
 }
 mkdirSync(args["probe-log"], { recursive: true });
-const logFile = join(args["probe-log"], `${process.pid}.ndjson`);
+const logName = `${process.pid}-${randomUUID()}`;
+const logFile = join(args["probe-log"], `${logName}.ndjson`);
 const log = (entry) =>
   appendFileSync(logFile, `${JSON.stringify({ ts: Date.now(), ...entry })}\n`);
 log({ kind: "spawn", argv: args.command.slice(1), env: process.env });
@@ -183,7 +185,7 @@ const child = spawn(args.command[0], args.command.slice(1), {
 });
 
 const stderrLog = createWriteStream(
-  join(args["probe-log"], `${process.pid}.stderr`),
+  join(args["probe-log"], `${logName}.stderr`),
 );
 child.stderr.on("data", (chunk) => {
   stderrLog.write(chunk);
