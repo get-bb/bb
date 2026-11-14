@@ -1,5 +1,7 @@
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { BRIDGE_JSON_RPC_ERRORS } from "@get-bb/plugin-sdk/provider-bridge";
 import { handleLine } from "./bridge.js";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
 import {
@@ -85,6 +87,103 @@ it("a child that dies mid-run does not take the bridge down: the next write is a
   expect(nextStarted.result).toMatchObject({
     providerThreadId: expect.stringMatching(/^pi_[0-9a-f-]{36}$/u),
   });
+}, 90_000);
+
+it("after pi dies, a steer is rejected as stale and the next turn runs in a rebuilt session", async () => {
+  const threadId = "thr_r2_restore";
+  await harness.startThread(threadId);
+  turnStart(threadId, "/die", "creq_ab23456789");
+  await harness.waitForDelta(
+    threadId,
+    (d) => d.kind === "turn.boundary" && d.status === "failed",
+  );
+  const steer = await harness.request((nextId += 1), "turn/steer", {
+    threadId,
+    providerThreadId: providerThreadIdFor(threadId),
+    expectedTurnId: "turn-1",
+    clientRequestId: "creq_cd23456789",
+    input: [{ type: "text", text: "still there?", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(steer.error).toMatchObject({
+    code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+    data: { recovery: { kind: "staleTurn" } },
+  });
+  const providerThreadId = providerThreadIdFor(threadId);
+  const next = await harness.request((nextId += 1), "turn/start", {
+    threadId,
+    providerThreadId,
+    clientRequestId: "creq_ef23456789",
+    input: [{ type: "text", text: "hello again", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(next.error).toBeUndefined();
+  await harness.waitForDelta(
+    threadId,
+    (d) =>
+      d.kind === "input.accepted" && d.clientRequestId === "creq_ef23456789",
+  );
+  expect(providerThreadIdFor(threadId)).toBe(providerThreadId);
+}, 90_000);
+
+function sessionReplacedFor(threadId: string): Record<string, unknown>[] {
+  return harness.messages
+    .filter(
+      (message) =>
+        message.method === "session/replaced" &&
+        (message.params as { threadId?: unknown }).threadId === threadId,
+    )
+    .map((message) => message.params as Record<string, unknown>);
+}
+
+async function killPiThenStartTurn(
+  threadId: string,
+  damage: (sessionFile: string) => void,
+): Promise<{ error: unknown; originalProviderThreadId: string }> {
+  await harness.startThread(threadId);
+  const providerThreadId = providerThreadIdFor(threadId);
+  turnStart(threadId, "/die", "creq_ab23456789");
+  await harness.waitForDelta(
+    threadId,
+    (d) => d.kind === "turn.boundary" && d.status === "failed",
+  );
+  damage(join(harness.sessionDir, `${providerThreadId}.jsonl`));
+  const next = await harness.request((nextId += 1), "turn/start", {
+    threadId,
+    providerThreadId,
+    clientRequestId: "creq_ef23456789",
+    input: [{ type: "text", text: "hello again", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  await harness.waitForDelta(
+    threadId,
+    (d) =>
+      d.kind === "input.accepted" && d.clientRequestId === "creq_ef23456789",
+  );
+  return { error: next.error, originalProviderThreadId: providerThreadId };
+}
+
+it("after pi dies with its session file gone, the next turn runs and says the earlier context is lost", async () => {
+  const threadId = "thr_r2_missing_session";
+  const next = await killPiThenStartTurn(threadId, (file) => rmSync(file));
+  expect(next.error).toBeUndefined();
+  expect(providerThreadIdFor(threadId)).toBe(next.originalProviderThreadId);
+  expect(sessionReplacedFor(threadId).at(-1)).toMatchObject({
+    contextLost: true,
+  });
+}, 90_000);
+
+it("after pi dies with a corrupt session file, the next turn runs in a new session that says the earlier context is lost", async () => {
+  const threadId = "thr_r2_corrupt_session";
+  const next = await killPiThenStartTurn(threadId, (file) =>
+    writeFileSync(file, "not a pi session\n"),
+  );
+  expect(next.error).toBeUndefined();
+  expect(sessionReplacedFor(threadId).at(-1)).toMatchObject({
+    contextLost: true,
+    reason: expect.stringMatching(/not a valid pi session/u),
+  });
+  expect(providerThreadIdFor(threadId)).not.toBe(next.originalProviderThreadId);
 }, 90_000);
 
 it("a missing executable fails thread/start fast with the spawn error", async () => {
