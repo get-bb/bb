@@ -2666,6 +2666,87 @@ describe("acp bridge", () => {
     expect(notifications("session/replaced")).toHaveLength(1);
   });
 
+  it("sends no prompt after thread/stop answers during a session rebuild", async () => {
+    const promptLog = join(workspaceDir, "rebuild-stop-prompts.log");
+    const envVars = { FAKE_ACP_LOAD_SESSION: "1" };
+    const { bbThreadId, providerThreadId } = await startThread({ envVars });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "after stop", mentions: [] }],
+      options: executionOptions({
+        envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+        providerOptions: { acpLaunchSpec: acpLaunchSpec({ envVars }) },
+      }),
+    });
+    const stopId = sendRequest("thread/stop", {
+      threadId: bbThreadId,
+      providerThreadId,
+      intent: "interrupt",
+      activeTurnId: null,
+    });
+    const stopResponse = await waitForResponse(stopId);
+    expect(stopResponse.result).toEqual({ ok: true });
+    const stopIndex = output.messages.indexOf(stopResponse);
+    await waitForResponse(turnId);
+    await new Promise((resolveTick) => realSetTimeout(resolveTick, 500));
+    const acceptedIndex = output.messages.findIndex((message) =>
+      deltaKindsOf(message).includes("input.accepted"),
+    );
+
+    expect({
+      inputAcceptedAfterStopAnswer: acceptedIndex > stopIndex,
+      promptsAfterStop: loggedPrompts(promptLog),
+      turnCompleted: threadEventsOfType("turn/completed").map((e) => e.status),
+    }).toEqual({
+      inputAcceptedAfterStopAnswer: false,
+      promptsAfterStop: [],
+      turnCompleted: expect.not.arrayContaining(["completed"]),
+    });
+  });
+
+  it("fails a thread/start that thread/stop answered before the session was registered", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+    const launchLog = join(workspaceDir, "fresh-start-stop-launches.log");
+    const launch = {
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      modelListArgs: ["--list-models", "--fresh-start-stop"],
+      selectFlag: "--model",
+      envVars: {
+        FAKE_ACP_LAUNCH_LOG: launchLog,
+        FAKE_ACP_MODEL_LINES:
+          "pinme - Pin Me\npinme-extra-high - Pin Me Extra High",
+      },
+    };
+    nextThreadSerial += 1;
+    const bbThreadId = `thread-${nextThreadSerial}`;
+    const startId = sendRequest("thread/start", {
+      threadId: bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        model: "pinme",
+        reasoningLevel: "xhigh",
+        providerOptions: launchProviderOptions(launch),
+      }),
+    });
+    const stopId = sendRequest("thread/stop", {
+      threadId: bbThreadId,
+      providerThreadId: bbThreadId,
+      intent: "interrupt",
+      activeTurnId: null,
+    });
+
+    expect((await waitForResponse(stopId)).result).toEqual({ ok: true });
+    const startResponse = await waitForResponse(startId);
+    expect({
+      startError: startResponse.error?.message,
+      agentLaunched: existsSync(launchLog),
+    }).toEqual({
+      startError: `ACP session for thread "${bbThreadId}" was released during construction`,
+      agentLaunched: false,
+    });
+  }, 20_000);
+
   it("authenticates ACP sessions with cached tokens when advertised", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_AUTH_METHODS: "cached_token" },

@@ -2289,8 +2289,55 @@ function additionalSessionDirectories(
     : {};
 }
 
+interface PendingSessionStart {
+  stopRequested: boolean;
+}
+
+const pendingSessionStartsByBbThreadId = new Map<
+  string,
+  Set<PendingSessionStart>
+>();
+
+function requestStopOfPendingSessionStarts(bbThreadId: string): void {
+  for (const pending of pendingSessionStartsByBbThreadId.get(bbThreadId) ??
+    []) {
+    pending.stopRequested = true;
+  }
+}
+
 async function startAgentSession(
   request: AcpSessionStartRequest,
+): Promise<AcpThreadSession> {
+  const bbThreadId = request.params.threadId;
+  const pending: PendingSessionStart = { stopRequested: false };
+  let pendingForThread = pendingSessionStartsByBbThreadId.get(bbThreadId);
+  if (pendingForThread === undefined) {
+    pendingForThread = new Set();
+    pendingSessionStartsByBbThreadId.set(bbThreadId, pendingForThread);
+  }
+  pendingForThread.add(pending);
+  try {
+    return await startAgentSessionWhilePending(request, pending);
+  } finally {
+    pendingForThread.delete(pending);
+    if (
+      pendingForThread.size === 0 &&
+      pendingSessionStartsByBbThreadId.get(bbThreadId) === pendingForThread
+    ) {
+      pendingSessionStartsByBbThreadId.delete(bbThreadId);
+    }
+  }
+}
+
+function sessionReleasedDuringConstruction(bbThreadId: string): Error {
+  return new Error(
+    `ACP session for thread "${bbThreadId}" was released during construction`,
+  );
+}
+
+async function startAgentSessionWhilePending(
+  request: AcpSessionStartRequest,
+  pending: PendingSessionStart,
 ): Promise<AcpThreadSession> {
   const params = request.params;
   const bbThreadId = params.threadId;
@@ -2298,6 +2345,9 @@ async function startAgentSession(
   const existing = sessionsByBbThreadId.get(bbThreadId);
   if (existing) {
     await stopSession(existing);
+  }
+  if (pending.stopRequested) {
+    throw sessionReleasedDuringConstruction(bbThreadId);
   }
 
   const dialect = resolveAcpDialect({
@@ -2339,6 +2389,9 @@ async function startAgentSession(
   };
 
   const launch = await resolveAgentLaunchArgs(params);
+  if (pending.stopRequested) {
+    throw sessionReleasedDuringConstruction(bbThreadId);
+  }
   if (launch.warning) {
     emitStartNotification(ACP_WARNING_METHOD, {
       threadId: bbThreadId,
@@ -2627,9 +2680,7 @@ async function startAgentSession(
     }
 
     if (session.stopping) {
-      throw new Error(
-        `ACP session for thread "${bbThreadId}" was released during construction`,
-      );
+      throw sessionReleasedDuringConstruction(bbThreadId);
     }
     session.providerThreadId = sessionId;
     bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
@@ -4045,6 +4096,7 @@ async function handleRequest(
     }
 
     case "thread/stop": {
+      requestStopOfPendingSessionStarts(request.params.threadId);
       const session = sessionsByBbThreadId.get(request.params.threadId);
       if (session) {
         if (request.params.intent === "release") {
