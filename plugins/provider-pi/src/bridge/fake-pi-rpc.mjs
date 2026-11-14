@@ -876,6 +876,7 @@ async function handle(command) {
         respondError(id, "compact", "Nothing to compact (session too small)");
         return;
       }
+      await waitForCompactionRelease();
       event({ type: "compaction_end", reason: "manual", aborted: false });
       isCompacting = false;
       leafCounter += 1;

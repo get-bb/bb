@@ -12,6 +12,20 @@ const THREAD_ID = "thr_manualcompactq";
 let harness: FakePiBridgeHarness | undefined;
 let nextId = 3000;
 
+const COMPACT_COMMAND_MENTION = {
+  start: 0,
+  end: 8,
+  resource: {
+    kind: "command",
+    trigger: "/",
+    name: "compact",
+    source: "command",
+    origin: "builtin",
+    label: "compact",
+    argumentHint: null,
+  },
+};
+
 afterEach(async () => {
   await harness?.teardown();
   harness = undefined;
@@ -42,8 +56,23 @@ async function start() {
       threadId: THREAD_ID,
       providerThreadId,
       clientRequestId,
-      input: [{ type: "text", text, mentions: [] }],
+      input: [
+        {
+          type: "text",
+          text,
+          mentions: text === "/compact" ? [COMPACT_COMMAND_MENTION] : [],
+        },
+      ],
       apply: { settings: [], sessionOptions: [], providerOptions: [] },
+      options: FULL_PERMISSION_OPTIONS,
+    });
+  const steer = (clientRequestId: string, text: string) =>
+    bridge.request(++nextId, "turn/steer", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId,
+      expectedTurnId: "turn-2",
+      input: [{ type: "text", text, mentions: [] }],
       options: FULL_PERMISSION_OPTIONS,
     });
   const promptCount = () =>
@@ -67,6 +96,7 @@ async function start() {
     bridge,
     providerThreadId,
     turn,
+    steer,
     promptCount,
     releaseCompaction,
     boundaries,
@@ -108,14 +138,7 @@ it("answers busy while a Pi extension compacts after a run, and gives the compac
     "item.open:compaction",
   ]);
 
-  const steer = await t.bridge.request(++nextId, "turn/steer", {
-    threadId: THREAD_ID,
-    providerThreadId: t.providerThreadId,
-    clientRequestId: "creq_cd2345678a",
-    expectedTurnId: "turn-2",
-    input: [{ type: "text", text: "steer during compaction", mentions: [] }],
-    options: FULL_PERMISSION_OPTIONS,
-  });
+  const steer = await t.steer("creq_cd2345678a", "steer during compaction");
   expect(steer.result).toEqual({
     admission: "busy",
     message: "Pi is compacting the context.",
@@ -189,4 +212,58 @@ it("answers busy when Pi refuses a prompt for a compaction the bridge had not se
   );
   expect(t.boundaries().map((d) => d.status)).not.toContain("failed");
   expect(t.promptCount()).toBe(3);
+}, 30_000);
+
+it("answers busy to a steer and a new turn while bb's /compact runs, and accepts the next turn after it ends", async () => {
+  const t = await start();
+  expect((await t.turn("creq_ab23456789", "first")).result).toEqual({
+    admission: "accepted",
+  });
+  await t.bridge.waitFor(() => t.settledAfterReply("first"), "the first run");
+
+  expect((await t.turn("creq_bc23456789", "/compact")).result).toEqual({
+    admission: "accepted",
+  });
+  await t.bridge.waitFor(
+    () =>
+      compactionTurnKinds(t.bridge.deltasOf(THREAD_ID)).includes(
+        "item.open:compaction",
+      ),
+    "the compaction to open",
+  );
+
+  const busy = { admission: "busy", message: "Pi is compacting the context." };
+  expect((await t.steer("creq_cd2345678a", "steer")).result).toEqual(busy);
+  expect((await t.turn("creq_cd23456789", "next turn")).result).toEqual(busy);
+  expect((await t.turn("creq_de23456789", "/compact")).result).toEqual(busy);
+  expect(
+    t.bridge
+      .deltasOf(THREAD_ID)
+      .filter((d) => d.kind === "input.accepted")
+      .map((d) => d.clientRequestId),
+  ).toEqual(["creq_ab23456789", "creq_bc23456789"]);
+  expect(t.promptCount()).toBe(1);
+
+  t.releaseCompaction();
+  await t.bridge.waitFor(
+    () => t.boundaries().length >= 2,
+    "the compaction turn to settle",
+  );
+  expect(compactionTurnKinds(t.bridge.deltasOf(THREAD_ID)).slice(3)).toEqual([
+    "turn.open",
+    "turn.open",
+    "item.open:compaction",
+    "item.close:compaction",
+    "turn.boundary",
+  ]);
+
+  expect((await t.turn("creq_ef23456789", "next turn")).result).toEqual({
+    admission: "accepted",
+  });
+  await t.bridge.waitFor(
+    () => t.settledAfterReply("next turn"),
+    "the next turn to run",
+  );
+  expect(t.boundaries().map((d) => d.status)).not.toContain("failed");
+  expect(t.promptCount()).toBe(2);
 }, 30_000);
