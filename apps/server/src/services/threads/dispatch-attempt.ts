@@ -66,10 +66,7 @@ import {
 } from "./queue-waits.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import {
-  getActiveTurnId,
-  isActiveTurnMainRunIdle,
-} from "./thread-events.js";
+import { getActiveTurnId, isActiveTurnMainRunIdle } from "./thread-events.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import {
@@ -105,6 +102,7 @@ import {
 } from "./dispatch-author.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
+import { supportsBuiltinCompact } from "./compaction-offer.js";
 import { markTurnTraceSpan } from "../system/turn-trace.js";
 
 export const pendingThreadStartContextSchema = z.object({
@@ -1022,7 +1020,12 @@ export async function compactThreadContext(
   thread: Thread,
 ): Promise<void> {
   ensureThreadIsWritable(thread);
-  if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
+  if (
+    !supportsBuiltinCompact(deps, {
+      providerId: thread.providerId,
+      threadId: thread.id,
+    })
+  ) {
     throw new ApiError(
       409,
       "invalid_request",

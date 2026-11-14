@@ -711,10 +711,9 @@ selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
 (`{"user": [...], "project": [...]}` relative paths; an entry is a path or
 `{"path": ..., "recursive": true, "ancestors": true}`), `permissionCli`
 (permission-mode launch flags), `providerUsage`, and `dialect` (`cursor`,
-`opencode`, `omp`, or `grok`). Whether `/compact` runs comes from the live
-agent: bb offers it for every ACP agent and the bridge refuses it when the
-agent does not advertise a compact command. An old `supportsManualCompaction`
-entry is ignored.
+`opencode`, `omp`, or `grok`). Whether `/compact` is offered comes from the
+live agent: bb offers it only once the agent advertises a compact command.
+An old `supportsManualCompaction` entry is ignored.
 
 Changes apply immediately, with no restart. A custom agent's command is local
 code execution and only works with a co-located daemon. The `customAcpAgents`

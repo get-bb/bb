@@ -226,6 +226,7 @@ interface AcpThreadSession {
   policy: AcpSessionPolicy;
   pendingInstructions: string | undefined;
   activePromptKind: "turn" | "compaction" | "agent" | null;
+  agentTurnOpenedBy: "state" | "interaction";
   compactionAgentMessage: string;
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
@@ -417,6 +418,33 @@ function emitForSession(
   );
 }
 
+function emitActivityForSession(
+  session: AcpThreadSession,
+  update: unknown,
+): void {
+  sendThreadDeltas(
+    session.bbThreadId,
+    session.translator.translateAcpEvent(
+      {
+        jsonrpc: "2.0",
+        method: ACP_UPDATE_METHOD,
+        params: { threadId: session.bbThreadId, update },
+      },
+      { threadId: session.bbThreadId, attach: "currentOrLast" },
+    ),
+  );
+}
+
+function closeActivityOutsideTurn(session: AcpThreadSession): void {
+  if (session.turnOpen) {
+    return;
+  }
+  sendThreadDeltas(
+    session.bbThreadId,
+    session.translator.closeActivity(session.bbThreadId, "interrupted"),
+  );
+}
+
 function emitSessionError(session: AcpThreadSession, message: string): void {
   for (const controller of session.pendingToolCalls) controller.abort();
   if (session.turnOpen) {
@@ -477,6 +505,9 @@ async function forwardDynamicToolCall(
   }
 
   const controller = new AbortController();
+  if (session.activePromptKind === null) {
+    openAgentTurn(session, "interaction");
+  }
   session.pendingToolCalls.add(controller);
   session.translator.noteInjectedToolCall(session.bbThreadId, args.tool);
   try {
@@ -500,6 +531,7 @@ async function forwardDynamicToolCall(
     };
   } finally {
     session.pendingToolCalls.delete(controller);
+    settleInteractionTurnWhenAnswered(session);
   }
 }
 
@@ -1524,28 +1556,36 @@ async function resolveAgentLaunchArgs(
   let warning: string | undefined;
 
   if (selection && "selectFlag" in selection) {
-    let resolved: string | undefined;
-    const variantReasoningLevel =
-      params.reasoningCli === undefined ? selection.reasoningLevel : undefined;
-    if (
-      variantReasoningLevel !== undefined ||
-      selection.serviceTier === "fast"
-    ) {
-      const key = JSON.stringify(selection.listCommand);
-      const catalog =
-        cachedModelCatalog?.key === key
-          ? cachedModelCatalog.catalog
-          : await loadAgentModelCatalog(selection.listCommand);
-      resolved = catalog?.resolveVariant({
-        model: selection.model,
-        reasoningLevel: variantReasoningLevel,
-        serviceTier: selection.serviceTier,
-      });
-      if (resolved === undefined && variantReasoningLevel !== undefined) {
-        warning = `Model "${selection.model}" has no ${variantReasoningLevel} reasoning variant; launching it at its default effort.`;
+    const key = JSON.stringify(selection.listCommand);
+    const catalog =
+      cachedModelCatalog?.key === key
+        ? cachedModelCatalog.catalog
+        : await loadAgentModelCatalog(selection.listCommand).catch(() => null);
+    if (catalog === null) {
+      warning = `bb could not read ${params.launchSpec.displayName}'s model list, so it did not pass the model "${selection.model}"; the agent keeps its current model.`;
+    } else if (!catalog.offersModel(selection.model)) {
+      warning = `The agent does not offer the model "${selection.model}"; it keeps its current model. Pick one of the models the agent lists to change it.`;
+    } else {
+      let resolved: string | undefined;
+      const variantReasoningLevel =
+        params.reasoningCli === undefined
+          ? selection.reasoningLevel
+          : undefined;
+      if (
+        variantReasoningLevel !== undefined ||
+        selection.serviceTier === "fast"
+      ) {
+        resolved = catalog.resolveVariant({
+          model: selection.model,
+          reasoningLevel: variantReasoningLevel,
+          serviceTier: selection.serviceTier,
+        });
+        if (resolved === undefined && variantReasoningLevel !== undefined) {
+          warning = `Model "${selection.model}" has no ${variantReasoningLevel} reasoning variant; launching it at its default effort.`;
+        }
       }
+      prefixArgs.push(selection.selectFlag, resolved ?? selection.model);
     }
-    prefixArgs.push(selection.selectFlag, resolved ?? selection.model);
   }
 
   if (
@@ -1989,7 +2029,7 @@ function handleElicitationRequest(
     return;
   }
   if (session.activePromptKind === null) {
-    openAgentTurn(session);
+    openAgentTurn(session, "interaction");
   }
   session.pendingElicitations.add(responder);
   void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
@@ -2009,12 +2049,14 @@ function handleElicitationRequest(
           ? plan.toResponse(resolution.data)
           : { action: "cancel" },
       );
+      settleInteractionTurnWhenAnswered(session);
     })
     .catch(() => {
       if (!session.pendingElicitations.delete(responder)) {
         return;
       }
       responder.result({ action: "cancel" });
+      settleInteractionTurnWhenAnswered(session);
     });
 }
 
@@ -2070,7 +2112,7 @@ function handlePermissionRequest(
   }
 
   if (session.activePromptKind === null) {
-    openAgentTurn(session);
+    openAgentTurn(session, "interaction");
   }
   session.pendingPermissions.add(pending);
 
@@ -2124,12 +2166,14 @@ function handlePermissionRequest(
           })
         : null;
       respondPermission(pending, response?.decision ?? null);
+      settleInteractionTurnWhenAnswered(session);
     })
     .catch(() => {
       if (!session.pendingPermissions.delete(pending)) {
         return;
       }
       respondPermission(pending, null);
+      settleInteractionTurnWhenAnswered(session);
     });
 }
 
@@ -2424,6 +2468,7 @@ async function startAgentSession(
         return;
       }
       void releaseCursorMcpApproval(session);
+      closeActivityOutsideTurn(session);
       emitSessionError(
         session,
         `ACP agent "${agentLabel}" exited unexpectedly` +
@@ -2458,6 +2503,7 @@ async function startAgentSession(
     },
     pendingInstructions: params.instructions,
     activePromptKind: null,
+    agentTurnOpenedBy: "state",
     compactionAgentMessage: "",
     queuedInputs: [],
     promptRequestPending: false,
@@ -2755,6 +2801,7 @@ async function stopSession(
   );
   cancelPendingPermissions(session);
 
+  admitPendingPrompt(session);
   if (session.activePromptKind !== null && !session.connection.exited) {
     session.connection.notify("session/cancel", {
       sessionId: session.providerThreadId,
@@ -2769,6 +2816,7 @@ async function stopSession(
     }
   }
   settleInterruptedPrompt(session);
+  closeActivityOutsideTurn(session);
 
   await session.connection.kill();
   removeSession(session);
@@ -2821,9 +2869,33 @@ function agentTurnHasOpenWork(session: AcpThreadSession): boolean {
   );
 }
 
-function openAgentTurn(session: AcpThreadSession): void {
+function openAgentTurn(
+  session: AcpThreadSession,
+  openedBy: AcpThreadSession["agentTurnOpenedBy"],
+): void {
+  session.agentTurnOpenedBy = openedBy;
   setActivePromptKind(session, "agent");
   openTurnOnWire(session, ACP_TURN_STARTED_METHOD);
+}
+
+function settleInteractionTurnWhenAnswered(session: AcpThreadSession): void {
+  if (
+    session.activePromptKind !== "agent" ||
+    session.agentTurnOpenedBy !== "interaction" ||
+    session.pendingPermissions.size > 0 ||
+    session.pendingElicitations.size > 0 ||
+    session.pendingToolCalls.size > 0
+  ) {
+    return;
+  }
+  setActivePromptKind(session, null);
+  if (session.turnOpen) {
+    session.turnOpen = false;
+    sendThreadDeltas(
+      session.bbThreadId,
+      session.translator.settleTurnLeavingToolCallsOpen(),
+    );
+  }
 }
 
 function finishAgentTurn(
@@ -2837,6 +2909,14 @@ function finishAgentTurn(
   cancelPendingPermissions(session);
   setActivePromptKind(session, null);
   closeTurnOnWire(session, ACP_TURN_COMPLETED_METHOD, { stopReason });
+}
+
+function isExplicitWorkingUpdate(update: unknown): boolean {
+  return (
+    isJsonObject(update) &&
+    update["sessionUpdate"] === "state_update" &&
+    (update["state"] === "running" || update["state"] === "requires_action")
+  );
 }
 
 function isExplicitIdleUpdate(update: unknown): boolean {
@@ -2854,15 +2934,6 @@ function admitPendingPrompt(session: AcpThreadSession): void {
   }
   session.promptAdmission = undefined;
   admission.admit();
-}
-
-function startsAgentWork(events: readonly AcpSessionEvent[]): boolean {
-  return events.some(
-    (event) =>
-      event.type === "work" &&
-      event.work.state !== "idle" &&
-      event.work.initiator === "agent",
-  );
 }
 
 function publishThreadState(
@@ -3025,13 +3096,17 @@ function emitSessionUpdate(
   if (turnOutput) {
     session.turnOutputCount += 1;
   }
-  if (session.activePromptKind === null && startsAgentWork(events)) {
-    openAgentTurn(session);
+  if (session.activePromptKind === null && isExplicitWorkingUpdate(rawUpdate)) {
+    openAgentTurn(session, "state");
   }
-  emitForSession(session, ACP_UPDATE_METHOD, {
-    threadId: session.bbThreadId,
-    update,
-  });
+  if (session.activePromptKind === null) {
+    emitActivityForSession(session, update);
+  } else {
+    emitForSession(session, ACP_UPDATE_METHOD, {
+      threadId: session.bbThreadId,
+      update,
+    });
+  }
   if (session.activePromptKind === "agent" && isExplicitIdleUpdate(rawUpdate)) {
     finishAgentTurn(session, "end_turn");
   }
@@ -3047,6 +3122,7 @@ async function releaseSession(session: AcpThreadSession): Promise<void> {
     "ACP session released before the steer was sent",
   );
   cancelPendingPermissions(session);
+  closeActivityOutsideTurn(session);
   await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
@@ -3952,7 +4028,8 @@ function sessionSettingsResult(session: AcpThreadSession): {
 
 function openWorkItems(session: AcpThreadSession): OpenWorkItem[] {
   return [
-    ...(session.activePromptKind === "agent"
+    ...(session.activePromptKind === "agent" &&
+    session.agentTurnOpenedBy === "state"
       ? [
           {
             id: "agent-turn",

@@ -86,11 +86,14 @@ and paths outside the workspace; BB shows those requests as approvals. In `full`
 all four are allowed. Changing a thread's permission mode restarts the OpenCode
 session with the new policy; the conversation is restored.
 
-`bb thread compact` (and `/compact`) works on any ACP agent whose live session
-advertises a `compact` command; bb sends the agent its own `/compact`. When the
-session lists no such command, bb rejects the request with a message saying so
-and nothing is sent. Check the agent's advertised commands before attempting
-provider-specific recovery.
+ACP agents do not declare compaction up front. bb offers `/compact` for an ACP
+thread only once the thread's live session advertises a `compact` command (for
+example OpenCode and omp do; Cursor does not), so a thread whose session has not
+started yet shows no `/compact`. `bb thread compact` and `/compact` then send the
+agent its own `/compact` and show the run as a compaction. When the session
+lists no such command, bb rejects the request with a message saying so and
+nothing is sent. Check the agent's advertised commands (the thread's
+`bb/provider-commands` state) before attempting provider-specific recovery.
 
 When an ACP agent reports no model list, the model picker shows one entry named
 after the agent itself (from the agent's own `agentInfo`), and the agent keeps

@@ -47,6 +47,7 @@ import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
+  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -2184,16 +2185,51 @@ describe("busy refusals", () => {
       expect(events.some((event) => event.type === "system/error")).toBe(false);
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
       await vi.waitFor(() => {
-        expect(
-          listQueuedThreadMessages(harness.db, fixture.thread.id),
-        ).toEqual([
-          expect.objectContaining({
-            payloadKind: "retry",
-            retryReason: "Agent was busy",
-            sendAt: null,
-          }),
-        ]);
+        expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+          [
+            expect.objectContaining({
+              payloadKind: "retry",
+              retryReason: "Agent was busy",
+              sendAt: null,
+            }),
+          ],
+        );
       });
+
+      const completed = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId: fixture.sessionId,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: fixture.thread.id,
+              event: {
+                type: "turn/completed",
+                threadId: fixture.thread.id,
+                providerThreadId: "provider-send-dispatch-61",
+                scope: turnScope("turn-unrequested"),
+                status: "completed",
+              },
+            },
+          ]),
+        }),
+      });
+      expect(completed.status, await completed.clone().text()).toBe(200);
+      const retried = await waitForQueuedCommandAfter(
+        harness,
+        queued.row.cursor,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === fixture.thread.id,
+      );
+      expect(retried.command).toMatchObject({
+        input: textInput("send while the daemon runs a turn"),
+      });
+      expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+        [],
+      );
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
     });
   });
 
@@ -2215,15 +2251,15 @@ describe("busy refusals", () => {
       expect(events.some((event) => event.type === "system/error")).toBe(false);
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
       await vi.waitFor(() => {
-        expect(
-          listQueuedThreadMessages(harness.db, fixture.thread.id),
-        ).toEqual([
-          expect.objectContaining({
-            payloadKind: "retry",
-            retryReason: "Agent was busy",
-            sendAt: expect.any(Number),
-          }),
-        ]);
+        expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+          [
+            expect.objectContaining({
+              payloadKind: "retry",
+              retryReason: "Agent was busy",
+              sendAt: expect.any(Number),
+            }),
+          ],
+        );
       });
     });
   });

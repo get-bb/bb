@@ -8,7 +8,7 @@ import { ACP_FAMILY, type AcpAgentDefinition } from "./agents.js";
 const ACP_BASE_CAPABILITIES: PluginProviderCapabilities = {
   supportsServiceTier: true,
   supportsNativeUserQuestion: false,
-  supportsManualCompaction: true,
+  supportsManualCompaction: false,
   supportsThreadArchive: false,
   supportsThreadRename: false,
   fork: "none",

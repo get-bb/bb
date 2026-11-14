@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { insertEvents, setExperiments } from "@bb/db";
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
+  THREAD_PROVIDER_COMMANDS_STATE_KIND,
   threadScope,
   turnScope,
   type ContextSnapshot,
@@ -207,6 +208,94 @@ describe("recorded thread context API", () => {
       expect(await read()).toBeUndefined();
 
       insertUsage(5, 99_999, { promptCacheTtlMs: 300_000 });
+      expect(await read()).toBeUndefined();
+    });
+  });
+
+  it("offers compaction to an undeclared provider only while its live commands list compact", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { providerId: "acp-omp" },
+      });
+      setExperiments(harness.db, { compactExpiredCache: true });
+      const read = async () => {
+        const context = await harness.app.request(
+          `/api/v1/threads/${thread.id}/context`,
+        );
+        const timeline = await harness.app.request(
+          `/api/v1/threads/${thread.id}/timeline`,
+        );
+        const contextUsage = (await context.json()).usage;
+        const timelineUsage = (await timeline.json()).contextWindowUsage;
+        expect(timelineUsage?.compactionOfferAt).toEqual(
+          contextUsage?.compactionOfferAt,
+        );
+        return contextUsage?.compactionOfferAt;
+      };
+      const base = {
+        threadId: thread.id,
+        providerThreadId: "acp-session",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+      };
+      const usage = {
+        totalTokens: 150_000,
+        inputTokens: 10,
+        cachedInputTokens: 149_990,
+        outputTokens: 0,
+        reasoningOutputTokens: 0,
+      };
+      const insertCommands = (sequence: number, names: string[]) =>
+        insertEvents(harness.db, harness.hub, [
+          {
+            ...base,
+            sequence,
+            scope: threadScope(),
+            type: "thread/extensionState/updated",
+            data: JSON.stringify({
+              kind: THREAD_PROVIDER_COMMANDS_STATE_KIND,
+              payload: {
+                commands: names.map((name) => ({ name, description: "" })),
+              },
+            }),
+          },
+        ]);
+      insertEvents(harness.db, harness.hub, [
+        {
+          ...base,
+          sequence: 1,
+          scope: turnScope("turn-1"),
+          type: "thread/contextWindowUsage/updated",
+          data: JSON.stringify({
+            contextWindowUsage: {
+              usedTokens: 150_000,
+              modelContextWindow: 200_000,
+              estimated: false,
+            },
+          }),
+        },
+        {
+          ...base,
+          sequence: 2,
+          scope: turnScope("turn-1"),
+          type: "thread/tokenUsage/updated",
+          data: JSON.stringify({
+            tokenUsage: {
+              total: usage,
+              last: usage,
+              modelContextWindow: 200_000,
+              promptCacheTtlMs: 300_000,
+            },
+          }),
+        },
+      ]);
+      expect(await read()).toBeUndefined();
+
+      insertCommands(3, ["compact"]);
+      expect(await read()).toEqual(expect.any(String));
+
+      insertCommands(4, ["init"]);
       expect(await read()).toBeUndefined();
     });
   });

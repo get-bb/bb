@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
+  THREAD_PROVIDER_COMMANDS_STATE_KIND,
+  threadScope,
   turnScope,
 } from "@bb/domain";
 import type { ClientTurnRequestId } from "@bb/domain";
@@ -53,6 +55,26 @@ function seedCompactableThread(
     threadId: thread.id,
   });
   return { host, session, thread };
+}
+
+function seedProviderCommandsState(
+  harness: TestAppHarness,
+  args: { threadId: string; providerThreadId: string; names: string[] },
+): void {
+  seedEvent(harness.deps, {
+    threadId: args.threadId,
+    providerThreadId: args.providerThreadId,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    type: "thread/extensionState/updated",
+    scope: threadScope(),
+    data: {
+      kind: THREAD_PROVIDER_COMMANDS_STATE_KIND,
+      payload: {
+        commands: args.names.map((name) => ({ name, description: "" })),
+      },
+    },
+  });
 }
 
 function registerSuccessfulTurnResponder(
@@ -141,39 +163,71 @@ describe("public thread compaction", () => {
   });
 
   it.each(["acp-omp", "acp-grok"])(
-    "routes %s compaction onto the bridge's /compact turn",
+    "offers %s the built-in /compact only while its live commands list compact",
     async (providerId) => {
       await withTestHarness(async (harness) => {
+        const providerThreadId = "provider-thread-acp";
         const { host, session, thread } = seedCompactableThread(harness, {
           providerId,
-          providerThreadId: "provider-thread-acp",
+          providerThreadId,
         });
         const responder = registerSuccessfulTurnResponder(harness, {
           hostId: host.id,
           sessionId: session.id,
         });
+        const turnSubmits = () =>
+          responder.requests.flatMap(({ command }) =>
+            command.type === "turn.submit" ? [command] : [],
+          );
+        const compact = () =>
+          harness.app.request(`/api/v1/threads/${thread.id}/compact`, {
+            method: "POST",
+          });
+        const compactFirst = () =>
+          harness.app.request(`/api/v1/threads/${thread.id}/send`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "queue-if-active",
+              compactFirst: true,
+              input: [{ type: "text", text: "after compacting" }],
+            }),
+          });
+        const unsupported = `Provider "${providerId}" does not support manual context compaction`;
 
-        const response = await harness.app.request(
-          `/api/v1/threads/${thread.id}/compact`,
-          { method: "POST" },
-        );
+        const refused = await compact();
+        expect(refused.status).toBe(409);
+        await expect(readJson(refused)).resolves.toMatchObject({
+          message: unsupported,
+        });
+        const refusedFirst = await compactFirst();
+        expect(refusedFirst.status).toBe(409);
+        expect(turnSubmits()).toHaveLength(0);
+
+        seedProviderCommandsState(harness, {
+          threadId: thread.id,
+          providerThreadId,
+          names: ["compact", "init"],
+        });
+        const accepted = await compact();
         expect(
-          response.status,
-          JSON.stringify(await readJson(response.clone())),
+          accepted.status,
+          JSON.stringify(await readJson(accepted.clone())),
         ).toBe(200);
-        const turnSubmitRequests = responder.requests.filter(
-          ({ command }) => command.type === "turn.submit",
-        );
-        expect(turnSubmitRequests).toHaveLength(1);
-        expect(turnSubmitRequests[0]?.command).toMatchObject({
-          type: "turn.submit",
+        expect(turnSubmits()).toHaveLength(1);
+        expect(turnSubmits()[0]).toMatchObject({
           threadId: thread.id,
           input: createStandaloneBuiltinCompactCommandInput(),
-          resumeContext: {
-            providerId,
-            providerThreadId: "provider-thread-acp",
-          },
+          resumeContext: { providerId, providerThreadId },
         });
+
+        seedProviderCommandsState(harness, {
+          threadId: thread.id,
+          providerThreadId,
+          names: ["init"],
+        });
+        expect((await compact()).status).toBe(409);
+        expect(turnSubmits()).toHaveLength(1);
       });
     },
   );

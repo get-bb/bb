@@ -388,7 +388,7 @@ describe("acpProviderDeclaration", () => {
       installation: false,
     });
     for (const declaration of byId.values()) {
-      expect(declaration.capabilities.supportsManualCompaction).toBe(true);
+      expect(declaration.capabilities.supportsManualCompaction).toBe(false);
     }
   });
 

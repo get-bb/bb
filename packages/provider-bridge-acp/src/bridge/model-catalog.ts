@@ -52,6 +52,7 @@ const THINKING_TOKEN = "thinking";
 
 export interface AgentModelCatalog {
   models: AvailableModel[];
+  offersModel(model: string): boolean;
   resolveVariant(args: {
     model: string;
     reasoningLevel?: ReasoningLevel;
@@ -409,8 +410,12 @@ export function buildAgentModelCatalog(
     defaultEffortByFamilyId.set(defaultVariant.id, defaultEntry.level);
   }
 
+  const listedIds = new Set(rawModels.map((raw) => raw.id));
   return {
     models,
+    offersModel(model) {
+      return listedIds.has(model);
+    },
     resolveVariant({ model, reasoningLevel, serviceTier }) {
       const byLevel = variantsByFamilyId.get(model);
       if (!byLevel) {

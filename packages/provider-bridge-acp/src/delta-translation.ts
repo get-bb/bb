@@ -73,6 +73,29 @@ import {
 
 interface AcpDeltaTranslationContext {
   threadId?: string;
+  attach?: AcpActivityAttach;
+}
+
+type AcpActivityAttach = "currentOrLast";
+
+function withAttach(
+  deltas: readonly ThreadDelta[],
+  attach: AcpActivityAttach | undefined,
+): ThreadDelta[] {
+  if (attach === undefined) {
+    return [...deltas];
+  }
+  return deltas.map((delta) => {
+    switch (delta.kind) {
+      case "item.textDelta":
+      case "item.textClose":
+      case "item.open":
+      case "item.close":
+        return { ...delta, attach };
+      default:
+        return delta;
+    }
+  });
 }
 
 export interface AcpDeltaTranslatorOptions {
@@ -939,6 +962,26 @@ export function createAcpDeltaTranslator(
         : "failed";
   }
 
+  function closeActivity(
+    context: AcpDeltaTranslationContext | undefined,
+    status: ThreadEventItemStatus,
+  ): ThreadDelta[] {
+    const closed = withAttach(
+      flushOpenTurnWork(context, status),
+      "currentOrLast",
+    );
+    clearThreadCalls(context);
+    return closed;
+  }
+
+  function settleTurnLeavingToolCallsOpen(): ThreadDelta[] {
+    return [
+      closeThoughtStream(),
+      closeAssistantStream(),
+      { kind: "turn.boundary", status: "completed" },
+    ];
+  }
+
   function translateTurnCompleted(
     stopReason: AcpStopReason,
     context: AcpDeltaTranslationContext | undefined,
@@ -995,8 +1038,7 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
-        const closed = flushOpenTurnWork(context, "interrupted");
-        clearThreadCalls(context);
+        const closed = closeActivity(context, "interrupted");
         filesAddedThisTurn.clear();
         return [...closed, { kind: "turn.open" }];
       }
@@ -1028,8 +1070,7 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
-        const closed = flushOpenTurnWork(context, "interrupted");
-        clearThreadCalls(context);
+        const closed = closeActivity(context, "interrupted");
         return [
           ...closed,
           { kind: "turn.open" },
@@ -1092,7 +1133,10 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
-        return translateUpdate(params.data.update, context);
+        return withAttach(
+          translateUpdate(params.data.update, context),
+          context?.attach,
+        );
       }
 
       case ACP_FS_WRITE_METHOD: {
@@ -1264,11 +1308,15 @@ export function createAcpDeltaTranslator(
   }
 
   return {
+    closeActivity(threadId: string, status: ThreadEventItemStatus) {
+      return closeActivity({ threadId }, status);
+    },
     configureInjectedTools,
     getInjectedToolBinding,
     noteDelegationReport,
     noteInjectedToolCall,
     notePermissionToolCall,
+    settleTurnLeavingToolCallsOpen,
     translateAcpEvent,
   };
 }

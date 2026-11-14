@@ -26,9 +26,16 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
 } from "@bb/provider-bridge-protocol";
 import {
+  mergeSessionSettingsDeclarations,
+  sessionSettingsDeclarationSchema,
+  type SessionSettingsDeclaration,
+} from "@bb/provider-bridge-protocol";
+import {
   assembleCapturedThreadEvents,
   captureBridgeJsonRpcOutput,
   createBridgeDeltaEventCollector,
+  permissionChangeCases,
+  runPermissionChangeCase,
 } from "@bb/provider-bridge-protocol/testing";
 import type {
   BridgeJsonRpcOutputMessage,
@@ -2695,6 +2702,42 @@ describe("acp bridge", () => {
     ).resolves.toBe("electron-run-as-node:missing");
   });
 
+  it.each([
+    { label: "a legacy acp-default", model: "acp-default" },
+    { label: "an unlisted", model: "gone-model" },
+  ])(
+    "never passes $label model id through the launch flag of an agent whose list lacks it, and warns",
+    async ({ model }) => {
+      chmodSync(FAKE_AGENT_PATH, 0o755);
+      const cliModelLaunch: AgentLaunchArgs = {
+        agent: { command: FAKE_AGENT_PATH, args: [] },
+        modelListArgs: ["--list-models"],
+        selectFlag: "--model",
+        envVars: { FAKE_ACP_MODEL_LINES: "pinme - Pin Me\nother - Other" },
+      };
+      const { providerThreadId } = await startThread({
+        ...cliModelLaunch,
+        model,
+      });
+
+      expect(
+        await completeTurnWith(
+          providerThreadId,
+          "echo-argv",
+          executionOptions({ model }),
+        ),
+      ).toBe("argv:");
+      expect(threadEventsOfType("provider/warning")).toContainEqual(
+        expect.objectContaining({
+          summary: expect.stringContaining(
+            `does not offer the model "${model}"`,
+          ),
+        }),
+      );
+    },
+    20_000,
+  );
+
   it("warns and launches the family id when a reasoning variant is missing", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
     const cliModelLaunch = {
@@ -2932,7 +2975,7 @@ describe("acp bridge", () => {
     );
   });
 
-  it("forwards ACP dynamic tool calls through the runtime tool-call contract", async () => {
+  it("forwards ACP dynamic tool calls through the runtime tool-call contract, in a turn of their own when no prompt is in flight", async () => {
     const { bbThreadId, providerThreadId } = await startThread({
       dynamicTools: [
         {
@@ -3004,6 +3047,8 @@ describe("acp bridge", () => {
       tool: "update_environment_directory",
       turnId: null,
     });
+    expect(threadEventsOfType("turn/started")).toHaveLength(2);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(1);
 
     handleLine(
       JSON.stringify({
@@ -3025,6 +3070,9 @@ describe("acp bridge", () => {
       isError: false,
       ok: true,
     });
+    expect(
+      threadEventsOfType("turn/completed").map((event) => event.status),
+    ).toEqual(["completed", "completed"]);
   });
 
   it.each(["socket-close", "provider-exit", "turn-end"])(
@@ -3570,6 +3618,270 @@ describe("acp bridge", () => {
       permission: { apply: "resume" },
     });
   });
+
+  const permissionProbeSchema = z.object({
+    wrote: z.boolean(),
+    args: z.array(z.string()),
+    opencodePermission: z.string().nullable(),
+  });
+
+  function permissionProbes(): z.infer<typeof permissionProbeSchema>[] {
+    return threadEventsOfType("item/agentMessage/delta")
+      .map((event) => String(event.delta))
+      .filter((text) => text.startsWith('{"wrote":'))
+      .map((text) => permissionProbeSchema.parse(JSON.parse(text)));
+  }
+
+  const PERMISSION_CLI = {
+    full: ["--full"],
+    workspaceWrite: ["--workspace"],
+    insertAfterArgs: 1,
+  };
+
+  it.each(
+    permissionChangeCases(["accept-edits", "full"]).flatMap((scenario) =>
+      (
+        [
+          { launch: "native", load: false },
+          { launch: "permissionCli", load: false },
+          { launch: "permissionCli", load: true },
+          { launch: "opencodeEnv", load: true },
+        ] as const
+      ).map((variant) => ({ ...scenario, ...variant })),
+    ),
+  )(
+    "permission contract: $before -> $after on a follow-up ($launch, load: $load)",
+    async (scenario) => {
+      const outsideDir = mkdtempSync(join(tmpdir(), "bb-acp-permission-"));
+      const targetPath = join(outsideDir, "probe.txt");
+      const launch: AgentLaunchArgs = {
+        envVars: {
+          FAKE_ACP_WRITE_PATH: targetPath,
+          FAKE_ACP_LOAD_SESSION: scenario.load ? "1" : "0",
+        },
+        ...(scenario.launch === "permissionCli"
+          ? { permissionCli: PERMISSION_CLI }
+          : {}),
+        ...(scenario.launch === "opencodeEnv" ? { dialectId: "opencode" } : {}),
+      };
+      let thread = { bbThreadId: "", providerThreadId: "" };
+      let handshake: SessionSettingsDeclaration = {};
+      let narrowing: SessionSettingsDeclaration | undefined;
+      const constructionOptions = (options: object) => ({
+        ...options,
+        providerOptions: launchProviderOptions(launch),
+      });
+      try {
+        await runPermissionChangeCase(
+          {
+            async initialize() {
+              const response = await waitForResponse(
+                sendRequest("initialize", {
+                  protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+                  client: { name: "permission-contract", version: "0" },
+                  grammarVersions: [3, 3],
+                }),
+              );
+              handshake = z
+                .object({
+                  capabilities: z.object({
+                    sessionSettings: sessionSettingsDeclarationSchema,
+                  }),
+                })
+                .parse(response.result).capabilities.sessionSettings;
+            },
+            declaration() {
+              return mergeSessionSettingsDeclarations(handshake, narrowing);
+            },
+            async start(options) {
+              nextThreadSerial += 1;
+              const bbThreadId = `thread-${nextThreadSerial}`;
+              const started = await construct(
+                "thread/start",
+                {
+                  threadId: bbThreadId,
+                  cwd: workspaceDir,
+                  instructionMode: "append",
+                  options: constructionOptions(options),
+                },
+                bbThreadId,
+              );
+              thread = started;
+              narrowing = sessionSettingsDeclarationSchema
+                .optional()
+                .parse(started.sessionSettings);
+            },
+            async resume(options) {
+              expect(
+                (
+                  await waitForResponse(
+                    sendRequest("thread/stop", {
+                      threadId: thread.bbThreadId,
+                      providerThreadId: thread.providerThreadId,
+                      intent: "release",
+                      activeTurnId: null,
+                    }),
+                  )
+                ).error,
+              ).toBeUndefined();
+              const resumed = await construct(
+                "thread/resume",
+                {
+                  threadId: thread.bbThreadId,
+                  cwd: workspaceDir,
+                  instructionMode: "append",
+                  options: constructionOptions(options),
+                  providerThreadId: thread.providerThreadId,
+                },
+                thread.bbThreadId,
+              );
+              thread = resumed;
+              narrowing = sessionSettingsDeclarationSchema
+                .optional()
+                .parse(resumed.sessionSettings);
+            },
+            async turn(options, apply) {
+              rmSync(targetPath, { force: true });
+              await completeTurnWith(
+                thread.providerThreadId,
+                "permission-probe",
+                { ...options },
+                {
+                  settings: [...apply.settings],
+                  sessionOptions: [...apply.sessionOptions],
+                  providerOptions: [...apply.providerOptions],
+                },
+              );
+            },
+            async observe() {
+              const probe = permissionProbes().at(-1);
+              if (probe === undefined) {
+                throw new Error("No permission probe received");
+              }
+              expect(existsSync(targetPath)).toBe(probe.wrote);
+              if (scenario.launch === "permissionCli") {
+                expect(probe.args).toContain(
+                  probe.wrote ? "--full" : "--workspace",
+                );
+                expect(probe.args).not.toContain(
+                  probe.wrote ? "--workspace" : "--full",
+                );
+              }
+              if (scenario.launch === "opencodeEnv") {
+                expect(
+                  z
+                    .object({ bash: z.string() })
+                    .parse(JSON.parse(probe.opencodePermission ?? "null")).bash,
+                ).toBe(probe.wrote ? "allow" : "ask");
+              }
+              return {
+                mode: probe.wrote ? "full" : "accept-edits",
+                sandbox: !probe.wrote,
+              };
+            },
+          },
+          scenario,
+        );
+        expect(notifications("session/replaced")).toHaveLength(0);
+      } finally {
+        await stopThread(thread.providerThreadId);
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
+  it.each([
+    { launch: "native", load: false },
+    { launch: "permissionCli", load: true },
+  ] as const)(
+    "never applies a permission change a steer carries, and applies it on the next turn/start that lists it ($launch)",
+    async (scenario) => {
+      const outsideDir = mkdtempSync(join(tmpdir(), "bb-acp-steer-permission-"));
+      const targetPath = join(outsideDir, "probe.txt");
+      const launch: AgentLaunchArgs = {
+        envVars: {
+          FAKE_ACP_WRITE_PATH: targetPath,
+          FAKE_ACP_LOAD_SESSION: scenario.load ? "1" : "0",
+        },
+        ...(scenario.launch === "permissionCli"
+          ? { permissionCli: PERMISSION_CLI }
+          : {}),
+      };
+      const fullOptions = executionOptions({
+        permissionMode: "full",
+        providerOptions: launchProviderOptions(launch),
+      });
+      try {
+        const started = await startThreadResult({
+          ...launch,
+          permissionMode: "accept-edits",
+        });
+        await waitForResponse(
+          sendTurnRequest("turn/start", started.providerThreadId, {
+            input: [
+              { type: "text", text: "permission-probe hold", mentions: [] },
+            ],
+            options: executionOptions({ permissionMode: "accept-edits" }),
+          }),
+        );
+        await waitFor(
+          () => (permissionProbes().length === 1 ? true : undefined),
+          "the held probe",
+        );
+        const steer = await waitForResponse(
+          sendTurnRequest("turn/steer", started.providerThreadId, {
+            expectedTurnId: "turn-1",
+            clientRequestId: "creq_bcdefghjkm",
+            input: [{ type: "text", text: "permission-probe", mentions: [] }],
+            options: fullOptions,
+          }),
+        );
+        expect(steer.result).toEqual({ admission: "accepted" });
+        await waitForTurnCompleted();
+        expect(permissionProbes().map((probe) => probe.wrote)).toEqual([
+          false,
+          false,
+        ]);
+        expect(existsSync(targetPath)).toBe(false);
+        expect(notifications("session/replaced")).toHaveLength(0);
+
+        let thread: { bbThreadId: string; providerThreadId: string } = started;
+        if (scenario.launch === "permissionCli") {
+          expect(started.sessionSettings).toEqual({
+            permission: { apply: "resume" },
+          });
+          await waitForResponse(
+            sendRequest("thread/stop", {
+              threadId: started.bbThreadId,
+              providerThreadId: started.providerThreadId,
+              intent: "release",
+              activeTurnId: null,
+            }),
+          );
+          thread = await resumeThread(started, {
+            ...launch,
+            permissionMode: "full",
+          });
+        }
+        await completeTurnWith(
+          thread.providerThreadId,
+          "permission-probe",
+          fullOptions,
+          scenario.launch === "native" ? applying(["permission"]) : NOTHING_TO_APPLY,
+        );
+        const applied = permissionProbes().at(-1);
+        expect(applied?.wrote).toBe(true);
+        if (scenario.launch === "permissionCli") {
+          expect(applied?.args).toContain("--full");
+        }
+        expect(existsSync(targetPath)).toBe(true);
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
 
   it("answers a second simultaneous start busy", async () => {
     const { providerThreadId } = await startThread();
@@ -4132,6 +4444,46 @@ describe("acp bridge", () => {
     await new Promise((resolveTick) => realSetTimeout(resolveTick, 200));
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
     expect(notifications("error")).toEqual([]);
+  }, 15_000);
+
+  it("answers a turn/start the agent never took as soon as the thread stops, then cancels and settles it interrupted", async () => {
+    const promptLog = join(workspaceDir, "untaken-prompts.log");
+    const requestLog = join(workspaceDir, "untaken-requests.jsonl");
+    const { bbThreadId, providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_IGNORE_CANCEL: "1",
+        FAKE_ACP_PROMPT_LOG: promptLog,
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hang-silently", mentions: [] }],
+    });
+    await waitFor(
+      () =>
+        loggedPrompts(promptLog).includes("hang-silently") ? true : undefined,
+      "the prompt to reach the agent",
+    );
+    expect(findResponse(turnId)).toBeUndefined();
+
+    const stoppedAt = Date.now();
+    const stopId = sendRequest("thread/stop", {
+      threadId: bbThreadId,
+      providerThreadId,
+      intent: "interrupt",
+      activeTurnId: null,
+    });
+    const turnResponse = await waitForResponse(turnId);
+    expect(Date.now() - stoppedAt).toBeLessThan(1_000);
+    expect(findResponse(stopId)).toBeUndefined();
+    expect(turnResponse.result).toEqual({ admission: "accepted" });
+    expect((await waitForResponse(stopId)).result).toEqual({ ok: true });
+    expect(threadEventsOfType("turn/completed")).toMatchObject([
+      { status: "interrupted" },
+    ]);
+    expect(
+      loggedAcpRequests(requestLog).map((request) => request.method),
+    ).toContain("session/cancel");
   }, 15_000);
 
   it("falls back to a new-process fork when the source has exited", async () => {
@@ -5214,47 +5566,140 @@ describe("acp bridge: work the agent starts on its own", () => {
     expect(turnStatuses()).toEqual(["completed", "completed"]);
   });
 
-  it("opens a turn for unprompted output and keeps it open, with no timer, as open work", async () => {
+  function turnIdOf(event: Record<string, unknown>): string | undefined {
+    return z
+      .object({ scope: z.object({ kind: z.literal("turn"), turnId: z.string() }) })
+      .safeParse(event).data?.scope.turnId;
+  }
+
+  function turnOfMessage(
+    turnIndex: number,
+    text: string,
+  ): { turnId: string | undefined; messageTurnIds: (string | undefined)[] } {
+    const events = threadEvents();
+    return {
+      turnId: turnIdOf(
+        events.filter((event) => event.type === "turn/started")[turnIndex] ??
+          {},
+      ),
+      messageTurnIds: events
+        .filter(
+          (event) =>
+            event.type === "item/agentMessage/delta" && event.delta === text,
+        )
+        .map(turnIdOf),
+    };
+  }
+
+  function emittedToolCloses(toolCallId: string): unknown[] {
+    return notifications(THREAD_DELTA_NOTIFICATION_METHOD).flatMap(
+      (message) =>
+        z
+          .object({
+            deltas: z.array(
+              z.looseObject({
+                kind: z.string(),
+                key: z.looseObject({ providerItemId: z.string().optional() }).optional(),
+                status: z.string().optional(),
+              }),
+            ),
+          })
+          .parse(message.params)
+          .deltas.filter(
+            (delta) =>
+              delta.kind === "item.close" &&
+              delta.key?.providerItemId === toolCallId,
+          )
+          .map((delta) => delta.status),
+    );
+  }
+
+  it("records output the agent sends on its own on the last turn, opening no turn, with no timer and no open work", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
     vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
     try {
       await runPromptedTurn(providerThreadId, "then-unprompted-stream");
-      await waitForTurnStartedCount(2);
       await waitFor(
         () =>
-          agentMessageTexts().includes(" unprompted two") ? true : undefined,
+          turnOfMessage(0, "unprompted one").messageTurnIds.length > 0 &&
+          emittedToolCloses("unprompted-tool").length > 0
+            ? true
+            : undefined,
         "unprompted output",
+      );
+      await waitFor(
+        () => (agentMessageTexts().includes(" unprompted two") ? true : undefined),
+        "the second unprompted chunk",
       );
       expect(vi.getTimerCount()).toBe(0);
       await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(emittedDeltaKinds().filter((kind) => kind === "turn.open")).toHaveLength(1);
       expect(turnStatuses()).toEqual(["completed"]);
-      expect(await openWork(bbThreadId, providerThreadId)).toEqual([
-        {
-          id: "agent-turn",
-          kind: "turn",
-          description: "The agent is working on its own, without a prompt",
-        },
-      ]);
+      expect(await openWork(bbThreadId, providerThreadId)).toEqual([]);
+      const unprompted = turnOfMessage(0, "unprompted one");
+      expect(unprompted.turnId).toBeDefined();
+      expect(unprompted.messageTurnIds).toEqual([unprompted.turnId]);
       expect(agentMessageTexts()).toEqual([
         "prompted reply",
         "unprompted one",
         " unprompted two",
       ]);
-      expect(threadEventsOfType("provider/unhandled")).toEqual([]);
-      const backgroundJob = threadEventsOfType("item/completed").find(
-        (event) =>
-          JSON.stringify(event.item ?? {}).includes("Background job") ||
-          JSON.stringify(event).includes("unprompted-tool"),
-      );
-      expect(backgroundJob).toBeDefined();
+      const events = threadEvents();
+      expect(
+        events
+          .filter(
+            (event) =>
+              event.type === "item/started" &&
+              JSON.stringify(event).includes("Background job"),
+          )
+          .map(turnIdOf),
+      ).toEqual([
+        turnIdOf(events.find((event) => event.type === "turn/started") ?? {}),
+      ]);
+      expect(emittedToolCloses("unprompted-tool")).toEqual(["completed"]);
+      expect(
+        events
+          .filter(
+            (event) =>
+              event.type === "item/completed" &&
+              JSON.stringify(event).includes("Background job"),
+          )
+          .map(turnIdOf),
+      ).toEqual([
+        turnIdOf(events.find((event) => event.type === "turn/started") ?? {}),
+      ]);
+      expect(events.filter((event) => event.type === "provider/unhandled")).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("closes the agent's own turn when the agent reports it is idle", async () => {
+  it("starts a normal turn for a user message sent while the agent's own output streams, closing what it left open", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
-    await runPromptedTurn(providerThreadId, "then-unprompted-idle");
+    await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
+    await waitFor(
+      () =>
+        threadEventsOfType("item/started").some((event) =>
+          JSON.stringify(event).includes("Long build"),
+        )
+          ? true
+          : undefined,
+      "the agent's own tool call",
+    );
+    expect(await openWork(bbThreadId, providerThreadId)).toEqual([]);
+
+    await runPromptedTurn(providerThreadId, "after the build");
+
+    expect(threadEventsOfType("turn/started")).toHaveLength(2);
+    expect(turnStatuses()).toEqual(["completed", "completed"]);
+    expect(emittedToolCloses("unprompted-open-tool")).toEqual(["interrupted"]);
+    expect(agentMessageTexts().at(-1)).toBe("echo:after the build");
+  });
+
+  it("opens the agent's own turn on state_update running and settles it on idle", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    await runPromptedTurn(providerThreadId, "then-unprompted-reported");
     await waitForTurnStartedCount(2);
     await waitFor(
       () => (turnStatuses().length === 2 ? true : undefined),
@@ -5262,29 +5707,26 @@ describe("acp bridge: work the agent starts on its own", () => {
     );
 
     expect(turnStatuses()).toEqual(["completed", "completed"]);
-    expect(agentMessageTexts()).toEqual(["prompted reply", "unprompted work"]);
+    const reported = turnOfMessage(1, "reported work");
+    expect(reported.messageTurnIds).toEqual([reported.turnId]);
     expect(await openWork(bbThreadId, providerThreadId)).toEqual([]);
   });
 
-  it("keeps the agent's turn open while a tool it announced is running, and settles it as interrupted when the user sends a message", async () => {
-    const { providerThreadId } = await startThread();
-    await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
+  it("reports the agent's own reported turn as open work and runs a steer inside it", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    await runPromptedTurn(providerThreadId, "then-unprompted-running");
     await waitForTurnStartedCount(2);
-    expect(turnStatuses()).toEqual(["completed"]);
-
-    await runPromptedTurn(providerThreadId, "after the build");
     await waitFor(
-      () => (turnStatuses().length === 3 ? true : undefined),
-      "prompted turn after the interrupted agent turn",
+      () => (agentMessageTexts().includes("reported work") ? true : undefined),
+      "the agent's own output",
     );
-    expect(turnStatuses()).toEqual(["completed", "interrupted", "completed"]);
-    expect(agentMessageTexts().at(-1)).toBe("echo:after the build");
-  });
-
-  it("runs a steer that arrives during the agent's own turn as a prompt inside that turn", async () => {
-    const { providerThreadId } = await startThread();
-    await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
-    await waitForTurnStartedCount(2);
+    expect(await openWork(bbThreadId, providerThreadId)).toEqual([
+      {
+        id: "agent-turn",
+        kind: "turn",
+        description: "The agent is working on its own, without a prompt",
+      },
+    ]);
 
     const steer = await waitForResponse(
       sendTurnRequest("turn/steer", providerThreadId, {
@@ -5299,11 +5741,11 @@ describe("acp bridge: work the agent starts on its own", () => {
     );
     expect(threadEventsOfType("turn/started")).toHaveLength(2);
     expect(turnStatuses()).toEqual(["completed", "completed"]);
-    expect(agentMessageTexts().at(-1)).toBe("echo:what is running?");
+    expect(agentMessageTexts().join("")).toContain("echo:what is running?");
     expect(threadEventsOfType("turn/input/accepted")).toHaveLength(2);
   });
 
-  it("shows a permission request the agent raises with no prompt in flight instead of cancelling it", async () => {
+  it("shows a permission request the agent raises with no prompt in flight, and settles its turn once answered", async () => {
     const { bbThreadId, providerThreadId } = await startThread({
       permissionMode: "accept-edits",
       permissionEscalation: "ask",
@@ -5330,7 +5772,7 @@ describe("acp bridge: work the agent starts on its own", () => {
     expect(threadEventsOfType("turn/started")).toHaveLength(2);
     expect(
       (await openWork(bbThreadId, providerThreadId)).map((item) => item.kind),
-    ).toEqual(["turn", "interaction"]);
+    ).toEqual(["interaction"]);
 
     handleLine(
       JSON.stringify({
@@ -5344,14 +5786,18 @@ describe("acp bridge: work the agent starts on its own", () => {
         agentMessageTexts().includes("permission:allow") ? true : undefined,
       "agent's reaction to the approval",
     );
+    expect(turnStatuses()).toEqual(["completed", "completed"]);
+    const answered = turnOfMessage(1, "permission:allow");
+    expect(answered.messageTurnIds).toEqual([answered.turnId]);
+    expect(await openWork(bbThreadId, providerThreadId)).toEqual([]);
   });
 
-  it("fails the agent's own turn when the agent exits during it", async () => {
+  it("fails the agent's own reported turn when the agent exits during it", async () => {
     const readyFile = join(workspaceDir, "agent-ready");
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_READY_FILE: readyFile },
     });
-    await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
+    await runPromptedTurn(providerThreadId, "then-unprompted-running");
     await waitForTurnStartedCount(2);
 
     process.kill(Number(readFileSync(readyFile, "utf8")), "SIGKILL");
@@ -5399,13 +5845,13 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
     await waitForResponse(
       sendTurnRequest("turn/start", providerThreadId, {
         input: [
-          { type: "text", text: "then-unprompted-open-tool", mentions: [] },
+          { type: "text", text: "then-unprompted-running", mentions: [] },
         ],
       }),
     );
     await waitFor(
-      () => (threadEventsOfType("turn/started").length >= 2 ? true : undefined),
-      "agent turn",
+      () => (agentMessageTexts().includes("reported work") ? true : undefined),
+      "agent turn output",
     );
 
     const steer = await waitForResponse(

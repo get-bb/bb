@@ -108,7 +108,10 @@
  * - "then-unprompted-stream"     → message chunks and a finished tool call
  * - "then-unprompted-permission" → a permission request, then its outcome
  * - "then-unprompted-open-tool"  → a tool call that stays in progress
- * - "then-unprompted-idle"       → message chunks, then state_update idle
+ * - "then-unprompted-reported"   → state_update running, a message chunk,
+ *                                  then state_update idle
+ * - "then-unprompted-running"    → state_update running and a message chunk,
+ *                                  never idle
  * - "hang-with-open-command"     → start a command, then hang until cancelled
  *                                  without ever closing it (Cursor's shape)
  * - "hang"                       → send a thought chunk, then hang until
@@ -695,7 +698,13 @@ async function handlePrompt(message) {
       wrote = true;
     } catch {}
     notifyUpdate(
-      messageChunk(JSON.stringify({ wrote, args: process.argv.slice(2) })),
+      messageChunk(
+        JSON.stringify({
+          wrote,
+          args: process.argv.slice(2),
+          opencodePermission: process.env.OPENCODE_PERMISSION ?? null,
+        }),
+      ),
     );
     if (text.includes("hold")) return;
   } else if (text.includes("write-file")) {
@@ -813,15 +822,23 @@ async function handlePrompt(message) {
       );
     }
     notifyUpdate(messageChunk(`elicitation:${JSON.stringify(result)}`));
-  } else if (text.includes("then-unprompted-idle")) {
+  } else if (text.includes("then-unprompted-reported")) {
     notifyUpdate(messageChunk("prompted reply"));
     setTimeout(() => {
-      notifyUpdate(messageChunk("unprompted work"));
+      notifyUpdate({ sessionUpdate: "state_update", state: "running" });
+      notifyUpdate(messageChunk("reported work"));
       notifyUpdate({
         sessionUpdate: "state_update",
         state: "idle",
         stopReason: "end_turn",
       });
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("then-unprompted-running")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      ownWorkRunning = true;
+      notifyUpdate({ sessionUpdate: "state_update", state: "running" });
+      notifyUpdate(messageChunk("reported work"));
     }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("then-unprompted-open-tool")) {
     notifyUpdate(messageChunk("prompted reply"));

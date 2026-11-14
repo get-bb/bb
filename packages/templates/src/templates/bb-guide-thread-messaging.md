@@ -181,7 +181,8 @@ Queued messages:
 
   --compact-first runs the same /compact turn as `bb thread compact` and queues
   the message behind it, so it needs an idle or errored thread whose provider
-  supports manual compaction; it cannot be combined with --send-at. The SDK
+  offers /compact (for ACP, once the agent advertises a compact command); it
+  cannot be combined with --send-at. The SDK
   takes `compactFirst: true` on `threads.send`, which also rejects
   `mode: "steer"`.
 
