@@ -1473,6 +1473,35 @@ describe("acp delta translation (session title)", () => {
       ),
     ).toEqual([]);
   });
+
+  it("ignores a title the agent derived from bb's system instructions block", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "session_info_update",
+          title: "<system_instructions> If the user asks you to.",
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "session_info_update",
+          title: "Check-in",
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "thread/name/updated",
+        threadId: "",
+        providerThreadId: "",
+        scope: threadScope(),
+        threadName: "Check-in",
+        source: "agent",
+      },
+    ]);
+  });
 });
 
 describe("acp delta translation (presentation)", () => {
