@@ -3,7 +3,7 @@ import { z } from "zod";
 import { BRIDGE_JSON_RPC_ERRORS } from "../errors.js";
 import { BRIDGE_INBOUND_REQUEST_METHODS } from "../bridge-requests.js";
 import { BRIDGE_NOTIFICATION_METHODS } from "../notifications.js";
-import type { ConformanceCheckResult } from "./types.js";
+import type { ConformanceCheckResult } from "../conformance/types.js";
 
 export type ProviderInputEntry =
   | { ts: number; kind: "spawn"; argv: string[]; env: Record<string, string> }
