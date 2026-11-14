@@ -1381,6 +1381,7 @@ describe("internal event and tool-call routes", () => {
         } else if (recheck === "host resume") {
           await resumeEnvironmentProvisioningForHost(harness.deps, {
             hostId: host.id,
+            setupRunsOnConnectedDaemon: true,
           });
         }
 

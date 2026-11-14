@@ -90,14 +90,15 @@ export function resumeServerMoveDeferredWork(
       });
     }
     requestQueuedMessageDispatch(deps, { hostId, kind: "host-connected" });
-    void resumeEnvironmentProvisioningForHost(deps, { hostId }).catch(
-      (error: unknown) => {
-        deps.logger.warn(
-          { err: error, hostId },
-          "Environment provisioning resume after a server move failed",
-        );
-      },
-    );
+    void resumeEnvironmentProvisioningForHost(deps, {
+      hostId,
+      setupRunsOnConnectedDaemon: false,
+    }).catch((error: unknown) => {
+      deps.logger.warn(
+        { err: error, hostId },
+        "Environment provisioning resume after a server move failed",
+      );
+    });
   }
 }
 

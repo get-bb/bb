@@ -96,7 +96,8 @@ type ViolationKind =
   | "orphaned-row"
   | "orphaned-claim"
   | "orphaned-worktree"
-  | "orphaned-branch";
+  | "orphaned-branch"
+  | "setup-rerun";
 
 interface Violation {
   key: string;
@@ -233,7 +234,7 @@ interface Hold {
 
 class Machine {
   sessionId = "";
-  readonly instanceId = "instance-1";
+  instanceId = "instance-1";
   inFlight = 0;
   heldOperations = 0;
   readonly hostId: string;
@@ -245,6 +246,7 @@ class Machine {
   readonly hostEntries = new Map<string, HostHarness>();
   private readonly holds: Hold[] = [];
   private readonly pendingSetups = new Map<string, () => void>();
+  private readonly unresolvedSetups = new Map<string, string>();
   private turnCount = 0;
 
   constructor(
@@ -456,6 +458,12 @@ class Machine {
       interrupted.resolve();
     };
     this.pendingSetups.set(command.environmentId, cancel);
+    if (command.setupScriptTimeoutMs !== null) {
+      const startedBy = this.unresolvedSetups.get(command.environmentId);
+      if (startedBy !== undefined && startedBy !== this.instanceId)
+        this.world.reportSetupRerun(command.environmentId);
+      this.unresolvedSetups.set(command.environmentId, this.instanceId);
+    }
     const outcome = await this.track(
       "setup",
       async () => {
@@ -512,6 +520,7 @@ class Machine {
           this.pendingSetups.delete(command.environmentId);
       });
     if (outcome === null || sessionId !== this.sessionId) return;
+    this.unresolvedSetups.delete(command.environmentId);
     if (outcome === "cancelled") {
       this.reject(
         sessionId,
@@ -585,7 +594,8 @@ class Machine {
     this.sessionId = "";
   }
 
-  async reconnect(): Promise<void> {
+  async reconnect(args: { restarted: boolean }): Promise<void> {
+    if (args.restarted) this.instanceId = `${this.instanceId}-restarted`;
     const harness = this.world.harness;
     const response = await harness.app.request("/internal/session/open", {
       method: "POST",
@@ -1165,8 +1175,22 @@ class World {
 
   reconnect(machine: MachineName = "a") {
     return this.step(`reconnect machine ${machine}`, async () => {
-      await this.machine(machine).reconnect();
+      await this.machine(machine).reconnect({ restarted: false });
     });
+  }
+
+  restartDaemon(machine: MachineName = "a") {
+    return this.step(`restart the daemon on machine ${machine}`, async () => {
+      await this.machine(machine).reconnect({ restarted: true });
+    });
+  }
+
+  reportSetupRerun(environmentId: string): void {
+    this.violation(
+      "setup-rerun",
+      this.environmentLabel(environmentId),
+      "a restarted daemon was asked to run a setup whose earlier run has an unknown outcome",
+    );
   }
 
   async writeWork(label: string, kind: RecordedWork["kind"]): Promise<void> {
@@ -1558,6 +1582,21 @@ const ORDERINGS: Ordering[] = [
     },
   },
   {
+    name: "worktree: daemon restarts during setup, archive",
+    async run(world) {
+      const setup = world.machine().hold("setup");
+      await world.createWorktreeThread("A");
+      await setup.reached;
+      await world.disconnect();
+      await world.restartDaemon();
+      await world.release("finish setup", setup);
+      world.expectThreadError("A");
+      await world.archive("A");
+      await world.settledNow();
+      await world.recoverIfNeeded("A");
+    },
+  },
+  {
     name: "worktree: archive during setup",
     async run(world) {
       const setup = world.machine().hold("setup");
@@ -1600,15 +1639,6 @@ const ORDERINGS: Ordering[] = [
   },
 ];
 
-const KNOWN_FAILURES: Record<string, string[]> = {
-  "worktree: archive, remove, unarchive before the removal starts, restore": [
-    "unsettled-environment: env(A)",
-  ],
-  "worktree: daemon disconnects during setup and reconnects": [
-    "thread-failed: A",
-  ],
-};
-
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
   vi.setSystemTime(Date.now() + clockOffsetMs);
@@ -1637,7 +1667,7 @@ describe("environment lifecycle orderings", () => {
           expect(
             violations.map((violation) => violation.key),
             violations.map((violation) => violation.text).join("\n"),
-          ).toEqual(KNOWN_FAILURES[ordering.name] ?? []);
+          ).toEqual([]);
         } finally {
           for (const cleanup of cleanups.reverse()) await cleanup();
         }

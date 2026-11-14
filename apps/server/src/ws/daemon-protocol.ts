@@ -130,6 +130,7 @@ export function onDaemonSocketOpen(
   });
   void resumeEnvironmentProvisioningForHost(deps, {
     hostId: args.hostId,
+    setupRunsOnConnectedDaemon: true,
   }).catch((error) => {
     deps.logger.warn(
       {

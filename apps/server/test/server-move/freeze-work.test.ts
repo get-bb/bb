@@ -117,6 +117,7 @@ describe("work while a server move is frozen", () => {
       resumeServerMoveDeferredWork(harness.deps);
       expect(resumeProvisioning).toHaveBeenCalledWith(harness.deps, {
         hostId: host.id,
+        setupRunsOnConnectedDaemon: false,
       });
 
       const dispatched = await waitForQueuedCommand(

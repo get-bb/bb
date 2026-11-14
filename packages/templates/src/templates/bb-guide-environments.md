@@ -119,7 +119,8 @@ Making your repo work with bb:
   bb environment delete <id>              Request provider cleanup; refused while threads are
                                           live or stopping. The command returns with cleanup
                                           requested; lifecycle becomes destroyed only after
-                                          provider removal completes
+                                          provider removal completes. Unarchiving one of its
+                                          threads before removal starts cancels the request
   bb environment cleanup <id>             Remove an unused provider-managed environment now
     --recover                             After inspection, acknowledge interrupted hooks and
                                           retry failed cleanup (Linux and macOS same-user process guard)
