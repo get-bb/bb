@@ -108,7 +108,7 @@ interface CodexResponsesRequest {
   model: string;
   instructions: string;
   reasoning: {
-    effort: "none";
+    effort: "low";
   };
   store: boolean;
   stream: boolean;
@@ -673,7 +673,7 @@ function buildCodexResponsesRequest(
     model: command.model,
     instructions:
       "Follow the user prompt. Reply with only the requested text, without quotes or commentary.",
-    reasoning: { effort: "none" },
+    reasoning: { effort: "low" },
     store: false,
     stream: true,
     input: [

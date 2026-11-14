@@ -9,6 +9,7 @@ import {
   transcribeCodexVoice,
 } from "./chatgpt-client.js";
 import { resetChatGptCloudflareCookiesForTests } from "./chatgpt-fetch.js";
+import { parseJsonValue, toJsonObject } from "./codex-auth.js";
 
 type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
 
@@ -269,11 +270,54 @@ describe("Codex ChatGPT client", () => {
       model: "gpt-5.6-luna",
       instructions:
         "Follow the user prompt. Reply with only the requested text, without quotes or commentary.",
-      reasoning: { effort: "none" },
+      reasoning: { effort: "low" },
       stream: true,
     });
     expect(requestBody.text).toBeUndefined();
   });
+
+  it.each(["gpt-6-luna", "gpt-5.6-luna"])(
+    "completes with %s when the workspace only permits low reasoning",
+    async (model) => {
+      const homeDir = await makeTempHome();
+      await writeCodexAuth({
+        homeDir,
+        accessToken: createAccessToken({
+          accountId: "account-123",
+          expSeconds: Math.floor(Date.now() / 1000) + 3600,
+        }),
+        refreshToken: "refresh-token",
+        accountId: "account-123",
+      });
+      const fetchMock = setupFetchMock();
+      fetchMock.mockImplementation(async (_url, init) => {
+        const request = toJsonObject(parseJsonValue(textBodyFromInit(init)));
+        const reasoning = toJsonObject(request?.reasoning ?? null);
+        if (reasoning?.effort !== "low") {
+          return new Response(
+            JSON.stringify({
+              error: { message: "Unsupported reasoning effort" },
+            }),
+            { status: 403 },
+          );
+        }
+        return sseResponse([
+          {
+            type: "response.output_text.delta",
+            delta: "Generated helper text",
+          },
+        ]);
+      });
+
+      await expect(
+        completeCodexInference(
+          { model, prompt: "Return helper text", timeoutMs: 10000 },
+          new AbortController().signal,
+        ),
+      ).resolves.toBe("Generated helper text");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("runs plain-text inference with Codex API key auth from ~/.codex/auth.json", async () => {
     const homeDir = await makeTempHome();
@@ -311,7 +355,7 @@ describe("Codex ChatGPT client", () => {
       model: "gpt-5.6-luna",
       instructions:
         "Follow the user prompt. Reply with only the requested text, without quotes or commentary.",
-      reasoning: { effort: "none" },
+      reasoning: { effort: "low" },
       stream: true,
     });
     expect(requestBody.text).toBeUndefined();
