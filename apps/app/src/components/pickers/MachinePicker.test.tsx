@@ -5,6 +5,7 @@ import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachinePickerUI } from "./MachinePicker";
+import { expectNonmodalPicker } from "@/test/nonmodal-picker";
 import type { MachineProviderPresentation } from "@/components/plugin/MachineProviderIcon";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -60,6 +61,24 @@ function renderMachineMenu(overrides?: {
 }
 
 describe("MachinePickerUI", () => {
+  it("keeps the page interactive and closes when focus leaves", async () => {
+    render(
+      <MachinePickerUI
+        hosts={[thisMachine, studio]}
+        localDaemonHostId={thisMachine.id}
+        primaryHostId={thisMachine.id}
+        selectedHostId={thisMachine.id}
+        onChange={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Machine" });
+    await expectNonmodalPicker({
+      trigger,
+      open: () => fireEvent.click(trigger),
+      content: () => screen.queryByText("Mac Studio"),
+    });
+  });
+
   it("shows search only when there are more than five machines", () => {
     const result = render(
       <MachinePickerUI
