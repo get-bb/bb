@@ -709,3 +709,26 @@ instead of failing; rules about what the bridge itself sent or answered are
 still judged. A rule a bridge breaks on main is listed in
 `recordings/scenarios/known-gaps.json` with its reason. The suite fails on a
 new failure and on a listed gap that passes, so a fix removes its entry.
+
+To re-record a scenario cell (the suite prints `<provider>/<cell> needs
+re-recording` when a replay drifts), sign in to the provider CLI and run, once
+per cell:
+
+```sh
+node scripts/provider-recordings/record-scenario-cell.mjs \
+  --provider codex --cell steer-race --raw ~/.bb/provider-recordings/scenarios \
+  [--models <first>,<second>]
+node scripts/provider-recordings/package-scenario-cells.mjs \
+  --raw ~/.bb/provider-recordings/scenarios \
+  --versions '{"codex":"codex-cli 0.169.0"}'
+```
+
+The first drives the real runtime and this checkout's bridge against the real
+CLI (`packages/agent-runtime/src/integration.record-scenario-cells.test.ts`,
+which runs only when invoked this way). `--models` picks the two models the
+settings cells switch between; it defaults to the provider's default and its
+next listed model. The second redacts the raw recordings through
+`package-cells.mjs`, applies the normalizations each manifest notes, marks
+where the provider died in `provider-exit`, and replaces those cells under
+`recordings/scenarios`. Check that the new cell keeps every rule, and update
+`known-gaps.json` if the bridge's behaviour changed.
