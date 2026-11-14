@@ -9,6 +9,7 @@ import type {
   UserQuestionInteractionLifecycle,
 } from "@bb/domain";
 import {
+  ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION,
   THREAD_CONTEXT_CLEAR_OPERATION,
   THREAD_CONTEXT_CLEARED_DETAIL,
   isApprovalInteractionLifecycle,
@@ -204,6 +205,8 @@ function threadOperationTitle(
       ) {
         return "Context cleared";
       }
+      if (meta.rawOperation === ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION)
+        return "Workspace deletion cancelled";
       return `${capitalize(meta.rawOperation.replace(/_/g, " "))} ${
         meta.rawStatus
       }`;

@@ -149,6 +149,8 @@ export type OwnershipChangeOperationMetadata = z.infer<
 >;
 
 export const THREAD_CONTEXT_CLEAR_OPERATION = "context_clear";
+export const ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION =
+  "environment_removal_withdrawn";
 export const THREAD_CONTEXT_CLEARED_DETAIL =
   "New prompts won’t include messages above. Thread history and workspace are unchanged.";
 

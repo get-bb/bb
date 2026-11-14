@@ -38,7 +38,7 @@ import {
   isServerMoveFrozen,
   isServerMoveSnapshotFenced,
 } from "../services/server-move/freeze-state.js";
-import { resumeEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
+import { resumeEnvironmentProvisioningForReconnectedDaemon } from "../services/environments/environment-engine.js";
 
 interface DaemonSocket {
   close(code?: number, reason?: string): void;
@@ -128,9 +128,8 @@ export function onDaemonSocketOpen(
     hostId: args.hostId,
     kind: "host-connected",
   });
-  void resumeEnvironmentProvisioningForHost(deps, {
+  void resumeEnvironmentProvisioningForReconnectedDaemon(deps, {
     hostId: args.hostId,
-    setupRunsOnConnectedDaemon: true,
   }).catch((error) => {
     deps.logger.warn(
       {

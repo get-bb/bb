@@ -13,6 +13,7 @@ import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
 import {
+  ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION,
   encodeClientTurnRequestIdNumber,
   systemThreadProvisioningEventDataSchema,
 } from "@bb/domain";
@@ -3020,6 +3021,49 @@ it.each([false, true])(
     });
   },
 );
+
+it("withdraws a requested removal once its thread is unarchived, and tells the thread", async () => {
+  await withTestHarness(async (harness) => {
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    const fixture = setup(harness, { remove });
+    fixture.ask();
+    await fixture.settled();
+    const environmentId = fixture.attach();
+    harness.db
+      .update(threads)
+      .set({ environmentId, status: "idle" })
+      .where(eq(threads.id, fixture.thread.id))
+      .run();
+    for (const [method, path] of [
+      ["POST", `/api/v1/threads/${fixture.thread.id}/archive-all`],
+      ["DELETE", `/api/v1/environments/${environmentId}`],
+      ["POST", `/api/v1/threads/${fixture.thread.id}/unarchive`],
+    ] as const)
+      expect((await harness.app.request(path, { method })).status).toBe(200);
+    expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
+      "running",
+    );
+
+    await sweepProviderEnvironment(harness.deps, environmentId);
+
+    expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+      status: "ready",
+      teardownStatus: null,
+      retireAt: null,
+      path: `/tmp/${fixture.thread.id}`,
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(
+      listEvents(harness.db, { threadId: fixture.thread.id })
+        .filter((event) => event.type === "system/operation")
+        .map(
+          (event) =>
+            z.object({ operation: z.string() }).parse(JSON.parse(event.data))
+              .operation,
+        ),
+    ).toEqual([ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION]);
+  });
+});
 
 it("records the removed workspace when its thread is unarchived during removal", async () => {
   await withTestHarness(async (harness) => {
