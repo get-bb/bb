@@ -283,7 +283,7 @@ describe("paginateTimelineRows", () => {
     ]);
   });
 
-  it("does not invalidate history for content-cut rows included in older updates", () => {
+  it("reports only content-cut rows that reach into the returned content", () => {
     const output = (
       id: string,
       seq: number,
@@ -304,26 +304,26 @@ describe("paginateTimelineRows", () => {
       rows: [
         userRow({ id: "thread-1:user-seed:1", seq: 1, text: "prompt" }),
         output("thread-1:running-item", 2, 30),
-        output("thread-1:item-3", 3, 3),
-        output("thread-1:item-4", 4, 4),
+        output("thread-1:settled-item", 3, 4),
+        output("thread-1:item-5", 5, 5),
+        output("thread-1:item-6", 6, 6),
       ],
     });
 
     expect(page.rows.map((row) => row.id)).toEqual([
-      "thread-1:item-3",
-      "thread-1:item-4",
+      "thread-1:item-5",
+      "thread-1:item-6",
     ]);
-    expect(page.contentCursor).toMatchObject({ beforeLeaf: 2 });
-    expect(page.olderRowsSourceSeqEnd).toBeNull();
+    expect(page.contentCursor).toMatchObject({ beforeLeaf: 3 });
+    expect(page.olderRowsSourceSeqEnd).toBe(4);
     expect(page.olderRowUpdates?.map((row) => row.id)).toEqual([
-      "thread-1:user-seed:1",
       "thread-1:running-item",
     ]);
     expect(page.olderCursor).toEqual({
       anchorId: "timeline-window:1",
       anchorSeq: 1,
     });
-    expect(page.contentCursor).toEqual({ beforeLeaf: 2, beforeSequence: 31 });
+    expect(page.contentCursor).toEqual({ beforeLeaf: 3, beforeSequence: 31 });
   });
 
   it("continues a content cut at the next window bound, not a projected row", () => {
@@ -348,7 +348,8 @@ describe("paginateTimelineRows", () => {
       anchorId: "timeline-window:10",
       anchorSeq: 10,
     });
-    expect(page.olderRowsSourceSeqEnd).toBeNull();
+    expect(page.olderRowsSourceSeqEnd).toBe(33);
+    expect(page.olderRowUpdates).toBeUndefined();
   });
 
   it.each([

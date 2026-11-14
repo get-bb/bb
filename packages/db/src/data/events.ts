@@ -2539,7 +2539,7 @@ export function getLatestStoredRateLimitsEvent(
 }
 
 export function listStoredTurnInputAcceptedRowsByClientRequestIds(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs,
 ): StoredEventRow[] {
   if (args.clientRequestIds.length === 0) {
@@ -2640,7 +2640,7 @@ export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
 }
 
 export function listStoredTurnCompletedRowsByTurnIds(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: ListStoredTurnCompletedRowsByTurnIdsArgs,
 ): StoredEventRow[] {
   if (args.turnIds.length === 0) {
@@ -5423,4 +5423,120 @@ export function listCommandItemDataByItemIds(
       AND lifecycle.item_kind = 'commandExecution'
     ORDER BY lifecycle.sequence
   `);
+}
+
+export function findStoredEditMessageOperationRow(
+  db: DbQueryConnection,
+  args: { operationId: string; threadId: string },
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/operation"),
+          sql`json_extract(${events.data}, '$.operation') = 'edit_message'`,
+          sql`json_extract(${events.data}, '$.operationId') = ${args.operationId}`,
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function findLatestEditableUserTurnRequestRow(
+  db: DbQueryConnection,
+  args: { beforeSequence: number | null; threadId: string },
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          args.beforeSequence === null
+            ? undefined
+            : lt(events.sequence, args.beforeSequence),
+          sql`json_extract(${events.data}, '$.initiator') = 'user'`,
+          sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
+          sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function hasStoredThreadInterruptedSince(
+  db: DbQueryConnection,
+  args: { createdAt: number; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread/interrupted"),
+          gte(events.createdAt, args.createdAt),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function hasStoredProviderTurnCompletedSince(
+  db: DbQueryConnection,
+  args: { createdAt: number; providerThreadId: string; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.providerThreadId, args.providerThreadId),
+          eq(events.type, "turn/completed"),
+          gte(events.createdAt, args.createdAt),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function hasStoredCancelledThreadProvisioning(
+  db: DbQueryConnection,
+  args: {
+    environmentId: string | null;
+    provisioningId: string;
+    threadId: string;
+  },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread-provisioning"),
+          sql`json_extract(${events.data}, '$.status') = 'cancelled'`,
+          or(
+            sql`json_extract(${events.data}, '$.provisioningId') = ${args.provisioningId}`,
+            sql`${events.sequence} = (select max(last.sequence) from events last where last.thread_id = ${args.threadId} and last.environment_id = ${args.environmentId} and last.type = 'system/thread-provisioning')`,
+          ),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }

@@ -22,12 +22,21 @@ describe("buildHistoryFixture", () => {
   it("stores only events and queued messages the server can parse", () => {
     const db = createMigratedConnection();
     try {
-      buildHistoryFixture(db, {
+      const fixture = buildHistoryFixture(db, {
         historyTurns: 1_000,
+        longTurnSteps: 120,
         neighborThreads: 3,
         neighborTurns: 20,
         providerId: "test",
       });
+      const span = db.$client
+        .prepare(
+          "SELECT min(created_at) AS oldest, max(created_at) AS newest FROM events WHERE thread_id = ?",
+        )
+        .get(fixture.threadId) as { oldest: number; newest: number };
+      const hour = 60 * 60_000;
+      expect(Date.now() - span.newest).toBeGreaterThanOrEqual(hour);
+      expect(span.newest - span.oldest).toBeGreaterThan(24 * hour);
       const rows = db.$client
         .prepare(
           "SELECT data, provider_thread_id, sequence, thread_id, turn_id, type FROM events",

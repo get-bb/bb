@@ -2,7 +2,7 @@ import type { QueryPlanAllowlistEntry } from "./query-plan-guard.js";
 
 const EVENTS = "packages/db/src/data/events.ts";
 const QUEUED = "packages/db/src/data/queued-thread-messages.ts";
-const THREAD_LIFECYCLE = "apps/server/src/services/threads/thread-lifecycle.ts";
+const THREADS = "packages/db/src/data/threads.ts";
 
 function acceptedEventsIndex(
   caller: string,
@@ -26,10 +26,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
   acceptedEventsIndex(
     `${EVENTS}#getStoredTurnRequestEventForTurn`,
     "turn/input/accepted is one per turn; measured 0.04 ms vs 0.01 ms",
-  ),
-  acceptedEventsIndex(
-    "apps/server/src/services/threads/thread-edit-message.ts#getTurnCompletion",
-    "turn/completed is one per turn, so the type index reads at most one row per turn",
   ),
   acceptedEventsIndex(
     `${EVENTS}#listStoredTurnCompletedRowsByTurnIds`,
@@ -88,11 +84,11 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "LIMIT 1: the root-request search runs only for nested turns, and the first nested turn with a matching root ends the query; check:query-costs measures it",
   ),
   boundedCorrelatedEvents(
-    `${THREAD_LIFECYCLE}#list`,
+    `${THREADS}#listTurnStartDeadlineCandidates`,
     "Turn-start deadline sweep over active threads; reads each thread's turn/completed rows once per sweep, linear in turns",
   ),
   boundedCorrelatedEvents(
-    `${THREAD_LIFECYCLE}#markTurnStartDeadlineStopInTransaction`,
+    `${THREADS}#isThreadAwaitingTurnStartPastDeadline`,
     "Rechecks one deadline candidate; reads its turn/completed rows once, linear in turns",
   ),
   {

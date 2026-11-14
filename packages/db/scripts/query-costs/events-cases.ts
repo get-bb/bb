@@ -6,6 +6,15 @@ import {
 } from "@bb/domain";
 import type { DbConnection } from "../../src/connection.js";
 import {
+  isThreadAwaitingTurnStartPastDeadline,
+  listTurnStartDeadlineCandidates,
+} from "../../src/data/threads.js";
+import {
+  findLatestEditableUserTurnRequestRow,
+  findStoredEditMessageOperationRow,
+  hasStoredCancelledThreadProvisioning,
+  hasStoredProviderTurnCompletedSince,
+  hasStoredThreadInterruptedSince,
   advanceTimelineWindowBudgetFloorSequence,
   appendDaemonEventsInTransaction,
   appendStoredThreadEvent,
@@ -401,6 +410,312 @@ function batchTurnKeys(fixture: HistoryFixture) {
     })),
   ];
 }
+
+const TURN_START_DEADLINE_MS = 5 * 60_000;
+const THREADS = "packages/db/src/data/threads.ts";
+
+function markThreadAwaitingTurnStart(
+  db: DbConnection,
+  fixture: HistoryFixture,
+): void {
+  db.$client
+    .prepare(
+      "UPDATE threads SET status = 'active', status_changed_at = 0 WHERE id = ?",
+    )
+    .run(fixture.threadId);
+}
+
+const LIVE_TURN = "open long turn";
+const LIVE_DELTA_BATCH = 40;
+let liveWindowStart = 0;
+
+function liveItems(fixture: HistoryFixture): ScopedItemRef[] {
+  const { liveTurn } = fixture;
+  return [liveTurn.runningCommandItemId, liveTurn.streamingMessageItemId].map(
+    (itemId) => ({ itemId, scopeKind: "turn", turnId: liveTurn.turnId }),
+  );
+}
+
+function liveTimelineArgs(fixture: HistoryFixture) {
+  return {
+    beforeSequence: fixture.liveTurn.latestSequence + 1,
+    excludeDiagnosticEvents: true,
+    excludedTypes: TIMELINE_EXCLUDED_EVENT_TYPES,
+    maxInlineOutputChars: MAX_INLINE_OUTPUT_CHARS,
+    sequenceStart: liveWindowStart,
+    threadId: fixture.liveTurn.threadId,
+  };
+}
+
+function selectLiveWindowStart(db: DbConnection, fixture: HistoryFixture) {
+  liveWindowStart =
+    findTimelineWindowBudgetFloorSequence(db, {
+      beforeSequence: fixture.liveTurn.latestSequence + 1,
+      eventBudget: TIMELINE_WINDOW_EVENT_BUDGET,
+      excludeDiagnosticEvents: true,
+      excludedTypes: TIMELINE_EXCLUDED_EVENT_TYPES,
+      sequenceStart: 0,
+      threadId: fixture.liveTurn.threadId,
+    }) ?? 0;
+}
+
+function liveDeltaBatch(fixture: HistoryFixture): AppendDaemonEventInput[] {
+  const { liveTurn } = fixture;
+  const event = (
+    type: ThreadEventType,
+    itemId: string,
+    itemKind: AppendDaemonEventInput["itemKind"],
+    delta: string,
+  ): AppendDaemonEventInput => ({
+    data: JSON.stringify({
+      providerThreadId: liveTurn.providerThreadId,
+      itemId,
+      delta,
+    }),
+    environmentId: fixture.environmentId,
+    itemId,
+    itemKind,
+    parentToolCallId: null,
+    providerThreadId: liveTurn.providerThreadId,
+    scope: turnScope(liveTurn.turnId),
+    threadId: liveTurn.threadId,
+    type,
+  });
+  return Array.from({ length: LIVE_DELTA_BATCH }, (_, index) =>
+    index % 2 === 0
+      ? event(
+          "item/agentMessage/delta",
+          liveTurn.streamingMessageItemId,
+          "agentMessage",
+          "Still checking. ",
+        )
+      : event(
+          "item/commandExecution/outputDelta",
+          liveTurn.runningCommandItemId,
+          "commandExecution",
+          "\u2713 test/query-plan-audit.test.ts (6 tests) 12ms\n",
+        ),
+  );
+}
+
+const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
+  {
+    name: `${EVENTS}#getActiveStoredTurnId`,
+    variant: LIVE_TURN,
+    run: (db, fixture) => getActiveStoredTurnId(db, fixture.liveTurn.threadId),
+  },
+  {
+    name: `${EVENTS}#isStoredTurnMainRunIdle`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      isStoredTurnMainRunIdle(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#isStoredTurnProviderCompactionRunning`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      isStoredTurnProviderCompactionRunning(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#isStoredTurnContextCompactionOnly`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      isStoredTurnContextCompactionOnly(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getStoredTurnRequestEventForTurn`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      getStoredTurnRequestEventForTurn(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getUnfinishedCommandItemData`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      getUnfinishedCommandItemData(db, {
+        afterSequence: fixture.liveTurn.requestSequence,
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredTurnStarted`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      hasStoredTurnStarted(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredTurnCompleted`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      hasStoredTurnCompleted(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getTurnFinalAgentMessageEventRow`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      getTurnFinalAgentMessageEventRow(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listOpenTurnInputAcceptedRowsByThreadIds`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listOpenTurnInputAcceptedRowsByThreadIds(db, {
+        threadIds: [fixture.liveTurn.threadId],
+      }),
+  },
+  {
+    name: `${EVENTS}#findLatestUnresolvedClientTurnRequestIdAfterSequence`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      findLatestUnresolvedClientTurnRequestIdAfterSequence(db, {
+        threadId: fixture.liveTurn.threadId,
+        afterSequence: 0,
+      }),
+  },
+  {
+    name: `${EVENTS}#getLastStoredTurnRequestEvent`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      getLastStoredTurnRequestEvent(db, fixture.liveTurn.threadId),
+  },
+  {
+    name: `${EVENTS}#listCommandItemDataByItemIds`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listCommandItemDataByItemIds(db, {
+        itemIds: [fixture.liveTurn.runningCommandItemId],
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#findTimelineWindowBudgetFloorSequence`,
+    variant: LIVE_TURN,
+    run: selectLiveWindowStart,
+  },
+  {
+    name: `${EVENTS}#listStoredTimelineThreadWindowEventRows`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowStart,
+    run: (db, fixture) =>
+      listStoredTimelineThreadWindowEventRows(db, liveTimelineArgs(fixture)),
+  },
+  {
+    name: `${EVENTS}#listTimelineRootWindowTurnIds`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowStart,
+    run: (db, fixture) =>
+      listTimelineRootWindowTurnIds(db, liveTimelineArgs(fixture)),
+  },
+  {
+    name: `${EVENTS}#listTimelineWindowHintsDescending`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listTimelineWindowHintsDescending(db, {
+        beforeSequence: fixture.liveTurn.latestSequence + 1,
+        limit: 21,
+        sequenceStart: 0,
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listTimelineOrderingContext`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowStart,
+    run: (db, fixture) =>
+      listTimelineOrderingContext(db, {
+        maxSeq: fixture.liveTurn.latestSequence,
+        sequenceStart: liveWindowStart,
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listTimelineInterruptionRows`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowStart,
+    run: (db, fixture) =>
+      listTimelineInterruptionRows(db, {
+        maxSeq: fixture.liveTurn.latestSequence,
+        sequenceStart: liveWindowStart,
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listItemEventSpansByItems`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listItemEventSpansByItems(db, {
+        items: liveItems(fixture),
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredItemLifecycleRowsByItems`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listStoredItemLifecycleRowsByItems(db, {
+        items: liveItems(fixture),
+        maxInlineOutputChars: MAX_INLINE_OUTPUT_CHARS,
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredBufferedTextDeltaRowsByItems`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listStoredBufferedTextDeltaRowsByItems(db, {
+        beforeSequence: fixture.liveTurn.latestSequence + 1,
+        items: liveItems(fixture),
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getStoredItemLifecycleSequenceRange`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      getStoredItemLifecycleSequenceRange(db, {
+        itemId: fixture.liveTurn.streamingMessageItemId,
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#appendDaemonEventsInTransaction`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      db.transaction((tx) =>
+        appendDaemonEventsInTransaction(tx, liveDeltaBatch(fixture)),
+      ),
+  },
+  {
+    name: `${EVENTS}#listTodoSnapshotEventRowsForThread`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listTodoSnapshotEventRowsForThread(db, {
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+];
 
 export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   {
@@ -1196,4 +1511,64 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
         pruneTokenUsageEventsInTransaction(tx, selectedPruningWindow()),
       ),
   },
+  {
+    name: `${EVENTS}#findStoredEditMessageOperationRow`,
+    run: (db, fixture) =>
+      findStoredEditMessageOperationRow(db, {
+        operationId: "edit-operation-not-yet-committed",
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#findLatestEditableUserTurnRequestRow`,
+    run: (db, fixture) =>
+      findLatestEditableUserTurnRequestRow(db, {
+        beforeSequence: null,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredThreadInterruptedSince`,
+    run: (db, fixture) =>
+      hasStoredThreadInterruptedSince(db, {
+        createdAt: Date.now() - 60_000,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredProviderTurnCompletedSince`,
+    run: (db, fixture) =>
+      hasStoredProviderTurnCompletedSince(db, {
+        createdAt: Date.now() - 60_000,
+        providerThreadId: fixture.providerThreadId,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredCancelledThreadProvisioning`,
+    run: (db, fixture) =>
+      hasStoredCancelledThreadProvisioning(db, {
+        environmentId: fixture.environmentId,
+        provisioningId: "provisioning-in-flight",
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${THREADS}#listTurnStartDeadlineCandidates`,
+    prepare: markThreadAwaitingTurnStart,
+    run: (db) =>
+      listTurnStartDeadlineCandidates(db, {
+        deadline: Date.now() - TURN_START_DEADLINE_MS,
+      }),
+  },
+  {
+    name: `${THREADS}#isThreadAwaitingTurnStartPastDeadline`,
+    prepare: markThreadAwaitingTurnStart,
+    run: (db, fixture) =>
+      isThreadAwaitingTurnStartPastDeadline(db, {
+        deadline: Date.now() - TURN_START_DEADLINE_MS,
+        threadId: fixture.threadId,
+      }),
+  },
+  ...LIVE_TURN_COST_CASES,
 ];

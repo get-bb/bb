@@ -310,22 +310,32 @@ with
 followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
 
 Plans cannot show what a query costs once data grows, so the workflow's cost
-job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds two
-worlds, at half and full scale, through the real write paths: a thread with
-5,000 or 10,000 turns (about 170,000 events at full scale), plus what each case
-group in `packages/db/scripts/query-costs/` seeds for its tables at about twice
-the size of the largest real user (for example 10,000 threads, 4,000
-environments, 50,000 prompt history entries and 15,000 terminal sessions at
-full scale). It then calls every exported query function in
-`packages/db/src/data` against both worlds, interleaved, each call inside a
-rolled-back savepoint. It keeps the fastest of up to three calls per world and
-fails a function when:
+job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds
+worlds through the real write paths and compares them along two axes:
 
-- its full-scale time is at least 2 ms and more than 3 times its half-scale
-  time, so its cost grows faster than the data (a runner that is uniformly
+- Thread history: a thread with 5,000 or 10,000 turns (about 250,000 events in
+  the full-scale world), plus what each case group in
+  `packages/db/scripts/query-costs/` seeds for its tables at about twice the
+  size of the largest real user (for example 10,000 threads, 4,000
+  environments, 50,000 prompt history entries and 15,000 terminal sessions at
+  full scale).
+- Turn size: a 500-turn thread whose first and last turns, and the open turn
+  of a second, running thread, have 750 or 1,500 steps (about 9,000 or 18,000
+  events each: reasoning, commands with streamed output, file edits,
+  commentary, plan and usage updates, and delegations).
+
+`HistoryFixture.liveTurn` names the open turn, and the `open long turn` cases
+in `events-cases.ts` time the reads and appends a running thread makes
+against it. The check calls every exported query function in
+`packages/db/src/data` against the smaller and larger world of each axis,
+interleaved, each call inside a rolled-back savepoint. It keeps the fastest of
+up to three calls per world and fails a function when, on either axis:
+
+- its larger-world time is at least 2 ms and more than 3 times its
+  smaller-world time, so its cost grows faster than the data (a runner that is uniformly
   slower changes both times alike; a case that crosses 3x is measured up to
   eight times before it fails, so one slow call on a busy runner does not);
-- it takes longer than its ceiling at full scale (250 ms unless its case sets
+- it takes longer than its ceiling in the larger world (250 ms unless its case sets
   `ceilingMs` with a `reason`); or
 - a single call runs for more than 5 seconds, when it is killed.
 
@@ -337,23 +347,28 @@ lists them; the same list drives the "query functions run in tests" checks). `--
 the coverage check. To time the cases against real data shapes, make a copy
 with `sqlite3 ~/.bb/bb.db "VACUUM INTO '/tmp/bb-copy.db'"` and run
 `pnpm --filter @bb/db check:query-costs --db /tmp/bb-copy.db`: it migrates the
-copy, seeds the full-scale world into it, and fails only on the ceiling and the
+copy, seeds a world with 10,000 turns and 1,500-step long turns into it, and fails only on the ceiling and the
 5-second kill, since there is no second size to compare. The copy is written to;
 never point `--db` at `~/.bb/bb.db` (the check refuses), and never start a bb
 server on the copy.
 
 Both checks time single functions, so neither sees a request that calls a cheap
 query once per turn. `apps/server/test/perf/request-path-statements.test.ts`
-covers that: it builds the same fixture (`@bb/db/history-fixture`) in two test
-servers, one with 100 turns and 20 other threads and one with twice both, runs
-hot request paths against both (thread list, search and count, timeline,
-conversation outline, turn details, events, prompt history, send with a queued
-retry, edit, stop, fork and others), and fails when a path executes any
-statement more often in the larger server. Statements are counted at the
-better-sqlite3 layer, with parameter lists collapsed so a longer `IN (...)`
-list counts as the same statement. The counts are exact, so the test does not depend on machine
-speed. A path that copies history by design, such as fork, declares it and may
-grow at most linearly.
+covers that: it builds the same fixture (`@bb/db/history-fixture`) in pairs of
+test servers, one pair per axis. On the history axis one server has 100 turns
+and 20 other threads and the other twice both; on the turn-size axis both have
+100 turns, with 750-step or 1,500-step long turns, large enough that the
+timeline window cuts inside the open turn. It runs hot request paths against
+each pair (thread list, search and count, timeline, conversation outline, turn
+details, events, prompt history, send with a queued retry, edit, stop, fork,
+and the running thread's timeline, head state, a streamed timeline delta,
+daemon ingestion, send and stop), and fails when a path executes any statement
+more often in the larger server, or when its response bytes grow more than 1.5
+times. Statements are counted at the better-sqlite3 layer, with parameter lists
+collapsed so a longer `IN (...)` list counts as the same statement. The counts
+are exact, so the test does not depend on machine speed. A path that grows by
+design, such as fork copying history or turn details returning the whole turn,
+declares it per axis and may grow at most linearly.
 
 The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
 when agents saturate the CPU:

@@ -68,7 +68,7 @@ jobs:
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
 
   costs:
-    name: Query costs on a 10k-turn thread (ubuntu-latest, Node 22.x)
+    name: Query costs on long threads and long turns (ubuntu-latest, Node 22.x)
     if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15

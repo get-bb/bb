@@ -9,6 +9,7 @@ import type { DbConnection } from "./connection.js";
 import { createEnvironment } from "./data/environments.js";
 import {
   appendStoredThreadEventsInTransaction,
+  getHighWaterMarks,
   type AppendStoredThreadEventArgs,
 } from "./data/events.js";
 import { upsertHost } from "./data/hosts.js";
@@ -24,8 +25,21 @@ export interface HistoryTurn {
   requestId: ClientTurnRequestId;
   agentMessageItemId: string;
   commandItemIds: string[];
+  steps: number;
   requestSequence: number;
   completedSequence: number;
+}
+
+export interface LiveTurn {
+  threadId: string;
+  providerThreadId: string;
+  turnId: string;
+  requestId: ClientTurnRequestId;
+  requestSequence: number;
+  commandItemIds: string[];
+  runningCommandItemId: string;
+  streamingMessageItemId: string;
+  latestSequence: number;
 }
 
 export interface HistoryFixture {
@@ -37,6 +51,7 @@ export interface HistoryFixture {
   neighborThreadIds: string[];
   turns: HistoryTurn[];
   pendingRequestId: ClientTurnRequestId;
+  liveTurn: LiveTurn;
   delegationItemIds: string[];
   backgroundTaskItemIds: string[];
   queuedRetryId: string;
@@ -49,8 +64,20 @@ interface TurnEventsArgs {
   providerThreadId: string;
   index: number;
   requestId: ClientTurnRequestId;
-  turn: Pick<HistoryTurn, "turnId" | "agentMessageItemId" | "commandItemIds">;
+  turn: Pick<
+    HistoryTurn,
+    "turnId" | "agentMessageItemId" | "commandItemIds" | "steps"
+  >;
 }
+
+interface TurnBodyArgs {
+  threadId: string;
+  providerThreadId: string;
+  turnId: string;
+  index: number;
+}
+
+const TEST_OUTPUT_LINE = "✓ test/query-plan-audit.test.ts (6 tests) 12ms\n";
 
 let nextRequestNumber = 1;
 
@@ -126,9 +153,289 @@ function itemPair(
   ];
 }
 
+type TextDeltaType =
+  | "item/agentMessage/delta"
+  | "item/reasoning/summaryTextDelta"
+  | "item/fileChange/outputDelta"
+  | "item/commandExecution/outputDelta";
+
+function textDelta(
+  args: TurnBodyArgs,
+  type: TextDeltaType,
+  itemId: string,
+  delta: string,
+): AppendStoredThreadEventArgs {
+  const { threadId, providerThreadId, turnId } = args;
+  return {
+    threadId,
+    providerThreadId,
+    scope: turnScope(turnId),
+    type,
+    data: { providerThreadId, itemId, delta },
+  };
+}
+
+function commandEvents(
+  args: TurnBodyArgs,
+  itemId: string,
+  outputDeltas: number,
+  finished: boolean,
+): AppendStoredThreadEventArgs[] {
+  const { threadId, providerThreadId, turnId, index } = args;
+  const command = {
+    type: "commandExecution" as const,
+    id: itemId,
+    command: `pnpm exec turbo run test --filter=@bb/db -- test/${index}.test.ts`,
+    cwd: "/workspace/bb",
+    approvalStatus: null,
+  };
+  const started: AppendStoredThreadEventArgs = {
+    threadId,
+    providerThreadId,
+    scope: turnScope(turnId),
+    type: "item/started",
+    data: { providerThreadId, item: { ...command, status: "pending" } },
+  };
+  const deltas = Array.from({ length: outputDeltas }, () =>
+    textDelta(
+      args,
+      "item/commandExecution/outputDelta",
+      itemId,
+      TEST_OUTPUT_LINE,
+    ),
+  );
+  if (!finished) return [started, ...deltas];
+  return [
+    started,
+    ...deltas,
+    {
+      threadId,
+      providerThreadId,
+      scope: turnScope(turnId),
+      type: "item/completed",
+      data: {
+        providerThreadId,
+        item: {
+          ...command,
+          status: "completed",
+          exitCode: 0,
+          durationMs: 1800,
+          aggregatedOutput: TEST_OUTPUT_LINE.repeat(8),
+        },
+      },
+    },
+  ];
+}
+
+function shortTurnBody(
+  args: TurnBodyArgs,
+  commandItemIds: readonly string[],
+): AppendStoredThreadEventArgs[] {
+  const { threadId, providerThreadId, turnId } = args;
+  const reasoning = {
+    type: "reasoning" as const,
+    id: `${turnId}-reasoning`,
+    summary: [],
+    content: [],
+  };
+  return [
+    ...itemPair(threadId, providerThreadId, turnId, reasoning, reasoning),
+    ...commandItemIds.flatMap((itemId) => commandEvents(args, itemId, 1, true)),
+  ];
+}
+
+function longTurnCommandItemId(turnId: string, step: number): string {
+  return `${turnId}-s${step}-cmd`;
+}
+
+function commandItemIdsFor(turnId: string, steps: number): string[] {
+  return steps === 0
+    ? [`${turnId}-cmd1`, `${turnId}-cmd2`]
+    : Array.from({ length: steps }, (_, step) =>
+        longTurnCommandItemId(turnId, step),
+      );
+}
+
+function streamingAgentMessage(
+  args: TurnBodyArgs,
+  itemId: string,
+  deltas: number,
+): AppendStoredThreadEventArgs[] {
+  const { threadId, providerThreadId, turnId } = args;
+  return [
+    {
+      threadId,
+      providerThreadId,
+      scope: turnScope(turnId),
+      type: "item/started",
+      data: {
+        providerThreadId,
+        item: { type: "agentMessage", id: itemId, text: "" },
+      },
+    },
+    ...Array.from({ length: deltas }, () =>
+      textDelta(
+        args,
+        "item/agentMessage/delta",
+        itemId,
+        "Checking the next failing test. ",
+      ),
+    ),
+  ];
+}
+
+function longTurnStep(
+  args: TurnBodyArgs,
+  step: number,
+): AppendStoredThreadEventArgs[] {
+  const { threadId, providerThreadId, turnId } = args;
+  const scope = turnScope(turnId);
+  const prefix = `${turnId}-s${step}`;
+  const reasoningId = `${prefix}-reasoning`;
+  const events: AppendStoredThreadEventArgs[] = [
+    {
+      threadId,
+      providerThreadId,
+      scope,
+      type: "item/started",
+      data: {
+        providerThreadId,
+        item: { type: "reasoning", id: reasoningId, summary: [], content: [] },
+      },
+    },
+    textDelta(
+      args,
+      "item/reasoning/summaryTextDelta",
+      reasoningId,
+      "Looking at the failing assertion. ",
+    ),
+    textDelta(
+      args,
+      "item/reasoning/summaryTextDelta",
+      reasoningId,
+      "The query plan changed after the migration.",
+    ),
+    {
+      threadId,
+      providerThreadId,
+      scope,
+      type: "item/completed",
+      data: {
+        providerThreadId,
+        item: {
+          type: "reasoning",
+          id: reasoningId,
+          summary: [
+            "Looking at the failing assertion. The query plan changed after the migration.",
+          ],
+          content: [],
+        },
+      },
+    },
+    ...commandEvents(args, longTurnCommandItemId(turnId, step), 3, true),
+  ];
+  if (step % 4 === 0) {
+    const fileChange = {
+      type: "fileChange" as const,
+      id: `${prefix}-edit`,
+      changes: [
+        {
+          path: `packages/db/src/data/step-${step % 40}.ts`,
+          kind: "update" as const,
+          diff: "@@ -1,3 +1,3 @@\n-const limit = 10;\n+const limit = 20;\n",
+        },
+      ],
+      approvalStatus: null,
+    };
+    events.push(
+      {
+        threadId,
+        providerThreadId,
+        scope,
+        type: "item/started",
+        data: { providerThreadId, item: { ...fileChange, status: "pending" } },
+      },
+      textDelta(
+        args,
+        "item/fileChange/outputDelta",
+        fileChange.id,
+        "Success. Updated the following files:\n",
+      ),
+      {
+        threadId,
+        providerThreadId,
+        scope,
+        type: "item/completed",
+        data: {
+          providerThreadId,
+          item: { ...fileChange, status: "completed" },
+        },
+      },
+    );
+  }
+  if (step % 5 === 0) {
+    const messageId = `${prefix}-commentary`;
+    events.push(...streamingAgentMessage(args, messageId, 3), {
+      threadId,
+      providerThreadId,
+      scope,
+      type: "item/completed",
+      data: {
+        providerThreadId,
+        item: {
+          type: "agentMessage",
+          id: messageId,
+          text: "Checking the next failing test. ".repeat(3),
+        },
+      },
+    });
+  }
+  if (step % 25 === 0) {
+    events.push({
+      threadId,
+      providerThreadId,
+      scope,
+      type: "turn/plan/updated",
+      data: {
+        providerThreadId,
+        plan: [
+          { step: "Reproduce", status: "completed" },
+          { step: `Fix step ${step}`, status: "active" },
+        ],
+      },
+    });
+  }
+  if (step % 50 === 25) {
+    events.push(
+      ...delegationEvents(
+        threadId,
+        providerThreadId,
+        turnId,
+        `${prefix}-delegation`,
+      ),
+    );
+  }
+  events.push({
+    threadId,
+    providerThreadId,
+    scope,
+    type: "thread/contextWindowUsage/updated",
+    data: {
+      providerThreadId,
+      contextWindowUsage: {
+        usedTokens: 40_000 + (step % 200) * 1_000,
+        modelContextWindow: 258_400,
+        estimated: false,
+      },
+    },
+  });
+  return events;
+}
+
 function turnEvents(args: TurnEventsArgs): AppendStoredThreadEventArgs[] {
   const { threadId, providerThreadId, index, requestId, turn } = args;
   const scope = turnScope(turn.turnId);
+  const body = { threadId, providerThreadId, turnId: turn.turnId, index };
   const events: AppendStoredThreadEventArgs[] = [
     requestedEvent(threadId, requestId, index),
     {
@@ -146,61 +453,13 @@ function turnEvents(args: TurnEventsArgs): AppendStoredThreadEventArgs[] {
       data: { providerThreadId, clientRequestId: requestId },
     },
   ];
-  const reasoning = {
-    type: "reasoning" as const,
-    id: `${turn.turnId}-reasoning`,
-    summary: [],
-    content: [],
-  };
   events.push(
-    ...itemPair(threadId, providerThreadId, turn.turnId, reasoning, reasoning),
+    ...(turn.steps === 0
+      ? shortTurnBody(body, turn.commandItemIds)
+      : Array.from({ length: turn.steps }, (_, step) =>
+          longTurnStep(body, step),
+        ).flat()),
   );
-  for (const itemId of turn.commandItemIds) {
-    const command = {
-      type: "commandExecution" as const,
-      id: itemId,
-      command: `pnpm exec turbo run test --filter=@bb/db -- test/${index}.test.ts`,
-      cwd: "/workspace/bb",
-      approvalStatus: null,
-    };
-    events.push(
-      {
-        threadId,
-        providerThreadId,
-        scope,
-        type: "item/started",
-        data: { providerThreadId, item: { ...command, status: "pending" } },
-      },
-      {
-        threadId,
-        providerThreadId,
-        scope,
-        type: "item/commandExecution/outputDelta",
-        data: {
-          providerThreadId,
-          itemId,
-          delta: "✓ test/query-plan-audit.test.ts (6 tests) 12ms\n",
-        },
-      },
-      {
-        threadId,
-        providerThreadId,
-        scope,
-        type: "item/completed",
-        data: {
-          providerThreadId,
-          item: {
-            ...command,
-            status: "completed",
-            exitCode: 0,
-            durationMs: 1800,
-            aggregatedOutput:
-              "✓ test/query-plan-audit.test.ts (6 tests) 12ms\n".repeat(8),
-          },
-        },
-      },
-    );
-  }
   if (index % 50 === 0) {
     events.push({
       threadId,
@@ -386,6 +645,7 @@ function appendHistory(
     threadId: string;
     providerThreadId: string;
     turnCount: number;
+    longTurnSteps: number;
     prefix: string;
   },
 ): {
@@ -421,11 +681,14 @@ function appendHistory(
         const end = Math.min(start + TURNS_PER_BATCH, args.turnCount);
         for (let index = start + 1; index <= end; index += 1) {
           const turnId = `${args.prefix}-t${index}`;
+          const steps =
+            index === 1 || index === args.turnCount ? args.longTurnSteps : 0;
           const turn = {
             turnId,
             requestId: nextRequestId(),
             agentMessageItemId: `${turnId}-agent`,
-            commandItemIds: [`${turnId}-cmd1`, `${turnId}-cmd2`],
+            commandItemIds: commandItemIdsFor(turnId, steps),
+            steps,
           };
           batchTurns.push(turn);
           const requested = events.length;
@@ -497,18 +760,128 @@ function appendHistory(
   return { turns, delegationItemIds, backgroundTaskItemIds };
 }
 
+const LIVE_THREAD_SETTLED_TURNS = 5;
+
+function appendLiveThread(
+  db: DbConnection,
+  args: {
+    projectId: string;
+    environmentId: string;
+    providerId: string;
+    steps: number;
+  },
+): LiveTurn {
+  const thread = createThread(db, noopNotifier, {
+    projectId: args.projectId,
+    environmentId: args.environmentId,
+    providerId: args.providerId,
+    status: "active",
+  });
+  const providerThreadId = "provider-live";
+  appendHistory(db, {
+    threadId: thread.id,
+    providerThreadId,
+    turnCount: LIVE_THREAD_SETTLED_TURNS,
+    longTurnSteps: 0,
+    prefix: "l",
+  });
+  const index = LIVE_THREAD_SETTLED_TURNS + 1;
+  const turnId = `l-t${index}`;
+  const requestId = nextRequestId();
+  const body = { threadId: thread.id, providerThreadId, turnId, index };
+  const scope = turnScope(turnId);
+  const runningCommandItemId = `${turnId}-running-cmd`;
+  const streamingMessageItemId = `${turnId}-agent`;
+  const events: AppendStoredThreadEventArgs[] = [
+    requestedEvent(thread.id, requestId, index),
+    {
+      threadId: thread.id,
+      providerThreadId,
+      scope,
+      type: "turn/started",
+      data: { providerThreadId },
+    },
+    {
+      threadId: thread.id,
+      providerThreadId,
+      scope,
+      type: "turn/input/accepted",
+      data: { providerThreadId, clientRequestId: requestId },
+    },
+    ...Array.from({ length: args.steps }, (_, step) =>
+      longTurnStep(body, step),
+    ).flat(),
+    ...commandEvents(body, runningCommandItemId, 3, false),
+    ...streamingAgentMessage(body, streamingMessageItemId, 2),
+  ];
+  const sequences = db.transaction(
+    (tx) => appendStoredThreadEventsInTransaction(tx, events),
+    { behavior: "immediate" },
+  );
+  const requestSequence = sequences[0];
+  const latestSequence = sequences.at(-1);
+  if (requestSequence === undefined || latestSequence === undefined) {
+    throw new Error("Expected live turn sequences");
+  }
+  return {
+    threadId: thread.id,
+    providerThreadId,
+    turnId,
+    requestId,
+    requestSequence,
+    commandItemIds: [
+      ...Array.from({ length: args.steps }, (_, step) =>
+        longTurnCommandItemId(turnId, step),
+      ),
+      runningCommandItemId,
+    ],
+    runningCommandItemId,
+    streamingMessageItemId,
+    latestSequence,
+  };
+}
+
 export interface BuildHistoryFixtureArgs {
   historyTurns: number;
+  longTurnSteps: number;
   neighborThreads: number;
   neighborTurns: number;
   providerId: string;
+}
+
+const LATEST_EVENT_AGE_MS = 60 * 60_000;
+const EVENT_SPACING_MS = 30_000;
+
+function spreadEventTimesOverHistory(
+  db: DbConnection,
+  threadIds: readonly string[],
+): void {
+  const latestAt = Date.now() - LATEST_EVENT_AGE_MS;
+  const update = db.$client.prepare(
+    "UPDATE events SET created_at = ? - (? - sequence) * ? WHERE thread_id = ?",
+  );
+  const highWaterMarks = getHighWaterMarks(db, [...threadIds]);
+  for (const threadId of threadIds) {
+    update.run(
+      latestAt,
+      highWaterMarks[threadId] ?? 0,
+      EVENT_SPACING_MS,
+      threadId,
+    );
+  }
 }
 
 export function buildHistoryFixture(
   db: DbConnection,
   args: BuildHistoryFixtureArgs,
 ): HistoryFixture {
-  const { historyTurns, neighborThreads, neighborTurns, providerId } = args;
+  const {
+    historyTurns,
+    longTurnSteps,
+    neighborThreads,
+    neighborTurns,
+    providerId,
+  } = args;
   const host = upsertHost(db, noopNotifier, { name: "query-costs" });
   const { project } = createProject(db, noopNotifier, {
     name: "query-costs",
@@ -534,9 +907,16 @@ export function buildHistoryFixture(
       threadId: neighbor.id,
       providerThreadId: `provider-neighbor-${index}`,
       turnCount: neighborTurns,
+      longTurnSteps: 0,
       prefix: `n${index}`,
     });
   }
+  const liveTurn = appendLiveThread(db, {
+    projectId: project.id,
+    environmentId: environment.id,
+    providerId,
+    steps: longTurnSteps,
+  });
   const thread = createThread(db, noopNotifier, {
     projectId: project.id,
     environmentId: environment.id,
@@ -548,6 +928,7 @@ export function buildHistoryFixture(
     threadId: thread.id,
     providerThreadId,
     turnCount: historyTurns,
+    longTurnSteps,
     prefix: "h",
   });
   const pendingRequestId = nextRequestId();
@@ -588,6 +969,7 @@ export function buildHistoryFixture(
   if (latestSequence === undefined) {
     throw new Error("Expected the pending request sequence");
   }
+  spreadEventTimesOverHistory(db, [thread.id, ...neighborThreadIds]);
   return {
     hostId: host.id,
     projectId: project.id,
@@ -597,6 +979,7 @@ export function buildHistoryFixture(
     neighborThreadIds,
     turns: history.turns,
     pendingRequestId,
+    liveTurn,
     delegationItemIds: history.delegationItemIds,
     backgroundTaskItemIds: history.backgroundTaskItemIds,
     queuedRetryId: retry.id,

@@ -3,6 +3,7 @@ import type { HistoryFixture } from "../../src/history-fixture.js";
 
 export interface QueryCostCase<TSeed = undefined> {
   name: string;
+  variant?: string;
   ceilingMs?: number;
   reason?: string;
   prepare?: (db: DbConnection, fixture: HistoryFixture, seed: TSeed) => void;
@@ -19,6 +20,7 @@ export type SeedsByGroup = Readonly<Record<string, unknown>>;
 
 export interface RegisteredCostCase {
   name: string;
+  label: string;
   ceilingMs?: number;
   reason?: string;
   prepare?: (
@@ -50,6 +52,10 @@ export function registerCostGroup<TSeed>(
       const { prepare } = costCase;
       return {
         name: costCase.name,
+        label:
+          costCase.variant === undefined
+            ? costCase.name
+            : `${costCase.name} (${costCase.variant})`,
         ...(costCase.ceilingMs === undefined
           ? {}
           : { ceilingMs: costCase.ceilingMs }),
@@ -69,6 +75,9 @@ export function registerCostGroup<TSeed>(
 export const HISTORY_TURNS_AT_FULL_SCALE = 10_000;
 export const SMALL_SCALE = 0.5;
 export const LARGE_SCALE = 1;
+export const LONG_TURN_STEPS_AT_FULL_SCALE = 1_500;
+export const BASELINE_LONG_TURN_STEPS = 100;
+export const TURN_AXIS_HISTORY_TURNS = 500;
 export const GROWTH_LIMIT = 3;
 export const GROWTH_FLOOR_MS = 2;
 export const DEFAULT_CEILING_MS = 250;

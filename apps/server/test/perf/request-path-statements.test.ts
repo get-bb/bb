@@ -4,6 +4,7 @@ import {
   type HistoryFixture,
 } from "@bb/db/history-fixture";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   forgetQueuedCommand,
   listPendingQueuedCommandsForHost,
@@ -23,9 +24,41 @@ import {
   type TestAppHarness,
 } from "../helpers/test-app.js";
 
-const HISTORY_TURNS_PER_STEP = 100;
-const NEIGHBOR_THREADS_PER_STEP = 20;
 const LINEAR_GROWTH_LIMIT = 2.5;
+const RESPONSE_BYTES_GROWTH_LIMIT = 1.5;
+const RESPONSE_BYTES_SLACK = 4_096;
+const FIXTURE_BUILD_TIMEOUT_MS = 120_000;
+
+interface WorldSize {
+  historyTurns: number;
+  longTurnSteps: number;
+  neighborThreads: number;
+}
+
+type AxisName = "thread history" | "turn size";
+
+interface GrowthAxis {
+  name: AxisName;
+  small: WorldSize;
+  large: WorldSize;
+}
+
+const GROWTH_AXES: readonly GrowthAxis[] = [
+  {
+    name: "thread history",
+    small: { historyTurns: 100, longTurnSteps: 20, neighborThreads: 20 },
+    large: { historyTurns: 200, longTurnSteps: 20, neighborThreads: 40 },
+  },
+  {
+    name: "turn size",
+    small: { historyTurns: 100, longTurnSteps: 750, neighborThreads: 20 },
+    large: { historyTurns: 100, longTurnSteps: 1_500, neighborThreads: 20 },
+  },
+];
+
+function describeWorld(size: WorldSize): string {
+  return `${size.historyTurns} turns, ${size.longTurnSteps}-step long turns, ${size.neighborThreads} other threads`;
+}
 
 interface StatementCounter {
   watch(database: Database.Database): void;
@@ -37,11 +70,13 @@ interface SizedServer {
   fixture: HistoryFixture;
   counter: StatementCounter;
   sessionId: string;
+  received: { bytes: number };
 }
 
 interface RequestPath {
   name: string;
-  linearInHistory?: string;
+  linearStatements?: Partial<Record<AxisName, string>>;
+  linearResponse?: Partial<Record<AxisName, string>>;
   run(server: SizedServer): Promise<void>;
 }
 
@@ -96,29 +131,57 @@ function createStatementCounter(): StatementCounter {
   };
 }
 
-async function startSizedServer(steps: number): Promise<SizedServer> {
+async function startSizedServer(size: WorldSize): Promise<SizedServer> {
   const counter = createStatementCounter();
   const harness = await createTestAppHarness();
   counter.watch(harness.db.$client);
   const fixture = buildHistoryFixture(harness.db, {
-    historyTurns: HISTORY_TURNS_PER_STEP * steps,
-    neighborThreads: NEIGHBOR_THREADS_PER_STEP * steps,
+    historyTurns: size.historyTurns,
+    longTurnSteps: size.longTurnSteps,
+    neighborThreads: size.neighborThreads,
     neighborTurns: 5,
     providerId: "codex",
   });
   const session = seedSession(harness.deps, fixture.hostId);
-  return { harness, fixture, counter, sessionId: session.id };
+  return {
+    harness,
+    fixture,
+    counter,
+    sessionId: session.id,
+    received: { bytes: 0 },
+  };
 }
 
-async function expectOk(response: Response | Promise<Response>) {
+async function readOk(
+  server: SizedServer,
+  response: Response | Promise<Response>,
+): Promise<string> {
   const resolved = await response;
-  if (!resolved.ok) {
-    throw new Error(`${resolved.status} ${await resolved.text()}`);
-  }
+  const body = await resolved.text();
+  if (!resolved.ok) throw new Error(`${resolved.status} ${body}`);
+  server.received.bytes += Buffer.byteLength(body);
+  return body;
 }
 
-function get(server: SizedServer, path: string): Promise<void> {
-  return expectOk(server.harness.app.request(`/api/v1${path}`));
+async function get(server: SizedServer, path: string): Promise<void> {
+  await readOk(server, server.harness.app.request(`/api/v1${path}`));
+}
+
+async function postDaemonEvents(
+  server: SizedServer,
+  events: HostDaemonEventEnvelope[],
+): Promise<void> {
+  await readOk(
+    server,
+    server.harness.app.request("/internal/session/events", {
+      method: "POST",
+      headers: internalAuthHeaders(server.harness),
+      body: JSON.stringify({
+        sessionId: server.sessionId,
+        eventGroups: groupHostDaemonEvents(events),
+      }),
+    }),
+  );
 }
 
 async function answerDaemon(
@@ -141,7 +204,7 @@ async function answerDaemon(
 
 async function withDaemon(
   server: SizedServer,
-  work: Promise<void>,
+  work: Promise<unknown>,
 ): Promise<void> {
   let settled = false;
   const finished = work.finally(() => {
@@ -165,7 +228,8 @@ function post(
 ): Promise<void> {
   return withDaemon(
     server,
-    expectOk(
+    readOk(
+      server,
       server.harness.app.request(`/api/v1${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -252,9 +316,92 @@ function streamedTurn(server: SizedServer): HostDaemonEventEnvelope[] {
   return events.map((event) => ({ threadId, event }));
 }
 
+function newItemsInLiveTurn(server: SizedServer): HostDaemonEventEnvelope[] {
+  const { liveTurn } = server.fixture;
+  const { threadId, providerThreadId } = liveTurn;
+  const scope = turnScope(liveTurn.turnId);
+  const events = Array.from({ length: 3 }, (_, index): ThreadEvent[] => {
+    const item = {
+      type: "commandExecution" as const,
+      id: `${liveTurn.turnId}-streamed-${index}`,
+      command: "git status",
+      cwd: "/workspace/bb",
+      approvalStatus: null,
+    };
+    return [
+      {
+        type: "item/started",
+        threadId,
+        providerThreadId,
+        scope,
+        item: { ...item, status: "pending" },
+      },
+      {
+        type: "item/completed",
+        threadId,
+        providerThreadId,
+        scope,
+        item: { ...item, status: "completed", exitCode: 0 },
+      },
+    ];
+  }).flat();
+  return events.map((event) => ({ threadId, event }));
+}
+
+const timelineTagSchema = z.object({ tag: z.string() });
+
+function streamedIntoLiveTurn(server: SizedServer): HostDaemonEventEnvelope[] {
+  const { liveTurn } = server.fixture;
+  const { threadId, providerThreadId } = liveTurn;
+  const scope = turnScope(liveTurn.turnId);
+  const deltas: ThreadEvent[] = Array.from({ length: 10 }, (_, index) =>
+    index % 2 === 0
+      ? {
+          type: "item/agentMessage/delta",
+          threadId,
+          providerThreadId,
+          scope,
+          itemId: liveTurn.streamingMessageItemId,
+          delta: "Still checking. ",
+        }
+      : {
+          type: "item/commandExecution/outputDelta",
+          threadId,
+          providerThreadId,
+          scope,
+          itemId: liveTurn.runningCommandItemId,
+          delta: "\u2713 test/query-plan-audit.test.ts (6 tests) 12ms\n",
+        },
+  );
+  const events: ThreadEvent[] = [
+    ...deltas,
+    {
+      type: "item/completed",
+      threadId,
+      providerThreadId,
+      scope,
+      item: {
+        type: "commandExecution",
+        id: liveTurn.runningCommandItemId,
+        command: "pnpm exec turbo run test --filter=@bb/db",
+        cwd: "/workspace/bb",
+        status: "completed",
+        approvalStatus: null,
+        exitCode: 0,
+        durationMs: 1800,
+      },
+    },
+  ];
+  return events.map((event) => ({ threadId, event }));
+}
+
 const REQUEST_PATHS: readonly RequestPath[] = [
   {
     name: "thread list",
+    linearResponse: {
+      "thread history":
+        "Lists every thread, and the longer world has twice as many",
+    },
     run: (server) => get(server, "/threads"),
   },
   {
@@ -268,6 +415,11 @@ const REQUEST_PATHS: readonly RequestPath[] = [
   },
   {
     name: "conversation outline",
+    linearResponse: {
+      "thread history": "Lists every message in the thread",
+      "turn size":
+        "Lists every message, including the commentary in long turns",
+    },
     run: (server) =>
       get(server, `/threads/${server.fixture.threadId}/conversation-outline`),
   },
@@ -287,6 +439,7 @@ const REQUEST_PATHS: readonly RequestPath[] = [
   },
   {
     name: "oldest turn details",
+    linearResponse: { "turn size": "Returns every row of the turn" },
     run: (server) => {
       const turn = firstTurn(server);
       const query = new URLSearchParams({
@@ -366,22 +519,16 @@ const REQUEST_PATHS: readonly RequestPath[] = [
   },
   {
     name: "daemon streams a turn",
-    run: (server) =>
-      expectOk(
-        server.harness.app.request("/internal/session/events", {
-          method: "POST",
-          headers: internalAuthHeaders(server.harness),
-          body: JSON.stringify({
-            sessionId: server.sessionId,
-            eventGroups: groupHostDaemonEvents(streamedTurn(server)),
-          }),
-        }),
-      ),
+    run: (server) => postDaemonEvents(server, streamedTurn(server)),
   },
   {
     name: "periodic sweeps",
-    linearInHistory:
-      "Queues and runs pruning work for every thread with new events, up to each sweep's per-run budget",
+    linearStatements: {
+      "thread history":
+        "Queues and runs pruning work for every thread with new events, up to each sweep's per-run budget",
+      "turn size":
+        "Prunes resolved items in the long turns one at a time, up to each sweep's per-run budget",
+    },
     run: (server) =>
       runPeriodicSweeps({
         ...server.harness.deps,
@@ -411,8 +558,89 @@ const REQUEST_PATHS: readonly RequestPath[] = [
       post(server, `/threads/${server.fixture.threadId}/stop`, {}),
   },
   {
+    name: "live thread detail",
+    run: (server) =>
+      get(server, `/threads/${server.fixture.liveTurn.threadId}`),
+  },
+  {
+    name: "live timeline open",
+    run: (server) =>
+      get(server, `/threads/${server.fixture.liveTurn.threadId}/timeline`),
+  },
+  {
+    name: "live conversation outline",
+    linearResponse: {
+      "turn size":
+        "Lists every message, including the commentary in long turns",
+    },
+    run: (server) =>
+      get(
+        server,
+        `/threads/${server.fixture.liveTurn.threadId}/conversation-outline`,
+      ),
+  },
+  {
+    name: "live thread context",
+    run: (server) =>
+      get(server, `/threads/${server.fixture.liveTurn.threadId}/context`),
+  },
+  {
+    name: "live head state",
+    run: (server) =>
+      get(server, `/threads/${server.fixture.liveTurn.threadId}/head-state`),
+  },
+  {
+    name: "live turn details",
+    linearResponse: { "turn size": "Returns every row of the turn" },
+    run: (server) => {
+      const { liveTurn } = server.fixture;
+      const query = new URLSearchParams({
+        turnId: liveTurn.turnId,
+        sourceSeqStart: String(liveTurn.requestSequence),
+        sourceSeqEnd: String(liveTurn.latestSequence),
+      });
+      return get(
+        server,
+        `/threads/${liveTurn.threadId}/timeline/turn-summary-details?${query}`,
+      );
+    },
+  },
+  {
+    name: "timeline delta while an open long turn streams",
+    run: async (server) => {
+      const path = `/threads/${server.fixture.liveTurn.threadId}/timeline`;
+      const { tag } = timelineTagSchema.parse(
+        JSON.parse(
+          await readOk(server, server.harness.app.request(`/api/v1${path}`)),
+        ),
+      );
+      await postDaemonEvents(server, newItemsInLiveTurn(server));
+      await get(server, `${path}?afterTag=${encodeURIComponent(tag)}`);
+    },
+  },
+  {
+    name: "daemon streams into an open long turn",
+    run: (server) => postDaemonEvents(server, streamedIntoLiveTurn(server)),
+  },
+  {
+    name: "send to a running thread",
+    run: (server) =>
+      post(server, `/threads/${server.fixture.liveTurn.threadId}/send`, {
+        mode: "queue-if-active",
+        input: followUpInput,
+      }),
+  },
+  {
+    name: "stop a running thread",
+    run: (server) =>
+      post(server, `/threads/${server.fixture.liveTurn.threadId}/stop`, {}),
+  },
+  {
     name: "fork",
-    linearInHistory: "Copies every source event into the fork, in batches",
+    linearStatements: {
+      "thread history": "Copies every source event into the fork, in batches",
+      "turn size": "Copies every source event into the fork, in batches",
+    },
     run: (server) =>
       post(server, "/threads/fork", {
         sourceThreadId: server.fixture.threadId,
@@ -420,30 +648,36 @@ const REQUEST_PATHS: readonly RequestPath[] = [
   },
 ];
 
-describe("request path statement counts", () => {
+describe.each(GROWTH_AXES)("request path costs as $name grows", (axis) => {
   let small: SizedServer;
   let large: SizedServer;
 
   beforeAll(async () => {
-    small = await startSizedServer(1);
-    large = await startSizedServer(2);
-  });
+    small = await startSizedServer(axis.small);
+    large = await startSizedServer(axis.large);
+  }, FIXTURE_BUILD_TIMEOUT_MS);
 
   afterAll(async () => {
     await small.harness.cleanup();
     await large.harness.cleanup();
-    statementObservers.clear();
-    Database.prototype.prepare = originalPrepare;
   });
 
   it.each(REQUEST_PATHS)(
-    "$name runs a statement count that does not grow with thread history",
+    "$name runs a statement count and returns a response that do not grow",
     async (path) => {
+      small.received.bytes = 0;
       const smallStatements = await small.counter.record(() => path.run(small));
+      large.received.bytes = 0;
       const largeStatements = await large.counter.record(() => path.run(large));
-      const summary = `${path.name}: ${smallStatements.length} statements with ${HISTORY_TURNS_PER_STEP} turns and ${NEIGHBOR_THREADS_PER_STEP} other threads, ${largeStatements.length} with twice as many`;
+      const summary = `${path.name}: ${smallStatements.length} statements and ${small.received.bytes} response bytes with ${describeWorld(axis.small)}, ${largeStatements.length} and ${large.received.bytes} with ${describeWorld(axis.large)}`;
       expect(largeStatements.length).toBeGreaterThan(0);
-      if (path.linearInHistory === undefined) {
+      if (path.linearResponse?.[axis.name] === undefined) {
+        expect(large.received.bytes, summary).toBeLessThanOrEqual(
+          small.received.bytes * RESPONSE_BYTES_GROWTH_LIMIT +
+            RESPONSE_BYTES_SLACK,
+        );
+      }
+      if (path.linearStatements?.[axis.name] === undefined) {
         expect(
           grownStatements(smallStatements, largeStatements),
           summary,
@@ -455,4 +689,9 @@ describe("request path statement counts", () => {
       }
     },
   );
+});
+
+afterAll(() => {
+  statementObservers.clear();
+  Database.prototype.prepare = originalPrepare;
 });
