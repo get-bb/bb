@@ -47,6 +47,7 @@ export async function readIsolatedClaudeContextUsage(args: {
       resume: args.providerSessionId,
       forkSession: true,
       persistSession: false,
+      strictMcpConfig: true,
       canUseTool: async () => ({
         behavior: "deny",
         message: "Context reporting cannot execute tools.",
