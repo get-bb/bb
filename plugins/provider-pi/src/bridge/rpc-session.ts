@@ -241,6 +241,10 @@ export class PiRpcSession {
     this.child?.respondToExtensionUi(id, fields);
   }
 
+  hasExited(): boolean {
+    return this.child?.exited ?? false;
+  }
+
   getLiveModel(): PiRpcSessionState["model"] | undefined {
     return this.liveModel;
   }
