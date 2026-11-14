@@ -34,6 +34,7 @@ import {
   getPreparingEnvironment,
   claimEnvironmentPath,
   bindEnvironmentPath,
+  createEventId,
   listProviderLifecycleEnvironments,
   liveThread,
   updatePreparingEnvironment,
@@ -58,6 +59,7 @@ import {
   type ProvisioningTranscriptEntry,
   type SystemThreadProvisioningStatus,
   type ThreadStatus,
+  ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION,
   threadScope,
 } from "@bb/domain";
 import { type ThreadResponse } from "@bb/server-contract";
@@ -88,6 +90,7 @@ import { buildEnvironmentProvisionCommand } from "../threads/thread-create-helpe
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { type AppDeps } from "../../types.js";
 import {
+  appendThreadEvent,
   appendThreadProvisioningEvent,
   appendSystemErrorEventInTransaction,
   appendThreadProvisioningEventInTransaction,
@@ -911,7 +914,9 @@ async function sweepProviderEnvironmentInSlot(
   if (record === undefined) return;
   const now = Date.now();
   if (shared) {
-    if (row.retireAt !== null && row.teardownStatus === null)
+    if (row.teardownStatus === "running" && row.status === "ready")
+      withdrawEnvironmentRemoval(deps, environmentId);
+    else if (row.retireAt !== null && row.teardownStatus === null)
       writeEnvironment(deps, environmentId, { retireAt: null });
     return;
   }
@@ -1010,6 +1015,32 @@ async function sweepProviderEnvironmentInSlot(
   } catch (error) {
     writeEnvironmentTeardownFailure(deps, environmentId, errorMessage(error));
   }
+}
+
+function withdrawEnvironmentRemoval(deps: Deps, environmentId: string): void {
+  writeEnvironment(deps, environmentId, {
+    teardownStatus: null,
+    retireAt: null,
+  });
+  const users = deps.db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(and(eq(threads.environmentId, environmentId), liveThread))
+    .all();
+  for (const user of users)
+    appendThreadEvent(deps, {
+      threadId: user.id,
+      environmentId,
+      type: "system/operation",
+      scope: threadScope(),
+      data: {
+        operation: ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION,
+        operationId: createEventId(),
+        status: "completed",
+        message:
+          "This workspace was kept because the thread is using it again, so its requested deletion did not run.",
+      },
+    });
 }
 
 export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
@@ -1258,6 +1289,7 @@ interface AdvanceEnvironmentProvisioningArgs {
   };
   environmentId: string | null | undefined;
   request?: EnvironmentProvisionRequest | null;
+  setupRunsOnConnectedDaemon?: boolean;
 }
 
 interface SettleEnvironmentProvisionCommandResultArgs {
@@ -1284,6 +1316,7 @@ interface FailEnvironmentProvisioningDurablyArgs {
 interface StartTrackedEnvironmentProvisionCommandArgs {
   environment: EnvironmentRow;
   request: EnvironmentProvisionRequest;
+  setupRunsOnConnectedDaemon: boolean;
 }
 
 interface SettleEnvironmentProvisionOutcomeArgs extends SettleEnvironmentProvisionCommandResultArgs {
@@ -1823,6 +1856,26 @@ export async function resumeEnvironmentProvisioningForHost(
   deps: CommandResultSideEffectsDeps,
   args: { hostId: string },
 ): Promise<void> {
+  await resumeHostEnvironmentProvisioning(deps, {
+    hostId: args.hostId,
+    setupRunsOnConnectedDaemon: false,
+  });
+}
+
+export async function resumeEnvironmentProvisioningForReconnectedDaemon(
+  deps: CommandResultSideEffectsDeps,
+  args: { hostId: string },
+): Promise<void> {
+  await resumeHostEnvironmentProvisioning(deps, {
+    hostId: args.hostId,
+    setupRunsOnConnectedDaemon: true,
+  });
+}
+
+async function resumeHostEnvironmentProvisioning(
+  deps: CommandResultSideEffectsDeps,
+  args: { hostId: string; setupRunsOnConnectedDaemon: boolean },
+): Promise<void> {
   const environmentIds = deps.db
     .select({ id: environments.id })
     .from(environments)
@@ -1836,6 +1889,7 @@ export async function resumeEnvironmentProvisioningForHost(
   for (const environment of environmentIds) {
     await advanceEnvironmentProvisioning(deps, {
       environmentId: environment.id,
+      setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon,
     });
   }
 }
@@ -1871,7 +1925,11 @@ async function runEnvironmentProvisionCommand(
       .from(environmentHookOperations)
       .where(eq(environmentHookOperations.id, id))
       .get();
-    if (existing !== undefined && existing.finishedAt === null) {
+    if (
+      existing !== undefined &&
+      existing.finishedAt === null &&
+      !args.setupRunsOnConnectedDaemon
+    ) {
       interruptUnrecoverableEnvironmentProvisioning(deps, {
         environmentId: environment.id,
         reason: `An earlier setup has an unknown outcome. Archive its threads, inspect the workspace, then run bb environment cleanup ${environment.id} --recover.`,
@@ -2204,7 +2262,11 @@ export async function advanceEnvironmentProvisioning(
     map,
     key: row.id,
     run: () =>
-      runEnvironmentProvisionCommand(deps, { environment: row, request }),
+      runEnvironmentProvisionCommand(deps, {
+        environment: row,
+        request,
+        setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon === true,
+      }),
   });
 }
 
