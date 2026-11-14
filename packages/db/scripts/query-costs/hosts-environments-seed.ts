@@ -205,7 +205,7 @@ function seedProjects(
 ) {
   const personalProjectId = ensurePersonalProject(db).id;
   const projectIds = [fixture.projectId];
-  for (let index = 1; index < scaled(10, scale) - 1; index += 1) {
+  for (let index = 1; index < Math.max(4, scaled(10, scale)) - 1; index += 1) {
     projectIds.push(
       createProject(db, noopNotifier, {
         name: `project-${index}`,

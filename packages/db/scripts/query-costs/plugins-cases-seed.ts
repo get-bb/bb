@@ -198,7 +198,7 @@ function pluginSpecs(scale: number): PluginSpec[] {
       artifactTarget: index < 2 ? scaled(100, scale) : 0,
     });
   }
-  const pathCount = scaled(100, scale) - specs.length;
+  const pathCount = Math.max(5, scaled(100, scale) - specs.length);
   for (let index = 0; index < pathCount; index += 1) {
     const id = `local-plugin-${index}`;
     specs.push({
@@ -701,7 +701,7 @@ export function seedPluginsWorld(
     const schedules = seedSchedules(
       db,
       pluginIds.filter((id) => !removed.includes(id)),
-      scaled(50, scale),
+      Math.max(10, scaled(50, scale)),
       seededAt,
     );
     seedKv(

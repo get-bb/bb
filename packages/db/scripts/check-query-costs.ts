@@ -11,14 +11,17 @@ import { createMigratedConnection } from "../src/testing.js";
 import {
   BASELINE_LONG_TURN_STEPS,
   DEFAULT_CEILING_MS,
+  GROWTH_EXPONENT_LIMIT,
   GROWTH_FLOOR_MS,
   GROWTH_LIMIT,
+  GROWTH_STEP,
   HISTORY_TURNS_AT_FULL_SCALE,
   KILL_AFTER_MS,
   LARGE_SCALE,
   LONG_TURN_STEPS_AT_FULL_SCALE,
   SMALL_SCALE,
   TURN_AXIS_HISTORY_TURNS,
+  TURN_AXIS_SEED_SCALE,
   scaled,
 } from "./query-costs/case.js";
 import {
@@ -72,13 +75,13 @@ const GROWTH_AXES: readonly GrowthAxis[] = [
       key: "turn-small",
       historyTurns: TURN_AXIS_HISTORY_TURNS,
       longTurnSteps: scaled(LONG_TURN_STEPS_AT_FULL_SCALE, SMALL_SCALE),
-      seedScale: SMALL_SCALE,
+      seedScale: TURN_AXIS_SEED_SCALE,
     },
     large: {
       key: "turn-large",
       historyTurns: TURN_AXIS_HISTORY_TURNS,
       longTurnSteps: scaled(LONG_TURN_STEPS_AT_FULL_SCALE, LARGE_SCALE),
-      seedScale: SMALL_SCALE,
+      seedScale: TURN_AXIS_SEED_SCALE,
     },
   },
 ];
@@ -92,6 +95,10 @@ const REAL_DATABASE_WORLD: WorldSize = {
 
 function describeWorld(size: WorldSize): string {
   return `${size.historyTurns} turns, ${size.longTurnSteps}-step long turns`;
+}
+
+function growthExponent(growth: number): number {
+  return Math.log(growth) / Math.log(GROWTH_STEP);
 }
 
 type Outcome =
@@ -298,7 +305,7 @@ function failureOf(
     largeMs >= GROWTH_FLOOR_MS &&
     growth > GROWTH_LIMIT
   ) {
-    return `${smallMs.toFixed(1)} ms → ${largeMs.toFixed(1)} ms (${growth.toFixed(1)}x) when the ${comparison.growing} double, over ${GROWTH_LIMIT}x`;
+    return `${smallMs.toFixed(1)} ms → ${largeMs.toFixed(1)} ms (${growth.toFixed(1)}x, cost ∝ size^${growthExponent(growth).toFixed(2)}) when the ${comparison.growing} grow ${GROWTH_STEP}x, over size^${GROWTH_EXPONENT_LIMIT}`;
   }
   return null;
 }
@@ -378,5 +385,5 @@ if (coverageProblems.length > 0) {
 }
 if (failed) process.exit(1);
 console.log(
-  `All ${QUERY_COST_CASES.length} query functions grow at most ${GROWTH_LIMIT}x when the thread history or the turn size doubles and stay under their ceiling.`,
+  `All ${QUERY_COST_CASES.length} query functions grow at most size^${GROWTH_EXPONENT_LIMIT} (${GROWTH_LIMIT.toFixed(0)}x) when the thread history or the turn size grows ${GROWTH_STEP}x, and stay under their ceiling.`,
 );

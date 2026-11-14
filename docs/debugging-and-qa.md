@@ -313,14 +313,14 @@ Plans cannot show what a query costs once data grows, so the workflow's cost
 job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds
 worlds through the real write paths and compares them along two axes:
 
-- Thread history: a thread with 5,000 or 10,000 turns (about 250,000 events in
+- Thread history: a thread with 2,500 or 10,000 turns (about 250,000 events in
   the full-scale world), plus what each case group in
   `packages/db/scripts/query-costs/` seeds for its tables at about twice the
   size of the largest real user (for example 10,000 threads, 4,000
   environments, 50,000 prompt history entries and 15,000 terminal sessions at
   full scale).
 - Turn size: a 500-turn thread whose first and last turns, and the open turn
-  of a second, running thread, have 750 or 1,500 steps (about 9,000 or 18,000
+  of a second, running thread, have 375 or 1,500 steps (about 4,500 or 18,000
   events each: reasoning, commands with streamed output, file edits,
   commentary, plan and usage updates, and delegations).
 
@@ -328,16 +328,19 @@ worlds through the real write paths and compares them along two axes:
 in `events-cases.ts` time the reads and appends a running thread makes
 against it. The check calls every exported query function in
 `packages/db/src/data` against the smaller and larger world of each axis,
-interleaved, each call inside a rolled-back savepoint. It keeps the fastest of
-up to three calls per world and fails a function when, on either axis:
+interleaved, each call inside a rolled-back savepoint. Each call is timed by
+the CPU time of the thread that runs it, not by the wall clock, so other work
+on a busy runner does not count against it. The check keeps the fastest of up
+to three calls per world and fails a function when, on either axis:
 
-- its larger-world time is at least 2 ms and more than 3 times its
-  smaller-world time, so its cost grows faster than the data (a runner that is uniformly
-  slower changes both times alike; a case that crosses 3x is measured up to
-  eight times before it fails, so one slow call on a busy runner does not);
+- its larger-world time is at least 2 ms and its cost grows faster than
+  size^1.5 as the data grows 4x (more than 8 times its smaller-world time):
+  linear costs measure about size^1.0 to size^1.3 even on a saturated machine,
+  and a quadratic one about size^2. A case that crosses the limit is measured
+  up to eight times before it fails, so one slow call does not fail it;
 - it takes longer than its ceiling in the larger world (250 ms unless its case sets
   `ceilingMs` with a `reason`); or
-- a single call runs for more than 5 seconds, when it is killed.
+- a single call runs for more than 5 seconds of wall time, when it is killed.
 
 The check also fails when an exported query function in `packages/db/src/data`
 has no case. A query function is an exported function that builds a query

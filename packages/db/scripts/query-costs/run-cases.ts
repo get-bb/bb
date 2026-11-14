@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { performance } from "node:perf_hooks";
+import { threadCpuUsage } from "node:process";
 import { createConnection, type DbConnection } from "../../src/connection.js";
 import {
   GROWTH_FLOOR_MS,
@@ -69,9 +69,10 @@ function timeOnce(
   try {
     costCase.prepare?.(db, fixture, seeds);
     send({ kind: "call", index });
-    const started = performance.now();
+    const started = threadCpuUsage();
     costCase.run(db, fixture, seeds);
-    return performance.now() - started;
+    const used = threadCpuUsage(started);
+    return (used.user + used.system) / 1_000;
   } finally {
     db.$client.exec("ROLLBACK TO query_cost");
     db.$client.exec("RELEASE query_cost");

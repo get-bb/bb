@@ -73,12 +73,15 @@ export function registerCostGroup<TSeed>(
 }
 
 export const HISTORY_TURNS_AT_FULL_SCALE = 10_000;
-export const SMALL_SCALE = 0.5;
+export const SMALL_SCALE = 0.25;
 export const LARGE_SCALE = 1;
+export const TURN_AXIS_SEED_SCALE = 0.5;
 export const LONG_TURN_STEPS_AT_FULL_SCALE = 1_500;
 export const BASELINE_LONG_TURN_STEPS = 100;
 export const TURN_AXIS_HISTORY_TURNS = 500;
-export const GROWTH_LIMIT = 3;
+export const GROWTH_STEP = LARGE_SCALE / SMALL_SCALE;
+export const GROWTH_EXPONENT_LIMIT = 1.5;
+export const GROWTH_LIMIT = GROWTH_STEP ** GROWTH_EXPONENT_LIMIT;
 export const GROWTH_FLOOR_MS = 2;
 export const DEFAULT_CEILING_MS = 250;
 export const KILL_AFTER_MS = 5_000;
