@@ -218,6 +218,7 @@ let configuredSkillPaths: string[] | null = null;
 
 let scratchDir: string | null = null;
 let scratchDirIsPrivate = false;
+let bridgeDataDir: string | undefined;
 let extensionPath: string | null = null;
 
 function requireScratchDir(): string {
@@ -715,10 +716,10 @@ async function buildSessionOptions(args: {
       ? { model: await resolvePiModel(args.params.model, args.params.cwd) }
       : {}),
     sessionFilePath: resolvePiSessionFilePath({
-      env: process.env,
+      ...piSessionPaths(),
       threadId: args.providerThreadId,
     }),
-    sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
+    sessionDir: resolvePiBridgeSessionDir(piSessionPaths()),
     systemPrompt: args.params.baseInstructions,
     appendSystemPrompt: args.params.appendSystemPrompt,
     shellEnvOverrides: args.params.shellEnvOverrides,
@@ -859,7 +860,7 @@ async function handleThreadConstruction(
     });
   }
   const sourceFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: providerThreadId,
   });
   const relocate = piSessionNeedsRelocation(sourceFile, params.cwd);
@@ -867,7 +868,7 @@ async function handleThreadConstruction(
     ? `pi_${randomUUID()}`
     : providerThreadId;
   const targetFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: nextProviderThreadId,
   });
   try {
@@ -876,7 +877,7 @@ async function handleThreadConstruction(
         sourceFile,
         targetFile,
         cwd: params.cwd,
-        sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
+        sessionDir: resolvePiBridgeSessionDir(piSessionPaths()),
         extensionPath: requireExtensionPath(),
         scratchDir: requireScratchDir(),
         recordThreadId: threadId,
@@ -895,7 +896,7 @@ async function handleThreadFork(
   params: ThreadForkParams,
 ): Promise<void> {
   const sourceSessionFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: params.sourceProviderThreadId,
   });
   if (!existsSync(sourceSessionFile)) {
@@ -907,10 +908,10 @@ async function handleThreadFork(
     return;
   }
   const targetSessionFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: params.threadId,
   });
-  mkdirSync(resolvePiBridgeSessionDir({ env: process.env }), {
+  mkdirSync(resolvePiBridgeSessionDir(piSessionPaths()), {
     recursive: true,
   });
   try {
@@ -918,7 +919,7 @@ async function handleThreadFork(
       sourceFile: sourceSessionFile,
       targetFile: targetSessionFile,
       cwd: params.cwd,
-      sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
+      sessionDir: resolvePiBridgeSessionDir(piSessionPaths()),
       ...(params.sourceProviderCheckpointId === undefined
         ? {}
         : { checkpointId: params.sourceProviderCheckpointId }),
@@ -1048,7 +1049,7 @@ async function reconcileTurnOptions(
   };
   const sessionFileMissing = !existsSync(
     resolvePiSessionFilePath({
-      env: process.env,
+      ...piSessionPaths(),
       threadId: threadSession.providerThreadId,
     }),
   );
@@ -1222,7 +1223,7 @@ async function handleThreadDiscard(
   });
   rmSync(
     resolvePiSessionFilePath({
-      env: process.env,
+      ...piSessionPaths(),
       threadId: params.providerThreadId,
     }),
     {
@@ -1289,9 +1290,17 @@ export async function experimental_closeAllForTests(): Promise<void> {
   }
 }
 
+function piSessionPaths(): {
+  env: NodeJS.ProcessEnv;
+  bridgeDataDir: string | undefined;
+} {
+  return { env: process.env, bridgeDataDir };
+}
+
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
   start: (context) => {
+    bridgeDataDir = context.dataDir;
     scratchDir = join(context.tempDir, "pi");
     scratchDirIsPrivate = false;
     mkdirSync(scratchDir, { recursive: true });
