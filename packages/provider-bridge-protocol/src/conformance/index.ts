@@ -1,4 +1,5 @@
 import { createBridgeDeltaEventCollector } from "../testing/bridge-delta-assembly.js";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "../version.js";
 import { ConformanceClient } from "./client.js";
 import {
   runHandshakeScenario,
@@ -52,6 +53,9 @@ export async function runBridgeConformance(
   results.push(...(await runRpcHygieneScenarios(client)));
   const handshake = await runHandshakeScenario(client, options.session);
   results.push(...handshake.results);
+  const protocolVersion =
+    handshake.protocolVersion ?? PROVIDER_BRIDGE_PROTOCOL_VERSION;
+  collector.setProtocolVersion(protocolVersion);
   results.push(
     ...(await runSessionLifecycleScenarios({
       client,
@@ -59,6 +63,8 @@ export async function runBridgeConformance(
       resolveProviderTurnId: (threadId, bbTurnId) =>
         collector.assembler.getProviderTurnId(threadId, bbTurnId),
       fork: handshake.capabilities?.fork ?? "none",
+      openWorkList: handshake.capabilities?.openWork.list ?? false,
+      protocolVersion,
     })),
   );
 

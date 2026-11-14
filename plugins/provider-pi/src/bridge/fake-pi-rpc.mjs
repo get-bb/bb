@@ -201,6 +201,9 @@ function respond(id, command, data) {
     ...(data === undefined ? {} : { data }),
   });
 }
+function promptDisposition(disposition) {
+  return supportsSettlement ? { disposition } : undefined;
+}
 function respondError(id, command, error) {
   send({ id, type: "response", command, success: false, error });
 }
@@ -269,7 +272,8 @@ async function prepareExtensionLoadPath(path) {
     "./core/session-manager.js",
     import.meta.resolve("@earendil-works/pi-coding-agent"),
   ).href;
-  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`)}`;
+  const runtimeSource = `export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`;
+  const runtimeShim = `data:text/javascript,${encodeURIComponent(runtimeSource)}`;
   const aliases = new Map([
     ["@earendil-works/pi-coding-agent", runtimeShim],
     ["typebox", import.meta.resolve("typebox")],
@@ -292,11 +296,12 @@ async function prepareExtensionLoadPath(path) {
   }
   const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
   const staging = mkdtempSync(join(pkgRoot, "node_modules", ".fake-pi-ext-"));
+  writeFileSync(staging + "/pi-runtime.mjs", runtimeSource);
   writeFileSync(
     staging + "/extension.mjs",
     readFileSync(path, "utf8").replaceAll(
       '"@earendil-works/pi-coding-agent"',
-      JSON.stringify(runtimeShim),
+      JSON.stringify("./pi-runtime.mjs"),
     ),
   );
   process.on("exit", () => {
@@ -715,7 +720,13 @@ async function drainFollowUps() {
 async function handle(command) {
   const id = command.id;
   if (commandLogPath) {
-    appendFileSync(commandLogPath, `${command.type}\n`);
+    const detail =
+      command.type === "set_model"
+        ? ` ${command.provider}/${command.modelId}`
+        : command.type === "set_thinking_level"
+          ? ` ${command.level}`
+          : "";
+    appendFileSync(commandLogPath, `${command.type}${detail}\n`);
   }
   switch (command.type) {
     case "get_state":
@@ -791,6 +802,10 @@ async function handle(command) {
       if (promptDumpPath) {
         writeFileSync(promptDumpPath, JSON.stringify(command), "utf8");
       }
+      if (command.message === "/handled") {
+        respond(id, "prompt", promptDisposition("handled"));
+        return;
+      }
       if (isCompacting) {
         respondError(
           id,
@@ -809,9 +824,10 @@ async function handle(command) {
             type: "response",
             command: "prompt",
             success: true,
+            ...(supportsSettlement ? { data: { disposition: "queued" } } : {}),
           });
         } else {
-          respond(id, "prompt");
+          respond(id, "prompt", promptDisposition("queued"));
         }
         if (holdAbort) {
           holdAbort("steer");
@@ -821,10 +837,10 @@ async function handle(command) {
       if (isStreaming) {
         followUp.push(command.message);
         queueUpdate();
-        respond(id, "prompt");
+        respond(id, "prompt", promptDisposition("queued"));
         return;
       }
-      respond(id, "prompt");
+      respond(id, "prompt", promptDisposition("started"));
       await runPrompt(command.message);
       await drainFollowUps();
       await emitSettlement();
@@ -860,6 +876,7 @@ async function handle(command) {
         respondError(id, "compact", "Nothing to compact (session too small)");
         return;
       }
+      await waitForCompactionRelease();
       event({ type: "compaction_end", reason: "manual", aborted: false });
       isCompacting = false;
       leafCounter += 1;

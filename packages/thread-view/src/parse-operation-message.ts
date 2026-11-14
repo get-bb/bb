@@ -615,7 +615,11 @@ export function parseOperationMessage(
       .filter((line): line is string => Boolean(line))
       .join("\n");
     return op(decoded, meta, isDeprecation ? "deprecation" : "warning", {
-      opType: isDeprecation ? "deprecation" : "warning",
+      opType: isDeprecation
+        ? "deprecation"
+        : category === "session-settings"
+          ? "session-settings"
+          : "warning",
       title,
       detail: detail.length > 0 ? detail : undefined,
       status: "completed",

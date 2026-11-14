@@ -152,9 +152,15 @@ export interface CreateDeltaAssemblerOptions {
   now?: () => number;
 }
 
+export interface ProtocolV2ClaimIdleTurnDelta {
+  kind: "protocolV2.claimIdleTurn";
+}
+
+export type AssemblerDelta = ThreadDelta | ProtocolV2ClaimIdleTurnDelta;
+
 export interface AssembleDeltasArgs {
   threadId: string;
-  deltas: readonly ThreadDelta[];
+  deltas: readonly AssemblerDelta[];
 }
 
 export interface DeltaAssembler {
@@ -1258,10 +1264,20 @@ export function createDeltaAssembler(
 
   function handleDelta(
     state: ThreadAssemblyState,
-    delta: ThreadDelta,
+    delta: AssemblerDelta,
     events: EventSink,
   ): void {
     switch (delta.kind) {
+      case "protocolV2.claimIdleTurn": {
+        if (
+          state.currentTurnId === undefined &&
+          state.pendingAccepted.length > 0
+        ) {
+          ensureTurnOpen(state, events);
+        }
+        return;
+      }
+
       case "input.accepted": {
         if (delta.providerTurnId !== undefined) {
           events.push({
@@ -1338,11 +1354,7 @@ export function createDeltaAssembler(
           });
           return;
         }
-        const turnId =
-          state.currentTurnId ??
-          (delta.claimIfIdle === true && state.pendingAccepted.length > 0
-            ? ensureTurnOpen(state, events)
-            : undefined);
+        const turnId = state.currentTurnId;
         if (turnId === undefined) {
           return;
         }
@@ -1421,7 +1433,9 @@ export function createDeltaAssembler(
           ? undefined
           : delta.providerTurnId !== undefined
             ? resolveVouchedTurnId(state, delta.providerTurnId)
-            : state.currentTurnId;
+            : delta.attach === "currentOrLast"
+              ? currentOrLastTurnId(state)
+              : state.currentTurnId;
         if (!threadScoped && turnId === undefined) {
           pushNoTurnFallback(
             state,
@@ -1619,7 +1633,9 @@ export function createDeltaAssembler(
         const turnId =
           delta.providerTurnId !== undefined
             ? resolveVouchedTurnId(state, delta.providerTurnId)
-            : state.currentTurnId;
+            : delta.attach === "currentOrLast"
+              ? currentOrLastTurnId(state)
+              : state.currentTurnId;
         if (turnId === undefined) {
           pushNoTurnFallback(
             state,
@@ -1702,7 +1718,9 @@ export function createDeltaAssembler(
         const turnId =
           delta.providerTurnId !== undefined
             ? resolveVouchedTurnId(state, delta.providerTurnId)
-            : state.currentTurnId;
+            : delta.attach === "currentOrLast"
+              ? currentOrLastTurnId(state)
+              : state.currentTurnId;
         if (turnId === undefined) {
           pushNoTurnFallback(
             state,

@@ -71,6 +71,7 @@ export class CodexAppServerRpcError extends Error {
   constructor(
     message: string,
     readonly code: number | undefined,
+    readonly data: unknown = undefined,
   ) {
     super(message);
     this.name = "CodexAppServerRpcError";
@@ -87,7 +88,7 @@ interface ParsedChildMessage {
   id?: string | number;
   method?: string;
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: { code?: number; message?: string; data?: unknown };
   params?: unknown;
 }
 
@@ -282,6 +283,7 @@ export function createCodexAppServerConnection(
               message.error.message ??
                 `codex app-server returned error code ${message.error.code ?? "unknown"}`,
               message.error.code,
+              message.error.data,
             ),
           );
         } else {

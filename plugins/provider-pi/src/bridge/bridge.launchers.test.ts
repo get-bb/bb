@@ -74,6 +74,7 @@ function startTurn(
         providerThreadId,
         clientRequestId: clientRequestId(),
         input: [{ type: "text", text, mentions: [] }],
+        apply: { settings: [], sessionOptions: [], providerOptions: [] },
         options: FULL_PERMISSION_OPTIONS,
       },
     }),

@@ -47,6 +47,7 @@ import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
+  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -2118,9 +2119,8 @@ describe("concurrent idle dispatch regression", () => {
   });
 });
 
-describe("competing turn refusals", () => {
-  const competingTurnMessage = (threadId: string) =>
-    `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`;
+describe("busy refusals", () => {
+  const busyMessage = "The agent is compacting context.";
 
   async function sendStartFromIdle(
     harness: TestAppHarness,
@@ -2153,7 +2153,7 @@ describe("competing turn refusals", () => {
     return { queued, requestId: queued.command.requestId };
   }
 
-  it("keeps the thread active when the daemon refuses a competing turn while a root turn is running", async () => {
+  it("queues a busy refusal behind the running root turn instead of failing the run", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
         harness,
@@ -2169,8 +2169,8 @@ describe("competing turn refusals", () => {
       });
 
       await reportQueuedCommandError(harness, queued, {
-        errorCode: "competing_turn",
-        errorMessage: competingTurnMessage(fixture.thread.id),
+        errorCode: "thread_busy",
+        errorMessage: busyMessage,
       });
 
       const events = listEvents(harness.db, { threadId: fixture.thread.id });
@@ -2179,11 +2179,22 @@ describe("competing turn refusals", () => {
       );
       expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
         requestId,
-        reason: "competing_turn",
-        message: competingTurnMessage(fixture.thread.id),
+        reason: "thread_busy",
+        message: busyMessage,
       });
       expect(events.some((event) => event.type === "system/error")).toBe(false);
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+      await vi.waitFor(() => {
+        expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+          [
+            expect.objectContaining({
+              payloadKind: "retry",
+              retryReason: "Agent was busy",
+              sendAt: null,
+            }),
+          ],
+        );
+      });
 
       const completed = await harness.app.request("/internal/session/events", {
         method: "POST",
@@ -2205,11 +2216,24 @@ describe("competing turn refusals", () => {
         }),
       });
       expect(completed.status, await completed.clone().text()).toBe(200);
-      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+      const retried = await waitForQueuedCommandAfter(
+        harness,
+        queued.row.cursor,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === fixture.thread.id,
+      );
+      expect(retried.command).toMatchObject({
+        input: textInput("send while the daemon runs a turn"),
+      });
+      expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+        [],
+      );
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
     });
   });
 
-  it("fails the run when a competing-turn refusal arrives without a running root turn", async () => {
+  it("returns the thread to idle and schedules the retry when no turn is running", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
         harness,
@@ -2219,16 +2243,113 @@ describe("competing turn refusals", () => {
       const { queued } = await sendStartFromIdle(harness, fixture);
 
       await reportQueuedCommandError(harness, queued, {
-        errorCode: "competing_turn",
-        errorMessage: competingTurnMessage(fixture.thread.id),
+        errorCode: "thread_busy",
+        errorMessage: busyMessage,
       });
 
       const events = listEvents(harness.db, { threadId: fixture.thread.id });
-      expect(
-        events.some((event) => event.type === "client/turn/rejected"),
-      ).toBe(true);
-      expect(events.some((event) => event.type === "system/error")).toBe(true);
-      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+      expect(events.some((event) => event.type === "system/error")).toBe(false);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+      await vi.waitFor(() => {
+        expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+          [
+            expect.objectContaining({
+              payloadKind: "retry",
+              retryReason: "Agent was busy",
+              sendAt: expect.any(Number),
+            }),
+          ],
+        );
+      });
+    });
+  });
+
+  it("backs off busy retries and stops with a failure the user can retry when the busy phase never ends", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 65,
+      });
+      let { queued } = await sendStartFromIdle(harness, fixture);
+      const retryDelaysMs: number[] = [];
+
+      for (let attempt = 1; ; attempt += 1) {
+        const refusedAt = Date.now();
+        await reportQueuedCommandError(harness, queued, {
+          errorCode: "thread_busy",
+          errorMessage: busyMessage,
+        });
+        if (getThread(harness.db, fixture.thread.id)?.status === "error") {
+          break;
+        }
+        expect(attempt).toBeLessThan(10);
+        const retry = await vi.waitFor(() => {
+          const [row] = listQueuedThreadMessages(harness.db, fixture.thread.id);
+          expect(row?.sendAt).not.toBeNull();
+          return row!;
+        });
+        retryDelaysMs.push(
+          Math.round(((retry.sendAt ?? 0) - refusedAt) / 1_000) * 1_000,
+        );
+        const cursor = queued.row.cursor;
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "time-reached",
+          now: (retry.sendAt ?? 0) + 1,
+        });
+        queued = await waitForQueuedCommand(
+          harness,
+          (candidate) =>
+            candidate.row.cursor > cursor &&
+            candidate.command.type === "turn.submit" &&
+            candidate.command.threadId === fixture.thread.id,
+        );
+      }
+
+      expect(retryDelaysMs).toEqual([5_000, 10_000, 20_000, 40_000, 80_000]);
+      expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+        [],
+      );
+      const errors = listEvents(harness.db, {
+        threadId: fixture.thread.id,
+      }).filter((event) => event.type === "system/error");
+      expect(errors.map((event) => JSON.parse(event.data).code)).toEqual([
+        "provider_busy",
+      ]);
+      expect(JSON.parse(errors[0]?.data ?? "{}").message).toContain(
+        "stopped re-sending this message",
+      );
+    });
+  });
+
+  it("returns the thread to idle without a failure when the provider rejects the input", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 64,
+      });
+      const { queued, requestId } = await sendStartFromIdle(harness, fixture);
+
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "turn_rejected",
+        errorMessage: "This agent does not offer a compact command.",
+      });
+
+      const events = listEvents(harness.db, { threadId: fixture.thread.id });
+      const rejection = events.find(
+        (event) => event.type === "client/turn/rejected",
+      );
+      expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
+        requestId,
+        reason: "turn_rejected",
+        message: "This agent does not offer a compact command.",
+      });
+      expect(events.some((event) => event.type === "system/error")).toBe(false);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+      expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+        [],
+      );
     });
   });
 
@@ -2581,8 +2702,8 @@ describe("a turn request in flight when a turn ends", () => {
   ) {
     if (held.command.target.mode === "start" && daemon.activeTurnId !== null) {
       await reportQueuedCommandError(harness, held.queued, {
-        errorCode: "competing_turn",
-        errorMessage: `Refusing to start a competing turn for thread "${daemon.threadId}" while another turn is active or starting`,
+        errorCode: "thread_busy",
+        errorMessage: "Another turn is active or starting.",
       });
       return;
     }

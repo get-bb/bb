@@ -29,7 +29,7 @@ function createRewindRuntime(args: {
   const runtime = createScriptedEchoRuntime({
     runtime: {
       workspacePath,
-      env: record.env,
+      getProcessEnv: () => (record.env),
       onEvent: args.onEvent ?? (() => undefined),
       ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
       onToolCall: async () => ({

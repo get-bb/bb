@@ -87,13 +87,13 @@ describe("codex process topology", () => {
     const runtime = withBridgeLaunch(
       createAgentRuntime({
         workspacePath: workspaceDir,
-        env: {
+        getProcessEnv: () => ({
           BB_CODEX_BRIDGE_APP_SERVER_COMMAND: process.execPath,
           BB_CODEX_BRIDGE_APP_SERVER_ARGS: JSON.stringify([
             fakeAppServerPath,
             scriptPath,
           ]),
-        },
+        }),
         onEvent: (event) => events.push(event),
         onProcessExit: (info) => bridgeExits.push({ expected: info.expected }),
         onToolCall: async () => ({ contentItems: [], success: true }),

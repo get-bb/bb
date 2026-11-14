@@ -751,10 +751,20 @@ describe("pi delta translation equivalence", () => {
       "turn/started",
       "item/started",
     ]);
+    const opened = started[1];
+    const openedId = opened?.type === "item/started" ? opened.item.id : null;
     expect(completed).toEqual([
       expect.objectContaining({
         type: "thread/compacted",
         scope: turnScope(turnId),
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(turnId),
+        item: expect.objectContaining({
+          type: "contextCompaction",
+          id: openedId,
+        }),
       }),
       expect.objectContaining({
         type: "turn/completed",
@@ -782,6 +792,10 @@ describe("pi delta translation equivalence", () => {
           category: "compaction-skipped",
           summary: "Context compaction skipped",
           details: errorMessage,
+        }),
+        expect.objectContaining({
+          type: "item/completed",
+          item: expect.objectContaining({ type: "contextCompaction" }),
         }),
         expect.objectContaining({
           type: "turn/completed",
@@ -819,6 +833,11 @@ describe("pi delta translation equivalence", () => {
     ({ args, expected }) => {
       const { completed, turnId } = translateManualCompaction(args);
       expect(completed).toEqual([
+        expect.objectContaining({
+          type: "item/completed",
+          scope: turnScope(turnId),
+          item: expect.objectContaining({ type: "contextCompaction" }),
+        }),
         expect.objectContaining({
           type: "turn/completed",
           scope: turnScope(turnId),
@@ -2037,7 +2056,7 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
-  it("prompt-settled settles only a turn owed to accepted input", () => {
+  it("prompt-settled closes the turn the bridge opened and never opens one", () => {
     const harness = createHarness();
     const settled = {
       jsonrpc: "2.0",
@@ -2056,10 +2075,13 @@ describe("pi delta translation equivalence", () => {
         },
       ],
     });
-    const events = harness.translate(settled);
-    expect(events.map((event) => event.type)).toEqual([
-      "turn/started",
-      "turn/input/accepted",
+    expect(harness.translate(settled)).toEqual([]);
+
+    harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: [{ kind: "turn.open" }],
+    });
+    expect(harness.translate(settled).map((event) => event.type)).toEqual([
       "turn/completed",
     ]);
   });

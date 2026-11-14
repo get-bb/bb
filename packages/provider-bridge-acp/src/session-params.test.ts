@@ -44,6 +44,7 @@ describe("buildAcpModelListParams", () => {
     );
 
     expect(params).toEqual({
+      agentDisplayName: "Custom ACP",
       listCommand: {
         command: "custom-agent",
         args: ["models", "list"],
@@ -85,6 +86,7 @@ describe("buildAcpModelListParams", () => {
         },
       ),
     ).toEqual({
+      agentDisplayName: "Custom ACP",
       agent: { command: "custom-agent", args: ["serve"] },
       optionsAgent: { command: "custom-agent", args: ["serve"] },
       primaryModels: [],
@@ -118,6 +120,7 @@ describe("buildAcpModelListParams", () => {
       );
 
       expect(params).toEqual({
+        agentDisplayName: "Custom ACP",
         agent: { command: "custom-agent", args: ["serve"] },
         optionsAgent: { command: "custom-agent", args: ["serve"] },
         primaryModels: [],
@@ -143,6 +146,7 @@ describe("buildAcpModelListParams", () => {
         },
       ),
     ).toEqual({
+      agentDisplayName: "Cursor",
       agent: { command: "cursor-agent", args: ["acp"] },
       optionsAgent: { command: "cursor-agent", args: ["acp"] },
       parameterizedModelPicker: true,
@@ -351,12 +355,6 @@ gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-c
       ).toEqual({ modelId, reasoningLevel: expectedReasoningLevel });
     },
   );
-
-  it("never forwards the synthetic default model id", () => {
-    const params = cursorSessionParams({ model: "acp-default" });
-    expect("modelSelection" in params).toBe(false);
-    expect(params.agent).toEqual({ command: "cursor-agent", args: ["acp"] });
-  });
 
   it("selects over the protocol when a CLI-discovered agent has no select flag", () => {
     const params = buildAcpSessionParams({

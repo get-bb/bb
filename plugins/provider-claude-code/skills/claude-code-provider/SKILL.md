@@ -10,17 +10,18 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 
 - `subagentsDisabled` defaults to `false`. Enable with
   `bb plugin config provider-claude-code set subagentsDisabled true` to remove
-  native Agent, Task, and ListAgents tools from the model context. Changes
-  restart Claude before the next turn, preserving the conversation. A deny hook
-  also blocks native delegation during an active turn after disabling it.
+  native Agent, Task, and ListAgents tools from the model context. A change
+  restarts the thread's Claude process at its next turn, once no background
+  task, subagent, or pending question is open, preserving context.
 - `disable1MContext` defaults to `false`. Enable with
   `bb plugin config provider-claude-code set disable1MContext true` to set
-  `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off). Changes restart the
-  thread's Claude process before its next turn, preserving context.
+  `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off). A change
+  restarts the thread's Claude process at its next turn, once no background
+  task, subagent, or pending question is open, preserving context.
 - `chromeEnabled` defaults to `false`. It starts Claude Code with `--chrome` for
   Claude in Chrome tools. The host needs the extension and a claude.ai login.
-  A change restarts the thread's Claude process before its next turn, preserving
-  context.
+  A change restarts the thread's Claude process at its next turn, once no background
+  task, subagent, or pending question is open, preserving context.
 - `artifactsEnabled` defaults to `false`. Enable with
   `bb plugin config provider-claude-code set artifactsEnabled true` to set
   `CLAUDE_CODE_ARTIFACT=1`, which gives threads Claude Code's `Artifact`,
@@ -29,8 +30,9 @@ with `bb plugin config provider-claude-code set <key> <value>`.
   unless opted in. Claude may publish private pages to claude.ai without asking.
   The claude.ai account's plan and organization policy still decide whether the
   tools load. When off, bb leaves an inherited `CLAUDE_CODE_ARTIFACT` (shell,
-  environment, or `~/.claude/settings.json` `env`) untouched. A change restarts
-  the thread's Claude process before its next turn, preserving context.
+  environment, or `~/.claude/settings.json` `env`) untouched. A change
+  restarts the thread's Claude process at its next turn, once no background
+  task, subagent, or pending question is open, preserving context.
 - Select the Fast service tier in the model picker or pass `--service-tier fast`
   to `bb thread spawn` for supported Opus models. Use
   `bb thread tell --service-tier fast` to change a thread on its next turn;
@@ -40,8 +42,8 @@ with `bb plugin config provider-claude-code set <key> <value>`.
   does not change the user's Claude defaults.
 - `sandboxEnabled` defaults to `true`. In Accept Edits and Approve for me modes
   bb runs Claude Code's Bash commands in its sandbox. Set it to `false` to use
-  Claude Code's own command approvals and sandbox settings instead. A change
-  restarts the thread's Claude process before its next turn, preserving context.
+  Claude Code's own command approvals and sandbox settings instead. It applies
+  from the thread's next turn without a restart.
 - `fullAccessApprovalsEnabled` defaults to `false`, so Full Access approves
   every request Claude Code sends, and unattended threads never wait. Set it to
   `true` to show Claude Code's own prompts in Full Access: `permissions.ask`
@@ -49,6 +51,12 @@ with `bb plugin config provider-claude-code set <key> <value>`.
   (such as `rm` on a possibly-empty variable). It applies from the thread's
   next turn without a restart. When bb runs as root, Full Access always
   approves, because Claude Code refuses `bypassPermissions` there.
+- Model, reasoning level, service tier, memory, Workflow tool, and permission
+  mode changes apply from the next turn without a restart. Switching a thread
+  into Full Access restarts its Claude process once, because Claude Code only
+  allows `bypassPermissions` in a process started for it; a thread started in
+  Full Access switches modes without restarting. Environment variables, plugin
+  tools, and skills also apply through a restart at the next idle turn.
 - `commandDescriptionsEnabled` defaults to `false`, so Bash command rows are
   titled with the command. Set it to `true` to title them with Claude's short
   description of the command instead; approval prompts and the expanded row

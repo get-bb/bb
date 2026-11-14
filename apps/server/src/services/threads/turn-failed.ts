@@ -1,5 +1,6 @@
 import {
   getLastStoredTurnRequestEvent,
+  getStoredTurnRequestEventByRequestId,
   getLatestStoredRateLimitsEvent,
   getLatestStoredThreadEventOfTypes,
   getThread,
@@ -63,6 +64,22 @@ export function loadFailedTurn(
   threadId: string,
 ): FailedTurnRecord | null {
   const row = getLastStoredTurnRequestEvent(db, threadId);
+  if (row === null) return null;
+  try {
+    return {
+      request: parseStoredTurnRequestEvent(row),
+      requestSequence: row.sequence,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function loadTurnRequest(
+  db: DbConnection,
+  args: { requestId: string; threadId: string },
+): FailedTurnRecord | null {
+  const row = getStoredTurnRequestEventByRequestId(db, args);
   if (row === null) return null;
   try {
     return {

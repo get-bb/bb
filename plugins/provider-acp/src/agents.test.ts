@@ -30,9 +30,39 @@ describe("parseCustomAcpAgents", () => {
         command: "amp",
         args: [],
         env: {},
-        supportsManualCompaction: false,
       },
     ]);
+  });
+
+  it("still reads a config that sets the retired supportsManualCompaction field, and drops it", () => {
+    const parsed = parseCustomAcpAgents({
+      entries: [
+        {
+          id: "amp",
+          displayName: "Amp",
+          command: "amp",
+          supportsManualCompaction: true,
+        },
+      ],
+      reservedProviderIds: reserved,
+    });
+
+    expect(parsed.problems).toEqual([]);
+    expect(parsed.agents).toEqual([
+      { id: "amp", displayName: "Amp", command: "amp", args: [], env: {} },
+    ]);
+  });
+
+  it("still rejects a field it never knew", () => {
+    const parsed = parseCustomAcpAgents({
+      entries: [
+        { id: "amp", displayName: "Amp", command: "amp", compaction: 1 },
+      ],
+      reservedProviderIds: reserved,
+    });
+
+    expect(parsed.agents).toEqual([]);
+    expect(parsed.problems).toHaveLength(1);
   });
 
   it("reports a malformed entry, a shadowed built-in, and a duplicate", () => {
@@ -197,7 +227,6 @@ describe("customAcpAgentDefinition", () => {
           env: { AMP_TOKEN: "x" },
           cwd: "/srv/amp",
           modelCli: { listArgs: [], primaryModels: [] },
-          supportsManualCompaction: true,
         },
       ],
       reservedProviderIds: reserved,
@@ -213,7 +242,6 @@ describe("customAcpAgentDefinition", () => {
       env: { AMP_TOKEN: "x" },
       cwd: "/srv/amp",
     });
-    expect(definition.supportsManualCompaction).toBe(true);
     expect(definition.fork).toBe("none");
   });
 });
@@ -359,12 +387,9 @@ describe("acpProviderDeclaration", () => {
       usage: true,
       installation: false,
     });
-    expect(
-      byId.get("acp-opencode")?.capabilities.supportsManualCompaction,
-    ).toBe(true);
-    expect(byId.get("acp-cursor")?.capabilities.supportsManualCompaction).toBe(
-      false,
-    );
+    for (const declaration of byId.values()) {
+      expect(declaration.capabilities.supportsManualCompaction).toBe(false);
+    }
   });
 
   it("keeps each agent's own reasoning ladder and installed-only visibility", () => {
@@ -403,7 +428,6 @@ describe("acpProviderDeclaration", () => {
         command: "amp",
         args: [],
         env: {},
-        supportsManualCompaction: false,
       }),
     );
 

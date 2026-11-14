@@ -38,10 +38,13 @@ export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
 import { shouldSuppressLowValueToolCall } from "./tool-call-suppression.js";
 import {
   buildAcceptedClientRequestById,
+  buildBusyRetryingClientRequestIds,
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
   type AcceptedClientRequest,
   type AcceptedClientRequestContext,
+  type ThreadEventWithMetaLike,
 } from "./accepted-client-request-context.js";
+import { eventProjectionMessageThreadScopeFields } from "./message-scope.js";
 import {
   parseAcceptedSteersFromClientRequest,
   parseRejectedUsersFromClientRequest,
@@ -333,7 +336,7 @@ function selectActiveBackgroundCommandMessages(
 }
 
 function buildClientTurnRequestById(
-  events: ThreadEventWithMeta[],
+  events: readonly ThreadEventWithMetaLike[],
 ): Map<string, ClientTurnRequestedWithMeta> {
   const requestById = new Map<string, ClientTurnRequestedWithMeta>();
   for (const eventWithMeta of events) {
@@ -427,6 +430,37 @@ function canUseAcceptedClientRequestForVisibleProjection(
     case "thread-start":
       return true;
   }
+}
+
+function clientRequestDeliveredByBusyRetry(
+  lookups: ProjectionFoldLookups,
+  retry: ClientTurnRequestedEvent,
+): {
+  acceptedClientRequest: AcceptedClientRequest;
+  request: ClientTurnRequestedWithMeta;
+} | null {
+  if (retry.retryOfRequestId === undefined) {
+    return null;
+  }
+  const acceptedClientRequest = lookups.acceptedClientRequestById.get(
+    retry.retryOfRequestId,
+  );
+  const request =
+    lookups.clientRequestById.get(retry.retryOfRequestId) ??
+    lookups.contextClientRequestById.get(retry.retryOfRequestId);
+  if (
+    acceptedClientRequest?.deliveredByBusyRetry?.requestId !==
+      retry.requestId ||
+    request === undefined ||
+    !canUseAcceptedClientRequestForVisibleProjection(
+      acceptedClientRequest,
+      request.event,
+      lookups.selectedStartedTurnIds,
+    )
+  ) {
+    return null;
+  }
+  return { acceptedClientRequest, request };
 }
 
 function appendProjectedUserMessage(
@@ -576,7 +610,9 @@ function getCompactionTurnFinalization(
 interface ProjectionFoldLookups {
   acceptedClientRequestById: ReturnType<typeof buildAcceptedClientRequestById>;
   acceptedRootClientTurnIds: ReadonlySet<string>;
+  busyRetryingClientRequestIds: ReadonlySet<string>;
   clientRequestById: Map<string, ClientTurnRequestedWithMeta>;
+  contextClientRequestById: Map<string, ClientTurnRequestedWithMeta>;
   rejectedClientRequestIds: ReadonlySet<string>;
   selectedStartedTurnIds: ReadonlySet<string>;
 }
@@ -587,6 +623,7 @@ const PROJECTION_FOLD_LOOKUP_EVENT_TYPES: ReadonlySet<ThreadEvent["type"]> =
     "client/turn/rejected",
     "turn/input/accepted",
     "turn/started",
+    "system/error",
   ]);
 
 function createProjectionFoldLookups(
@@ -605,7 +642,15 @@ function createProjectionFoldLookups(
       clientRequestById,
     ),
     clientRequestById,
+    contextClientRequestById: buildClientTurnRequestById(
+      context.requestedClientRequestEvents,
+    ),
     rejectedClientRequestIds: buildRejectedClientRequestIds(
+      orderedEvents,
+      acceptedClientRequestById,
+    ),
+    busyRetryingClientRequestIds: buildBusyRetryingClientRequestIds(
+      context,
       orderedEvents,
       acceptedClientRequestById,
     ),
@@ -622,6 +667,7 @@ function foldProjectionEvent(
   const {
     acceptedClientRequestById,
     acceptedRootClientTurnIds,
+    busyRetryingClientRequestIds,
     clientRequestById,
     rejectedClientRequestIds,
     selectedStartedTurnIds,
@@ -758,8 +804,20 @@ function foldProjectionEvent(
         requestMeta: clientRequest.meta,
         meta,
         options: options,
+        requestStatus: busyRetryingClientRequestIds.has(decoded.requestId)
+          ? "pending"
+          : "rejected",
       })) {
-        appendProjectedUserMessage(state, rejectedMessage);
+        appendProjectedUserMessage(
+          state,
+          rejectedMessage.scope.kind === "turn" &&
+            !selectedStartedTurnIds.has(rejectedMessage.scope.turnId)
+            ? {
+                ...rejectedMessage,
+                ...eventProjectionMessageThreadScopeFields(),
+              }
+            : rejectedMessage,
+        );
       }
     }
     return;
@@ -772,10 +830,30 @@ function foldProjectionEvent(
     return;
   }
 
+  if (decoded.type === "client/turn/requested") {
+    const deliveredOriginal = clientRequestDeliveredByBusyRetry(
+      lookups,
+      decoded,
+    );
+    if (deliveredOriginal) {
+      for (const userFromClientRequest of parseUsersFromClientRequest({
+        acceptedClientRequest: deliveredOriginal.acceptedClientRequest,
+        decoded: deliveredOriginal.request.event,
+        meta: deliveredOriginal.request.meta,
+        options: options,
+      })) {
+        appendProjectedUserMessage(state, userFromClientRequest);
+      }
+    }
+  }
+
   const acceptedClientRequest =
     decoded.type === "client/turn/requested"
       ? acceptedClientRequestById.get(decoded.requestId)
       : undefined;
+  if (acceptedClientRequest?.deliveredByBusyRetry) {
+    return;
+  }
   const visibleProjectionAcceptedClientRequest =
     acceptedClientRequest &&
     decoded.type === "client/turn/requested" &&

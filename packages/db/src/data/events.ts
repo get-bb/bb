@@ -1474,6 +1474,18 @@ export interface ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs {
   threadId: string;
 }
 
+export interface ListStoredSystemErrorRowsWithCodeArgs {
+  afterSequence: number;
+  code: string;
+  threadId: string;
+}
+
+export interface ListStoredClientTurnRetryRequestRowsArgs {
+  afterSequence: number;
+  retryOfRequestIds: readonly ClientTurnRequestId[];
+  threadId: string;
+}
+
 export interface ListStoredTurnRejectedRowsByClientRequestIdsArgs {
   afterSequence: number;
   clientRequestIds: readonly ClientTurnRequestId[];
@@ -1484,11 +1496,6 @@ export interface ListStoredClientTurnRequestIdsInRangeArgs {
   seqEnd: number;
   seqStart: number;
   threadId: string;
-}
-
-export interface GetStoredTurnRequestEventForTurnArgs {
-  threadId: string;
-  turnId: string;
 }
 
 export interface FindLastRootStoredTurnStartedArgs {
@@ -2037,6 +2044,50 @@ export function listOpenTurnInputAcceptedRowsByThreadIds(
   );
 }
 
+export function listStoredSystemErrorRowsWithCode(
+  db: DbQueryConnection,
+  args: ListStoredSystemErrorRowsWithCodeArgs,
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "system/error"),
+        gt(events.sequence, args.afterSequence),
+        sql`json_extract(${events.data}, '$.code') = ${args.code}`,
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredClientTurnRetryRequestRows(
+  db: DbQueryConnection,
+  args: ListStoredClientTurnRetryRequestRowsArgs,
+): StoredEventRow[] {
+  if (args.retryOfRequestIds.length === 0) {
+    return [];
+  }
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+        gt(events.sequence, args.afterSequence),
+        inArray(
+          sql<string>`json_extract(${events.data}, '$.retryOfRequestId')`,
+          [...args.retryOfRequestIds],
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
 export function listStoredClientTurnRequestRowsByKeys(
   db: DbQueryConnection,
   args: ListStoredClientTurnRequestRowsByKeysArgs,
@@ -2420,59 +2471,6 @@ export function listStoredClientTurnRequestIdsInRange(
   return rows.map((row) => clientTurnRequestIdSchema.parse(row.requestId));
 }
 
-export function getStoredTurnRequestEventForTurn(
-  db: DbQueryConnection,
-  args: GetStoredTurnRequestEventForTurnArgs,
-): StoredTurnRequestEventRow | null {
-  const acceptedInput =
-    db
-      .select({
-        clientRequestId: sql<
-          string | null
-        >`json_extract(${events.data}, '$.clientRequestId')`,
-        sequence: events.sequence,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.turnId, args.turnId),
-          eq(events.type, "turn/input/accepted"),
-        ),
-      )
-      .orderBy(desc(events.sequence))
-      .limit(1)
-      .get() ?? null;
-  const requestIdResult = clientTurnRequestIdSchema.safeParse(
-    acceptedInput?.clientRequestId,
-  );
-  if (acceptedInput === null || !requestIdResult.success) {
-    return null;
-  }
-
-  return (
-    db
-      .select({
-        data: events.data,
-        sequence: events.sequence,
-        threadId: events.threadId,
-        type: events.type,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.type, "client/turn/requested"),
-          lt(events.sequence, acceptedInput.sequence),
-          eq(turnRequestIdSql, requestIdResult.data),
-        ),
-      )
-      .orderBy(desc(events.sequence))
-      .limit(1)
-      .get() ?? null
-  );
-}
-
 export interface StoredThreadEventDataRow {
   data: string;
   sequence: number;
@@ -2590,6 +2588,26 @@ export function listStoredTurnRejectedRowsByClientRequestIds(
     )
     .orderBy(events.sequence)
     .all();
+}
+
+export function countStoredTurnRejectionsWithReasonAfterSequence(
+  db: DbQueryConnection,
+  args: { threadId: string; reason: string; afterSequence: number },
+): number {
+  return (
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/rejected"),
+          gt(events.sequence, args.afterSequence),
+          sql`json_extract(${events.data}, '$.reason') = ${args.reason}`,
+        ),
+      )
+      .get()?.count ?? 0
+  );
 }
 
 export function getLatestThreadInterruptedReason(
@@ -4482,40 +4500,6 @@ export function isStoredTurnMainRunIdle(
   return latest?.idle === 1;
 }
 
-export function isStoredTurnProviderCompactionRunning(
-  db: DbQueryConnection,
-  args: ThreadTurnKey,
-): boolean {
-  const inTurn = and(
-    eq(events.threadId, args.threadId),
-    eq(events.turnId, args.turnId),
-  );
-  const latestCompaction = db
-    .select({ type: sql<ThreadEventType>`${events.type}` })
-    .from(sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`)
-    .where(
-      and(
-        inTurn,
-        inArray(events.type, ["item/started", "item/completed"]),
-        eq(events.itemKind, "contextCompaction"),
-        isNull(events.parentToolCallId),
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-  if (latestCompaction?.type !== "item/started") {
-    return false;
-  }
-  const acceptedInput = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(and(inTurn, eq(events.type, "turn/input/accepted")))
-    .limit(1)
-    .get();
-  return !acceptedInput;
-}
-
 export function isStoredTurnContextCompactionOnly(
   db: DbQueryConnection,
   args: ThreadTurnKey,
@@ -5077,6 +5061,32 @@ export function getLastStoredTurnRequestEvent(
             AND json_type(${events.data}, '$.input') IS NOT NULL
           )
         )`,
+      )
+      .orderBy(sql`${events.sequence} DESC`)
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function getStoredTurnRequestEventByRequestId(
+  db: DbQueryConnection,
+  args: { requestId: string; threadId: string },
+): StoredTurnRequestEventRow | null {
+  return (
+    db
+      .select({
+        data: events.data,
+        sequence: events.sequence,
+        threadId: events.threadId,
+        type: events.type,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          sql`json_extract(${events.data}, '$.requestId') = ${args.requestId}`,
+        ),
       )
       .orderBy(sql`${events.sequence} DESC`)
       .limit(1)

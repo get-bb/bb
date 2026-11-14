@@ -402,13 +402,13 @@ describe("acp configOptions model catalog", () => {
       supportByModel,
     );
 
+    expect(models[0]).not.toHaveProperty("defaultReasoningEffort");
     expect(models).toMatchObject([
       {
         id: "opencode/big-pickle",
         model: "opencode/big-pickle",
         displayName: "OpenCode Zen/Big Pickle",
         isDefault: false,
-        defaultReasoningEffort: "medium",
       },
       {
         id: "opencode/deepseek-v4-flash-free",
@@ -461,7 +461,6 @@ describe("acp configOptions model catalog", () => {
     ).toEqual({
       reasoningDiscovery: "known",
       supportedReasoningEfforts: [],
-      defaultReasoningEffort: "medium",
     });
   });
 

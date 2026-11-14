@@ -3,11 +3,9 @@ import {
   createEventId,
   getActiveStoredTurnId,
   isStoredTurnMainRunIdle,
-  isStoredTurnProviderCompactionRunning,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getStoredProviderSession,
-  getStoredTurnRequestEventForTurn,
   getThread,
   listStoredTurnStartedKeys,
   noopNotifier,
@@ -20,13 +18,13 @@ import {
   CLIENT_TURN_REQUEST_ID_SUFFIX_LENGTH,
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
-  isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
   systemErrorEventDataSchema,
   threadScope,
   turnRequestEventDataSchema,
   WORKSPACE_PROVISIONING_STEP_KEYS,
 } from "@bb/domain";
+import { THREAD_BUSY_ERROR_CODE } from "@bb/host-daemon-contract";
 import { randomBytes } from "node:crypto";
 import type {
   ClientTurnRequestId,
@@ -555,6 +553,7 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
     buildClientTurnRequestedEventArgs(args),
   );
   const supersededRetries = supersedeQueuedRetriesInTransaction(db, {
+    keepRetriesOfRequestsRefusedWith: THREAD_BUSY_ERROR_CODE,
     threadId: args.threadId,
     retryOfTurnRequestId: args.retryOf?.requestId ?? null,
   });
@@ -878,41 +877,6 @@ export function isActiveTurnMainRunIdle(
       threadId: thread.id,
       turnId: activeTurnId,
     })
-  );
-}
-
-export function isManualCompactionActive(
-  deps: ThreadEventReadDeps,
-  thread: Pick<Thread, "id" | "status">,
-): boolean {
-  if (thread.status !== "active") {
-    return false;
-  }
-
-  const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
-  if (
-    activeTurnId !== null &&
-    isStoredTurnProviderCompactionRunning(deps.db, {
-      threadId: thread.id,
-      turnId: activeTurnId,
-    })
-  ) {
-    return true;
-  }
-  const requestRow = activeTurnId
-    ? (getStoredTurnRequestEventForTurn(deps.db, {
-        threadId: thread.id,
-        turnId: activeTurnId,
-      }) ?? getLastStoredTurnRequestEvent(deps.db, thread.id))
-    : getLastStoredTurnRequestEvent(deps.db, thread.id);
-  if (!requestRow) {
-    return false;
-  }
-
-  const request = parseStoredTurnRequestEvent(requestRow);
-  return (
-    request.target.kind === "new-turn" &&
-    isStandaloneBuiltinCompactCommand(request.input)
   );
 }
 

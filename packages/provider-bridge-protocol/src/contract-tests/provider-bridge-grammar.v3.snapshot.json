@@ -1,5 +1,5 @@
 {
-  "protocolVersion": 2,
+  "protocolVersion": 3,
   "deltaKinds": {
     "command.outputSnapshot": {
       "kind": "required",
@@ -50,6 +50,7 @@
       "approvalStatus": "optional",
       "item": "required",
       "presentation": "optional",
+      "attach": "optional",
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
@@ -84,6 +85,7 @@
       "key": "required",
       "channel": "required",
       "text": "optional",
+      "attach": "optional",
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
@@ -92,6 +94,7 @@
       "key": "required",
       "channel": "required",
       "text": "required",
+      "attach": "optional",
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
@@ -147,7 +150,6 @@
       "status": "required",
       "error": "optional",
       "providerCheckpointId": "optional",
-      "claimIfIdle": "optional",
       "providerTurnId": "optional"
     },
     "turn.diff": {
@@ -308,7 +310,9 @@
     "grammarVersions": "default",
     "steerMode": "default",
     "skills": "default",
-    "commands": "default"
+    "commands": "default",
+    "openWork": "default",
+    "sessionSettings": "optional"
   },
   "recoveryNotification": {
     "threadId": "optional",
@@ -330,6 +334,7 @@
     "thread/fork",
     "thread/goal/clear",
     "thread/name/set",
+    "thread/openWork",
     "thread/resume",
     "thread/start",
     "thread/stop",

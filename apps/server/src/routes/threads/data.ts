@@ -215,10 +215,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json({
       usage: readThreadContextWindowUsage(deps.db, {
-        compactionOfferEnabled: isCompactionOfferEnabled(
-          deps,
-          thread.providerId,
-        ),
+        compactionOfferEnabled: isCompactionOfferEnabled(deps, thread),
         threadId: thread.id,
       }),
     });
@@ -230,7 +227,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       readThreadHeadState(
         deps.db,
         thread,
-        resolveThreadHeadStateOptions(deps, thread.providerId),
+        resolveThreadHeadStateOptions(deps, thread),
       ),
     );
   });

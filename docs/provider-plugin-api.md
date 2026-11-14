@@ -249,12 +249,31 @@ semantics in [provider-bridge-protocol.md](provider-bridge-protocol.md),
   approvalEnforcedBy: "runtime" | "provider",
   steerMode: "inject" | "queue", // declared and recorded; nothing acts on it yet
   skills: { configure: boolean }, // the bridge handles skills/configure
+  commands: { list: boolean }, // the bridge handles commands/list
+  openWork: { list: boolean }, // the bridge handles thread/openWork
+  sessionSettings: {
+    // how each setting change applies: "live" | "resume" | "fresh",
+    // optionally per value; see provider-bridge-protocol.md, "Settings"
+  },
 }
 ```
 
+A protocol 3 bridge must send `sessionSettings` (`{}` keeps the defaults);
+it is how the bridge says it implements the session contract. A bridge that
+answers protocol 3 without it, or answers protocol 2, runs on the runtime's
+protocol 2 compatibility path ([provider-bridge-protocol.md](provider-bridge-protocol.md),
+"Protocol 2 compatibility").
+
+`supportsManualCompaction` and the `model/list` catalog are display hints:
+the live session decides. A bridge answers a `/compact` its live provider
+cannot run with `{ admission: "rejected" }`, and a model's context window
+comes from what the session reports, not from a list of model names.
+
 **Runtime → bridge**: `initialize`, `model/list`,
 `thread/{start,resume,fork,stop,discard,archive,unarchive,name/set,goal/clear}`,
-`turn/{start,steer}`, `skills/configure {roots}` (only when the handshake
+`turn/{start,steer}` (answered `{ admission: "accepted" | "busy" |
+"rejected" }`), `thread/openWork` (only when the handshake declares
+`openWork.list`), `skills/configure {roots}` (only when the handshake
 declares `skills.configure`),
 `provider/{health,usage,installation/status,installation/run}`.
 
@@ -264,6 +283,12 @@ Execution options ride every command and carry no provider-named field:
 { model, serviceTier?, reasoningLevel, promptMode?, sessionOptions?,
   instructions, providerOptions: JsonValue } & PermissionPolicy
 ```
+
+They are the record the session runs on. The runtime decides when a changed
+setting applies (live on the next `turn/start`, listed in its `apply`; by
+releasing and resuming the session; or not until the session next starts),
+from the bridge's `sessionSettings` declaration. A bridge applies what `apply`
+lists and never compares settings itself.
 
 `sessionOptions` carries the user's pending choices among the options the
 bridge published as `bb/session-options`

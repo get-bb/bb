@@ -93,9 +93,6 @@ export function acpProviderDeclaration(
       ...ACP_BASE_CAPABILITIES,
       fork: agent.fork ?? DEFAULT_FORK,
       permissionModes: [...ACP_BASE_CAPABILITIES.permissionModes],
-      ...(agent.supportsManualCompaction === true
-        ? { supportsManualCompaction: true }
-        : {}),
       reasoningLevels:
         agent.reasoningLevels === undefined
           ? [...ACP_BASE_CAPABILITIES.reasoningLevels]

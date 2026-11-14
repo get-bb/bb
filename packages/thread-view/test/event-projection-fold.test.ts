@@ -191,8 +191,17 @@ describe("event projection fold", () => {
       events,
       options,
     });
-    const [nextTurn] = fromRows([event.turnStarted({ turnId: "turn-2" })]);
+    const [nextTurn, busyRetriesExhausted] = fromRows([
+      event.turnStarted({ turnId: "turn-2" }),
+      event.systemError({
+        code: "provider_busy",
+        message: "bb stopped re-sending this message.",
+      }),
+    ]);
     expect(resumeEventProjectionFold(fold, [nextTurn!])).toBe(false);
+    expect(resumeEventProjectionFold(fold, [busyRetriesExhausted!])).toBe(
+      false,
+    );
     expect(resumeEventProjectionFold(fold, [events[0]!])).toBe(false);
     expect(fold.events).toHaveLength(2);
   });

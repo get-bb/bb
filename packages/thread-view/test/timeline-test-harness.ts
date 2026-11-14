@@ -93,6 +93,7 @@ type ClientTurnRequestedArgs = EventFactoryRowOptions & {
   inputGroups?: PromptInput[][];
   requestId?: ClientTurnRequestId;
   requestMethod?: "thread/start" | "turn/start";
+  retryOf?: { attempt: number; requestId: ClientTurnRequestId };
   senderThreadId?: string | null;
   source?: "spawn" | "tell";
   systemMessageKind?: SystemMessageKind;
@@ -695,6 +696,12 @@ export function createTimelineEventFactory(
         data: {
           direction: "outbound",
           requestId: args.requestId ?? clientRequestIdForSequence(base.seq),
+          ...(args.retryOf !== undefined
+            ? {
+                retryOfRequestId: args.retryOf.requestId,
+                retryAttempt: args.retryOf.attempt,
+              }
+            : {}),
           source: args.source ?? "tell",
           initiator,
           senderThreadId,

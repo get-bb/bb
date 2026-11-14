@@ -7,6 +7,11 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 import { bridgeExecutionOptionsSchema } from "./execution-options.js";
+import {
+  EMPTY_SESSION_SETTINGS_APPLY,
+  sessionSettingsApplySchema,
+  sessionSettingsDeclarationSchema,
+} from "./session-contract.js";
 
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
@@ -25,6 +30,7 @@ export const BRIDGE_REQUEST_METHODS = {
   threadArchive: "thread/archive",
   threadUnarchive: "thread/unarchive",
   threadGoalClear: "thread/goal/clear",
+  threadOpenWork: "thread/openWork",
   turnStart: "turn/start",
   turnSteer: "turn/steer",
   skillsConfigure: "skills/configure",
@@ -113,7 +119,13 @@ const turnInputFields = {
   options: bridgeExecutionOptionsSchema,
 };
 
-export const turnStartParamsSchema = z.object(turnInputFields).passthrough();
+export const turnStartParamsSchema = z
+  .object({
+    ...turnInputFields,
+    apply: sessionSettingsApplySchema.default(EMPTY_SESSION_SETTINGS_APPLY),
+    dynamicTools: z.array(dynamicToolSchema).optional(),
+  })
+  .passthrough();
 
 export const turnSteerParamsSchema = z
   .object({
@@ -149,5 +161,6 @@ export const threadIdentityResultSchema = z
   .object({
     providerThreadId: z.string().min(1),
     sessionRestorable: z.boolean().optional(),
+    sessionSettings: sessionSettingsDeclarationSchema.optional(),
   })
   .passthrough();

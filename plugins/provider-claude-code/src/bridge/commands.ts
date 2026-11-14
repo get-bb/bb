@@ -10,6 +10,7 @@ import {
   threadResumeParamsSchema as canonicalThreadResumeParamsSchema,
   threadStartParamsSchema as canonicalThreadStartParamsSchema,
   threadStopParamsSchema as canonicalThreadStopParamsSchema,
+  threadOpenWorkParamsSchema,
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
@@ -60,9 +61,9 @@ export const claudeThreadStartParamsSchema = z.object({
   artifactsEnabled: z.boolean(),
   sandboxEnabled: z.boolean(),
   fullAccessApprovalsEnabled: z.boolean(),
-  commandDescriptionsEnabled: z.boolean().optional(),
-  memoryEnabled: z.boolean().optional(),
-  providerSubagentsEnabled: z.boolean().optional(),
+  commandDescriptionsEnabled: z.boolean(),
+  memoryEnabled: z.boolean(),
+  providerSubagentsEnabled: z.boolean(),
   instructionMode: bridgeInstructionModeSchema,
   dynamicTools: z.array(dynamicToolSchema).optional(),
 });
@@ -86,17 +87,16 @@ export const claudeTurnStartParamsSchema = z.object({
   input: z.array(z.unknown()),
   model: z.string().optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
-  serviceTier: z.enum(["default", "fast"]).optional(),
-  workflowsEnabled: z.boolean().optional(),
-  chromeEnabled: z.boolean().optional(),
-  disable1MContext: z.boolean().optional(),
-  artifactsEnabled: z.boolean().optional(),
-  sandboxEnabled: z.boolean().optional(),
-  fullAccessApprovalsEnabled: z.boolean().optional(),
-  commandDescriptionsEnabled: z.boolean().optional(),
-  memoryEnabled: z.boolean().optional(),
-  providerSubagentsEnabled: z.boolean().optional(),
-  config: z.record(z.string(), z.unknown()).optional(),
+  serviceTier: z.enum(["default", "fast"]),
+  workflowsEnabled: z.boolean(),
+  chromeEnabled: z.boolean(),
+  disable1MContext: z.boolean(),
+  artifactsEnabled: z.boolean(),
+  sandboxEnabled: z.boolean(),
+  fullAccessApprovalsEnabled: z.boolean(),
+  commandDescriptionsEnabled: z.boolean(),
+  memoryEnabled: z.boolean(),
+  providerSubagentsEnabled: z.boolean(),
   permissionMode: claudePermissionModeSchema,
   permissionScope: bridgePermissionScopeSchema,
   additionalWorkspaceWriteRoots: z.array(z.string()),
@@ -104,9 +104,9 @@ export const claudeTurnStartParamsSchema = z.object({
   claudeCodePermissionMode: z.literal("plan").optional(),
 });
 
-export const claudeTurnSteerParamsSchema = claudeTurnStartParamsSchema
-  .omit({ config: true })
-  .extend({ expectedTurnId: z.string() });
+export const claudeTurnSteerParamsSchema = claudeTurnStartParamsSchema.extend(
+  { expectedTurnId: z.string() },
+);
 
 const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -160,6 +160,10 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/stop"),
     params: canonicalThreadStopParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/openWork"),
+    params: threadOpenWorkParamsSchema,
   }),
   z.object({
     method: z.literal("thread/discard"),

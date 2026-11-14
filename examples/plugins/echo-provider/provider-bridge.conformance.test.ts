@@ -50,6 +50,7 @@ it("passes the canonical protocol suite", async () => {
     "rpc/non-json-ignored": "pass",
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
+    "handshake/session-contract": "pass",
     "session/start-identity": "pass",
     "session/start-identity-announced": "pass",
     "turn/lifecycle": "pass",
@@ -62,6 +63,8 @@ it("passes the canonical protocol suite", async () => {
     "commands/list-declared": "pass",
     "presentation/icon-namespaced-declared": "pass",
     "turn/settles-without-activity": "pass",
+    "turn/admission-answered": "pass",
+    "openWork/list-declared": "pass",
   });
   expect(report.passed).toBe(true);
 }, 30_000);

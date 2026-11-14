@@ -12,6 +12,7 @@ import {
   skillsConfigureParamsSchema,
   threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadForkParamsSchema as canonicalThreadForkParamsSchema,
+  threadOpenWorkParamsSchema,
   threadResumeParamsSchema as canonicalThreadResumeParamsSchema,
   threadStartParamsSchema as canonicalThreadStartParamsSchema,
   threadStopParamsSchema as canonicalThreadStopParamsSchema,
@@ -20,8 +21,6 @@ import {
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import { acpSessionUpdateSchema, acpStopReasonSchema } from "./wire.js";
-
-export const ACP_DEFAULT_MODEL_ID = "acp-default";
 
 export type AcpBridgeReasoningCli = z.infer<typeof acpBridgeReasoningCliSchema>;
 
@@ -89,6 +88,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/discard"),
     params: canonicalThreadDiscardParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/openWork"),
+    params: threadOpenWorkParamsSchema,
   }),
   z.object({
     method: z.literal("skills/configure"),

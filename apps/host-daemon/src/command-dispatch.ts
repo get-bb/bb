@@ -419,8 +419,8 @@ const commandHandlers: CommandHandlerMap = {
     ),
   "turn.submit": (command, options) =>
     withRetainedThreadEnvironment(command, options, async () => {
-      const entry = await ensureThreadRuntime(command, options);
-      return submitTurn(command, entry, options);
+      const target = await ensureThreadRuntime(command, options);
+      return submitTurn(command, target, options);
     }),
   "thread.stop": stopThreadRuntime,
   "thread.storage.delete": async (command, options) => {
@@ -429,7 +429,7 @@ const commandHandlers: CommandHandlerMap = {
     return result;
   },
   "thread.goal.clear": async (command, options) => {
-    const entry = await ensureThreadRuntime(command, options);
+    const { entry } = await ensureThreadRuntime(command, options);
     const result = await entry.runtime.clearThreadGoal({
       threadId: command.threadId,
     });

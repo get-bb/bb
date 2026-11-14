@@ -90,8 +90,15 @@
  * - FAKE_ACP_SESSION_BUSY_PROMPTS=<n>
  *                            → reject the first n prompts as session_busy
  *                              (omp's typed -32003 rejection)
+ * - FAKE_ACP_BUSY_DURING_OWN_WORK=1
+ *                            → reject prompts as session_busy while work the
+ *                              agent started on its own is still running
  * - FAKE_ACP_DELETE_SESSION=1
  *                            → advertise and serve session/delete
+ * - FAKE_ACP_NO_AGENT_INFO=1  → leave agentInfo out of the initialize result
+ * - FAKE_ACP_COMPACT_COMMAND=1
+ *                            → advertise a "compact" slash command just
+ *                              before answering session/new, load or resume
  * - FAKE_ACP_MODEL_LIST_CWD_LOG
  *                            → write the `--list-models` working directory
  * - FAKE_ACP_SESSION_DELETE_LOG
@@ -101,8 +108,16 @@
  * - "then-unprompted-stream"     → message chunks and a finished tool call
  * - "then-unprompted-permission" → a permission request, then its outcome
  * - "then-unprompted-open-tool"  → a tool call that stays in progress
+ * - "then-unprompted-reported"   → state_update running, a message chunk,
+ *                                  then state_update idle
+ * - "then-unprompted-running"    → state_update running and a message chunk,
+ *                                  never idle
  * - "hang-with-open-command"     → start a command, then hang until cancelled
  *                                  without ever closing it (Cursor's shape)
+ * - "hang"                       → send a thought chunk, then hang until
+ *                                  cancelled
+ * - "hang-silently"              → hang until cancelled without sending
+ *                                  anything
  * - "stop-reason:<reason>"       → end the turn with that stop reason
  * - "advertise-commands"         → advertise two slash commands, twice
  * - "ask-form"                   → ask a two-field form question
@@ -164,9 +179,12 @@ const updatesWithSessionResponse =
   process.env.FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE === "1";
 const ignoreCancel = process.env.FAKE_ACP_IGNORE_CANCEL === "1";
 const resumeSession = process.env.FAKE_ACP_RESUME_SESSION === "1";
+const compactCommand = process.env.FAKE_ACP_COMPACT_COMMAND === "1";
 let sessionBusyPromptsLeft = Number(
   process.env.FAKE_ACP_SESSION_BUSY_PROMPTS ?? "0",
 );
+const busyDuringOwnWork = process.env.FAKE_ACP_BUSY_DURING_OWN_WORK === "1";
+let ownWorkRunning = false;
 const UNPROMPTED_DELAY_MS = 150;
 // `--list-models` is the agent's own model-list mode: the bridge derives its
 // list command from the launch spec's agent binary plus `modelCli.listArgs`,
@@ -264,6 +282,18 @@ function notifyUpdate(update, targetSessionId = activeSessionId) {
     jsonrpc: "2.0",
     method: "session/update",
     params: { sessionId: targetSessionId, update },
+  });
+}
+
+function advertiseCompactCommand() {
+  if (!compactCommand) {
+    return;
+  }
+  notifyUpdate({
+    sessionUpdate: "available_commands_update",
+    availableCommands: [
+      { name: "compact", description: "Compact the conversation" },
+    ],
   });
 }
 
@@ -551,8 +581,8 @@ async function handlePrompt(message) {
     );
   }
 
-  if (sessionBusyPromptsLeft > 0) {
-    sessionBusyPromptsLeft -= 1;
+  if (sessionBusyPromptsLeft > 0 || (busyDuringOwnWork && ownWorkRunning)) {
+    sessionBusyPromptsLeft = Math.max(0, sessionBusyPromptsLeft - 1);
     activePromptId = null;
     send({
       jsonrpc: "2.0",
@@ -668,7 +698,13 @@ async function handlePrompt(message) {
       wrote = true;
     } catch {}
     notifyUpdate(
-      messageChunk(JSON.stringify({ wrote, args: process.argv.slice(2) })),
+      messageChunk(
+        JSON.stringify({
+          wrote,
+          args: process.argv.slice(2),
+          opencodePermission: process.env.OPENCODE_PERMISSION ?? null,
+        }),
+      ),
     );
     if (text.includes("hold")) return;
   } else if (text.includes("write-file")) {
@@ -786,9 +822,28 @@ async function handlePrompt(message) {
       );
     }
     notifyUpdate(messageChunk(`elicitation:${JSON.stringify(result)}`));
+  } else if (text.includes("then-unprompted-reported")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyUpdate({ sessionUpdate: "state_update", state: "running" });
+      notifyUpdate(messageChunk("reported work"));
+      notifyUpdate({
+        sessionUpdate: "state_update",
+        state: "idle",
+        stopReason: "end_turn",
+      });
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("then-unprompted-running")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      ownWorkRunning = true;
+      notifyUpdate({ sessionUpdate: "state_update", state: "running" });
+      notifyUpdate(messageChunk("reported work"));
+    }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("then-unprompted-open-tool")) {
     notifyUpdate(messageChunk("prompted reply"));
     setTimeout(() => {
+      ownWorkRunning = true;
       notifyUpdate({
         sessionUpdate: "tool_call",
         toolCallId: "unprompted-open-tool",
@@ -809,8 +864,13 @@ async function handlePrompt(message) {
       rawInput: { command: "sleep 40" },
     });
     return;
+  } else if (text.includes("hang-silently")) {
+    return;
   } else if (text.includes("hang")) {
-    // Stay pending until the client sends session/cancel.
+    notifyUpdate({
+      sessionUpdate: "agent_thought_chunk",
+      content: { type: "text", text: "working" },
+    });
     return;
   } else if (text.includes("die")) {
     process.exit(7);
@@ -907,6 +967,15 @@ async function handleMessage(message) {
         id: message.id,
         result: {
           protocolVersion: 1,
+          ...(process.env.FAKE_ACP_NO_AGENT_INFO === "1"
+            ? {}
+            : {
+                agentInfo: {
+                  name: "fake-acp",
+                  title: "Fake ACP Agent",
+                  version: "1.2.3",
+                },
+              }),
           agentCapabilities: {
             loadSession,
             promptCapabilities: { image: false },
@@ -991,6 +1060,7 @@ async function handleMessage(message) {
       }
       activeSessionId = sessionId;
       captureMcpServers(message);
+      advertiseCompactCommand();
       sendSessionResponse(message, {
         sessionId: activeSessionId,
         ...configState(),
@@ -1050,6 +1120,7 @@ async function handleMessage(message) {
           });
         } else {
           activeSessionId = message.params?.sessionId;
+          advertiseCompactCommand();
           send({ jsonrpc: "2.0", id: message.id, result: configState() });
         }
       } else {
@@ -1074,6 +1145,7 @@ async function handleMessage(message) {
       }
       captureMcpServers(message);
       activeSessionId = message.params?.sessionId;
+      advertiseCompactCommand();
       send({
         jsonrpc: "2.0",
         id: message.id,

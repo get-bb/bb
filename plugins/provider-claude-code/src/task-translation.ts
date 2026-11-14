@@ -12,6 +12,7 @@ import {
   backgroundTaskItemStatus,
   isBackgroundAgentTaskType,
   isSettledBackgroundTaskStatus,
+  type OpenWorkItem,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeTaskNotificationMessageSchema,
@@ -68,6 +69,22 @@ export function hasCompletionBlockingClaudeTasks(
     }
   }
   return false;
+}
+
+export function listOpenClaudeTasks(tasks: ClaudeTaskMap): OpenWorkItem[] {
+  return Array.from(tasks.values()).flatMap((task): OpenWorkItem[] =>
+    task.terminal || task.skipTranscript
+      ? []
+      : [
+          {
+            id: task.taskId,
+            kind: isBackgroundAgentTaskType(task.taskType)
+              ? "delegation"
+              : "backgroundTask",
+            description: task.description,
+          },
+        ],
+  );
 }
 
 function buildClaudeTaskItemKey(taskId: string, generation: number): string {

@@ -316,6 +316,7 @@ input.on("line", (line) => {
           providerThreadId: "turn-session",
           clientRequestId: "creq_abcdefghjk",
           input: [{ type: "text", text: "run something long", mentions: [] }],
+          apply: { settings: [], sessionOptions: [], providerOptions: [] },
           options,
         },
         2,

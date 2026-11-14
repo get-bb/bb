@@ -86,9 +86,18 @@ and paths outside the workspace; BB shows those requests as approvals. In `full`
 all four are allowed. Changing a thread's permission mode restarts the OpenCode
 session with the new policy; the conversation is restored.
 
-OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
-does not expose compatible compaction. Check the actual agent's capabilities
-before attempting provider-specific recovery.
+ACP agents do not declare compaction up front. bb offers `/compact` for an ACP
+thread only once the thread's live session advertises a `compact` command (for
+example OpenCode and omp do; Cursor does not), so a thread whose session has not
+started yet shows no `/compact`. `bb thread compact` and `/compact` then send the
+agent its own `/compact` and show the run as a compaction. When the session
+lists no such command, bb rejects the request with a message saying so and
+nothing is sent. Check the agent's advertised commands (the thread's
+`bb/provider-commands` state) before attempting provider-specific recovery.
+
+When an ACP agent reports no model list, the model picker shows one entry named
+after the agent itself (from the agent's own `agentInfo`), and the agent keeps
+whatever model it is configured with.
 
 BB reuses the initial model's advertised reasoning choices and probes other
 models within a five-second budget, trying configured priority models first.
@@ -161,5 +170,5 @@ restart is needed.
 - `nativeSkillRoots` adds native skills to the composer: a `user` list resolved
   from the target host's home directory and a `project` list resolved from the
   workspace, each a relative path without dot segments.
-- `supportsManualCompaction` (default `false`) shows `/compact` only for agents
-  that accept an explicit compaction request.
+- `supportsManualCompaction` is retired and ignored: bb reads compaction support
+  from the live session's advertised commands.

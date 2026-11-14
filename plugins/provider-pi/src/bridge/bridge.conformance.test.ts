@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   experimental_formatConformanceReport as formatConformanceReport,
   experimental_runBridgeConformance as runBridgeConformance,
@@ -21,45 +21,54 @@ afterEach(async () => {
   await harness.teardown();
 });
 
-it("passes the canonical protocol suite against a scripted pi rpc child", async () => {
-  const report = await runBridgeConformance({
-    transport: { send: handleLine, takeMessages: harness.takeMessages },
-    providerId: "pi",
-    session: {
-      cwd: harness.workspaceDir,
-      promptInput: [{ type: "text", text: "say hello", mentions: [] }],
-      interruptiblePromptInput: [{ type: "text", text: "/hold", mentions: [] }],
-    },
-    timeoutMs: CONFORMANCE_WAIT_TIMEOUT_MS,
-  });
+it.each(["1", "0"])(
+  "passes the canonical protocol suite against a scripted pi rpc child (settlement=%s)",
+  async (settlement) => {
+    vi.stubEnv("FAKE_PI_SETTLEMENT", settlement);
+    const report = await runBridgeConformance({
+      transport: { send: handleLine, takeMessages: harness.takeMessages },
+      providerId: "pi",
+      session: {
+        cwd: harness.workspaceDir,
+        promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+        interruptiblePromptInput: [
+          { type: "text", text: "/hold", mentions: [] },
+        ],
+      },
+      timeoutMs: CONFORMANCE_WAIT_TIMEOUT_MS,
+    });
 
-  console.info(`pi bridge conformance:\n${formatConformanceReport(report)}`);
+    console.info(`pi bridge conformance:\n${formatConformanceReport(report)}`);
 
-  const statusById = Object.fromEntries(
-    report.results.map((result) => [result.id, result.status]),
-  );
-  expect(statusById).toMatchObject({
-    "rpc/unknown-method": "pass",
-    "rpc/invalid-params": "pass",
-    "rpc/non-json-ignored": "pass",
-    "rpc/response-not-request": "pass",
-    "handshake/initialize": "pass",
-    "session/start-identity": "pass",
-    "session/start-identity-announced": "pass",
-    "turn/lifecycle": "pass",
-    "events/schema-valid": "pass",
-    "item/opens-before-delta": "pass",
-    "stop/release-not-interrupted": "pass",
-    "session/resume-identity": "pass",
-    "session/resume-id-uniqueness": "pass",
-    "session/fork-identity": "pass",
-    "session/fork-identity-announced": "pass",
-    "session/threads-independent": "pass",
-    "stop/interrupt-settles-before-result": "pass",
-  });
-  expect(
-    report.results
-      .filter((result) => result.status !== "pass")
-      .map((r) => r.id),
-  ).toEqual([]);
-}, 60_000);
+    const statusById = Object.fromEntries(
+      report.results.map((result) => [result.id, result.status]),
+    );
+    expect(statusById).toMatchObject({
+      "rpc/unknown-method": "pass",
+      "rpc/invalid-params": "pass",
+      "rpc/non-json-ignored": "pass",
+      "rpc/response-not-request": "pass",
+      "handshake/initialize": "pass",
+      "session/start-identity": "pass",
+      "session/start-identity-announced": "pass",
+      "turn/lifecycle": "pass",
+      "events/schema-valid": "pass",
+      "item/opens-before-delta": "pass",
+      "stop/release-not-interrupted": "pass",
+      "session/resume-identity": "pass",
+      "session/resume-id-uniqueness": "pass",
+      "session/fork-identity": "pass",
+      "session/fork-identity-announced": "pass",
+      "session/threads-independent": "pass",
+      "stop/interrupt-settles-before-result": "pass",
+      "turn/admission-answered": "pass",
+      "openWork/list-declared": "pass",
+    });
+    expect(
+      report.results
+        .filter((result) => result.status !== "pass")
+        .map((r) => r.id),
+    ).toEqual([]);
+  },
+  60_000,
+);

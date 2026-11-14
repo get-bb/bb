@@ -10,22 +10,32 @@ import {
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   bridgeCapabilitiesSchema,
+  describeSessionContractMissing,
   errorNotificationSchema,
   initializeResultSchema,
   interactionRequestParamsSchema,
   negotiateGrammarVersion,
+  PROVIDER_BRIDGE_PROTOCOL_V2,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  protocolV2TurnInputResultSchema,
   providerRecoveryNotificationSchema,
+  resolveBridgeProtocol,
   sessionReplacedNotificationSchema,
   threadDeltaNotificationParamsSchema,
   threadIdentityNotificationSchema,
+  turnInputResultSchema,
   type BridgeCapabilities,
+  type BridgeProtocolVersion,
+  type SessionSettingsDeclaration,
+  type TurnInputResult,
 } from "@bb/provider-bridge-protocol";
 import {
   ASSEMBLER_GRAMMAR_VERSIONS,
   createDeltaAssembler,
+  parseProtocolV2ThreadDeltaParams,
 } from "@bb/provider-bridge-protocol/assembler";
+import type { z } from "zod";
 import type {
   AdapterCommand,
   ProviderExecutionContext,
@@ -58,6 +68,10 @@ export interface BridgeProtocolAdapter {
   id: string;
   capabilities: BridgeEnforcedCapabilities;
   readonly approvalEnforcedBy: "runtime" | "provider";
+  readonly protocolVersion: BridgeProtocolVersion;
+  readonly turnInputResultSchema: z.ZodType<TurnInputResult>;
+  readonly sessionSettings: SessionSettingsDeclaration;
+  readonly sessionRestore: boolean;
   process: { command: string; args: string[]; env?: Record<string, string> };
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
@@ -100,6 +114,7 @@ interface BridgeProtocolAdapterOptions {
   capabilities: BridgeAdapterCapabilities;
   process: { command: string; args: string[]; env?: Record<string, string> };
   staticProviderOptions?: Record<string, unknown>;
+  onNotice?: (message: string) => void;
 }
 
 function toBridgeWireOptions(
@@ -143,6 +158,8 @@ export function createBridgeProtocolAdapter(
   options: BridgeProtocolAdapterOptions,
 ): BridgeProtocolAdapter {
   let handshake: BridgeCapabilities = bridgeCapabilitiesSchema.parse({});
+  let protocolVersion: BridgeProtocolVersion = PROVIDER_BRIDGE_PROTOCOL_VERSION;
+  let sessionSettings: SessionSettingsDeclaration = {};
   const { fork: declaredFork, ...declaredCapabilities } = options.capabilities;
   const capabilities: BridgeEnforcedCapabilities = {
     ...declaredCapabilities,
@@ -204,6 +221,20 @@ export function createBridgeProtocolAdapter(
     capabilities,
     get approvalEnforcedBy() {
       return handshake.approvalEnforcedBy;
+    },
+    get protocolVersion() {
+      return protocolVersion;
+    },
+    get turnInputResultSchema() {
+      return protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2
+        ? protocolV2TurnInputResultSchema
+        : turnInputResultSchema;
+    },
+    get sessionSettings() {
+      return sessionSettings;
+    },
+    get sessionRestore() {
+      return handshake.sessionRestore;
     },
     process: options.process,
 
@@ -346,6 +377,14 @@ export function createBridgeProtocolAdapter(
                 command.options,
                 options.staticProviderOptions,
               ),
+              ...(protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2
+                ? {}
+                : {
+                    apply: command.apply,
+                    ...(command.dynamicTools !== undefined
+                      ? { dynamicTools: command.dynamicTools }
+                      : {}),
+                  }),
             },
           };
         case "turn/steer":
@@ -422,6 +461,18 @@ export function createBridgeProtocolAdapter(
               providerThreadId: command.providerThreadId,
             },
           });
+        case "thread/openWork":
+          if (!handshake.openWork.list) {
+            return { kind: "noop", reason: "openWork.list not advertised" };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.threadOpenWork,
+            params: {
+              threadId: command.threadId,
+              providerThreadId: command.providerThreadId,
+            },
+          };
         case "thread/goal/clear":
           return gate("threadGoalClear", {
             kind: "request",
@@ -458,11 +509,10 @@ export function createBridgeProtocolAdapter(
                   )}). The bridge and this runtime cannot negotiate a handshake; update or fix the "${options.id}" provider plugin.`,
               );
             }
-            if (
-              parsed.data.protocolVersion !== PROVIDER_BRIDGE_PROTOCOL_VERSION
-            ) {
+            const protocol = resolveBridgeProtocol(parsed.data);
+            if (protocol.version === null) {
               throw new Error(
-                `Provider bridge "${options.id}" speaks Provider Bridge Protocol version ${parsed.data.protocolVersion}, but this runtime requires version ${PROVIDER_BRIDGE_PROTOCOL_VERSION}. Update the "${options.id}" provider plugin to a build published for protocol version ${PROVIDER_BRIDGE_PROTOCOL_VERSION}.`,
+                `Provider bridge "${options.id}" speaks Provider Bridge Protocol version ${protocol.claimedVersion}, but this runtime speaks version ${PROVIDER_BRIDGE_PROTOCOL_VERSION} (and ${PROVIDER_BRIDGE_PROTOCOL_V2} for compatibility). Update the "${options.id}" provider plugin to a build published for protocol version ${PROVIDER_BRIDGE_PROTOCOL_VERSION}.`,
               );
             }
             const grammarVersion = negotiateGrammarVersion(
@@ -477,7 +527,20 @@ export function createBridgeProtocolAdapter(
                 `Provider bridge "${options.id}" speaks thread/delta grammar versions ${bridgeMin}-${bridgeMax}, but this runtime assembles versions ${runtimeMin}-${runtimeMax}. Update the "${options.id}" provider plugin or bb so the two ranges overlap.`,
               );
             }
-            handshake = parsed.data.capabilities;
+            if (protocol.version === PROVIDER_BRIDGE_PROTOCOL_V2) {
+              if (protocol.claimedVersion !== PROVIDER_BRIDGE_PROTOCOL_V2) {
+                options.onNotice?.(describeSessionContractMissing(options.id));
+              }
+              handshake = {
+                ...parsed.data.capabilities,
+                openWork: { list: false },
+              };
+              sessionSettings = {};
+            } else {
+              handshake = parsed.data.capabilities;
+              sessionSettings = protocol.sessionSettings;
+            }
+            protocolVersion = protocol.version;
           },
         },
       ];
@@ -492,6 +555,10 @@ export function createBridgeProtocolAdapter(
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
       const method = event.method;
       if (method === THREAD_DELTA_NOTIFICATION_METHOD) {
+        if (protocolVersion === PROVIDER_BRIDGE_PROTOCOL_V2) {
+          const batch = parseProtocolV2ThreadDeltaParams(event.params);
+          return batch === null ? [] : deltaAssembler.assemble(batch);
+        }
         const parsed = threadDeltaNotificationParamsSchema.safeParse(
           event.params,
         );

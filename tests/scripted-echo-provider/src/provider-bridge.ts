@@ -26,6 +26,9 @@ import {
   threadUnarchiveParamsSchema,
   turnStartParamsSchema,
   turnSteerParamsSchema,
+  openWorkItemSchema,
+  sessionSettingsDeclarationSchema,
+  threadOpenWorkParamsSchema,
   experimental_defineProviderBridge,
   providerRecoveryKindSchema,
   runBridgeRequest,
@@ -48,12 +51,14 @@ const scriptedMethodSchema = z.enum([
   "thread/unarchive",
   "thread/name/set",
   "thread/goal/clear",
+  "thread/openWork",
   "skills/configure",
 ]);
 export const scriptedEchoOptionsSchema = z
   .object({
     startDelayMs: z.number().int().nonnegative().optional(),
     turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
+    turnStartBusyMessage: z.string().min(1).optional(),
     turnStartErrorAfterMs: z.number().int().nonnegative().optional(),
     steerResponseDelayMs: z.number().int().nonnegative().optional(),
     steerFindsNewTurn: z.boolean().optional(),
@@ -103,6 +108,12 @@ export const scriptedEchoOptionsSchema = z
     uniqueProviderThreadIds: z.boolean().optional(),
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
+    sessionSettings: sessionSettingsDeclarationSchema.optional(),
+    openWork: z.array(openWorkItemSchema).optional(),
+    legacyBridge: z
+      .object({ protocolVersion: z.union([z.literal(2), z.literal(3)]) })
+      .strict()
+      .optional(),
   })
   .strict();
 export type ScriptedEchoOptions = z.infer<typeof scriptedEchoOptionsSchema>;
@@ -206,6 +217,36 @@ function emitDeltas(threadId: string, deltas: ThreadDelta[]): void {
   notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas });
 }
 
+function emitZeroWorkTurn(
+  threadId: string,
+  clientRequestId: ClientTurnRequestId | undefined,
+): void {
+  const accepted: ThreadDelta[] =
+    clientRequestId === undefined
+      ? []
+      : [{ kind: "input.accepted", clientRequestId }];
+  if (processOptions.legacyBridge !== undefined) {
+    const claimIfIdleBoundary: ThreadDelta & { claimIfIdle: true } = {
+      kind: "turn.boundary",
+      status: "completed",
+      claimIfIdle: true,
+    };
+    emitDeltas(threadId, [...accepted, claimIfIdleBoundary]);
+    return;
+  }
+  emitDeltas(threadId, [
+    ...accepted,
+    { kind: "turn.open" },
+    { kind: "turn.boundary", status: "completed" },
+  ]);
+}
+
+function turnInputAccepted(): Record<string, string> {
+  return processOptions.legacyBridge === undefined
+    ? { admission: "accepted" }
+    : {};
+}
+
 function emitRecoveryHint(
   threadId: string,
   kind: ProviderRecoveryHint["kind"] | null,
@@ -256,6 +297,7 @@ interface TurnPlan {
   recoverNowKind: ProviderRecoveryHint["kind"] | null;
   backgroundTask: boolean;
   settleBackgroundTasks: boolean;
+  zeroWork: boolean;
 }
 
 function promptText(input: readonly PromptInput[]): string {
@@ -298,6 +340,7 @@ function parseTurnPlan(inputText: string): TurnPlan {
     recoverNowKind: recoverNowKind.success ? recoverNowKind.data : null,
     backgroundTask: /(?:^|\s)bg_task(?:\s|$)/u.test(inputText),
     settleBackgroundTasks: /(?:^|\s)bg_task_done(?:\s|$)/u.test(inputText),
+    zeroWork: /(?:^|\s)zero_work(?:\s|$)/u.test(inputText),
     approvalKind,
     delayMs: delayMatch?.[1] === undefined ? 0 : Number(delayMatch[1]),
     questionRequested: questionMatch !== null,
@@ -565,6 +608,10 @@ function beginTurn(args: {
       },
     ]);
     emitRecoveryHint(session.threadId, plan.recoverKind);
+    return;
+  }
+  if (plan.zeroWork) {
+    emitZeroWorkTurn(session.threadId, args.clientRequestId);
     return;
   }
   session.turnCount += 1;
@@ -897,20 +944,31 @@ const handlers: Record<string, RequestHandler> = {
       invalidParams(id, BRIDGE_REQUEST_METHODS.initialize, parsed.error.issues);
       return;
     }
-    io.sendResult(id, {
-      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      capabilities: {
-        sessionRestore: true,
-        threadArchive: true,
-        threadRename: true,
-        threadGoalClear: true,
-        fork: "checkpoint",
-        approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
-        grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
-        steerMode: "inject",
-        skills: { configure: true },
-      },
-    });
+    const capabilities = {
+      sessionRestore: true,
+      threadArchive: true,
+      threadRename: true,
+      threadGoalClear: true,
+      fork: "checkpoint",
+      approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
+      grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
+      steerMode: "inject",
+      skills: { configure: true },
+    };
+    const legacy = processOptions.legacyBridge;
+    io.sendResult(
+      id,
+      legacy === undefined
+        ? {
+            protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+            capabilities: {
+              ...capabilities,
+              openWork: { list: true },
+              sessionSettings: processOptions.sessionSettings ?? {},
+            },
+          }
+        : { protocolVersion: legacy.protocolVersion, capabilities },
+    );
   },
 
   [BRIDGE_REQUEST_METHODS.modelList]: (id, params) => {
@@ -1090,9 +1148,10 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
-    const responseDelayMs = session.options.turnStartResponseDelayMs;
-    if (responseDelayMs === undefined) {
-      io.sendResult(id, {});
+    const busyMessage = session.options.turnStartBusyMessage;
+    if (busyMessage !== undefined) {
+      io.sendResult(id, { admission: "busy", message: busyMessage });
+      return;
     }
     if (session.options.swallowTurnStart !== true) {
       beginTurn({
@@ -1101,8 +1160,11 @@ const handlers: Record<string, RequestHandler> = {
         clientRequestId: parsed.data.clientRequestId,
       });
     }
-    if (responseDelayMs !== undefined) {
-      setTimeout(() => io.sendResult(id, {}), responseDelayMs);
+    const responseDelayMs = session.options.turnStartResponseDelayMs;
+    if (responseDelayMs === undefined) {
+      io.sendResult(id, turnInputAccepted());
+    } else {
+      setTimeout(() => io.sendResult(id, turnInputAccepted()), responseDelayMs);
     }
   },
 
@@ -1159,7 +1221,7 @@ const handlers: Record<string, RequestHandler> = {
           providerTurnId,
         },
       ]);
-      io.sendResult(id, {});
+      io.sendResult(id, turnInputAccepted());
     };
     if (options.steerResponseDelayMs === undefined) {
       acceptSteer();
@@ -1191,6 +1253,21 @@ const handlers: Record<string, RequestHandler> = {
     sessions.delete(parsed.data.threadId);
     openBackgroundTasks.delete(parsed.data.threadId);
     io.sendResult(id, {});
+  },
+
+  [BRIDGE_REQUEST_METHODS.threadOpenWork]: (id, params) => {
+    const parsed = threadOpenWorkParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.threadOpenWork,
+        parsed.error.issues,
+      );
+      return;
+    }
+    const session = sessions.get(parsed.data.threadId);
+    const options = session?.options ?? processOptions;
+    io.sendResult(id, { items: options.openWork ?? [] });
   },
 
   [BRIDGE_REQUEST_METHODS.threadDiscard]: (id, params) => {

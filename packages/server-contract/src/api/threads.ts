@@ -301,7 +301,8 @@ const sendMessageRequestFieldsSchema = z.object({
    * Compact the thread's context with the provider's manual compaction, then
    * deliver this message once compaction finishes; the response reports
    * `delivery: "queued"`. Needs an idle or errored thread whose provider
-   * supports manual compaction, and cannot be combined with `sendAt` or
+   * offers manual compaction (declared, or a `compact` command in the
+   * thread's live commands), and cannot be combined with `sendAt` or
    * `mode: "steer"`. Absent ⇒ send without compacting.
    */
   compactFirst: z.literal(true).optional(),

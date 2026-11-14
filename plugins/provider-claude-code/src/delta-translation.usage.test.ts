@@ -80,10 +80,7 @@ describe("claude usage and fixture translation (delta path)", () => {
     const harness = createClaudeDeltaHarness();
     const threadId = "bb-thread-1";
 
-    harness.translator.setClaudeModelContextWindowHint(
-      threadId,
-      "claude-opus-4-7[1m]",
-    );
+    harness.translator.setClaudeReportedContextWindow(threadId, 1_000_000);
     const events = harness.translate(
       {
         type: "assistant",
@@ -121,10 +118,7 @@ describe("claude usage and fixture translation (delta path)", () => {
     const harness = createClaudeDeltaHarness();
     const threadId = "bb-thread-1";
 
-    harness.translator.setClaudeModelContextWindowHint(
-      threadId,
-      "claude-opus-4-7[1m]",
-    );
+    harness.translator.setClaudeReportedContextWindow(threadId, 1_000_000);
     harness.translate(
       {
         type: "assistant",
@@ -445,13 +439,10 @@ describe("claude usage and fixture translation (delta path)", () => {
     );
   });
 
-  it("falls back to a model-based context window when Claude omits modelUsage.contextWindow", () => {
+  it("keeps the live-reported context window when Claude omits modelUsage.contextWindow", () => {
     const harness = createClaudeDeltaHarness();
 
-    harness.translator.setClaudeModelContextWindowHint(
-      "bb-thread-1",
-      "claude-opus-4-7[1m]",
-    );
+    harness.translator.setClaudeReportedContextWindow("bb-thread-1", 1_000_000);
     harness.translate(loadFixture("assistant-text.json"), {
       threadId: "bb-thread-1",
     });

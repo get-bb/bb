@@ -639,11 +639,9 @@ describe("CommandRouter", () => {
       requestId: "turn-other-thread",
       router,
     });
-    await flushAsyncWork();
-
-    expect(harness.runtimeState.ranTurnText).toBe("other thread");
     const turnResponse = await turnTask;
     expect(turnResponse.ok).toBe(true);
+    expect(harness.runtimeState.ranTurnText).toBe("other thread");
 
     releaseStop.resolve();
     const stopResponse = await stopTask;

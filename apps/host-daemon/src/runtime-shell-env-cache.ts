@@ -1,7 +1,7 @@
 import { createAsyncTtlMemo } from "@bb/async-cache";
-import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import type { AgentRuntimeShellEnvironment } from "@bb/agent-runtime";
 
-export type RuntimeShellEnv = NonNullable<AgentRuntimeOptions["shellEnv"]>;
+export type RuntimeShellEnv = AgentRuntimeShellEnvironment;
 
 export interface RuntimeShellEnvCacheOptions {
   applyShellEnv: (shellEnv: RuntimeShellEnv) => Promise<void>;

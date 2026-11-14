@@ -88,8 +88,10 @@ The bridge tests drive `src/bridge/fake-pi-rpc.mjs`, a scripted
 pi's framing (LF-delimited JSON, raw U+2028 and U+2029). Its prompts script a
 turn: `/tool <name> <json>` runs an extension tool, `/hold` keeps the run open
 until `abort` or a steer, `/fail-run` ends it with an assistant error, `/ui
-<json>` opens an extension dialog, `/reload` reloads the extension the way
-pi's `ctx.reload()` does before answering, and `/die` exits mid-run. `FAKE_PI_*`
+<json>` opens an extension dialog, `/handled` answers with the `handled`
+disposition pi gives an extension command that runs no agent turn, `/reload`
+reloads the extension the way pi's `ctx.reload()` does before answering, and
+`/die` exits mid-run. `FAKE_PI_*`
 environment variables select the rest: the reported version (`crash` for a
 broken install), logs of spawns, commands, prompts, and tools, and the faults
 the lifecycle and steering tests inject.

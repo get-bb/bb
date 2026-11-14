@@ -183,7 +183,7 @@ describe("ACP registry", () => {
         command: "npx",
         args: ["-y", "@augmentcode/auggie@0.30.0", "--acp"],
         env: { AUGMENT_API_URL: "https://internal.test" },
-        supportsManualCompaction: true,
+        providerUsage: true,
       },
       JSON.parse(added)[0],
     ]);
@@ -200,7 +200,7 @@ describe("ACP registry", () => {
         AUGMENT_API_URL: "https://internal.test",
         AUGMENT_DISABLE_AUTO_UPDATE: "1",
       },
-      supportsManualCompaction: true,
+      providerUsage: true,
     });
 
     expect(JSON.parse(settingWithoutAgent(handEdited, "auggie"))).toEqual([

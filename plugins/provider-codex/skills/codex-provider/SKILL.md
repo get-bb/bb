@@ -10,9 +10,18 @@ and compaction through the corresponding core `bb thread` commands.
 Stopping a running Codex thread pauses its active Goal, as Codex's own client
 does, so later messages and clearing do not restart it. Send `/goal resume`
 to make a paused, blocked, or usage-limited Goal active again; Codex starts
-working on it in that message's turn. `/goal pause` and `/goal clear` pause or
-remove the Goal without starting a turn, and any other `/goal` text goes to
-Codex as a normal prompt. `bb thread clear-goal <id>` also removes the
+working on it in that message's turn, and the message finishes at once if
+Codex starts no turn. `/goal pause` and `/goal clear` pause or remove the Goal without
+starting a turn, and any other `/goal` text goes to Codex as a normal prompt.
+An active Goal counts as open work, so bb does not restart the session for a
+settings change while Codex may still start turns for it.
+
+Model, reasoning level, service tier and permissions change on the next
+turn without a restart. Memory, subagents, the environment and skills need a
+session restart, which bb makes at the next turn once no background terminal,
+sub-agent or Goal is open (until then the thread notes what is waiting).
+Instructions and plugin tools apply only when the session next starts, because
+Codex ignores them on resume. `bb thread clear-goal <id>` also removes the
 thread's Goal, whatever its status, and waits for provider confirmation.
 Inspect the thread before recovery actions.
 

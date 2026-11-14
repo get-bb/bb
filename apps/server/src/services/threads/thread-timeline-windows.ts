@@ -146,7 +146,7 @@ export function createThreadTimelineWindows(
     );
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const surfaceOptions = {
-      ...resolveThreadHeadStateOptions(deps, thread.providerId),
+      ...resolveThreadHeadStateOptions(deps, thread),
       completedTurnDisplay,
       deferContent: request.deferContent,
       includeClearedContextHistory,

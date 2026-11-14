@@ -1,9 +1,16 @@
 import type { ThreadEvent } from "@bb/domain";
+import { EMPTY_SESSION_SETTINGS_APPLY } from "@bb/provider-bridge-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
-import type { ProviderExecutionContext } from "./provider-adapter.js";
+import type {
+  AdapterCommand,
+  ProviderExecutionContext,
+} from "./provider-adapter.js";
 
-function makeAdapter(staticProviderOptions?: Record<string, unknown>) {
+function makeAdapter(
+  staticProviderOptions?: Record<string, unknown>,
+  onNotice?: (message: string) => void,
+) {
   return createBridgeProtocolAdapter({
     id: "fake-bridge",
     capabilities: {
@@ -15,6 +22,7 @@ function makeAdapter(staticProviderOptions?: Record<string, unknown>) {
     },
     process: { command: "node", args: ["fake-bridge.mjs"] },
     ...(staticProviderOptions === undefined ? {} : { staticProviderOptions }),
+    ...(onNotice === undefined ? {} : { onNotice }),
   });
 }
 
@@ -25,8 +33,12 @@ function completeHandshake(
   const requests = adapter.buildPostInitializeRequests();
   expect(requests).toHaveLength(1);
   requests[0]?.onResult({
-    protocolVersion: 2,
-    capabilities: { grammarVersions: [3, 3], ...capabilities },
+    protocolVersion: 3,
+    capabilities: {
+      grammarVersions: [3, 3],
+      sessionSettings: {},
+      ...capabilities,
+    },
   });
 }
 
@@ -47,7 +59,7 @@ describe("handshake version gate", () => {
     expect(() =>
       requests[0]?.onResult({ protocolVersion: 1, capabilities: {} }),
     ).toThrowError(
-      /speaks Provider Bridge Protocol version 1.*requires version 2.*fake-bridge/s,
+      /speaks Provider Bridge Protocol version 1.*speaks version 3 \(and 2 for compatibility\).*fake-bridge/s,
     );
   });
 
@@ -70,7 +82,7 @@ describe("handshake version gate", () => {
     });
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [4, 5] },
       }),
     ).toThrowError(
@@ -78,22 +90,22 @@ describe("handshake version gate", () => {
     );
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [2, 2] },
       }),
     ).toThrowError(/grammar versions 2-2.*assembles versions 3-3/s);
     expect(() =>
-      requests[0]?.onResult({ protocolVersion: 2, capabilities: {} }),
+      requests[0]?.onResult({ protocolVersion: 3, capabilities: {} }),
     ).toThrowError(/grammar versions 2-2.*assembles versions 3-3/s);
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [3, 3] },
       }),
     ).not.toThrow();
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: 3,
         capabilities: { grammarVersions: [2, 4] },
       }),
     ).not.toThrow();
@@ -237,6 +249,7 @@ describe("options mapping", () => {
         promptMode: "plan",
         providerOptions: { memoryEnabled: false },
       },
+      apply: EMPTY_SESSION_SETTINGS_APPLY,
     });
     expect(plan).toMatchObject({
       kind: "request",
@@ -635,5 +648,96 @@ describe("deferred text flush", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+const turnStartCommand: AdapterCommand = {
+  type: "turn/start",
+  threadId: "t_1",
+  providerThreadId: "p_1",
+  input: [{ type: "text", text: "hi", mentions: [] }],
+  clientRequestId: "creq_abcdefghjk",
+  options: fullModeOptions,
+  apply: { settings: ["model"], sessionOptions: [], providerOptions: [] },
+  dynamicTools: [],
+};
+
+const claimIfIdleTurn = [
+  { kind: "input.accepted", clientRequestId: "creq_abcdefghjk" },
+  { kind: "turn.boundary", status: "completed", claimIfIdle: true },
+];
+
+describe("protocol 2 compatibility", () => {
+  it("drives a protocol 2 bridge with main's wire: claimIfIdle turns, any turn result accepted, no apply or open-work requests", () => {
+    const adapter = makeAdapter();
+    adapter.buildPostInitializeRequests()[0]?.onResult({
+      protocolVersion: 2,
+      capabilities: { grammarVersions: [3, 3], openWork: { list: true } },
+    });
+
+    expect(adapter.protocolVersion).toBe(2);
+    expect(adapter.sessionSettings).toEqual({});
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/openWork",
+        threadId: "t_1",
+        providerThreadId: "p_1",
+      }),
+    ).toMatchObject({ kind: "noop" });
+    const plan = adapter.buildCommandPlan(turnStartCommand);
+    expect(plan).toMatchObject({ kind: "request", method: "turn/start" });
+    expect(plan.kind === "request" ? plan.params : null).not.toHaveProperty(
+      "apply",
+    );
+    expect(plan.kind === "request" ? plan.params : null).not.toHaveProperty(
+      "dynamicTools",
+    );
+    for (const result of [{}, { threadId: "t_1" }, null]) {
+      expect(adapter.turnInputResultSchema.parse(result)).toEqual({
+        admission: "accepted",
+      });
+    }
+    expect(
+      feedDeltas(adapter, "t_1", claimIfIdleTurn).map((event) => event.type),
+    ).toEqual(["turn/started", "turn/input/accepted", "turn/completed"]);
+    expect(
+      feedDeltas(adapter, "t_1", [
+        { kind: "turn.boundary", status: "completed", claimIfIdle: true },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("keeps protocol 3 free of claimIfIdle inference and requires an admission answer", () => {
+    const adapter = makeAdapter();
+    completeHandshake(adapter, {});
+
+    expect(adapter.protocolVersion).toBe(3);
+    expect(feedDeltas(adapter, "t_1", claimIfIdleTurn)).toEqual([]);
+    expect(adapter.turnInputResultSchema.safeParse({}).success).toBe(false);
+    expect(adapter.buildCommandPlan(turnStartCommand)).toMatchObject({
+      params: {
+        apply: { settings: ["model"] },
+        dynamicTools: [],
+      },
+    });
+  });
+
+  it("runs a bridge that claims protocol 3 without sessionSettings as protocol 2 and says why", () => {
+    const notices: string[] = [];
+    const adapter = makeAdapter(undefined, (message) => notices.push(message));
+    adapter.buildPostInitializeRequests()[0]?.onResult({
+      protocolVersion: 3,
+      capabilities: { grammarVersions: [3, 3], openWork: { list: true } },
+    });
+
+    expect(adapter.protocolVersion).toBe(2);
+    expect(notices).toEqual([
+      expect.stringMatching(
+        /"fake-bridge" answered initialize with protocol version 3 but without capabilities\.sessionSettings.*runs it as a protocol 2 bridge/s,
+      ),
+    ]);
+    expect(
+      feedDeltas(adapter, "t_1", claimIfIdleTurn).map((event) => event.type),
+    ).toEqual(["turn/started", "turn/input/accepted", "turn/completed"]);
   });
 });

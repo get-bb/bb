@@ -29,10 +29,16 @@ import { measuredTimelineRowJsonBytes } from "./timeline-content-pagination.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 import type { DecodedTimelineRows } from "./timeline-selection-decode.js";
 import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
+import {
+  readRetryOfRequestId,
+  type BusyRetryContextRows,
+} from "./timeline-busy-retry-context.js";
+import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
 export interface TimelineEventRowSelection {
+  busyRetryContextRows: BusyRetryContextRows;
   contextOnlyInterruptionSequences: ReadonlySet<number>;
   orderingBoundarySequence: number | null;
   ownedSequenceStart: number;
@@ -684,6 +690,25 @@ function acceptsClientRequest(
   );
 }
 
+function acceptsRetryRequest(
+  scope: SelectionExtensionScope,
+  row: StoredEventRow,
+): boolean {
+  const decode = (stored: StoredEventRow) =>
+    decodeStoredEventRowCached(scope.db, stored);
+  const originalRequestId = readRetryOfRequestId(row, decode);
+  if (originalRequestId === null) return true;
+  const { busyRetryContextRows, rows } = scope.entry.selection;
+  return [...rows, ...busyRetryContextRows.requestedRows].some((selected) => {
+    if (selected.type !== "client/turn/requested") return false;
+    const event = decode(selected);
+    return (
+      event.type === "client/turn/requested" &&
+      event.requestId === originalRequestId
+    );
+  });
+}
+
 function isKeptByWindowTurnOrParent(
   scope: SelectionExtensionScope,
   row: StoredEventRow,
@@ -732,6 +757,7 @@ function acceptsAppendedRow(
     acceptsTurn(scope, row) &&
     acceptsAcceptedInput(scope, row) &&
     acceptsClientRequest(scope, row) &&
+    acceptsRetryRequest(scope, row) &&
     acceptsBackgroundTask(scope, row)
   );
 }

@@ -1490,7 +1490,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Run an agent's sessions through a bridge your plugin ships to each machine. With this, a plugin can:",
         bullets: [
-          "Translate an agent CLI or SDK into bb's timeline, tool calls, approvals, and usage",
+          "Translate an agent CLI or SDK into bb's timeline, tool calls, approvals, usage, and session state",
           "Run any Agent Client Protocol agent through the bundled ACP bridge, with no bridge code",
           "Show native skills, commands, and plugins; validate selections with the shared skills index",
           "Test it against bb's conformance suite and recorded sessions, without a running bb",
@@ -1513,6 +1513,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ThreadDelta",
           "threadDeltaSchema",
           "BridgeCapabilities",
+          "turnInputResultSchema",
+          "TurnInputResult",
+          "threadOpenWorkResultSchema",
+          "OpenWorkItem",
+          "sessionSettingsDeclarationSchema",
+          "SessionSettingsDeclaration",
+          "SessionSettingsApply",
+          "classifySessionSettingChange",
           "experimental_BridgeRecoveryError",
           "experimental_buildBridgeToolCallContent",
           "experimental_toolPresentation",

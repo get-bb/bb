@@ -66,7 +66,7 @@ describe("createAgentRuntime lifecycle", () => {
         const runtime = createScriptedEchoRuntime({
           runtime: {
             workspacePath: tmpDir,
-            env: record.env,
+            getProcessEnv: () => (record.env),
             onEvent: () => undefined,
             threadCreation: { requestTimeoutMs },
           },
@@ -134,7 +134,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: () => {},
         },
         launch: { scripted: { answerStartWithoutIdentity: true } },
@@ -168,7 +168,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: () => {},
         },
         launch: { scripted: { answerStartWithoutIdentity: true } },
@@ -204,7 +204,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: () => {},
         },
         launch: {
@@ -272,14 +272,14 @@ describe("createAgentRuntime lifecycle", () => {
         runtime: {
           workspacePath: tmpDir,
           threadStorageRootPath,
-          env: record.env,
-          shellEnv: {
+          getProcessEnv: () => (record.env),
+          getShellEnv: () => ({
             PATH: "/tmp/bb-bin:/usr/bin",
             BB_HOST_DAEMON_PORT: "3002",
             BB_PROJECT_ID: "wrong-project",
             BB_SERVER_URL: "http://127.0.0.1:3334",
             BB_THREAD_ID: "wrong-thread",
-          },
+          }),
           onEvent: (event) => events.push(event),
         },
       });
@@ -353,7 +353,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: (event) => events.push(event),
         },
       });
@@ -437,7 +437,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: (event) => events.push(event),
         },
       });
@@ -486,8 +486,8 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
-          shellEnv: { PATH: "/usr/bin" },
+          getProcessEnv: () => (record.env),
+          getShellEnv: () => ({ PATH: "/usr/bin" }),
           onEvent: (event) => events.push(event),
         },
       });
@@ -549,7 +549,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: () => undefined,
         },
       });
@@ -574,7 +574,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           skillRoots: [
             {
               id: "bb-cli",
@@ -618,7 +618,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: () => undefined,
         },
       });
@@ -683,8 +683,17 @@ describe("createAgentRuntime lifecycle", () => {
       });
       expect(record.last("turn/start")?.params).toMatchObject({
         clientRequestId: "creq_222222224h",
+        apply: {
+          settings: ["model", "reasoningLevel", "permission"],
+          sessionOptions: [],
+          providerOptions: [
+            "memoryEnabled",
+            "providerSubagentsEnabled",
+            "workflowsEnabled",
+          ],
+        },
         options: {
-          instructions: "Updated instructions",
+          instructions: "Initial instructions",
           model: "test-model-2",
           permissionMode: "accept-edits",
           permissionScope: "workspace",
@@ -708,12 +717,12 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
-          shellEnv: {
+          getProcessEnv: () => (record.env),
+          getShellEnv: () => ({
             PATH: "/tmp/bb-bin:/usr/bin",
             BB_HOST_DAEMON_PORT: "3002",
             BB_SERVER_URL: "http://127.0.0.1:3334",
-          },
+          }),
           onEvent: () => undefined,
         },
       });
@@ -839,7 +848,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: (event) => events.push(event),
         },
         launch: {
@@ -899,7 +908,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: (event) => events.push(event),
         },
       });
@@ -939,7 +948,7 @@ describe("createAgentRuntime lifecycle", () => {
           input: [promptTextInput({ text: "competing active turn" })],
           options: fullRuntimeOptions,
         }),
-      ).rejects.toThrow(/active or starting/);
+      ).resolves.toMatchObject({ status: "busy" });
       expect(
         recordedMethods(record).filter((method) => method === "turn/start"),
       ).toHaveLength(1);
@@ -1082,7 +1091,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: () => {},
         },
         launch: { scripted: { swallowTurnStart: true } },
@@ -1112,7 +1121,7 @@ describe("createAgentRuntime lifecycle", () => {
             input: [promptTextInput({ text: "competing pending turn" })],
             options: fullRuntimeOptions,
           }),
-        ).rejects.toThrow(/active or starting/);
+        ).resolves.toMatchObject({ status: "busy" });
         expect(
           recordedMethods(record).filter((method) => method === "turn/start"),
         ).toHaveLength(1);
@@ -1161,7 +1170,7 @@ describe("createAgentRuntime lifecycle", () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          env: record.env,
+          getProcessEnv: () => (record.env),
           onEvent: (event) => events.push(event),
         },
       });
@@ -1189,14 +1198,15 @@ describe("createAgentRuntime lifecycle", () => {
       });
       const methodsBeforeSteer = recordedMethods(record).length;
 
-      await runtime.steerTurn({
-        clientRequestId: "creq_222222223x",
-        threadId: "t1",
-        expectedTurnId: turnId,
-        input: [promptTextInput({ text: "apply a new setup now" })],
-        options: { ...fullRuntimeOptions, model: "fake-model-2" },
-        instructions: "Updated instructions",
-      });
+      await expect(
+        runtime.steerTurn({
+          clientRequestId: "creq_222222223x",
+          threadId: "t1",
+          expectedTurnId: turnId,
+          input: [promptTextInput({ text: "apply a new setup now" })],
+          options: { ...fullRuntimeOptions, model: "fake-model-2" },
+        }),
+      ).resolves.toEqual({ status: "steered" });
 
       expect(recordedMethods(record).slice(methodsBeforeSteer)).toEqual([
         "turn/steer",
@@ -1206,8 +1216,8 @@ describe("createAgentRuntime lifecycle", () => {
         expectedTurnId: "turn-1",
         clientRequestId: "creq_222222223x",
         options: {
-          instructions: "Updated instructions",
-          model: "fake-model-2",
+          instructions: "Initial instructions",
+          model: "fake-model",
         },
       });
       expect(turnId).not.toBe("turn-1");

@@ -164,7 +164,11 @@ function addProjectionTurnMessage(
 function canGroupThreadMessageInTurn(message: EventProjectionMessage): boolean {
   switch (message.kind) {
     case "operation":
-      return message.opType === "warning" || message.opType === "deprecation";
+      return (
+        message.opType === "warning" ||
+        message.opType === "session-settings" ||
+        message.opType === "deprecation"
+      );
     case "permission-grant-lifecycle":
     case "plugin-form-lifecycle":
     case "user-question-lifecycle":

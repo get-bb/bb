@@ -1248,7 +1248,11 @@ function hasAcceptedQueuedRetryInput(
 
 export function supersedeQueuedRetriesInTransaction(
   tx: DbTransaction,
-  args: { threadId: string; retryOfTurnRequestId: string | null },
+  args: {
+    keepRetriesOfRequestsRefusedWith: string;
+    threadId: string;
+    retryOfTurnRequestId: string | null;
+  },
 ): number {
   const overtaken = tx
     .select()
@@ -1270,8 +1274,20 @@ export function supersedeQueuedRetriesInTransaction(
       ),
     )
     .all();
+  const kept = listRequestIdsRefusedWithReason(tx, {
+    reason: args.keepRetriesOfRequestsRefusedWith,
+    requestIds: overtaken.flatMap((retry) =>
+      retry.retryOfTurnRequestId === null ? [] : [retry.retryOfTurnRequestId],
+    ),
+    threadId: args.threadId,
+  });
+  const superseded = overtaken.filter(
+    (retry) =>
+      retry.retryOfTurnRequestId === null ||
+      !kept.has(retry.retryOfTurnRequestId),
+  );
   const now = Date.now();
-  for (const retry of overtaken) {
+  for (const retry of superseded) {
     clearPreviousQueuedMessageGroupEdgeInTransaction(tx, retry, now);
     clearQueuedMessageGroupEdgeInTransaction(tx, retry, now);
     if (hasAcceptedQueuedRetryInput(tx, retry)) {
@@ -1292,7 +1308,32 @@ export function supersedeQueuedRetriesInTransaction(
       },
     });
   }
-  return overtaken.length;
+  return superseded.length;
+}
+
+function listRequestIdsRefusedWithReason(
+  tx: DbTransaction,
+  args: { reason: string; requestIds: readonly string[]; threadId: string },
+): Set<string> {
+  if (args.requestIds.length === 0) {
+    return new Set();
+  }
+  const requestId = sql<string>`json_extract(${events.data}, '$.requestId')`;
+  return new Set(
+    tx
+      .select({ requestId })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/rejected"),
+          inArray(requestId, [...args.requestIds]),
+          sql`json_extract(${events.data}, '$.reason') = ${args.reason}`,
+        ),
+      )
+      .all()
+      .map((row) => row.requestId),
+  );
 }
 
 function notSupersededQueuedThreadMessage() {

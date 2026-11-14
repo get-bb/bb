@@ -41,7 +41,7 @@ describe("acp process topology", () => {
     const runtime = withBridgeLaunch(
       createAgentRuntime({
         workspacePath: workspaceDir,
-        env: {},
+        getProcessEnv: () => ({}),
         onEvent: () => {},
         onProcessExit: () => {},
         onToolCall: async () => ({ contentItems: [], success: true }),

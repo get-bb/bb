@@ -47,6 +47,7 @@ for (const warm of [false, true]) {
         providerThreadId,
         clientRequestId: "creq_ab23456789",
         input: [{ type: "text", text: "hello", mentions: [] }],
+        apply: { settings: [], sessionOptions: [], providerOptions: [] },
         options: { ...FULL_PERMISSION_OPTIONS, model },
       });
       expect(turn.error, JSON.stringify(turn)).toBeUndefined();

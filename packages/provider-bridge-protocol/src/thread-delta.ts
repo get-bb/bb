@@ -16,7 +16,7 @@ import {
   threadEventSearchModeSchema,
   threadEventTokenUsageBreakdownSchema,
   threadEventTurnStatusSchema,
-  threadEventWarningCategorySchema,
+  providerWarningCategorySchema,
   threadUsageCostSchema,
   workflowProgressSnapshotSchema,
 } from "@bb/domain";
@@ -244,7 +244,6 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     status: threadEventTurnStatusSchema,
     error: deltaErrorSchema.optional(),
     providerCheckpointId: z.string().min(1).optional(),
-    claimIfIdle: z.boolean().optional(),
     providerTurnId: providerTurnIdSchema.optional(),
   }),
 
@@ -271,6 +270,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
       approvalStatus: z.literal("denied").optional(),
       item: deltaItemShapeSchema,
       presentation: deltaPresentationSchema.optional(),
+      attach: deltaAttachSchema.optional(),
       providerTurnId: providerTurnIdSchema.optional(),
       noTurnFallback: deltaNoTurnFallbackSchema.optional(),
     })
@@ -291,6 +291,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     key: deltaItemKeySchema,
     channel: deltaTextChannelSchema,
     text: z.string(),
+    attach: deltaAttachSchema.optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
@@ -300,6 +301,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     key: deltaItemKeySchema,
     channel: deltaTextChannelSchema,
     text: z.string().optional(),
+    attach: deltaAttachSchema.optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
@@ -399,7 +401,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("provider.warning"),
     summary: z.string().optional(),
     details: z.string().optional(),
-    category: threadEventWarningCategorySchema.optional(),
+    category: providerWarningCategorySchema.optional(),
     vouchedTurn: z.boolean().optional(),
   }),
 

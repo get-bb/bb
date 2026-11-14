@@ -16,6 +16,7 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  countStoredTurnRejectionsWithReasonAfterSequence,
   getLatestStoredThreadEventOfTypes,
   getLatestThreadSequence,
   hasStoredProviderTurnCompletedSince,
@@ -46,12 +47,14 @@ import {
 } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
 import {
-  COMPETING_TURN_ERROR_CODE,
+  THREAD_BUSY_ERROR_CODE,
+  TURN_REJECTED_ERROR_CODE,
   STALE_TURN_ERROR_CODE,
   STEER_UNCONFIRMED_ERROR_CODE,
   TURN_START_UNCONFIRMED_ERROR_CODE,
 } from "@bb/host-daemon-contract";
 import {
+  type ClientTurnRequestId,
   type ProvisioningTranscriptEntry,
   type SystemThreadInterruptedReason,
   type Thread,
@@ -123,6 +126,7 @@ import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
+import { requeueBusyTurnRequest } from "./turn-retry.js";
 import { isParentNotifiableChildThread } from "./thread-parent.js";
 import {
   clearThreadProvisionSchedule,
@@ -803,6 +807,80 @@ function recordEmptyThreadStartProviderSessionInTransaction(
   });
 }
 
+function settleIdleUnlessTurnRunning(args: {
+  deps: SettleThreadCommandFailureArgs["deps"];
+  thread: Thread;
+}): "turn-running" | "idle" {
+  if (getActiveTurnId(args.deps, args.thread.id) !== null) {
+    return "turn-running";
+  }
+  const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
+    event: { type: "run.succeeded" },
+    threadId: args.thread.id,
+  });
+  if (outcome.applied) {
+    args.deps.hub.notifyThread(args.thread.id, ["status-changed"]);
+  }
+  return "idle";
+}
+
+const BUSY_RETRY_MAX_ATTEMPTS = 6;
+const BUSY_RETRY_BASE_DELAY_MS = 5_000;
+
+function settleBusyTurnSubmit(args: {
+  deps: SettleThreadCommandFailureArgs["deps"];
+  requestId: ClientTurnRequestId;
+  thread: Thread;
+}): CommandResultSideEffectsResult {
+  const lastAccepted = getLatestStoredThreadEventOfTypes(args.deps.db, {
+    threadId: args.thread.id,
+    types: ["turn/input/accepted"],
+    afterSequence: 0,
+  });
+  const busyStreak = countStoredTurnRejectionsWithReasonAfterSequence(
+    args.deps.db,
+    {
+      threadId: args.thread.id,
+      reason: THREAD_BUSY_ERROR_CODE,
+      afterSequence: lastAccepted?.sequence ?? 0,
+    },
+  );
+  if (busyStreak >= BUSY_RETRY_MAX_ATTEMPTS) {
+    appendSystemErrorEventInTransaction(args.deps, {
+      threadId: args.thread.id,
+      environmentId: args.thread.environmentId,
+      code: "provider_busy",
+      message: `The agent answered busy ${busyStreak} times in a row, so bb stopped re-sending this message. Retry it once the agent is free, or stop the thread.`,
+      scope: threadScope(),
+    });
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
+      event: { type: "run.failed" },
+      threadId: args.thread.id,
+    });
+    if (outcome.applied) {
+      args.deps.hub.notifyThread(args.thread.id, ["status-changed"]);
+    }
+    return emptyCommandResultSideEffects();
+  }
+  const waitForTurnEnd =
+    settleIdleUnlessTurnRunning(args) === "turn-running";
+  const sendAt = waitForTurnEnd
+    ? null
+    : Date.now() + BUSY_RETRY_BASE_DELAY_MS * 2 ** (busyStreak - 1);
+  return {
+    postCommitActions: [
+      {
+        run: (deps) =>
+          requeueBusyTurnRequest(deps, {
+            requestId: args.requestId,
+            sendAt,
+            threadId: args.thread.id,
+          }),
+      },
+    ],
+  };
+}
+
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
@@ -852,10 +930,15 @@ function settleThreadCommandFailure(
         message: args.report.errorMessage,
       },
     });
-    if (
-      args.report.errorCode === COMPETING_TURN_ERROR_CODE &&
-      getActiveTurnId(args.deps, thread.id) !== null
-    ) {
+    if (args.report.errorCode === THREAD_BUSY_ERROR_CODE) {
+      return settleBusyTurnSubmit({
+        deps: args.deps,
+        requestId: args.command.requestId,
+        thread,
+      });
+    }
+    if (args.report.errorCode === TURN_REJECTED_ERROR_CODE) {
+      settleIdleUnlessTurnRunning({ deps: args.deps, thread });
       return emptyCommandResultSideEffects();
     }
   }

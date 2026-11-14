@@ -1,7 +1,4 @@
-import type {
-  HostDaemonInjectedSkillSource,
-  WorkspaceContext,
-} from "@bb/host-daemon-contract";
+import type { WorkspaceContext } from "@bb/host-daemon-contract";
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   ExpectedCommandDispatchError,
@@ -13,10 +10,8 @@ import {
 
 interface ResolveWorkspaceForCommandArgs {
   environmentId: string;
-  injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   requireGit?: boolean;
   runtimeManager: RuntimeManager;
-  targetThreadId?: string;
   workspaceContext: WorkspaceContext;
 }
 
@@ -27,12 +22,6 @@ export async function requireResolvedWorkspaceForCommand(
     const entry = await requireWorkspaceEnvironment(
       {
         environmentId: args.environmentId,
-        ...(args.injectedSkillSources !== undefined
-          ? { injectedSkillSources: args.injectedSkillSources }
-          : {}),
-        ...(args.targetThreadId !== undefined
-          ? { targetThreadId: args.targetThreadId }
-          : {}),
         workspaceContext: args.workspaceContext,
       },
       args.runtimeManager,

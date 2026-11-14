@@ -47,6 +47,7 @@ function turnStart(
         providerThreadId,
         clientRequestId: "creq_ui23456789",
         input: [{ type: "text", text, mentions: [] }],
+        apply: { settings: [], sessionOptions: [], providerOptions: [] },
         options: FULL_PERMISSION_OPTIONS,
       },
     }),
@@ -235,4 +236,47 @@ it("drops fire-and-forget extension ui requests without a runtime round trip", a
         JSON.stringify(message.params ?? {}).includes(threadId),
     ),
   ).toBe(false);
+}, 90_000);
+
+it("lists a pending extension dialog and the running Pi run as open work", async () => {
+  const threadId = "thr_ui_open_work";
+  const providerThreadId = await startThread(threadId);
+  const idle = await harness.request((nextId += 1), "thread/openWork", {
+    threadId,
+    providerThreadId,
+  });
+  expect(idle.result).toEqual({ items: [] });
+
+  turnStart(
+    threadId,
+    providerThreadId,
+    '/ui {"method":"input","title":"Name the branch"}',
+  );
+  const interaction = await waitForInteractionRequest(threadId);
+  const waiting = await harness.request((nextId += 1), "thread/openWork", {
+    threadId,
+    providerThreadId,
+  });
+  expect(waiting.result).toEqual({
+    items: [
+      {
+        id: String(interaction.id),
+        kind: "interaction",
+        description: "Pi is waiting for an answer: Name the branch",
+      },
+      {
+        id: "pi-agent-run",
+        kind: "turn",
+        description: "Pi is running an agent turn.",
+      },
+    ],
+  });
+
+  resolveInteraction(interaction.id, { kind: "request_answer", value: "main" });
+  await harness.waitForTurnBoundary(threadId);
+  const settled = await harness.request((nextId += 1), "thread/openWork", {
+    threadId,
+    providerThreadId,
+  });
+  expect(settled.result).toEqual({ items: [] });
 }, 90_000);

@@ -213,12 +213,23 @@ over stdio. It emits parsed semantic deltas keyed by provider-native ids; the
 runtime's delta assembler, never the bridge, mints every bb turn and item id.
 Implement, following `docs/provider-bridge-protocol.md`:
 
-- the `initialize` handshake ("Versioning and capabilities");
+- the `initialize` handshake ("Versioning and capabilities"): report
+  `PROVIDER_BRIDGE_PROTOCOL_VERSION` together with `capabilities.sessionSettings`
+  (`{}` keeps the defaults). Without `sessionSettings` bb runs the bridge as
+  protocol 2 ("Protocol 2 compatibility");
 - `thread/start` / `thread/resume` / `thread/fork` with `thread/identity` and
   `session.reset` ("Identifiers", "Sessions");
 - `turn/start` driving `thread/delta` batches ("The timeline lane", "Turn
   lifecycle", "Item lifecycle");
 - `thread/stop` for both intents ("Turn lifecycle");
+- the session contract ("Session contract"): answer `turn/start` and
+  `turn/steer` with `{ admission: "accepted" | "busy" | "rejected" }` after
+  `input.accepted` is on the wire; open and settle every turn with explicit
+  `turn.open`/`turn.boundary` (never a timer or a quiet period); open a
+  `compaction` item while compacting; declare `sessionSettings` and apply
+  only what `turn/start.apply` lists, never restarting a session for a
+  settings change; declare `openWork` and answer `thread/openWork` if your
+  provider holds work that outlives a turn;
 - reply hygiene for unknown methods and invalid params ("Transport");
 - recovery hints where your provider fails recoverably ("Recovery hints").
 

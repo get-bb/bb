@@ -1,3 +1,7 @@
+import type {
+  OpenWorkItem,
+  SessionSettingsDeclaration,
+} from "@bb/provider-bridge-protocol";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -73,6 +77,7 @@ export interface ScriptedEchoLaunchScript {
   goalClearNotifyDelayMs?: number;
   goalClearReportsCleared?: boolean;
   swallowTurnStart?: boolean;
+  turnStartBusyMessage?: string;
   sessionRestorable?: boolean;
   toolCallThreadIdHint?: string;
   recoveryThreadIdHint?: string;
@@ -80,6 +85,9 @@ export interface ScriptedEchoLaunchScript {
   identifyProcess?: boolean;
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
+  sessionSettings?: SessionSettingsDeclaration;
+  openWork?: OpenWorkItem[];
+  legacyBridge?: { protocolVersion: 2 | 3 };
 }
 
 export interface CreateScriptedEchoLaunchOptions {

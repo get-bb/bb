@@ -1,19 +1,16 @@
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
 import {
-  CompetingTurnError,
   type AgentRuntimeBridgeLaunch,
 } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSink } from "./event-sink.js";
 import {
-  COMPETING_TURN_ERROR_CODE,
   type EnvironmentHookProgressMessage,
   type HostDaemonCommand,
   type HostDaemonContributedEnvEntry,
   type ProviderHealthResult,
   type ProviderUsageResult,
   type HostDaemonBridgeLaunch,
-  type HostDaemonInjectedSkillSource,
   type HostDaemonOnlineRpcCommand,
   type HostDaemonConnectTunnelIdentity,
   type WorkspaceContext,
@@ -196,9 +193,6 @@ export function getErrorCode(error: unknown): string {
   if (error instanceof CommandDispatchError) {
     return error.code;
   }
-  if (error instanceof CompetingTurnError) {
-    return COMPETING_TURN_ERROR_CODE;
-  }
   if (isBridgeMissingExecutableError(error)) {
     return "missing_executable";
   }
@@ -254,8 +248,6 @@ function isMessageOnlySpawnMissingExecutableError(error: unknown): boolean {
 export async function requireWorkspaceEnvironment(
   args: {
     environmentId: string;
-    injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
-    targetThreadId?: string;
     workspaceContext: WorkspaceContext;
   },
   runtimeManager: RuntimeManager,
@@ -273,12 +265,6 @@ export async function requireWorkspaceEnvironment(
 
   return runtimeManager.ensureEnvironment({
     environmentId: args.environmentId,
-    ...(args.injectedSkillSources !== undefined
-      ? { injectedSkillSources: args.injectedSkillSources }
-      : {}),
-    ...(args.targetThreadId !== undefined
-      ? { targetThreadId: args.targetThreadId }
-      : {}),
     workspacePath: args.workspaceContext.workspacePath,
   });
 }
