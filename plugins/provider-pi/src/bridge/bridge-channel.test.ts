@@ -95,7 +95,8 @@ it("reports the extension hanging up, but not a close bb asked for", async () =>
   endedExtension.socket.write('{"kind":"ready"}\n');
   await vi.waitFor(() => expect(ended.lines).toEqual(['{"kind":"ready"}']));
   ended.channel.end();
-  endedExtension.socket.end();
-  await endedExtension.closed;
+  endedExtension.socket.destroy();
+  await vi.waitFor(() => expect(endedExtension.socket.closed).toBe(true));
+  await new Promise((resolve) => setImmediate(resolve));
   expect(ended.closes()).toBe(0);
 });

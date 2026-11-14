@@ -192,7 +192,7 @@ describe("createAgentRuntime input accepted events", () => {
         }
         await sleepReal(10);
       }
-      await vi.advanceTimersByTimeAsync(30_001);
+      await vi.advanceTimersByTimeAsync(120_001);
 
       await expect(steer).resolves.toEqual({ status: "unconfirmed" });
       expect(inputAcceptedEvents(events, "creq_2345678tsb")).toEqual([]);
