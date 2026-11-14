@@ -289,6 +289,20 @@ describe("timeline projection decoding", () => {
     });
   });
 
+  it("drops the fold once the thread is no longer active", () => {
+    withTestThread((testThread) => {
+      const active = addActiveThread(testThread);
+      appendRows(active, openTurn());
+      buildLatest(active);
+      const [projection] = projectionsOf(active.db, active.thread.id);
+      expect(projection!.fold).not.toBeNull();
+      buildLatest({ ...active, thread: { ...active.thread, status: "idle" } });
+      const [after] = projectionsOf(active.db, active.thread.id);
+      expect(after).toBe(projection);
+      expect(after!.fold).toBeNull();
+    });
+  });
+
   it("freezes decoded events while the server suite enables the test seam", () => {
     withTestThread((testThread) => {
       appendRows(testThread, openTurn());

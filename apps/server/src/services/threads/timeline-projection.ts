@@ -32,6 +32,7 @@ import { parseStoredEvent } from "./thread-data.js";
 import {
   advanceTimelineOrderingContextLog,
   clearTimelineOrderingContextLogs,
+  forgetTimelineOrderingContextLogs,
   orderingContextLogFor,
   extendTimelineOrderingContextLog,
   readTimelineGroupingContext,
@@ -318,6 +319,7 @@ export function forgetTimelineProjection(
   db: DbConnection,
   threadId: string,
 ): void {
+  forgetTimelineOrderingContextLogs(db, threadId);
   const registry = projectionsByDb.get(db);
   if (registry === undefined) return;
   for (const projection of projectionsOfThread(db, threadId)) {

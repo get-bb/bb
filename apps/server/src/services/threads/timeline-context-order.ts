@@ -96,6 +96,17 @@ export function clearTimelineOrderingContextLogs(db: DbConnection): void {
   orderingContextLogs.delete(db);
 }
 
+export function forgetTimelineOrderingContextLogs(
+  db: DbConnection,
+  threadId: string,
+): void {
+  const logs = orderingContextLogs.get(db);
+  if (logs === undefined) return;
+  for (const [key, log] of logs) {
+    if (log.threadId === threadId) logs.delete(key);
+  }
+}
+
 export function createTimelineOrderingContextLog(
   db: DbConnection,
   threadId: string,

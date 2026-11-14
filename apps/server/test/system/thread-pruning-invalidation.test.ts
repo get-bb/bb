@@ -29,6 +29,7 @@ import {
   clearTimelineProjections,
   peekTimelineProjection,
 } from "../../src/services/threads/timeline-projection.js";
+import { getTimelineGroupingContext } from "../../src/services/threads/timeline-context-order.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -330,6 +331,40 @@ describe("pruning invalidation", () => {
       expect(
         peekTimelineProjection(harness.db, rewritten.thread.id),
       ).toBeUndefined();
+    });
+  });
+
+  it("keeps other threads' grouping contexts when one thread's history is rewritten", async () => {
+    await withTestHarness(async (harness) => {
+      const rewritten = createThreadScript(harness);
+      const kept = createThreadScript(harness);
+      for (const script of [rewritten, kept]) {
+        const turnId = script.startTurn(1);
+        script.finishTurn(turnId, 1);
+      }
+      createThreadTimelineWindows(harness.deps);
+      const args = (thread: Thread) => ({
+        maxSeq: 6,
+        sequenceStart: 0,
+        threadId: thread.id,
+      });
+      const keptContext = getTimelineGroupingContext(
+        harness.db,
+        args(kept.thread),
+      );
+      const rewrittenContext = getTimelineGroupingContext(
+        harness.db,
+        args(rewritten.thread),
+      );
+
+      harness.deps.hub.notifyThread(rewritten.thread.id, ["history-rewritten"]);
+
+      expect(getTimelineGroupingContext(harness.db, args(kept.thread))).toBe(
+        keptContext,
+      );
+      expect(
+        getTimelineGroupingContext(harness.db, args(rewritten.thread)),
+      ).not.toBe(rewrittenContext);
     });
   });
 
