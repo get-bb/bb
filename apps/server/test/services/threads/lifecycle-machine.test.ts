@@ -486,3 +486,125 @@ describe("record flags in lifecycle inputs", () => {
     ).toBe("not-settleable");
   });
 });
+
+function step(
+  current: ThreadLifecycleState,
+  input: Parameters<typeof transitionThreadLifecycle>[1],
+  patch: Partial<ThreadLifecycleState> = {},
+) {
+  const transition = transitionThreadLifecycle(current, input);
+  return { transition, next: { ...current, ...transition.next, ...patch } };
+}
+
+describe("stops that race other lifecycle inputs", () => {
+  it("ignores a stop answer that arrives after a newer run started", () => {
+    let current = state({ status: "active", activeTurnId: "T1" });
+    ({ next: current } = step(current, {
+      type: "stop.requested",
+      reason: "manual-stop",
+      now: 1,
+    }));
+    ({ next: current } = step(
+      current,
+      { type: "turn.completed", turnId: "T1", status: "interrupted" },
+      { activeTurnId: null },
+    ));
+    ({ next: current } = step(current, {
+      type: "request.sent",
+      request: { hostId: "h", kind: "new-turn", requestId: "r2", syncTitle: false },
+      now: 2,
+    }));
+    ({ next: current } = step(
+      current,
+      { type: "turn.started", turnId: "T2", now: 3 },
+      { activeTurnId: "T2" },
+    ));
+    const late = step(current, {
+      type: "stop.answered",
+      answer: { kind: "stopped", providerCheckpointId: null },
+      now: 4,
+    });
+    expect(late.next.status).toBe("active");
+    expect(late.transition.effects).toEqual([]);
+  });
+
+  it.each([
+    { label: "after a manual stop", overdue: false, status: "idle" },
+    { label: "after a turn-start deadline stop", overdue: true, status: "error" },
+  ] as const)(
+    "keeps a second stop's finalized thread from reviving on a late turn start ($label)",
+    ({ overdue, status }) => {
+      let current = state({ status: "active", activeTurnId: null });
+      ({ next: current } = step(
+        current,
+        overdue
+          ? { type: "turn-start.overdue", deadlineMinutes: 5, now: 1 }
+          : { type: "stop.requested", reason: "manual-stop", now: 1 },
+      ));
+      const second = step(current, {
+        type: "stop.requested",
+        reason: "manual-stop",
+        now: 2,
+      });
+      expect(second.transition.stopRoute).toBe("pre-start");
+      ({ next: current } = step(second.next, {
+        type: "stop.finalized",
+        providerCheckpointId: null,
+        now: 3,
+      }));
+      expect(current.status).toBe(status);
+      const late = step(
+        current,
+        { type: "turn.started", turnId: "T1", now: 4 },
+        { activeTurnId: "T1" },
+      );
+      expect(late.next.status).toBe(status);
+      expect(kinds(late.transition.effects)).toEqual(["send-stop"]);
+    },
+  );
+
+  it("keeps a deadline stop's reason through a daemon restart so the thread still ends in error", () => {
+    let current = state({
+      status: "active",
+      requests: [request({ kind: "new-turn", phase: "unconfirmed" })],
+    });
+    ({ next: current } = step(current, {
+      type: "turn-start.overdue",
+      deadlineMinutes: 5,
+      now: 1,
+    }));
+    ({ next: current } = step(current, {
+      type: "daemon.lost",
+      reason: "host-daemon-restarted",
+      resuming: false,
+    }));
+    expect(current.stop?.reason).toBe("provider-turn-idle");
+    const reported = step(current, {
+      type: "daemon.reported",
+      eventsPending: false,
+      now: 2,
+      revivalBlocked: false,
+      running: false,
+      sameInstance: false,
+    });
+    expect(reported.next.status).toBe("error");
+  });
+
+  it("fails a thread start whose daemon was lost before it answered", () => {
+    const lost = step(
+      state({
+        status: "starting",
+        requests: [request({ kind: "thread-start", phase: "sent" })],
+      }),
+      { type: "daemon.lost", reason: "host-removed", resuming: false },
+    );
+    expect(lost.next.status).toBe("error");
+    expect(lost.next.requests).toEqual([]);
+    expect(lost.transition.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "append-system-error",
+        message: "Thread start was interrupted",
+      }),
+    );
+  });
+});

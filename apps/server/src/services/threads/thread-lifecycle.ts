@@ -759,7 +759,10 @@ function requestThreadStopInTransaction(
       outcomes: [requested],
     };
   }
-  const context = getThreadProvisionContext(deps.db, thread.id);
+  const leftStarting = requested.previousStatus === "starting";
+  const context = leftStarting
+    ? getThreadProvisionContext(deps.db, thread.id)
+    : null;
   const abandonedProvider =
     context?.request.environmentIntent.type === "provider" &&
     context.state.environmentId === null;
@@ -922,6 +925,10 @@ async function stopThreadUntilSettled(
   threadId: string,
   environment: StopEnvironment | null,
 ): Promise<ThreadStopFailure | null> {
+  if (environment === null) {
+    await requestThreadStop(deps, threadId, { skipSendStop: false });
+    return null;
+  }
   for (let round = 0; round < MAX_EXPLICIT_THREAD_STOP_ROUNDS; round += 1) {
     if (getThread(deps.db, threadId) === null) {
       return null;
@@ -930,9 +937,6 @@ async function stopThreadUntilSettled(
       skipSendStop: true,
     });
     if (requested.stopRoute === "pre-start") {
-      return null;
-    }
-    if (environment === null) {
       return null;
     }
     if (requested.stopRoute === "live") {
@@ -1110,6 +1114,7 @@ export function finalizeStoppedThreadInTransaction(
   const outcome = runThreadLifecycleInTransaction(deps, args.threadId, {
     type: "stop.finalized",
     providerCheckpointId: args.providerCheckpointId ?? null,
+    now: Date.now(),
   });
   const thread = getThread(deps.db, args.threadId);
   if (thread !== null && thread.deletedAt !== null) {

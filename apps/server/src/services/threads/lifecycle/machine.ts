@@ -84,7 +84,7 @@ export type ThreadLifecycleInput =
   | { type: "provider.failed"; unstartedRequestId: string | null }
   | { type: "stop.requested"; reason: SystemThreadInterruptedReason; now: number }
   | { type: "stop.answered"; answer: StopAnswer; now: number }
-  | { type: "stop.finalized"; providerCheckpointId: string | null }
+  | { type: "stop.finalized"; providerCheckpointId: string | null; now: number }
   | { type: "release.answered"; retained: boolean }
   | {
       type: "daemon.reported";
@@ -684,20 +684,7 @@ function reportDaemon(
       return;
     }
     if (draft.status === "starting" && lostStart) {
-      draft.effect({
-        kind: "append-system-error",
-        code: "thread_command_failed",
-        message: "Thread start was interrupted",
-        detail:
-          "bb lost the answer to the thread start and the machine is not running it. Send a message to try again.",
-        turnId: null,
-      });
-      draft.effect({ kind: "clear-provision-schedule" });
-      draft.move("run.failed");
-      draft.effect({
-        kind: "notify-parent",
-        notice: { turnStatus: "failed", failureContext: null, turnId: null },
-      });
+      failLostStart(draft);
     }
     return;
   }
@@ -722,10 +709,30 @@ function reportDaemon(
   }
 }
 
+function failLostStart(draft: Draft): void {
+  draft.effect({
+    kind: "append-system-error",
+    code: "thread_command_failed",
+    message: "Thread start was interrupted",
+    detail:
+      "bb lost the answer to the thread start and the machine is not running it. Send a message to try again.",
+    turnId: null,
+  });
+  draft.effect({ kind: "clear-provision-schedule" });
+  draft.move("run.failed");
+  draft.effect({
+    kind: "notify-parent",
+    notice: { turnStatus: "failed", failureContext: null, turnId: null },
+  });
+}
+
 function loseDaemon(
   draft: Draft,
   input: Extract<ThreadLifecycleInput, { type: "daemon.lost" }>,
 ): void {
+  const lostStart = draft.requests.some(
+    (request) => request.kind === "thread-start" && request.phase !== "accepted",
+  );
   for (const request of [...draft.requests]) {
     if (request.phase === "accepted") {
       draft.remove(request.requestId);
@@ -733,13 +740,20 @@ function loseDaemon(
       draft.reject(request);
     }
   }
-  draft.stop = null;
   const held = draft.heldCompletion;
   draft.heldCompletion = null;
+  if (draft.stop !== null) {
+    draft.stop = { ...draft.stop, sentAt: null };
+  }
+  if (draft.status === "starting" && lostStart) {
+    failLostStart(draft);
+    return;
+  }
   const interruptible =
     draft.status === "active" ||
     (input.reason === "host-removed" && draft.status === "stopping");
   if (!interruptible) return;
+  draft.stop = null;
   if (held !== null && input.reason !== "host-removed") {
     applyCompletion(draft, held, "released");
     return;
@@ -884,6 +898,12 @@ export function transitionThreadLifecycle(
       }
       break;
     case "stop.answered":
+      if (
+        draft.stop === null &&
+        (draft.status === "active" || draft.status === "starting")
+      ) {
+        break;
+      }
       switch (input.answer.kind) {
         case "stopped":
         case "gone":
@@ -918,11 +938,19 @@ export function transitionThreadLifecycle(
       }
       break;
     case "stop.finalized": {
+      const reason = draft.stop?.reason ?? "manual-stop";
       settleStopped(draft, {
         providerCheckpointId: input.providerCheckpointId,
-        reason: draft.stop?.reason ?? "manual-stop",
+        reason,
       });
-      draft.stop = null;
+      draft.stop = state.deleted
+        ? null
+        : {
+            ackedAt: input.now,
+            reason,
+            requestedAt: draft.stop?.requestedAt ?? input.now,
+            sentAt: null,
+          };
       if (!state.deleted) {
         draft.effect({ kind: "drain-queue", wake: "thread-ready" });
         draft.effect({ kind: "archive-provider-session" });
