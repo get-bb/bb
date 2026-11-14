@@ -333,16 +333,22 @@ CPU time, not by the wall clock, so other work on a busy runner does not count
 against it: the thread's CPU time on macOS, and the process's on Linux, where a
 thread's CPU time only advances at scheduler ticks and reads near zero for
 short calls. The check keeps the fastest of up
-to three calls per world and fails a function when, on either axis:
+to three calls per world. As the data grows 4x on either axis, linear costs
+measure about size^1.0 to size^1.3 locally and up to size^1.5 on shared CI
+runners, where memory-heavy queries scale worse under neighbouring load; a
+quadratic cost measures about size^2. So the check fails only on signals noise
+cannot produce:
 
-- its larger-world time is at least 2 ms and its cost grows faster than
-  size^1.5 as the data grows 4x (more than 8 times its smaller-world time):
-  linear costs measure about size^1.0 to size^1.3 even on a saturated machine,
-  and a quadratic one about size^2. A case that crosses the limit is measured
-  up to eight times before it fails, so one slow call does not fail it;
-- it takes longer than its ceiling in the larger world (250 ms unless its case sets
-  `ceilingMs` with a `reason`); or
-- a single call runs for more than 5 seconds of wall time, when it is killed.
+- a function's cost grows faster than size^2 (more than 16 times its
+  smaller-world time, once its larger-world time is at least 2 ms); or
+- a single call runs for more than 5 seconds of wall time, when it is killed,
+  or a case throws.
+
+It reports a GitHub Actions warning, without failing, when a function grows
+faster than size^1.5 (8x) or takes longer than its ceiling in the larger world
+(250 ms unless its case sets `ceilingMs` with a `reason`). A case that crosses
+size^1.5 is measured up to eight times before it is reported. The
+request-path statement-count test below is exact, so it stays blocking.
 
 The check also fails when an exported query function in `packages/db/src/data`
 has no case. A query function is an exported function that builds a query

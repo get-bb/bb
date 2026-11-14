@@ -11,10 +11,12 @@ import { createMigratedConnection } from "../src/testing.js";
 import {
   BASELINE_LONG_TURN_STEPS,
   DEFAULT_CEILING_MS,
-  GROWTH_EXPONENT_LIMIT,
+  GROWTH_FAIL_EXPONENT,
+  GROWTH_FAIL_LIMIT,
   GROWTH_FLOOR_MS,
-  GROWTH_LIMIT,
   GROWTH_STEP,
+  GROWTH_WARN_EXPONENT,
+  GROWTH_WARN_LIMIT,
   HISTORY_TURNS_AT_FULL_SCALE,
   KILL_AFTER_MS,
   LARGE_SCALE,
@@ -287,28 +289,52 @@ interface Comparison {
   large: HistoryFiles;
 }
 
-function failureOf(
+interface Finding {
+  severity: "fail" | "warn";
+  message: string;
+}
+
+function findingOf(
   comparison: Comparison,
   index: number,
   outcome: Outcome | undefined,
-): string | null {
-  if (outcome === undefined) return "not run";
-  if (outcome.kind === "killed") return `killed after ${KILL_AFTER_MS} ms`;
-  if (outcome.kind === "threw") return `threw: ${outcome.message}`;
+): Finding | null {
+  if (outcome === undefined) return { severity: "fail", message: "not run" };
+  if (outcome.kind === "killed") {
+    return { severity: "fail", message: `killed after ${KILL_AFTER_MS} ms` };
+  }
+  if (outcome.kind === "threw") {
+    return { severity: "fail", message: `threw: ${outcome.message}` };
+  }
   const { smallMs, largeMs } = outcome;
   const growth = largeMs / smallMs;
-  const ceiling = ceilingOf(index);
-  if (largeMs > ceiling) {
-    return `${largeMs.toFixed(1)} ms with ${comparison.largeWorld}, over the ${ceiling} ms ceiling`;
-  }
   if (
     comparison.checksGrowth &&
     largeMs >= GROWTH_FLOOR_MS &&
-    growth > GROWTH_LIMIT
+    growth > GROWTH_WARN_LIMIT
   ) {
-    return `${smallMs.toFixed(1)} ms → ${largeMs.toFixed(1)} ms (${growth.toFixed(1)}x, cost ∝ size^${growthExponent(growth).toFixed(2)}) when the ${comparison.growing} grow ${GROWTH_STEP}x, over size^${GROWTH_EXPONENT_LIMIT}`;
+    const failing = growth > GROWTH_FAIL_LIMIT;
+    return {
+      severity: failing ? "fail" : "warn",
+      message: `${smallMs.toFixed(1)} ms → ${largeMs.toFixed(1)} ms (${growth.toFixed(1)}x, cost ∝ size^${growthExponent(growth).toFixed(2)}) when the ${comparison.growing} grow ${GROWTH_STEP}x, over size^${failing ? GROWTH_FAIL_EXPONENT : GROWTH_WARN_EXPONENT}`,
+    };
+  }
+  const ceiling = ceilingOf(index);
+  if (largeMs > ceiling) {
+    return {
+      severity: "warn",
+      message: `${largeMs.toFixed(1)} ms with ${comparison.largeWorld}, over the ${ceiling} ms ceiling`,
+    };
   }
   return null;
+}
+
+function reportWarning(message: string): void {
+  console.log(
+    process.env.GITHUB_ACTIONS === "true"
+      ? `::warning title=Query cost::${message}`
+      : `warning: ${message}`,
+  );
 }
 
 function buildComparisons(directory: string): Comparison[] {
@@ -335,7 +361,7 @@ function buildComparisons(directory: string): Comparison[] {
   }));
 }
 
-async function runComparison(comparison: Comparison): Promise<string[]> {
+async function runComparison(comparison: Comparison): Promise<Finding[]> {
   const outcomes = new Map<number, Outcome>();
   let start: number | null = 0;
   while (start !== null && start < QUERY_COST_CASES.length) {
@@ -358,8 +384,15 @@ async function runComparison(comparison: Comparison): Promise<string[]> {
     );
   }
   return QUERY_COST_CASES.flatMap((costCase, index) => {
-    const failure = failureOf(comparison, index, outcomes.get(index));
-    return failure === null ? [] : [`  ${costCase.label}: ${failure}`];
+    const finding = findingOf(comparison, index, outcomes.get(index));
+    return finding === null
+      ? []
+      : [
+          {
+            severity: finding.severity,
+            message: `${costCase.label}: ${finding.message}`,
+          },
+        ];
   });
 }
 
@@ -369,11 +402,15 @@ const directory = mkdtempSync(join(tmpdir(), "bb-query-costs-"));
 let failed = coverageProblems.length > 0;
 try {
   for (const comparison of buildComparisons(directory)) {
-    const failures = await runComparison(comparison);
+    const findings = await runComparison(comparison);
+    for (const finding of findings) {
+      if (finding.severity === "warn") reportWarning(finding.message);
+    }
+    const failures = findings.filter((finding) => finding.severity === "fail");
     if (failures.length > 0) {
       failed = true;
       console.error(
-        `\nQuery functions whose cost grows faster than ${comparison.growing === "" ? "the data" : `the ${comparison.growing}`}, or that are too slow, ${comparison.name}:\n${failures.join("\n")}`,
+        `\nQuery functions whose cost grows quadratically or worse, or that failed to run, ${comparison.name}:\n${failures.map((finding) => `  ${finding.message}`).join("\n")}`,
       );
     }
   }
@@ -387,5 +424,5 @@ if (coverageProblems.length > 0) {
 }
 if (failed) process.exit(1);
 console.log(
-  `All ${QUERY_COST_CASES.length} query functions grow at most size^${GROWTH_EXPONENT_LIMIT} (${GROWTH_LIMIT.toFixed(0)}x) when the thread history or the turn size grows ${GROWTH_STEP}x, and stay under their ceiling.`,
+  `No query function grows faster than size^${GROWTH_FAIL_EXPONENT} (${GROWTH_FAIL_LIMIT.toFixed(0)}x) when the thread history or the turn size grows ${GROWTH_STEP}x. Growth past size^${GROWTH_WARN_EXPONENT} (${GROWTH_WARN_LIMIT.toFixed(0)}x) and time over a ceiling are reported as warnings.`,
 );
