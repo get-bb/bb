@@ -1,0 +1,17 @@
+{
+  "provider": "acp-cursor",
+  "cell": "steer-race",
+  "threadId": "thr_d02a6b0d34",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.06.19-20-24-33-653a7fb",
+  "recordedAt": "2026-11-14",
+  "description": "A steer sent as its turn ends, then a follow-up turn.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 31,
+    "provider→bridge": 20,
+    "bridge→provider": 6
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "settings-steer",
+  "threadId": "thr_8dcbb56039",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 1.5.2 (rpc)",
+  "recordedAt": "2026-11-14",
+  "description": "Long turns, each steered with one changed setting: model, env var, permission mode, reasoning level.",
+  "note": "Moved 8 lines the bridge exchanged with a replaced pi child after its replacement spawned to just before the replacement, so each replay child gets its own process's lines.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 7,
+    "bridge\u2192runtime": 78,
+    "provider\u2192bridge": 195,
+    "bridge\u2192provider": 22
+  }
+}

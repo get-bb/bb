@@ -1,0 +1,22 @@
+{
+  "provider": "acp-cursor",
+  "cell": "provider-exit",
+  "threadId": "thr_6d468fd37a",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.06.19-20-24-33-653a7fb",
+  "recordedAt": "2026-11-14",
+  "description": "The provider process is killed mid-command, then a follow-up turn.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 3,
+    "bridge\u2192runtime": 64,
+    "provider\u2192bridge": 55,
+    "bridge\u2192provider": 6
+  },
+  "providerExit": {
+    "run": 1794633268687,
+    "seq": 103,
+    "signal": "SIGKILL"
+  }
+}

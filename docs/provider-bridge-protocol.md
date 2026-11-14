@@ -675,3 +675,37 @@ public dependencies, so `packages/provider-parity` replays their committed
 cells instead. Its self-suite applies the recorded conformance checks to the
 same replay used for event and timeline parity, so each cell launches its
 bridge only once.
+
+Scenario recordings live apart from the matrix cells, under
+`recordings/scenarios/<provider>/<cell>`, and are checked only against rules
+that hold for every bridge, never against a snapshot of the recorded output,
+so a legitimate bridge change does not need a re-recording.
+`packages/provider-parity/src/scenarios.self.test.ts` replays each one
+through the current bridge with `replayScenarioCell`, which puts
+`provider-probe-child.mjs` between the bridge and the replay child to log the
+argv, environment and stdin each provider process received, and to kill the
+provider where the recorded one died (`providerExit` in the manifest).
+`checkRecordedScenarioReplay` then reports `scenario/<cell>/<rule>`:
+
+- `settings-follow-up`, `settings-steer`: a model, reasoning level, env var or
+  permission mode changed with a follow-up turn or a steer reaches the
+  provider before it receives that prompt. Permission is read from the
+  provider's own vocabulary for Codex and Claude Code; ACP bridges enforce it
+  themselves, so the rule checks that an agent's command permission request
+  after the change reaches the user.
+- every cell: each message is accepted exactly once, every turn carries the
+  message that started it, every turn settles, and a steer whose turn already
+  ended is rejected as stale.
+- `steer-race`: a steer sent as its turn ends.
+- `provider-exit`: after the provider process dies mid-command, the next
+  message runs in a replacement process that resumes the same conversation,
+  or the bridge announces lost context.
+
+When a bridge no longer talks to the provider the way the recording did (the
+replay stalls, or the replay child skips or runs out of recorded lines), the
+rules that depend on replayed provider output (accepted once, turns carry
+input, every turn settles) are reported as skipped with a re-record note
+instead of failing; rules about what the bridge itself sent or answered are
+still judged. A rule a bridge breaks on main is listed in
+`recordings/scenarios/known-gaps.json` with its reason. The suite fails on a
+new failure and on a listed gap that passes, so a fix removes its entry.

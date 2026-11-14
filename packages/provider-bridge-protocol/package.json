@@ -33,6 +33,11 @@
       "types": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"
     },
+    "./scenarios": {
+      "source": "./src/testing/scenario-replay.ts",
+      "types": "./src/testing/scenario-replay.ts",
+      "default": "./src/testing/scenario-replay.ts"
+    },
     "./bridge-worker-entry": {
       "source": "./src/bridge-worker-entry.ts",
       "types": "./src/bridge-worker-entry.ts",

@@ -1,0 +1,10 @@
+{"ts":1794633077844,"run":1794633077104,"seq":26,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1794633078055,"run":1794633077104,"seq":34,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Reply with exactly the single word: race\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1794633079167,"run":1794633077104,"seq":58,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1794633079168,"run":1794633077104,"seq":61,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Also reply with exactly the single word: steered\",\"streamingBehavior\":\"steer\",\"id\":\"bb-4\"}"}
+{"ts":1794633079169,"run":1794633077104,"seq":68,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-5\"}"}
+{"ts":1794633080104,"run":1794633077104,"seq":92,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-6\"}"}
+{"ts":1794633088108,"run":1794633077104,"seq":100,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Reply with exactly the single word: after\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-7\"}"}
+{"ts":1794633089118,"run":1794633077104,"seq":120,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-8\"}"}
+{"ts":1794633096646,"run":1794633077104,"seq":128,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-9\"}"}
+{"ts":1794633096647,"run":1794633077104,"seq":130,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
