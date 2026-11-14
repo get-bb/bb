@@ -13,8 +13,8 @@ import { z } from "zod";
 import {
   parseProviderProcessInputs,
   type ProviderProcessInputs,
-} from "../conformance/recorded-scenarios.js";
-export * from "../conformance/recorded-scenarios.js";
+} from "./recorded-scenarios.js";
+export * from "./recorded-scenarios.js";
 import { firstPartyReplayBridge } from "./first-party-replay.js";
 import {
   replayRecording,
