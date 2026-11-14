@@ -882,11 +882,13 @@
       "dependsOn": [
         "//#ensure-native-modules",
         "@bb/agent-runtime#generate:test-bridges",
+        "@get-bb/plugin-sdk#build",
         "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/plugins/provider-codex/**",
+        "$TURBO_ROOT$/plugins/provider-pi/**",
         "!$TURBO_ROOT$/plugins/*/node_modules/**",
         "!$TURBO_ROOT$/plugins/*/dist/**",
         "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
