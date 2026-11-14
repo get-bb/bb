@@ -80,6 +80,49 @@ const FULL_POLICY = {
 } satisfies RuntimePermissionPolicy;
 
 describe("buildClaudeSessionParams", () => {
+  it.each([undefined, "auto", "5m", "1h"])(
+    "maps the per-session TTL selection %s",
+    (ttl) => {
+      const params = buildClaudeSessionParams({
+        threadId: "thread-ttl",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          ...FULL_POLICY,
+          sessionOptions: ttl === undefined ? {} : { promptCacheTtl: ttl },
+        },
+      });
+      expect(params.promptCacheTtl).toBe(ttl ?? "auto");
+    },
+  );
+
+  it.each(["15m", "", true])("rejects an invalid TTL selection %s", (ttl) => {
+    expect(() =>
+      buildClaudeSessionParams({
+        threadId: "thread-ttl",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: { ...FULL_POLICY, sessionOptions: { promptCacheTtl: ttl } },
+      }),
+    ).toThrow();
+  });
+
+  it("keeps an omitted turn TTL distinct from explicitly selecting Automatic", () => {
+    const args = {
+      threadId: "thread-ttl",
+      providerThreadId: "native-ttl",
+      input: [],
+      options: FULL_POLICY,
+    };
+    expect(buildClaudeTurnParams(args)).not.toHaveProperty("promptCacheTtl");
+    expect(
+      buildClaudeTurnParams({
+        ...args,
+        options: { ...FULL_POLICY, sessionOptions: { promptCacheTtl: "auto" } },
+      }),
+    ).toHaveProperty("promptCacheTtl", "auto");
+  });
+
   it("maps every claude-flavored knob out of the providerOptions bag", () => {
     const params = buildClaudeSessionParams({
       threadId: "thread-1",

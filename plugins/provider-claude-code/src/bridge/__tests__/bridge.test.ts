@@ -1231,6 +1231,147 @@ describe("bridge", () => {
     }
   });
 
+  it.each(["auto", "5m", "1h"])(
+    "preserves the session TTL %s through start and cold resume",
+    async (ttl) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+      const threadId = `thread-cache-ttl-${ttl}`;
+      const options = {
+        ...canonicalOptions({}),
+        sessionOptions: { promptCacheTtl: ttl },
+      };
+      try {
+        bridge.sendRequest(1, "thread/start", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options,
+        });
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(1),
+        );
+        const check = () => {
+          if (ttl === "auto")
+            expect(getLatestQueryOptions().settings).not.toHaveProperty(
+              "promptCacheTtl",
+            );
+          else
+            expect(getLatestQueryOptions().settings).toMatchObject({
+              promptCacheTtl: ttl,
+            });
+        };
+        check();
+        bridge.sendRequest(2, "thread/stop", {
+          threadId,
+          providerThreadId,
+          intent: "release",
+          activeTurnId: null,
+        });
+        await bridge.waitForResponse(2);
+        bridge.sendRequest(3, "thread/resume", {
+          threadId,
+          providerThreadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options,
+        });
+        expect((await bridge.waitForResponse(3)).error).toBeUndefined();
+        expect(queries).toHaveLength(2);
+        expect(getLatestQueryOptions()).toMatchObject({
+          resume: providerThreadId,
+        });
+        check();
+      } finally {
+        bridge.sendRequest(99, "thread/stop", {
+          threadId,
+          providerThreadId: null,
+          intent: "release",
+          activeTurnId: null,
+        });
+        await bridge.waitForResponse(99);
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
+
+  it("rebuilds a session to change TTL and clears the override on Automatic", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const threadId = "thread-cache-ttl-change";
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          ...canonicalOptions({}),
+          sessionOptions: { promptCacheTtl: "1h" },
+        },
+      });
+      const providerThreadId = getProviderThreadIdFromResult(
+        await bridge.waitForResponse(1),
+      );
+      for (const [index, ttl] of ["5m", undefined, "auto"].entries()) {
+        const id = index + 2;
+        bridge.sendRequest(id, "turn/start", {
+          threadId,
+          providerThreadId,
+          clientRequestId: "creq_abcdefghjk",
+          input: [{ type: "text", text: "TTL check", mentions: [] }],
+          options: {
+            ...canonicalOptions({}),
+            ...(ttl === undefined
+              ? {}
+              : { sessionOptions: { promptCacheTtl: ttl } }),
+          },
+        });
+        await bridge.flushWork();
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "TTL check",
+        );
+        expect((await bridge.waitForResponse(id)).error).toBeUndefined();
+        if (ttl === "auto")
+          expect(getLatestQueryOptions().settings).not.toHaveProperty(
+            "promptCacheTtl",
+          );
+        else
+          expect(getLatestQueryOptions().settings).toMatchObject({
+            promptCacheTtl: "5m",
+          });
+        queries.at(-1)?.emit(createSuccessfulResultMessage(providerThreadId));
+        await bridge.flushWork();
+      }
+      expect(queries).toHaveLength(3);
+      expect(queries[0]?.close).toHaveBeenCalledOnce();
+      expect(queries[1]?.close).toHaveBeenCalledOnce();
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+      });
+    } finally {
+      bridge.sendRequest(99, "thread/stop", {
+        threadId,
+        providerThreadId: null,
+        intent: "release",
+        activeTurnId: null,
+      });
+      await bridge.waitForResponse(99);
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
   it("lists models with each request's contributed environment", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     queryMock.mockImplementation(() => ({
@@ -1330,6 +1471,7 @@ describe("bridge", () => {
           permissionEscalation: "ask",
           instructions: "test",
           envVars: { CLAUDE_CONFIG_DIR: projectConfigDir },
+          sessionOptions: { promptCacheTtl: "1h" },
           providerOptions: {
             workflowsEnabled: false,
           },
@@ -1351,7 +1493,10 @@ describe("bridge", () => {
       expect(forkedTranscript).not.toContain("discarded follow-up");
       expect(queryMock).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          options: expect.objectContaining({ resume: providerThreadId }),
+          options: expect.objectContaining({
+            resume: providerThreadId,
+            settings: expect.objectContaining({ promptCacheTtl: "1h" }),
+          }),
         }),
       );
     } finally {

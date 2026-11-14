@@ -219,6 +219,16 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   Claude derives it from `cache_creation` (any 1h write ⇒ 1h, else 5m) and
   Pi from `cacheWrite1h`, which only its Anthropic and Bedrock APIs report;
   Codex and ACP agents report no retention and omit it.
+  Claude sends one `usage` per main-agent API request, keyed by the assistant
+  message id, so `last` is that request and `total` still sums every `last`.
+  Whatever the turn's `result` reports beyond the observed requests
+  (subagents, compaction, messages without an id) follows as one more
+  `usage`. Each is preceded by a `provider-claude-code/usage` state with
+  `source` (`request` or `aggregate-remainder`), `messageId`, `model`,
+  `incomplete`, `counts` and `cacheWriteBreakdown`, which splits the write
+  count into `fiveMinuteTokens`, `oneHourTokens` (null when unreported) and
+  `unknownTokens`. `incomplete` marks a request cut off by a stopped session
+  and every remainder.
 - **Context meter.** The context meter is always the separate `contextWindow`
   delta, which may name a vouched `providerTurnId` (codex sends one beside
   each `usage`). It may carry the session's cumulative `cost`
