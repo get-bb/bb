@@ -36,10 +36,7 @@ import {
   buildThreadTimelineCacheRevision,
   createThreadTimelineCache,
 } from "./timeline-cache.js";
-import {
-  catchUpTimelineProjection,
-  forgetTimelineProjection,
-} from "./timeline-projection.js";
+import { forgetTimelineProjection } from "./timeline-projection.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
 import { resolveThreadHeadStateOptions } from "./thread-head-state.js";
@@ -387,13 +384,6 @@ export function createThreadTimelineWindows(
     }
     const rewritten = message.changes.includes("history-rewritten");
     const compacted = message.changes.includes("history-compacted");
-    if (
-      !rewritten &&
-      !compacted &&
-      message.changes.includes("events-appended")
-    ) {
-      catchUpTimelineProjection(deps.db, message.id);
-    }
     if (
       message.changes.includes("events-appended") &&
       deps.hub

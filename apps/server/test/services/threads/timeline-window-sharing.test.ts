@@ -14,7 +14,10 @@ import {
   type ThreadTimelineWindowRequest,
 } from "../../../src/services/threads/thread-timeline-windows.js";
 import type { ThreadTimelineBuildProfile } from "../../../src/services/threads/timeline.js";
-import { clearTimelineProjections } from "../../../src/services/threads/timeline-projection.js";
+import {
+  clearTimelineProjections,
+  listTimelineProjections,
+} from "../../../src/services/threads/timeline-projection.js";
 import { seedEvent, seedThreadFixture } from "../../helpers/seed.js";
 import {
   withTestHarness,
@@ -447,6 +450,36 @@ describe("timeline window caches", () => {
       expect(delegationChildRows(app)).toEqual([null]);
       expect(delegationChildRows(cliLog)).toEqual([1]);
       expect(cliLog).toEqual(freshRead(harness, thread.id, variants.cliLog!));
+    });
+  });
+
+  it("leaves an unread thread's projection untouched while events append", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      seedUserMessages(harness, {
+        environmentId: environment.id,
+        sequences: [1],
+        threadId: thread.id,
+      });
+      const windows = createThreadTimelineWindows(harness.deps);
+      full(windows.read(thread, desktop, undefined));
+      const [projection] = listTimelineProjections(harness.deps.db);
+      const events = projection!.events;
+      const maxSeq = projection!.maxSeq;
+      seedUserMessages(harness, {
+        environmentId: environment.id,
+        sequences: Array.from({ length: 40 }, (_, index) => index + 2),
+        threadId: thread.id,
+      });
+      for (let index = 0; index < 40; index += 1) {
+        harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
+      }
+      expect(projection!.events).toBe(events);
+      expect(projection!.maxSeq).toBe(maxSeq);
+      const latest = full(
+        windows.read(requireThread(harness, thread.id), desktop, undefined),
+      );
+      expect(latest).toEqual(freshRead(harness, thread.id, desktop));
     });
   });
 

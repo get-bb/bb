@@ -7,6 +7,7 @@ import {
   createThread,
   deleteThreadEventSuffixInTransaction,
   getLatestThreadSequence,
+  listStoredEventRows,
   noopNotifier,
   type DbConnection,
 } from "@bb/db";
@@ -117,6 +118,17 @@ function projectionsOf(db: DbConnection, threadId: string) {
 function retainedDataBytes(db: DbConnection): number {
   return listTimelineProjections(db).reduce(
     (sum, projection) => sum + projection.dataBytes,
+    0,
+  );
+}
+
+function retainedBytes(db: DbConnection): number {
+  return listTimelineProjections(db).reduce(
+    (sum, projection) =>
+      sum +
+      projection.dataBytes +
+      projection.releasedBytes +
+      projection.derivedBytes,
     0,
   );
 }
@@ -317,6 +329,45 @@ describe("timeline projection decoding", () => {
     });
   });
 
+  it("keeps only the hints and head-state rows the window still needs", () => {
+    withTestThread((testThread) => {
+      const { db, thread } = testThread;
+      const narrow = () =>
+        buildRouteTimelinePage({
+          db,
+          eventBudget: 200,
+          includeDiagnosticOperations: false,
+          page: { kind: "latest", segmentLimit: 2 },
+          registry,
+          thread,
+          variant: "default",
+        });
+      appendRows(testThread, openTurn());
+      narrow();
+      for (let index = 2; index < 12; index += 1) {
+        appendRows(testThread, [
+          {
+            data: { status: "completed" },
+            turnId: `turn-${index - 1}`,
+            type: "turn/completed",
+          },
+          ...userTurn(index).slice(0, -1),
+        ]);
+        narrow();
+      }
+      const [projection] = projectionsOf(db, thread.id);
+      expect(projection!.hints.length).toBeLessThanOrEqual(
+        projection!.coverageSegmentLimit + 1,
+      );
+      const headStateRowIds = [...projection!.headStateEvents.keys()];
+      const rowIds = new Set(
+        listStoredEventRows(db, { threadId: thread.id }).map((row) => row.id),
+      );
+      for (const id of headStateRowIds) expect(rowIds.has(id)).toBe(true);
+      expect(headStateRowIds.length).toBeLessThan(20);
+    });
+  });
+
   it("keeps no projection for a window larger than the data budget", () => {
     withTestThread((testThread) => {
       const rowChars = 1_000_000;
@@ -334,6 +385,37 @@ describe("timeline projection decoding", () => {
 });
 
 describe("kept pageable timeline rows", () => {
+  it("charges kept rows against the projection data budget", () => {
+    withTestThread((testThread) => {
+      const rowChars = 1_000_000;
+      const rowsPerThread = Math.ceil(
+        (MAX_TIMELINE_PROJECTION_DATA_BYTES * 0.3) / rowChars,
+      );
+      const big = () =>
+        Array.from({ length: rowsPerThread }, (_, index) =>
+          agentMessage(`big-${index}`, "x".repeat(rowChars)),
+        );
+      const first = addActiveThread(testThread);
+      appendRows(first, [...openTurn(), ...big()]);
+      const firstBuild = buildLatest(first);
+      const [firstProjection] = projectionsOf(testThread.db, first.thread.id);
+      expect(firstProjection!.derived.pageableRows.size).toBe(1);
+      expect(firstProjection!.derivedBytes).toBeGreaterThan(
+        rowsPerThread * rowChars,
+      );
+
+      const second = addActiveThread(testThread);
+      appendRows(second, [...openTurn(), ...big()]);
+      buildLatest(second);
+      expect(projectionsOf(testThread.db, first.thread.id)).toEqual([]);
+      expect(projectionsOf(testThread.db, second.thread.id)).toHaveLength(1);
+      expect(retainedBytes(testThread.db)).toBeLessThanOrEqual(
+        MAX_TIMELINE_PROJECTION_DATA_BYTES,
+      );
+      expect(sharedRowIds(firstBuild, buildLatest(first))).toEqual([]);
+    });
+  });
+
   it("reuses kept rows only while the projection is kept", () => {
     withTestThread((testThread) => {
       const { db, thread } = testThread;

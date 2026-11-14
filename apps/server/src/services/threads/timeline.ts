@@ -2,7 +2,10 @@ import {
   projectConversationOutlineIncrementally,
   type ConversationOutlineSelection,
 } from "./conversation-outline-cache.js";
-import { paginateTimelineContents } from "./timeline-content-pagination.js";
+import {
+  measuredTimelineRowJsonBytes,
+  paginateTimelineContents,
+} from "./timeline-content-pagination.js";
 import {
   deferSettledTimelineRow,
   timelineRowItemId,
@@ -119,6 +122,7 @@ import { parseStoredEvent } from "./thread-data.js";
 import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
 import {
   readThreadHeadState,
+  type StoredEventRowDecoder,
   type ThreadHeadStateOptions,
 } from "./thread-head-state.js";
 import {
@@ -126,11 +130,13 @@ import {
   type TimelineTurnDetailsProjection,
 } from "./timeline-turn-details-cache.js";
 import {
-  decodeHeadStateRow,
+  chargeDerivedRows,
+  NO_PREVIOUS_DERIVED,
   decodeRowWithProjection,
   decodeStoredEventRow,
   findServingTimelineProjection,
   peekTimelineProjection,
+  readWithHeadStateDecoder,
   projectionFold,
   readTimelineProjection,
   selectTimelineWindowStart,
@@ -265,7 +271,6 @@ export const TIMELINE_TURN_DETAILS_PAGE_BYTE_LIMIT = 1024 * 1024;
 
 type ThreadTimelineBuildProfileStage =
   | "event-query"
-  | "selection-memo-lookup"
   | "group-context-query"
   | "ordering-context-query"
   | "accepted-client-request-context-query"
@@ -1345,8 +1350,7 @@ function readGroupingContext(
   const projection = peekTimelineProjection(db, threadId);
   if (
     projection === undefined ||
-    projection.scope.epochSequenceStart !== sequenceStart ||
-    projection.maxSeq < maxSeq
+    projection.scope.epochSequenceStart !== sequenceStart
   ) {
     return getTimelineGroupingContext(db, { maxSeq, sequenceStart, threadId });
   }
@@ -1653,17 +1657,19 @@ function buildThreadTimelineInternal(
     planCommand: options.planCommand ?? null,
   };
   const readHeadState = () =>
-    measureThreadTimelineStage(profile, "head-state", () =>
-      readThreadHeadState(
-        db,
-        { ...thread, status: snapshot.status },
-        headStateOptions,
-        snapshot.maxSeq,
-        projection === null
-          ? undefined
-          : (row) => decodeHeadStateRow(projection, row),
-      ),
-    );
+    measureThreadTimelineStage(profile, "head-state", () => {
+      const read = (decode?: StoredEventRowDecoder) =>
+        readThreadHeadState(
+          db,
+          { ...thread, status: snapshot.status },
+          headStateOptions,
+          snapshot.maxSeq,
+          decode,
+        );
+      return projection === null
+        ? read()
+        : readWithHeadStateDecoder(projection, read);
+    });
   const headState =
     options.page.kind !== "latest"
       ? null
@@ -1732,6 +1738,7 @@ function buildThreadTimelineInternal(
         rows: pageable.rows,
       }),
   );
+  if (projection !== null) chargeProjectedRows(db, projection);
   profile.selectionStrategy =
     !source.hasOlderSegments && options.page.kind === "latest"
       ? "full"
@@ -1774,6 +1781,28 @@ function buildThreadTimelineInternal(
     response,
     profile: completeThreadTimelineBuildProfile(profile, options),
   };
+}
+
+function measuredRowsBytes(rows: readonly TimelineRow[]): number {
+  let bytes = 0;
+  for (const row of rows) bytes += measuredTimelineRowJsonBytes(row) ?? 0;
+  return bytes;
+}
+
+function chargeProjectedRows(
+  db: DbConnection,
+  projection: ThreadTimelineProjection,
+): void {
+  let bytes = 0;
+  for (const { rows } of projection.derived.pageableRows.values()) {
+    bytes += measuredRowsBytes(rows);
+  }
+  if (!chargeDerivedRows(db, projection, bytes)) {
+    projection.derived.pageableRows.clear();
+    projection.derived.windows.clear();
+    projection.previousDerived = NO_PREVIOUS_DERIVED;
+    chargeDerivedRows(db, projection, 0);
+  }
 }
 
 function derivedValue<T>(
@@ -1973,8 +2002,8 @@ export function readProjectedThreadHeadState(
     projection.derived.headStates,
     headStateKey(thread.status, options),
     () =>
-      readThreadHeadState(db, thread, options, projection.maxSeq, (row) =>
-        decodeHeadStateRow(projection, row),
+      readWithHeadStateDecoder(projection, (decode) =>
+        readThreadHeadState(db, thread, options, projection.maxSeq, decode),
       ),
   );
 }

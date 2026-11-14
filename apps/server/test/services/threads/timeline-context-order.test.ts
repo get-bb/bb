@@ -249,7 +249,7 @@ describe("timeline grouping context", () => {
     });
   });
 
-  it("updates parented boundaries as children append past a user request", () => {
+  it("updates parented boundaries without rereading unchanged request and turn history", () => {
     withTestThread((testThread) => {
       const beforeChildren = appendRows(testThread, [
         turnStarted("turn-1"),
@@ -262,6 +262,8 @@ describe("timeline grouping context", () => {
         expectIncrementalEqualsFresh(testThread, beforeChildren)
           .orderingBoundarySequence,
       ).toBeNull();
+      const log = logs.get(testThread)!.get(0)!.log;
+      const loggedRows = log.rows.length;
       for (let index = 0; index < 20; index += 1) {
         const maxSeq = appendRows(testThread, [
           {
@@ -274,6 +276,7 @@ describe("timeline grouping context", () => {
             .orderingBoundarySequence,
         ).toBe(5);
       }
+      expect(log.rows).toHaveLength(loggedRows);
       expect(
         expectIncrementalEqualsFresh(testThread, beforeChildren)
           .orderingBoundarySequence,
@@ -281,7 +284,7 @@ describe("timeline grouping context", () => {
     });
   });
 
-  it("keeps the context across appended deltas and root tool-call rows", () => {
+  it("reuses the context across appended deltas and root tool-call rows without re-reading it", () => {
     withTestThread((testThread) => {
       appendRows(testThread, [
         turnStarted("turn-1"),
@@ -304,7 +307,7 @@ describe("timeline grouping context", () => {
         rootToolCall("call-2", "turn-1", "item/started"),
         rootToolCall("call-2", "turn-1", "item/completed"),
       ]);
-      expect(expectIncrementalEqualsFresh(testThread, maxSeq)).toEqual(warm);
+      expect(expectIncrementalEqualsFresh(testThread, maxSeq)).toBe(warm);
     });
   });
 
@@ -401,9 +404,7 @@ describe("timeline grouping context", () => {
         rootToolCall("call-1", "turn-2", "item/started"),
         rootToolCall("call-1", "turn-2", "item/completed"),
       ]);
-      expect(expectIncrementalEqualsFresh(testThread, reusedMaxSeq)).toEqual(
-        warm,
-      );
+      expect(expectIncrementalEqualsFresh(testThread, reusedMaxSeq)).toBe(warm);
       expectIncrementalEqualsFresh(
         testThread,
         appendRows(testThread, [userRequest("request-2")]),
@@ -472,7 +473,7 @@ describe("timeline grouping context", () => {
         testThread,
         appendRows(testThread, [delta("turn-1", "b"), delta("turn-1", "c")]),
       );
-      expect(expectIncrementalEqualsFresh(testThread, olderMaxSeq)).toEqual(
+      expect(expectIncrementalEqualsFresh(testThread, olderMaxSeq)).toBe(
         latest,
       );
 

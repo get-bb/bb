@@ -29,7 +29,6 @@ import {
   getFirstParentedTimelineBoundarySequence,
   getLatestStoredThreadEventOfTypes,
   getLatestModelFallbackRowSinceTurnRequest,
-  getTimelineGroupingContextChangesInRange,
   getUnfinishedCommandItemData,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
@@ -738,15 +737,6 @@ describe("slow query index plans", () => {
   });
 
   it.each([
-    {
-      name: "probes appended grouping-context rows",
-      run: (db: DbConnection, threadId: string) =>
-        getTimelineGroupingContextChangesInRange(db, {
-          afterSequence: 10,
-          threadId,
-          throughSequence: 30,
-        }),
-    },
     {
       name: "lists rows in a sequence range",
       run: (db: DbConnection, threadId: string) =>

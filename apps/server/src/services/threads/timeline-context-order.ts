@@ -41,10 +41,17 @@ type TimelineOrderingContextRow = ReturnType<
 >[number];
 
 export interface TimelineOrderingContextLog {
+  computed: ComputedTimelineGroupingContext | null;
   readonly rows: TimelineOrderingContextRow[];
   readonly sequenceStart: number;
   readonly threadId: string;
   throughSequence: number;
+}
+
+interface ComputedTimelineGroupingContext {
+  readonly context: TimelineGroupingContext;
+  readonly cut: number;
+  readonly ordering: TimelineOrderingContext;
 }
 
 export function createTimelineOrderingContextLog(
@@ -52,6 +59,7 @@ export function createTimelineOrderingContextLog(
   sequenceStart: number,
 ): TimelineOrderingContextLog {
   return {
+    computed: null,
     rows: [],
     sequenceStart,
     threadId,
@@ -106,24 +114,36 @@ export function readTimelineGroupingContext(
 ): TimelineGroupingContext {
   extendTimelineOrderingContextLog(db, log, maxSeq);
   const cut = sequenceCut(log.rows, maxSeq);
-  const orderingContext = computeTimelineOrderingContext(
-    cut === log.rows.length ? log.rows : log.rows.slice(0, cut),
-  );
+  const ordering =
+    log.computed?.cut === cut
+      ? log.computed.ordering
+      : computeTimelineOrderingContext(
+          cut === log.rows.length ? log.rows : log.rows.slice(0, cut),
+        );
   const parentedBoundary = getFirstParentedTimelineBoundarySequence(db, {
     maxSeq,
     sequenceStart: log.sequenceStart,
     threadId: log.threadId,
   });
-  return {
-    clientRequestIdsBySequence: orderingContext.clientRequestIdsBySequence,
-    acceptedTurnIds: orderingContext.acceptedTurnIds,
-    clientRequests: orderingContext.clientRequests,
-    orderingBoundarySequence:
-      parentedBoundary !== null &&
-      parentedBoundary <= orderingContext.boundaryScanThroughSequence
-        ? parentedBoundary
-        : (orderingContext.boundarySequence ?? parentedBoundary),
+  const orderingBoundarySequence =
+    parentedBoundary !== null &&
+    parentedBoundary <= ordering.boundaryScanThroughSequence
+      ? parentedBoundary
+      : (ordering.boundarySequence ?? parentedBoundary);
+  if (
+    log.computed?.cut === cut &&
+    log.computed.context.orderingBoundarySequence === orderingBoundarySequence
+  ) {
+    return log.computed.context;
+  }
+  const context: TimelineGroupingContext = {
+    clientRequestIdsBySequence: ordering.clientRequestIdsBySequence,
+    acceptedTurnIds: ordering.acceptedTurnIds,
+    clientRequests: ordering.clientRequests,
+    orderingBoundarySequence,
   };
+  log.computed = { context, cut, ordering };
+  return context;
 }
 
 export function getTimelineGroupingContext(

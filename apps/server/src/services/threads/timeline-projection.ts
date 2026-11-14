@@ -167,6 +167,16 @@ export interface ReleasedEvent {
   event: ThreadEventWithMeta;
 }
 
+export interface PreviousDerived {
+  readonly pageableRows: ReadonlyMap<string, ProjectedPageableRows>;
+  readonly windows: ReadonlyMap<string, ProjectedWindow>;
+}
+
+export const NO_PREVIOUS_DERIVED: PreviousDerived = {
+  pageableRows: new Map(),
+  windows: new Map(),
+};
+
 export interface ProjectedGroupingContext {
   context: TimelineGroupingContext;
   maxSeq: number;
@@ -203,11 +213,12 @@ export interface ThreadTimelineProjection {
   foldedEventCount: number;
   readonly generation: number;
   groupingContext: ProjectedGroupingContext | null;
-  readonly headStateEvents: Map<string, ThreadEventWithMeta>;
+  headStateEvents: ReadonlyMap<string, ThreadEventWithMeta>;
   hints: TimelineWindowHint[];
   maxSeq: number;
   readonly orderingLog: TimelineOrderingContextLog;
-  previousDerived: ThreadTimelineProjectionDerived;
+  previousDerived: PreviousDerived;
+  derivedBytes: number;
   readonly scope: TimelineProjectionScope;
   readonly scopeKey: string;
   selection: TimelineEventRowSelection;
@@ -351,15 +362,23 @@ function projectionEventsById(
   return projection.eventsById;
 }
 
-export function decodeHeadStateRow(
+export function readWithHeadStateDecoder<T>(
   projection: ThreadTimelineProjection,
-  row: StoredEventRow,
-): ThreadEventWithMeta {
-  const kept = projection.headStateEvents.get(row.id);
-  if (kept !== undefined && kept.meta.seq === row.sequence) return kept;
-  const decoded = decodeStoredEventRow(row);
-  projection.headStateEvents.set(row.id, decoded);
-  return decoded;
+  read: (decode: (row: StoredEventRow) => ThreadEventWithMeta) => T,
+): T {
+  const previous = projection.headStateEvents;
+  const used = new Map<string, ThreadEventWithMeta>();
+  const value = read((row) => {
+    const kept = previous.get(row.id);
+    const decoded =
+      kept !== undefined && kept.meta.seq === row.sequence
+        ? kept
+        : decodeStoredEventRow(row);
+    used.set(row.id, decoded);
+    return decoded;
+  });
+  projection.headStateEvents = used;
+  return value;
 }
 
 export function listTimelineProjections(
@@ -706,7 +725,10 @@ function createDerived(): ThreadTimelineProjectionDerived {
 
 function startNextVersion(projection: ThreadTimelineProjection): void {
   if (projection.derived.pageableRows.size > 0) {
-    projection.previousDerived = projection.derived;
+    projection.previousDerived = {
+      pageableRows: projection.derived.pageableRows,
+      windows: projection.derived.windows,
+    };
   }
   projection.derived = createDerived();
 }
@@ -715,15 +737,13 @@ function appendToProjection(
   db: DbConnection,
   projection: ThreadTimelineProjection,
   maxSeq: number,
-  maxSeqIsHead = false,
 ): boolean {
   if (maxSeq === projection.maxSeq) return true;
   if (
     maxSeq < projection.maxSeq ||
     maxSeq - projection.maxSeq > MAX_APPENDED_ROWS_PER_CATCH_UP ||
-    (!maxSeqIsHead &&
-      getLatestThreadSequence(db, { threadId: projection.scope.threadId }) !==
-        maxSeq)
+    getLatestThreadSequence(db, { threadId: projection.scope.threadId }) !==
+      maxSeq
   ) {
     return false;
   }
@@ -816,7 +836,10 @@ function appendToProjection(
     .map((row) => ({ sequence: row.sequence }))
     .reverse();
   if (appendedHints.length > 0) {
-    projection.hints = [...appendedHints, ...projection.hints];
+    projection.hints = [...appendedHints, ...projection.hints].slice(
+      0,
+      projection.coverageSegmentLimit + 1,
+    );
   }
   const decoded = rows.map(decodeStoredEventRow);
   if (projection.fold !== null) {
@@ -917,7 +940,14 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
         : [...result.hints],
     maxSeq,
     orderingLog,
-    previousDerived: previous?.derived ?? createDerived(),
+    previousDerived:
+      previous === null
+        ? NO_PREVIOUS_DERIVED
+        : {
+            pageableRows: previous.derived.pageableRows,
+            windows: previous.derived.windows,
+          },
+    derivedBytes: 0,
     scope,
     scopeKey: scopeKeyOf(scope),
     selection: result.selection,
@@ -937,8 +967,9 @@ function releaseDroppedEvents(
     if (kept.has(row.id) || event === undefined || events.has(row.id)) {
       continue;
     }
-    events.set(row.id, { bytes: row.data.length, event });
-    bytes += row.data.length;
+    const rowBytes = Buffer.byteLength(row.data, "utf8");
+    events.set(row.id, { bytes: rowBytes, event });
+    bytes += rowBytes;
   }
   for (const id of kept) {
     const entry = events.get(id);
@@ -1065,6 +1096,37 @@ function projectionRowSource(
   };
 }
 
+function retainedBytesOf(projection: ThreadTimelineProjection): number {
+  return (
+    projection.dataBytes + projection.releasedBytes + projection.derivedBytes
+  );
+}
+
+export function chargeDerivedRows(
+  db: DbConnection,
+  projection: ThreadTimelineProjection,
+  bytes: number,
+): boolean {
+  if (
+    retainedBytesOf(projection) - projection.derivedBytes + bytes >
+    MAX_TIMELINE_PROJECTION_DATA_BYTES
+  ) {
+    return false;
+  }
+  projection.derivedBytes = bytes;
+  const registry = projectionsByDb.get(db);
+  if (registry?.get(projection.id) !== projection) return true;
+  let total = 0;
+  for (const kept of registry.values()) total += retainedBytesOf(kept);
+  for (const [keptKey, kept] of registry) {
+    if (total <= MAX_TIMELINE_PROJECTION_DATA_BYTES) break;
+    if (kept === projection) continue;
+    registry.delete(keptKey);
+    total -= retainedBytesOf(kept);
+  }
+  return true;
+}
+
 function storeProjection(
   db: DbConnection,
   projection: ThreadTimelineProjection,
@@ -1085,16 +1147,14 @@ function storeProjection(
     }
   }
   let dataBytes = 0;
-  for (const kept of registry.values()) {
-    dataBytes += kept.dataBytes + kept.releasedBytes;
-  }
+  for (const kept of registry.values()) dataBytes += retainedBytesOf(kept);
   while (
     registry.size > MAX_TIMELINE_PROJECTIONS ||
     (dataBytes > MAX_TIMELINE_PROJECTION_DATA_BYTES && registry.size > 1)
   ) {
     const [oldestKey, oldest] = registry.entries().next().value!;
     registry.delete(oldestKey);
-    dataBytes -= oldest.dataBytes + oldest.releasedBytes;
+    dataBytes -= retainedBytesOf(oldest);
   }
 }
 
@@ -1227,24 +1287,6 @@ export function readTimelineProjection(
     source: undefined,
   });
   return serve(db, projection, args, siblings);
-}
-
-export function catchUpTimelineProjection(
-  db: DbConnection,
-  threadId: string,
-): void {
-  const projections = projectionsOfThread(db, threadId);
-  if (projections.length === 0) return;
-  db.transaction(() => {
-    const maxSeq = getLatestThreadSequence(db, { threadId });
-    for (const projection of projections) {
-      if (!isProjectionCurrent(db, projection)) {
-        registryOf(db).delete(projection.id);
-      } else {
-        appendToProjection(db, projection, maxSeq, true);
-      }
-    }
-  });
 }
 
 export function projectionFold(

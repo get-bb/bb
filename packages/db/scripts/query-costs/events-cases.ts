@@ -48,7 +48,6 @@ import {
   getStoredItemLifecycleSequenceRange,
   getStoredProviderSession,
   getStoredTurnRequestEventForTurn,
-  getTimelineGroupingContextChangesInRange,
   getTurnFinalAgentMessageEventRow,
   getUnfinishedCommandItemData,
   hasRootStoredTurnStarted,
@@ -1083,15 +1082,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
         maxSeq: fixture.latestSequence,
         sequenceStart: 0,
         threadId: fixture.threadId,
-      }),
-  },
-  {
-    name: `${EVENTS}#getTimelineGroupingContextChangesInRange`,
-    run: (db, fixture) =>
-      getTimelineGroupingContextChangesInRange(db, {
-        afterSequence: turnAt(fixture, -2).completedSequence,
-        threadId: fixture.threadId,
-        throughSequence: fixture.latestSequence,
       }),
   },
   {
