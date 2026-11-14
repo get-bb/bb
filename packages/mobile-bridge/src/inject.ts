@@ -60,13 +60,14 @@ export function buildBridgeInjectionScript(
       }));
     };
 
+    var sendMessage = function (message) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(message));
+    };
+
     var post = function (message) {
       try {
-        window.ReactNativeWebView.postMessage(JSON.stringify(message));
-      } catch (error) {
-        // A navigation can tear the bridge down mid-call. Losing a haptic is
-        // never worth an exception in the page.
-      }
+        sendMessage(message);
+      } catch (error) {}
     };
 
     var native = {
@@ -148,7 +149,13 @@ export function buildBridgeInjectionScript(
             reject(new Error("native request timed out"));
           }, kind === "clipboard" ? 30000 : 10000);
           pending[id] = { resolve: resolve, reject: reject, timer: timer };
-          post({ type: "request", id: id, request: { kind: kind, payload: payload } });
+          try {
+            sendMessage({ type: "request", id: id, request: { kind: kind, payload: payload } });
+          } catch (error) {
+            delete pending[id];
+            clearTimeout(timer);
+            reject(new Error("native message could not be sent"));
+          }
         });
       },
       subscribe: function (listener) {
