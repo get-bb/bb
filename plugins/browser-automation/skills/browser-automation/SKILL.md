@@ -107,8 +107,11 @@ differently encoded capture fails the run. `bb browser-automation --help` and
 `bb browser-automation <command> --help` print every flag with these limits.
 Unknown commands and flags fail with a suggestion, and with `--json` a failure
 prints `{"ok":false,"error":{"code":…,"message":…,"hint":…}}` on stdout (code
-`session_unavailable` when the session stopped or expired, `screenshot_limit`
-for capture limits) while the same message stays on stderr.
+`session_unavailable` when the session stopped, expired, lost its worker or
+browser, or its work was cancelled or timed out, `screenshot_limit` for capture
+limits) while the same message stays on stderr. Session failures include a hint
+to open a new session; cancellation and timeout also suggest increasing
+`--timeout` up to 120 seconds when a script needs longer.
 
 An unavailable backend or a failed runtime install is an actionable setup
 error, not permission to attach to a random browser. The first open on a host

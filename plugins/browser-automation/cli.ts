@@ -364,7 +364,13 @@ export function browserCliFailure(error: unknown): PluginCliError {
   if (error instanceof PluginCliError) return error;
   const message =
     error instanceof Error ? error.message : "Browser command failed";
-  if (/stopped or expired|does not belong to this thread/u.test(message)) {
+  if (message.includes("Browser work cancelled or timed out")) {
+    return new PluginCliError(message, {
+      code: "session_unavailable",
+      hint: `${REOPEN_HINT} For longer scripts, increase --timeout up to 120 seconds.`,
+    });
+  }
+  if (/open a new session|does not belong to this thread/u.test(message)) {
     return new PluginCliError(message, {
       code: "session_unavailable",
       hint: REOPEN_HINT,
