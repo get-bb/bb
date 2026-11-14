@@ -1011,7 +1011,9 @@ async function reconcileTurnOptions(
   const thinkingLevelChanged =
     turnOptions.thinkingLevel !== undefined &&
     turnOptions.thinkingLevel !== construction.thinkingLevel;
+  const piExited = threadSession.session.hasExited();
   if (
+    !piExited &&
     !environmentChanged &&
     changedModelRequest === undefined &&
     !thinkingLevelChanged
@@ -1027,7 +1029,12 @@ async function reconcileTurnOptions(
     (threadSession.constructionModel === undefined ||
       threadSession.constructionModel.provider !== nextModel.provider ||
       threadSession.constructionModel.id !== nextModel.id);
-  if (!environmentChanged && !modelChanged && !thinkingLevelChanged) {
+  if (
+    !piExited &&
+    !environmentChanged &&
+    !modelChanged &&
+    !thinkingLevelChanged
+  ) {
     return threadSession;
   }
   const replacement = await rebuildThreadSession(threadId, threadSession, {
@@ -1046,8 +1053,9 @@ async function reconcileTurnOptions(
     params: {
       threadId,
       providerThreadId: replacement.providerThreadId,
-      reason:
-        "Execution settings changed; the pi session was rebuilt to apply them.",
+      reason: piExited
+        ? "pi exited; the session was restored from its session file."
+        : "Execution settings changed; the pi session was rebuilt to apply them.",
       contextLost: false,
     },
   });

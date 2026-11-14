@@ -1,7 +1,7 @@
 {
   "provider": "pi",
   "cell": "provider-exit",
-  "threadId": "thr_0fa32cdeca",
+  "threadId": "thr_4f1c221f24",
   "scope": "thread",
   "cliVersion": "@earendil-works/pi-coding-agent 1.5.2 (rpc)",
   "recordedAt": "2026-11-14",
@@ -9,13 +9,13 @@
   "note": "",
   "bridgeRuns": 1,
   "lines": {
-    "runtime\u2192bridge": 3,
-    "bridge\u2192runtime": 14,
-    "provider\u2192bridge": 39,
-    "bridge\u2192provider": 2
+    "runtime→bridge": 3,
+    "bridge→runtime": 27,
+    "provider→bridge": 63,
+    "bridge→provider": 7
   },
   "providerExit": {
-    "run": 1794633689134,
+    "run": 1794641327801,
     "seq": 77,
     "signal": "SIGKILL"
   }

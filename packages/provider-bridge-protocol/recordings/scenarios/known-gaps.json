@@ -40,17 +40,5 @@
     "cell": "settings-steer",
     "check": "scenario/settings-steer/reasoning-reaches-provider",
     "reason": "As for the model: a steer does not restart pi with the new --thinking level."
-  },
-  {
-    "provider": "pi",
-    "cell": "provider-exit",
-    "check": "scenario/provider-exit/next-turn-runs",
-    "reason": "After the pi process dies mid-turn the bridge drops the session, and the next turn/start fails with \"No active Pi session\"; reproduced live."
-  },
-  {
-    "provider": "pi",
-    "cell": "provider-exit",
-    "check": "scenario/provider-exit/conversation-survives",
-    "reason": "Same cause as next-turn-runs: no replacement pi process is started, so the conversation does not continue."
   }
 ]
