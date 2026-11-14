@@ -158,6 +158,7 @@ function buildLongThread(
 ): ThreadLog {
   const log = createThreadLog({
     harness,
+    providerId: "codex",
     rng: createRng(7),
     shape: MIXED_EVENT_LOG,
   });

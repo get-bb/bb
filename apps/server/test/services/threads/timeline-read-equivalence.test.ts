@@ -12,16 +12,44 @@ import {
   createRng,
   createThreadLog,
   describeRowDifference,
+  EXTENSION_STATE_EVENT_LOG,
+  INTERLEAVED_EVENT_LOG,
   MIXED_EVENT_LOG,
   openTimelineClient,
   pick,
+  pickStateKinds,
+  registerGuardProvider,
   type ClientSurface,
+  type EventLogShape,
+  type GuardProvider,
   type Rng,
   type ThreadLog,
   type TimelineClient,
 } from "./timeline-guard-harness.js";
 
-const SEEDS = Array.from({ length: 16 }, (_, index) => index + 1);
+interface SeedRun {
+  extensionStates: boolean;
+  seed: number;
+  shape: EventLogShape;
+}
+
+const seedRange = (
+  first: number,
+  count: number,
+  shape: EventLogShape,
+  extensionStates = false,
+): SeedRun[] =>
+  Array.from({ length: count }, (_, index) => ({
+    extensionStates,
+    seed: first + index,
+    shape,
+  }));
+
+const SEED_RUNS: SeedRun[] = [
+  ...seedRange(1, 16, MIXED_EVENT_LOG),
+  ...seedRange(17, 8, INTERLEAVED_EVENT_LOG),
+  ...seedRange(25, 6, EXTENSION_STATE_EVENT_LOG, true),
+];
 const OPERATIONS_PER_SEED = 70;
 const PHONE_SURFACE: ClientSurface = { ...APP_SURFACE, segmentLimit: 3 };
 const NESTED_SURFACE: ClientSurface = {
@@ -132,11 +160,28 @@ async function checkReads(run: Run, clients: TimelineClient[]): Promise<void> {
   }
 }
 
-async function runSeed(seed: number): Promise<void> {
+async function runSeed({
+  extensionStates,
+  seed,
+  shape,
+}: SeedRun): Promise<void> {
   await withTestHarness(SMALL_WINDOWS, async (harness) => {
     const rng = createRng(seed);
-    const log = createThreadLog({ harness, rng, shape: MIXED_EVENT_LOG });
+    const provider = extensionStates ? registerGuardProvider(harness) : null;
+    const log = createThreadLog({
+      harness,
+      providerId: provider?.providerId ?? "codex",
+      rng,
+      shape,
+    });
     const run: Run = { harness, log, operations: [], rng, seed };
+    const declareStateKinds = async (target: GuardProvider) => {
+      const kinds = pickStateKinds(rng);
+      target.declareStateKinds(kinds);
+      run.operations.push(`declare state kinds [${kinds.join(", ")}]`);
+      for (const each of clients) await each.refetch();
+      await checkReads(run, clients);
+    };
     for (let step = 0; step < 40; step += 1) log.step();
     const clients = await Promise.all(
       SURFACES.map((surface) =>
@@ -171,6 +216,8 @@ async function runSeed(seed: number): Promise<void> {
           }
         } else if (roll < 0.72) {
           run.operations.push(`prune ${log.prune()}`);
+        } else if (roll < 0.75 && provider !== null) {
+          await declareStateKinds(provider);
         } else if (roll < 0.75) {
           log.rename();
           run.operations.push("rename");
@@ -180,6 +227,8 @@ async function runSeed(seed: number): Promise<void> {
             for (const each of clients) await each.refetch();
             await checkReads(run, clients);
           }
+        } else if (roll < 0.81 && provider !== null) {
+          await declareStateKinds(provider);
         } else if (roll < 0.81) {
           const swept = log.sweepExpiredOutputs();
           run.operations.push(`sweep ${swept}`);
@@ -210,10 +259,10 @@ describe("timeline read path equivalence", () => {
     vi.useRealTimers();
   });
 
-  it.each(SEEDS)(
-    "seed %i: served windows and walks match uncached builds",
-    async (seed) => {
-      await runSeed(seed);
+  it.each(SEED_RUNS)(
+    "seed $seed: served windows and walks match uncached builds",
+    async (run) => {
+      await runSeed(run);
     },
     60_000,
   );
