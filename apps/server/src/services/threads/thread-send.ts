@@ -39,6 +39,7 @@ import {
 } from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import {
+  allowStartToJoinARunningTurn,
   ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
 } from "./thread-lifecycle.js";
@@ -226,6 +227,14 @@ export function ensureThreadIsWritable(
  */
 export function ensureThreadQueueIsWritable(thread: Thread): void {
   ensureThreadIsWritable(thread, true);
+}
+
+function hasCommandMention(input: readonly PromptInput[]): boolean {
+  return input.some(
+    (item) =>
+      item.type === "text" &&
+      item.mentions.some((mention) => mention.resource.kind === "command"),
+  );
 }
 
 function resolveSendMode(
@@ -756,6 +765,14 @@ async function sendThreadMessageWithoutContextClear(
       thread,
     });
     trackInFlightTurnRequest(thread.id);
+    if (
+      command.mode === "turn.submit" &&
+      payload.mode !== "start" &&
+      args.retryOf === undefined &&
+      !hasCommandMention(input)
+    ) {
+      allowStartToJoinARunningTurn(requestId);
+    }
     deps.hub.notifyThread(
       thread.id,
       queuedRequest.request.notificationChanges,
