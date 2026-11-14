@@ -13,7 +13,12 @@ import {
   listQueuedThreadMessages,
   threads,
 } from "@bb/db";
-import { threadScope, turnScope, type ToolCallResponse } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+  type ToolCallResponse,
+} from "@bb/domain";
 import {
   groupHostDaemonEvents,
   hostDaemonEventBatchResponseSchema,
@@ -960,6 +965,93 @@ describe("internal event and tool-call routes", () => {
         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
           ?.status,
       ).toBe("idle");
+    });
+  });
+
+  it("reactivates and finishes a turn the agent starts after a stop", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-agent-turn",
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-agent-turn",
+        sequence: 3,
+        type: "turn/started",
+        scope: turnScope("turn-requested"),
+        data: { providerThreadId: "provider-agent-turn" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-agent-turn",
+        sequence: 4,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-requested"),
+        data: {
+          providerThreadId: "provider-agent-turn",
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: null,
+        sequence: 5,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        data: { reason: "manual-stop" },
+      });
+      const agentTurn = {
+        threadId: thread.id,
+        providerThreadId: "provider-agent-turn",
+        scope: turnScope("turn-agent"),
+      };
+
+      await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: { type: "turn/started", ...agentTurn },
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+
+      await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              ...agentTurn,
+              status: "completed",
+            },
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
   });
 

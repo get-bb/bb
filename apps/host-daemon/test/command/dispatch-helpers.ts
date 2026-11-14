@@ -307,6 +307,9 @@ export function createFakeRuntime() {
     getActiveTurnId(threadId) {
       return activeTurnsByThreadId.get(threadId) ?? null;
     },
+    getActiveTurnRequestIds() {
+      return [];
+    },
     async waitForActiveTurn(threadId) {
       return activeTurnsByThreadId.get(threadId) ?? null;
     },

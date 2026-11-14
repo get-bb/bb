@@ -18,8 +18,9 @@ import {
   type HostDaemonOnlineRpcResult,
   type HostDaemonSettledCommandType,
   type ProviderCliInstallEvent,
+  type ThreadStopAim,
 } from "@bb/host-daemon-contract";
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import type { AgentRuntime, AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import semver from "semver";
 import {
   ExpectedCommandDispatchError,
@@ -96,6 +97,23 @@ type RuntimeStopCommand =
   | CommandOf<"thread.stop">
   | CommandOf<"thread.storage.delete">;
 
+function isStopAimedAtActiveTurn(
+  runtime: AgentRuntime,
+  threadId: string,
+  aim: ThreadStopAim,
+): boolean {
+  const activeTurnId = runtime.getActiveTurnId(threadId);
+  if (activeTurnId === null) {
+    return true;
+  }
+  return (
+    activeTurnId === aim.turnId ||
+    runtime
+      .getActiveTurnRequestIds(threadId)
+      .some((requestId) => aim.requestIds.includes(requestId))
+  );
+}
+
 async function stopThreadRuntime(
   command: RuntimeStopCommand,
   options: CommandDispatchOptions,
@@ -125,6 +143,14 @@ async function stopThreadRuntime(
       await entry.runtime.waitForActiveTurn(command.threadId, {
         timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
       });
+    }
+    if (
+      command.type === "thread.stop" &&
+      command.aimedAt !== null &&
+      !isStopAimedAtActiveTurn(entry.runtime, command.threadId, command.aimedAt)
+    ) {
+      await options.eventSink.flush();
+      return { providerCheckpointId, activeTurnRetained: true };
     }
     const result = await entry.runtime.stopThread({
       threadId: command.threadId,

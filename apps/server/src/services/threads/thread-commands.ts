@@ -18,6 +18,7 @@ import {
 } from "@bb/domain";
 import {
   type HostDaemonCommand,
+  type ThreadStopAim,
   type ThreadStopIntent,
   type TurnSubmitTarget,
 } from "@bb/host-daemon-contract";
@@ -57,6 +58,7 @@ import {
 type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
 export interface ThreadStopCommandArgs {
+  aimedAt: ThreadStopAim | null;
   environmentId: string;
   hostId: string;
   intent: ThreadStopIntent;
@@ -642,6 +644,7 @@ export function buildThreadStopCommand(
 ): Extract<HostDaemonCommand, { type: "thread.stop" }> {
   return {
     type: "thread.stop",
+    aimedAt: args.aimedAt,
     environmentId: args.environmentId,
     intent: args.intent,
     threadId: args.threadId,

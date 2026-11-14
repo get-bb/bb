@@ -41,6 +41,7 @@ import {
   getLatestStoredRateLimitsEvent,
   getLatestStoredThreadEventOfTypes,
   getLatestThreadInterruptedReason,
+  getLatestThreadStopAim,
   getLatestThreadSequence,
   getLatestThreadSystemErrorEventRow,
   getLatestTokenUsageRow,
@@ -97,7 +98,8 @@ import {
   listStoredTurnStartedKeys,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listThreadEventSuffixBackgroundSettlementRows,
-  listThreadIdsStoppedSinceLastTurnStart,
+  isTurnAimedAtByEarlierStop,
+  listThreadIdsStoppedSinceLastTurnRequest,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   listTimelineInterruptionRows,
@@ -1268,11 +1270,24 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#listThreadIdsStoppedSinceLastTurnStart`,
+    name: `${EVENTS}#isTurnAimedAtByEarlierStop`,
     run: (db, fixture) =>
-      listThreadIdsStoppedSinceLastTurnStart(db, {
+      isTurnAimedAtByEarlierStop(db, {
+        threadId: fixture.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listThreadIdsStoppedSinceLastTurnRequest`,
+    run: (db, fixture) =>
+      listThreadIdsStoppedSinceLastTurnRequest(db, {
         threadIds: [fixture.threadId],
       }),
+  },
+  {
+    name: `${EVENTS}#getLatestThreadStopAim`,
+    run: (db, fixture) =>
+      getLatestThreadStopAim(db, { threadId: fixture.threadId }),
   },
   {
     name: `${EVENTS}#listThreadIdsWithLatestHostDaemonRestartInterruption`,

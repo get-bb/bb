@@ -281,9 +281,13 @@ function turnSubmitCommand(
   };
 }
 
-function threadStopCommand(threadId: string): CommandOf<"thread.stop"> {
+function threadStopCommand(
+  threadId: string,
+  aimedAt: CommandOf<"thread.stop">["aimedAt"] = null,
+): CommandOf<"thread.stop"> {
   return {
     type: "thread.stop",
+    aimedAt,
     intent: "interrupt",
     environmentId: ENVIRONMENT_ID,
     threadId,
@@ -499,4 +503,42 @@ describe("thread.stop race semantics", () => {
     ]);
     expect(runtime.hasThread("t-double")).toBe(false);
   });
+
+  it.each([
+    { aimedAt: "its message", interrupted: true },
+    { aimedAt: "another turn", interrupted: false },
+  ])(
+    "interrupts a running turn only when the stop is aimed at it ($aimedAt)",
+    async ({ interrupted }) => {
+      const harness = await createRaceHarness();
+      const start = threadStartCommand(harness, {
+        threadId: "t-aimed",
+        inputText: "delay:60000",
+      });
+      await dispatchCommand(start, harness.dispatchOptions);
+      const runtime = harness.requireRuntime();
+      await vi.waitFor(
+        () => {
+          expect(runtime.getActiveTurnId("t-aimed")).not.toBeNull();
+        },
+        { timeout: 5_000 },
+      );
+
+      const result = await dispatchCommand(
+        threadStopCommand("t-aimed", {
+          turnId: interrupted ? null : "turn-before-this-one",
+          requestIds: interrupted ? [start.requestId] : [],
+        }),
+        harness.dispatchOptions,
+      );
+
+      expect(recordedThreadStops(harness)).toHaveLength(interrupted ? 1 : 0);
+      expect(result).toEqual(
+        interrupted
+          ? { providerCheckpointId: null }
+          : { providerCheckpointId: null, activeTurnRetained: true },
+      );
+      expect(runtime.getActiveTurnId("t-aimed") !== null).toBe(!interrupted);
+    },
+  );
 });

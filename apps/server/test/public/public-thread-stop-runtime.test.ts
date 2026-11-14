@@ -3,7 +3,11 @@ import {
   isThreadQueueAutoSendPaused,
   listQueuedThreadMessages,
 } from "@bb/db";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -840,8 +844,32 @@ describe("thread runtime stop", () => {
 
   it("keeps a startup-parked message paused after a manual stop until explicitly sent", async () => {
     await withTestHarness(async (harness) => {
-      const { session, thread } = seedThreadFixture(harness, {
+      const { environment, session, thread } = seedThreadFixture(harness, {
         thread: { status: "active", visibility: "hidden" },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+          input: [{ type: "text", text: "Start the thread" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: { method: "thread/start", params: {} },
+          source: "spawn",
+        },
       });
       const queueResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/send`,

@@ -228,7 +228,7 @@ describe("recordQueuedMessageDrainFailure", () => {
           threadId: thread.id,
           waitingOn: { kind: "turn-starting" },
         });
-        noteDispatchRequeued(thread.id);
+        noteDispatchRequeued(thread.id, "rejector");
 
         await runQueuedMessageDispatch(harness.deps, {
           kind: "turn-started",

@@ -262,6 +262,13 @@ export class HostOnlineRpcUnavailableError extends Error {
   }
 }
 
+export class HostOnlineRpcConnectionLostError extends HostOnlineRpcUnavailableError {
+  constructor() {
+    super();
+    this.name = "HostOnlineRpcConnectionLostError";
+  }
+}
+
 export class NotificationHub implements DbNotifier {
   private readonly clientKeysBySocket = new Map<
     HubSocket,
@@ -1246,7 +1253,7 @@ export class NotificationHub implements DbNotifier {
         continue;
       }
       this.deleteHostOnlineRpcWaiter(requestId, waiter);
-      waiter.reject(new HostOnlineRpcUnavailableError());
+      waiter.reject(new HostOnlineRpcConnectionLostError());
     }
   }
 
