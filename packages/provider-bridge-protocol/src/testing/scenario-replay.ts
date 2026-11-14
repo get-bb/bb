@@ -187,6 +187,9 @@ export async function replayScenarioCell(
       .filter((file) => file.endsWith(".stderr"))
       .map((file) => readFileSync(join(logDir, file), "utf8"))
       .join("");
+    if (providerStderr.trim() !== "") {
+      process.stderr.write(`\nDIAGSTDERR ${cell.provider}/${cell.cell} ${JSON.stringify(providerStderr.slice(-3000))}\n`);
+    }
     return {
       run,
       providerInputs: readProviderInputs(logDir),

@@ -93,6 +93,19 @@ function eachLine(stream, onLine) {
 }
 
 const args = parseArgs(process.argv.slice(2));
+process.on("uncaughtException", (error) => {
+  try {
+    mkdirSync(args["probe-log"], { recursive: true });
+    appendFileSync(join(args["probe-log"], `crash-${process.pid}.stderr`), `PROBE CRASH ${error?.stack ?? error}\n`);
+  } catch {}
+  process.exit(1);
+});
+process.on("exit", (code) => {
+  if (code === 0) return;
+  try {
+    appendFileSync(join(args["probe-log"], `exit-${process.pid}.stderr`), `PROBE EXIT ${code}\n`);
+  } catch {}
+});
 if (args.command.includes("api")) {
   const call = spawnSync(args.command[0], args.command.slice(1), {
     stdio: "inherit",
