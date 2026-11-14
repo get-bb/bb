@@ -45,7 +45,7 @@ describe("recorded bridge scenarios", () => {
         divergence: replay.divergence,
       });
       process.stderr.write(
-        `\nDIAG ${cellKey(cell)} stalls=${JSON.stringify(replay.run.stalls).slice(0, 3000)} divergence=${JSON.stringify(replay.divergence).slice(0, 3000)}\n`,
+        `\nDIAG ${cellKey(cell)} stalls=${JSON.stringify(replay.run.stalls).slice(0, 3000)} divergence=${JSON.stringify(replay.divergence).slice(0, 3000)} errors=${JSON.stringify(replay.run.lines.filter((line) => line.includes('"error"') || line.includes("warning")).slice(0, 6)).slice(0, 4000)}\n`,
       );
       console.info(
         `${cellKey(cell)} scenario rules:\n${formatConformanceReport({
