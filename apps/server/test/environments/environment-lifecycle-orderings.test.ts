@@ -67,6 +67,7 @@ const RETIRE_GRACE_PASSED_MS = 6 * MINUTE_MS;
 const PLUGIN_HOST_CALL_TIMEOUT_MS = 15 * MINUTE_MS;
 const SETTLE_MAX_TICKS = 16;
 const ORDERING_TIMEOUT_MS = 60_000;
+const QUIESCE_LIMIT_MS = 15_000;
 const GIT_ENV = {
   GIT_AUTHOR_NAME: "bb",
   GIT_AUTHOR_EMAIL: "bb@example.com",
@@ -386,6 +387,12 @@ class Machine {
           void this.runTurn(sessionId, requestId, command);
           return;
         }
+        if (command.type === "thread.stop") {
+          this.respond(sessionId, requestId, command, {
+            providerCheckpointId: null,
+          });
+          return;
+        }
         if (command.type === "environment.attach.cancel") {
           const cancel = this.pendingSetups.get(command.environmentId);
           cancel?.();
@@ -553,17 +560,22 @@ class Machine {
     const providerThreadId = `provider-${threadId}`;
     this.turnCount += 1;
     const scope = turnScope(`turn-${this.turnCount}`);
-    this.respond(sessionId, requestId, command, { providerThreadId });
-    await this.postEvents(sessionId, [
-      { type: "turn/started", threadId, providerThreadId, scope },
-      {
-        type: "turn/completed",
-        threadId,
-        providerThreadId,
-        scope,
-        status: "completed",
-      },
-    ]);
+    this.inFlight += 1;
+    try {
+      this.respond(sessionId, requestId, command, { providerThreadId });
+      await this.postEvents(sessionId, [
+        { type: "turn/started", threadId, providerThreadId, scope },
+        {
+          type: "turn/completed",
+          threadId,
+          providerThreadId,
+          scope,
+          status: "completed",
+        },
+      ]);
+    } finally {
+      this.inFlight -= 1;
+    }
   }
 
   private async postEvents(
@@ -916,55 +928,60 @@ class World {
     return [...this.machines.values()].some((machine) => machine.inFlight > 0);
   }
 
-  private pending(): boolean {
-    if (
-      [...this.machines.values()].some((machine) => machine.heldOperations > 0)
-    )
-      return false;
+  private progressingWithoutTick(): boolean {
+    if (this.holding()) return false;
     return (
       this.threadRows().some(
         (thread) =>
-          thread.status === "starting" || thread.status === "stopping",
+          thread.status === "starting" ||
+          (thread.status === "stopping" && thread.archivedAt === null),
       ) ||
       this.environmentRows().some(
         (row) =>
           row.status === "creating" ||
           row.status === "provisioning" ||
-          row.teardownStatus === "running",
+          (row.teardownStatus === "running" && row.status !== "ready"),
       )
     );
   }
 
-  async quiesce(options: { untilIdle: boolean }): Promise<void> {
+  private holding(): boolean {
+    return [...this.machines.values()].some(
+      (machine) => machine.heldOperations > 0,
+    );
+  }
+
+  async quiesce(): Promise<void> {
     let stable = 0;
     let last = "";
     const startedAt = performance.now();
-    while (stable < 4 && performance.now() - startedAt < 15_000) {
+    while (stable < 4 && performance.now() - startedAt < QUIESCE_LIMIT_MS) {
       await delay(20);
       const signature = this.signature();
-      const busy = this.inFlight();
-      const waiting =
-        options.untilIdle &&
-        this.pending() &&
-        performance.now() - startedAt < 1_000;
-      stable = signature === last && !busy && !waiting ? stable + 1 : 0;
+      const settled = !this.inFlight() && !this.progressingWithoutTick();
+      stable = signature === last && settled ? stable + 1 : 0;
       last = signature;
     }
   }
 
   private async tick(): Promise<void> {
-    void runPeriodicSweeps({
+    const sweeps = runPeriodicSweeps({
       ...this.harness.deps,
       pluginSchedules: this.harness.pluginService,
       plugins: this.harness.pluginService,
     });
-    await this.quiesce({ untilIdle: false });
+    let finished = false;
+    void sweeps.finally(() => {
+      finished = true;
+    });
+    while (!finished && !this.holding()) await delay(20);
+    await this.quiesce();
   }
 
   async step(label: string, run: () => Promise<void>): Promise<void> {
     this.stepLabel = label;
     await run();
-    await this.quiesce({ untilIdle: true });
+    await this.quiesce();
     this.labelEnvironments();
     await this.checkWork();
   }
