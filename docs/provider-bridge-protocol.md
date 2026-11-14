@@ -636,8 +636,11 @@ turn/start, turn/steer → { admission: "accepted" }
   Conformance rule `turn/admission-answered`.
 - `busy`: the provider cannot take input now. Nothing started. The daemon
   reports `thread_busy`; the server records the request as refused and queues
-  a retry of it behind the running turn (or a few seconds later when no turn
-  is running). A bridge never sleeps and retries inside itself.
+  a retry of it behind the running turn, or, when no turn is running, after a
+  delay that doubles from 5 seconds. After six busy answers in a row with no
+  input accepted in between, the server stops re-sending and fails the run
+  with a `provider_busy` error, so the user can retry the message or stop the
+  thread. A bridge never sleeps and retries inside itself.
 - `rejected`: the provider refuses this input (an unsupported command, for
   example). Nothing started; the daemon reports `turn_rejected`.
 
@@ -655,7 +658,10 @@ Conformance rule `openWork/list-declared` pins both directions. Before the
 runtime reaps an idle session, restarts a bridge for a `restartRecommended`
 hint, or resumes a session to apply a setting, it checks the thread's phase,
 its open `backgroundTask`/`delegation` items, in-flight plugin tool calls, and
-the bridge's list. A probe that fails or times out counts as busy. A bridge's
+the bridge's list. A probe that fails or times out counts as busy for that
+attempt. After three failures in a row, the thread note says bb can't confirm
+no work is running and that stopping the thread applies the change; bb does
+not restart the session on its own while it cannot see the agent's work. A bridge's
 own recovery rebuild after an authentication failure is not gated: the old
 session cannot work.
 

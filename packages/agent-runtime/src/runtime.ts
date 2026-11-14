@@ -223,11 +223,15 @@ interface ThreadRuntimeConfig {
   sessionRestorable: boolean;
   sessionSettings: SessionSettingsDeclaration | undefined;
   pendingSettingsNote: string | null;
+  openWorkProbeFailures: number;
 }
 
 interface OpenWorkAssessment {
   blockers: string[];
+  probeFailed: boolean;
 }
+
+const OPEN_WORK_PROBE_FAILURES_BEFORE_STOP_NOTE = 3;
 
 const OPEN_WORK_PROBE_TIMEOUT_MS = 5_000;
 
@@ -860,12 +864,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
-  async function probeBridgeOpenWork(threadId: string): Promise<string[]> {
+  async function probeBridgeOpenWork(
+    threadId: string,
+  ): Promise<OpenWorkAssessment> {
     const config = threadRuntimeConfigs.get(threadId);
     const providerThreadId =
       threadIdentityRegistry.getProviderThreadId(threadId);
     if (config === undefined || providerThreadId === undefined) {
-      return [];
+      return { blockers: [], probeFailed: false };
     }
     let proc: ProviderProcess;
     try {
@@ -874,7 +880,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         providerId: config.providerId,
       });
     } catch {
-      return [];
+      return { blockers: [], probeFailed: false };
     }
     const plan = proc.adapter.buildCommandPlan({
       type: "thread/openWork",
@@ -882,7 +888,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       providerThreadId,
     });
     if (plan.kind === "noop") {
-      return [];
+      return { blockers: [], probeFailed: false };
     }
     try {
       const result = await sendCommand({
@@ -891,15 +897,23 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         resultSchema: threadOpenWorkResultSchema,
         timeoutMs: OPEN_WORK_PROBE_TIMEOUT_MS,
       });
-      return result.items.map((item) =>
-        item.description.trim().length > 0
-          ? item.description
-          : `${item.kind} ${item.id}`,
-      );
+      return {
+        blockers: result.items.map((item) =>
+          item.description.trim().length > 0
+            ? item.description
+            : `${item.kind} ${item.id}`,
+        ),
+        probeFailed: false,
+      };
     } catch (error) {
-      return [
-        `the provider did not report its open work (${error instanceof Error ? error.message : String(error)})`,
-      ];
+      options.onStderr?.(
+        `The open-work check for thread "${threadId}" failed: ${error instanceof Error ? error.message : String(error)}`,
+        threadId,
+      );
+      return {
+        blockers: ["the provider could not report its open work"],
+        probeFailed: true,
+      };
     }
   }
 
@@ -918,9 +932,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       blockers.push("a plugin tool call is running");
     }
     if (blockers.length > 0) {
-      return { blockers };
+      return { blockers, probeFailed: false };
     }
-    return { blockers: await probeBridgeOpenWork(threadId) };
+    return probeBridgeOpenWork(threadId);
   }
 
   async function assessProcessOpenWork(args: {
@@ -1287,8 +1301,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
     let resumed: PlannedSessionSettingChange[] = [];
     if (plan.resume.length > 0) {
-      const { blockers } = await assessThreadOpenWork(args.threadId);
-      if (blockers.length > 0) {
+      const { blockers, probeFailed } = await assessThreadOpenWork(
+        args.threadId,
+      );
+      const probeFailures = probeFailed ? config.openWorkProbeFailures + 1 : 0;
+      setThreadRuntimeConfig(args.threadId, {
+        ...config,
+        openWorkProbeFailures: probeFailures,
+      });
+      if (probeFailures >= OPEN_WORK_PROBE_FAILURES_BEFORE_STOP_NOTE) {
+        pendingNotes.push(
+          `Changed ${describeSessionSettingChanges(plan.resume)} needs a provider session restart, but bb can't confirm the agent has no running work: its open-work check failed ${OPEN_WORK_PROBE_FAILURES_BEFORE_STOP_NOTE} times in a row. bb won't restart the session without that, so stop the thread to apply the change now; stopping ends anything the agent may still be running.`,
+        );
+      } else if (blockers.length > 0) {
         pendingNotes.push(
           `Changed ${describeSessionSettingChanges(plan.resume)} needs a provider session restart, which waits while work is open (${blockers.join("; ")}); it applies at the first turn after that.`,
         );
@@ -1794,6 +1819,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             sessionRestorable: false,
             sessionSettings: undefined,
             pendingSettingsNote: null,
+            openWorkProbeFailures: 0,
           });
           sessions.beginConstruction(threadId);
 
@@ -2140,6 +2166,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             sessionRestorable: false,
             sessionSettings: undefined,
             pendingSettingsNote: null,
+            openWorkProbeFailures: 0,
           });
           sessions.beginConstruction(threadId);
 

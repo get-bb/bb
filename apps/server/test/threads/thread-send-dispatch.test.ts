@@ -2228,6 +2228,64 @@ describe("busy refusals", () => {
     });
   });
 
+  it("backs off busy retries and stops with a failure the user can retry when the busy phase never ends", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 65,
+      });
+      let { queued } = await sendStartFromIdle(harness, fixture);
+      const retryDelaysMs: number[] = [];
+
+      for (let attempt = 1; ; attempt += 1) {
+        const refusedAt = Date.now();
+        await reportQueuedCommandError(harness, queued, {
+          errorCode: "thread_busy",
+          errorMessage: busyMessage,
+        });
+        if (getThread(harness.db, fixture.thread.id)?.status === "error") {
+          break;
+        }
+        expect(attempt).toBeLessThan(10);
+        const retry = await vi.waitFor(() => {
+          const [row] = listQueuedThreadMessages(harness.db, fixture.thread.id);
+          expect(row?.sendAt).not.toBeNull();
+          return row!;
+        });
+        retryDelaysMs.push(
+          Math.round(((retry.sendAt ?? 0) - refusedAt) / 1_000) * 1_000,
+        );
+        const cursor = queued.row.cursor;
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "time-reached",
+          now: (retry.sendAt ?? 0) + 1,
+        });
+        queued = await waitForQueuedCommand(
+          harness,
+          (candidate) =>
+            candidate.row.cursor > cursor &&
+            candidate.command.type === "turn.submit" &&
+            candidate.command.threadId === fixture.thread.id,
+        );
+      }
+
+      expect(retryDelaysMs).toEqual([5_000, 10_000, 20_000, 40_000, 80_000]);
+      expect(listQueuedThreadMessages(harness.db, fixture.thread.id)).toEqual(
+        [],
+      );
+      const errors = listEvents(harness.db, {
+        threadId: fixture.thread.id,
+      }).filter((event) => event.type === "system/error");
+      expect(errors.map((event) => JSON.parse(event.data).code)).toEqual([
+        "provider_busy",
+      ]);
+      expect(JSON.parse(errors[0]?.data ?? "{}").message).toContain(
+        "stopped re-sending this message",
+      );
+    });
+  });
+
   it("returns the thread to idle without a failure when the provider rejects the input", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({

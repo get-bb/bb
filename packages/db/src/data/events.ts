@@ -2534,6 +2534,26 @@ export function listStoredTurnRejectedRowsByClientRequestIds(
     .all();
 }
 
+export function countStoredTurnRejectionsWithReasonAfterSequence(
+  db: DbQueryConnection,
+  args: { threadId: string; reason: string; afterSequence: number },
+): number {
+  return (
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/rejected"),
+          gt(events.sequence, args.afterSequence),
+          sql`json_extract(${events.data}, '$.reason') = ${args.reason}`,
+        ),
+      )
+      .get()?.count ?? 0
+  );
+}
+
 export function getLatestThreadInterruptedReason(
   db: DbQueryConnection,
   args: GetLatestThreadInterruptedReasonArgs,

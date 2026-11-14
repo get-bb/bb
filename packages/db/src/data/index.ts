@@ -392,6 +392,7 @@ export {
   getLatestThreadInterruptedReason,
   getLatestStoredRateLimitsEvent,
   getLatestStoredThreadEventOfTypes,
+  countStoredTurnRejectionsWithReasonAfterSequence,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,

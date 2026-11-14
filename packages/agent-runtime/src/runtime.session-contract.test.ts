@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import {
   createScriptedEchoRequestRecord,
@@ -198,6 +198,63 @@ describe("provider session contract", () => {
     expect(methods(record)).not.toContain("thread/resume");
     expect(record.last("turn/start")?.params).toMatchObject({
       options: { model: "test-model" },
+    });
+  });
+
+  it("tells the user to stop the thread after the open-work check keeps failing, and stopping applies the change", async () => {
+    const { events, record, runtime } = createRuntime({
+      process: { sessionSettings: { model: { apply: "resume" } } },
+      thread: {
+        failMethods: [{ method: "thread/openWork", message: "probe broke" }],
+      },
+    });
+    const { providerThreadId } = await runtime.startThread({
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: PROVIDER_ID,
+      threadId: "t1",
+      options: fullRuntimeOptions,
+    });
+    const changed = { ...fullRuntimeOptions, model: "test-model-2" };
+    for (const clientRequestId of [
+      "creq_sessctu222",
+      "creq_sessctv222",
+      "creq_sessctw222",
+    ]) {
+      await expect(
+        runtime.runTurn({
+          clientRequestId,
+          threadId: "t1",
+          input: [promptTextInput({ text: "hello" })],
+          options: changed,
+        }),
+      ).resolves.toEqual({ status: "started" });
+      await vi.waitFor(() =>
+        expect(runtime.getSessionPhase("t1")).toBe("idle"),
+      );
+    }
+
+    expect(methods(record)).not.toContain("thread/resume");
+    expect(record.last("turn/start")?.params).toMatchObject({
+      options: { model: "test-model" },
+    });
+    const notes = warnings(events).filter((summary) =>
+      summary.startsWith("Changed model"),
+    );
+    expect(notes).toHaveLength(2);
+    expect(notes[1]).toContain("stop the thread to apply the change");
+
+    await runtime.stopThread({ threadId: "t1" });
+    await runtime.resumeThread({
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: PROVIDER_ID,
+      threadId: "t1",
+      providerThreadId,
+      options: changed,
+    });
+    expect(record.last("thread/resume")?.params).toMatchObject({
+      options: { model: "test-model-2" },
     });
   });
 
