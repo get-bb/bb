@@ -738,3 +738,16 @@ next listed model. The second redacts the raw recordings through
 where the provider died in `provider-exit`, and replaces those cells under
 `recordings/scenarios`. Check that the new cell keeps every rule, and update
 `known-gaps.json` if the bridge's behaviour changed.
+
+The recorder keeps each CLI's own config and state out of the user's real
+directories (`scripts/provider-recordings/isolate-agent-state.mjs`). Codex runs
+with `CODEX_HOME`, Pi with `PI_CODING_AGENT_DIR`, Cursor with
+`CURSOR_CONFIG_DIR` and `CURSOR_DATA_DIR`, and OpenCode with all four `XDG_*`
+directories pointed at a temporary directory seeded with copies of the files
+the CLI needs to sign in and pick models (OpenCode also gets its own service
+port and a copy of its active credentials); a refreshed `auth.json` is copied
+back. Claude Code keeps its sign-in in the macOS keychain under its config
+directory, so it cannot be moved: the recorder instead deletes what the run
+created under `~/.claude` (the run workspace's `projects` entry and that
+session's `session-env`, `file-history`, `todos` and `debug` entries) and the
+workspace's key in `~/.claude.json`.
