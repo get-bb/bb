@@ -254,28 +254,6 @@ export async function retryFailedTurn(
   });
 }
 
-const REFUSED_FOR_RUNNING_TURN_REASON = "The agent was already running a turn";
-
-export async function requeueRefusedTurnRequest(
-  deps: TurnRetryDeps,
-  args: { requestId: ClientTurnRequestId; thread: Thread },
-): Promise<void> {
-  const failed = loadFailedTurn(deps.db, args.thread.id);
-  if (failed === null || failed.request.requestId !== args.requestId) {
-    return;
-  }
-  await dispatchRetry(deps, {
-    thread: args.thread,
-    request: {
-      turnRequestId: args.requestId,
-      sendAt: null,
-      reason: REFUSED_FOR_RUNNING_TURN_REASON,
-    },
-    continuation: CONTINUE_ACCEPTED_TURN_TEXT,
-    failed,
-  });
-}
-
 export async function retryTurnAfterRestart(
   deps: TurnRetryDeps,
   args: RetryFailedTurnArgs & { continuation: string },

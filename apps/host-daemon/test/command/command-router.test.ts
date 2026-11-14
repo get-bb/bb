@@ -419,6 +419,7 @@ describe("CommandRouter", () => {
     const stopTask = runRouterCommand({
       command: {
         type: "thread.stop",
+        aimedAt: null,
         intent: "interrupt",
         environmentId: "env-router",
         threadId: "thread-router-start",
@@ -620,6 +621,7 @@ describe("CommandRouter", () => {
     const stopTask = runRouterCommand({
       command: {
         type: "thread.stop",
+        aimedAt: null,
         intent: "interrupt",
         environmentId: "env-router",
         threadId: "thread-stop",
