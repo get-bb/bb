@@ -5,8 +5,18 @@ import {
   getThread,
   isThreadQueueAutoSendPaused,
   listQueuedThreadMessages,
+  type QueuedThreadMessageRow,
 } from "@bb/db";
-import { turnScope, type PromptInput, type ThreadEvent } from "@bb/domain";
+import {
+  queuedMessageWaitingOnSchema,
+  turnScope,
+  type PromptInput,
+  type ThreadEvent,
+} from "@bb/domain";
+import type {
+  MessageDispatchHookDecision,
+  PluginHookName,
+} from "@get-bb/plugin-sdk";
 import {
   groupHostDaemonEvents,
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -20,7 +30,14 @@ import type { SendMessageRequest } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import { requestQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
-import { sendQueuedMessageNow } from "../../src/services/threads/queued-messages.js";
+import {
+  createQueuedMessageForThread,
+  sendQueuedMessageNow,
+} from "../../src/services/threads/queued-messages.js";
+import {
+  setPluginHookProvider,
+  type PluginHookRegistration,
+} from "../../src/services/plugins/plugin-hook-registry.js";
 import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import {
@@ -49,6 +66,7 @@ type SendMode = Extract<
 type UserStep =
   | { kind: "send"; label: string; mode: SendMode }
   | { kind: "send-now"; label: string }
+  | { kind: "add-to-queue"; label: string }
   | { kind: "stop" };
 
 type ScenarioEvent = "drain" | "provider-turn" | "reconnect" | "timeout";
@@ -62,6 +80,7 @@ interface Scenario {
   name: string;
   start: "idle" | "running-turn" | "disconnected";
   holdPreparation: boolean;
+  pluginGatedLabels: string[];
   user: UserStep[];
   events: ScenarioEvent[];
   knownFailures: KnownFailure[];
@@ -89,6 +108,12 @@ interface UserOutcome {
   refusedStatus: number | null;
 }
 
+interface HeldDecision {
+  id: number;
+  label: string;
+  decide: (decision: MessageDispatchHookDecision) => void;
+}
+
 interface Action {
   label: string;
   run: () => Promise<void>;
@@ -108,6 +133,8 @@ const MAX_STEPS = 60;
 const UNANSWERED_PATTERN = /^(command_timeout|host_unavailable):/;
 const FOLLOW_UP_LABEL = "msg-followup";
 const MAX_SCHEDULED_WAIT_MS = 20_000;
+const MAX_PLUGIN_WAITS_PER_MESSAGE = 1;
+const LIMITER_PLUGIN_ID = "limiter";
 
 function hasPendingIoRequest(): boolean {
   return process
@@ -129,6 +156,8 @@ function describeUserStep(step: UserStep): string {
       return `${step.mode === "steer" ? "steer" : "send"} ${step.label}`;
     case "send-now":
       return `send-now ${step.label}`;
+    case "add-to-queue":
+      return `add-to-queue ${step.label}`;
     case "stop":
       return "stop";
   }
@@ -461,6 +490,75 @@ class FakeDaemon {
   }
 }
 
+class LimiterPlugin {
+  readonly held: HeldDecision[] = [];
+  private readonly waits = new Map<string, number>();
+  private readonly registrations: PluginHookRegistration<"message.dispatch">[] =
+    [];
+  private nextDecisionId = 1;
+
+  constructor(private readonly gatedLabels: readonly string[]) {}
+
+  install(): void {
+    const registration: PluginHookRegistration<"message.dispatch"> = {
+      pluginId: LIMITER_PLUGIN_ID,
+      handler: (context) => {
+        const label = labelsIn(context.input.text).find((candidate) =>
+          this.gatedLabels.includes(candidate),
+        );
+        if (label === undefined) return { action: "proceed" };
+        return new Promise<MessageDispatchHookDecision>((decide) => {
+          this.held.push({ id: this.nextDecisionId++, label, decide });
+        });
+      },
+    };
+    const registry: {
+      [K in PluginHookName]: PluginHookRegistration<K>[];
+    } = { "message.dispatch": this.registrations };
+    this.registrations.push(registration);
+    setPluginHookProvider({
+      listHooks: (hook) => registry[hook],
+      invokeHook: async (_registration, _label, run) => ({
+        ok: true,
+        value: await run(),
+      }),
+      decisionTimeoutMs: 24 * 60 * 60 * 1000,
+    });
+  }
+
+  get registered(): boolean {
+    return this.registrations.length > 0;
+  }
+
+  unregister(): void {
+    this.registrations.length = 0;
+  }
+
+  heldBack(label: string): boolean {
+    return this.waits.has(label);
+  }
+
+  mayWait(decision: HeldDecision): boolean {
+    return (this.waits.get(decision.label) ?? 0) < MAX_PLUGIN_WAITS_PER_MESSAGE;
+  }
+
+  answer(decision: HeldDecision, action: "proceed" | "wait"): void {
+    this.held.splice(this.held.indexOf(decision), 1);
+    if (action === "wait") {
+      this.waits.set(decision.label, (this.waits.get(decision.label) ?? 0) + 1);
+      decision.decide({ action: "wait", reason: "full" });
+      return;
+    }
+    decision.decide({ action: "proceed" });
+  }
+}
+
+function waitingOnKind(row: QueuedThreadMessageRow): string | null {
+  return row.waitingOn === null
+    ? null
+    : queuedMessageWaitingOnSchema.parse(JSON.parse(row.waitingOn)).kind;
+}
+
 class Run {
   readonly outcomes: UserOutcome[] = [];
   private readonly pending = new Set<Promise<void>>();
@@ -468,6 +566,9 @@ class Run {
   private readonly remainingEvents: ScenarioEvent[];
   private disconnected = false;
   private followUpSent = false;
+  private stallReported = false;
+  readonly limiter: LimiterPlugin;
+  private readonly tailViolations: string[] = [];
 
   constructor(
     private readonly harness: TestAppHarness,
@@ -476,6 +577,8 @@ class Run {
     private readonly environmentId: string,
   ) {
     this.remainingEvents = [...scenario.events];
+    this.limiter = new LimiterPlugin(scenario.pluginGatedLabels);
+    if (scenario.pluginGatedLabels.length > 0) this.limiter.install();
   }
 
   private get threadId(): string {
@@ -550,6 +653,18 @@ class Run {
     });
   }
 
+  private addToQueue(label: string): void {
+    this.track({ kind: "add-to-queue", label }, label, async () => {
+      const thread = getThread(this.harness.db, this.threadId);
+      if (thread === null) throw new Error("Thread vanished");
+      await createQueuedMessageForThread(this.harness.deps, {
+        thread,
+        payload: { input: textInput(label) },
+      });
+      return "queued";
+    });
+  }
+
   private stop(): void {
     this.track({ kind: "stop" }, "stop", async () => {
       const thread = getThread(this.harness.db, this.threadId);
@@ -585,6 +700,7 @@ class Run {
         row.failureReason,
       ]),
       this.daemon.held.map((held) => held.id),
+      this.limiter.held.map((decision) => decision.id),
       this.pending.size,
     ]);
   }
@@ -616,6 +732,8 @@ class Run {
             this.send(nextUser.label, nextUser.mode);
           } else if (nextUser.kind === "send-now") {
             this.sendNow(nextUser.label);
+          } else if (nextUser.kind === "add-to-queue") {
+            this.addToQueue(nextUser.label);
           } else {
             this.stop();
           }
@@ -627,6 +745,18 @@ class Run {
         label: `release ${describeRpc(held)}`,
         run: () => this.daemon.release(held),
       });
+    }
+    for (const decision of this.limiter.held) {
+      actions.push({
+        label: `plugin proceeds ${decision.label}#${decision.id}`,
+        run: async () => this.limiter.answer(decision, "proceed"),
+      });
+      if (this.limiter.mayWait(decision)) {
+        actions.push({
+          label: `plugin holds ${decision.label}#${decision.id}`,
+          run: async () => this.limiter.answer(decision, "wait"),
+        });
+      }
     }
     const activeTurn = this.daemon.activeTurn;
     if (activeTurn !== null) {
@@ -700,6 +830,11 @@ class Run {
         await this.daemon.release(held);
         continue;
       }
+      const decision = this.limiter.held[0];
+      if (decision !== undefined) {
+        this.limiter.answer(decision, "proceed");
+        continue;
+      }
       if (this.daemon.activeTurn !== null) {
         await this.daemon.endTurn("completed");
         continue;
@@ -707,6 +842,15 @@ class Run {
       const scheduledAt = this.nextScheduledSend();
       if (scheduledAt !== null) {
         await sleep(Math.max(0, scheduledAt - Date.now()) + 50);
+        continue;
+      }
+      this.reportStalledRows();
+      if (this.limiter.registered && this.rowsWaitingOn("plugin").length > 0) {
+        this.limiter.unregister();
+        requestQueuedMessageDispatch(this.harness.deps, {
+          kind: "plugin-unregistered",
+          pluginId: LIMITER_PLUGIN_ID,
+        });
         continue;
       }
       if (!this.followUpSent && this.queueHeldOnlyByManualStopPause()) {
@@ -717,6 +861,25 @@ class Run {
       return true;
     }
     return false;
+  }
+
+  private rowsWaitingOn(kind: string): QueuedThreadMessageRow[] {
+    return this.queuedRows().filter((row) => waitingOnKind(row) === kind);
+  }
+
+  private reportStalledRows(): void {
+    if (this.stallReported) return;
+    if (getThread(this.harness.db, this.threadId)?.status !== "idle") return;
+    const pausedByStop = this.queueHeldOnlyByManualStopPause();
+    const stalled = this.queuedRows().filter(
+      (row) =>
+        row.sendAt === null && waitingOnKind(row) !== "plugin" && !pausedByStop,
+    );
+    if (stalled.length === 0) return;
+    this.stallReported = true;
+    this.tailViolations.push(
+      `${stalled.map((row) => labelsIn(row.content).join("+")).join(", ")} sat queued on an idle thread with nothing left to send it`,
+    );
   }
 
   private nextScheduledSend(): number | null {
@@ -747,7 +910,7 @@ class Run {
   }
 
   violations(): string[] {
-    const violations = [...this.daemon.violations];
+    const violations = [...this.daemon.violations, ...this.tailViolations];
     for (const outcome of this.outcomes) {
       if (outcome.settled === "pending") {
         violations.push(`${outcome.label} never settled`);
@@ -791,8 +954,9 @@ class Run {
     }
     const queuedInOrder = this.outcomes.filter(
       (outcome) =>
-        outcome.step.kind === "send" &&
-        outcome.step.mode === "queue-if-active" &&
+        ((outcome.step.kind === "send" &&
+          outcome.step.mode === "queue-if-active") ||
+          outcome.step.kind === "add-to-queue") &&
         outcome.detail === "queued" &&
         this.daemon.deliveries(outcome.label) === 1,
     );
@@ -800,6 +964,7 @@ class Run {
       for (const earlier of queuedInOrder.slice(0, index)) {
         if (
           earlier.afterStop === later.afterStop &&
+          !this.limiter.heldBack(earlier.label) &&
           this.daemon.deliveryOrder.indexOf(later.label) <
             this.daemon.deliveryOrder.indexOf(earlier.label)
         ) {
@@ -979,6 +1144,9 @@ const UNANSWERED_SUBMIT_SETTLED =
 const CUT_STOP_LEAVES_THREAD_ACTIVE =
   "a stop recorded while a new turn was starting has its interrupt cut by a daemon disconnect; the reconnect revives the thread from that running turn, the server skips the turn's normal completion because the stop predates the turn, and the thread stays active";
 
+const DRAIN_ENDS_AFTER_PLUGIN_DEFERS_ITS_ROW =
+  "the turn-end drain claims one row, a plugin defers it, and the drain ends without trying the next eligible row, which then waits for the idle sweep";
+
 const send = (label: string): UserStep => ({
   kind: "send",
   label,
@@ -990,6 +1158,10 @@ const steer = (label: string): UserStep => ({
   mode: "steer",
 });
 const sendNow = (label: string): UserStep => ({ kind: "send-now", label });
+const addToQueue = (label: string): UserStep => ({
+  kind: "add-to-queue",
+  label,
+});
 const stop: UserStep = { kind: "stop" };
 
 const scenarios: Scenario[] = [
@@ -997,6 +1169,7 @@ const scenarios: Scenario[] = [
     name: "steers in flight while their turn ends",
     start: "running-turn",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [steer("msg-A"), steer("msg-B")],
     events: [],
     knownFailures: [],
@@ -1005,6 +1178,7 @@ const scenarios: Scenario[] = [
     name: "a new turn in flight while a provider-initiated turn ends",
     start: "idle",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [steer("msg-A"), steer("msg-B")],
     events: ["provider-turn"],
     knownFailures: [],
@@ -1013,6 +1187,7 @@ const scenarios: Scenario[] = [
     name: "concurrent sends to an idle thread while preparation is slow",
     start: "idle",
     holdPreparation: true,
+    pluginGatedLabels: [],
     user: [send("msg-A"), send("msg-B")],
     events: [],
     knownFailures: [],
@@ -1021,6 +1196,7 @@ const scenarios: Scenario[] = [
     name: "a queued send, a steer and a drain wake while preparation is slow",
     start: "running-turn",
     holdPreparation: true,
+    pluginGatedLabels: [],
     user: [send("msg-A"), steer("msg-B")],
     events: ["drain"],
     knownFailures: [],
@@ -1029,6 +1205,7 @@ const scenarios: Scenario[] = [
     name: "a send-now of a queued message against the turn end while preparation is slow",
     start: "running-turn",
     holdPreparation: true,
+    pluginGatedLabels: [],
     user: [send("msg-A"), send("msg-B"), sendNow("msg-A")],
     events: [],
     knownFailures: [],
@@ -1037,6 +1214,7 @@ const scenarios: Scenario[] = [
     name: "sends queued while the daemon is away, drained on reconnect while preparation is slow",
     start: "disconnected",
     holdPreparation: true,
+    pluginGatedLabels: [],
     user: [send("msg-A"), send("msg-B")],
     events: ["reconnect", "drain"],
     knownFailures: [],
@@ -1045,6 +1223,7 @@ const scenarios: Scenario[] = [
     name: "a steer, a queued send and the turn end across a daemon reconnect",
     start: "running-turn",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [steer("msg-A"), send("msg-B")],
     events: ["reconnect"],
     knownFailures: [
@@ -1073,6 +1252,7 @@ const scenarios: Scenario[] = [
     name: "a stop against a steer, a queued send and the turn end",
     start: "running-turn",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [steer("msg-A"), stop, send("msg-B")],
     events: [],
     knownFailures: [],
@@ -1081,6 +1261,7 @@ const scenarios: Scenario[] = [
     name: "a stop between two queued sends",
     start: "running-turn",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [send("msg-A"), stop, send("msg-B")],
     events: [],
     knownFailures: [],
@@ -1089,6 +1270,7 @@ const scenarios: Scenario[] = [
     name: "a stop and a steer across a daemon reconnect",
     start: "running-turn",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [stop, steer("msg-A")],
     events: ["reconnect"],
     knownFailures: [
@@ -1115,6 +1297,7 @@ const scenarios: Scenario[] = [
     name: "an RPC timeout against steers and the turn end",
     start: "running-turn",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [steer("msg-A"), steer("msg-B")],
     events: ["timeout"],
     knownFailures: [
@@ -1132,13 +1315,44 @@ const scenarios: Scenario[] = [
     name: "an RPC timeout against a stop and a queued send",
     start: "running-turn",
     holdPreparation: false,
+    pluginGatedLabels: [],
     user: [stop, send("msg-A")],
     events: ["timeout"],
     knownFailures: [],
   },
+  {
+    name: "a plugin that holds a queued message against the turn end and a drain wake",
+    start: "running-turn",
+    holdPreparation: false,
+    pluginGatedLabels: ["msg-A"],
+    user: [send("msg-A"), send("msg-B")],
+    events: ["drain"],
+    knownFailures: [
+      {
+        cause: DRAIN_ENDS_AFTER_PLUGIN_DEFERS_ITS_ROW,
+        orderings: [
+          "send msg-A → send msg-B → plugin proceeds msg-A#1 → drain wake → complete turn-1 → plugin holds msg-A#2",
+          "send msg-A → plugin proceeds msg-A#1 → send msg-B → drain wake → complete turn-1 → plugin holds msg-A#2",
+          "send msg-A → plugin proceeds msg-A#1 → drain wake → send msg-B → complete turn-1 → plugin holds msg-A#2",
+        ],
+      },
+    ],
+  },
+  {
+    name: "a message added to the queue after a stop between queued sends",
+    start: "running-turn",
+    holdPreparation: false,
+    pluginGatedLabels: [],
+    user: [send("msg-A"), stop, addToQueue("msg-B")],
+    events: [],
+    knownFailures: [],
+  },
 ];
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  setPluginHookProvider(undefined);
+  vi.restoreAllMocks();
+});
 
 describe("send, queue and lifecycle interleavings", () => {
   it.each(scenarios.map((scenario) => [scenario.name, scenario] as const))(
