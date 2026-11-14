@@ -67,4 +67,4 @@ experimental_useRpcKeyedQuery({
 
 `bb plugin rpc inspect bb--git` prints the input and output schemas.
 
-Branch targets resolve the requested ref first, then fall back to `origin/<branch>`. If no merge base with HEAD resolves, diff reads report an error instead of an empty diff.
+A short branch name resolves to `origin/<branch>` when the local branch only trails it, and to the local branch otherwise. Pass `refs/heads/<branch>` to always use the local branch. If no merge base with HEAD resolves, diff reads report an error instead of an empty diff.
