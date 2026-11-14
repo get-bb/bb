@@ -24,6 +24,7 @@ import {
   turnRequestEventDataSchema,
   WORKSPACE_PROVISIONING_STEP_KEYS,
 } from "@bb/domain";
+import { THREAD_BUSY_ERROR_CODE } from "@bb/host-daemon-contract";
 import { randomBytes } from "node:crypto";
 import type {
   ClientTurnRequestId,
@@ -552,6 +553,7 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
     buildClientTurnRequestedEventArgs(args),
   );
   const supersededRetries = supersedeQueuedRetriesInTransaction(db, {
+    keepRetriesOfRequestsRefusedWith: THREAD_BUSY_ERROR_CODE,
     threadId: args.threadId,
     retryOfTurnRequestId: args.retryOf?.requestId ?? null,
   });

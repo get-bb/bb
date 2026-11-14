@@ -1248,8 +1248,13 @@ function hasAcceptedQueuedRetryInput(
 
 export function supersedeQueuedRetriesInTransaction(
   tx: DbTransaction,
-  args: { threadId: string; retryOfTurnRequestId: string | null },
+  args: {
+    keepRetriesOfRequestsRefusedWith: string;
+    threadId: string;
+    retryOfTurnRequestId: string | null;
+  },
 ): number {
+  const refusal = alias(events, "retry_original_refusal");
   const overtaken = tx
     .select()
     .from(queuedThreadMessages)
@@ -1259,6 +1264,19 @@ export function supersedeQueuedRetriesInTransaction(
         eq(queuedThreadMessages.payloadKind, "retry"),
         liveQueuedThreadMessage(),
         notSupersededQueuedThreadMessage(),
+        notExists(
+          tx
+            .select({ id: refusal.id })
+            .from(refusal)
+            .where(
+              and(
+                eq(refusal.threadId, args.threadId),
+                eq(refusal.type, "client/turn/rejected"),
+                sql`json_extract(${refusal.data}, '$.requestId') = ${queuedThreadMessages.retryOfTurnRequestId}`,
+                sql`json_extract(${refusal.data}, '$.reason') = ${args.keepRetriesOfRequestsRefusedWith}`,
+              ),
+            ),
+        ),
         ...(args.retryOfTurnRequestId === null
           ? []
           : [

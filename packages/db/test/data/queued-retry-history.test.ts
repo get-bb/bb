@@ -84,6 +84,7 @@ it("supersedes an unaccepted retry without repeatedly walking long request histo
     const superseded = db.transaction(
       (tx) =>
         supersedeQueuedRetriesInTransaction(tx, {
+          keepRetriesOfRequestsRefusedWith: "thread_busy",
           threadId: thread.id,
           retryOfTurnRequestId: null,
         }),
@@ -214,6 +215,7 @@ it.each([
       expect(
         db.transaction((tx) =>
           supersedeQueuedRetriesInTransaction(tx, {
+            keepRetriesOfRequestsRefusedWith: "thread_busy",
             threadId: thread.id,
             retryOfTurnRequestId: null,
           }),

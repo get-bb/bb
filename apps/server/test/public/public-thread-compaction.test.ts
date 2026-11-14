@@ -354,12 +354,16 @@ describe("public thread compaction", () => {
         releaseBusy = resolve;
       });
       let submits = 0;
+      let compacting = true;
       registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         handle: async ({ command }): Promise<HostRpcHandlerResult> => {
           if (command.type === "host.read_workspace_agent_context") {
             return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
+          }
+          if (command.type === "turn.submit" && !compacting) {
+            return { ok: true, result: { trace: { spans: [] } } };
           }
           if (command.type === "turn.submit") {
             submits += 1;
@@ -379,11 +383,12 @@ describe("public thread compaction", () => {
           return { ok: true, result: {} };
         },
       });
+      const compactionTurnId = "turn-compaction-two-sends";
       seedTurnStarted(harness.deps, {
         environmentId: thread.environmentId,
         providerThreadId,
         threadId: thread.id,
-        turnId: "turn-compaction-two-sends",
+        turnId: compactionTurnId,
       });
 
       const send = (text: string) =>
@@ -418,6 +423,41 @@ describe("public thread compaction", () => {
             .sort(),
         )
         .toEqual([...rejectedRequestIds()].sort());
+
+      compacting = false;
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: thread.environmentId,
+        providerThreadId,
+        sequence:
+          getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+        type: "turn/completed",
+        scope: turnScope(compactionTurnId),
+        data: { providerThreadId, status: "completed" },
+      });
+      applyTurnCompletedEvent(harness.deps, {
+        afterIdle: null,
+        payload: {
+          threadId: thread.id,
+          providerThreadId,
+          type: "turn/completed",
+          scope: turnScope(compactionTurnId),
+          status: "completed",
+        },
+      });
+      expect(
+        await sendNextQueuedMessageIfPresent(harness.deps, {
+          threadId: thread.id,
+        }),
+      ).toBe(true);
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => ({
+          retryOf: row.retryOfTurnRequestId,
+          waitingOn: row.waitingOn,
+        })),
+      ).toEqual([
+        { retryOf: expect.any(String), waitingOn: '{"kind":"thread-busy"}' },
+      ]);
     });
   });
 
