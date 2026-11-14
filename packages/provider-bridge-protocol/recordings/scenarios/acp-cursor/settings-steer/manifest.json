@@ -1,0 +1,17 @@
+{
+  "provider": "acp-cursor",
+  "cell": "settings-steer",
+  "threadId": "thr_4917dad6a0",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.06.19-20-24-33-653a7fb",
+  "recordedAt": "2026-11-14",
+  "description": "Long turns, each steered with one changed setting: model, env var, permission mode, reasoning level.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 10,
+    "bridge→runtime": 185,
+    "provider→bridge": 188,
+    "bridge→provider": 28
+  }
+}

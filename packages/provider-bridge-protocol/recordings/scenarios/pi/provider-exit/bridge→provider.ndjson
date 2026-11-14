@@ -1,0 +1,2 @@
+{"ts":1794633690356,"run":1794633689134,"seq":26,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1794633690574,"run":1794633689134,"seq":34,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `python3 -c \\\"import time; time.sleep(41)\\\"`. When it finishes, reply with exactly: exit-1\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}

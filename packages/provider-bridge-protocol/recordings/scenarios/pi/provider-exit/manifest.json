@@ -1,0 +1,22 @@
+{
+  "provider": "pi",
+  "cell": "provider-exit",
+  "threadId": "thr_0fa32cdeca",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 1.5.2 (rpc)",
+  "recordedAt": "2026-11-14",
+  "description": "The provider process is killed mid-command, then a follow-up turn.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 3,
+    "bridge\u2192runtime": 14,
+    "provider\u2192bridge": 39,
+    "bridge\u2192provider": 2
+  },
+  "providerExit": {
+    "run": 1794633689134,
+    "seq": 77,
+    "signal": "SIGKILL"
+  }
+}

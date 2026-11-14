@@ -1,0 +1,17 @@
+{
+  "provider": "acp-opencode",
+  "cell": "settings-follow-up",
+  "threadId": "thr_34ead5478f",
+  "scope": "thread",
+  "cliVersion": "opencode 2.0.22",
+  "recordedAt": "2026-11-14",
+  "description": "Follow-up turns that each change one setting: model, env var, permission mode, reasoning level.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 57,
+    "provider→bridge": 46,
+    "bridge→provider": 18
+  }
+}
