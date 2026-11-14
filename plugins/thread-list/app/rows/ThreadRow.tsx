@@ -72,6 +72,11 @@ import {
 } from "@/components/ui/sidebar-hover-actions";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron.js";
+import {
+  DescendantActivityBadge,
+  type DescendantActivityItem,
+} from "./DescendantActivityBadge.js";
+import { getWorkingDescendants } from "./descendant-activity.js";
 import { useSidebarRename } from "./SidebarInlineRename.js";
 import { SidebarRowControls } from "./SidebarRowControls.js";
 import {
@@ -450,6 +455,16 @@ function ThreadRowComponent({
     hasHiddenChildren && parentOptions
       ? parentOptions.hiddenThreads
       : NO_HIDDEN_THREADS;
+  const descendantThreads = parentOptions?.hiddenThreads ?? NO_HIDDEN_THREADS;
+  const workingDescendants = getWorkingDescendants(descendantThreads);
+  const workingDescendantItems = useMemo<DescendantActivityItem[]>(
+    () =>
+      workingDescendants.map((descendant) => ({
+        id: descendant.id,
+        label: descendant.displayTitle,
+      })),
+    [workingDescendants],
+  );
   const hiddenChildrenHaveDraft = useThreadsHaveDraft(hiddenThreads);
   const trailingStatus = experimental_resolveThreadStatus({
     thread,
@@ -772,6 +787,11 @@ function ThreadRowComponent({
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
             )}
           >
+            <DescendantActivityBadge
+              items={workingDescendantItems}
+              onSelect={openThreadInSplit}
+              className="mr-1"
+            />
             <span
               className={cn(
                 "relative shrink-0",

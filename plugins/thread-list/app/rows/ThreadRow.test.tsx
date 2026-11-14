@@ -1370,6 +1370,124 @@ describe("ThreadRow", () => {
     expect(clickLink).not.toHaveBeenCalled();
   });
 
+  it("shows a working-descendant count on an expanded parent row", () => {
+    const { container } = renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 3,
+        hiddenThreads: [
+          createThread({ id: "a", runtimeStatus: "active" }),
+          createThread({ id: "b", runtimeStatus: "idle" }),
+          createThread({ id: "c", runtimeStatus: "error" }),
+        ],
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    const badge = container.querySelector<HTMLElement>(
+      "[data-sidebar-descendant-activity]",
+    );
+    expect(badge).not.toBeNull();
+    expect(badge?.getAttribute("data-descendant-count")).toBe("1");
+    expect(badge?.getAttribute("aria-label")).toBe(
+      "1 descendant thread working",
+    );
+  });
+
+  it("shows a working-descendant count on a collapsed parent row", () => {
+    const { container } = renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: true,
+        childCount: 2,
+        hiddenThreads: [
+          createThread({ id: "a", runtimeStatus: "active" }),
+          createThread({
+            id: "b",
+            activity: activity({ backgroundAgents: 1 }),
+          }),
+        ],
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    const badge = container.querySelector<HTMLElement>(
+      "[data-sidebar-descendant-activity]",
+    );
+    expect(badge?.getAttribute("data-descendant-count")).toBe("2");
+    expect(badge?.getAttribute("aria-label")).toBe(
+      "2 descendant threads working",
+    );
+  });
+
+  it("omits the badge when no descendant is working", () => {
+    const { container } = renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 2,
+        hiddenThreads: [
+          createThread({ id: "a", runtimeStatus: "idle" }),
+          createThread({ id: "b", runtimeStatus: "error" }),
+        ],
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    expect(
+      container.querySelector("[data-sidebar-descendant-activity]"),
+    ).toBeNull();
+  });
+
+  it("omits the badge on a childless row", () => {
+    const { container } = renderThreadRow({ options: DEFAULT_OPTIONS });
+
+    expect(
+      container.querySelector("[data-sidebar-descendant-activity]"),
+    ).toBeNull();
+  });
+
+  it("lists working descendants and opens the chosen thread in split", () => {
+    const slot = renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 2,
+        hiddenThreads: [
+          createThread({
+            id: "child-a",
+            displayTitle: "First worker",
+            runtimeStatus: "active",
+          }),
+          createThread({
+            id: "child-b",
+            displayTitle: "Second worker",
+            runtimeStatus: "starting",
+          }),
+        ],
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "2 descendant threads working" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Second worker/ }));
+
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: "child-b", options: { split: true } },
+    ]);
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({
