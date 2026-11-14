@@ -151,6 +151,21 @@ export function reconcileLayoutForContent(
   return replacePaneContent(layout, layout.focusedPaneId, content);
 }
 
+export function isRouteContentSuperseded(
+  layout: SplitLayout,
+  routeContent: PaneContent,
+  browserContent: PaneContent | null,
+): boolean {
+  if (
+    browserContent === null ||
+    isSamePaneContent(browserContent, routeContent)
+  ) {
+    return false;
+  }
+  const focused = findPane(layout.root, layout.focusedPaneId);
+  return focused !== null && isSamePaneContent(focused.content, browserContent);
+}
+
 export function replaceOriginPaneContent(
   layout: SplitLayout,
   paneId: string,

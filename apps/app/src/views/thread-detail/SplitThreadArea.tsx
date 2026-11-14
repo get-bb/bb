@@ -20,6 +20,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { UNSAFE_NavigationContext, useLocation } from "react-router-dom";
 import { useRouteState } from "@/hooks/useRouteState";
 import {
   getThreadRoutePath,
@@ -100,6 +101,8 @@ import {
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
   focusedPaneRoute,
+  isRouteContentSuperseded,
+  paneContentForPathname,
   paneContentRoute,
   reconcileLayoutForContent,
   replaceOriginPaneContent,
@@ -262,6 +265,17 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
   return { captureVisibleScrollPositions, workspaceRef };
 }
 
+function latestRoutePathname(navigator: object): string | null {
+  if (!("location" in navigator)) return null;
+  const location = navigator.location;
+  return typeof location === "object" &&
+    location !== null &&
+    "pathname" in location &&
+    typeof location.pathname === "string"
+    ? location.pathname
+    : null;
+}
+
 export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
   return (
     <ThreadDetailWorkerPoolProvider>
@@ -275,6 +289,8 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const splitWorkspaceActive = useSplitWorkspaceActive();
   const navigate = useImmediateRouteNavigate();
   const store = useStore();
+  const { navigator } = useContext(UNSAFE_NavigationContext);
+  const committedPathname = useLocation().pathname;
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const [maximizedPaneId, setMaximizedPaneIdAtom] =
@@ -297,10 +313,20 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (currentContent === null) {
       return;
     }
+    const latestPathname = latestRoutePathname(navigator);
     setLayout((previous) =>
-      reconcileLayoutForContent(previous, currentContent),
+      previous !== null &&
+      latestPathname !== null &&
+      latestPathname !== committedPathname &&
+      isRouteContentSuperseded(
+        previous,
+        currentContent,
+        paneContentForPathname(latestPathname),
+      )
+        ? previous
+        : reconcileLayoutForContent(previous, currentContent),
     );
-  }, [currentContent, setLayout]);
+  }, [committedPathname, currentContent, navigator, setLayout]);
 
   const layout: SplitLayout | null =
     storedLayout ??

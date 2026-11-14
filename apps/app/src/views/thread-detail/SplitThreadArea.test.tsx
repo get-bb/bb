@@ -18,7 +18,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import {
+  MemoryRouter,
+  Router,
+  UNSAFE_createMemoryHistory,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -1285,6 +1291,52 @@ describe("SplitThreadArea", () => {
     store.set(splitLayoutAtom, movePane(opened, "pane-3", "pane-1", "left"));
     await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-3"));
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(3);
+  });
+
+  it.each([
+    {
+      name: "keeps a just-opened pane focused while an older pane navigation is still committing",
+      latestPath: threadPath("thr-c"),
+      focusedPaneId: "pane-3",
+    },
+    {
+      name: "focuses the routed pane when no newer navigation is pending",
+      latestPath: threadPath("thr-b"),
+      focusedPaneId: "pane-2",
+    },
+  ])("$name", async ({ latestPath, focusedPaneId }) => {
+    const store = createStore();
+    store.set(
+      splitLayoutAtom,
+      applyThreadOpenToLayout(
+        twoPaneLayout("pane-2"),
+        { projectId: PERSONAL_PROJECT_ID, threadId: "thr-c" },
+        "right",
+      ),
+    );
+    store.set(maximizedPaneIdAtom, "pane-3");
+    const history = UNSAFE_createMemoryHistory({
+      initialEntries: [latestPath],
+    });
+    render(
+      <TooltipProvider delayDuration={0}>
+        <JotaiProvider store={store}>
+          <QueryClientProvider client={queryClient}>
+            <Router location={threadPath("thr-b")} navigator={history}>
+              <RouteNavigationProvider>
+                <SplitThreadArea />
+              </RouteNavigationProvider>
+            </Router>
+          </QueryClientProvider>
+        </JotaiProvider>
+      </TooltipProvider>,
+    );
+    await screen.findByTestId("pane-thr-c");
+
+    await waitFor(() =>
+      expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe(focusedPaneId),
+    );
+    expect(store.get(maximizedPaneIdAtom)).toBe(focusedPaneId);
   });
 
   it("reveals move targets during a maximized drag and restores after drop", async () => {
