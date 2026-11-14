@@ -26,7 +26,10 @@ import {
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonOnlineRpcResponseMessage,
 } from "@bb/host-daemon-contract";
-import type { SendMessageRequest } from "@bb/server-contract";
+import {
+  retryTurnRequestSchema,
+  type SendMessageRequest,
+} from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import { requestQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
@@ -39,6 +42,7 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
+import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import {
   onDaemonSocketClose,
@@ -66,10 +70,16 @@ type SendMode = Extract<
 type UserStep =
   | { kind: "send"; label: string; mode: SendMode }
   | { kind: "send-now"; label: string }
+  | { kind: "retry" }
   | { kind: "add-to-queue"; label: string }
   | { kind: "stop" };
 
-type ScenarioEvent = "drain" | "provider-turn" | "reconnect" | "timeout";
+type ScenarioEvent =
+  | "drain"
+  | "fail-turn"
+  | "provider-turn"
+  | "reconnect"
+  | "timeout";
 
 interface Scenario {
   name: string;
@@ -90,6 +100,7 @@ interface HeldRpc {
 
 interface DaemonTurn {
   id: string;
+  inputs: number;
   labels: string[];
   startedBy: "request" | "provider";
 }
@@ -131,6 +142,7 @@ const MAX_SCHEDULED_WAIT_MS = 20_000;
 const MAX_PLUGIN_WAITS_PER_MESSAGE = 1;
 const DISPATCH_REQUEUE_PACING_MS = 1_050;
 const LIMITER_PLUGIN_ID = "limiter";
+const HOLDING_PLUGIN_ID = "drafts-like";
 
 function hasPendingIoRequest(): boolean {
   return process
@@ -154,6 +166,8 @@ function describeUserStep(step: UserStep): string {
       return `send-now ${step.label}`;
     case "add-to-queue":
       return `add-to-queue ${step.label}`;
+    case "retry":
+      return "retry";
     case "stop":
       return "stop";
   }
@@ -246,7 +260,7 @@ class FakeDaemon {
     const { command } = message;
     switch (command.type) {
       case "turn.submit":
-        if (labelsOf(command.input).length === 0) {
+        if (command.input.length === 0) {
           this.violations.push(
             `turn.submit(${command.target.mode}) carried no message`,
           );
@@ -354,9 +368,10 @@ class FakeDaemon {
     const labels = labelsOf(command.input);
     let turn = this.activeTurn;
     if (turn === null) {
-      turn = await this.startTurn("request", labels);
+      turn = await this.startTurn("request", labels, command.input.length);
     } else {
       turn.labels.push(...labels);
+      turn.inputs += command.input.length;
     }
     this.deliveryOrder.push(...labels);
     await this.post([
@@ -377,9 +392,11 @@ class FakeDaemon {
   private async startTurn(
     startedBy: DaemonTurn["startedBy"],
     labels: string[],
+    inputs: number,
   ): Promise<DaemonTurn> {
     const turn: DaemonTurn = {
       id: `turn-${this.turns.length + 1}`,
+      inputs,
       labels: [...labels],
       startedBy,
     };
@@ -396,7 +413,7 @@ class FakeDaemon {
     return turn;
   }
 
-  async endTurn(status: "completed" | "interrupted"): Promise<void> {
+  async endTurn(status: "completed" | "interrupted" | "failed"): Promise<void> {
     const turn = this.activeTurn;
     if (turn === null) throw new Error("Expected a running daemon turn");
     this.activeTurn = null;
@@ -412,7 +429,7 @@ class FakeDaemon {
   }
 
   async runProviderTurn(): Promise<void> {
-    await this.startTurn("provider", []);
+    await this.startTurn("provider", [], 0);
     await this.endTurn("completed");
   }
 
@@ -503,9 +520,6 @@ class LimiterPlugin {
       pluginId: LIMITER_PLUGIN_ID,
       handler: (context) => {
         const labels = labelsIn(context.input.text);
-        if (labels.some((label) => this.heldLabels.includes(label))) {
-          return { action: "wait", reason: "held" };
-        }
         const label = labels.find((candidate) =>
           this.gatedLabels.includes(candidate),
         );
@@ -518,7 +532,15 @@ class LimiterPlugin {
     const registry: {
       [K in PluginHookName]: PluginHookRegistration<K>[];
     } = { "message.dispatch": this.registrations };
-    this.registrations.push(registration);
+    this.registrations.push(registration, {
+      pluginId: HOLDING_PLUGIN_ID,
+      handler: (context) =>
+        labelsIn(context.input.text).some((label) =>
+          this.heldLabels.includes(label),
+        )
+          ? { action: "wait", reason: "held" }
+          : { action: "proceed" },
+    });
     setPluginHookProvider({
       listHooks: (hook) => registry[hook],
       invokeHook: async (_registration, _label, run) => ({
@@ -571,6 +593,7 @@ class Run {
   private followUpSent = false;
   private stallReported = false;
   private recheckChecked = false;
+  private tailRetried = false;
   readonly limiter: LimiterPlugin;
   private readonly tailViolations: string[] = [];
 
@@ -677,6 +700,18 @@ class Run {
     });
   }
 
+  private retry(): void {
+    this.track({ kind: "retry" }, "retry", async () => {
+      const thread = getThread(this.harness.db, this.threadId);
+      if (thread === null) throw new Error("Thread vanished");
+      const response = await retryFailedTurn(this.harness.deps, {
+        thread,
+        request: retryTurnRequestSchema.parse({}),
+      });
+      return response.delivery;
+    });
+  }
+
   private stop(): void {
     this.track({ kind: "stop" }, "stop", async () => {
       const thread = getThread(this.harness.db, this.threadId);
@@ -746,6 +781,8 @@ class Run {
             this.sendNow(nextUser.label);
           } else if (nextUser.kind === "add-to-queue") {
             this.addToQueue(nextUser.label);
+          } else if (nextUser.kind === "retry") {
+            this.retry();
           } else {
             this.stop();
           }
@@ -792,6 +829,15 @@ class Run {
             kind: "thread-ready",
             threadId: this.threadId,
           });
+        },
+      });
+    }
+    if (this.remainingEvents.includes("fail-turn") && activeTurn !== null) {
+      actions.push({
+        label: `fail ${activeTurn.id}`,
+        run: async () => {
+          consume("fail-turn");
+          await this.daemon.endTurn("failed");
         },
       });
     }
@@ -864,10 +910,20 @@ class Run {
       }
       if (this.limiter.registered && this.rowsWaitingOn("plugin").length > 0) {
         this.limiter.unregister();
-        requestQueuedMessageDispatch(this.harness.deps, {
-          kind: "plugin-unregistered",
-          pluginId: LIMITER_PLUGIN_ID,
-        });
+        for (const pluginId of [LIMITER_PLUGIN_ID, HOLDING_PLUGIN_ID]) {
+          requestQueuedMessageDispatch(this.harness.deps, {
+            kind: "plugin-unregistered",
+            pluginId,
+          });
+        }
+        continue;
+      }
+      if (
+        !this.tailRetried &&
+        getThread(this.harness.db, this.threadId)?.status === "error"
+      ) {
+        this.tailRetried = true;
+        this.retry();
         continue;
       }
       if (!this.followUpSent && this.queueHeldOnlyByManualStopPause()) {
@@ -961,7 +1017,7 @@ class Run {
         }
         continue;
       }
-      if (outcome.step.kind === "send-now") {
+      if (outcome.step.kind === "send-now" || outcome.step.kind === "retry") {
         if (
           outcome.settled === "rejected" &&
           !UNANSWERED_PATTERN.test(outcome.detail) &&
@@ -973,7 +1029,10 @@ class Run {
       }
       const delivered = this.daemon.deliveries(outcome.label);
       if (outcome.settled === "rejected") {
-        if (!UNANSWERED_PATTERN.test(outcome.detail)) {
+        if (
+          !UNANSWERED_PATTERN.test(outcome.detail) &&
+          (outcome.refusedStatus === null || outcome.refusedStatus >= 500)
+        ) {
           violations.push(`${outcome.label} was refused: ${outcome.detail}`);
         } else if (delivered > 0) {
           violations.push(
@@ -1011,7 +1070,7 @@ class Run {
       }
     }
     for (const turn of this.daemon.turns) {
-      if (turn.startedBy === "request" && turn.labels.length === 0) {
+      if (turn.startedBy === "request" && turn.inputs === 0) {
         violations.push(`${turn.id} started without input`);
       }
     }
@@ -1186,6 +1245,7 @@ const addToQueue = (label: string): UserStep => ({
   kind: "add-to-queue",
   label,
 });
+const retry: UserStep = { kind: "retry" };
 const stop: UserStep = { kind: "stop" };
 
 const scenarios: Scenario[] = [
@@ -1287,6 +1347,15 @@ const scenarios: Scenario[] = [
     pluginHeldLabels: ["msg-D"],
     user: [send("msg-D"), send("msg-H")],
     events: [],
+  },
+  {
+    name: "a retry of a failed turn against a steer and a queued send",
+    start: "running-turn",
+    holdPreparation: false,
+    pluginGatedLabels: [],
+    pluginHeldLabels: [],
+    user: [steer("msg-A"), send("msg-B"), retry],
+    events: ["fail-turn"],
   },
 ];
 
