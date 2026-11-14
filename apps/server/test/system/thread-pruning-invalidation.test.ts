@@ -368,6 +368,25 @@ describe("pruning invalidation", () => {
     });
   });
 
+  it("keeps a thread's grouping context when its history is compacted", async () => {
+    await withTestHarness(async (harness) => {
+      const compacted = createThreadScript(harness);
+      const turnId = compacted.startTurn(1);
+      compacted.finishTurn(turnId, 1);
+      createThreadTimelineWindows(harness.deps);
+      const args = {
+        maxSeq: 6,
+        sequenceStart: 0,
+        threadId: compacted.thread.id,
+      };
+      const context = getTimelineGroupingContext(harness.db, args);
+
+      harness.deps.hub.notifyThread(compacted.thread.id, ["history-compacted"]);
+
+      expect(getTimelineGroupingContext(harness.db, args)).toBe(context);
+    });
+  });
+
   it("keeps a window's older cursor usable after pruning deletes the rows around it", async () => {
     await withTestHarness(SMALL_WINDOW, async (harness) => {
       const script = createThreadScript(harness);

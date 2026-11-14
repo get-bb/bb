@@ -993,7 +993,7 @@ interface SelectTimelineEventRowsArgs {
   eventBudget: number;
   excludeDiagnosticEvents: boolean;
   groupingContext: TimelineGroupingContext;
-  knownBudgetFloorSequence: number | null;
+  knownBudgetFloor: { sequence: number | undefined } | null;
   maxInlineOutputChars: InlineOutputCharLimit;
   maxSeq: number;
   page: ThreadTimelinePageRequest;
@@ -1012,7 +1012,7 @@ function selectStandardTimelineEventRows(
     eventBudget,
     excludeDiagnosticEvents,
     groupingContext,
-    knownBudgetFloorSequence,
+    knownBudgetFloor,
     maxInlineOutputChars,
     maxSeq,
     page,
@@ -1044,15 +1044,16 @@ function selectStandardTimelineEventRows(
     );
   }
   const budgetFloor =
-    knownBudgetFloorSequence ??
-    findTimelineWindowBudgetFloorSequence(db, {
-      threadId: thread.id,
-      sequenceStart: epochSequenceStart,
-      beforeSequence,
-      eventBudget,
-      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-      excludeDiagnosticEvents,
-    });
+    knownBudgetFloor === null
+      ? findTimelineWindowBudgetFloorSequence(db, {
+          threadId: thread.id,
+          sequenceStart: epochSequenceStart,
+          beforeSequence,
+          eventBudget,
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          excludeDiagnosticEvents,
+        })
+      : knownBudgetFloor.sequence;
   const sequenceStart =
     contentCursor !== undefined && page.kind === "older"
       ? page.beforeCursor.anchorSeq
@@ -1441,13 +1442,13 @@ function resolveTimelineBuild(
             groupingContext,
             rowSource,
             decodeRow,
-            knownBudgetFloorSequence,
+            knownBudgetFloor,
           ) =>
             selectStandardTimelineEventRows(db, thread, {
               ...selectArgs,
               decodeRow,
               groupingContext,
-              knownBudgetFloorSequence,
+              knownBudgetFloor,
               page: { kind: "latest", segmentLimit },
               source: rowSource,
             }),
@@ -1487,7 +1488,7 @@ function resolveTimelineBuild(
           ...selectArgs,
           decodeRow,
           groupingContext,
-          knownBudgetFloorSequence: null,
+          knownBudgetFloor: null,
         },
       );
       const rows =

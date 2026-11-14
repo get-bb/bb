@@ -34,7 +34,11 @@ import {
   buildThreadTimelineCacheRevision,
   createThreadTimelineCache,
 } from "./timeline-cache.js";
-import { forgetTimelineProjection } from "./timeline-projection.js";
+import { forgetTimelineOrderingContextLogs } from "./timeline-context-order.js";
+import {
+  forgetTimelineProjection,
+  retireTimelineProjection,
+} from "./timeline-projection.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
 import { resolveThreadHeadStateOptions } from "./thread-head-state.js";
@@ -376,7 +380,8 @@ export function createThreadTimelineWindows(
     if (!rewritten && !message.changes.includes("history-compacted")) {
       return;
     }
-    forgetTimelineProjection(deps.db, message.id);
+    if (rewritten) forgetTimelineOrderingContextLogs(deps.db, message.id);
+    retireTimelineProjection(deps.db, message.id);
     timelineCache.invalidateThread(message.id);
   });
 

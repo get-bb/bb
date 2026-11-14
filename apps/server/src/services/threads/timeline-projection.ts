@@ -134,7 +134,7 @@ interface TimelineProjectionSelect {
     groupingContext: TimelineGroupingContext,
     source: TimelineSelectionRowSource | undefined,
     decode: StoredEventRowDecoder,
-    knownBudgetFloorSequence: number | null,
+    knownBudgetFloor: { sequence: number | undefined } | null,
   ): StandardTimelineEventRowSelection;
 }
 
@@ -238,6 +238,7 @@ export interface ThreadTimelineProjection {
   readonly eventsById: Map<string, DecodedRow>;
   readonly releasedEvents: Map<string, ReleasedEvent>;
   releasedBytes: number;
+  retired: boolean;
   fold: TimelineProjectionFoldState | null;
   foldedEventCount: number;
   readonly generation: number;
@@ -328,6 +329,15 @@ export function forgetTimelineProjection(
   }
 }
 
+export function retireTimelineProjection(
+  db: DbConnection,
+  threadId: string,
+): void {
+  for (const projection of projectionsOfThread(db, threadId)) {
+    projection.retired = true;
+  }
+}
+
 export function peekTimelineProjection(
   db: DbConnection,
   threadId: string,
@@ -350,11 +360,43 @@ export function decodeRowWithProjection(
     return decodeStoredEventRow;
   }
   const byId = projectionEventsById(projection);
-  return (row) =>
-    decodeReusing(
-      byId.get(row.id) ?? projection.releasedEvents.get(row.id),
-      row,
-    );
+  return (row) => {
+    const kept = byId.get(row.id) ?? projection.releasedEvents.get(row.id);
+    if (kept !== undefined && decodesTheSame(kept.row, row)) return kept.event;
+    const event = decodeStoredEventRow(row);
+    if (!byId.has(row.id)) rememberReleasedEvent(projection, row, event);
+    return event;
+  };
+}
+
+function rememberReleasedEvent(
+  projection: ThreadTimelineProjection,
+  row: StoredEventRow,
+  event: ThreadEventWithMeta,
+): void {
+  const previous = projection.releasedEvents.get(row.id);
+  if (previous !== undefined) {
+    projection.releasedEvents.delete(row.id);
+    projection.releasedBytes -= previous.bytes;
+  }
+  const bytes = Buffer.byteLength(row.data, "utf8");
+  projection.releasedEvents.set(row.id, { bytes, event, row });
+  projection.releasedBytes += bytes;
+  trimReleasedEvents(projection, MAX_RELEASED_EVENT_BYTES);
+}
+
+function trimReleasedEvents(
+  projection: ThreadTimelineProjection,
+  limit: number,
+): number {
+  let freed = 0;
+  for (const [id, entry] of projection.releasedEvents) {
+    if (projection.releasedBytes <= limit) break;
+    projection.releasedEvents.delete(id);
+    projection.releasedBytes -= entry.bytes;
+    freed += entry.bytes;
+  }
+  return freed;
 }
 
 function decodedRowsOf(
@@ -365,6 +407,14 @@ function decodedRowsOf(
     const event = projection.events[index];
     if (event !== undefined) decoded.set(row.id, { event, row });
   }
+  return decoded;
+}
+
+function reusableDecodesOf(
+  projection: ThreadTimelineProjection,
+): Map<string, DecodedRow> {
+  const decoded = new Map<string, DecodedRow>(projection.releasedEvents);
+  for (const [id, row] of decodedRowsOf(projection)) decoded.set(id, row);
   return decoded;
 }
 
@@ -415,6 +465,7 @@ function isProjectionCurrent(
   projection: ThreadTimelineProjection,
 ): boolean {
   return (
+    !projection.retired &&
     projection.generation ===
       getThreadEventRewriteGeneration(projection.scope.threadId) &&
     projection.dataVersion === getDatabaseDataVersion(db)
@@ -769,7 +820,6 @@ function appendToProjection(
   measure: MeasureTimelineProjectionStage,
   appendedDecodes: Map<string, DecodedRow>,
 ): boolean {
-  if (maxSeq === projection.maxSeq) return true;
   if (
     maxSeq < projection.maxSeq ||
     maxSeq - projection.maxSeq > MAX_APPENDED_ROWS_PER_CATCH_UP ||
@@ -778,6 +828,7 @@ function appendToProjection(
   ) {
     return false;
   }
+  if (maxSeq === projection.maxSeq) return true;
   const { scope } = projection;
   const appendedRows = listAppendedEventRows(db, {
     afterSequence: projection.maxSeq,
@@ -927,6 +978,7 @@ function appendToProjection(
 
 interface ProjectionBuild {
   db: DbConnection;
+  donor: ThreadTimelineProjection | null;
   measure: MeasureTimelineProjectionStage;
   hintSource?: ThreadTimelineProjection;
   maxSeq: number;
@@ -947,8 +999,9 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
   const groupingContext = build.measure("ordering-context-query", () =>
     readTimelineGroupingContext(db, orderingLog, maxSeq),
   );
+  const reuse = previous ?? build.donor;
   const decodedById =
-    previous === null ? new Map<string, DecodedRow>() : decodedRowsOf(previous);
+    reuse === null ? new Map<string, DecodedRow>() : reusableDecodesOf(reuse);
   const decode = decodeEachRowOnce((row) =>
     decodeReusing(decodedById.get(row.id), row),
   );
@@ -957,8 +1010,8 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     groupingContext,
     build.source,
     decode,
-    previous?.maxSeq === maxSeq && previous.budgetFloorSequence !== undefined
-      ? previous.budgetFloorSequence
+    previous?.maxSeq === maxSeq
+      ? { sequence: previous.budgetFloorSequence }
       : null,
   );
   const rows = result.selection.rows;
@@ -984,11 +1037,12 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     eventsById: new Map(),
     releasedBytes: released.bytes,
     releasedEvents: released.events,
+    retired: false,
     fold: null,
     foldedEventCount: 0,
     generation: getThreadEventRewriteGeneration(scope.threadId),
     groupingContext: { context: groupingContext, maxSeq },
-    headStateEvents: previous?.headStateEvents ?? new Map(),
+    headStateEvents: reuse?.headStateEvents ?? new Map(),
     hints:
       build.hintSource !== undefined &&
       build.hintSource.hints.length > result.hints.length
@@ -1160,24 +1214,52 @@ export function chargeDerivedRows(
   projection: ThreadTimelineProjection,
   bytes: number,
 ): boolean {
-  if (
-    retainedBytesOf(projection) - projection.derivedBytes + bytes >
-    MAX_TIMELINE_PROJECTION_DATA_BYTES
-  ) {
-    return false;
+  const overflow =
+    retainedBytesOf(projection) -
+    projection.derivedBytes +
+    bytes -
+    MAX_TIMELINE_PROJECTION_DATA_BYTES;
+  if (overflow > 0) {
+    trimReleasedEvents(
+      projection,
+      Math.max(0, projection.releasedBytes - overflow),
+    );
+    if (
+      retainedBytesOf(projection) - projection.derivedBytes + bytes >
+      MAX_TIMELINE_PROJECTION_DATA_BYTES
+    ) {
+      return false;
+    }
   }
   projection.derivedBytes = bytes;
   const registry = projectionsByDb.get(db);
   if (registry?.get(projection.id) !== projection) return true;
-  let total = 0;
-  for (const kept of registry.values()) total += retainedBytesOf(kept);
-  for (const [keptKey, kept] of registry) {
-    if (total <= MAX_TIMELINE_PROJECTION_DATA_BYTES) break;
-    if (kept === projection) continue;
-    registry.delete(keptKey);
-    total -= retainedBytesOf(kept);
-  }
+  fitRegistryBudget(registry, projection);
   return true;
+}
+
+function fitRegistryBudget(
+  registry: Map<number, ThreadTimelineProjection>,
+  keep: ThreadTimelineProjection | null,
+): void {
+  let total = 0;
+  for (const entry of registry.values()) total += retainedBytesOf(entry);
+  for (const entry of registry.values()) {
+    if (total <= MAX_TIMELINE_PROJECTION_DATA_BYTES) return;
+    total -= trimReleasedEvents(
+      entry,
+      Math.max(
+        0,
+        entry.releasedBytes - (total - MAX_TIMELINE_PROJECTION_DATA_BYTES),
+      ),
+    );
+  }
+  for (const [key, entry] of registry) {
+    if (total <= MAX_TIMELINE_PROJECTION_DATA_BYTES) return;
+    if (entry === keep) continue;
+    registry.delete(key);
+    total -= retainedBytesOf(entry);
+  }
 }
 
 function storeProjection(
@@ -1199,17 +1281,10 @@ function storeProjection(
       idle -= 1;
     }
   }
-  let dataBytes = 0;
-  for (const entry of registry.values()) dataBytes += retainedBytesOf(entry);
-  while (
-    registry.size > MAX_TIMELINE_PROJECTIONS ||
-    (dataBytes > MAX_TIMELINE_PROJECTION_DATA_BYTES &&
-      registry.size > (stored ? 1 : 0))
-  ) {
-    const [oldestKey, oldest] = registry.entries().next().value!;
-    registry.delete(oldestKey);
-    dataBytes -= retainedBytesOf(oldest);
+  while (registry.size > MAX_TIMELINE_PROJECTIONS) {
+    registry.delete(registry.keys().next().value!);
   }
+  fitRegistryBudget(registry, stored ? projection : null);
 }
 
 function latestWindowStart(
@@ -1362,7 +1437,7 @@ export function readTimelineProjection(
     for (const source of sources) {
       if (!catchUp(source)) continue;
       const trimmed = trimProjection(
-        { ...build, hintSource: reference, previous: source },
+        { ...build, donor: null, hintSource: reference, previous: source },
         source,
       );
       if (trimmed !== null) {
@@ -1375,6 +1450,13 @@ export function readTimelineProjection(
   );
   const projection = buildProjection({
     ...build,
+    donor:
+      [...siblings]
+        .reverse()
+        .find(
+          (sibling) =>
+            sibling.scopeKey === scopeKey && !valid.includes(sibling),
+        ) ?? null,
     previous: caughtUpPrevious ?? valid[0] ?? null,
     source: undefined,
   });

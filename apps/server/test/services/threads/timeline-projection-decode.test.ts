@@ -3,13 +3,7 @@ import {
   encodeClientTurnRequestIdNumber,
   type ThreadEventItemType,
 } from "@bb/domain";
-import {
-  createThread,
-  deleteThreadEventSuffixInTransaction,
-  getLatestThreadSequence,
-  noopNotifier,
-  type DbConnection,
-} from "@bb/db";
+import { createThread, noopNotifier, type DbConnection } from "@bb/db";
 import { parseStoredEvent } from "../../../src/services/threads/thread-data.js";
 import { readThreadHeadState } from "../../../src/services/threads/thread-head-state.js";
 import { resolveProviderPlanCommand } from "../../../src/services/providers/provider-plan-command.js";
@@ -353,32 +347,6 @@ describe("timeline projection decoding", () => {
       const { event } = decodeStoredEventRow(row);
       expect(Object.isFrozen(event)).toBe(true);
       expect(Object.isFrozen(projection!.events.at(-1)!.event)).toBe(true);
-    });
-  });
-
-  it("forgets decoded rows when the thread is forgotten or its history rewritten", () => {
-    withTestThread((testThread) => {
-      const { db, thread } = testThread;
-      appendRows(testThread, [...openTurn(), messageDelta("one")]);
-      buildLatest(testThread);
-      const [before] = projectionsOf(db, thread.id);
-      const maxSeq = getLatestThreadSequence(db, { threadId: thread.id });
-      db.transaction((tx) => {
-        deleteThreadEventSuffixInTransaction(tx, {
-          cutoffSequence: maxSeq,
-          oldMaxSequence: maxSeq,
-          threadId: thread.id,
-        });
-      });
-      appendRows(testThread, [messageDelta("two")]);
-      const rewritten = buildLatest(testThread);
-      expect(selectionWasReused(rewritten.profile)).toBe(false);
-      const after = projectionsOf(db, thread.id);
-      expect(after).toHaveLength(1);
-      expect(after[0]!.events[0]).not.toBe(before!.events[0]);
-
-      forgetTimelineProjection(db, thread.id);
-      expect(projectionsOf(db, thread.id)).toEqual([]);
     });
   });
 
