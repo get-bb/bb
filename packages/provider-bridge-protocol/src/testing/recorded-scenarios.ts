@@ -278,8 +278,25 @@ const PROVIDER_PERMISSION_VALUES: Readonly<
 };
 
 interface ApprovalRouting {
-  askedCommands: Set<string>;
+  commands: Set<string>;
   routedCommands: Set<string>;
+}
+
+function acpExecuteToolCallId(message: Json | undefined): string | null {
+  if (!isObject(message) || !isObject(message.params)) return null;
+  const toolCall =
+    message.method === "session/request_permission"
+      ? message.params.toolCall
+      : message.method === "session/update" &&
+          isObject(message.params.update) &&
+          message.params.update.sessionUpdate === "tool_call"
+        ? message.params.update
+        : undefined;
+  return isObject(toolCall) &&
+    toolCall.kind === "execute" &&
+    typeof toolCall.toolCallId === "string"
+    ? toolCall.toolCallId
+    : null;
 }
 
 function acpCommandApprovals(
@@ -287,22 +304,12 @@ function acpCommandApprovals(
   dispatch: Dispatch,
   next: Dispatch | undefined,
 ): ApprovalRouting {
-  const askedCommands = new Set<string>();
+  const commands = new Set<string>();
   const end = next?.recordedIndex ?? replay.recording.length;
   for (const entry of replay.recording.slice(dispatch.recordedIndex, end)) {
     if (entry.dir !== "provider→bridge") continue;
-    const message = parseJson(entry.line);
-    if (!isObject(message) || message.method !== "session/request_permission")
-      continue;
-    const params = message.params;
-    const toolCall = isObject(params) ? params.toolCall : undefined;
-    if (
-      isObject(toolCall) &&
-      toolCall.kind === "execute" &&
-      typeof toolCall.toolCallId === "string"
-    ) {
-      askedCommands.add(toolCall.toolCallId);
-    }
+    const toolCallId = acpExecuteToolCallId(parseJson(entry.line));
+    if (toolCallId !== null) commands.add(toolCallId);
   }
   const routedCommands = new Set<string>();
   for (const line of replay.bridgeLines) {
@@ -313,10 +320,10 @@ function acpCommandApprovals(
     )
       continue;
     for (const leaf of stringLeaves(message.params)) {
-      if (askedCommands.has(leaf)) routedCommands.add(leaf);
+      if (commands.has(leaf)) routedCommands.add(leaf);
     }
   }
-  return { askedCommands, routedCommands };
+  return { commands, routedCommands };
 }
 
 type SettingDimension = "model" | "reasoning" | "env" | "permission";
@@ -415,17 +422,13 @@ function checkSettingsReachProvider(
           dispatch,
           script.dispatches[index + 1],
         );
-        if (routing.askedCommands.size === 0) {
+        if (routing.commands.size === 0) {
           results.push(
-            skipped(
-              id,
-              title,
-              "the agent asked no command permission after the change",
-            ),
+            skipped(id, title, "the agent ran no command after the change"),
           );
           continue;
         }
-        const unrouted = [...routing.askedCommands].filter(
+        const unrouted = [...routing.commands].filter(
           (toolCallId) => !routing.routedCommands.has(toolCallId),
         );
         results.push(
@@ -434,7 +437,7 @@ function checkSettingsReachProvider(
             title,
             unrouted.length === 0
               ? null
-              : `under ${values[0]} the bridge answered the agent's command permission request(s) ${unrouted.join(", ")} itself instead of asking the user`,
+              : `under ${values[0]} the agent ran command(s) ${unrouted.join(", ")} without the user approving them`,
           ),
         );
         continue;

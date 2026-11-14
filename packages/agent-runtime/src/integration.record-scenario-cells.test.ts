@@ -83,8 +83,14 @@ function createCtx(providerId: string, cell: string): Ctx {
       contentItems: [{ type: "inputText", text: "ok" }],
       success: true,
     }),
-    onInteractiveRequest: async (request: PendingInteractionCreate) =>
-      createApprovalResolution(request),
+    onInteractiveRequest: async (request: PendingInteractionCreate) => {
+      const resolution = await createApprovalResolution(request);
+      return request.payload.kind === "approval" &&
+        request.payload.subject.kind !== "permission_grant" &&
+        request.payload.availableDecisions.includes("allow_once")
+        ? { ...resolution, decision: "allow_once", grantedPermissions: null }
+        : resolution;
+    },
     onStderr: () => {},
   });
   return {
@@ -528,7 +534,9 @@ const SCENARIOS: Record<
       const steerText =
         dimension === "env"
           ? `New instruction: after the command finishes, run \`printf '%s' "$${PROBE_ENV}"\` once and reply with exactly its output.`
-          : `New instruction: after the command finishes, reply with exactly: steer-${turn}-steered`;
+          : dimension === "permission"
+            ? `New instruction: after the command finishes, run \`printf steer-${turn}-steered\` once and reply with exactly its output.`
+            : `New instruction: after the command finishes, reply with exactly: steer-${turn}-steered`;
       await steer(ctx, threadId, settings, steerText);
       await waitUntil(
         `turn ${turn} settles`,

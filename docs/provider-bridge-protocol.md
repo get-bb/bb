@@ -695,9 +695,10 @@ provider where the recorded one died (`providerExit` in the manifest).
   changed with a steer is deliberately not required to apply mid-turn (a
   bridge may apply it, as ACP does, or leave it for the next turn).
 - Permission is read from the
-  provider's own vocabulary for Codex and Claude Code; ACP bridges enforce it
-  themselves, so the rule checks that an agent's command permission request
-  after the change reaches the user.
+  provider's own vocabulary for Codex and Claude Code. ACP bridges enforce it
+  themselves, so for ACP agents the rule checks that every command the agent
+  ran or asked to run after the change to a stricter mode went through the
+  user's approval.
 - every cell: each message is accepted exactly once, every turn carries the
   message that started it, every turn settles, and a steer whose turn already
   ended is rejected as stale.
