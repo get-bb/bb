@@ -957,6 +957,35 @@ describe("acp bridge", () => {
     },
   );
 
+  it.each<{ name: string; envVars: Record<string, string> }>([
+    { name: "every probe succeeds", envVars: {} },
+    {
+      name: "the last probe fails",
+      envVars: { FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/gen-2" },
+    },
+  ])(
+    "restores the agent's original model after discovery when $name",
+    async ({ envVars }) => {
+      const requestLog = join(workspaceDir, "discovery-restore-requests.jsonl");
+      const modelListId = sendModelList({
+        envVars: {
+          FAKE_ACP_MODEL_CONFIG: "1",
+          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+          FAKE_ACP_MODEL_COUNT: "3",
+          FAKE_ACP_REQUEST_LOG: requestLog,
+          ...envVars,
+        },
+      });
+
+      expect((await waitForResponse(modelListId)).error).toBeUndefined();
+      expect(
+        loggedAcpRequests(requestLog)
+          .filter((request) => request.method === "session/set_config_option")
+          .map((request) => request.params?.["value"]),
+      ).toEqual(["fake/strong", "fake/gen-2", "fake/default"]);
+    },
+  );
+
   it("keeps probing reasoning for later models after one model's probe fails", async () => {
     const modelListId = sendModelList({
       envVars: {
@@ -1511,7 +1540,7 @@ describe("acp bridge", () => {
       loggedAcpRequests(requestLog)
         .filter((request) => request.method === "session/set_config_option")
         .map((request) => request.params?.value),
-    ).toEqual(["fake/gen-834"]);
+    ).toEqual(["fake/gen-834", "fake/default"]);
   });
 
   it.each(["error", "timeout"])(
@@ -1543,7 +1572,9 @@ describe("acp bridge", () => {
         loggedAcpRequests(requestLog)
           .filter((request) => request.method === "session/set_config_option")
           .map((request) => request.params?.value),
-      ).toEqual(["fake/strong"]);
+      ).toEqual(
+        failure === "error" ? ["fake/strong", "fake/default"] : ["fake/strong"],
+      );
     },
     15_000,
   );
