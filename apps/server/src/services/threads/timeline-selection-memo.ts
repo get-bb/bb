@@ -10,6 +10,7 @@ import {
   getThreadEventRewriteGeneration,
   listLatestBackgroundTaskStateRowsByItemIds,
   listStoredDelegatingItemRowsByItemIds,
+  listStoredStandaloneThreadTimelineRows,
   listStoredEventRowsByParentToolCallIds,
   listAppendedEventRows,
   listStoredTimelineTurnEventRows,
@@ -34,7 +35,7 @@ export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
 export interface TimelineEventRowSelection {
   contextOnlyInterruptionSequences: ReadonlySet<number>;
-  orderingBoundarySequence: number | null;
+  groupingContext: TimelineGroupingContext;
   ownedSequenceStart: number;
   ownedSequenceEnd: number;
   hasOlderSegments: boolean;
@@ -77,6 +78,9 @@ export interface TimelineSelectionRowSource {
   }): StoredEventRow[];
   listParentRows(
     args: Parameters<typeof listStoredDelegatingItemRowsByItemIds>[1],
+  ): StoredEventRow[];
+  listStandaloneThreadRows(
+    args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
   ): StoredEventRow[];
   listRootWindowTurnIds(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
@@ -888,6 +892,9 @@ function createTrimmedSelectionRowSource(
       }
       return [...turnIds];
     },
+    listStandaloneThreadRows(query) {
+      return listStoredStandaloneThreadTimelineRows(db, query);
+    },
     listThreadWindowRows(query) {
       const sequenceStart = expectLatestBounds(query);
       return rows.filter(
@@ -1026,16 +1033,14 @@ export function lookupLatestTimelineSelection(
   }
   const selection: TimelineEventRowSelection = {
     ...entry.selection,
-    orderingBoundarySequence: appended.groupingContextChanged
-      ? (
-          appended.extension.groupingContext ??
-          getTimelineGroupingContext(db, {
-            maxSeq: args.maxSeq,
-            sequenceStart: args.epochSequenceStart,
-            threadId: args.threadId,
-          })
-        ).orderingBoundarySequence
-      : entry.selection.orderingBoundarySequence,
+    groupingContext: appended.groupingContextChanged
+      ? (appended.extension.groupingContext ??
+        getTimelineGroupingContext(db, {
+          maxSeq: args.maxSeq,
+          sequenceStart: args.epochSequenceStart,
+          threadId: args.threadId,
+        }))
+      : entry.selection.groupingContext,
     ownedSequenceEnd: args.maxSeq + 1,
     paginationPage: args.page,
     rows:

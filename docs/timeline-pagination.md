@@ -11,11 +11,29 @@ completed context clear is the history floor unless the
 `keepHistoryAfterContextClear` general setting is on; then pages continue
 across it to the start of the thread.
 
-A page owns an event window `[start, end)`. It returns projected rows whose
-`sourceSeqStart` falls inside that window, in display order. Context loaded
-outside the window helps render those rows but does not change ownership. Each
-response returns a row identity once, including when repeated lifecycle events
-produce the same projected row more than once.
+A page owns an event window `[start, end)`. It returns the projected rows whose
+display position falls inside that window, in display order. A row's display
+position is the greatest `sourceSeqStart` among the rows a full build shows at
+or before it, so pages concatenated in cursor order show rows in the order of
+one full build. For most rows this is their own `sourceSeqStart`. It is later
+when the full build shows the row after a row that starts later: a turn's rows
+are shown together at the turn's `turn/started` event, so a thread operation
+recorded while a turn ran, or a turn that started while another was still open,
+is shown after that turn and belongs to the page that holds the turn's last
+row. A thread operation recorded between a request and its `turn/started`, such
+as thread provisioning, is shown before that turn. A turn's rows can start
+after its completion when an item is started again in it, as Codex does when it
+reuses a delegation, so a turn's display ends at the later of its completion
+and its last item start. The server computes these positions from the
+whole-thread turn spans it keeps for ordering. Context
+loaded outside the window helps render the rows a page owns but does not
+change ownership. Each response returns a row identity once, including when
+repeated lifecycle events produce the same projected row more than once.
+
+To render the rows it owns the same way a full build does, a page also loads
+the turns and thread rows its window owns by display position, and the
+`turn/started` event of any turn a steer in its context targets, including a
+steer that was rejected.
 Visible user rows, including accepted steers, define conversation segments
 inside the window; the leading segment can be partial. Hidden and empty
 requests do not count as visible segments. The response takes up to
@@ -40,7 +58,14 @@ boundaries and leaf offsets can differ. Older history is only advertised with
 a cursor, including when an edge contains no visible rows.
 
 Display order is turn-by-turn until a user message lands inside another turn:
-after that message everything is ordered by source sequence. A turn spans from
+after that message everything is ordered by source sequence. Delegated child
+turns count as turns here: a user message sent while a child turn is still
+open, including one that never completes, sets the boundary. A steer counts at
+the sequence where it was accepted, and the earliest such message in display
+order sets the boundary. A turn's summary rows also split at those messages; the
+server passes each loaded turn's split points from its whole-thread context, so
+a page splits and numbers a turn's summary rows the way a full build does even
+when it has not loaded the other turns. A turn spans from
 its first event or accepted request to its `turn/completed` event, or stays
 open while it is running; events that arrive after completion, such as a
 background command finishing, do not extend it. The projection applies this

@@ -73,6 +73,7 @@ import {
   listOpenBackgroundTaskItemRowsForThread,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOwnerStoppedBackgroundTaskRowsForHost,
+  listStoredStandaloneThreadTimelineRows,
   listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
@@ -943,6 +944,17 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
           ...fixture.delegationItemIds.slice(-1),
         ],
         threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredStandaloneThreadTimelineRows`,
+    run: (db, fixture) =>
+      listStoredStandaloneThreadTimelineRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: Math.max(0, fixture.latestSequence - 2_000),
+        beforeSequence: fixture.latestSequence + 1,
+        excludeDiagnosticEvents: true,
+        maxInlineOutputChars: 32_000,
       }),
   },
   {
