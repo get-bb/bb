@@ -7,6 +7,8 @@ import { environments } from "../../src/schema.js";
 import {
   applyEnvironmentLifecycleEvent,
   applyEnvironmentLifecycleEventInTransaction,
+} from "../../src/data/environment-lifecycle.js";
+import {
   createEnvironment,
   getEnvironment,
   type CreateEnvironmentInput,

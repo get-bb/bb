@@ -17,8 +17,6 @@ export interface CreateLocalPathProjectSourceInput {
   ownsPath?: boolean;
 }
 
-export type CreateProjectSourceInput = CreateLocalPathProjectSourceInput;
-
 export function toProjectSource(row: ProjectSourceRow): ProjectSource {
   if (!row.hostId || !row.path) {
     throw new Error(`Invalid local_path project source row: ${row.id}`);
@@ -38,7 +36,7 @@ export function toProjectSource(row: ProjectSourceRow): ProjectSource {
 export function createProjectSource(
   db: DbConnection,
   notifier: DbNotifier,
-  input: CreateProjectSourceInput,
+  input: CreateLocalPathProjectSourceInput,
 ) {
   const row = db.transaction((tx) => {
     const now = Date.now();

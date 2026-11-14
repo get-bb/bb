@@ -19,11 +19,9 @@ export interface CreateProjectLocalPathSourceInput {
   path: string;
 }
 
-export type CreateProjectSourceInput = CreateProjectLocalPathSourceInput;
-
 export interface CreateProjectInput {
   name: string;
-  source: CreateProjectSourceInput;
+  source: CreateProjectLocalPathSourceInput;
 }
 
 export type ProjectRow = typeof projects.$inferSelect;

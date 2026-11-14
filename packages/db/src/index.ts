@@ -37,6 +37,10 @@ export {
 } from "./sqlite-errors.js";
 export type { MigrationWarningLogger } from "./migrate.js";
 export { deriveStoredEventItemFields } from "./stored-event-item-fields.js";
+export {
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+  RETAINED_EVENT_OUTPUT_TARGETS,
+} from "./retained-event-output.js";
 export { noopNotifier } from "./notifier.js";
 export type { DbNotifier } from "./notifier.js";
 
