@@ -585,6 +585,27 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     },
   );
 
+  it("fails tool calls still unfinished when the agent ends the turn", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "unfinished-read",
+        title: "Read",
+        kind: "read",
+        status: "in_progress",
+        rawInput: { path: "/workspace/probe.txt" },
+      }),
+    );
+
+    const events = harness.translate(turnCompletedEvent("end_turn"));
+
+    expect(completedItems(events)).toMatchObject([
+      { type: "fileRead", status: "failed" },
+    ]);
+  });
+
   function compactionStartedEvent(): ProviderRuntimeEvent {
     return {
       jsonrpc: "2.0",
@@ -3171,7 +3192,7 @@ describe("acp dialect tool call event normalization", () => {
       translator.translateAcpEvent(event, { threadId: THREAD_ID }),
     );
     const close = deltas.find((delta) => delta.kind === "item.close");
-    expect(close).toMatchObject({ status: "completed" });
+    expect(close).toMatchObject({ status: "failed" });
     expect(close).not.toHaveProperty("resultText");
   });
 });
