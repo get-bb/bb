@@ -1,7 +1,7 @@
 {
   "provider": "acp-cursor",
   "cell": "settings-steer",
-  "threadId": "thr_4917dad6a0",
+  "threadId": "thr_e53bf76b3c",
   "scope": "thread",
   "cliVersion": "cursor-agent 2026.06.19-20-24-33-653a7fb",
   "recordedAt": "2026-11-14",
@@ -9,9 +9,9 @@
   "note": "",
   "bridgeRuns": 1,
   "lines": {
-    "runtime→bridge": 10,
-    "bridge→runtime": 185,
-    "provider→bridge": 188,
-    "bridge→provider": 28
+    "runtime→bridge": 11,
+    "bridge→runtime": 216,
+    "provider→bridge": 218,
+    "bridge→provider": 30
   }
 }

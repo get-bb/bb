@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "provider": "acp-opencode",
+    "cell": "settings-follow-up",
+    "check": "scenario/settings-follow-up/permission-reaches-provider",
+    "reason": "OpenCode 2.x runs shell commands under Accept-edits without asking: the bridge passes bb's policy in OPENCODE_PERMISSION, which opencode 2.0.22 no longer reads (the binary contains no such variable), so no permission request ever reaches the user. Seen live: an Accept-edits OpenCode thread ran `touch` with no approval."
+  },
+  {
+    "provider": "acp-opencode",
+    "cell": "settings-steer",
+    "check": "scenario/settings-steer/permission-reaches-provider",
+    "reason": "OpenCode 2.x runs shell commands under Accept-edits without asking: the bridge passes bb's policy in OPENCODE_PERMISSION, which opencode 2.0.22 no longer reads (the binary contains no such variable), so no permission request ever reaches the user. Seen live: an Accept-edits OpenCode thread ran `touch` with no approval."
+  }
+]
