@@ -47,7 +47,8 @@ import {
   getStoredConversationOutlineProjectionState,
   getStoredItemLifecycleSequenceRange,
   getStoredProviderSession,
-  getStoredTurnRequestEventForTurn,
+  getStoredTurnRequestEventByRequestId,
+  countStoredTurnRejectionsWithReasonAfterSequence,
   getTimelineGroupingContextChangesInRange,
   getTurnFinalAgentMessageEventRow,
   getUnfinishedCommandItemData,
@@ -59,7 +60,6 @@ import {
   hasStoredTurnStarted,
   isStoredTurnContextCompactionOnly,
   isStoredTurnMainRunIdle,
-  isStoredTurnProviderCompactionRunning,
   insertEvents,
   isTimelineCursorSequencePresent,
   listActiveBackgroundTaskCountsByThreadIds,
@@ -514,28 +514,10 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#isStoredTurnProviderCompactionRunning`,
-    variant: LIVE_TURN,
-    run: (db, fixture) =>
-      isStoredTurnProviderCompactionRunning(db, {
-        threadId: fixture.liveTurn.threadId,
-        turnId: fixture.liveTurn.turnId,
-      }),
-  },
-  {
     name: `${EVENTS}#isStoredTurnContextCompactionOnly`,
     variant: LIVE_TURN,
     run: (db, fixture) =>
       isStoredTurnContextCompactionOnly(db, {
-        threadId: fixture.liveTurn.threadId,
-        turnId: fixture.liveTurn.turnId,
-      }),
-  },
-  {
-    name: `${EVENTS}#getStoredTurnRequestEventForTurn`,
-    variant: LIVE_TURN,
-    run: (db, fixture) =>
-      getStoredTurnRequestEventForTurn(db, {
         threadId: fixture.liveTurn.threadId,
         turnId: fixture.liveTurn.turnId,
       }),
@@ -773,6 +755,23 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
+    name: `${EVENTS}#getStoredTurnRequestEventByRequestId`,
+    run: (db, fixture) =>
+      getStoredTurnRequestEventByRequestId(db, {
+        requestId: lastTurn(fixture).requestId,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#countStoredTurnRejectionsWithReasonAfterSequence`,
+    run: (db, fixture) =>
+      countStoredTurnRejectionsWithReasonAfterSequence(db, {
+        afterSequence: lastTurn(fixture).requestSequence,
+        reason: "thread_busy",
+        threadId: fixture.threadId,
+      }),
+  },
+  {
     name: `${EVENTS}#listStoredClientTurnRequestRowsByKeys`,
     run: (db, fixture) =>
       listStoredClientTurnRequestRowsByKeys(db, {
@@ -870,15 +869,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
         threadId: fixture.threadId,
       });
     },
-  },
-  {
-    name: `${EVENTS}#getStoredTurnRequestEventForTurn`,
-    prepare: startPendingTurn,
-    run: (db, fixture) =>
-      getStoredTurnRequestEventForTurn(db, {
-        threadId: fixture.threadId,
-        turnId: ACTIVE_TURN_ID,
-      }),
   },
   {
     name: `${EVENTS}#getLatestStoredThreadEventOfTypes`,
@@ -1222,15 +1212,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
     prepare: startPendingTurn,
     run: (db, fixture) =>
       isStoredTurnMainRunIdle(db, {
-        threadId: fixture.threadId,
-        turnId: ACTIVE_TURN_ID,
-      }),
-  },
-  {
-    name: `${EVENTS}#isStoredTurnProviderCompactionRunning`,
-    prepare: startPendingTurn,
-    run: (db, fixture) =>
-      isStoredTurnProviderCompactionRunning(db, {
         threadId: fixture.threadId,
         turnId: ACTIVE_TURN_ID,
       }),
