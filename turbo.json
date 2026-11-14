@@ -166,7 +166,7 @@
       ]
     },
     "@bb/server#build": {
-      "dependsOn": ["topo"],
+      "dependsOn": ["bb-plugin-bb-guide#generate:api-index", "topo"],
       "outputs": ["dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -417,6 +417,7 @@
         "@bb/server#generate:bb-official-marketplace",
         "@bb/templates#generate:templates",
         "@bb/plugin-build#generate",
+        "bb-plugin-bb-guide#generate:api-index",
         "@get-bb/plugin-sdk#build:runtime"
       ],
       "cache": false,
@@ -572,6 +573,22 @@
         "$TURBO_ROOT$/pnpm-lock.yaml"
       ],
       "outputs": ["src/generated/**"]
+    },
+    // The bb-plugin-authoring skill's API symbol indexes, read from the SDK's
+    // entry-point sources. The server ships bb-guide's skills as its built-in
+    // skills, so its build, dev, and test tasks depend on this as well.
+    "bb-plugin-bb-guide#topo": {
+      "dependsOn": ["^topo", "bb-plugin-bb-guide#generate:api-index"]
+    },
+    "bb-plugin-bb-guide#generate:api-index": {
+      "dependsOn": [],
+      "inputs": [
+        "$TURBO_ROOT$/packages/plugin-sdk/package.json",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/api-index.mjs",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/generate-api-index.mjs",
+        "$TURBO_ROOT$/packages/plugin-sdk/src/**"
+      ],
+      "outputs": ["skills/bb-plugin-authoring/references/*-api-index.md"]
     },
     "typecheck": {
       "dependsOn": ["topo"]
@@ -760,6 +777,7 @@
       "outputs": [".query-plan/**"],
       "dependsOn": [
         "@bb/agent-runtime#generate:test-bridges",
+        "bb-plugin-bb-guide#generate:api-index",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "@get-bb/plugin-sdk#build:types",
