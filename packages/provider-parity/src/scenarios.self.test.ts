@@ -50,6 +50,18 @@ describe("recorded bridge scenarios", () => {
           passed: results.every((check) => check.status !== "fail"),
         })}`,
       );
+      if (replay.divergence.length > 0) {
+        const driftSkips = results
+          .filter(
+            (check) =>
+              check.status === "skipped" &&
+              check.detail.startsWith("the bridge no longer talks"),
+          )
+          .map((check) => check.id);
+        process.stderr.write(
+          `\n${cellKey(cell)} needs re-recording: its replay drifted from the recording (${replay.divergence[0]!.slice(0, 300)}), so ${driftSkips.length === 0 ? "no rule" : driftSkips.join(", ")} was skipped. Re-record it with: node scripts/provider-recordings/record-scenario-cell.mjs --provider ${cell.provider} --cell ${cell.cell} --raw <dir>\n`,
+        );
+      }
       const gaps = knownGaps.filter(
         (gap) => gap.provider === cell.provider && gap.cell === cell.cell,
       );
