@@ -458,9 +458,13 @@ export class SdkSession {
     const q = this.query;
     if (!q) return;
 
+    let sessionAnnounced = false;
     try {
       for await (const message of q) {
-        this.captureSessionId(message);
+        if (message.type === "system" && message.subtype === "init") {
+          sessionAnnounced = true;
+        }
+        if (sessionAnnounced) this.captureSessionId(message);
         this.onMessage(message);
       }
       this.onDone();
