@@ -405,7 +405,10 @@ function emitForSession(
     session.bbThreadId,
     session.translator.translateAcpEvent(
       { jsonrpc: "2.0", method, params },
-      { threadId: session.bbThreadId },
+      {
+        threadId: session.bbThreadId,
+        externalUserInput: session.activePromptKind === "agent",
+      },
     ),
   );
 }

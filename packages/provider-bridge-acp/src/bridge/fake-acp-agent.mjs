@@ -544,6 +544,12 @@ async function handlePrompt(message) {
   }
   activePromptId = message.id;
   const text = promptText(message.params?.prompt);
+  if (process.env.FAKE_ACP_ECHO_USER_INPUT === "1") {
+    notifyUpdate({
+      sessionUpdate: "user_message_chunk",
+      content: { type: "text", text },
+    });
+  }
   if (process.env.FAKE_ACP_PROMPT_LOG) {
     appendFileSync(
       process.env.FAKE_ACP_PROMPT_LOG,
@@ -685,6 +691,23 @@ async function handlePrompt(message) {
     } catch {
       notifyUpdate(messageChunk("write:denied"));
     }
+  } else if (text.includes("then-external-input")) {
+    notifyUpdate(messageChunk("initial answer"));
+    setTimeout(() => {
+      for (const chunk of ["Remote question", "", " continued"]) {
+        notifyUpdate({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: chunk },
+        });
+        notifyUpdate({
+          sessionUpdate: "current_mode_update",
+          currentModeId: "build",
+        });
+      }
+      if (!text.includes("quiet")) {
+        notifyUpdate(messageChunk("remote answer"));
+      }
+    }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("then-unprompted-stream")) {
     notifyUpdate(messageChunk("prompted reply"));
     setTimeout(() => {
@@ -1036,6 +1059,15 @@ async function handleMessage(message) {
       }
       if (loadSession) {
         captureMcpServers(message);
+        if (process.env.FAKE_ACP_ECHO_USER_INPUT === "1") {
+          notifyUpdate(
+            {
+              sessionUpdate: "user_message_chunk",
+              content: { type: "text", text: "Loaded user history" },
+            },
+            message.params?.sessionId,
+          );
+        }
         if (usageOnLoad) {
           notifyUpdate(
             { sessionUpdate: "usage_update", used: 24_000, size: 128_000 },
