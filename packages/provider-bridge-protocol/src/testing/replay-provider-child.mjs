@@ -433,6 +433,15 @@ function main() {
     process.stdout.write("0.0.0-replay\n");
     return;
   }
+  const apiIndex = process.argv.indexOf("api");
+  if (apiIndex !== -1) {
+    process.stdout.write(
+      process.argv[apiIndex + 1] === "GET"
+        ? `${JSON.stringify({ data: { permissions: [] } })}\n`
+        : "{}\n",
+    );
+    return;
+  }
   const args = parseArgs(process.argv.slice(2));
   const dialect = DIALECTS[args.dialect];
   if (!dialect) throw new Error(`unknown dialect ${args.dialect}`);

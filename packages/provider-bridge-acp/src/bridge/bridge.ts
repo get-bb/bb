@@ -85,10 +85,15 @@ import {
 } from "../dialect.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import { describeAcpSignIn } from "../auth-guidance.js";
+import {
+  applyOpenCodeSessionPermissions,
+  openCodeUsesSessionPermissions,
+} from "./opencode-session-permissions.js";
 import { planAcpElicitation } from "../elicitation.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
+  acpSessionGrantKey,
 } from "../interactions.js";
 import {
   buildAcpModelListParams,
@@ -228,6 +233,7 @@ interface AcpThreadSession {
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
+  sessionGrants: Set<string>;
   pendingElicitations: Set<AcpAgentRequestResponder>;
   pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
@@ -1883,7 +1889,7 @@ function pickPermissionOptionId(
     case "allow_once":
       return findOptionIdByKinds(options, ["allow_once", "allow_always"]);
     case "allow_for_session":
-      return findOptionIdByKinds(options, ["allow_always", "allow_once"]);
+      return findOptionIdByKinds(options, ["allow_once", "allow_always"]);
     case "deny":
       return findOptionIdByKinds(options, ["reject_once", "reject_always"]);
   }
@@ -2020,11 +2026,6 @@ function handlePermissionRequest(
     return;
   }
 
-  if (session.activePromptKind === null) {
-    openAgentTurn(session);
-  }
-  session.pendingPermissions.add(pending);
-
   const normalizedToolCall =
     toolCall?.toolCallId !== undefined && bound !== undefined
       ? {
@@ -2057,6 +2058,15 @@ function handlePermissionRequest(
     cwd: session.cwd,
     classifyToolCall: session.dialect.classifyToolCall,
   });
+  const grantKey = acpSessionGrantKey(payload);
+  if (grantKey !== null && session.sessionGrants.has(grantKey)) {
+    respondPermission(pending, "allow_once");
+    return;
+  }
+  if (session.activePromptKind === null) {
+    openAgentTurn(session);
+  }
+  session.pendingPermissions.add(pending);
   void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
     providerThreadId: session.providerThreadId,
     threadId: session.bbThreadId,
@@ -2074,6 +2084,9 @@ function handlePermissionRequest(
             resolution: resolution.data,
           })
         : null;
+      if (response?.decision === "allow_for_session" && grantKey !== null) {
+        session.sessionGrants.add(grantKey);
+      }
       respondPermission(pending, response?.decision ?? null);
     })
     .catch(() => {
@@ -2421,6 +2434,7 @@ async function startAgentSession(
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
+    sessionGrants: new Set(),
     pendingElicitations: new Set(),
     pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
@@ -2630,6 +2644,19 @@ async function startAgentSession(
       throw new Error(
         `ACP session for thread "${bbThreadId}" was released during construction`,
       );
+    }
+    if (
+      dialect.id === "opencode" &&
+      openCodeUsesSessionPermissions(capabilities.agentInfo?.version)
+    ) {
+      await applyOpenCodeSessionPermissions({
+        agentCommand: params.agent.command,
+        agentArgs: params.agent.args,
+        cwd: params.cwd,
+        env: childEnv,
+        sessionId,
+        permissionMode: params.permissionMode,
+      });
     }
     session.providerThreadId = sessionId;
     bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
@@ -3421,6 +3448,9 @@ async function rebuildAgentSession(
     throw error;
   }
   replacement.queuedInputs.push(...queuedInputs);
+  for (const grant of session.sessionGrants) {
+    replacement.sessionGrants.add(grant);
+  }
   sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
     threadId: session.bbThreadId,
     providerThreadId: replacement.providerThreadId,

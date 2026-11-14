@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   createWriteStream,
@@ -93,6 +93,12 @@ function eachLine(stream, onLine) {
 }
 
 const args = parseArgs(process.argv.slice(2));
+if (args.command.includes("api")) {
+  const call = spawnSync(args.command[0], args.command.slice(1), {
+    stdio: "inherit",
+  });
+  process.exit(call.status ?? 1);
+}
 mkdirSync(args["probe-log"], { recursive: true });
 const logFile = join(args["probe-log"], `${process.pid}.ndjson`);
 const log = (entry) =>
