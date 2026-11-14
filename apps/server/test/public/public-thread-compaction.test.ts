@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getLatestThreadSequence,
-  listEvents,
-  listQueuedThreadMessages,
-} from "@bb/db";
+import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
   turnRequestEventDataSchema,
@@ -29,6 +25,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 function seedCompactableThread(
   harness: TestAppHarness,

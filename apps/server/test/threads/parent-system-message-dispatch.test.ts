@@ -1,4 +1,4 @@
-import { getThread, listEvents, listQueuedThreadMessages } from "@bb/db";
+import { getThread, listQueuedThreadMessages } from "@bb/db";
 import { turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -19,6 +19,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 afterEach(() => vi.restoreAllMocks());
 

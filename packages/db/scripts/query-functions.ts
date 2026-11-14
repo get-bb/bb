@@ -79,11 +79,72 @@ function isExported(node: ts.FunctionDeclaration): boolean {
   );
 }
 
+function localCallables(source: ts.SourceFile): Map<string, ts.Node> {
+  const callables = new Map<string, ts.Node>();
+  for (const statement of source.statements) {
+    if (
+      ts.isFunctionDeclaration(statement) &&
+      statement.name !== undefined &&
+      statement.body !== undefined
+    ) {
+      callables.set(statement.name.text, statement.body);
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.initializer !== undefined &&
+          (ts.isArrowFunction(declaration.initializer) ||
+            ts.isFunctionExpression(declaration.initializer))
+        ) {
+          callables.set(declaration.name.text, declaration.initializer.body);
+        }
+      }
+    }
+  }
+  return callables;
+}
+
+function calledLocals(
+  node: ts.Node,
+  callables: ReadonlyMap<string, ts.Node>,
+): string[] {
+  const names: string[] = [];
+  const visit = (child: ts.Node) => {
+    if (
+      ts.isCallExpression(child) &&
+      ts.isIdentifier(child.expression) &&
+      callables.has(child.expression.text)
+    ) {
+      names.push(child.expression.text);
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return names;
+}
+
 export function listQueryFunctionsInSource(
   file: string,
   text: string,
 ): string[] {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const callables = localCallables(source);
+  const queries = new Map<string, boolean>();
+  const runsQuery = (name: string, visiting: Set<string>): boolean => {
+    const known = queries.get(name);
+    if (known !== undefined) return known;
+    const body = callables.get(name);
+    if (body === undefined || visiting.has(name)) return false;
+    visiting.add(name);
+    const result =
+      containsQuery(body) ||
+      calledLocals(body, callables).some((callee) =>
+        runsQuery(callee, visiting),
+      );
+    visiting.delete(name);
+    queries.set(name, result);
+    return result;
+  };
   const functions: string[] = [];
   for (const statement of source.statements) {
     if (
@@ -91,7 +152,7 @@ export function listQueryFunctionsInSource(
       statement.name !== undefined &&
       statement.body !== undefined &&
       isExported(statement) &&
-      containsQuery(statement.body)
+      runsQuery(statement.name.text, new Set())
     ) {
       functions.push(`${file}#${statement.name.text}`);
     }

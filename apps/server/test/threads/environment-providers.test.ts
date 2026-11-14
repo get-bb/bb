@@ -24,7 +24,6 @@ import {
   getThread,
   getThreadStartupContext,
   listEnvironments,
-  listEvents,
   listProjectSourcesByProjectIds,
   setProjectGitRemoteUrlIfMissing,
   updateHost,
@@ -88,6 +87,7 @@ import {
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const WORKSPACE_PATH = "/tmp/environment-providers-project";
 const PLUGIN_ID = "sandbox";

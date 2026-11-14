@@ -1,10 +1,4 @@
-import {
-  getEnvironment,
-  getThread,
-  listEvents,
-  environments,
-  updateHost,
-} from "@bb/db";
+import { getEnvironment, getThread, environments, updateHost } from "@bb/db";
 import { apiErrorSchema, threadResponseSchema } from "@bb/server-contract";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { eq } from "drizzle-orm";
@@ -22,6 +16,7 @@ import {
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const PROVIDER_ID = "test-worktree";
 const BRANCH_NAME = "bb/important-work";
@@ -128,9 +123,12 @@ async function restore(
   harness: TestAppHarness,
   threadId: string,
 ): Promise<Response> {
-  return harness.app.request(`/api/v1/threads/${threadId}/restore-environment`, {
-    method: "POST",
-  });
+  return harness.app.request(
+    `/api/v1/threads/${threadId}/restore-environment`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 async function unarchive(

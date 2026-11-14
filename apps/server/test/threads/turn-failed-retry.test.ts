@@ -10,7 +10,6 @@ import {
   environments,
   getLatestThreadSequence,
   getThread,
-  listEvents,
   listQueuedThreadMessages,
   setThreadExecutionOverride,
 } from "@bb/db";
@@ -42,6 +41,7 @@ import {
 } from "../helpers/seed.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const WORKSPACE_PATH = "/tmp/turn-failed-project";
 

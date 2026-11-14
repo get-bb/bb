@@ -12,6 +12,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   or,
   placeholder,
   sql,
@@ -38,6 +39,7 @@ import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
+  events,
   pendingInteractions,
   projects,
   terminalSessions,
@@ -1626,7 +1628,7 @@ export function listThreadEnvironmentAssignmentsOnHost(
     .where(
       and(
         inArray(threads.id, [...args.threadIds]),
-        eq(environments.hostId, args.hostId),
+        sql`+${environments.hostId} = ${args.hostId}`,
       ),
     )
     .all();
@@ -2428,5 +2430,59 @@ export function applyThreadLifecycleEvent(
   return db.transaction(
     (tx) => applyThreadLifecycleEventInTransaction(tx, args),
     { behavior: "immediate" },
+  );
+}
+
+export interface TurnStartDeadlineCandidate {
+  environmentId: string;
+  hostId: string;
+  threadId: string;
+}
+
+function awaitingTurnStartPastDeadline(deadline: number) {
+  return and(
+    eq(threads.status, "active"),
+    isNull(threads.deletedAt),
+    lte(threads.statusChangedAt, deadline),
+    sql`NOT EXISTS (
+      SELECT 1 FROM ${events}
+      WHERE ${events.threadId} = ${threads.id}
+        AND ${events.type} = 'turn/completed'
+        AND ${events.createdAt} > ${deadline}
+    )`,
+  );
+}
+
+export function listTurnStartDeadlineCandidates(
+  db: DbQueryConnection,
+  args: { deadline: number },
+): TurnStartDeadlineCandidate[] {
+  return db
+    .select({
+      environmentId: environments.id,
+      hostId: environments.hostId,
+      threadId: threads.id,
+    })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(awaitingTurnStartPastDeadline(args.deadline))
+    .all();
+}
+
+export function isThreadAwaitingTurnStartPastDeadline(
+  db: DbQueryConnection,
+  args: { deadline: number; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .where(
+        and(
+          eq(threads.id, args.threadId),
+          awaitingTurnStartPastDeadline(args.deadline),
+        ),
+      )
+      .get() !== undefined
   );
 }

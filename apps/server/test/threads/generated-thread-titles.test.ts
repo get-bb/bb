@@ -1,9 +1,4 @@
-import {
-  createThread,
-  getThread,
-  listEvents,
-  setAiServiceSelection,
-} from "@bb/db";
+import { createThread, getThread, setAiServiceSelection } from "@bb/db";
 import {
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
@@ -44,6 +39,7 @@ import {
   requestThreadProvision,
 } from "../../src/services/threads/thread-provisioning.js";
 import { generateThreadMetadataWithOutcome } from "../../src/services/threads/title-generation.js";
+import { listEvents } from "@bb/db/testing";
 
 interface MockThreadMetadata {
   title?: string;

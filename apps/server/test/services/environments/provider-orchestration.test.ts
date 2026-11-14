@@ -33,7 +33,6 @@ import { join } from "node:path";
 import { setPathPluginPreserver } from "../../../src/services/plugins/path-plugin-preservation.js";
 import { eq } from "drizzle-orm";
 import {
-  listEvents,
   claimEnvironmentPath,
   createEnvironment,
   environments,
@@ -82,6 +81,7 @@ import {
   type TestAppHarness,
 } from "../../helpers/test-app.js";
 import { runThreadPurges } from "../../helpers/thread-purges.js";
+import { listEvents } from "@bb/db/testing";
 
 function setup(
   harness: TestAppHarness,

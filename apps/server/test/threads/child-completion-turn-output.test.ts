@@ -1,4 +1,4 @@
-import { listEvents, listQueuedThreadMessages } from "@bb/db";
+import { listQueuedThreadMessages } from "@bb/db";
 import { turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import {
   groupHostDaemonEvents,
@@ -13,6 +13,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 interface ChildTurn {
   turnId: string;

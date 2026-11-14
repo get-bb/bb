@@ -7,7 +7,6 @@ import {
   ensurePersonalProject,
   getEnvironment,
   getThread,
-  listEvents,
   projectAttachmentThreads,
   threads,
   setQueuedThreadMessageGroupBoundary,
@@ -63,6 +62,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 function seedForkSource(
   harness: TestAppHarness,

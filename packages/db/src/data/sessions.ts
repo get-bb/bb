@@ -151,15 +151,19 @@ export function listLatestClosedSessionsForHosts(
     .select()
     .from(hostDaemonSessions)
     .where(
-      and(
-        inArray(hostDaemonSessions.hostId, hostIds),
-        sql`${hostDaemonSessions.id} = (
-          SELECT latest.id
-          FROM host_daemon_sessions AS latest
-          WHERE latest.host_id = ${hostDaemonSessions.hostId}
-            AND latest.status = 'closed'
-          ORDER BY latest.closed_at DESC, latest.id DESC
-          LIMIT 1
+      inArray(
+        hostDaemonSessions.id,
+        sql`(
+          SELECT (
+            SELECT latest.id
+            FROM host_daemon_sessions AS latest
+              INDEXED BY host_daemon_sessions_host_status_idx
+            WHERE latest.host_id = requested.value
+              AND latest.status = 'closed'
+            ORDER BY latest.closed_at DESC, latest.id DESC
+            LIMIT 1
+          )
+          FROM json_each(${JSON.stringify(hostIds)}) AS requested
         )`,
       ),
     )

@@ -275,8 +275,19 @@ process for each `rule`, `table`, and `caller`, when the plan:
 - walks `events`, `thread_search_segments`, `prompt_history_entries`, or
   `terminal_sessions` through an index that matches fewer equality terms than
   another index on that table (`weaker-index`);
-- scans one of those tables in full (`full-scan`); or
-- builds an automatic index (`automatic-index`).
+- scans one of those tables in full (`full-scan`);
+- builds an automatic index (`automatic-index`);
+- searches one of those tables once per outer row, from a correlated subquery
+  or an `EXISTS` subquery SQLite turned into a join, through a key that grows
+  with history (`correlated-subquery`). A search that pins a unique key, or an
+  `events` column whose rows are bounded per value (`turn_id`, `item_id`,
+  `parent_tool_call_id`), is accepted; a search on `thread_id` and `type`
+  alone is not, because it rereads the thread's history for every outer row;
+  or
+- loops over a CTE or subquery result, without an index, once for each row of
+  a search on one of those tables through a key that grows with history
+  (`nested-loop`). `json_each` and other virtual tables over the row's own
+  JSON are not counted.
 
 `caller` is the `src/` file and function that ran the query; in the built
 server, the file comes from the module comments esbuild writes into
@@ -289,13 +300,86 @@ set `BB_QUERY_PLAN_EXECUTED`, so `@bb/db` and `@bb/server` record the query
 functions they run in `.query-plan/executed.jsonl` (a Turbo test output, so
 cached runs restore it). The `Query functions run in tests` job then fails when
 an exported query function in a `packages/db/src/data` file the PR changed never
-ran. The nightly `Query Plan Audit` workflow
-(`.github/workflows/query-plan-audit.yml`, also runnable by hand) checks main
-for allowlist entries no test reports and for exported query functions in
+ran. The `Query Plan Audit` workflow
+(`.github/workflows/query-plan-audit.yml`) runs nightly on main, on pull
+requests that change `packages/db`, and by hand. Its audit job checks for
+allowlist entries no test reports and for exported query functions in
 `packages/db/src/data` that no `@bb/db` or `@bb/server` test runs; reproduce it
 with
 `BB_QUERY_PLAN_REPORT=<file> pnpm exec turbo run test --filter=@bb/db --filter=@bb/server`
 followed by `pnpm --filter @bb/db check:query-plan-report <file>`.
+
+Plans cannot show what a query costs once data grows, so the workflow's cost
+job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds
+worlds through the real write paths and compares them along two axes:
+
+- Thread history: a thread with 2,500 or 10,000 turns (about 250,000 events in
+  the full-scale world), plus what each case group in
+  `packages/db/scripts/query-costs/` seeds for its tables at about twice the
+  size of the largest real user (for example 10,000 threads, 4,000
+  environments, 50,000 prompt history entries and 15,000 terminal sessions at
+  full scale).
+- Turn size: a 500-turn thread whose first and last turns, and the open turn
+  of a second, running thread, have 375 or 1,500 steps (about 4,500 or 18,000
+  events each: reasoning, commands with streamed output, file edits,
+  commentary, plan and usage updates, and delegations).
+
+`HistoryFixture.liveTurn` names the open turn, and the `open long turn` cases
+in `events-cases.ts` time the reads and appends a running thread makes
+against it. The check calls every exported query function in
+`packages/db/src/data` against the smaller and larger world of each axis,
+interleaved, each call inside a rolled-back savepoint. Each call is timed by
+CPU time, not by the wall clock, so other work on a busy runner does not count
+against it: the thread's CPU time on macOS, and the process's on Linux, where a
+thread's CPU time only advances at scheduler ticks and reads near zero for
+short calls. The check keeps the fastest of up
+to three calls per world. As the data grows 4x on either axis, linear costs
+measure about size^1.0 to size^1.3 locally and up to size^1.5 on shared CI
+runners, where memory-heavy queries scale worse under neighbouring load; a
+quadratic cost measures about size^2. So the check fails only on signals noise
+cannot produce:
+
+- a function's cost grows faster than size^2 (more than 16 times its
+  smaller-world time, once its larger-world time is at least 2 ms); or
+- a single call runs for more than 5 seconds of wall time, when it is killed,
+  or a case throws.
+
+It reports a GitHub Actions warning, without failing, when a function grows
+faster than size^1.5 (8x) or takes longer than its ceiling in the larger world
+(250 ms unless its case sets `ceilingMs` with a `reason`). A case that crosses
+size^1.5 is measured up to eight times before it is reported. The
+request-path statement-count test below is exact, so it stays blocking.
+
+The check also fails when an exported query function in `packages/db/src/data`
+has no case. A query function is an exported function that builds a query
+itself or calls a function in the same file that does, so wrappers around a
+private query helper count too (`pnpm --filter @bb/db list:query-functions`
+lists them; the same list drives the "query functions run in tests" checks). `--group <name>[,<name>]` runs only those case groups and skips
+the coverage check. To time the cases against real data shapes, make a copy
+with `sqlite3 ~/.bb/bb.db "VACUUM INTO '/tmp/bb-copy.db'"` and run
+`pnpm --filter @bb/db check:query-costs --db /tmp/bb-copy.db`: it migrates the
+copy, seeds a world with 10,000 turns and 1,500-step long turns into it, and fails only on the ceiling and the
+5-second kill, since there is no second size to compare. The copy is written to;
+never point `--db` at `~/.bb/bb.db` (the check refuses), and never start a bb
+server on the copy.
+
+Both checks time single functions, so neither sees a request that calls a cheap
+query once per turn. `apps/server/test/perf/request-path-statements.test.ts`
+covers that: it builds the same fixture (`@bb/db/history-fixture`) in pairs of
+test servers, one pair per axis. On the history axis one server has 100 turns
+and 20 other threads and the other twice both; on the turn-size axis both have
+100 turns, with 750-step or 1,500-step long turns, large enough that the
+timeline window cuts inside the open turn. It runs hot request paths against
+each pair (thread list, search and count, timeline, conversation outline, turn
+details, events, prompt history, send with a queued retry, edit, stop, fork,
+and the running thread's timeline, head state, a streamed timeline delta,
+daemon ingestion, send and stop), and fails when a path executes any statement
+more often in the larger server, or when its response bytes grow more than 1.5
+times. Statements are counted at the better-sqlite3 layer, with parameter lists
+collapsed so a longer `IN (...)` list counts as the same statement. The counts
+are exact, so the test does not depend on machine speed. A path that grows by
+design, such as fork copying history or turn details returning the whole turn,
+declares it per axis and may grow at most linearly.
 
 The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
 when agents saturate the CPU:

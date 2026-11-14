@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { getSessionById, getThread, listEvents } from "@bb/db";
+import { getSessionById, getThread } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import {
   writeServerImportFile,
@@ -20,6 +20,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const TASK_ITEM_ID = "task:wf-1";
 const PROVIDER_THREAD_ID = "claude-session-1";

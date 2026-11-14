@@ -20,7 +20,7 @@ import {
   runEnvironmentHook,
   ENVIRONMENT_HOOK_TIMEOUT_MS,
 } from "./environment-hooks.js";
-import { eq, and, isNull, ne, or, sql } from "drizzle-orm";
+import { eq, and, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import {
   releaseFinishedEnvironmentPreparationOwners,
@@ -40,7 +40,7 @@ import {
   type DbConnection,
   type DbTransaction,
   type EnvironmentRow,
-  events,
+  hasStoredCancelledThreadProvisioning,
   type DbNotifier,
   type DbQueryConnection,
   threads,
@@ -1412,24 +1412,11 @@ function shouldPreserveThreadProvisionCancellationOutcome(
   args: { provisioningId: string; thread: LiveEnvironmentThread },
 ): boolean {
   if (args.thread.status === "stopping") return true;
-  return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.thread.id),
-          eq(events.type, "system/thread-provisioning"),
-          sql`json_extract(${events.data}, '$.status') = 'cancelled'`,
-          or(
-            sql`json_extract(${events.data}, '$.provisioningId') = ${args.provisioningId}`,
-            sql`${events.sequence} = (select max(last.sequence) from events last where last.thread_id = ${args.thread.id} and last.environment_id = ${args.thread.environmentId} and last.type = 'system/thread-provisioning')`,
-          ),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
+  return hasStoredCancelledThreadProvisioning(deps.db, {
+    environmentId: args.thread.environmentId,
+    provisioningId: args.provisioningId,
+    threadId: args.thread.id,
+  });
 }
 
 function recordEnvironmentProvisioningFailureInTransaction(

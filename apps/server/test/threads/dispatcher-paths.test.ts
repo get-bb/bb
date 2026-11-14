@@ -1,6 +1,5 @@
 import {
   getQueuedThreadMessage,
-  listEvents,
   listQueuedThreadMessages,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
@@ -48,6 +47,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const WORKSPACE_PATH = "/tmp/dispatcher-paths-project";
 

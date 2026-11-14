@@ -457,6 +457,10 @@
         "pnpm-lock.yaml"
       ]
     },
+    "@bb/db#check:query-costs": {
+      "cache": false,
+      "dependsOn": ["//#ensure-native-modules"]
+    },
     "//#ensure-native-modules": {
       "cache": false,
       "inputs": [

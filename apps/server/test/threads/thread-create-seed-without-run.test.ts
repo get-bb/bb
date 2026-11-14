@@ -3,7 +3,6 @@ import {
   ensurePersonalProject,
   getEnvironment,
   getThread,
-  listEvents,
 } from "@bb/db";
 import {
   PERSONAL_PROJECT_ID,
@@ -34,6 +33,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 function threadStartTurnRequest(
   harness: { db: Parameters<typeof listEvents>[0] },

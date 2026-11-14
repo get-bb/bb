@@ -4,7 +4,6 @@ import {
   getThread,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
-  listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
@@ -36,6 +35,7 @@ import {
 } from "../helpers/seed.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 interface PostEventBatchArgs {
   harness: TestAppHarness;

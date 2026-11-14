@@ -1,4 +1,4 @@
-import { getLastStoredProviderThreadId, getThread, listEvents } from "@bb/db";
+import { getLastStoredProviderThreadId, getThread } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -23,6 +23,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 interface BannerFixture {
   environmentId: string;
