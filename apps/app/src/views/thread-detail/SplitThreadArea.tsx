@@ -303,20 +303,39 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (currentContent === null) {
       return;
     }
-    const latestPathname = readLatestRoutePathname();
-    setLayout((previous) =>
-      previous !== null &&
-      latestPathname !== null &&
-      latestPathname !== committedPathname &&
-      isRouteContentSuperseded(
-        previous,
-        currentContent,
-        paneContentForPathname(latestPathname),
-      )
-        ? previous
-        : reconcileLayoutForContent(previous, currentContent),
-    );
-  }, [committedPathname, currentContent, readLatestRoutePathname, setLayout]);
+    let frame: number | null = null;
+    const reconcile = () => {
+      frame = null;
+      const latestPathname = readLatestRoutePathname();
+      const stored = store.get(splitLayoutAtom);
+      if (
+        stored !== null &&
+        latestPathname !== null &&
+        latestPathname !== committedPathname &&
+        isRouteContentSuperseded(
+          stored,
+          currentContent,
+          paneContentForPathname(latestPathname),
+        )
+      ) {
+        frame = requestAnimationFrame(reconcile);
+        return;
+      }
+      setLayout((previous) =>
+        reconcileLayoutForContent(previous, currentContent),
+      );
+    };
+    reconcile();
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [
+    committedPathname,
+    currentContent,
+    readLatestRoutePathname,
+    setLayout,
+    store,
+  ]);
 
   const layout: SplitLayout | null =
     storedLayout ??

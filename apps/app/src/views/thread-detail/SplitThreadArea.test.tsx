@@ -1357,6 +1357,40 @@ describe("SplitThreadArea", () => {
       );
       expect(store.get(maximizedPaneIdAtom)).toBe(focusedPaneId);
     });
+
+    it("reconciles a skipped route once the newer navigation is replaced by it", async () => {
+      const store = createStore();
+      store.set(
+        splitLayoutAtom,
+        applyThreadOpenToLayout(
+          twoPaneLayout("pane-2"),
+          { projectId: PERSONAL_PROJECT_ID, threadId: "thr-c" },
+          "right",
+        ),
+      );
+      const history = createHistory(threadPath("thr-c"));
+      render(
+        <TooltipProvider delayDuration={0}>
+          <JotaiProvider store={store}>
+            <QueryClientProvider client={queryClient}>
+              <Router location={threadPath("thr-b")} navigator={history}>
+                <RouteNavigationProvider>
+                  <SplitThreadArea />
+                </RouteNavigationProvider>
+              </Router>
+            </QueryClientProvider>
+          </JotaiProvider>
+        </TooltipProvider>,
+      );
+      await screen.findByTestId("pane-thr-c");
+      expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-3");
+
+      act(() => history.replace(threadPath("thr-b")));
+
+      await waitFor(() =>
+        expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2"),
+      );
+    });
   });
 
   it("reveals move targets during a maximized drag and restores after drop", async () => {
