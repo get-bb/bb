@@ -12,9 +12,6 @@ import {
   createRng,
   createThreadLog,
   describeRowDifference,
-  EXTENSION_STATE_EVENT_LOG,
-  INTERLEAVED_EVENT_LOG,
-  MIXED_EVENT_LOG,
   openTimelineClient,
   pick,
   pickStateKinds,
@@ -27,13 +24,13 @@ import {
   type TimelineClient,
 } from "./timeline-guard-harness.js";
 
-interface SeedRun {
+export interface SeedRun {
   extensionStates: boolean;
   seed: number;
   shape: EventLogShape;
 }
 
-const seedRange = (
+export const seedRange = (
   first: number,
   count: number,
   shape: EventLogShape,
@@ -45,11 +42,6 @@ const seedRange = (
     shape,
   }));
 
-const SEED_RUNS: SeedRun[] = [
-  ...seedRange(1, 16, MIXED_EVENT_LOG),
-  ...seedRange(17, 8, INTERLEAVED_EVENT_LOG),
-  ...seedRange(25, 6, EXTENSION_STATE_EVENT_LOG, true),
-];
 const OPERATIONS_PER_SEED = 70;
 const PHONE_SURFACE: ClientSurface = { ...APP_SURFACE, segmentLimit: 3 };
 const NESTED_SURFACE: ClientSurface = {
@@ -250,20 +242,22 @@ async function runSeed({
   });
 }
 
-describe("timeline read path equivalence", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-  });
+export function describeSeedRuns(runs: readonly SeedRun[]): void {
+  describe("timeline read path equivalence", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+    });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
 
-  it.each(SEED_RUNS)(
-    "seed $seed: served windows and walks match uncached builds",
-    async (run) => {
-      await runSeed(run);
-    },
-    60_000,
-  );
-});
+    it.each(runs)(
+      "seed $seed: served windows and walks match uncached builds",
+      async (run) => {
+        await runSeed(run);
+      },
+      60_000,
+    );
+  });
+}
