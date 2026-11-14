@@ -433,7 +433,7 @@ export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
   threadIds: readonly string[];
 }
 
-export interface ListThreadIdsStoppedSinceLastTurnStartArgs {
+export interface ListThreadIdsStoppedSinceLastTurnRequestArgs {
   threadIds: readonly string[];
 }
 
@@ -5000,9 +5000,9 @@ export function listThreadTurnInterruptionEventStates(
   });
 }
 
-export function listThreadIdsStoppedSinceLastTurnStart(
+export function listThreadIdsStoppedSinceLastTurnRequest(
   db: DbConnection,
-  args: ListThreadIdsStoppedSinceLastTurnStartArgs,
+  args: ListThreadIdsStoppedSinceLastTurnRequestArgs,
 ): string[] {
   if (args.threadIds.length === 0) {
     return [];
@@ -5020,7 +5020,7 @@ export function listThreadIdsStoppedSinceLastTurnStart(
           SELECT MAX(latest.sequence)
           FROM events AS latest
           WHERE latest.thread_id = ${events.threadId}
-            AND latest.type IN ('turn/started', 'system/thread/interrupted')
+            AND latest.type IN ('client/turn/requested', 'system/thread/interrupted')
         )`,
       ),
     )

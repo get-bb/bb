@@ -59,6 +59,7 @@ import {
   toPendingInteraction,
 } from "./pending-interaction-serialization.js";
 import {
+  isHostUnavailableReportCode,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
@@ -845,7 +846,7 @@ export class PendingInteractionLifecycle {
     args: SettleInteractiveResolveCommandResultArgs,
   ): void {
     if (!args.report.ok) {
-      if (args.report.errorCode === "host_unavailable") {
+      if (isHostUnavailableReportCode(args.report.errorCode)) {
         this.answersAwaitingDaemon.add(args.command.interactionId);
         return;
       }

@@ -1085,51 +1085,108 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
   });
 
+  async function reopenSameInstanceSession(
+    harness: TestAppHarness,
+    fixture: ReturnType<typeof seedThreadFixture>,
+  ): Promise<string[]> {
+    handleDaemonSocketClosed(harness.deps, { sessionId: fixture.session.id });
+    harness.hub.cancelPendingDaemonDisconnect(fixture.session.id);
+    const response = await harness.app.request("/internal/session/open", {
+      method: "POST",
+      headers: internalAuthHeaders(harness, { hostId: fixture.host.id }),
+      body: JSON.stringify({
+        hostId: fixture.host.id,
+        instanceId: fixture.session.instanceId,
+        hostName: fixture.host.name,
+        hasMachineCredential: false,
+        platform: "darwin",
+        dataDir: "/tmp/host-daemon-revive-after-new-turn",
+        localApiPort: null,
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        activeThreads: [{ threadId: fixture.thread.id }],
+        openThreadWork: [],
+      }),
+    });
+    expect(response.status).toBe(201);
+    const { sessionId } = (await response.json()) as { sessionId: string };
+    const commandTypes: string[] = [];
+    harness.hub.registerDaemon(sessionId, fixture.host.id, {
+      close() {},
+      send(data) {
+        const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
+        if (message.type === "host-rpc.request") {
+          commandTypes.push(message.command.type);
+        }
+      },
+    });
+    return commandTypes;
+  }
+
+  function seedStopThenTurn(
+    harness: TestAppHarness,
+    args: { requestAfterStop: boolean },
+  ) {
+    const fixture = seedThreadFixture(harness, { thread: { status: "idle" } });
+    const { environment, thread } = fixture;
+    if (!args.requestAfterStop) {
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-after-stop",
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+    }
+    seedStoredEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      sequence: 10,
+      type: "system/thread/interrupted",
+      scope: threadScope(),
+      data: { reason: "manual-stop" },
+    });
+    if (args.requestAfterStop) {
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-after-stop",
+        sequenceStart: 11,
+        threadId: thread.id,
+      });
+    }
+    seedStoredEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      sequence: 20,
+      type: "turn/started",
+      scope: turnScope("turn-after-stop"),
+      providerThreadId: "provider-thread-after-stop",
+      data: { providerThreadId: "provider-thread-after-stop" },
+    });
+    return fixture;
+  }
+
   it("revives rather than stops a thread that started a new turn after its last stop", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, host, session, thread } = seedThreadFixture(
-        harness,
-        { thread: { status: "idle" } },
+      const fixture = seedStopThenTurn(harness, { requestAfterStop: true });
+
+      const commandTypes = await reopenSameInstanceSession(harness, fixture);
+
+      expect(getThread(harness.deps.db, fixture.thread.id)?.status).toBe(
+        "active",
       );
-      seedStoredEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 1,
-        type: "system/thread/interrupted",
-        scope: threadScope(),
-        data: { reason: "manual-stop" },
-      });
-      seedStoredEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 2,
-        type: "turn/started",
-        scope: turnScope("turn-after-stop"),
-        providerThreadId: "provider-thread-after-stop",
-        data: { providerThreadId: "provider-thread-after-stop" },
-      });
-      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
-      harness.hub.cancelPendingDaemonDisconnect(session.id);
+      expect(commandTypes).not.toContain("thread.stop");
+    });
+  });
 
-      const response = await harness.app.request("/internal/session/open", {
-        method: "POST",
-        headers: internalAuthHeaders(harness, { hostId: host.id }),
-        body: JSON.stringify({
-          hostId: host.id,
-          instanceId: session.instanceId,
-          hostName: host.name,
-          hasMachineCredential: false,
-          platform: "darwin",
-          dataDir: "/tmp/host-daemon-revive-after-new-turn",
-          localApiPort: null,
-          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-          activeThreads: [{ threadId: thread.id }],
-          openThreadWork: [],
-        }),
-      });
+  it("re-sends the stop for a turn that started from a request made before the stop", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedStopThenTurn(harness, { requestAfterStop: false });
 
-      expect(response.status).toBe(201);
-      expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+      const commandTypes = await reopenSameInstanceSession(harness, fixture);
+
+      await vi.waitFor(() => expect(commandTypes).toContain("thread.stop"));
+      expect(getThread(harness.deps.db, fixture.thread.id)?.status).toBe(
+        "idle",
+      );
     });
   });
 

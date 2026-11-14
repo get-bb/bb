@@ -71,19 +71,14 @@ type UserStep =
 
 type ScenarioEvent = "drain" | "provider-turn" | "reconnect" | "timeout";
 
-interface KnownFailure {
-  cause: string;
-  orderings: string[];
-}
-
 interface Scenario {
   name: string;
-  start: "idle" | "running-turn" | "disconnected";
+  start: "idle" | "running-turn";
   holdPreparation: boolean;
   pluginGatedLabels: string[];
+  pluginHeldLabels: string[];
   user: UserStep[];
   events: ScenarioEvent[];
-  knownFailures: KnownFailure[];
 }
 
 interface HeldRpc {
@@ -134,6 +129,7 @@ const UNANSWERED_PATTERN = /^(command_timeout|host_unavailable):/;
 const FOLLOW_UP_LABEL = "msg-followup";
 const MAX_SCHEDULED_WAIT_MS = 20_000;
 const MAX_PLUGIN_WAITS_PER_MESSAGE = 1;
+const DISPATCH_REQUEUE_PACING_MS = 1_050;
 const LIMITER_PLUGIN_ID = "limiter";
 
 function hasPendingIoRequest(): boolean {
@@ -497,13 +493,20 @@ class LimiterPlugin {
     [];
   private nextDecisionId = 1;
 
-  constructor(private readonly gatedLabels: readonly string[]) {}
+  constructor(
+    private readonly gatedLabels: readonly string[],
+    readonly heldLabels: readonly string[],
+  ) {}
 
   install(): void {
     const registration: PluginHookRegistration<"message.dispatch"> = {
       pluginId: LIMITER_PLUGIN_ID,
       handler: (context) => {
-        const label = labelsIn(context.input.text).find((candidate) =>
+        const labels = labelsIn(context.input.text);
+        if (labels.some((label) => this.heldLabels.includes(label))) {
+          return { action: "wait", reason: "held" };
+        }
+        const label = labels.find((candidate) =>
           this.gatedLabels.includes(candidate),
         );
         if (label === undefined) return { action: "proceed" };
@@ -535,7 +538,7 @@ class LimiterPlugin {
   }
 
   heldBack(label: string): boolean {
-    return this.waits.has(label);
+    return this.heldLabels.includes(label) || this.waits.has(label);
   }
 
   mayWait(decision: HeldDecision): boolean {
@@ -567,6 +570,7 @@ class Run {
   private disconnected = false;
   private followUpSent = false;
   private stallReported = false;
+  private recheckChecked = false;
   readonly limiter: LimiterPlugin;
   private readonly tailViolations: string[] = [];
 
@@ -577,8 +581,16 @@ class Run {
     private readonly environmentId: string,
   ) {
     this.remainingEvents = [...scenario.events];
-    this.limiter = new LimiterPlugin(scenario.pluginGatedLabels);
-    if (scenario.pluginGatedLabels.length > 0) this.limiter.install();
+    this.limiter = new LimiterPlugin(
+      scenario.pluginGatedLabels,
+      scenario.pluginHeldLabels,
+    );
+    if (
+      scenario.pluginGatedLabels.length > 0 ||
+      scenario.pluginHeldLabels.length > 0
+    ) {
+      this.limiter.install();
+    }
   }
 
   private get threadId(): string {
@@ -845,6 +857,11 @@ class Run {
         continue;
       }
       this.reportStalledRows();
+      if (!this.recheckChecked && this.limiter.heldLabels.length > 0) {
+        this.recheckChecked = true;
+        await this.checkPluginRecheckReleasesGatedRows();
+        continue;
+      }
       if (this.limiter.registered && this.rowsWaitingOn("plugin").length > 0) {
         this.limiter.unregister();
         requestQueuedMessageDispatch(this.harness.deps, {
@@ -861,6 +878,25 @@ class Run {
       return true;
     }
     return false;
+  }
+
+  private async checkPluginRecheckReleasesGatedRows(): Promise<void> {
+    const gatedLabelsOf = () =>
+      this.rowsWaitingOn("plugin").flatMap((row) =>
+        labelsIn(row.content).filter(
+          (label) => !this.limiter.heldLabels.includes(label),
+        ),
+      );
+    if (gatedLabelsOf().length === 0) return;
+    await sleep(DISPATCH_REQUEUE_PACING_MS);
+    requestQueuedMessageDispatch(this.harness.deps, { kind: "plugin-recheck" });
+    await this.quiesce();
+    const stillHeld = gatedLabelsOf();
+    if (stillHeld.length > 0) {
+      this.tailViolations.push(
+        `${stillHeld.join(", ")} stayed held after its plugin rechecked`,
+      );
+    }
   }
 
   private rowsWaitingOn(kind: string): QueuedThreadMessageRow[] {
@@ -1040,10 +1076,6 @@ function seedRun(harness: TestAppHarness, scenario: Scenario): Run {
 }
 
 async function startScenario(run: Run, scenario: Scenario): Promise<void> {
-  if (scenario.start === "disconnected") {
-    run.disconnect();
-    return;
-  }
   if (scenario.start === "idle") return;
   run.send("msg-seed", "steer");
   for (let step = 0; step < 5 && run.daemon.activeTurn === null; step += 1) {
@@ -1139,14 +1171,6 @@ async function exploreOrderings(
   }
 }
 
-const UNANSWERED_SUBMIT_SETTLED =
-  "a turn.submit whose reply is lost to a daemon disconnect or an RPC timeout is settled as finished while the daemon still runs it, so the next message goes out as a competing start and is lost, or the thread ends in error";
-const CUT_STOP_LEAVES_THREAD_ACTIVE =
-  "a stop recorded while a new turn was starting has its interrupt cut by a daemon disconnect; the reconnect revives the thread from that running turn, the server skips the turn's normal completion because the stop predates the turn, and the thread stays active";
-
-const DRAIN_ENDS_AFTER_PLUGIN_DEFERS_ITS_ROW =
-  "the turn-end drain claims one row, a plugin defers it, and the drain ends without trying the next eligible row, which then waits for the idle sweep";
-
 const send = (label: string): UserStep => ({
   kind: "send",
   label,
@@ -1170,181 +1194,99 @@ const scenarios: Scenario[] = [
     start: "running-turn",
     holdPreparation: false,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [steer("msg-A"), steer("msg-B")],
     events: [],
-    knownFailures: [],
   },
   {
     name: "a new turn in flight while a provider-initiated turn ends",
     start: "idle",
     holdPreparation: false,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [steer("msg-A"), steer("msg-B")],
     events: ["provider-turn"],
-    knownFailures: [],
-  },
-  {
-    name: "concurrent sends to an idle thread while preparation is slow",
-    start: "idle",
-    holdPreparation: true,
-    pluginGatedLabels: [],
-    user: [send("msg-A"), send("msg-B")],
-    events: [],
-    knownFailures: [],
   },
   {
     name: "a queued send, a steer and a drain wake while preparation is slow",
     start: "running-turn",
     holdPreparation: true,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [send("msg-A"), steer("msg-B")],
     events: ["drain"],
-    knownFailures: [],
   },
   {
     name: "a send-now of a queued message against the turn end while preparation is slow",
     start: "running-turn",
     holdPreparation: true,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [send("msg-A"), send("msg-B"), sendNow("msg-A")],
     events: [],
-    knownFailures: [],
-  },
-  {
-    name: "sends queued while the daemon is away, drained on reconnect while preparation is slow",
-    start: "disconnected",
-    holdPreparation: true,
-    pluginGatedLabels: [],
-    user: [send("msg-A"), send("msg-B")],
-    events: ["reconnect", "drain"],
-    knownFailures: [],
   },
   {
     name: "a steer, a queued send and the turn end across a daemon reconnect",
     start: "running-turn",
     holdPreparation: false,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [steer("msg-A"), send("msg-B")],
     events: ["reconnect"],
-    knownFailures: [
-      {
-        cause: UNANSWERED_SUBMIT_SETTLED,
-        orderings: [
-          "steer msg-A → send msg-B → complete turn-1 → daemon disconnect → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → send msg-B → daemon disconnect → release submit(steer msg-A)#2 → complete turn-1 → daemon reconnect",
-          "steer msg-A → send msg-B → daemon disconnect → daemon reconnect → complete turn-1 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → complete turn-1 → send msg-B → daemon disconnect → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → complete turn-1 → daemon disconnect → send msg-B → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → complete turn-1 → daemon disconnect → daemon reconnect → send msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → daemon disconnect → send msg-B → complete turn-1 → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → daemon disconnect → send msg-B → daemon reconnect → complete turn-1 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → daemon disconnect → complete turn-1 → send msg-B → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → daemon disconnect → complete turn-1 → daemon reconnect → send msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → daemon disconnect → daemon reconnect → send msg-B → complete turn-1 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → daemon disconnect → daemon reconnect → complete turn-1 → send msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "complete turn-1 → steer msg-A → daemon disconnect → send msg-B → daemon reconnect → release submit(start msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "complete turn-1 → steer msg-A → daemon disconnect → daemon reconnect → send msg-B → release submit(start msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-        ],
-      },
-    ],
   },
   {
     name: "a stop against a steer, a queued send and the turn end",
     start: "running-turn",
     holdPreparation: false,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [steer("msg-A"), stop, send("msg-B")],
     events: [],
-    knownFailures: [],
-  },
-  {
-    name: "a stop between two queued sends",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    user: [send("msg-A"), stop, send("msg-B")],
-    events: [],
-    knownFailures: [],
   },
   {
     name: "a stop and a steer across a daemon reconnect",
     start: "running-turn",
     holdPreparation: false,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [stop, steer("msg-A")],
     events: ["reconnect"],
-    knownFailures: [
-      {
-        cause: UNANSWERED_SUBMIT_SETTLED,
-        orderings: [
-          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → release stop(interrupt)#4 → daemon reconnect",
-          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → complete turn-2 → release stop(interrupt)#4 → daemon reconnect",
-          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → complete turn-2 → daemon reconnect → release stop(interrupt)#4",
-          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → daemon reconnect → release submit(start msg-A)#3 → release stop(interrupt)#4",
-          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → daemon reconnect → release submit(start msg-A)#3 → complete turn-2 → release stop(interrupt)#4",
-        ],
-      },
-      {
-        cause: CUT_STOP_LEAVES_THREAD_ACTIVE,
-        orderings: [
-          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → release submit(start msg-A)#3 → daemon disconnect → daemon reconnect → complete turn-2 → release stop(interrupt)#4",
-          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → daemon reconnect → complete turn-2 → release stop(interrupt)#4",
-        ],
-      },
-    ],
   },
   {
     name: "an RPC timeout against steers and the turn end",
     start: "running-turn",
     holdPreparation: false,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [steer("msg-A"), steer("msg-B")],
     events: ["timeout"],
-    knownFailures: [
-      {
-        cause: UNANSWERED_SUBMIT_SETTLED,
-        orderings: [
-          "steer msg-A → complete turn-1 → steer msg-B → timeout submit(steer msg-A)#2 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → complete turn-1 → timeout submit(steer msg-A)#2 → steer msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-          "steer msg-A → timeout submit(steer msg-A)#2 → complete turn-1 → steer msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
-        ],
-      },
-    ],
-  },
-  {
-    name: "an RPC timeout against a stop and a queued send",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    user: [stop, send("msg-A")],
-    events: ["timeout"],
-    knownFailures: [],
   },
   {
     name: "a plugin that holds a queued message against the turn end and a drain wake",
     start: "running-turn",
     holdPreparation: false,
     pluginGatedLabels: ["msg-A"],
+    pluginHeldLabels: [],
     user: [send("msg-A"), send("msg-B")],
     events: ["drain"],
-    knownFailures: [
-      {
-        cause: DRAIN_ENDS_AFTER_PLUGIN_DEFERS_ITS_ROW,
-        orderings: [
-          "send msg-A → plugin proceeds msg-A#1 → send msg-B → drain wake → complete turn-1 → plugin holds msg-A#2",
-          "send msg-A → plugin proceeds msg-A#1 → drain wake → send msg-B → complete turn-1 → plugin holds msg-A#2",
-        ],
-      },
-    ],
   },
   {
     name: "a message added to the queue after a stop between queued sends",
     start: "running-turn",
     holdPreparation: false,
     pluginGatedLabels: [],
+    pluginHeldLabels: [],
     user: [send("msg-A"), stop, addToQueue("msg-B")],
     events: [],
-    knownFailures: [],
+  },
+  {
+    name: "a plugin recheck for a held message on a thread that also holds a draft",
+    start: "idle",
+    holdPreparation: false,
+    pluginGatedLabels: ["msg-H"],
+    pluginHeldLabels: ["msg-D"],
+    user: [send("msg-D"), send("msg-H")],
+    events: [],
   },
 ];
 
@@ -1358,24 +1300,13 @@ describe("send, queue and lifecycle interleavings", () => {
     "%s",
     async (_name, scenario) => {
       const { failures, orderings } = await exploreOrderings(scenario);
-      const known = new Set(
-        scenario.knownFailures.flatMap((known) => known.orderings),
-      );
-      const failing = new Set(failures.map((failure) => failure.ordering));
       expect(
-        {
-          unexpectedFailures: failures
-            .filter((failure) => !known.has(failure.ordering))
-            .map(
-              (failure) =>
-                `${failure.ordering} :: ${failure.violations.join("; ")}`,
-            ),
-          knownFailuresThatNowPass: [...known].filter(
-            (ordering) => !failing.has(ordering),
-          ),
-        },
+        failures.map(
+          (failure) =>
+            `${failure.ordering} :: ${failure.violations.join("; ")}`,
+        ),
         `${failures.length} of ${orderings} orderings failed`,
-      ).toEqual({ unexpectedFailures: [], knownFailuresThatNowPass: [] });
+      ).toEqual([]);
     },
     600_000,
   );
