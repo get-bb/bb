@@ -38,10 +38,6 @@ import {
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  OverflowFade,
-  type OverflowFadeTone,
-} from "@bb/shared-ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@bb/shared-ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -61,8 +57,6 @@ const TAB_STRIP_SCROLL_BUTTON_CLASS =
   "h-7 w-5 rounded-md p-0 [&_[data-icon-root]]:size-3.5 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-5";
 
 const EDGE_EPSILON_PX = 1;
-
-const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
 
 class InertTouchSensor extends TouchSensor {
   static override setup(): () => void {
@@ -450,30 +444,20 @@ export function SecondaryPanelTabStrip({
       <TabStripScrollButton
         buttonRef={leftScrollButtonRef}
         direction="left"
+        hasOverflow={overflow.hasOverflow}
         canScroll={overflow.canScrollLeft}
         className={chevronNoDragClass}
         onClick={() => scrollByStep(-1)}
       />
       <div data-secondary-panel-tab-scroll-region className="relative min-w-0">
-        <OverflowFade
-          placement="left"
-          tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
-          className={cn(
-            "z-10",
-            overflow.canScrollLeft ? "opacity-100" : "opacity-0",
-          )}
-        />
-        <OverflowFade
-          placement="right"
-          tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
-          className={cn(
-            "z-10",
-            overflow.canScrollRight ? "opacity-100" : "opacity-0",
-          )}
-        />
         <div
           ref={viewportRef}
           onClickCapture={handleClickCapture}
+          style={{
+            maskImage: overflow.hasOverflow
+              ? `linear-gradient(to right, ${overflow.canScrollLeft ? "transparent" : "var(--ink)"}, var(--ink) 24px, var(--ink) calc(100% - 24px), ${overflow.canScrollRight ? "transparent" : "var(--ink)"})`
+              : undefined,
+          }}
           className={cn(
             "no-scrollbar min-w-0 overflow-x-auto overflow-y-hidden",
             usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
@@ -491,6 +475,7 @@ export function SecondaryPanelTabStrip({
       <TabStripScrollButton
         buttonRef={rightScrollButtonRef}
         direction="right"
+        hasOverflow={overflow.hasOverflow}
         canScroll={overflow.canScrollRight}
         className={chevronNoDragClass}
         onClick={() => scrollByStep(1)}
@@ -591,6 +576,7 @@ function SortablePanelTab({
 interface TabStripScrollButtonProps {
   buttonRef: RefObject<HTMLButtonElement | null>;
   direction: "left" | "right";
+  hasOverflow: boolean;
   canScroll: boolean;
   className: string | null;
   onClick: () => void;
@@ -599,6 +585,7 @@ interface TabStripScrollButtonProps {
 function TabStripScrollButton({
   buttonRef,
   direction,
+  hasOverflow,
   canScroll,
   className,
   onClick,
@@ -615,8 +602,8 @@ function TabStripScrollButton({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "z-20 shrink-0 bg-sidebar text-muted-foreground/70 shadow-none hover:bg-surface-raised-solid hover:text-foreground focus-visible:bg-sidebar",
-        canScroll
+        "z-20 shrink-0 bg-transparent text-muted-foreground/70 shadow-none hover:bg-surface-raised-solid hover:text-foreground focus-visible:bg-transparent",
+        hasOverflow
           ? TAB_STRIP_SCROLL_BUTTON_CLASS
           : "h-7 w-0 overflow-hidden p-0 max-md:pointer-coarse:h-9",
         "transition-opacity",
