@@ -997,6 +997,7 @@ async function reconcileTurnOptions(
 ): Promise<ThreadSession> {
   const turnOptions = buildPiTurnOptions(options);
   const construction = threadSession.construction;
+  const sessionClosed = threadSession.session.getIsClosed();
   const shellEnvOverrides =
     options.envVars && Object.keys(options.envVars).length > 0
       ? { BB_THREAD_ID: threadId, ...buildShellEnvOverrides(options.envVars) }
@@ -1012,6 +1013,7 @@ async function reconcileTurnOptions(
     turnOptions.thinkingLevel !== undefined &&
     turnOptions.thinkingLevel !== construction.thinkingLevel;
   if (
+    !sessionClosed &&
     !environmentChanged &&
     changedModelRequest === undefined &&
     !thinkingLevelChanged
@@ -1027,7 +1029,12 @@ async function reconcileTurnOptions(
     (threadSession.constructionModel === undefined ||
       threadSession.constructionModel.provider !== nextModel.provider ||
       threadSession.constructionModel.id !== nextModel.id);
-  if (!environmentChanged && !modelChanged && !thinkingLevelChanged) {
+  if (
+    !sessionClosed &&
+    !environmentChanged &&
+    !modelChanged &&
+    !thinkingLevelChanged
+  ) {
     return threadSession;
   }
   const replacement = await rebuildThreadSession(threadId, threadSession, {
@@ -1046,8 +1053,9 @@ async function reconcileTurnOptions(
     params: {
       threadId,
       providerThreadId: replacement.providerThreadId,
-      reason:
-        "Execution settings changed; the pi session was rebuilt to apply them.",
+      reason: sessionClosed
+        ? "Pi exited; the session was restored for the next turn."
+        : "Execution settings changed; the pi session was rebuilt to apply them.",
       contextLost: false,
     },
   });

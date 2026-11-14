@@ -234,6 +234,10 @@ export class PiRpcSession {
     return this.isCompacting;
   }
 
+  getIsClosed(): boolean {
+    return this.closed;
+  }
+
   respondToExtensionUi(
     id: string | number,
     fields: Record<string, unknown>,
