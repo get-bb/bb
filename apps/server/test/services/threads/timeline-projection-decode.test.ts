@@ -14,6 +14,7 @@ import { parseStoredEvent } from "../../../src/services/threads/thread-data.js";
 import { readThreadHeadState } from "../../../src/services/threads/thread-head-state.js";
 import { resolveProviderPlanCommand } from "../../../src/services/providers/provider-plan-command.js";
 import {
+  clearTimelineProjections,
   decodeStoredEventRow,
   forgetTimelineProjection,
   listTimelineProjections,
@@ -300,6 +301,46 @@ describe("timeline projection decoding", () => {
       const [after] = projectionsOf(active.db, active.thread.id);
       expect(after).toBe(projection);
       expect(after!.fold).toBeNull();
+    });
+  });
+
+  it("keeps the projected timeline but not the head state across rows outside the window", () => {
+    withTestThread((testThread) => {
+      const { db, thread } = testThread;
+      appendRows(testThread, openTurn());
+      buildLatest(testThread);
+      const [projection] = projectionsOf(db, thread.id);
+      const timelines = [...projection!.derived.timelines.values()];
+      const headStates = [...projection!.derived.headStates.values()];
+      expect(timelines.length).toBeGreaterThan(0);
+      expect(headStates.length).toBeGreaterThan(0);
+      appendRows(testThread, [
+        {
+          data: {
+            contextWindowUsage: {
+              estimated: false,
+              modelContextWindow: 200_000,
+              usedTokens: 1_234,
+            },
+          },
+          turnId: "turn-1",
+          type: "thread/contextWindowUsage/updated",
+        },
+      ]);
+      const warm = buildLatest(testThread);
+      const [after] = projectionsOf(db, thread.id);
+      expect(after).toBe(projection);
+      const keptTimelines = [...after!.derived.timelines.values()];
+      expect(keptTimelines).toHaveLength(timelines.length);
+      keptTimelines.forEach((timeline, index) =>
+        expect(timeline).toBe(timelines[index]),
+      );
+      expect(after!.derived.headStates.size).toBeGreaterThan(0);
+      for (const headState of after!.derived.headStates.values()) {
+        expect(headStates).not.toContain(headState);
+      }
+      clearTimelineProjections(db);
+      expect(warm.response).toEqual(buildLatest(testThread).response);
     });
   });
 

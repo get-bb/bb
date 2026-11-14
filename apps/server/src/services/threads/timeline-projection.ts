@@ -896,11 +896,15 @@ function appendToProjection(
   } else if (projection.groupingContext?.maxSeq === projection.maxSeq) {
     projection.groupingContext.maxSeq = maxSeq;
   }
+  const orderingBoundarySequence = orderingChanged
+    ? projection.groupingContext!.context.orderingBoundarySequence
+    : projection.selection.orderingBoundarySequence;
+  const windowUnchanged =
+    rows.length === 0 &&
+    orderingBoundarySequence === projection.selection.orderingBoundarySequence;
   projection.selection = {
     ...projection.selection,
-    orderingBoundarySequence: orderingChanged
-      ? projection.groupingContext!.context.orderingBoundarySequence
-      : projection.selection.orderingBoundarySequence,
+    orderingBoundarySequence,
     ownedSequenceEnd: maxSeq + 1,
     rows:
       rows.length === 0
@@ -913,7 +917,11 @@ function appendToProjection(
       : projection.events.concat(decoded);
   projection.dataBytes += dataBytesOfRows(rows);
   projection.maxSeq = maxSeq;
-  startNextVersion(projection);
+  if (windowUnchanged) {
+    projection.derived = { ...projection.derived, headStates: new Map() };
+  } else {
+    startNextVersion(projection);
+  }
   return true;
 }
 
