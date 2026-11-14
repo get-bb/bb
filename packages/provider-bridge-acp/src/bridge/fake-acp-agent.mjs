@@ -113,6 +113,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import {
   appendFileSync,
+  existsSync,
   readFileSync,
   renameSync,
   writeFileSync,
@@ -1076,6 +1077,13 @@ async function handleMessage(message) {
       }
       return;
     case "session/load":
+      if (
+        process.env.FAKE_ACP_EXIT_ON_FIRST_LOAD &&
+        !existsSync(process.env.FAKE_ACP_EXIT_ON_FIRST_LOAD)
+      ) {
+        writeFileSync(process.env.FAKE_ACP_EXIT_ON_FIRST_LOAD, "");
+        process.exit(1);
+      }
       if (!requireAuthenticated(message)) {
         return;
       }

@@ -1862,6 +1862,35 @@ describe("acp bridge", () => {
     },
   );
 
+  it("restores the session on the next turn when the agent exits during a session restore", async () => {
+    const restoreEnv = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_EXIT_ON_FIRST_LOAD: join(workspaceDir, "exited-on-load"),
+    };
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    const failed = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hi", mentions: [] }],
+      options: executionOptions({ envVars: restoreEnv }),
+    });
+    expect((await waitForResponse(failed)).error?.message).toMatch(
+      /exited|not running/,
+    );
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "hi again",
+        executionOptions({ envVars: restoreEnv }),
+      ),
+    ).toBe("echo:hi again");
+    expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+      providerThreadId,
+      contextLost: false,
+    });
+  });
+
   it("fails the start when the OpenCode 2 agent exits while bb applies its rules", async () => {
     const permissionsFile = join(workspaceDir, "opencode-permissions.json");
     const apiLog = join(workspaceDir, "opencode-api.log");

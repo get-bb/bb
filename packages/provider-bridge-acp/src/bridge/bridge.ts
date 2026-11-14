@@ -272,6 +272,10 @@ function createBridgeAgentConnection(
 }
 
 const bbThreadIdByProviderThreadId = new Map<string, string>();
+const unrestoredThreads = new Map<
+  string,
+  { construction: AcpSessionParams; providerThreadId: string }
+>();
 const pendingRuntimeRequests = new Map<
   number,
   (response: BridgeJsonRpcResponse) => void
@@ -2702,6 +2706,7 @@ async function startAgentSession(
       }
     }
     deferredEmits.length = 0;
+    unrestoredThreads.delete(bbThreadId);
     return session;
   } catch (error) {
     session.stopping = true;
@@ -3448,6 +3453,10 @@ async function rebuildAgentSession(
       continuesTurn: continuingTurn,
     });
   } catch (error) {
+    unrestoredThreads.set(session.bbThreadId, {
+      construction,
+      providerThreadId: previousProviderThreadId,
+    });
     if (continuingTurn) {
       const message = error instanceof Error ? error.message : String(error);
       emitForSession(session, "error", {
@@ -3467,6 +3476,29 @@ async function rebuildAgentSession(
     providerThreadId: replacement.providerThreadId,
     reason,
     contextLost: replacement.providerThreadId !== previousProviderThreadId,
+  });
+  return replacement;
+}
+
+async function restoreUnrestoredThread(
+  bbThreadId: string,
+): Promise<AcpThreadSession | undefined> {
+  const unrestored = unrestoredThreads.get(bbThreadId);
+  if (unrestored === undefined) {
+    return undefined;
+  }
+  const replacement = await startAgentSession({
+    kind: "resume",
+    params: unrestored.construction,
+    resumeProviderThreadId: unrestored.providerThreadId,
+    continuesTurn: false,
+  });
+  sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+    threadId: bbThreadId,
+    providerThreadId: replacement.providerThreadId,
+    reason:
+      "The ACP agent exited while its session was being restored; the session was restored before continuing.",
+    contextLost: replacement.providerThreadId !== unrestored.providerThreadId,
   });
   return replacement;
 }
@@ -4003,7 +4035,9 @@ async function handleRequest(
 
     case "turn/start": {
       const params = request.params;
-      let session = liveSessionForThread(params.threadId);
+      let session =
+        liveSessionForThread(params.threadId) ??
+        (await restoreUnrestoredThread(params.threadId));
       if (session === undefined) {
         sendError(request.id, -32000, "No active ACP session");
         return;
@@ -4080,6 +4114,7 @@ async function handleRequest(
     }
 
     case "thread/stop": {
+      unrestoredThreads.delete(request.params.threadId);
       const session = sessionsByBbThreadId.get(request.params.threadId);
       if (session) {
         if (request.params.intent === "release") {
