@@ -244,6 +244,7 @@ process.on("SIGTERM", () => {
 });
 child.on("exit", (code, signal) => {
   appendFileSync(join(args["probe-log"], `childexit-${process.pid}.stderr`), `CHILD EXIT code=${code} signal=${signal} dying=${dying} argv=${args.command.slice(1, 3).join(" ")}\n`);
+  if (process.env.BB_DIAG_KILL_LOG) appendFileSync(process.env.BB_DIAG_KILL_LOG, `${new Date().toISOString()} probe=${process.pid} child=${child.pid} exit code=${code} signal=${signal} dying=${dying} log=${args["probe-log"]}\n`);
   if (dying) return;
   if (signal !== null) process.kill(process.pid, signal);
   else process.exit(code ?? 0);

@@ -39,4 +39,9 @@ jobs:
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        run: pnpm exec turbo run test --filter=@bb/provider-parity --filter=bb-plugin-provider-pi --force --output-logs=full
+          BB_DIAG_KILL_LOG: ${{ runner.temp }}\kill-diag.log
+        run: pnpm exec turbo run test --filter=@bb/provider-parity --filter=bb-plugin-provider-pi --force --env-mode=loose --output-logs=full
+      - name: Kill diagnostics
+        if: always()
+        shell: bash
+        run: cat "$RUNNER_TEMP/kill-diag.log" || true
