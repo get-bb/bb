@@ -993,6 +993,7 @@ interface SelectTimelineEventRowsArgs {
   eventBudget: number;
   excludeDiagnosticEvents: boolean;
   groupingContext: TimelineGroupingContext;
+  knownBudgetFloorSequence: number | null;
   maxInlineOutputChars: InlineOutputCharLimit;
   maxSeq: number;
   page: ThreadTimelinePageRequest;
@@ -1011,6 +1012,7 @@ function selectStandardTimelineEventRows(
     eventBudget,
     excludeDiagnosticEvents,
     groupingContext,
+    knownBudgetFloorSequence,
     maxInlineOutputChars,
     maxSeq,
     page,
@@ -1041,14 +1043,16 @@ function selectStandardTimelineEventRows(
       "Timeline pagination cursor is no longer available",
     );
   }
-  const budgetFloor = findTimelineWindowBudgetFloorSequence(db, {
-    threadId: thread.id,
-    sequenceStart: epochSequenceStart,
-    beforeSequence,
-    eventBudget,
-    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-    excludeDiagnosticEvents,
-  });
+  const budgetFloor =
+    knownBudgetFloorSequence ??
+    findTimelineWindowBudgetFloorSequence(db, {
+      threadId: thread.id,
+      sequenceStart: epochSequenceStart,
+      beforeSequence,
+      eventBudget,
+      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      excludeDiagnosticEvents,
+    });
   const sequenceStart =
     contentCursor !== undefined && page.kind === "older"
       ? page.beforeCursor.anchorSeq
@@ -1432,11 +1436,18 @@ function resolveTimelineBuild(
             threadId: thread.id,
           },
           segmentLimit: options.page.segmentLimit,
-          select: (segmentLimit, groupingContext, rowSource, decodeRow) =>
+          select: (
+            segmentLimit,
+            groupingContext,
+            rowSource,
+            decodeRow,
+            knownBudgetFloorSequence,
+          ) =>
             selectStandardTimelineEventRows(db, thread, {
               ...selectArgs,
               decodeRow,
               groupingContext,
+              knownBudgetFloorSequence,
               page: { kind: "latest", segmentLimit },
               source: rowSource,
             }),
@@ -1472,7 +1483,12 @@ function resolveTimelineBuild(
       const { selection: selected } = selectStandardTimelineEventRows(
         db,
         thread,
-        { ...selectArgs, decodeRow, groupingContext },
+        {
+          ...selectArgs,
+          decodeRow,
+          groupingContext,
+          knownBudgetFloorSequence: null,
+        },
       );
       const rows =
         maxInlineOutputChars === null

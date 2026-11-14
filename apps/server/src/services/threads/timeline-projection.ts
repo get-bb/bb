@@ -134,6 +134,7 @@ interface TimelineProjectionSelect {
     groupingContext: TimelineGroupingContext,
     source: TimelineSelectionRowSource | undefined,
     decode: StoredEventRowDecoder,
+    knownBudgetFloorSequence: number | null,
   ): StandardTimelineEventRowSelection;
 }
 
@@ -948,6 +949,9 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     groupingContext,
     build.source,
     decode,
+    previous?.maxSeq === maxSeq && previous.budgetFloorSequence !== undefined
+      ? previous.budgetFloorSequence
+      : null,
   );
   const rows = result.selection.rows;
   const released = releaseDroppedEvents(previous, rows);
@@ -1175,9 +1179,9 @@ function storeProjection(
   const registry = registryOf(db);
   const key = projection.id;
   registry.delete(key);
-  if (projection.dataBytes > MAX_TIMELINE_PROJECTION_DATA_BYTES) return;
-  registry.set(key, projection);
-  if (!projection.active) {
+  const stored = projection.dataBytes <= MAX_TIMELINE_PROJECTION_DATA_BYTES;
+  if (stored) registry.set(key, projection);
+  if (stored && !projection.active) {
     let idle = 0;
     for (const kept of registry.values()) if (!kept.active) idle += 1;
     for (const [keptKey, kept] of registry) {
@@ -1188,10 +1192,11 @@ function storeProjection(
     }
   }
   let dataBytes = 0;
-  for (const kept of registry.values()) dataBytes += retainedBytesOf(kept);
+  for (const entry of registry.values()) dataBytes += retainedBytesOf(entry);
   while (
     registry.size > MAX_TIMELINE_PROJECTIONS ||
-    (dataBytes > MAX_TIMELINE_PROJECTION_DATA_BYTES && registry.size > 1)
+    (dataBytes > MAX_TIMELINE_PROJECTION_DATA_BYTES &&
+      registry.size > (stored ? 1 : 0))
   ) {
     const [oldestKey, oldest] = registry.entries().next().value!;
     registry.delete(oldestKey);
@@ -1283,20 +1288,32 @@ export function readTimelineProjection(
 ): ThreadTimelineProjection {
   const scopeKey = scopeKeyOf(args.scope);
   const siblings = projectionsOfThread(db, args.scope.threadId);
-  const valid = siblings.filter(
-    (projection) =>
-      projection.scopeKey === scopeKey && isProjectionCurrent(db, projection),
-  );
+  const valid = siblings
+    .filter(
+      (projection) =>
+        projection.scopeKey === scopeKey && isProjectionCurrent(db, projection),
+    )
+    .sort(
+      (left, right) =>
+        Number(right.servedSegmentLimits.has(args.segmentLimit)) -
+        Number(left.servedSegmentLimits.has(args.segmentLimit)),
+    );
   const appendedDecodes = new Map<string, DecodedRow>();
-  const current = valid.filter((projection) =>
-    appendToProjection(
-      db,
-      projection,
-      args.maxSeq,
-      args.measure,
-      appendedDecodes,
-    ),
-  );
+  const caughtUp = new Map<ThreadTimelineProjection, boolean>();
+  const catchUp = (projection: ThreadTimelineProjection): boolean => {
+    let current = caughtUp.get(projection);
+    if (current === undefined) {
+      current = appendToProjection(
+        db,
+        projection,
+        args.maxSeq,
+        args.measure,
+        appendedDecodes,
+      );
+      caughtUp.set(projection, current);
+    }
+    return current;
+  };
   const build = {
     db,
     maxSeq: args.maxSeq,
@@ -1305,13 +1322,17 @@ export function readTimelineProjection(
     segmentLimit: args.segmentLimit,
     select: args.select,
   };
-  const reference = current.find(
-    (projection) => projection.coverageSegmentLimit >= args.segmentLimit,
+  const reference = valid.find(
+    (projection) =>
+      projection.coverageSegmentLimit >= args.segmentLimit &&
+      catchUp(projection),
   );
   if (reference !== undefined) {
     const sequenceStart = latestWindowStart(db, reference, args.segmentLimit);
-    const exact = current.find(
-      (projection) => projection.selection.ownedSequenceStart === sequenceStart,
+    const exact = valid.find(
+      (projection) =>
+        projection.selection.ownedSequenceStart === sequenceStart &&
+        catchUp(projection),
     );
     if (exact !== undefined) {
       if (exact.coverageSegmentLimit < reference.coverageSegmentLimit) {
@@ -1320,7 +1341,7 @@ export function readTimelineProjection(
       }
       return serve(db, exact, args, siblings);
     }
-    const sources = current
+    const sources = valid
       .filter(
         (projection) =>
           projection.selection.ownedSequenceStart <= sequenceStart,
@@ -1331,6 +1352,7 @@ export function readTimelineProjection(
           left.selection.ownedSequenceStart,
       );
     for (const source of sources) {
+      if (!catchUp(source)) continue;
       const trimmed = trimProjection(
         { ...build, hintSource: reference, previous: source },
         source,
@@ -1340,9 +1362,12 @@ export function readTimelineProjection(
       }
     }
   }
+  const caughtUpPrevious = valid.find(
+    (projection) => caughtUp.get(projection) === true,
+  );
   const projection = buildProjection({
     ...build,
-    previous: current[0] ?? valid[0] ?? null,
+    previous: caughtUpPrevious ?? valid[0] ?? null,
     source: undefined,
   });
   return serve(db, projection, args, siblings);
