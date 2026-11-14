@@ -854,7 +854,7 @@ describe("PluginSettingsPage", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the recessed unavailable hint for a section-only plugin", async () => {
+  it("keeps the unavailable hint in a settings card for a section-only plugin", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -889,9 +889,7 @@ describe("PluginSettingsPage", () => {
     const hint = await screen.findByText(
       "Settings are unavailable while the plugin is error.",
     );
-    expect(hint.closest(".overflow-hidden")?.className).toContain(
-      "bg-surface-recessed/70",
-    );
+    expect(hint.parentElement?.className).toContain("bg-card");
     expect(screen.queryByText("Custom connect settings")).toBeNull();
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
   });
