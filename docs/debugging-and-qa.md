@@ -329,8 +329,10 @@ in `events-cases.ts` time the reads and appends a running thread makes
 against it. The check calls every exported query function in
 `packages/db/src/data` against the smaller and larger world of each axis,
 interleaved, each call inside a rolled-back savepoint. Each call is timed by
-the CPU time of the thread that runs it, not by the wall clock, so other work
-on a busy runner does not count against it. The check keeps the fastest of up
+CPU time, not by the wall clock, so other work on a busy runner does not count
+against it: the thread's CPU time on macOS, and the process's on Linux, where a
+thread's CPU time only advances at scheduler ticks and reads near zero for
+short calls. The check keeps the fastest of up
 to three calls per world and fails a function when, on either axis:
 
 - its larger-world time is at least 2 ms and its cost grows faster than

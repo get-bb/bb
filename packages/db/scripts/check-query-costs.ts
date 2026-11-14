@@ -30,6 +30,7 @@ import {
   QUERY_COST_GROUPS,
 } from "./query-costs/cases.js";
 import { buildHistoryFixture } from "../src/history-fixture.js";
+import { selectCpuClock } from "./query-costs/cpu-clock.js";
 import { listQueryFunctions } from "./query-functions.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -362,6 +363,7 @@ async function runComparison(comparison: Comparison): Promise<string[]> {
   });
 }
 
+console.log(`Timing each call by ${selectCpuClock().name}`);
 const coverageProblems = PARTIAL_RUN ? [] : checkCoverage();
 const directory = mkdtempSync(join(tmpdir(), "bb-query-costs-"));
 let failed = coverageProblems.length > 0;

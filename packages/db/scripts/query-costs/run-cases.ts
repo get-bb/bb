@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { threadCpuUsage } from "node:process";
 import { createConnection, type DbConnection } from "../../src/connection.js";
 import {
   GROWTH_FLOOR_MS,
@@ -8,9 +7,11 @@ import {
   type SeedsByGroup,
 } from "./case.js";
 import { QUERY_COST_CASES } from "./cases.js";
+import { selectCpuClock } from "./cpu-clock.js";
 import type { HistoryFixture } from "../../src/history-fixture.js";
 
 const ATTEMPTS = 3;
+const cpuClock = selectCpuClock();
 const CONFIRMING_ATTEMPTS = 8;
 
 interface SizedHistory {
@@ -69,10 +70,9 @@ function timeOnce(
   try {
     costCase.prepare?.(db, fixture, seeds);
     send({ kind: "call", index });
-    const started = threadCpuUsage();
+    const started = cpuClock.nowMs();
     costCase.run(db, fixture, seeds);
-    const used = threadCpuUsage(started);
-    return (used.user + used.system) / 1_000;
+    return cpuClock.nowMs() - started;
   } finally {
     db.$client.exec("ROLLBACK TO query_cost");
     db.$client.exec("RELEASE query_cost");
