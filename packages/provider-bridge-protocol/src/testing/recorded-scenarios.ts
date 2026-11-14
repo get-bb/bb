@@ -355,11 +355,13 @@ function checkSettingsReachProvider(
   let previousPrompt: ProviderLine | null = null;
   for (const [index, dispatch] of script.dispatches.entries()) {
     const prompt = findPrompt(lines, dispatch.text, previousPrompt);
-    const changes =
+    const steer = dispatch.method === "turn/steer";
+    const changes = (
       previousSettings === null
         ? []
-        : changedDimensions(previousSettings, dispatch.settings);
-    const via = dispatch.method === "turn/steer" ? "steer" : "follow-up";
+        : changedDimensions(previousSettings, dispatch.settings)
+    ).filter((change) => !steer || change.dimension === "permission");
+    const via = steer ? "steer" : "follow-up";
     for (const { dimension, values } of changes) {
       const id = `${prefix}/${dimension}-reaches-provider`;
       const title = `a ${dimension} change sent with a ${via} reaches the provider before it works on that prompt`;

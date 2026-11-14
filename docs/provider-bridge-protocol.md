@@ -687,9 +687,14 @@ argv, environment and stdin each provider process received, and to kill the
 provider where the recorded one died (`providerExit` in the manifest).
 `checkRecordedScenarioReplay` then reports `scenario/<cell>/<rule>`:
 
-- `settings-follow-up`, `settings-steer`: a model, reasoning level, env var or
-  permission mode changed with a follow-up turn or a steer reaches the
-  provider before it receives that prompt. Permission is read from the
+- `settings-follow-up`: a model, reasoning level, env var or permission mode
+  changed with a follow-up turn reaches the provider before it receives that
+  prompt.
+- `settings-steer`: a permission mode changed with a steer reaches the
+  provider before it receives the steer. A model, reasoning level or env var
+  changed with a steer is deliberately not required to apply mid-turn (a
+  bridge may apply it, as ACP does, or leave it for the next turn).
+- Permission is read from the
   provider's own vocabulary for Codex and Claude Code; ACP bridges enforce it
   themselves, so the rule checks that an agent's command permission request
   after the change reaches the user.
