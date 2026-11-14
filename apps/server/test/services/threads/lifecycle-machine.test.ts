@@ -549,6 +549,7 @@ describe("stops that race other lifecycle inputs", () => {
       expect(second.transition.stopRoute).toBe("pre-start");
       ({ next: current } = step(second.next, {
         type: "stop.finalized",
+        fence: true,
         providerCheckpointId: null,
         now: 3,
       }));
@@ -606,5 +607,69 @@ describe("stops that race other lifecycle inputs", () => {
         message: "Thread start was interrupted",
       }),
     );
+  });
+});
+
+describe("finalizations that are not stop requests", () => {
+  it("lets the provider's next turn run after a plan cancel", () => {
+    const cancelled = step(state({ status: "idle" }), {
+      type: "stop.finalized",
+      fence: false,
+      providerCheckpointId: null,
+      now: 1,
+    });
+    expect(cancelled.next.stop).toBeNull();
+    const started = step(
+      cancelled.next,
+      { type: "turn.started", turnId: "T2", now: 2 },
+      { activeTurnId: "T2" },
+    );
+    expect(started.next.status).toBe("active");
+    expect(kinds(started.transition.effects)).not.toContain("send-stop");
+  });
+});
+
+describe("lost daemons and thread starts", () => {
+  it.each(["host-daemon-restarted", "host-removed"] as const)(
+    "does not tell the parent about a deleted thread whose start the daemon lost (%s)",
+    (reason) => {
+      const lost = step(
+        state({
+          status: "starting",
+          deleted: true,
+          requests: [request({ kind: "thread-start", phase: "sent" })],
+        }),
+        { type: "daemon.lost", reason, resuming: false },
+      );
+      expect(kinds(lost.transition.effects)).not.toContain("notify-parent");
+      expect(kinds(lost.transition.effects)).not.toContain(
+        "append-system-error",
+      );
+      expect(lost.next.requests).toEqual([]);
+    },
+  );
+
+  it("keeps a start whose connection was lost for the daemon's report to settle", () => {
+    const lost = step(
+      state({
+        status: "starting",
+        requests: [request({ kind: "thread-start", phase: "sent" })],
+      }),
+      { type: "daemon.lost", reason: "host-connection-lost", resuming: false },
+    );
+    expect(lost.next.status).toBe("starting");
+    expect(lost.next.requests).toEqual([
+      request({ kind: "thread-start", phase: "unconfirmed" }),
+    ]);
+    expect(lost.transition.effects).toEqual([]);
+    const reported = step(lost.next, {
+      type: "daemon.reported",
+      eventsPending: false,
+      now: 2,
+      revivalBlocked: false,
+      running: true,
+      sameInstance: true,
+    });
+    expect(reported.next.status).toBe("active");
   });
 });

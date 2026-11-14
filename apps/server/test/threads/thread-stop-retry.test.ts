@@ -324,6 +324,7 @@ describe("thread stop dispatch", () => {
       });
 
       finalizeStoppedThread(harness.deps, {
+        fence: true,
         threadId: thread.id,
       });
 

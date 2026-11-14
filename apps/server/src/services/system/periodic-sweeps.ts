@@ -480,7 +480,7 @@ function deletedThreadFinalizationSweep(
         threadId: thread.id,
       });
       if (thread.storageDeletedAt !== null) {
-        finalizeStoppedThread(deps, { threadId: thread.id });
+        finalizeStoppedThread(deps, { fence: false, threadId: thread.id });
         return;
       }
       requestThreadStorageDeletion(

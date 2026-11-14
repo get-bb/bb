@@ -84,7 +84,12 @@ export type ThreadLifecycleInput =
   | { type: "provider.failed"; unstartedRequestId: string | null }
   | { type: "stop.requested"; reason: SystemThreadInterruptedReason; now: number }
   | { type: "stop.answered"; answer: StopAnswer; now: number }
-  | { type: "stop.finalized"; providerCheckpointId: string | null; now: number }
+  | {
+      type: "stop.finalized";
+      fence: boolean;
+      providerCheckpointId: string | null;
+      now: number;
+    }
   | { type: "release.answered"; retained: boolean }
   | {
       type: "daemon.reported";
@@ -710,6 +715,10 @@ function reportDaemon(
 }
 
 function failLostStart(draft: Draft): void {
+  if (draft.state.deleted) {
+    draft.effect({ kind: "clear-provision-schedule" });
+    return;
+  }
   draft.effect({
     kind: "append-system-error",
     code: "thread_command_failed",
@@ -733,6 +742,16 @@ function loseDaemon(
   const lostStart = draft.requests.some(
     (request) => request.kind === "thread-start" && request.phase !== "accepted",
   );
+  const interruptible =
+    draft.status === "active" ||
+    (input.reason === "host-removed" && draft.status === "stopping");
+  if (input.reason === "host-connection-lost" && !interruptible) {
+    for (const request of draft.requests) {
+      if (request.phase === "sent") request.phase = "unconfirmed";
+    }
+    if (draft.stop !== null) draft.stop = { ...draft.stop, sentAt: null };
+    return;
+  }
   for (const request of [...draft.requests]) {
     if (request.phase === "accepted") {
       draft.remove(request.requestId);
@@ -749,9 +768,6 @@ function loseDaemon(
     failLostStart(draft);
     return;
   }
-  const interruptible =
-    draft.status === "active" ||
-    (input.reason === "host-removed" && draft.status === "stopping");
   if (!interruptible) return;
   draft.stop = null;
   if (held !== null && input.reason !== "host-removed") {
@@ -943,9 +959,10 @@ export function transitionThreadLifecycle(
         providerCheckpointId: input.providerCheckpointId,
         reason,
       });
-      draft.stop = state.deleted
-        ? null
-        : {
+      draft.stop =
+        state.deleted || !input.fence
+          ? null
+          : {
             ackedAt: input.now,
             reason,
             requestedAt: draft.stop?.requestedAt ?? input.now,

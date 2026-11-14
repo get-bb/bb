@@ -1603,6 +1603,7 @@ function settleEnvironmentProvisionOutcome(
         postCommitActions.push(
           finalizeStoppedThreadPostCommit(
             finalizeStoppedThreadInTransaction(args.deps, {
+              fence: false,
               threadId: thread.id,
             }),
           ),
@@ -1749,6 +1750,7 @@ export function settleEnvironmentProvisionCancelCommandResult(
     postCommitActions.push(
       finalizeStoppedThreadPostCommit(
         finalizeStoppedThreadInTransaction(args.deps, {
+          fence: true,
           threadId: thread.id,
         }),
       ),

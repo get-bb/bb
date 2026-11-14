@@ -151,7 +151,7 @@ function requestProjectThreadStorageDeletion(
   if (thread.storageDeletedAt === null) {
     requestThreadStorageDeletion(deps, thread, environment);
   } else if (thread.purgeRequestedAt === null) {
-    finalizeStoppedThread(deps, { threadId: thread.id });
+    finalizeStoppedThread(deps, { fence: false, threadId: thread.id });
   }
 }
 

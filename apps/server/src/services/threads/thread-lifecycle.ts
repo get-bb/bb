@@ -445,6 +445,7 @@ export function settleThreadStorageDeleteCommandResult(
   return lifecycleSideEffects(
     finalizeStoppedThreadInTransaction(args.deps, {
       providerCheckpointId: args.report.result.providerCheckpointId,
+      fence: false,
       threadId: args.command.threadId,
     }),
   );
@@ -466,6 +467,7 @@ export function settleThreadPlanCancelCommandResult(
   return lifecycleSideEffects(
     finalizeStoppedThreadInTransaction(args.deps, {
       providerCheckpointId: null,
+      fence: false,
       threadId: args.command.threadId,
     }),
   );
@@ -488,7 +490,7 @@ export function requestThreadStorageDeletion(
     (host !== null && host.destroyedAt !== null)
   ) {
     markThreadStorageDeleted(deps.db, { threadId: thread.id });
-    finalizeStoppedThread(deps, { threadId: thread.id });
+    finalizeStoppedThread(deps, { fence: false, threadId: thread.id });
     return;
   }
   if (environment === null) {
@@ -807,7 +809,7 @@ function requestThreadStopInTransaction(
     cancelHostId: null,
     environmentId: thread.environmentId,
     finalized: true,
-    outcomes: [requested, finalizeStoppedThreadInTransaction(deps, { threadId: thread.id, providerCheckpointId: null })],
+    outcomes: [requested, finalizeStoppedThreadInTransaction(deps, { fence: true, threadId: thread.id, providerCheckpointId: null })],
   };
 }
 
@@ -1088,6 +1090,7 @@ export function interruptActiveThreadsForHost(
 }
 
 interface FinalizeStoppedThreadArgs {
+  fence: boolean;
   providerCheckpointId?: string | null;
   threadId: string;
 }
@@ -1113,6 +1116,7 @@ export function finalizeStoppedThreadInTransaction(
 ): ThreadLifecycleOutcome {
   const outcome = runThreadLifecycleInTransaction(deps, args.threadId, {
     type: "stop.finalized",
+    fence: args.fence,
     providerCheckpointId: args.providerCheckpointId ?? null,
     now: Date.now(),
   });
@@ -1180,7 +1184,7 @@ export async function reconcileDaemonReportedThreads(
     .all();
   for (const thread of deletedThreads) {
     if (thread.storageDeletedAt !== null) {
-      finalizeStoppedThread(deps, { threadId: thread.id });
+      finalizeStoppedThread(deps, { fence: false, threadId: thread.id });
       continue;
     }
     requestThreadStorageDeletion(deps, thread, {
