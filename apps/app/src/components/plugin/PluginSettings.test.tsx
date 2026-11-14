@@ -3,6 +3,7 @@
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -21,6 +22,7 @@ import {
   PluginSettingsForm,
   PluginSettingsPage,
 } from "./PluginSettings";
+import { SettingsWithControl } from "@/components/ui/settings-section";
 import { type PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   makeInstalledPlugin,
@@ -28,6 +30,7 @@ import {
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 
 interface RecordedRequest {
   url: string;
@@ -413,6 +416,198 @@ describe("PluginSettingsForm", () => {
     expect(JSON.parse(String(put?.init?.body))).toEqual({
       values: { agents: edited },
     });
+  });
+
+  it("renders an experimental_link as an external anchor beside the description", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        labelled: {
+          type: "string",
+          label: "Custom agents",
+          description: "A JSON array of agents.",
+          experimental_link: {
+            url: "https://example.com/agents",
+            label: "Agent docs",
+          },
+        },
+        unlabelled: {
+          type: "string",
+          label: "Fallback",
+          experimental_link: { url: "https://example.com/fallback" },
+        },
+      },
+      values: { labelled: "[]", unlabelled: "" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk(view)),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    await screen.findByLabelText("Custom agents");
+    const labelled = screen.getByRole("link", { name: "Agent docs" });
+    expect(labelled.getAttribute("href")).toBe("https://example.com/agents");
+    expect(labelled.getAttribute("target")).toBe("_blank");
+    expect(labelled.getAttribute("rel")).toBe("noopener noreferrer");
+    const column = labelled.closest(".flex-1");
+    expect(column).not.toBeNull();
+    expect(column?.textContent).toBe(
+      "Custom agentsA JSON array of agents.Agent docs",
+    );
+
+    const unlabelled = screen.getByRole("link", {
+      name: "https://example.com/fallback",
+    });
+    expect(unlabelled.getAttribute("href")).toBe(
+      "https://example.com/fallback",
+    );
+  });
+
+  it("aligns a trailing switch row to the top when only an experimental_link annotates it", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        notify: {
+          type: "boolean",
+          label: "Notify me",
+          experimental_link: { url: "https://example.com/notify" },
+        },
+      },
+      values: { notify: false },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk(view)),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const toggle = await screen.findByRole("switch", { name: "Notify me" });
+    const link = screen.getByRole("link", {
+      name: "https://example.com/notify",
+    });
+    const row = toggle.closest('[data-control-placement="trailing"]');
+    expect(row).not.toBeNull();
+    expect(link.closest('[data-control-placement="trailing"]')).toBe(row);
+    expect(row?.classList.contains("items-start")).toBe(true);
+    expect(row?.classList.contains("items-center")).toBe(false);
+  });
+
+  it("keeps a trailing switch row centred when it carries no annotation", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        notify: { type: "boolean", label: "Notify me" },
+      },
+      values: { notify: false },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk(view)),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const toggle = await screen.findByRole("switch", { name: "Notify me" });
+    const row = toggle.closest('[data-control-placement="trailing"]');
+    expect(row).not.toBeNull();
+    expect(row?.classList.contains("items-center")).toBe(true);
+    expect(row?.classList.contains("items-start")).toBe(false);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("renders a secret control and its experimental_link in the annotated column when a descriptor carries both", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <SettingsWithControl
+        label="API key"
+        labelBadge="secret"
+        experimentalLink={{
+          url: "https://example.com/keys",
+          label: "Key docs",
+        }}
+      >
+        <input type="password" aria-label="API key" readOnly />
+      </SettingsWithControl>,
+      { wrapper },
+    );
+
+    const input = screen.getByLabelText("API key");
+    expect(input.getAttribute("type")).toBe("password");
+    const link = screen.getByRole("link", { name: "Key docs" });
+    expect(link.getAttribute("href")).toBe("https://example.com/keys");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.closest(".flex-1")).not.toBeNull();
+    expect(link.closest('[data-control-placement="inline"]')).not.toBeNull();
+  });
+
+  it("routes an experimental_link click through the app link open preference", () => {
+    vi.stubGlobal("bbDesktop", { browser: {} });
+    const openInAppBrowser = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <UrlOpenRoutingProvider openInAppBrowser={openInAppBrowser}>
+        <SettingsWithControl
+          label="Notify me"
+          experimentalLink={{ url: "https://example.com/notify" }}
+        >
+          <input type="text" aria-label="Notify me" readOnly />
+        </SettingsWithControl>
+      </UrlOpenRoutingProvider>,
+      { wrapper },
+    );
+
+    const link = screen.getByRole("link", {
+      name: "https://example.com/notify",
+    });
+    const plainClick = createEvent.click(link, { button: 0 });
+    fireEvent(link, plainClick);
+    expect(openInAppBrowser).toHaveBeenCalledWith("https://example.com/notify");
+    expect(plainClick.defaultPrevented).toBe(true);
+
+    const modifiedClick = createEvent.click(link, { button: 0, metaKey: true });
+    fireEvent(link, modifiedClick);
+    expect(openInAppBrowser).toHaveBeenCalledTimes(1);
+    expect(modifiedClick.defaultPrevented).toBe(false);
+  });
+
+  it("keeps an experimental_link inside the annotated column for a non-string setting", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        mode: {
+          type: "select",
+          label: "Mode",
+          options: ["fast", "slow"],
+          experimental_link: {
+            url: "https://example.com/modes",
+            label: "Mode docs",
+          },
+        },
+      },
+      values: { mode: "fast" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk(view)),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    await screen.findByText("Mode");
+    const link = screen.getByRole("link", { name: "Mode docs" });
+    expect(link.className).toContain("break-words");
+    expect(link.className).toContain("[overflow-wrap:anywhere]");
+    const column = link.closest(".flex-1");
+    expect(column).not.toBeNull();
+    expect(column?.textContent).toBe("ModeMode docs");
+    expect(link.closest('[data-control-placement="inline"]')).not.toBeNull();
   });
 
   it("shows a server validator error beneath the field and retries on blur", async () => {

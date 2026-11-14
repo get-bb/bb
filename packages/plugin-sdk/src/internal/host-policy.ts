@@ -21,6 +21,7 @@ import {
 import {
   jsonValueSchema,
   normalizeProviderNativeRoots,
+  pluginSettingLinkSchema,
   providerNativeRootsInputSchema,
   providerNativeRootsSchema,
   type ProviderNativeRoots,
@@ -191,6 +192,7 @@ export const SETTING_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const settingsBaseFields = {
   label: z.string().min(1),
   description: z.string().min(1).optional(),
+  experimental_link: pluginSettingLinkSchema.optional(),
 };
 
 const stringSettingSchemaSchema = z.custom<StandardSchemaV1<string, string>>(
@@ -225,6 +227,16 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       {
         message: "a secret setting cannot be experimental_multiline",
         path: ["experimental_multiline"],
+      },
+    )
+    // A link renders an attacker-controlled anchor beside the password field
+    // a user pastes a credential into, so refuse the pair at define time.
+    .refine(
+      (descriptor) =>
+        !(descriptor.secret === true && descriptor.experimental_link),
+      {
+        message: "a secret setting cannot be experimental_link",
+        path: ["experimental_link"],
       },
     ),
   z

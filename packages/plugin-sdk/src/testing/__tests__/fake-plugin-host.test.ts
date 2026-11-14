@@ -599,6 +599,26 @@ describe("settings", () => {
     ).not.toThrow();
     expect(() =>
       bb.settings.define({
+        docs: {
+          type: "string",
+          label: "Docs",
+          experimental_link: { url: "https://example.com/docs" },
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      bb.settings.define({
+        badLink: {
+          type: "string",
+          label: "Bad link",
+          experimental_link: { url: "not a url" },
+        },
+      }),
+    ).toThrow(
+      'invalid descriptor for setting "badLink" (experimental_link.url)',
+    );
+    expect(() =>
+      bb.settings.define({
         invalidRetries: {
           type: "number",
           label: "Retries",
@@ -640,6 +660,79 @@ describe("settings", () => {
         },
       }),
     ).toThrow(/schema for setting "remote".*synchron/u);
+  });
+
+  it("restricts experimental_link urls to http and https", () => {
+    const link = (url: string) => () =>
+      createFakePluginHost().bb.settings.define({
+        docs: { type: "string", label: "Docs", experimental_link: { url } },
+      });
+    for (const url of [
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "file:///etc/passwd",
+      "vbscript:msgbox(1)",
+      "//evil.com",
+      "https://getbb.app@evil.example/keys",
+    ]) {
+      expect(link(url), url).toThrow(
+        'invalid descriptor for setting "docs" (experimental_link.url)',
+      );
+    }
+    expect(link("http://example.com/docs")).not.toThrow();
+    expect(link("https://example.com/docs")).not.toThrow();
+  });
+
+  it("bounds the experimental_link label", () => {
+    const label = (text: string) => () =>
+      createFakePluginHost().bb.settings.define({
+        docs: {
+          type: "string",
+          label: "Docs",
+          experimental_link: { url: "https://example.com/docs", label: text },
+        },
+      });
+    expect(label("Open \u202eelpmas"), "bidi override").toThrow(
+      'invalid descriptor for setting "docs" (experimental_link.label)',
+    );
+    expect(label("x".repeat(200_000)), "oversize label").toThrow(
+      'invalid descriptor for setting "docs" (experimental_link.label)',
+    );
+    expect(label("Open the docs")).not.toThrow();
+    expect(label("Docs \ud83d\udcda")).not.toThrow();
+  });
+
+  it("refuses a secret setting that carries an experimental_link", () => {
+    const bb = () => createFakePluginHost().bb;
+    expect(() =>
+      bb().settings.define({
+        apiKey: {
+          type: "string",
+          label: "API key",
+          secret: true,
+          experimental_link: {
+            url: "https://anthropic-keys.evil.example/",
+            label: "Get your key",
+          },
+        },
+      }),
+    ).toThrow(
+      'invalid descriptor for setting "apiKey" (experimental_link): a secret setting cannot be experimental_link',
+    );
+    expect(() =>
+      bb().settings.define({
+        apiKey: {
+          type: "string",
+          label: "API key",
+          experimental_link: { url: "https://example.com/keys" },
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      bb().settings.define({
+        apiKey: { type: "string", label: "API key", secret: true },
+      }),
+    ).not.toThrow();
   });
 });
 

@@ -77,6 +77,8 @@ export type PluginSettingDescriptor =
       type: "string";
       label: string;
       description?: string;
+      /** Render an anchor after the description; not markdown. */
+      experimental_link?: { url: string; label?: string };
       /** Stored in a 0600 file under <dataDir>/plugins/<id>/secrets/, never in the db or sent to the frontend. */
       secret?: true;
       /**
@@ -92,6 +94,8 @@ export type PluginSettingDescriptor =
       type: "boolean";
       label: string;
       description?: string;
+      /** Render an anchor after the description; not markdown. */
+      experimental_link?: { url: string; label?: string };
       /** Synchronously validate without transforming a proposed value. */
       experimental_schema?: StandardSchemaV1<boolean, boolean>;
       default?: boolean;
@@ -100,6 +104,8 @@ export type PluginSettingDescriptor =
       type: "number";
       label: string;
       description?: string;
+      /** Render an anchor after the description; not markdown. */
+      experimental_link?: { url: string; label?: string };
       experimental_schema?: StandardSchemaV1<number, number>;
       default?: number;
     }
@@ -107,6 +113,8 @@ export type PluginSettingDescriptor =
       type: "select";
       label: string;
       description?: string;
+      /** Render an anchor after the description; not markdown. */
+      experimental_link?: { url: string; label?: string };
       options: string[];
       /** Display labels keyed by option value; options without one show the value itself. */
       experimental_optionLabels?: Record<string, string>;
@@ -118,6 +126,8 @@ export type PluginSettingDescriptor =
       type: "project";
       label: string;
       description?: string;
+      /** Render an anchor after the description; not markdown. */
+      experimental_link?: { url: string; label?: string };
       /** Synchronously validate without transforming a proposed value. */
       experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;

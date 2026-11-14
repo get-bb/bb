@@ -1,5 +1,12 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  type HTMLAttributes,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { PluginSettingExperimentalLink } from "@bb/server-contract";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 
 interface SettingsSectionProps {
   action?: ReactNode;
@@ -122,6 +129,7 @@ interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: ReactNode;
+  experimentalLink?: PluginSettingExperimentalLink;
   controlPlacement?: SettingsControlPlacement;
   children: ReactNode;
 }
@@ -138,11 +146,33 @@ export function SettingsWithControl({
   label,
   labelBadge,
   description,
+  experimentalLink,
   controlPlacement = "inline",
   children,
 }: SettingsWithControlProps) {
   const inline = controlPlacement === "inline";
   const trailing = controlPlacement === "trailing";
+  const annotated = Boolean(description) || experimentalLink !== undefined;
+  const navigation = useAppNavigationHost();
+  const experimentalLinkUrl = experimentalLink?.url;
+  const handleExperimentalLinkClick = (
+    event: ReactMouseEvent<HTMLAnchorElement>,
+  ) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      experimentalLinkUrl === undefined
+    ) {
+      return;
+    }
+    if (navigation.openUrl({ url: experimentalLinkUrl })) {
+      event.preventDefault();
+    }
+  };
   return (
     <div
       data-settings-anchor={label}
@@ -154,11 +184,11 @@ export function SettingsWithControl({
           trailing
             ? "flex flex-row justify-between gap-5"
             : "flex flex-col gap-2.5",
-          trailing && (description ? "items-start" : "items-center"),
+          trailing && (annotated ? "items-start" : "items-center"),
           inline &&
             "has-[[role=switch]]:flex-row has-[[role=switch]]:justify-between has-[[role=switch]]:gap-5 @min-[36rem]/settings:flex-row @min-[36rem]/settings:justify-between @min-[36rem]/settings:gap-5",
           inline &&
-            (description
+            (annotated
               ? "has-[[role=switch]]:items-start @min-[36rem]/settings:items-start"
               : "has-[[role=switch]]:items-center @min-[36rem]/settings:items-center"),
         )}
@@ -173,6 +203,19 @@ export function SettingsWithControl({
           {description ? (
             <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
               {description}
+            </p>
+          ) : null}
+          {experimentalLink ? (
+            <p className="mt-0.5 text-xs leading-snug">
+              <a
+                href={experimentalLink.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleExperimentalLinkClick}
+                className="break-words text-subtle-foreground underline underline-offset-2 [overflow-wrap:anywhere]"
+              >
+                {experimentalLink.label ?? experimentalLink.url}
+              </a>
             </p>
           ) : null}
         </div>

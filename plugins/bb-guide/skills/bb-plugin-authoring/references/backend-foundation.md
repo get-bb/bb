@@ -109,6 +109,42 @@ descriptors accept finite numbers and render a numeric input; use
 stored values, defaults, `get()`, and `bb plugin config` keep using the option
 values, and a label keyed by anything outside `options` is refused.
 
+Any descriptor accepts `experimental_link: { url, label? }` — a link rendered
+as an anchor under the setting's description, so docs a user must open are one
+click away instead of dead text. It is not markdown and the description itself
+is never autolinked.
+
+The URL must be `http` or `https`, at most 2048 characters, with no whitespace
+or control characters and no embedded credentials (`user:pass@` is refused).
+`mailto:`, `file:`, `data:` and custom schemes are rejected, so link to a page
+that explains the value rather than to the protocol handler itself. `label` is
+optional, at most 120 characters, and must not contain control characters or
+Unicode bidi overrides.
+
+**Cannot be combined with `secret`.** A descriptor carrying both
+`secret: true` and `experimental_link` is refused at define time with
+`a secret setting cannot be experimental_link`, for the same reason as a
+multi-line secret: the anchor would sit directly above a credential input, and
+an attacker would choose its text and destination.
+
+The anchor appears under the description with `label` as its text, or the raw
+URL when `label` is omitted, and it opens like any other link in bb — a new tab
+in the browser, and through the desktop app's link preference when there is
+one. `bb plugin config <id>` does not print it, so a linked setting looks the
+same in the terminal as one without a link.
+
+```ts
+account: {
+  type: "string",
+  label: "Account id",
+  description: "Copy it from the dashboard.",
+  experimental_link: {
+    url: "https://example.com/dashboard",
+    label: "Open dashboard",
+  },
+}
+```
+
 `experimental_schema` accepts a synchronous, non-transforming Standard Schema
 validator; Zod schemas qualify. It runs on the server for settings-page
 autosaves, `bb plugin config`, `experimental_set`, and fake-host writes. The

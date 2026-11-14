@@ -4,6 +4,7 @@ import {
   pluginMarketplaceCategorySchema,
   pluginMarketplaceCollectionIdSchema,
   pluginMarketplaceCollectionPluginIdSchema,
+  pluginSettingLinkSchema,
 } from "@bb/domain";
 import { z } from "zod";
 
@@ -392,9 +393,15 @@ export type PluginReloadResponse = z.infer<typeof pluginReloadResponseSchema>;
 export const pluginRemoveResponseSchema = z.object({ ok: z.literal(true) });
 export type PluginRemoveResponse = z.infer<typeof pluginRemoveResponseSchema>;
 
+export const pluginSettingExperimentalLinkSchema = pluginSettingLinkSchema;
+export type PluginSettingExperimentalLink = z.infer<
+  typeof pluginSettingExperimentalLinkSchema
+>;
+
 const pluginSettingBaseSchema = {
   label: z.string().min(1),
   description: z.string().min(1).optional(),
+  experimental_link: pluginSettingExperimentalLinkSchema.optional(),
 };
 
 export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
@@ -406,7 +413,15 @@ export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
       experimental_multiline: z.boolean().optional(),
       default: z.string().optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (descriptor) =>
+        !(descriptor.secret === true && descriptor.experimental_link),
+      {
+        message: "a secret setting cannot be experimental_link",
+        path: ["experimental_link"],
+      },
+    ),
   z
     .object({
       ...pluginSettingBaseSchema,
