@@ -68,6 +68,7 @@ import {
 } from "./pending-interaction-validation.js";
 import { emitPluginInteractionPending } from "../plugins/plugin-thread-events.js";
 import { requireConnectedHostSession } from "../lib/entity-lookup.js";
+import { requestChildThreadNeedsAttentionNotification } from "../threads/child-thread-notifications.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
   isServerMoveFrozen,
@@ -601,6 +602,13 @@ export class PendingInteractionLifecycle {
         threadId: interaction.threadId,
       });
       emitPluginInteractionPending(thread, interaction);
+      requestChildThreadNeedsAttentionNotification(
+        { ...this.deps, pendingInteractions: this },
+        {
+          blockerSummary: `Pending plugin request: ${args.title}\nInteraction: ${interaction.id}`,
+          childThreadId: thread.id,
+        },
+      );
     } catch (error) {
       try {
         setPendingInteractionInterrupted(this.deps.db, {

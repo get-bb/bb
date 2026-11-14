@@ -28,6 +28,8 @@ import {
   systemMessageKindForTemplate,
 } from "./system-message-kind.js";
 import { getTurnFinalOutput } from "./thread-data.js";
+import { deferAfterResponse } from "../lib/response-deferral.js";
+import { isParentNotifiableChildThread } from "./thread-parent.js";
 
 export type ChildThreadNotificationSource = ParentSystemThreadMentionSource;
 
@@ -85,6 +87,41 @@ interface QueueChildThreadNeedsAttentionNotificationArgs {
   blockerSummary: string | null;
   childThread: ChildThreadNotificationSource;
   parentThreadId: string;
+}
+
+interface RequestChildThreadNeedsAttentionNotificationArgs {
+  blockerSummary: string | null;
+  childThreadId: string;
+}
+
+export function requestChildThreadNeedsAttentionNotification(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: RequestChildThreadNeedsAttentionNotificationArgs,
+): void {
+  const childThread = getThread(deps.db, args.childThreadId);
+  if (
+    !childThread ||
+    !isParentNotifiableChildThread(childThread, "needs-attention")
+  ) {
+    return;
+  }
+  const parentThreadId = childThread.parentThreadId;
+
+  deferAfterResponse({
+    config: deps.config,
+    context: {
+      childThreadId: childThread.id,
+      parentThreadId,
+    },
+    logger: deps.logger,
+    name: "Child thread needs-attention notification",
+    work: () =>
+      queueChildThreadNeedsAttentionNotificationBestEffort(deps, {
+        blockerSummary: args.blockerSummary,
+        childThread,
+        parentThreadId,
+      }),
+  });
 }
 
 const CHILD_THREAD_TURN_NOTIFICATION_BATCH_DELAY_MS = 2_000;

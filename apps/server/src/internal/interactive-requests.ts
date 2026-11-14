@@ -12,24 +12,17 @@ import {
   isUserQuestionPendingInteractionPayload,
   parseExtensionKind,
 } from "@bb/domain";
-import { getThread, hasStoredTurnStarted } from "@bb/db";
+import { hasStoredTurnStarted } from "@bb/db";
 import { sliceUtf16Head } from "@bb/text-utils";
-import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
-import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
   requireThreadEnvironment,
   requireThreadEnvironmentAllowingDestroyed,
 } from "../services/lib/entity-lookup.js";
-import { queueChildThreadNeedsAttentionNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
+import { requestChildThreadNeedsAttentionNotification } from "../services/threads/child-thread-notifications.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
-
-interface RequestChildThreadNeedsAttentionNotificationArgs {
-  blockerSummary: string | null;
-  childThreadId: string;
-}
 
 const CHILD_THREAD_BLOCKER_SUMMARY_MAX_LINES = 4;
 const CHILD_THREAD_BLOCKER_SUMMARY_MAX_CHARS = 700;
@@ -105,36 +98,6 @@ export function buildChildThreadBlockerSummary(
       ...details,
     ].join("\n"),
   );
-}
-
-function requestChildThreadNeedsAttentionNotification(
-  deps: AppDeps,
-  args: RequestChildThreadNeedsAttentionNotificationArgs,
-): void {
-  const childThread = getThread(deps.db, args.childThreadId);
-  if (
-    !childThread ||
-    !isParentNotifiableChildThread(childThread, "needs-attention")
-  ) {
-    return;
-  }
-  const parentThreadId = childThread.parentThreadId;
-
-  deferAfterResponse({
-    config: deps.config,
-    context: {
-      childThreadId: childThread.id,
-      parentThreadId,
-    },
-    logger: deps.logger,
-    name: "Child thread needs-attention notification",
-    work: () =>
-      queueChildThreadNeedsAttentionNotificationBestEffort(deps, {
-        blockerSummary: args.blockerSummary,
-        childThread,
-        parentThreadId,
-      }),
-  });
 }
 
 export function registerInternalInteractiveRequestRoutes(
