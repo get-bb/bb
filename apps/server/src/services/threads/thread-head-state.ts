@@ -37,7 +37,7 @@ import {
   isCompactionOfferEnabled,
   withCompactionOffer,
 } from "./compaction-offer.js";
-import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
+import { decodeStoredEventRow } from "./timeline-projection.js";
 
 export interface ThreadHeadStateOptions {
   compactionOfferEnabled: boolean;
@@ -60,14 +60,15 @@ export function resolveThreadHeadStateOptions(
   };
 }
 
+export type StoredEventRowDecoder = (
+  row: StoredEventRow,
+) => ThreadEventWithMeta;
+
 function decodeRows(
-  db: DbConnection,
   rows: readonly StoredEventRow[],
+  decode: StoredEventRowDecoder = decodeStoredEventRow,
 ): ThreadEventWithMeta[] {
-  return rows.map((row) => ({
-    event: decodeStoredEventRowCached(db, row),
-    meta: { id: row.id, seq: row.sequence, createdAt: row.createdAt },
-  }));
+  return rows.map(decode);
 }
 
 function listLatestStateRows(
@@ -100,7 +101,6 @@ export function listOpenTurnRequestRows(
     threadIds: [...threadIds],
   });
   const requestKeys: ThreadClientTurnRequestKey[] = decodeRows(
-    db,
     acceptedRows,
   ).flatMap(({ event }) =>
     event.type === "turn/input/accepted"
@@ -122,6 +122,7 @@ export function readThreadContextWindowUsage(
   args: {
     atOrBeforeSequence?: number;
     compactionOfferEnabled: boolean;
+    decode?: StoredEventRowDecoder;
     threadId: string;
   },
 ): ThreadContextWindowUsage | null {
@@ -132,11 +133,11 @@ export function readThreadContextWindowUsage(
     }) ?? 0;
   const usage = extractThreadContextWindowUsage(
     decodeRows(
-      db,
       listContextWindowUsageRows(db, {
         threadId: args.threadId,
         sequenceStart,
       }),
+      args.decode,
     ),
   );
   return usage === null
@@ -154,13 +155,14 @@ export function readThreadHeadState(
   thread: ThreadHeadStateThread,
   options: ThreadHeadStateOptions,
   atOrBeforeSequence?: number,
+  decode: StoredEventRowDecoder = decodeStoredEventRow,
 ): ThreadHeadStateResponse {
   const decodeVisible = (rows: readonly StoredEventRow[]) =>
     decodeRows(
-      db,
       atOrBeforeSequence === undefined
         ? rows
         : rows.filter((row) => row.sequence <= atOrBeforeSequence),
+      decode,
     );
   const stateEvents = decodeVisible(
     listLatestStateRows(db, thread.id, options.extensionStateKinds),
@@ -189,6 +191,7 @@ export function readThreadHeadState(
     contextWindowUsage: readThreadContextWindowUsage(db, {
       atOrBeforeSequence,
       compactionOfferEnabled: options.compactionOfferEnabled,
+      decode,
       threadId: thread.id,
     }),
     extensionStates: extractThreadExtensionStates(

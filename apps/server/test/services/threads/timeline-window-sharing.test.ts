@@ -14,7 +14,7 @@ import {
   type ThreadTimelineWindowRequest,
 } from "../../../src/services/threads/thread-timeline-windows.js";
 import type { ThreadTimelineBuildProfile } from "../../../src/services/threads/timeline.js";
-import { clearTimelineOrderingContextCache } from "../../../src/services/threads/timeline-context-order.js";
+import { clearTimelineProjections } from "../../../src/services/threads/timeline-projection.js";
 import { seedEvent, seedThreadFixture } from "../../helpers/seed.js";
 import {
   withTestHarness,
@@ -38,6 +38,13 @@ vi.mock("../../../src/services/threads/timeline.js", async (importOriginal) => {
     ) => {
       const result = original.buildThreadTimelineWithProfile(...args);
       builds.profiles.push(result.profile);
+      return result;
+    },
+    readThreadTimelineWindow: (
+      ...args: Parameters<typeof original.readThreadTimelineWindow>
+    ) => {
+      const result = original.readThreadTimelineWindow(...args);
+      if (result.built !== null) builds.profiles.push(result.built.profile);
       return result;
     },
   };
@@ -93,7 +100,7 @@ function freshRead(
   request: ThreadTimelineWindowRequest,
 ): ThreadTimelineResponse {
   clearCrossBuildTimelineCaches(harness.deps.db);
-  clearTimelineOrderingContextCache(harness.deps.db);
+  clearTimelineProjections(harness.deps.db);
   return full(
     createThreadTimelineWindows(harness.deps).read(
       requireThread(harness, threadId),

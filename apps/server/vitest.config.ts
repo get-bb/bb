@@ -9,7 +9,7 @@ export default defineWorkspaceTestConfig({
     testTimeout: 15_000,
     globalSetup: ["test/setup/migrated-db-template.ts"],
     setupFiles: [
-      "test/setup/stored-event-decode-freeze.ts",
+      "test/setup/timeline-projection-freeze.ts",
       "test/setup/warm-test-harness.ts",
       "test/setup/query-plan-guard.ts",
     ],

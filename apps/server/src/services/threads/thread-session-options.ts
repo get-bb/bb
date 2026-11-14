@@ -15,7 +15,7 @@ import {
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
-import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
+import { parseStoredEvent } from "./thread-data.js";
 import { appendThreadEvent } from "./thread-events.js";
 
 interface ThreadStateSnapshot {
@@ -41,7 +41,7 @@ function readLatestThreadState(
     threadIds: [threadId],
     kind,
   })) {
-    const event = decodeStoredEventRowCached(db, row);
+    const event = parseStoredEvent(row);
     if (event.type === "thread/extensionState/updated" && event.kind === kind) {
       return {
         payload: event.payload,

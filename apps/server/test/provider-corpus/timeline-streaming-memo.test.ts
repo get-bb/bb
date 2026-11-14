@@ -14,7 +14,7 @@ import type { Thread, ThreadEventType } from "@bb/domain";
 import { turnScope } from "@bb/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import { clearTimelineOrderingContextCache } from "../../src/services/threads/timeline-context-order.js";
+import { clearTimelineProjections } from "../../src/services/threads/timeline-projection.js";
 import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 import {
   TIMELINE_VARIANTS,
@@ -179,7 +179,7 @@ describe.skipIf(!available)("provider corpus streaming selection memo", () => {
               };
               const warm = buildRouteTimelinePage({ ...args, db: loaded.db });
               clearCrossBuildTimelineCaches(clone);
-              clearTimelineOrderingContextCache(clone);
+              clearTimelineProjections(clone);
               const cold = buildRouteTimelinePage({ ...args, db: clone });
               expect(JSON.stringify(warm.response)).toBe(
                 JSON.stringify(cold.response),

@@ -21,17 +21,14 @@ import {
 } from "@bb/server-contract";
 import { pruneThreadEventHistoryBestEffort } from "../../src/services/system/event-pruning.js";
 import { threadPruningSweep } from "../../src/services/system/thread-pruning-sweep.js";
-import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
 import {
   createThreadTimelineWindows,
   type ThreadTimelineWindowRequest,
 } from "../../src/services/threads/thread-timeline-windows.js";
 import {
-  clearTimelineOrderingContextCache,
-  getTimelineGroupingContext,
-} from "../../src/services/threads/timeline-context-order.js";
-import { clearTimelineProjectionFolds } from "../../src/services/threads/timeline-projection-fold.js";
-import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
+  clearTimelineProjections,
+  peekTimelineProjection,
+} from "../../src/services/threads/timeline-projection.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -152,10 +149,7 @@ function freshLatest(
   harness: TestAppHarness,
   threadId: string,
 ): ThreadTimelineResponse {
-  clearTimelineSelectionMemo(harness.db);
-  clearTimelineProjectionFolds(harness.db);
-  clearTimelineOrderingContextCache(harness.db);
-  clearStoredEventDecodeCache(harness.db);
+  clearTimelineProjections(harness.db);
   const thread = getThread(harness.db, threadId);
   if (thread === null) throw new Error("missing thread");
   return full(
@@ -310,7 +304,7 @@ describe("pruning invalidation", () => {
     });
   });
 
-  it("keeps other threads' grouping contexts when one thread's history is rewritten", async () => {
+  it("keeps other threads' timeline projections when one thread's history is rewritten", async () => {
     await withTestHarness(async (harness) => {
       const rewritten = createThreadScript(harness);
       const kept = createThreadScript(harness);
@@ -318,29 +312,24 @@ describe("pruning invalidation", () => {
         const turnId = script.startTurn(1);
         script.finishTurn(turnId, 1);
       }
-      createThreadTimelineWindows(harness.deps);
-      const args = (thread: Thread) => ({
-        maxSeq: 6,
-        sequenceStart: 0,
-        threadId: thread.id,
-      });
-      const keptContext = getTimelineGroupingContext(
-        harness.db,
-        args(kept.thread),
-      );
-      const rewrittenContext = getTimelineGroupingContext(
-        harness.db,
-        args(rewritten.thread),
-      );
+      const windows = createThreadTimelineWindows(harness.deps);
+      for (const script of [rewritten, kept]) {
+        windows.read(script.thread, LATEST, undefined);
+      }
+      const keptProjection = peekTimelineProjection(harness.db, kept.thread.id);
+      expect(keptProjection).toBeDefined();
+      expect(
+        peekTimelineProjection(harness.db, rewritten.thread.id),
+      ).toBeDefined();
 
       harness.deps.hub.notifyThread(rewritten.thread.id, ["history-rewritten"]);
 
-      expect(getTimelineGroupingContext(harness.db, args(kept.thread))).toBe(
-        keptContext,
+      expect(peekTimelineProjection(harness.db, kept.thread.id)).toBe(
+        keptProjection,
       );
       expect(
-        getTimelineGroupingContext(harness.db, args(rewritten.thread)),
-      ).not.toBe(rewrittenContext);
+        peekTimelineProjection(harness.db, rewritten.thread.id),
+      ).toBeUndefined();
     });
   });
 

@@ -27,9 +27,7 @@ import {
 import type { ThreadTimelinePageRequest } from "../../src/services/threads/timeline-pagination.js";
 import { resolveProviderPlanCommand } from "../../src/services/providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
-import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
-import { clearTimelineProjectionFolds } from "../../src/services/threads/timeline-projection-fold.js";
+import { clearTimelineProjections } from "../../src/services/threads/timeline-projection.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -201,9 +199,7 @@ export function buildRouteTimelinePage(
 }
 
 export function clearCrossBuildTimelineCaches(db: DbConnection): void {
-  clearStoredEventDecodeCache(db);
-  clearTimelineSelectionMemo(db);
-  clearTimelineProjectionFolds(db);
+  clearTimelineProjections(db);
 }
 
 export function selectionWasReused(
@@ -211,7 +207,7 @@ export function selectionWasReused(
 ): boolean {
   const stages = new Set(profile.stageTimings.map((timing) => timing.stage));
   return (
-    stages.has("selection-memo-lookup") &&
+    profile.pageKind === "latest" &&
     !stages.has("group-context-query") &&
     !stages.has("ordering-context-query")
   );

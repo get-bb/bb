@@ -17,16 +17,13 @@ import {
   threads,
 } from "@bb/db";
 import { pruneThreadEventHistory } from "../../../src/services/system/event-pruning.js";
-import {
-  clearTimelineOrderingContextCache,
-  getTimelineGroupingContext,
-} from "../../../src/services/threads/timeline-context-order.js";
+import { getTimelineGroupingContext } from "../../../src/services/threads/timeline-context-order.js";
 import type { ThreadTimelinePageRequest } from "../../../src/services/threads/timeline-pagination.js";
 import {
-  countTimelineSelectionMemoEntries,
-  TIMELINE_SELECTION_MEMO_MAX_ENTRIES,
-  TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES,
-} from "../../../src/services/threads/timeline-selection-memo.js";
+  listTimelineProjections,
+  MAX_IDLE_TIMELINE_PROJECTIONS,
+  MAX_TIMELINE_PROJECTIONS,
+} from "../../../src/services/threads/timeline-projection.js";
 import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
 import {
   appendRows as append,
@@ -594,7 +591,6 @@ function expectWarmEqualsCold(
     });
   const warm = build(testThread.db);
   clearCrossBuildTimelineCaches(testThread.coldDb);
-  clearTimelineOrderingContextCache(testThread.coldDb);
   const cold = build(testThread.coldDb);
   expect(selectionWasReused(cold.profile)).toBe(false);
   expect(JSON.stringify(warm.response), label).toBe(
@@ -608,6 +604,33 @@ function expectWarmEqualsCold(
   expect(profileSummary(warm), label).toEqual(profileSummary(cold));
   return warm;
 }
+
+function captureStatementSql(db: TestThread["db"], run: () => void): string[] {
+  const captured: string[] = [];
+  const raw = db.$client;
+  const originalPrepare = raw.prepare.bind(raw);
+  Object.defineProperty(raw, "prepare", {
+    configurable: true,
+    writable: true,
+    value: (source: string) => {
+      captured.push(source);
+      return originalPrepare(source);
+    },
+  });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(raw, "prepare", {
+      configurable: true,
+      writable: true,
+      value: originalPrepare,
+    });
+  }
+  return captured;
+}
+
+const ORDERING_HISTORY_SQL = "'$.clientRequestId'";
+const PARENTED_BOUNDARY_SQL = "nested_history";
 
 function walkOlderPages(
   testThread: TestThread,
@@ -731,7 +754,7 @@ function pruneUsageSnapshots(testThread: TestThread): void {
   throw new Error("Usage pruning did not finish a cycle");
 }
 
-describe("latest timeline selection memo", () => {
+describe("latest timeline projection", () => {
   it("matches a cold build over randomized streaming, out-of-order deltas, rewrites, prunes and context clears", () => {
     let reused = 0;
     let rebuilt = 0;
@@ -896,6 +919,57 @@ describe("latest timeline selection memo", () => {
       ]);
       const completed = expectWarmEqualsCold(testThread, args, "completed");
       expect(selectionWasReused(completed.profile)).toBe(true);
+    });
+  });
+
+  it("extends the window without re-reading its ordering history", () => {
+    withTestThread((testThread) => {
+      const args = latestArgs("default");
+      append(testThread, [
+        ...startTurn(initialState()),
+        messageStarted("turn-1", "message-1"),
+        agentToolCall("item/started", "turn-1", "agent-1"),
+      ]);
+      expectWarmEqualsCold(testThread, args, "initial");
+      const steps: { label: string; parented: boolean; rows: RowSpec[] }[] = [
+        {
+          label: "deltas",
+          parented: false,
+          rows: [
+            messageDelta("turn-1", "message-1", "Hello"),
+            messageDelta("turn-1", "message-1", " world\n"),
+          ],
+        },
+        {
+          label: "root tool calls",
+          parented: false,
+          rows: [
+            agentToolCall("item/started", "turn-1", "agent-2"),
+            agentToolCall("item/completed", "turn-1", "agent-2"),
+          ],
+        },
+        {
+          label: "parented child",
+          parented: true,
+          rows: [childCommand("turn-1", "child-1", "agent-1")],
+        },
+      ];
+      for (const step of steps) {
+        append(testThread, step.rows);
+        let warm: BuiltTimelinePage | undefined;
+        const statements = captureStatementSql(testThread.db, () => {
+          warm = expectWarmEqualsCold(testThread, args, step.label);
+        });
+        expect(selectionWasReused(warm!.profile), step.label).toBe(true);
+        expect(
+          statements.filter((source) => source.includes(ORDERING_HISTORY_SQL)),
+          step.label,
+        ).toEqual([]);
+        expect(
+          statements.some((source) => source.includes(PARENTED_BOUNDARY_SQL)),
+          step.label,
+        ).toBe(step.parented);
+      }
     });
   });
 
@@ -1248,9 +1322,8 @@ describe("latest timeline selection memo", () => {
         "idle",
       );
       expect(selectionWasReused(completed.profile)).toBe(true);
-
       const idleThreads = Array.from(
-        { length: TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES + 2 },
+        { length: MAX_IDLE_TIMELINE_PROJECTIONS + 2 },
         () =>
           createThread(testThread.db, noopNotifier, {
             projectId: testThread.projectId,
@@ -1279,8 +1352,8 @@ describe("latest timeline selection memo", () => {
         registry,
         thread: active,
       });
-      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(
-        TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES + 1,
+      expect(listTimelineProjections(testThread.db)).toHaveLength(
+        MAX_IDLE_TIMELINE_PROJECTIONS + 1,
       );
     });
   });
@@ -1301,17 +1374,13 @@ describe("latest timeline selection memo", () => {
         "second epoch",
       );
       expect(second.response.contextBoundarySeq).not.toBeNull();
-      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(1);
+      expect(listTimelineProjections(testThread.db)).toHaveLength(1);
     });
   });
 
-  it("bounds the memo to its entry cap across threads", () => {
+  it("bounds the projections to their cap across threads", () => {
     withTestThread((testThread) => {
-      for (
-        let index = 0;
-        index < TIMELINE_SELECTION_MEMO_MAX_ENTRIES + 4;
-        index += 1
-      ) {
+      for (let index = 0; index < MAX_TIMELINE_PROJECTIONS + 4; index += 1) {
         const thread = createThread(testThread.db, noopNotifier, {
           projectId: testThread.projectId,
           providerId: "codex",
@@ -1325,8 +1394,8 @@ describe("latest timeline selection memo", () => {
           thread,
         });
       }
-      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(
-        TIMELINE_SELECTION_MEMO_MAX_ENTRIES,
+      expect(listTimelineProjections(testThread.db)).toHaveLength(
+        MAX_TIMELINE_PROJECTIONS,
       );
     });
   });

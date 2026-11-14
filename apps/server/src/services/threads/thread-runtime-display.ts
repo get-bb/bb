@@ -38,7 +38,7 @@ import {
   type ThreadMessageEditPolicyDeps,
 } from "./thread-message-edit-policy.js";
 import { listOpenTurnRequestRows } from "./thread-head-state.js";
-import { toThreadEventWithMeta } from "./timeline.js";
+import { decodeStoredEventRow } from "./timeline-projection.js";
 import { intendedThreadHostId } from "./dispatch-attempt.js";
 
 type ThreadRuntimeDisplayHub = Pick<
@@ -401,7 +401,7 @@ function buildThreadPromptBannerActivityByThreadId(
   const eventsByThreadId = new Map<string, ThreadEventWithMeta[]>();
   for (const row of rows) {
     const threadEvents = eventsByThreadId.get(row.threadId);
-    const event = toThreadEventWithMeta(row);
+    const event = decodeStoredEventRow(row);
     if (threadEvents) {
       threadEvents.push(event);
     } else {
@@ -431,7 +431,7 @@ export function threadHasGoal(
     threadIds: [thread.id],
     kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
   })
-    .map(toThreadEventWithMeta)
+    .map(decodeStoredEventRow)
     .some(
       ({ event }) =>
         event.type === "thread/extensionState/updated" &&

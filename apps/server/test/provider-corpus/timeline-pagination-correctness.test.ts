@@ -1,4 +1,7 @@
-import { clearTimelineOrderingContextCache } from "../../src/services/threads/timeline-context-order.js";
+import {
+  clearTimelineProjections,
+  decodeStoredEventRow,
+} from "../../src/services/threads/timeline-projection.js";
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -28,7 +31,6 @@ import { loadCorpusThreadIntoDb } from "./corpus-harness.js";
 import {
   buildThreadTimelineWithProfile,
   readRetainedOutputPreviews,
-  toThreadEventWithMeta,
   withRetainedOutputPreview,
 } from "../../src/services/threads/timeline.js";
 import { shortenTimelineResponseOutputs } from "../../src/services/threads/timeline-output-shortening.js";
@@ -82,7 +84,7 @@ describe.skipIf(!corpusAvailable())(
             maxInlineOutputChars: 32_000,
             excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
             excludeDiagnosticEvents: true,
-          }).map(toThreadEventWithMeta);
+          }).map(decodeStoredEventRow);
           const canonical = buildThreadTimelineFromEvents({
             events: compactThreadTimelineSummaryEvents(events),
             contextWindowEvents: [],
@@ -168,7 +170,7 @@ describe.skipIf(!corpusAvailable())(
             );
           const expectedIds = new Set(expected.map((row) => row.id));
           const actualIds = new Set(rows.map((row) => row.id));
-          clearTimelineOrderingContextCache(db);
+          clearTimelineProjections(db);
           const { profile } = buildThreadTimelineWithProfile(db, thread, {
             completedTurnDisplay: "collapse",
             eventBudget: 1_500,

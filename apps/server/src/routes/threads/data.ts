@@ -32,7 +32,6 @@ import { toThreadQueuedMessage } from "../../services/threads/thread-queued-mess
 import { isCompactionOfferEnabled } from "../../services/threads/compaction-offer.js";
 import {
   readThreadContextWindowUsage,
-  readThreadHeadState,
   resolveThreadHeadStateOptions,
 } from "../../services/threads/thread-head-state.js";
 import {
@@ -40,6 +39,7 @@ import {
   getThreadMessage,
   buildTimelineTurnSummaryDetails,
   loadThreadConversationOutline,
+  readProjectedThreadHeadState,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
 } from "../../services/threads/timeline.js";
@@ -227,7 +227,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   get(routes.headState, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
-      readThreadHeadState(
+      readProjectedThreadHeadState(
         deps.db,
         thread,
         resolveThreadHeadStateOptions(deps, thread.providerId),
