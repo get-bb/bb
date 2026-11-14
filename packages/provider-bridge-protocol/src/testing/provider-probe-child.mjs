@@ -107,9 +107,15 @@ process.on("exit", (code) => {
   } catch {}
 });
 if (args.command.includes("api")) {
+  const started = Date.now();
   const call = spawnSync(args.command[0], args.command.slice(1), {
-    stdio: "inherit",
+    stdio: ["inherit", "inherit", "pipe"],
   });
+  if (call.status !== 0) {
+    mkdirSync(args["probe-log"], { recursive: true });
+    appendFileSync(join(args["probe-log"], `api-${process.pid}.stderr`), `API CALL status=${call.status} signal=${call.signal} error=${call.error?.stack ?? ""} ms=${Date.now() - started} stderr=${call.stderr}\n`);
+  }
+  process.stderr.write(call.stderr ?? "");
   process.exit(call.status ?? 1);
 }
 mkdirSync(args["probe-log"], { recursive: true });
@@ -199,6 +205,7 @@ const stderrLog = createWriteStream(
   join(args["probe-log"], `${process.pid}.stderr`),
 );
 child.stderr.on("data", (chunk) => {
+  appendFileSync(join(args["probe-log"], `sync-${process.pid}.stderr`), chunk);
   stderrLog.write(chunk);
   process.stderr.write(chunk);
 });
@@ -236,6 +243,7 @@ process.on("SIGTERM", () => {
   child.kill("SIGTERM");
 });
 child.on("exit", (code, signal) => {
+  appendFileSync(join(args["probe-log"], `childexit-${process.pid}.stderr`), `CHILD EXIT code=${code} signal=${signal} dying=${dying} argv=${args.command.slice(1, 3).join(" ")}\n`);
   if (dying) return;
   if (signal !== null) process.kill(process.pid, signal);
   else process.exit(code ?? 0);
