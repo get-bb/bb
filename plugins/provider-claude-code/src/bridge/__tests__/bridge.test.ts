@@ -1860,6 +1860,21 @@ describe("bridge", () => {
           messageIncludes: "bb's workspace sandbox allows work inside",
         },
       },
+      {
+        id: "hook-ask-empty-reason",
+        name: "auto-deny with an empty hook reason keeps a non-empty message",
+        policy: WORKSPACE_AUTO_DENY_POLICY,
+        toolName: "Bash",
+        decisionReason: "",
+        input: {
+          command: "echo hi",
+          description: "Permission boundary test",
+        },
+        expected: {
+          behavior: "deny",
+          messageIncludes: "bb's workspace sandbox allows work inside",
+        },
+      },
     ] satisfies CanUseToolPolicyCase[];
 
     it.each(policyCases)("$name", async (testCase) => {

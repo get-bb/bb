@@ -2261,7 +2261,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
           : buildReadonlyDenialMessage();
       return {
         behavior: "deny",
-        message: options.decisionReason ?? policyMessage,
+        message: options.decisionReason?.trim() || policyMessage,
         toolUseID: options.toolUseID,
       };
     }
