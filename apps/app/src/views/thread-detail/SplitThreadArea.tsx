@@ -20,7 +20,8 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { UNSAFE_NavigationContext, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { useLatestRoutePathname } from "@/lib/latest-route-pathname";
 import { useRouteState } from "@/hooks/useRouteState";
 import {
   getThreadRoutePath,
@@ -265,17 +266,6 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
   return { captureVisibleScrollPositions, workspaceRef };
 }
 
-function latestRoutePathname(navigator: object): string | null {
-  if (!("location" in navigator)) return null;
-  const location = navigator.location;
-  return typeof location === "object" &&
-    location !== null &&
-    "pathname" in location &&
-    typeof location.pathname === "string"
-    ? location.pathname
-    : null;
-}
-
 export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
   return (
     <ThreadDetailWorkerPoolProvider>
@@ -289,7 +279,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const splitWorkspaceActive = useSplitWorkspaceActive();
   const navigate = useImmediateRouteNavigate();
   const store = useStore();
-  const { navigator } = useContext(UNSAFE_NavigationContext);
+  const readLatestRoutePathname = useLatestRoutePathname();
   const committedPathname = useLocation().pathname;
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
@@ -313,7 +303,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (currentContent === null) {
       return;
     }
-    const latestPathname = latestRoutePathname(navigator);
+    const latestPathname = readLatestRoutePathname();
     setLayout((previous) =>
       previous !== null &&
       latestPathname !== null &&
@@ -326,7 +316,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         ? previous
         : reconcileLayoutForContent(previous, currentContent),
     );
-  }, [committedPathname, currentContent, navigator, setLayout]);
+  }, [committedPathname, currentContent, readLatestRoutePathname, setLayout]);
 
   const layout: SplitLayout | null =
     storedLayout ??
