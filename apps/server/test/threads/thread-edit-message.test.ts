@@ -753,6 +753,47 @@ describe("editThreadMessage", () => {
     });
   });
 
+  it("keeps an edit refused as a competing turn out of the running turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness);
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-competing",
+          expectedRequestSequence: 7,
+          input: [{ type: "text", text: "Replacement message", mentions: [] }],
+        },
+      });
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-rewind",
+      });
+      await editPromise;
+      const replacementStart = await waitForQueuedCommand(
+        harness,
+        (queued) =>
+          queued.command.type === "thread.start" &&
+          queued.command.threadId === thread.id,
+      );
+
+      await reportQueuedCommandError(harness, replacementStart, {
+        errorCode: "competing_turn",
+        errorMessage: `Refusing to start a competing turn for thread "${thread.id}" while another turn is active or starting`,
+      });
+
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([]);
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toEqual([]);
+    });
+  });
+
   it("returns the committed result to an overlapping retry of the same operation", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);

@@ -64,6 +64,7 @@ import {
   type ThreadLifecycleEvent,
   type ThreadStatus,
   clientTurnRequestIdSchema,
+  type ClientTurnRequestId,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -1014,11 +1015,20 @@ export function settleThreadStartCommandResult(
   return { postCommitActions };
 }
 
+const startRequestsThatMayJoinARunningTurn = new Set<ClientTurnRequestId>();
+
+export function allowStartToJoinARunningTurn(
+  requestId: ClientTurnRequestId,
+): void {
+  startRequestsThatMayJoinARunningTurn.add(requestId);
+}
+
 function missedItsTurn(args: SettleTurnSubmitCommandResultArgs): boolean {
   if (args.report.ok) return false;
   if (args.command.target.mode === "start") {
     return (
       args.report.errorCode === COMPETING_TURN_ERROR_CODE &&
+      startRequestsThatMayJoinARunningTurn.has(args.command.requestId) &&
       getActiveTurnId(args.deps, args.command.threadId) !== null
     );
   }
@@ -1070,6 +1080,7 @@ export function settleTurnSubmitCommandResult(
   args: SettleTurnSubmitCommandResultArgs,
 ): CommandResultSideEffectsResult {
   const redelivered = redeliverRequestThatMissedItsTurn(args);
+  startRequestsThatMayJoinARunningTurn.delete(args.command.requestId);
   if (redelivered !== null) {
     return redelivered;
   }

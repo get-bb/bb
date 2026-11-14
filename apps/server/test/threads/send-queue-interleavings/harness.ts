@@ -31,36 +31,39 @@ import {
   type SendMessageRequest,
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "../../src/errors.js";
-import { requestQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
+import { ApiError } from "../../../src/errors.js";
+import { requestQueuedMessageDispatch } from "../../../src/services/threads/queued-message-dispatch.js";
 import {
   createQueuedMessageForThread,
   sendQueuedMessageNow,
-} from "../../src/services/threads/queued-messages.js";
+} from "../../../src/services/threads/queued-messages.js";
 import {
   setPluginHookProvider,
   type PluginHookRegistration,
-} from "../../src/services/plugins/plugin-hook-registry.js";
-import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
-import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
-import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
+} from "../../../src/services/plugins/plugin-hook-registry.js";
+import { stopThreadForCurrentState } from "../../../src/services/threads/thread-lifecycle.js";
+import { retryFailedTurn } from "../../../src/services/threads/turn-retry.js";
+import { acceptThreadSendRequest } from "../../../src/services/threads/thread-send-request.js";
 import {
   onDaemonSocketClose,
   onDaemonSocketOpen,
-} from "../../src/ws/daemon-protocol.js";
-import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
-import { availableModelFixture } from "../helpers/available-models.js";
-import { internalAuthHeaders } from "../helpers/commands.js";
-import { EMPTY_WORKSPACE_AGENT_CONTEXT } from "../helpers/host-rpc.js";
-import { textInput } from "../helpers/prompt-input.js";
+} from "../../../src/ws/daemon-protocol.js";
+import { HostOnlineRpcTimeoutError } from "../../../src/ws/hub.js";
+import { availableModelFixture } from "../../helpers/available-models.js";
+import { internalAuthHeaders } from "../../helpers/commands.js";
+import { EMPTY_WORKSPACE_AGENT_CONTEXT } from "../../helpers/host-rpc.js";
+import { textInput } from "../../helpers/prompt-input.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
   seedThreadRuntimeState,
-} from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+} from "../../helpers/seed.js";
+import {
+  withTestHarness,
+  type TestAppHarness,
+} from "../../helpers/test-app.js";
 
 type SendMode = Extract<
   SendMessageRequest["mode"],
@@ -81,7 +84,7 @@ type ScenarioEvent =
   | "reconnect"
   | "timeout";
 
-interface Scenario {
+export interface Scenario {
   name: string;
   start: "idle" | "running-turn";
   holdPreparation: boolean;
@@ -987,9 +990,16 @@ class Run {
         ),
       );
     if (gatedLabelsOf().length === 0) return;
-    await sleep(DISPATCH_REQUEUE_PACING_MS);
-    requestQueuedMessageDispatch(this.harness.deps, { kind: "plugin-recheck" });
-    await this.quiesce();
+    vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + DISPATCH_REQUEUE_PACING_MS);
+      requestQueuedMessageDispatch(this.harness.deps, {
+        kind: "plugin-recheck",
+      });
+      await this.quiesce();
+    } finally {
+      vi.useRealTimers();
+    }
     const stillHeld = gatedLabelsOf();
     if (stillHeld.length > 0) {
       this.tailViolations.push(
@@ -1273,171 +1283,50 @@ async function exploreOrderings(
   }
 }
 
-const send = (label: string): UserStep => ({
+export const send = (label: string): UserStep => ({
   kind: "send",
   label,
   mode: "queue-if-active",
 });
-const steer = (label: string): UserStep => ({
+export const steer = (label: string): UserStep => ({
   kind: "send",
   label,
   mode: "steer",
 });
-const sendNow = (label: string): UserStep => ({ kind: "send-now", label });
-const addToQueue = (label: string): UserStep => ({
+export const sendNow = (label: string): UserStep => ({
+  kind: "send-now",
+  label,
+});
+export const addToQueue = (label: string): UserStep => ({
   kind: "add-to-queue",
   label,
 });
-const retry: UserStep = { kind: "retry" };
-const stop: UserStep = { kind: "stop" };
+export const retry: UserStep = { kind: "retry" };
+export const stop: UserStep = { kind: "stop" };
 
-const scenarios: Scenario[] = [
-  {
-    name: "steers in flight while their turn ends",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [steer("msg-A"), steer("msg-B")],
-    events: [],
-  },
-  {
-    name: "a new turn in flight while a provider-initiated turn ends",
-    start: "idle",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [steer("msg-A"), steer("msg-B")],
-    events: ["provider-turn"],
-  },
-  {
-    name: "a queued send, a steer and a drain wake while preparation is slow",
-    start: "running-turn",
-    holdPreparation: true,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [send("msg-A"), steer("msg-B")],
-    events: ["drain"],
-  },
-  {
-    name: "a send-now of a queued message against the turn end while preparation is slow",
-    start: "running-turn",
-    holdPreparation: true,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [send("msg-A"), send("msg-B"), sendNow("msg-A")],
-    events: [],
-  },
-  {
-    name: "a steer, a queued send and the turn end across a daemon reconnect",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [steer("msg-A"), send("msg-B")],
-    events: ["reconnect"],
-  },
-  {
-    name: "a stop against a steer, a queued send and the turn end",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [steer("msg-A"), stop, send("msg-B")],
-    events: [],
-  },
-  {
-    name: "a stop and a steer across a daemon reconnect",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [stop, steer("msg-A")],
-    events: ["reconnect"],
-  },
-  {
-    name: "an RPC timeout against steers and the turn end",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [steer("msg-A"), steer("msg-B")],
-    events: ["timeout"],
-  },
-  {
-    name: "a plugin that holds a queued message against the turn end and a drain wake",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: ["msg-A"],
-    pluginHeldLabels: [],
-    user: [send("msg-A"), send("msg-B")],
-    events: ["drain"],
-  },
-  {
-    name: "a message added to the queue after a stop between queued sends",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [send("msg-A"), stop, addToQueue("msg-B")],
-    events: [],
-  },
-  {
-    name: "a plugin recheck for a held message on a thread that also holds a draft",
-    start: "idle",
-    holdPreparation: false,
-    pluginGatedLabels: ["msg-H"],
-    pluginHeldLabels: ["msg-D"],
-    user: [send("msg-D"), send("msg-H")],
-    events: [],
-  },
-  {
-    name: "a retry of a failed turn against a steer and a queued send",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [steer("msg-A"), send("msg-B"), retry],
-    events: ["fail-turn"],
-  },
-  {
-    name: "a stop aimed at a message still on its way, across a daemon reconnect",
-    start: "idle",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [steer("msg-A"), stop],
-    events: ["reconnect"],
-  },
-  {
-    name: "a turn the agent starts after a stop, across a daemon reconnect",
-    start: "running-turn",
-    holdPreparation: false,
-    pluginGatedLabels: [],
-    pluginHeldLabels: [],
-    user: [stop],
-    events: ["provider-turn", "reconnect"],
-  },
-];
+export function describeInterleavings(
+  title: string,
+  scenarios: readonly Scenario[],
+): void {
+  afterEach(() => {
+    setPluginHookProvider(undefined);
+    vi.restoreAllMocks();
+  });
 
-afterEach(() => {
-  setPluginHookProvider(undefined);
-  vi.restoreAllMocks();
-});
-
-describe("send, queue and lifecycle interleavings", () => {
-  it.each(scenarios.map((scenario) => [scenario.name, scenario] as const))(
-    "%s",
-    async (_name, scenario) => {
-      const { failures, orderings } = await exploreOrderings(scenario);
-      expect(
-        failures.map(
-          (failure) =>
-            `${failure.ordering} :: ${failure.violations.join("; ")}`,
-        ),
-        `${failures.length} of ${orderings} orderings failed`,
-      ).toEqual([]);
-    },
-    600_000,
-  );
-});
+  describe(title, () => {
+    it.each(scenarios.map((scenario) => [scenario.name, scenario] as const))(
+      "%s",
+      async (_name, scenario) => {
+        const { failures, orderings } = await exploreOrderings(scenario);
+        expect(
+          failures.map(
+            (failure) =>
+              `${failure.ordering} :: ${failure.violations.join("; ")}`,
+          ),
+          `${failures.length} of ${orderings} orderings failed`,
+        ).toEqual([]);
+      },
+      600_000,
+    );
+  });
+}
