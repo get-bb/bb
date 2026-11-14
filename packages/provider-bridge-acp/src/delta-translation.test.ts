@@ -1475,6 +1475,104 @@ describe("acp delta translation (session title)", () => {
   });
 });
 
+describe("late ACP tool arguments", () => {
+  const cases = [
+    {
+      name: "Read",
+      kind: "read",
+      rawInput: { path: "src/index.ts" },
+      item: { type: "tool" },
+      title: "index.ts",
+    },
+    {
+      name: "Glob",
+      kind: "search",
+      rawInput: { glob: "**/*.test.ts", path: "/workspace/src" },
+      item: { type: "tool" },
+      title: "**/*.test.ts",
+    },
+    {
+      name: "Grep",
+      kind: "search",
+      rawInput: { pattern: "TODO", path: "/workspace/src" },
+      item: { type: "tool" },
+      title: "TODO",
+    },
+    {
+      name: "Bash",
+      kind: "execute",
+      rawInput: { command: "git status --short" },
+      item: { type: "command", command: "git status --short", cwd: "/workspace" },
+      title: "git status --short",
+    },
+  ];
+
+  it.each(cases)("refreshes $name presentation when arguments arrive", (testCase) => {
+    const translator = createAcpDeltaTranslator({ cwd: SESSION_CWD });
+    const context = { threadId: THREAD_ID };
+    const translate = (event: ProviderRuntimeEvent) =>
+      translator.translateAcpEvent(event, context);
+    translate(turnStartedEvent());
+    translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-late",
+        title: testCase.name,
+        kind: testCase.kind,
+        status: "pending",
+      }),
+    );
+
+    const deltas = translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-late",
+        status: "in_progress",
+        rawInput: testCase.rawInput,
+      }),
+    );
+
+    expect(deltas).toContainEqual(
+      expect.objectContaining({
+        kind: "item.open",
+        key: { providerItemId: "call-late" },
+        item: expect.objectContaining(testCase.item),
+        presentation: expect.objectContaining({ title: testCase.title }),
+      }),
+    );
+  });
+
+  it("does not reopen an item when late arguments leave its presentation unchanged", () => {
+    const translator = createAcpDeltaTranslator({ cwd: SESSION_CWD });
+    const context = { threadId: THREAD_ID };
+    const translate = (event: ProviderRuntimeEvent) =>
+      translator.translateAcpEvent(event, context);
+    translate(turnStartedEvent());
+    translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-stable",
+        title: "Read",
+        kind: "read",
+        status: "pending",
+        rawInput: { path: "src/index.ts" },
+      }),
+    );
+
+    const deltas = translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-stable",
+        status: "in_progress",
+        rawInput: { path: "src/index.ts" },
+        content: [{ type: "content", content: { type: "text", text: "reading" } }],
+      }),
+    );
+
+    expect(deltas.some((delta) => delta.kind === "item.open")).toBe(false);
+  });
+});
+
 describe("acp delta translation (presentation)", () => {
   function itemDeltas(
     deltas: ReturnType<AcpDeltaTranslator["translateAcpEvent"]>,

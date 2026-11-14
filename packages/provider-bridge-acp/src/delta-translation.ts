@@ -757,15 +757,21 @@ export function createAcpDeltaTranslator(
           open === undefined ? undefined : classifyCall(context, open.event);
         const refreshed: ThreadDelta[] = [];
         if (
-          previous?.item.type === "command" &&
-          classified.item.type === "command" &&
-          (previous.item.command !== classified.item.command ||
-            previous.presentation.title !== classified.presentation.title)
+          previous !== undefined &&
+          (previous.item.type !== classified.item.type ||
+            (previous.item.type === "command" &&
+              classified.item.type === "command" &&
+              previous.item.command !== classified.item.command) ||
+            JSON.stringify(previous.presentation) !==
+              JSON.stringify(classified.presentation))
         ) {
           refreshed.push({
             kind: "item.open",
             key: { providerItemId: event.toolCallId },
-            item: classified.item,
+            item:
+              previous.item.type === classified.item.type
+                ? classified.item
+                : previous.item,
             presentation: classified.presentation,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           });
@@ -815,6 +821,7 @@ export function createAcpDeltaTranslator(
         }
         if (mergedType !== "command" && mergedType !== "fileChange") {
           return [
+            ...refreshed,
             {
               kind: "item.progress",
               key: {
