@@ -335,6 +335,19 @@ const longCommandState: CommandMenuState = {
         ),
       ],
     },
+    {
+      key: "user-command",
+      label: "User commands",
+      suggestions: [
+        command(
+          "code-review",
+          "command",
+          "user",
+          "Review the current diff, or a PR number, branch, or path, for correctness bugs at the given effort level",
+          "[low|medium|high|xhigh|max] [--fix] [--comment] [<pr#>|<branch>|<path>] [--max-findings <n>|all]",
+        ),
+      ],
+    },
   ],
 };
 
@@ -499,7 +512,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="long command truncation"
-        hint="long skill names, descriptions, and hints stay inside the menu"
+        hint="description truncates first, then the argument hint; the name truncates only when it alone overflows"
       >
         <CommandRow state={longCommandState} />
       </StoryRow>
@@ -511,18 +524,18 @@ const MENTION_MENU_WIDTHS = [360, 480, 760] as const;
 
 function WidthSample({
   label,
-  suggestions,
+  state,
   width,
 }: {
   label: string;
-  suggestions: readonly ExperimentalComposerMentionSuggestion[];
+  state: TypeaheadMenuState;
   width: number;
 }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-xs text-muted-foreground">{label}</span>
       <div style={{ width }}>
-        <MentionRow state={resultsState(suggestions)} />
+        <Row state={state} />
       </div>
     </div>
   );
@@ -535,20 +548,44 @@ export function ThreadRelationWidths() {
         <WidthSample
           key={width}
           label={`${width}px`}
-          suggestions={relatedThreadSuggestions}
+          state={{
+            trigger: "mention",
+            state: resultsState(relatedThreadSuggestions),
+          }}
           width={width}
         />
       ))}
       <WidthSample
         label="360px · long titles"
-        suggestions={longRelatedThreadSuggestions}
+        state={{
+          trigger: "mention",
+          state: resultsState(longRelatedThreadSuggestions),
+        }}
         width={360}
       />
       <WidthSample
         label="760px · long titles"
-        suggestions={longRelatedThreadSuggestions}
+        state={{
+          trigger: "mention",
+          state: resultsState(longRelatedThreadSuggestions),
+        }}
         width={760}
       />
+    </div>
+  );
+}
+
+export function CommandWidths() {
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      {MENTION_MENU_WIDTHS.map((width) => (
+        <WidthSample
+          key={width}
+          label={`${width}px · long names, descriptions, and argument hints`}
+          state={{ trigger: "command", char: "/", state: longCommandState }}
+          width={width}
+        />
+      ))}
     </div>
   );
 }
