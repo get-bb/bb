@@ -1,5 +1,5 @@
 import type { EnvironmentRemoval } from "@bb/domain";
-import type { ApplyThreadLifecycleEventOutcome, HostRow } from "@bb/db";
+import type { HostRow } from "@bb/db";
 import type { PendingInteraction, Thread } from "@bb/domain";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { PluginThreadEventEmitter } from "./plugin-service.js";
@@ -72,40 +72,17 @@ export function emitPluginMessageCancelled(entry: ThreadQueuedMessage): void {
   emitter?.emitMessageCancelled(entry);
 }
 
-/**
- * Called after an applied `run.failed` lifecycle event, from the same seam
- * that announces the thread's move into `error`.
- *
- * `thread.failed` says the thread stopped; this says which turn stopped it and
- * why, which is what a retry policy decides on. Both are announcements — the
- * failure stands either way — so neither can block the seam.
- */
 export function emitPluginTurnFailed(threadId: string): void {
   emitter?.emitTurnFailed(threadId);
 }
 
-/**
- * Called with every lifecycle-event outcome; forwards applied transitions
- * into `active`/`idle`/`error` as their curated plugin lifecycle events.
- * Those statuses have no self-transitions in THREAD_LIFECYCLE, so an applied
- * outcome landing there always means the thread just entered the state.
- *
- * These, plus archive and delete above, are the fanout a plugin whose waits
- * depend on capacity subscribes to; it answers by calling
- * `bb.experimental_hooks.recheck()`. Core deliberately does not derive
- * "a slot freed" here itself: the wait is the plugin's, and so is the
- * condition that ends it.
- */
-export function emitPluginThreadLifecycleOutcome(
-  outcome: ApplyThreadLifecycleEventOutcome,
-): void {
-  if (!outcome.applied) return;
-  if (outcome.thread.status === "active") {
-    emitter?.emitThreadActive(outcome.thread);
-  } else if (outcome.thread.status === "idle") {
-    emitter?.emitThreadIdle(outcome.thread);
-  } else if (outcome.thread.status === "error") {
-    emitter?.emitThreadFailed(outcome.thread);
+export function emitPluginThreadStatusEntered(thread: Thread): void {
+  if (thread.status === "active") {
+    emitter?.emitThreadActive(thread);
+  } else if (thread.status === "idle") {
+    emitter?.emitThreadIdle(thread);
+  } else if (thread.status === "error") {
+    emitter?.emitThreadFailed(thread);
   }
 }
 

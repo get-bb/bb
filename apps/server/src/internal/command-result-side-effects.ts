@@ -41,6 +41,7 @@ export type LiveHostCommandFailureResultReportForType<
 > = LiveHostCommandResultReportBase & {
   type: TType;
   ok: false;
+  deliveryUnknown: boolean;
   errorCode: string;
   errorMessage: string;
 };

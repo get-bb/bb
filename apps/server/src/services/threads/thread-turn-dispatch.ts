@@ -17,7 +17,7 @@ import {
   requestThreadTargetReprovision,
   scheduleThreadProvisioningAdvance,
 } from "./thread-provisioning.js";
-import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import { runThreadLifecycleInTransaction } from "./lifecycle/run.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 
@@ -75,11 +75,12 @@ export async function dispatchTurnDuringReprovision(
     const { messageSequence } = requestThreadTargetReprovision(args.deps, {
       beforeRequestAppendInTransaction: ({ tx }) => {
         args.beforeRequestAppendInTransaction?.({ tx });
-        const prepared = applyLoggedThreadLifecycleEventInTransaction(
-          { db: tx, logger: args.deps.logger },
-          { event: { type: "run.preparing" }, threadId: args.thread.id },
+        const prepared = runThreadLifecycleInTransaction(
+          { db: tx, hub: args.deps.hub, logger: args.deps.logger },
+          args.thread.id,
+          { type: "provisioning.started" },
         );
-        if (!prepared.applied) {
+        if (prepared.refusal !== null) {
           throwEnvironmentNotReady(args.environment);
         }
       },

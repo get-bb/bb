@@ -36,6 +36,7 @@ import {
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   getEnvironment,
+  hasThreadStartTurnRequest,
   isDatabaseMaintenanceIdle,
   isSqliteBusyError,
   releaseFinishedEnvironmentPreparationOwners,
@@ -66,7 +67,7 @@ import {
 } from "../projects/project-deletion.js";
 import {
   finalizeStoppedThread,
-  hasLiveThreadStartInFlight,
+  recoverThreadLifecyclesAfterRestart,
   requestThreadStopForCurrentState,
   requestThreadStorageDeletion,
   turnStartDeadlineSweep,
@@ -420,7 +421,7 @@ function threadProvisioningSweep(
         .all(),
     key: (thread) => thread.id,
     process: async (thread) => {
-      if (hasLiveThreadStartInFlight(thread.id)) return;
+      if (hasThreadStartTurnRequest(deps.db, thread.id)) return;
       await advanceThreadProvisioning(deps, { threadId: thread.id });
     },
   });
@@ -442,13 +443,7 @@ function archivedThreadTeardownSweep(
         });
       }
       if (archiveUndoGraceKeepsTurnRunning(thread, now)) return;
-      requestThreadStopForCurrentState(
-        deps,
-        thread,
-        thread.environmentId
-          ? getEnvironment(deps.db, thread.environmentId)
-          : null,
-      );
+      requestThreadStopForCurrentState(deps, thread);
     },
   });
 }
@@ -902,6 +897,15 @@ export async function runStartupRecoverySweep(
       deps.db,
       PERIODIC_SWEEP_JOBS.map((job) => job.name),
     );
+  });
+  await runStartupRecoveryStep(deps, "thread-lifecycles", async () => {
+    const recovered = await recoverThreadLifecyclesAfterRestart(deps);
+    if (recovered > 0) {
+      deps.logger.info(
+        { recovered },
+        "Settled thread lifecycles whose daemon answers the previous server process lost",
+      );
+    }
   });
   await runStartupRecoveryStep(deps, "interrupted-fork-history-copies", () => {
     const discarded = discardInterruptedForkHistoryCopies(deps);

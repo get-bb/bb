@@ -22,6 +22,7 @@ import { handleLiveCommandResultSideEffects } from "../../internal/command-resul
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import {
   callHostOnlineRpcForWork,
+  isDeliveryUnknownApiError,
   isHostUnavailableApiError,
 } from "./online-rpc.js";
 import {
@@ -155,6 +156,7 @@ export function buildLiveHostCommandFailureReport<
     type: args.command.type,
     completedAt: args.completedAt,
     ok: false,
+    deliveryUnknown: isDeliveryUnknownApiError(args.error),
     errorCode: commandFailureCode(args.error),
     errorMessage: args.error.message,
   };

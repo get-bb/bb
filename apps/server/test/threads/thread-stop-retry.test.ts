@@ -1,11 +1,15 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { getThread, markThreadDeleted } from "@bb/db";
+import {
+  getThread,
+  markThreadDeleted,
+  readThreadRunState,
+  type DbConnection,
+} from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   finalizeStoppedThread,
-  hasLiveThreadStopInFlight,
   requestThreadStorageDeletion,
   requestThreadStopForCurrentState,
   stopThreadForCurrentState,
@@ -40,6 +44,7 @@ interface SeedActiveThreadStopFixtureArgs {
 }
 
 interface WaitForStopRpcIdleArgs {
+  db: DbConnection;
   threadId: string;
 }
 
@@ -68,10 +73,14 @@ function seedActiveThreadStopFixture(
   return { environment, thread };
 }
 
+function hasStopInFlight(db: DbConnection, threadId: string): boolean {
+  return (readThreadRunState(db, threadId).stop?.sentAt ?? null) !== null;
+}
+
 async function waitForStopRpcIdle(args: WaitForStopRpcIdleArgs): Promise<void> {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {
-    if (!hasLiveThreadStopInFlight(args.threadId)) {
+    if (!hasStopInFlight(args.db, args.threadId)) {
       return;
     }
     await sleep(10);
@@ -183,19 +192,19 @@ describe("thread stop dispatch", () => {
 
   it("does not re-dispatch the stop after a live stop RPC failure", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, thread } = seedActiveThreadStopFixture({
+      const { thread } = seedActiveThreadStopFixture({
         harness,
         value: 1,
       });
 
-      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      requestThreadStopForCurrentState(harness.deps, thread);
 
       const stopCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
           command.type === "thread.stop" && command.threadId === thread.id,
       );
-      expect(hasLiveThreadStopInFlight(thread.id)).toBe(true);
+      expect(hasStopInFlight(harness.db, thread.id)).toBe(true);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "stopping",
       });
@@ -204,9 +213,9 @@ describe("thread stop dispatch", () => {
         errorCode: "test_thread_stop_failure",
         errorMessage: "Test live stop failure",
       });
-      await waitForStopRpcIdle({ threadId: thread.id });
+      await waitForStopRpcIdle({ db: harness.db, threadId: thread.id });
 
-      expect(hasLiveThreadStopInFlight(thread.id)).toBe(false);
+      expect(hasStopInFlight(harness.db, thread.id)).toBe(false);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "stopping",
       });
@@ -218,12 +227,12 @@ describe("thread stop dispatch", () => {
 
   it("settles a stopped thread when the host reports no runtime exists", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, thread } = seedActiveThreadStopFixture({
+      const { thread } = seedActiveThreadStopFixture({
         harness,
         value: 4,
       });
 
-      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      requestThreadStopForCurrentState(harness.deps, thread);
 
       const stopCommand = await waitForQueuedCommand(
         harness,
@@ -238,7 +247,7 @@ describe("thread stop dispatch", () => {
         errorCode: "unknown_environment",
         errorMessage: "No runtime exists for environment env_missing_runtime",
       });
-      await waitForStopRpcIdle({ threadId: thread.id });
+      await waitForStopRpcIdle({ db: harness.db, threadId: thread.id });
 
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
@@ -300,7 +309,7 @@ describe("thread stop dispatch", () => {
         turnId: "turn-stop-settles-twice",
       });
 
-      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      requestThreadStopForCurrentState(harness.deps, thread);
       const stopCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -341,21 +350,21 @@ describe("thread stop dispatch", () => {
 
   it("does not queue duplicate stop commands while a stop RPC is in flight", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, thread } = seedActiveThreadStopFixture({
+      const { thread } = seedActiveThreadStopFixture({
         harness,
         value: 2,
       });
 
-      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      requestThreadStopForCurrentState(harness.deps, thread);
 
       const firstStopCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
           command.type === "thread.stop" && command.threadId === thread.id,
       );
-      expect(hasLiveThreadStopInFlight(thread.id)).toBe(true);
+      expect(hasStopInFlight(harness.db, thread.id)).toBe(true);
 
-      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      requestThreadStopForCurrentState(harness.deps, thread);
 
       expect(
         listQueuedThreadCommands(harness, "thread.stop", thread.id),
@@ -364,7 +373,7 @@ describe("thread stop dispatch", () => {
       await reportQueuedCommandSuccess(harness, firstStopCommand, {
         providerCheckpointId: null,
       });
-      await waitForStopRpcIdle({ threadId: thread.id });
+      await waitForStopRpcIdle({ db: harness.db, threadId: thread.id });
     });
   });
 });

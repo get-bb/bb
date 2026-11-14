@@ -65,6 +65,7 @@ export * from "./thread-git-diff.js";
 export * from "./started-on-behalf-of.js";
 export * from "./thread-create-origin.js";
 export * from "./thread-lifecycle.js";
+export * from "./thread-run-state.js";
 export * from "./thread-name-tags.js";
 export * from "./thread-search.js";
 export * from "./thread-timeline-active-prompt-mode.js";

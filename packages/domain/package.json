@@ -9,6 +9,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./thread-run-state": {
+      "source": "./src/thread-run-state.ts",
+      "types": "./src/thread-run-state.ts",
+      "default": "./src/thread-run-state.ts"
+    },
     "./thread-status": {
       "source": "./src/thread-status.ts",
       "types": "./src/thread-status.ts",

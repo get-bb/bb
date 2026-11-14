@@ -514,7 +514,9 @@ describe("NotificationHub", () => {
     });
     hub.unregisterDaemon("session-1");
 
-    await expect(wait).rejects.toThrow("Host daemon is not connected");
+    await expect(wait).rejects.toThrow(
+      "Host daemon disconnected before answering",
+    );
   });
 
   it("skips and logs broadcasts that fail outgoing schema validation", () => {

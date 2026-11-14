@@ -100,7 +100,11 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../hosts/live-command.js";
-import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
+import { runThreadLifecycleInTransaction } from "../threads/lifecycle/run.js";
+import {
+  finishThreadLifecycle,
+  finishThreadLifecycleInBackground,
+} from "../threads/lifecycle/finish.js";
 import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
@@ -108,8 +112,10 @@ import {
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   finalizeStoppedThreadInTransaction,
+  finalizeStoppedThreadPostCommit,
   requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
+import type { ThreadLifecycleOutcome } from "../threads/lifecycle/run.js";
 import {
   emptyCommandResultSideEffects,
   type CommandResultPostCommitAction,
@@ -1422,7 +1428,7 @@ function shouldPreserveThreadProvisionCancellationOutcome(
 function recordEnvironmentProvisioningFailureInTransaction(
   deps: EnvironmentProvisionTransactionDeps,
   args: FailEnvironmentProvisioningDurablyArgs,
-): string[] {
+): ThreadLifecycleOutcome[] {
   const environment = getEnvironment(deps.db, args.environmentId);
   if (!environment) {
     return [];
@@ -1465,7 +1471,7 @@ function recordEnvironmentProvisioningFailureInTransaction(
     entries: [args.failureEntry],
   });
 
-  const failedThreadIds: string[] = [];
+  const failed: ThreadLifecycleOutcome[] = [];
   for (const thread of failureThreads) {
     clearThreadProvisionSchedule(thread.id);
     appendSystemErrorEventInTransaction(deps, {
@@ -1476,17 +1482,15 @@ function recordEnvironmentProvisioningFailureInTransaction(
       detail: args.failureReason,
       scope: threadScope(),
     });
-    const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
-      event: { type: "run.failed" },
-      threadId: thread.id,
+    const outcome = runThreadLifecycleInTransaction(deps, thread.id, {
+      type: "provisioning.failed",
     });
-    if (outcome.applied) {
-      deps.hub.notifyThread(thread.id, ["status-changed"]);
-      failedThreadIds.push(thread.id);
+    if (outcome.statusChanged) {
+      failed.push(outcome);
     }
   }
 
-  return failedThreadIds;
+  return failed;
 }
 
 export function settleEnvironmentProvisionCommandResult(
@@ -1596,9 +1600,13 @@ function settleEnvironmentProvisionOutcome(
 
     for (const thread of boundThreads) {
       if (thread.deletedAt !== null) {
-        finalizeStoppedThreadInTransaction(args.deps, {
-          threadId: thread.id,
-        });
+        postCommitActions.push(
+          finalizeStoppedThreadPostCommit(
+            finalizeStoppedThreadInTransaction(args.deps, {
+              threadId: thread.id,
+            }),
+          ),
+        );
         continue;
       }
       if (
@@ -1650,7 +1658,7 @@ function settleEnvironmentProvisionOutcome(
     return emptyCommandResultSideEffects();
   }
   const environmentProvisioningId = initiator.provisioningId;
-  const failedThreadIds = recordEnvironmentProvisioningFailureInTransaction(
+  const failed = recordEnvironmentProvisioningFailureInTransaction(
     args.deps,
     {
       environmentId: args.command.environmentId,
@@ -1666,10 +1674,11 @@ function settleEnvironmentProvisionOutcome(
       },
     },
   );
-  for (const threadId of failedThreadIds) {
+  for (const outcome of failed) {
     postCommitActions.push({
-      run: (deps) => {
-        const thread = getThread(deps.db, threadId);
+      run: async (deps) => {
+        await finishThreadLifecycle(deps, outcome);
+        const thread = getThread(deps.db, outcome.threadId);
         if (thread && thread.deletedAt === null)
           queueChildSetupFailureNotification(deps, thread);
       },
@@ -1713,18 +1722,7 @@ export function settleEnvironmentProvisionCancelCommandResult(
         {
           run: (deps) => {
             for (const thread of stoppedThreads) {
-              requestThreadStopForCurrentState(
-                deps,
-                {
-                  environmentId: args.command.environmentId,
-                  id: thread.id,
-                  status: thread.status,
-                },
-                {
-                  hostId: environment.hostId,
-                  id: environment.id,
-                },
-              );
+              requestThreadStopForCurrentState(deps, thread);
             }
           },
         },
@@ -1748,9 +1746,13 @@ export function settleEnvironmentProvisionCancelCommandResult(
   }
 
   for (const thread of stoppedThreads) {
-    finalizeStoppedThreadInTransaction(args.deps, {
-      threadId: thread.id,
-    });
+    postCommitActions.push(
+      finalizeStoppedThreadPostCommit(
+        finalizeStoppedThreadInTransaction(args.deps, {
+          threadId: thread.id,
+        }),
+      ),
+    );
   }
 
   return { postCommitActions };
@@ -1766,7 +1768,7 @@ function interruptUnrecoverableEnvironmentProvisioning(
   }
 
   const now = Date.now();
-  const failedThreadIds = deps.db.transaction(
+  const failed = deps.db.transaction(
     (tx) => {
       return recordEnvironmentProvisioningFailureInTransaction(
         {
@@ -1790,8 +1792,9 @@ function interruptUnrecoverableEnvironmentProvisioning(
     },
     { behavior: "immediate" },
   );
-  for (const threadId of failedThreadIds) {
-    const thread = getThread(deps.db, threadId);
+  for (const outcome of failed) {
+    finishThreadLifecycleInBackground(deps, outcome);
+    const thread = getThread(deps.db, outcome.threadId);
     if (thread && thread.deletedAt === null)
       queueChildSetupFailureNotification(deps, thread);
   }

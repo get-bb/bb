@@ -104,9 +104,6 @@ export {
   markThreadStorageDeleted,
   unpinThread,
   unarchiveThread,
-  applyThreadLifecycleEvent,
-  applyThreadLifecycleEventInTransaction,
-  requireThreadLifecycleEventApplied,
   listThreadAncestors,
   listThreadDescendants,
   searchThreadsWithPendingInteractionState,
@@ -116,8 +113,6 @@ export {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
 } from "./threads.js";
 export type {
-  ApplyThreadLifecycleEventArgs,
-  ApplyThreadLifecycleEventOutcome,
   ReorderPinnedThreadResult,
   RunningThreadRow,
   ThreadSearchResultGroup,
@@ -126,6 +121,22 @@ export type {
   TurnStartDeadlineCandidate,
   UpdateThreadInput,
 } from "./threads.js";
+
+export {
+  hasThreadStartTurnRequest,
+  listThreadIdsAwaitingTurnRequestAnswers,
+  listThreadIdsWithOwedStopForHost,
+  listThreadIdsWithTurnRequestsForHost,
+  readThreadRunState,
+  writeThreadLifecycleStateInTransaction,
+} from "./thread-run-state.js";
+export type {
+  HeldTurnCompletion,
+  StoredThreadRunState,
+  ThreadStopState,
+  ThreadTurnRequestState,
+  WriteThreadLifecycleStateResult,
+} from "./thread-run-state.js";
 
 export {
   deletePluginRecommendationId,

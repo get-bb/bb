@@ -271,7 +271,7 @@ describe("generated thread titles", () => {
         throw new Error("Expected the starting thread");
       }
       expect(startingThread.environmentId).toBeNull();
-      requestThreadStopForCurrentState(harness.deps, startingThread, null);
+      requestThreadStopForCurrentState(harness.deps, startingThread);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
       });

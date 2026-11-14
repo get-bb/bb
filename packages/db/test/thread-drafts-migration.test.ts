@@ -17,6 +17,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
 } from "./helpers/rewind.js";
@@ -123,6 +124,7 @@ it.each([false, true])(
       dropThreadParentNotificationsColumn(db);
       dropQueuedMessageDeliveryColumns(db);
       dropThreadStatusChangedAtColumn(db);
+      dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
       migrate(db);
       migrate(db);

@@ -27,7 +27,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
   requestThreadStopForCurrentState,
@@ -68,10 +68,7 @@ describe("thread runtime stop", () => {
           command.type === "thread.stop" && command.threadId === thread.id,
       );
       expect(interrupt.command).toMatchObject({ intent: "interrupt" });
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.succeeded" },
-        threadId: thread.id,
-      });
+      moveThreadStatus(harness.deps, { move: "run.succeeded", threadId: thread.id });
       await reportQueuedCommandError(harness, interrupt, {
         errorCode: "command_failed",
         errorMessage: "Runtime shutting down",
@@ -417,10 +414,7 @@ describe("thread runtime stop", () => {
           command.intent === "release",
       );
 
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
-        threadId: thread.id,
-      });
+      moveThreadStatus(harness.deps, { move: "run.started", threadId: thread.id });
       seedTurnStarted(harness.deps, {
         environmentId: environment.id,
         providerThreadId: "provider-new",
@@ -477,10 +471,7 @@ describe("thread runtime stop", () => {
           command.threadId === thread.id &&
           command.intent === "release",
       );
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
-        threadId: thread.id,
-      });
+      moveThreadStatus(harness.deps, { move: "run.started", threadId: thread.id });
       seedTurnStarted(harness.deps, {
         environmentId: environment.id,
         providerThreadId: "provider-new",
@@ -548,21 +539,14 @@ describe("thread runtime stop", () => {
           command.threadId === thread.id &&
           command.intent === "release",
       );
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
-        threadId: thread.id,
-      });
+      moveThreadStatus(harness.deps, { move: "run.started", threadId: thread.id });
       seedTurnStarted(harness.deps, {
         environmentId: environment.id,
         providerThreadId: "provider-new",
         threadId: thread.id,
         turnId: "turn-stopped-by-request",
       });
-      requestThreadStopForCurrentState(
-        harness.deps,
-        { ...thread, status: "active" },
-        { hostId: environment.hostId, id: environment.id },
-      );
+      requestThreadStopForCurrentState(harness.deps, thread);
       const dispatched = await waitForQueuedCommand(
         harness,
         ({ command }) =>

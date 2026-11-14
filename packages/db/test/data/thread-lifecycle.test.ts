@@ -2,16 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { DbTransaction } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
-import { threads } from "../../src/schema.js";
+import { threadRunStates, threads } from "../../src/schema.js";
+import { createThread, getThread } from "../../src/data/threads.js";
 import {
-  applyThreadLifecycleEvent,
-  applyThreadLifecycleEventInTransaction,
-  createThread,
-  getThread,
-  markThreadDeleted,
-  requireThreadLifecycleEventApplied,
-  ThreadLifecycleEventNotAppliedError,
-} from "../../src/data/threads.js";
+  listThreadIdsAwaitingTurnRequestAnswers,
+  readThreadRunState,
+  writeThreadLifecycleStateInTransaction,
+  type StoredThreadRunState,
+} from "../../src/data/thread-run-state.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { withWriteAfterFirstRead } from "../helpers/interleave.js";
@@ -19,9 +17,7 @@ import { createMigratedConnection } from "../../src/testing.js";
 
 function setup() {
   const db = createMigratedConnection();
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-  });
+  const host = upsertHost(db, noopNotifier, { name: "test-host" });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -29,111 +25,66 @@ function setup() {
   return { db, host, project };
 }
 
-describe("applyThreadLifecycleEvent", () => {
-  it("applies a legal event and persists the row", () => {
-    const { db, project } = setup();
+const EMPTY: StoredThreadRunState = {
+  heldCompletion: null,
+  requests: [],
+  stop: null,
+};
+
+describe("writeThreadLifecycleStateInTransaction", () => {
+  it("persists status, requests, a held completion and an owed stop, and clears them", () => {
+    const { db, host, project } = setup();
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "starting",
+      status: "idle",
     });
-
-    const outcome = applyThreadLifecycleEvent(db, {
-      event: { type: "run.started" },
-      threadId: thread.id,
-    });
-
-    expect(outcome.applied).toBe(true);
-    if (outcome.applied) {
-      expect(outcome.thread.status).toBe("active");
-    }
-    expect(getThread(db, thread.id)?.status).toBe("active");
-  });
-
-  it("applies events inside an existing transaction", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "active",
-    });
-
-    const outcome = db.transaction((tx) =>
-      applyThreadLifecycleEventInTransaction(tx, {
-        event: { type: "run.succeeded" },
+    const sent: StoredThreadRunState = {
+      heldCompletion: { status: "completed", turnId: "turn-1" },
+      requests: [
+        {
+          hostId: host.id,
+          kind: "new-turn",
+          phase: "sent",
+          requestId: "req-1",
+          sentAt: 10,
+          syncTitle: false,
+        },
+      ],
+      stop: { ackedAt: null, reason: "manual-stop", requestedAt: 5, sentAt: null },
+    };
+    db.transaction((tx: DbTransaction) =>
+      writeThreadLifecycleStateInTransaction(tx, {
+        expectedStatus: "idle",
+        next: { ...sent, status: "active" },
+        previous: EMPTY,
         threadId: thread.id,
       }),
     );
+    expect(getThread(db, thread.id)?.status).toBe("active");
+    expect(readThreadRunState(db, thread.id)).toEqual(sent);
+    expect(listThreadIdsAwaitingTurnRequestAnswers(db)).toEqual([thread.id]);
 
-    expect(outcome.applied).toBe(true);
-    expect(getThread(db, thread.id)?.status).toBe("idle");
-  });
-
-  it("no-ops as illegal-transition and leaves the row untouched", () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(1_000);
-      const { db, project } = setup();
-      const thread = createThread(db, noopNotifier, {
-        projectId: project.id,
-        providerId: "codex",
-        status: "idle",
-      });
-
-      vi.setSystemTime(2_000);
-      const outcome = applyThreadLifecycleEvent(db, {
-        event: { type: "run.succeeded" },
+    db.transaction((tx: DbTransaction) =>
+      writeThreadLifecycleStateInTransaction(tx, {
+        expectedStatus: "active",
+        next: { ...EMPTY, status: "idle" },
+        previous: sent,
         threadId: thread.id,
-      });
-
-      expect(outcome).toEqual({
-        applied: false,
-        detail: "no transition for run.succeeded from status idle",
-        reason: "illegal-transition",
-      });
-      expect(getThread(db, thread.id)).toEqual(thread);
-    } finally {
-      vi.useRealTimers();
-    }
+      }),
+    );
+    expect(readThreadRunState(db, thread.id)).toEqual(EMPTY);
+    expect(
+      db
+        .select()
+        .from(threadRunStates)
+        .where(eq(threadRunStates.threadId, thread.id))
+        .all(),
+    ).toEqual([]);
+    expect(listThreadIdsAwaitingTurnRequestAnswers(db)).toEqual([]);
   });
 
-  it("no-ops as superseded when the thread is deleted", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "starting",
-    });
-    markThreadDeleted(db, noopNotifier, { threadId: thread.id });
-    const beforeRow = getThread(db, thread.id);
-
-    const outcome = applyThreadLifecycleEvent(db, {
-      event: { type: "run.started" },
-      threadId: thread.id,
-    });
-
-    expect(outcome).toEqual({
-      applied: false,
-      detail: "deletedAt set",
-      reason: "superseded",
-    });
-    expect(getThread(db, thread.id)).toEqual(beforeRow);
-  });
-
-  it("no-ops as not-found for a missing thread", () => {
-    const { db } = setup();
-    const outcome = applyThreadLifecycleEvent(db, {
-      event: { type: "run.started" },
-      threadId: "thr_nonexistent",
-    });
-    expect(outcome).toEqual({
-      applied: false,
-      detail: "thread not found: thr_nonexistent",
-      reason: "not-found",
-    });
-  });
-
-  it("no-ops as cas-conflict when the status changes between load and update", () => {
+  it("reports a conflict and writes nothing when the status moved under it", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -141,64 +92,36 @@ describe("applyThreadLifecycleEvent", () => {
       status: "starting",
     });
 
-    const outcome = db.transaction((tx: DbTransaction) => {
+    const result = db.transaction((tx: DbTransaction) => {
       const interleaved = withWriteAfterFirstRead(tx, () => {
         tx.update(threads)
           .set({ status: "idle" })
           .where(eq(threads.id, thread.id))
           .run();
       });
-      return applyThreadLifecycleEventInTransaction(interleaved, {
-        event: { type: "run.started" },
+      return writeThreadLifecycleStateInTransaction(interleaved, {
+        expectedStatus: "starting",
+        next: { ...EMPTY, status: "active" },
+        previous: EMPTY,
         threadId: thread.id,
       });
     });
 
-    expect(outcome).toEqual({
-      applied: false,
-      detail: "status changed from starting while applying run.started",
-      reason: "cas-conflict",
-    });
+    expect(result).toEqual({ kind: "conflict" });
     expect(getThread(db, thread.id)?.status).toBe("idle");
   });
 
-  it("sets latestAttentionAt only on attention-worthy transitions", () => {
+  it("sets latestAttentionAt only on attention-worthy status changes", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(1_000);
       const { db, project } = setup();
-
       const cases = [
-        {
-          attention: true,
-          event: { type: "run.succeeded" },
-          parent: false,
-          status: "active",
-          target: "idle",
-        },
-        {
-          attention: false,
-          event: { type: "run.succeeded" },
-          parent: true,
-          status: "active",
-          target: "idle",
-        },
-        {
-          attention: false,
-          event: { type: "run.started" },
-          parent: false,
-          status: "starting",
-          target: "active",
-        },
-        {
-          attention: true,
-          event: { type: "run.failed" },
-          parent: false,
-          status: "starting",
-          target: "error",
-        },
+        { attention: true, parent: false, from: "active", to: "idle" },
+        { attention: false, parent: true, from: "active", to: "idle" },
+        { attention: false, parent: false, from: "starting", to: "active" },
+        { attention: true, parent: false, from: "starting", to: "error" },
       ] as const;
-
       let now = 1_000;
       for (const testCase of cases) {
         const parentThreadId = testCase.parent
@@ -211,56 +134,28 @@ describe("applyThreadLifecycleEvent", () => {
           parentThreadId,
           projectId: project.id,
           providerId: "codex",
-          status: testCase.status,
+          status: testCase.from,
         });
-
         now += 1_000;
         vi.setSystemTime(now);
-        const outcome = applyThreadLifecycleEvent(db, {
-          event: testCase.event,
-          threadId: thread.id,
-        });
-
-        expect(outcome.applied).toBe(true);
-        if (!outcome.applied) {
-          continue;
-        }
-        expect(outcome.thread.status).toBe(testCase.target);
-        expect(outcome.thread.updatedAt).toBe(now);
-        expect(outcome.thread.latestAttentionAt).toBe(
+        const result = db.transaction((tx: DbTransaction) =>
+          writeThreadLifecycleStateInTransaction(tx, {
+            expectedStatus: testCase.from,
+            next: { ...EMPTY, status: testCase.to },
+            previous: EMPTY,
+            threadId: thread.id,
+          }),
+        );
+        expect(result.kind).toBe("written");
+        if (result.kind !== "written") continue;
+        expect(result.statusChanged).toBe(true);
+        expect(result.thread.status).toBe(testCase.to);
+        expect(result.thread.latestAttentionAt).toBe(
           testCase.attention ? now : thread.latestAttentionAt,
         );
       }
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-describe("requireThreadLifecycleEventApplied", () => {
-  it("throws a typed error carrying reason and detail on a no-op", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "idle",
-    });
-
-    const outcome = applyThreadLifecycleEvent(db, {
-      event: { type: "run.succeeded" },
-      threadId: thread.id,
-    });
-    let caught: ThreadLifecycleEventNotAppliedError | null = null;
-    try {
-      requireThreadLifecycleEventApplied(outcome);
-    } catch (error) {
-      if (error instanceof ThreadLifecycleEventNotAppliedError) {
-        caught = error;
-      }
-    }
-    expect(caught?.reason).toBe("illegal-transition");
-    expect(caught?.detail).toBe(
-      "no transition for run.succeeded from status idle",
-    );
   });
 });
