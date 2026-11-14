@@ -3,8 +3,8 @@ import {
   type ConversationOutlineSelection,
 } from "./conversation-outline-cache.js";
 import {
-  measuredTimelineRowJsonBytes,
   paginateTimelineContents,
+  timelineRowsJsonBytes,
 } from "./timeline-content-pagination.js";
 import {
   deferSettledTimelineRow,
@@ -238,7 +238,7 @@ interface ThreadTimelineSurface {
   workspaceRoot: string | null;
 }
 
-export interface ThreadTimelineBuildOptions extends ThreadTimelineSurfaceOptions {
+interface BuildThreadTimelineOptions extends ThreadTimelineSurfaceOptions {
   eventBudget: number;
   responseByteBudget?: number;
   maxSeq: number;
@@ -1290,7 +1290,7 @@ function measureThreadTimelineStage<TResult>(
 
 function completeThreadTimelineBuildProfile(
   accumulator: ThreadTimelineBuildProfileAccumulator,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
 ): ThreadTimelineBuildProfile {
   return {
     compactedEventCount: accumulator.compactedEventCount,
@@ -1377,7 +1377,7 @@ interface ResolvedTimelineBuild {
 function resolveTimelineBuild(
   db: DbConnection,
   thread: Thread,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
 ): ResolvedTimelineBuild {
   const surface = resolveThreadTimelineSurface(db, thread, options);
   const snapshot = resolveTimelineSnapshot(
@@ -1419,6 +1419,8 @@ function resolveTimelineBuild(
       ) {
         const projection = readTimelineProjection(db, {
           active: snapshot.status === "active",
+          measure: (stage, run) =>
+            measureThreadTimelineStage(profile, stage, run),
           maxSeq: snapshot.maxSeq,
           scope: {
             epochSequenceStart: historySequenceStart,
@@ -1502,7 +1504,7 @@ function resolveTimelineBuild(
 
 function projectedTimelineOptions(
   thread: Thread,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
   resolved: ResolvedTimelineBuild,
 ) {
   return {
@@ -1520,7 +1522,7 @@ function projectedTimelineOptions(
 
 function projectedTimelineKey(
   thread: Thread,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
   resolved: ResolvedTimelineBuild,
 ): string {
   return JSON.stringify([
@@ -1533,7 +1535,7 @@ function projectedTimelineKey(
 function resolveProjectedTimeline(
   db: DbConnection,
   thread: Thread,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
   resolved: ResolvedTimelineBuild,
 ): ProjectedTimeline {
   const { profile, snapshot, source, surface } = resolved;
@@ -1634,7 +1636,7 @@ function resolveProjectedTimeline(
 function buildThreadTimelineInternal(
   db: DbConnection,
   thread: Thread,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
   resolved: ResolvedTimelineBuild = resolveTimelineBuild(db, thread, options),
 ): BuildThreadTimelineInternalResult {
   const { contentCursor, contextBoundarySeq, profile, snapshot, source } =
@@ -1779,19 +1781,16 @@ function buildThreadTimelineInternal(
   };
 }
 
-function measuredRowsBytes(rows: readonly TimelineRow[]): number {
-  let bytes = 0;
-  for (const row of rows) bytes += measuredTimelineRowJsonBytes(row) ?? 0;
-  return bytes;
-}
-
 function chargeProjectedRows(
   db: DbConnection,
   projection: ThreadTimelineProjection,
 ): void {
   let bytes = 0;
-  for (const { rows } of projection.derived.pageableRows.values()) {
-    bytes += measuredRowsBytes(rows);
+  for (const kept of [
+    projection.derived.pageableRows,
+    projection.previousDerived.pageableRows,
+  ]) {
+    for (const { rows } of kept.values()) bytes += timelineRowsJsonBytes(rows);
   }
   if (!chargeDerivedRows(db, projection, bytes)) {
     projection.derived.pageableRows.clear();
@@ -1841,7 +1840,7 @@ function earliestExpiry(
 function buildThreadTimelineWithOlderFallback(
   db: DbConnection,
   thread: Thread,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
   resolved: ResolvedTimelineBuild,
 ): BuildThreadTimelineInternalResult {
   const result = buildThreadTimelineInternal(db, thread, options, resolved);
@@ -1878,7 +1877,7 @@ function buildThreadTimelineWithOlderFallback(
 export function buildThreadTimelineWithProfile(
   db: DbConnection,
   thread: Thread,
-  options: ThreadTimelineBuildOptions,
+  options: BuildThreadTimelineOptions,
 ): {
   cost: MainThreadCost;
   expiresAt: number | null;

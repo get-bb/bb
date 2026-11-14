@@ -84,7 +84,7 @@ export interface TimelineSelectionRowSource {
   ): StoredEventRow[];
 }
 
-export interface TimelineWindowStartArgs {
+interface TimelineWindowStartArgs {
   beforeSequence: number;
   budgetFloorSequence: number | undefined;
   epochSequenceStart: number;
@@ -119,7 +119,7 @@ export function selectTimelineWindowStart(
   );
 }
 
-export interface TimelineProjectionScope {
+interface TimelineProjectionScope {
   epochSequenceStart: number;
   eventBudget: number;
   excludeDiagnosticEvents: boolean;
@@ -127,7 +127,7 @@ export interface TimelineProjectionScope {
   threadId: string;
 }
 
-export interface TimelineProjectionSelect {
+interface TimelineProjectionSelect {
   (
     segmentLimit: number,
     groupingContext: TimelineGroupingContext,
@@ -159,29 +159,44 @@ export interface ProjectedPageableRows {
   rows: TimelineRow[];
 }
 
-export interface DecodedRow {
-  readonly data: string;
+interface DecodedRow {
   readonly event: ThreadEventWithMeta;
+  readonly row: StoredEventRow;
 }
 
-export interface ReleasedEvent extends DecodedRow {
+interface ReleasedEvent extends DecodedRow {
   readonly bytes: number;
+}
+
+function decodesTheSame(left: StoredEventRow, right: StoredEventRow): boolean {
+  return (
+    left === right ||
+    (left.id === right.id &&
+      left.sequence === right.sequence &&
+      left.createdAt === right.createdAt &&
+      left.type === right.type &&
+      left.threadId === right.threadId &&
+      left.providerThreadId === right.providerThreadId &&
+      left.scopeKind === right.scopeKind &&
+      left.turnId === right.turnId &&
+      left.data === right.data)
+  );
 }
 
 function decodeReusing(
   kept: DecodedRow | undefined,
   row: StoredEventRow,
 ): ThreadEventWithMeta {
-  return kept !== undefined && kept.data === row.data
+  return kept !== undefined && decodesTheSame(kept.row, row)
     ? kept.event
     : decodeStoredEventRow(row);
 }
 
-export interface PreviousDerived {
+interface PreviousDerived {
   readonly pageableRows: Map<string, ProjectedPageableRows>;
 }
 
-export function previousDerivedOf(
+function previousDerivedOf(
   derived: ThreadTimelineProjectionDerived,
   fallback: PreviousDerived,
 ): PreviousDerived {
@@ -194,12 +209,12 @@ export function noPreviousDerived(): PreviousDerived {
   return { pageableRows: new Map() };
 }
 
-export interface ProjectedGroupingContext {
+interface ProjectedGroupingContext {
   context: TimelineGroupingContext;
   maxSeq: number;
 }
 
-export interface ThreadTimelineProjectionDerived {
+interface ThreadTimelineProjectionDerived {
   readonly eventProjections: Map<string, EventProjection>;
   readonly headStates: Map<string, ThreadHeadStateResponse>;
   readonly pageableRows: Map<string, ProjectedPageableRows>;
@@ -344,7 +359,7 @@ function decodedRowsOf(
   const decoded = new Map<string, DecodedRow>();
   for (const [index, row] of projection.selection.rows.entries()) {
     const event = projection.events[index];
-    if (event !== undefined) decoded.set(row.id, { data: row.data, event });
+    if (event !== undefined) decoded.set(row.id, { event, row });
   }
   return decoded;
 }
@@ -369,7 +384,7 @@ export function readWithHeadStateDecoder<T>(
   const used = new Map<string, DecodedRow>();
   const value = read((row) => {
     const event = decodeReusing(previous.get(row.id), row);
-    used.set(row.id, { data: row.data, event });
+    used.set(row.id, { event, row });
     return event;
   });
   projection.headStateEvents = used;
@@ -729,6 +744,8 @@ function appendToProjection(
   db: DbConnection,
   projection: ThreadTimelineProjection,
   maxSeq: number,
+  measure: MeasureTimelineProjectionStage,
+  appendedDecodes: Map<string, DecodedRow>,
 ): boolean {
   if (maxSeq === projection.maxSeq) return true;
   if (
@@ -793,6 +810,13 @@ function appendToProjection(
   if (!rows.every((row) => acceptsAppendedRow(catchUp, row))) {
     return false;
   }
+  const decoded = measure("event-json-decode", () =>
+    rows.map((row) => {
+      const event = decodeReusing(appendedDecodes.get(row.id), row);
+      appendedDecodes.set(row.id, { row, event });
+      return event;
+    }),
+  );
   for (const turnId of catchUp.context.appendableTurnIds) {
     projection.context.appendableTurnIds.add(turnId);
   }
@@ -833,7 +857,6 @@ function appendToProjection(
       projection.coverageSegmentLimit + 1,
     );
   }
-  const decoded = rows.map(decodeStoredEventRow);
   if (projection.fold !== null) {
     if (resumeEventProjectionFold(projection.fold.fold, decoded)) {
       projection.foldedEventCount += decoded.length;
@@ -872,6 +895,7 @@ function appendToProjection(
 
 interface ProjectionBuild {
   db: DbConnection;
+  measure: MeasureTimelineProjectionStage;
   hintSource?: ThreadTimelineProjection;
   maxSeq: number;
   previous: ThreadTimelineProjection | null;
@@ -888,7 +912,9 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     scope.threadId,
     scope.epochSequenceStart,
   );
-  const groupingContext = readTimelineGroupingContext(db, orderingLog, maxSeq);
+  const groupingContext = build.measure("ordering-context-query", () =>
+    readTimelineGroupingContext(db, orderingLog, maxSeq),
+  );
   const result = build.select(
     build.segmentLimit,
     groupingContext,
@@ -915,7 +941,9 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     dataBytes: dataBytesOfRows(rows),
     dataVersion: getDatabaseDataVersion(db),
     derived: createDerived(),
-    events: rows.map((row) => decodeReusing(decodedById.get(row.id), row)),
+    events: build.measure("event-json-decode", () =>
+      rows.map((row) => decodeReusing(decodedById.get(row.id), row)),
+    ),
     eventsById: new Map(),
     releasedBytes: released.bytes,
     releasedEvents: released.events,
@@ -956,7 +984,7 @@ function releaseDroppedEvents(
       continue;
     }
     const rowBytes = Buffer.byteLength(row.data, "utf8");
-    events.set(row.id, { bytes: rowBytes, data: row.data, event });
+    events.set(row.id, { bytes: rowBytes, event, row });
     bytes += rowBytes;
   }
   for (const id of kept) {
@@ -1176,7 +1204,17 @@ function trimProjection(
   }
 }
 
-export interface ReadTimelineProjectionArgs {
+export type TimelineProjectionStage =
+  | "event-json-decode"
+  | "ordering-context-query";
+
+type MeasureTimelineProjectionStage = <T>(
+  stage: TimelineProjectionStage,
+  run: () => T,
+) => T;
+
+interface ReadTimelineProjectionArgs {
+  measure: MeasureTimelineProjectionStage;
   active: boolean;
   maxSeq: number;
   scope: TimelineProjectionScope;
@@ -1224,12 +1262,20 @@ export function readTimelineProjection(
     (projection) =>
       projection.scopeKey === scopeKey && isProjectionCurrent(db, projection),
   );
+  const appendedDecodes = new Map<string, DecodedRow>();
   const current = valid.filter((projection) =>
-    appendToProjection(db, projection, args.maxSeq),
+    appendToProjection(
+      db,
+      projection,
+      args.maxSeq,
+      args.measure,
+      appendedDecodes,
+    ),
   );
   const build = {
     db,
     maxSeq: args.maxSeq,
+    measure: args.measure,
     scope: args.scope,
     segmentLimit: args.segmentLimit,
     select: args.select,

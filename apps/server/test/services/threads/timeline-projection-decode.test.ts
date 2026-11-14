@@ -214,34 +214,50 @@ describe("timeline projection decoding", () => {
     });
   });
 
-  it("decodes a row again when its data changed before a rebuild", () => {
-    withTestThread((testThread) => {
-      const { db, thread } = testThread;
-      appendRows(testThread, [...openTurn(), agentMessage("message-2", "old")]);
-      buildLatest(testThread);
-      const [before] = projectionsOf(db, thread.id);
-      const index = before!.selection.rows.findIndex(
-        (row) => row.itemId === "message-2",
-      );
-      const rowId = before!.selection.rows[index]!.id;
-      db.$client
-        .prepare(
-          "UPDATE events SET data = json_set(data, '$.item.text', 'new') WHERE id = ?",
-        )
-        .run(rowId);
-      appendRows(testThread, [
-        { data: { reason: "manual-stop" }, type: "system/thread/interrupted" },
-      ]);
-      buildLatest(testThread);
-      const [after] = projectionsOf(db, thread.id);
-      expect(after).not.toBe(before);
-      const rebuilt = after!.events.find((event) => event.meta.id === rowId);
-      expect(rebuilt).not.toBe(before!.events[index]);
-      const item =
-        rebuilt!.event.type === "item/completed" ? rebuilt!.event.item : null;
-      expect(item?.type === "agentMessage" ? item.text : null).toBe("new");
-    });
-  });
+  it.each([
+    {
+      change: "data",
+      sql: "UPDATE events SET data = json_set(data, '$.item.text', 'new') WHERE id = ?",
+    },
+    {
+      change: "provider thread",
+      sql: "UPDATE events SET provider_thread_id = 'provider-changed' WHERE id = ?",
+    },
+  ])(
+    "decodes a row again when its $change changed before a rebuild",
+    ({ sql }) => {
+      withTestThread((testThread) => {
+        const { db, thread } = testThread;
+        appendRows(testThread, [
+          ...openTurn(),
+          agentMessage("message-2", "old"),
+        ]);
+        buildLatest(testThread);
+        const [before] = projectionsOf(db, thread.id);
+        const index = before!.selection.rows.findIndex(
+          (row) => row.itemId === "message-2",
+        );
+        const rowId = before!.selection.rows[index]!.id;
+        db.$client.prepare(sql).run(rowId);
+        appendRows(testThread, [
+          {
+            data: { reason: "manual-stop" },
+            type: "system/thread/interrupted",
+          },
+        ]);
+        buildLatest(testThread);
+        const [after] = projectionsOf(db, thread.id);
+        expect(after).not.toBe(before);
+        const rebuilt = after!.events.find((event) => event.meta.id === rowId);
+        expect(rebuilt).not.toBe(before!.events[index]);
+        const updatedRow = after!.selection.rows.find(
+          (row) => row.id === rowId,
+        );
+        expect(rebuilt!.event).toEqual(parseStoredEvent(updatedRow!));
+        expect(rebuilt!.event).not.toEqual(before!.events[index]!.event);
+      });
+    },
+  );
 
   it("freezes decoded events while the server suite enables the test seam", () => {
     withTestThread((testThread) => {
