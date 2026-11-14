@@ -97,7 +97,7 @@ import {
   listStoredTurnStartedKeys,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listThreadEventSuffixBackgroundSettlementRows,
-  listThreadIdsStoppedSinceLastTurnStart,
+  listThreadIdsStoppedSinceLastTurnRequest,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   listTimelineInterruptionRows,
@@ -1268,9 +1268,9 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#listThreadIdsStoppedSinceLastTurnStart`,
+    name: `${EVENTS}#listThreadIdsStoppedSinceLastTurnRequest`,
     run: (db, fixture) =>
-      listThreadIdsStoppedSinceLastTurnStart(db, {
+      listThreadIdsStoppedSinceLastTurnRequest(db, {
         threadIds: [fixture.threadId],
       }),
   },
