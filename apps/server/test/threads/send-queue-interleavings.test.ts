@@ -20,6 +20,7 @@ import type { SendMessageRequest } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import { requestQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
+import { sendQueuedMessageNow } from "../../src/services/threads/queued-messages.js";
 import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import {
@@ -47,6 +48,7 @@ type SendMode = Extract<
 
 type UserStep =
   | { kind: "send"; label: string; mode: SendMode }
+  | { kind: "send-now"; label: string }
   | { kind: "stop" };
 
 type ScenarioEvent = "drain" | "provider-turn" | "reconnect" | "timeout";
@@ -80,10 +82,11 @@ interface DaemonTurn {
 
 interface UserOutcome {
   afterStop: boolean;
+  step: UserStep;
   label: string;
-  mode: SendMode | null;
   settled: "pending" | "accepted" | "rejected";
   detail: string;
+  refusedStatus: number | null;
 }
 
 interface Action {
@@ -118,6 +121,17 @@ function labelsIn(text: string): string[] {
 
 function labelsOf(input: readonly PromptInput[]): string[] {
   return labelsIn(JSON.stringify(input));
+}
+
+function describeUserStep(step: UserStep): string {
+  switch (step.kind) {
+    case "send":
+      return `${step.mode === "steer" ? "steer" : "send"} ${step.label}`;
+    case "send-now":
+      return `send-now ${step.label}`;
+    case "stop":
+      return "stop";
+  }
 }
 
 function isLiveCommand(held: HeldRpc): boolean {
@@ -469,16 +483,17 @@ class Run {
   }
 
   private track(
+    step: UserStep,
     label: string,
-    mode: SendMode | null,
     work: () => Promise<string>,
   ): void {
     const outcome: UserOutcome = {
-      afterStop: this.outcomes.some((earlier) => earlier.label === "stop"),
+      afterStop: this.outcomes.some((earlier) => earlier.step.kind === "stop"),
+      step,
       label,
-      mode,
       settled: "pending",
       detail: "",
+      refusedStatus: null,
     };
     this.outcomes.push(outcome);
     const tracked: Promise<void> = work()
@@ -489,6 +504,8 @@ class Run {
         },
         (error: unknown) => {
           outcome.settled = "rejected";
+          outcome.refusedStatus =
+            error instanceof ApiError ? error.status : null;
           outcome.detail =
             error instanceof ApiError
               ? `${error.body.code}: ${error.message}`
@@ -500,7 +517,7 @@ class Run {
   }
 
   send(label: string, mode: SendMode): void {
-    this.track(label, mode, async () => {
+    this.track({ kind: "send", label, mode }, label, async () => {
       const thread = getThread(this.harness.db, this.threadId);
       if (thread === null) throw new Error("Thread vanished");
       const response = await acceptThreadSendRequest(this.harness.deps, {
@@ -518,8 +535,23 @@ class Run {
     });
   }
 
+  private sendNow(label: string): void {
+    this.track({ kind: "send-now", label }, `send-now ${label}`, async () => {
+      const row = this.queuedRows().find((queued) =>
+        labelsIn(queued.content).includes(label),
+      );
+      if (row === undefined) return "already sent";
+      const response = await sendQueuedMessageNow(this.harness.deps, {
+        mode: "auto",
+        queuedMessageId: row.id,
+        threadId: this.threadId,
+      });
+      return response.delivery;
+    });
+  }
+
   private stop(): void {
-    this.track("stop", null, async () => {
+    this.track({ kind: "stop" }, "stop", async () => {
       const thread = getThread(this.harness.db, this.threadId);
       const environment = getEnvironment(this.harness.db, this.environmentId);
       if (thread === null || environment === null) {
@@ -577,14 +609,13 @@ class Run {
     const nextUser = this.scenario.user[this.userIndex];
     if (nextUser !== undefined) {
       actions.push({
-        label:
-          nextUser.kind === "send"
-            ? `${nextUser.mode === "steer" ? "steer" : "send"} ${nextUser.label}`
-            : "stop",
+        label: describeUserStep(nextUser),
         run: async () => {
           this.userIndex += 1;
           if (nextUser.kind === "send") {
             this.send(nextUser.label, nextUser.mode);
+          } else if (nextUser.kind === "send-now") {
+            this.sendNow(nextUser.label);
           } else {
             this.stop();
           }
@@ -722,12 +753,22 @@ class Run {
         violations.push(`${outcome.label} never settled`);
         continue;
       }
-      if (outcome.label === "stop") {
+      if (outcome.step.kind === "stop") {
         if (
           outcome.settled === "rejected" &&
           !UNANSWERED_PATTERN.test(outcome.detail)
         ) {
           violations.push(`stop failed: ${outcome.detail}`);
+        }
+        continue;
+      }
+      if (outcome.step.kind === "send-now") {
+        if (
+          outcome.settled === "rejected" &&
+          !UNANSWERED_PATTERN.test(outcome.detail) &&
+          (outcome.refusedStatus === null || outcome.refusedStatus >= 500)
+        ) {
+          violations.push(`${outcome.label} failed: ${outcome.detail}`);
         }
         continue;
       }
@@ -750,7 +791,8 @@ class Run {
     }
     const queuedInOrder = this.outcomes.filter(
       (outcome) =>
-        outcome.mode === "queue-if-active" &&
+        outcome.step.kind === "send" &&
+        outcome.step.mode === "queue-if-active" &&
         outcome.detail === "queued" &&
         this.daemon.deliveries(outcome.label) === 1,
     );
@@ -947,6 +989,7 @@ const steer = (label: string): UserStep => ({
   label,
   mode: "steer",
 });
+const sendNow = (label: string): UserStep => ({ kind: "send-now", label });
 const stop: UserStep = { kind: "stop" };
 
 const scenarios: Scenario[] = [
@@ -980,6 +1023,14 @@ const scenarios: Scenario[] = [
     holdPreparation: true,
     user: [send("msg-A"), steer("msg-B")],
     events: ["drain"],
+    knownFailures: [],
+  },
+  {
+    name: "a send-now of a queued message against the turn end while preparation is slow",
+    start: "running-turn",
+    holdPreparation: true,
+    user: [send("msg-A"), send("msg-B"), sendNow("msg-A")],
+    events: [],
     knownFailures: [],
   },
   {
