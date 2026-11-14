@@ -100,7 +100,9 @@ each; a shard with nothing selected skips setup.
   routes, and provider ids. A copy loaded next to the built-in collides with it
   until it renames them; the list only guarantees that the copy builds.
 - **SDK floor.** `engines.bbPluginSdk` names the SDK version that introduced
-  the newest hook the plugin calls.
+  the newest hook the plugin calls. For a hook added in the same change, that
+  is the unreleased `PLUGIN_SDK_VERSION` on `main`; see
+  [Publishing The Plugin SDK](bb-release-process.md#publishing-the-plugin-sdk).
 
 ## What belongs in shared-ui
 

@@ -48,6 +48,44 @@ env:
   RELEASE_NPM_TAG: ${{ github.event_name == 'schedule' && 'nightly' || inputs.npm_tag }}
 
 jobs:
+  cut-plugin-sdk-version:
+    name: Cut the plugin SDK version
+    if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.cut.outputs.version }}
+      owns_version: ${{ steps.cut.outputs.owns_version }}
+    concurrency:
+      group: cut-plugin-sdk-version
+      cancel-in-progress: false
+
+    steps:
+      - name: Require main branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Cutting the plugin SDK version must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Cut the plugin SDK version
+        id: cut
+        env:
+          DRY_RUN_FLAG: ${{ env.RELEASE_DRY_RUN == 'true' && '--dry-run' || '' }}
+        run: node scripts/cut-plugin-sdk-release.mjs $DRY_RUN_FLAG
+
   publish:
     name: Publish bb-app
     # Scheduled (nightly) runs are restricted to the canonical repository so
@@ -56,6 +94,7 @@ jobs:
     # need signing or notarization secrets they will never have. Manual
     # workflow_dispatch runs keep working in forks.
     if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
+    needs: cut-plugin-sdk-version
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-release
@@ -382,13 +421,13 @@ jobs:
           echo "::error::Timed out waiting for bb-app@$PACKAGE_VERSION to appear on npm tag nightly."
           exit 1
 
-  # Rides the same release train as bb-app but stays independent of it: the SDK
-  # version is settled in the repo (packages/domain/src/plugin-sdk-version.ts,
-  # mirrored in packages/plugin-sdk/package.json), never computed here. Every
-  # run publishes only when that exact version is missing from npm, so a run
-  # where it already exists skips and succeeds. Nothing needs this job and it
-  # needs nothing, so a failure here cannot hold back the app or desktop
-  # release.
+  # Rides the same release train as bb-app. The SDK version is the one
+  # cut-plugin-sdk-version claimed for this commit (packages/domain/src/
+  # plugin-sdk-version.ts, mirrored in packages/plugin-sdk/package.json), never
+  # computed here. The job publishes only when this run owns that version and
+  # npm does not have it yet, so a rerun skips and succeeds. bb-app needs the
+  # cut, not this job, so a publish failure here cannot hold back the app or
+  # desktop release.
   #
   # BOOTSTRAP: until @get-bb/plugin-sdk has been published once by hand and its
   # npm trusted publisher is configured (this repo, this workflow file, the
@@ -401,6 +440,7 @@ jobs:
     # trigger, while the nightly desktop, iOS and release-publish jobs stay
     # behind `needs` chains rooted at it.
     if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
+    needs: cut-plugin-sdk-version
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
@@ -470,23 +510,34 @@ jobs:
           echo "version=${sdk_version}" >> "$GITHUB_OUTPUT"
           echo "Local @get-bb/plugin-sdk version is ${sdk_version}."
 
-      - name: Check whether this version is already on npm
+      - name: Check this version against npm
         id: published
+        env:
+          OWNS_VERSION: ${{ needs.cut-plugin-sdk-version.outputs.owns_version }}
         run: |
           set -euo pipefail
 
-          # `npm view` exits non-zero both for "no such version" and for real
-          # registry errors, so distinguish them from the captured output
-          # rather than from the exit code alone.
-          if view_output="$(npm view "@get-bb/plugin-sdk@${SDK_VERSION}" version 2>&1)"; then
-            if [[ -n "$view_output" ]]; then
-              echo "@get-bb/plugin-sdk@${SDK_VERSION} already published, skipping."
-              echo "already_published=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          elif ! grep -qiE "E404|no match(ing)? version|is not in this registry" <<<"$view_output"; then
-            echo "::error::Could not query npm for @get-bb/plugin-sdk@${SDK_VERSION}: ${view_output}"
+          if [[ "$OWNS_VERSION" != "true" ]]; then
+            echo "@get-bb/plugin-sdk@${SDK_VERSION} belongs to an earlier release that this commit contains; that release publishes it."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          node packages/plugin-sdk/scripts/check-npm-version-guard.mjs --json > "$RUNNER_TEMP/sdk-guard.json"
+          guard_exit=$?
+          set -e
+          cat "$RUNNER_TEMP/sdk-guard.json"
+          reason="$(node -p "require(process.argv[1]).reason" "$RUNNER_TEMP/sdk-guard.json")"
+
+          if [[ "$guard_exit" -ne 0 ]]; then
+            echo "::error::npm version guard: ${reason}"
             exit 1
+          fi
+          if [[ "$reason" == "package-matches-published" ]]; then
+            echo "@get-bb/plugin-sdk@${SDK_VERSION} already published, skipping."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           echo "@get-bb/plugin-sdk@${SDK_VERSION} is not on npm; it will be published."

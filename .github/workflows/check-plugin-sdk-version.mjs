@@ -1,49 +1,116 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  MANIFEST_PATH,
+  VERSION_MODULE_PATH,
+  readPluginSdkVersions,
+} from "../../scripts/bump-plugin-sdk.mjs";
+import { compareSemver } from "../../scripts/lib/semver.mjs";
 
-/**
- * A change to the published plugin SDK surface must bump PLUGIN_SDK_VERSION.
- *
- * Pre-1.0 the major is the compatibility number and never moves for additive
- * work, so the patch is the only thing a plugin author can point
- * `engines.bbPluginSdk` at to say "I need a host new enough to have this" —
- * `isPluginSdkRangeSatisfied` reads that range as a floor within the major.
- * Ship a new export without a bump and a plugin using it has no version to
- * require, so installing it on an older bb fails at runtime instead of
- * legibly at load.
- *
- * Nothing else catches this: `version.test.ts` only checks that package.json
- * and the constant agree with each other, and `app-contract.ts` has no
- * enumerated export list the way the backend, rpc, and host contracts do.
- */
-const SURFACE_PATHS = [
-  "packages/plugin-sdk/src/app-contract.ts",
-  "packages/plugin-sdk/src/app.ts",
-  "packages/plugin-sdk/src/backend-contract.ts",
-  "packages/plugin-sdk/src/cli-spec.ts",
-  "packages/plugin-sdk/src/host-contract.ts",
-  "packages/plugin-sdk/src/host.ts",
-  "packages/plugin-sdk/src/index.ts",
-  "packages/plugin-sdk/src/process.ts",
-  "packages/plugin-sdk/src/provider-bridge.ts",
-  "packages/plugin-sdk/src/rpc-contract.ts",
-];
+const scriptPath = fileURLToPath(import.meta.url);
+const defaultRepoRoot = resolve(scriptPath, "..", "..", "..");
+const SDK_SOURCE_PREFIX = "packages/plugin-sdk/src/";
+const PLUGIN_MANIFEST_PATTERN = /^plugins\/[^/]+\/package\.json$/u;
+const FLOOR_PATTERN = /^>=(\d+\.\d+\.\d+)$/u;
 
-const VERSION_PATH = "packages/domain/src/plugin-sdk-version.ts";
-
-function git(...args) {
-  return execFileSync("git", args, { encoding: "utf8" }).trim();
+export function isSdkSourcePath(path) {
+  return (
+    path.startsWith(SDK_SOURCE_PREFIX) &&
+    !path.includes("/__tests__/") &&
+    !/\.test\.[cm]?[jt]sx?$/u.test(path)
+  );
 }
 
-/**
- * The commit this branch left the base at. Returns null when it cannot be
- * resolved — an unattended push to a fork with no base, say — and the check
- * then passes rather than failing on something the author cannot act on.
- */
-function resolveMergeBase() {
-  const baseRef = process.env.GITHUB_BASE_REF || "main";
-  for (const candidate of [`origin/${baseRef}`, baseRef]) {
+function floorOf(range) {
+  const match = range === undefined ? null : FLOOR_PATTERN.exec(range);
+  return match === null ? null : match[1];
+}
+
+export function isRaisedFloor({ before, after }) {
+  if (after === undefined) return false;
+  const beforeFloor = floorOf(before);
+  const afterFloor = floorOf(after);
+  if (beforeFloor === null || afterFloor === null) return before !== after;
+  return compareSemver(afterFloor, beforeFloor) > 0;
+}
+
+export function findPluginSdkVersionProblems({
+  base,
+  head,
+  sdkSourceChanged,
+  floorChanges,
+}) {
+  const problems = [];
+
+  if (head.manifestVersion !== head.moduleVersion) {
+    problems.push(
+      `${MANIFEST_PATH} says ${head.manifestVersion} but ${VERSION_MODULE_PATH} says ${head.moduleVersion}. They must agree; move both with node scripts/bump-plugin-sdk.mjs.`,
+    );
+  }
+
+  if (compareSemver(head.moduleVersion, base.moduleVersion) < 0) {
+    problems.push(
+      `PLUGIN_SDK_VERSION moved backwards from ${base.moduleVersion} to ${head.moduleVersion}. A release may already carry ${base.moduleVersion}, so the version only moves forward; restore it.`,
+    );
+  }
+
+  if (sdkSourceChanged) {
+    const expected = `>=${head.moduleVersion}`;
+    for (const change of floorChanges.filter(isRaisedFloor)) {
+      if (change.after !== expected) {
+        problems.push(
+          `${change.plugin} raises engines.bbPluginSdk to ${change.after} alongside a change to ${SDK_SOURCE_PREFIX}. The first host with that change is the next release, ${head.moduleVersion}; every earlier version was released without it. Use "${expected}".`,
+        );
+      }
+    }
+  }
+
+  return problems;
+}
+
+function createGit(repoRoot) {
+  const run = (args) =>
+    execFileSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  const show = (ref, path) => {
+    const result = spawnSync("git", ["show", `${ref}:${path}`], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    return result.status === 0 ? result.stdout : null;
+  };
+  const isCommit = (ref) =>
+    spawnSync("git", ["cat-file", "-e", `${ref}^{commit}`], {
+      cwd: repoRoot,
+      stdio: "ignore",
+    }).status === 0;
+  const showRequired = (ref, path) =>
+    execFileSync("git", ["show", `${ref}:${path}`], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  return { run, show, showRequired, isCommit };
+}
+
+function resolveComparisonBase(git, env) {
+  const explicit = env.PLUGIN_SDK_CHECK_BASE ?? "";
+  const candidates =
+    explicit !== "" && !/^0+$/u.test(explicit) && git.isCommit(explicit)
+      ? [explicit]
+      : [
+          `origin/${env.GITHUB_BASE_REF || "main"}`,
+          env.GITHUB_BASE_REF || "main",
+        ];
+
+  for (const candidate of candidates) {
     try {
-      return git("merge-base", candidate, "HEAD");
+      return git.run(["merge-base", candidate, "HEAD"]);
     } catch {
       continue;
     }
@@ -51,33 +118,74 @@ function resolveMergeBase() {
   return null;
 }
 
-const mergeBase = resolveMergeBase();
-if (mergeBase === null) {
-  console.log("No base commit to compare against; skipping.");
-  process.exit(0);
+function bbPluginSdkRange(content) {
+  if (content === null) return undefined;
+  const range = JSON.parse(content)?.engines?.bbPluginSdk;
+  return typeof range === "string" ? range : undefined;
 }
 
-const changed = new Set(
-  git("diff", "--name-only", `${mergeBase}...HEAD`).split("\n").filter(Boolean),
-);
-const changedSurface = SURFACE_PATHS.filter((path) => changed.has(path));
-
-if (changedSurface.length === 0) {
-  console.log("Plugin SDK surface unchanged.");
-  process.exit(0);
+function readWorkingFile(repoRoot, path) {
+  try {
+    return readFileSync(resolve(repoRoot, path), "utf8");
+  } catch {
+    return null;
+  }
 }
 
-if (!changed.has(VERSION_PATH)) {
-  console.error(
-    `The plugin SDK surface changed without a version bump:\n` +
-      changedSurface.map((path) => `  ${path}`).join("\n") +
-      `\n\nBump PLUGIN_SDK_VERSION in ${VERSION_PATH} (patch, pre-1.0) and` +
-      ` keep packages/plugin-sdk/package.json in step, so a plugin using the` +
-      ` new surface can require a host that has it.`,
-  );
-  process.exit(1);
+export function checkPluginSdkVersion({ repoRoot, env }) {
+  const git = createGit(repoRoot);
+  const base = resolveComparisonBase(git, env);
+
+  if (base === null) {
+    return { skipped: true, problems: [] };
+  }
+
+  const changed = git
+    .run(["diff", "--name-only", base, "HEAD"])
+    .split("\n")
+    .filter(Boolean);
+  const floorChanges = changed
+    .filter((path) => PLUGIN_MANIFEST_PATTERN.test(path))
+    .map((path) => ({
+      plugin: path,
+      before: bbPluginSdkRange(git.show(base, path)),
+      after: bbPluginSdkRange(readWorkingFile(repoRoot, path)),
+    }));
+
+  return {
+    skipped: false,
+    problems: findPluginSdkVersionProblems({
+      base: readPluginSdkVersions({
+        manifestContent: git.showRequired(base, MANIFEST_PATH),
+        moduleContent: git.showRequired(base, VERSION_MODULE_PATH),
+      }),
+      head: readPluginSdkVersions({
+        manifestContent: readFileSync(resolve(repoRoot, MANIFEST_PATH), "utf8"),
+        moduleContent: readFileSync(
+          resolve(repoRoot, VERSION_MODULE_PATH),
+          "utf8",
+        ),
+      }),
+      sdkSourceChanged: changed.some(isSdkSourcePath),
+      floorChanges,
+    }),
+  };
 }
 
-console.log(
-  `Plugin SDK surface changed in ${changedSurface.length} file(s) with a version bump.`,
-);
+if (resolve(process.argv[1] ?? "") === scriptPath) {
+  const result = checkPluginSdkVersion({
+    repoRoot: defaultRepoRoot,
+    env: process.env,
+  });
+
+  if (result.skipped) {
+    console.log("No base commit to compare against; skipping.");
+  } else if (result.problems.length > 0) {
+    console.error(
+      result.problems.map((problem) => `::error::${problem}`).join("\n"),
+    );
+    process.exitCode = 1;
+  } else {
+    console.log("Plugin SDK version and first-party floors are consistent.");
+  }
+}

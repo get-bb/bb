@@ -280,41 +280,77 @@ Add to the report from "Verify The Release":
 
 ## Publishing The Plugin SDK
 
-`@get-bb/plugin-sdk` rides the same release train as `bb-app`. The
-`publish-plugin-sdk` job in `publish-bb-app.yml` runs on the same nightly cron
-and `workflow_dispatch` triggers, but depends on nothing and is depended on by
-nothing: a failure there cannot hold back the npm or desktop release.
+`@get-bb/plugin-sdk` rides the same release train as `bb-app`, on the same
+nightly cron and `workflow_dispatch` triggers of `publish-bb-app.yml`.
 
-The SDK version is **settled in the repo before any build**, never computed at
-publish time. It lives in `packages/domain/src/plugin-sdk-version.ts`
-(`PLUGIN_SDK_VERSION`) and is mirrored in `packages/plugin-sdk/package.json`.
-Both must be bumped together, so move them with the script rather than by hand:
+`PLUGIN_SDK_VERSION` in `packages/domain/src/plugin-sdk-version.ts`, mirrored
+in `packages/plugin-sdk/package.json`, names the version the **next** release
+cuts. Pull requests never bump it, whatever they change in the SDK. A
+first-party plugin that needs an API its own change adds sets
+`engines.bbPluginSdk` to `>=` that version.
 
-```bash
-node scripts/bump-plugin-sdk.mjs --patch   # or --minor, --major, or an explicit version
-```
+Each release cuts the version before it builds anything:
 
-The script writes both files atomically and refuses to run when they already
-disagree. The job is publish-if-missing: it reads the local
-version, asks npm whether that exact version exists, and either logs
-"already published, skipping" or publishes. Every run is therefore idempotent —
-most runs publish nothing.
+1. `cut-plugin-sdk-version` runs `scripts/cut-plugin-sdk-release.mjs`. It claims
+   the version the release commit carries by pushing the tag
+   `plugin-sdk-v<version>` at that commit. It then pushes a
+   `github-actions[bot]` commit to `main` that moves both files to the next
+   patch. Changes merged after that commit land in the next version. Runs of
+   this job are serialized.
+2. `publish` (bb-app, desktop and mobile through it) and `publish-plugin-sdk`
+   need the cut. A host build therefore never reports a version another
+   release cut from a commit it does not contain.
+3. `publish-plugin-sdk` publishes the version when this run owns it and npm
+   does not have it yet. npm records the release commit as `gitHead`.
 
-Because a published version is never republished, an already-released version's
-published content must never change underneath it. `check-npm-version-guard.mjs`
-enforces that on every PR from the `checks` job in `ci.yml`:
+The cut decides from the tag, or, for versions published before tags existed,
+from npm's `gitHead`:
 
-| Registry state                              | Result                                                               |
-| ------------------------------------------- | -------------------------------------------------------------------- |
-| Package or version absent (404)             | Pass — the publish job will ship this version.                       |
-| Version published, packed package identical | Pass.                                                                |
-| Version published, packed package differs   | Fail — run `node scripts/bump-plugin-sdk.mjs --patch`.               |
-| Registry unreachable, or local pack failed  | Exit 2; CI logs a warning and continues (infrastructure, not a bug). |
+| Claim on the version                   | Result                                                              |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| None                                   | Tag it at this commit; this run publishes it.                       |
+| This commit (a rerun)                  | Reuse it; publish if npm still lacks it.                            |
+| An earlier commit this commit contains | Release the host on it without publishing; the earlier run owns it. |
+| A commit this commit does not contain  | Fail before anything ships; rerun the release from current `main`.  |
+| `main` already past the version        | Do not advance `main` again.                                        |
+| `main` behind the version              | Fail; the version only moves forward.                               |
+
+Dry runs make the same decision and change nothing. A release that fails after
+the cut leaves a gap in npm's version list, which is harmless. A version that
+was cut and changed nothing in the SDK is still published, so every released
+host's version exists on npm.
+
+`node scripts/bump-plugin-sdk.mjs` still moves both files atomically. Run it
+by hand only for a `--minor` or `--major` change, or when a guard below names
+a version to move to.
+
+Three checks catch the mistakes left.
+
+`check-plugin-sdk-version.mjs`, the "Check plugin SDK version" job in
+`version-lockstep.yml`, fails a pull request or push when the two files
+disagree or the version moves backwards. It also fails a change to
+`packages/plugin-sdk/src/` that raises a first-party `engines.bbPluginSdk`
+floor to anything but the unreleased version. On a push to `main` it compares
+with the commit the push replaced. A pull request that passed before a release
+and merged after it therefore fails on `main` if its floor names the version
+that release cut.
+
+`packages/plugin-sdk/src/__tests__/version.test.ts` keeps the two files equal.
+
+`check-npm-version-guard.mjs` runs from the `checks` job in `ci.yml`, and
+`publish-plugin-sdk` uses it to decide what to publish:
+
+| Registry state                                     | Result                                                               |
+| -------------------------------------------------- | -------------------------------------------------------------------- |
+| Package or version absent, at or above the newest  | Pass; the publish job will ship this version.                        |
+| Version absent, below the newest published version | Fail; it would publish an older number with more API.                |
+| Version published, packed package identical        | Pass; the publish job skips it.                                      |
+| Version published, packed package differs          | Fail; something set the version back. Move past the newest version.  |
+| Registry unreachable, or local pack failed         | Exit 2; CI logs a warning and continues (infrastructure, not a bug). |
 
 The guard packs the SDK exactly as publish would and compares every packed
-file and the consumer-facing manifest fields with the published tarball, so a
-runtime-only change also needs a version bump. Run it locally the same way CI
-does:
+file and the consumer-facing manifest fields with the published tarball. Run it
+locally the same way CI does:
 
 ```bash
 node packages/plugin-sdk/scripts/check-npm-version-guard.mjs

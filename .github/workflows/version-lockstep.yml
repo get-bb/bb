@@ -27,7 +27,7 @@ jobs:
         run: node .github/workflows/check-version-lockstep.mjs
 
   plugin-sdk:
-    name: Check plugin SDK version bump
+    name: Check plugin SDK version
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
 
@@ -47,5 +47,7 @@ jobs:
         with:
           node-version: 22.x
 
-      - name: Check plugin SDK version bump
+      - name: Check plugin SDK version and first-party floors
+        env:
+          PLUGIN_SDK_CHECK_BASE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: node .github/workflows/check-plugin-sdk-version.mjs

@@ -27,6 +27,7 @@ const local = { kind: "packed", files, manifest };
 function publishedRegistry(overrides = {}) {
   return {
     kind: "published",
+    newestPublished: "0.5.3",
     files: { ...files, ...(overrides.files ?? {}) },
     manifest: { ...manifest, ...(overrides.manifest ?? {}) },
   };
@@ -46,13 +47,29 @@ describe("decideNpmVersionGuard", () => {
     const decision = decideNpmVersionGuard({
       version,
       local: { kind: "not-needed", files: {}, manifest: {} },
-      registry: { kind: "version-not-found" },
+      registry: { kind: "version-not-found", newestPublished: "0.4.9" },
     });
     expect(decision).toMatchObject({
       status: "pass",
       exitCode: 0,
       reason: "version-not-published",
     });
+  });
+
+  it("fails when an unpublished version sits below one already published", () => {
+    const decision = decideNpmVersionGuard({
+      version,
+      local: { kind: "not-needed", files: {}, manifest: {} },
+      registry: { kind: "version-not-found", newestPublished: "0.5.3" },
+    });
+    expect(decision).toMatchObject({
+      status: "fail",
+      exitCode: 1,
+      reason: "version-behind-published",
+    });
+    expect(decision.message).toContain(
+      "node scripts/bump-plugin-sdk.mjs 0.5.4",
+    );
   });
 
   it("passes when packed files and manifest match, ignoring line endings, EOF whitespace, and key order", () => {
@@ -113,6 +130,9 @@ describe("decideNpmVersionGuard", () => {
       changedFiles: ["bundled-types/bb-plugin-sdk-app.d.ts"],
     });
     expect(decision.message).toContain("plugin-sdk-version.ts");
+    expect(decision.message).toContain(
+      "node scripts/bump-plugin-sdk.mjs 0.5.4",
+    );
   });
 
   it("fails when a packed file is added or removed", () => {

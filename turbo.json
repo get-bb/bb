@@ -685,6 +685,7 @@
         "$TURBO_ROOT$/.github/APPROVED_CONTRIBUTORS",
         "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
         "$TURBO_ROOT$/.github/workflows/pr-gate.yml",
+        "$TURBO_ROOT$/.github/workflows/check-plugin-sdk-version.mjs",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/scripts/*.mjs",
         "$TURBO_ROOT$/turbo.json",
@@ -1053,7 +1054,11 @@
         "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/lib/semver.mjs",
+        "$TURBO_ROOT$/vitest*.ts"
+      ]
     },
     "@get-bb/plugin-sdk#build:runtime": {
       "inputs": [

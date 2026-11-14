@@ -1,13 +1,14 @@
 // Keeps npm from lagging the plugin SDK.
 //
-// The publish job (.github/workflows/publish-bb-app.yml, job publish-plugin-sdk)
-// only publishes @get-bb/plugin-sdk when PLUGIN_SDK_VERSION is absent from npm.
-// That is safe exactly as long as a released version's *published content* never
-// changes underneath it. Declarations alone are not enough: a runtime-only change
-// (dist/ output, an exports map entry, a peer range) leaves bundled-types
-// identical, so a types-only guard would pass and publish-if-missing would then
-// never ship it — npm would keep serving stale executable code under a version
-// that no longer matches this repo.
+// The release workflow (.github/workflows/publish-bb-app.yml) cuts
+// PLUGIN_SDK_VERSION for each release with scripts/cut-plugin-sdk-release.mjs,
+// moves main to the next patch, and publishes @get-bb/plugin-sdk only when that
+// version is absent from npm. That is safe exactly as long as a released
+// version's *published content* never changes underneath it and a new version
+// never lands below one already published. Declarations alone are not enough: a
+// runtime-only change (dist/ output, an exports map entry, a peer range) leaves
+// bundled-types identical, so a types-only guard would pass and
+// publish-if-missing would then never ship it.
 //
 // So this guard compares the whole would-be-published package against the
 // published tarball for the current version:
@@ -37,6 +38,10 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  compareSemver,
+  resolveVersionArgument,
+} from "../../../scripts/lib/semver.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
@@ -72,6 +77,20 @@ export function normalizePackedFile(text) {
   return text.replace(/\r\n/gu, "\n").replace(/\s+$/u, "") + "\n";
 }
 
+function nextPatch(version) {
+  return resolveVersionArgument({
+    argument: "--patch",
+    currentVersion: version,
+    usage: "",
+  });
+}
+
+function newestVersion(versions) {
+  return versions.reduce((newest, candidate) =>
+    compareSemver(candidate, newest) > 0 ? candidate : newest,
+  );
+}
+
 /** Stable stringify so key order in package.json is not reported as drift. */
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -101,8 +120,8 @@ function manifestFieldsDiffer(a, b) {
  * @param {object} input.registry one of:
  *   {kind:"network-error", message}
  *   {kind:"package-not-found"}
- *   {kind:"version-not-found"}
- *   {kind:"published", files: Record<string,string>, manifest: Record<string,unknown>}
+ *   {kind:"version-not-found", newestPublished: string}
+ *   {kind:"published", newestPublished: string, files: Record<string,string>, manifest: Record<string,unknown>}
  * @returns {{status:"pass"|"fail"|"error", exitCode:0|1|2, reason:string,
  *   message:string, changedFiles:string[]}}
  */
@@ -124,6 +143,26 @@ export function decideNpmVersionGuard({ version, local, registry }) {
       reason: "package-not-published",
       changedFiles: [],
       message: `${PACKAGE_NAME} is not on npm yet, so ${version} cannot have drifted. The publish job will ship it.`,
+    };
+  }
+
+  if (
+    registry.kind === "version-not-found" &&
+    compareSemver(version, registry.newestPublished) < 0
+  ) {
+    return {
+      status: "fail",
+      exitCode: 1,
+      reason: "version-behind-published",
+      changedFiles: [],
+      message: [
+        `${PACKAGE_NAME}@${version} is not on npm, but ${registry.newestPublished} already is.`,
+        "Publishing it now would give an older version number more API than a newer one,",
+        `so a plugin requiring >=${version} would load on a ${registry.newestPublished} host without it.`,
+        "This happens when a revert or merge restores an old version. Move past it:",
+        "",
+        `  node scripts/bump-plugin-sdk.mjs ${nextPatch(registry.newestPublished)}`,
+      ].join("\n"),
     };
   }
 
@@ -184,9 +223,12 @@ export function decideNpmVersionGuard({ version, local, registry }) {
       ...changed.map((name) => `  - ${name}`),
       "",
       "A published version is never republished, so this change would never reach",
-      "npm consumers. Bump the version, then re-run:",
+      "npm consumers. Each release moves main to the next patch on its own, so this",
+      "checkout carries a released version because something set it back: a revert,",
+      "a merge that restored an old version, or a release that failed to advance main.",
+      "Move past every published version:",
       "",
-      "  node scripts/bump-plugin-sdk.mjs --patch",
+      `  node scripts/bump-plugin-sdk.mjs ${nextPatch(registry.newestPublished)}`,
       "",
       "That moves packages/domain/src/plugin-sdk-version.ts and",
       "packages/plugin-sdk/package.json together; they must stay in sync.",
@@ -314,8 +356,11 @@ async function loadRegistryState(version) {
     };
   }
 
-  const published = metadata?.versions?.[version];
-  if (!published) return { kind: "version-not-found" };
+  const publishedVersions = Object.keys(metadata?.versions ?? {});
+  if (publishedVersions.length === 0) return { kind: "package-not-found" };
+  const newestPublished = newestVersion(publishedVersions);
+  const published = metadata.versions[version];
+  if (!published) return { kind: "version-not-found", newestPublished };
 
   const tarballUrl = published?.dist?.tarball;
   if (typeof tarballUrl !== "string") {
@@ -349,7 +394,11 @@ async function loadRegistryState(version) {
     const tarballPath = path.join(workDir, "package.tgz");
     writeFileSync(tarballPath, tarball);
     try {
-      return { kind: "published", ...extractTarball(tarballPath, workDir) };
+      return {
+        kind: "published",
+        newestPublished,
+        ...extractTarball(tarballPath, workDir),
+      };
     } catch (error) {
       // A corrupt or truncated download is infrastructure, not real drift.
       return {

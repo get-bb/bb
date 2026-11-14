@@ -3,21 +3,6 @@ import {
   parsePackageJsonWithVersion,
   writeFilesAtomically,
 } from "./lib/package-version.mjs";
-// Bumps @get-bb/plugin-sdk in the two files that must always agree:
-//
-//   packages/domain/src/plugin-sdk-version.ts  (PLUGIN_SDK_VERSION)
-//   packages/plugin-sdk/package.json           (version)
-//
-// The publish job is publish-if-missing (.github/workflows/publish-bb-app.yml,
-// job publish-plugin-sdk): it never republishes a version that already exists on
-// npm. So any change to the package's published content — dist/, bundled-types/,
-// README.md, or a consumer-facing manifest field — needs a new version, or npm
-// keeps serving the old content forever. check-npm-version-guard.mjs fails CI
-// when that happens and points here.
-//
-// Both files are written atomically: a temp file per target, then renames, with
-// the originals restored if any rename fails. A half-applied bump would leave
-// the repo in the exact inconsistent state this script exists to prevent.
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,20 +12,15 @@ const scriptPath = fileURLToPath(import.meta.url);
 const defaultRepoRoot = resolve(dirname(scriptPath), "..");
 const USAGE =
   "Usage: node scripts/bump-plugin-sdk.mjs <new-version>|--patch|--minor|--major";
-const MANIFEST_PATH = "packages/plugin-sdk/package.json";
-const VERSION_MODULE_PATH = "packages/domain/src/plugin-sdk-version.ts";
+export const MANIFEST_PATH = "packages/plugin-sdk/package.json";
+export const VERSION_MODULE_PATH = "packages/domain/src/plugin-sdk-version.ts";
 
-/**
- * Matches the `PLUGIN_SDK_VERSION` export in plugin-sdk-version.ts. Anchored to
- * the export statement rather than the bare string so the long explanatory
- * comment above it — which cites version numbers — is never rewritten.
- */
 const VERSION_EXPORT_PATTERN =
   /(export const PLUGIN_SDK_VERSION = ")([^"]+)(";)/u;
 
 const defaultFileSystem = { readFile, rename, unlink, writeFile };
 
-function readModuleVersion({ content, path }) {
+export function readModuleVersion({ content, path }) {
   const match = VERSION_EXPORT_PATTERN.exec(content);
 
   if (match === null) {
@@ -50,11 +30,69 @@ function readModuleVersion({ content, path }) {
   return match[2];
 }
 
+export function readPluginSdkVersions({ manifestContent, moduleContent }) {
+  return {
+    manifestVersion: parsePackageJsonWithVersion({
+      content: manifestContent,
+      path: MANIFEST_PATH,
+    }).version,
+    moduleVersion: readModuleVersion({
+      content: moduleContent,
+      path: VERSION_MODULE_PATH,
+    }),
+  };
+}
+
 function writeModuleVersion({ content, newVersion }) {
   return content.replace(
     VERSION_EXPORT_PATTERN,
     (_match, prefix, _current, suffix) => `${prefix}${newVersion}${suffix}`,
   );
+}
+
+export function planPluginSdkBump({
+  argument,
+  manifestContent,
+  moduleContent,
+}) {
+  const packageJson = parsePackageJsonWithVersion({
+    content: manifestContent,
+    path: MANIFEST_PATH,
+  });
+  const currentVersion = packageJson.version;
+  const moduleVersion = readModuleVersion({
+    content: moduleContent,
+    path: VERSION_MODULE_PATH,
+  });
+
+  if (currentVersion !== moduleVersion) {
+    throw new Error(
+      `Version mismatch before bump: ${MANIFEST_PATH}=${currentVersion} ${VERSION_MODULE_PATH}=${moduleVersion}. Set both to the same version, then bump.`,
+    );
+  }
+
+  const newVersion = resolveVersionArgument({
+    argument,
+    currentVersion,
+    usage: USAGE,
+  });
+
+  if (compareSemver(newVersion, currentVersion) <= 0) {
+    throw new Error(
+      `New version ${newVersion} must be greater than current ${currentVersion}.`,
+    );
+  }
+
+  return {
+    currentVersion,
+    newVersion,
+    manifestContent: createUpdatedPackageContent({
+      content: manifestContent,
+      packageJson,
+      newVersion,
+    }),
+    moduleContent: writeModuleVersion({ content: moduleContent, newVersion }),
+  };
 }
 
 export async function bumpPluginSdk(options) {
@@ -73,36 +111,11 @@ export async function bumpPluginSdk(options) {
     fileSystem.readFile(manifestAbsolutePath, "utf8"),
     fileSystem.readFile(moduleAbsolutePath, "utf8"),
   ]);
-
-  const packageJson = parsePackageJsonWithVersion({
-    content: manifestContent,
-    path: MANIFEST_PATH,
-  });
-  const manifestVersion = packageJson.version;
-  const moduleVersion = readModuleVersion({
-    content: moduleContent,
-    path: VERSION_MODULE_PATH,
-  });
-
-  // Drifted sources have no single "current" version to bump from, and picking
-  // one would silently pin the other. Make the operator resolve it.
-  if (manifestVersion !== moduleVersion) {
-    throw new Error(
-      `Version mismatch before bump: ${MANIFEST_PATH}=${manifestVersion} ${VERSION_MODULE_PATH}=${moduleVersion}. Set both to the same version, then bump.`,
-    );
-  }
-
-  const newVersion = resolveVersionArgument({
+  const plan = planPluginSdkBump({
     argument: args[0],
-    currentVersion: manifestVersion,
-    usage: USAGE,
+    manifestContent,
+    moduleContent,
   });
-
-  if (compareSemver(newVersion, manifestVersion) <= 0) {
-    throw new Error(
-      `New version ${newVersion} must be greater than current ${manifestVersion}.`,
-    );
-  }
 
   await writeFilesAtomically({
     fileSystem,
@@ -111,25 +124,18 @@ export async function bumpPluginSdk(options) {
       {
         absolutePath: manifestAbsolutePath,
         content: manifestContent,
-        nextContent: createUpdatedPackageContent({
-          content: manifestContent,
-          packageJson,
-          newVersion,
-        }),
+        nextContent: plan.manifestContent,
       },
       {
         absolutePath: moduleAbsolutePath,
         content: moduleContent,
-        nextContent: writeModuleVersion({
-          content: moduleContent,
-          newVersion,
-        }),
+        nextContent: plan.moduleContent,
       },
     ],
   });
 
   log(
-    `Bumped: @get-bb/plugin-sdk ${manifestVersion} → ${newVersion} (${MANIFEST_PATH} + ${VERSION_MODULE_PATH})`,
+    `Bumped: @get-bb/plugin-sdk ${plan.currentVersion} → ${plan.newVersion} (${MANIFEST_PATH} + ${VERSION_MODULE_PATH})`,
   );
 }
 
