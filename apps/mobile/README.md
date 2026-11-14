@@ -115,6 +115,12 @@ eas.json                 EAS Build profiles (development / development-device /
                          preview / production); see "Release"
 scripts/                 generate-native-theme.ts (theme tokens),
                          testflight-distribute.mjs (TestFlight distribution)
+modules/bb-keyboard-hinge-guard/
+                         local Expo module (iOS): on the iPhone Duo, iOS 27.2
+                         crashes in Auto Layout when the keyboard splits
+                         around the hinge while it is first attached to a
+                         window in split screen; the module runs that split
+                         on the next main-queue turn instead
 ```
 
 Rules: import `@bb/sdk/browser` (never `@bb/sdk`); no `@bb/shared-ui`; no DOM
