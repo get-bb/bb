@@ -1,0 +1,1118 @@
+import { setTimeout as sleep } from "node:timers/promises";
+import {
+  getEnvironment,
+  getLatestThreadSequence,
+  getThread,
+  isThreadQueueAutoSendPaused,
+  listQueuedThreadMessages,
+} from "@bb/db";
+import { turnScope, type PromptInput, type ThreadEvent } from "@bb/domain";
+import {
+  groupHostDaemonEvents,
+  HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonOnlineRpcResponseMessageSchema,
+  hostDaemonServerWsMessageSchema,
+  hostDaemonSessionOpenResponseSchema,
+  type HostDaemonOnlineRpcRequestMessage,
+  type HostDaemonOnlineRpcResponseMessage,
+} from "@bb/host-daemon-contract";
+import type { SendMessageRequest } from "@bb/server-contract";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../src/errors.js";
+import { requestQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
+import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
+import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
+import {
+  onDaemonSocketClose,
+  onDaemonSocketOpen,
+} from "../../src/ws/daemon-protocol.js";
+import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
+import { availableModelFixture } from "../helpers/available-models.js";
+import { internalAuthHeaders } from "../helpers/commands.js";
+import { EMPTY_WORKSPACE_AGENT_CONTEXT } from "../helpers/host-rpc.js";
+import { textInput } from "../helpers/prompt-input.js";
+import {
+  seedEnvironment,
+  seedHostSession,
+  seedProjectWithSource,
+  seedThread,
+  seedThreadRuntimeState,
+} from "../helpers/seed.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+
+type SendMode = Extract<
+  SendMessageRequest["mode"],
+  "queue-if-active" | "steer"
+>;
+
+type UserStep =
+  | { kind: "send"; label: string; mode: SendMode }
+  | { kind: "stop" };
+
+type ScenarioEvent = "drain" | "provider-turn" | "reconnect" | "timeout";
+
+interface KnownFailure {
+  cause: string;
+  orderings: string[];
+}
+
+interface Scenario {
+  name: string;
+  start: "idle" | "running-turn" | "disconnected";
+  holdPreparation: boolean;
+  user: UserStep[];
+  events: ScenarioEvent[];
+  knownFailures: KnownFailure[];
+}
+
+interface HeldRpc {
+  id: number;
+  request: HostDaemonOnlineRpcRequestMessage;
+  serverWaiting: boolean;
+  sessionId: string;
+}
+
+interface DaemonTurn {
+  id: string;
+  labels: string[];
+  startedBy: "request" | "provider";
+}
+
+interface UserOutcome {
+  afterStop: boolean;
+  label: string;
+  mode: SendMode | null;
+  settled: "pending" | "accepted" | "rejected";
+  detail: string;
+}
+
+interface Action {
+  label: string;
+  run: () => Promise<void>;
+}
+
+interface Choice {
+  index: number;
+  labels: string[];
+}
+
+type RpcReply =
+  | { ok: true; result: unknown }
+  | { ok: false; errorCode: string; errorMessage: string };
+
+const LABEL_PATTERN = /msg-[A-Za-z0-9]+/g;
+const MAX_STEPS = 60;
+const UNANSWERED_PATTERN = /^(command_timeout|host_unavailable):/;
+const FOLLOW_UP_LABEL = "msg-followup";
+const MAX_SCHEDULED_WAIT_MS = 20_000;
+
+function hasPendingIoRequest(): boolean {
+  return process
+    .getActiveResourcesInfo()
+    .some((resource) => resource.includes("Req"));
+}
+
+function labelsIn(text: string): string[] {
+  return [...new Set(text.match(LABEL_PATTERN) ?? [])];
+}
+
+function labelsOf(input: readonly PromptInput[]): string[] {
+  return labelsIn(JSON.stringify(input));
+}
+
+function isLiveCommand(held: HeldRpc): boolean {
+  return held.request.command.type !== "host.read_workspace_agent_context";
+}
+
+function describeRpc(held: HeldRpc): string {
+  const { command } = held.request;
+  if (command.type === "turn.submit") {
+    return `submit(${command.target.mode} ${labelsOf(command.input).join("+")})#${held.id}`;
+  }
+  if (command.type === "thread.stop") {
+    return `stop(${command.intent})#${held.id}`;
+  }
+  if (command.type === "host.read_workspace_agent_context") {
+    return `prepare#${held.id}`;
+  }
+  return `${command.type}#${held.id}`;
+}
+
+class FakeDaemon {
+  readonly held: HeldRpc[] = [];
+  readonly turns: DaemonTurn[] = [];
+  readonly deliveryOrder: string[] = [];
+  readonly violations: string[] = [];
+  activeTurn: DaemonTurn | null = null;
+  connected = true;
+  private nextRpcId = 1;
+  private bufferedEvents: ThreadEvent[] = [];
+  private readonly timeouts = new Map<string, () => void>();
+  readonly socket = {
+    close: () => undefined,
+    send: (data: string) => this.receive(data),
+  };
+
+  constructor(
+    private readonly harness: TestAppHarness,
+    readonly hostId: string,
+    private sessionId: string,
+    readonly threadId: string,
+    private readonly providerThreadId: string,
+    private readonly holdPreparation: boolean,
+  ) {
+    const hub = harness.hub;
+    const request = hub.requestHostOnlineRpc.bind(hub);
+    vi.spyOn(hub, "requestHostOnlineRpc").mockImplementation((args) => {
+      const response = request(args);
+      response.catch(() => undefined);
+      return new Promise<HostDaemonOnlineRpcResponseMessage>(
+        (resolve, reject) => {
+          this.timeouts.set(args.message.requestId, () =>
+            reject(new HostOnlineRpcTimeoutError()),
+          );
+          response.then(resolve, reject);
+        },
+      );
+    });
+    hub.registerDaemon(sessionId, hostId, this.socket);
+  }
+
+  deliveries(label: string): number {
+    return this.deliveryOrder.filter((delivered) => delivered === label).length;
+  }
+
+  releasableRpcs(): HeldRpc[] {
+    const oldestLiveCommand = this.held.find(isLiveCommand);
+    return this.held.filter(
+      (held) => !isLiveCommand(held) || held === oldestLiveCommand,
+    );
+  }
+
+  timeoutableRpcs(): HeldRpc[] {
+    if (!this.connected) return [];
+    return this.held.filter(
+      (held) => held.serverWaiting && isLiveCommand(held),
+    );
+  }
+
+  fireTimeout(held: HeldRpc): void {
+    held.serverWaiting = false;
+    this.timeouts.get(held.request.requestId)?.();
+  }
+
+  private receive(data: string): void {
+    const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
+    if (message.type !== "host-rpc.request") return;
+    const { command } = message;
+    switch (command.type) {
+      case "turn.submit":
+        if (labelsOf(command.input).length === 0) {
+          this.violations.push(
+            `turn.submit(${command.target.mode}) carried no message`,
+          );
+        }
+        this.hold(message);
+        return;
+      case "thread.stop":
+        this.hold(message);
+        return;
+      case "host.read_workspace_agent_context":
+        if (this.holdPreparation) {
+          this.hold(message);
+          return;
+        }
+        this.respond(message, this.sessionId, {
+          ok: true,
+          result: EMPTY_WORKSPACE_AGENT_CONTEXT,
+        });
+        return;
+      case "provider.list_models":
+        this.respond(message, this.sessionId, {
+          ok: true,
+          result: {
+            models: [
+              availableModelFixture({
+                model: "gpt-5",
+                reasoningLevels: ["low", "medium", "high"],
+                defaultReasoningLevel: "medium",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        });
+        return;
+      default:
+        this.violations.push(`unexpected daemon RPC ${command.type}`);
+        this.respond(message, this.sessionId, {
+          ok: false,
+          errorCode: "fake_daemon_unsupported",
+          errorMessage: `The fake daemon does not handle ${command.type}`,
+        });
+    }
+  }
+
+  private hold(request: HostDaemonOnlineRpcRequestMessage): void {
+    this.held.push({
+      id: this.nextRpcId++,
+      request,
+      serverWaiting: true,
+      sessionId: this.sessionId,
+    });
+  }
+
+  private respond(
+    request: HostDaemonOnlineRpcRequestMessage,
+    sessionId: string,
+    reply: RpcReply,
+  ): void {
+    if (!this.connected || sessionId !== this.sessionId) return;
+    this.harness.hub.recordHostOnlineRpcResponse({
+      message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+        type: "host-rpc.response",
+        requestId: request.requestId,
+        commandType: request.command.type,
+        ...reply,
+      }),
+      sessionId,
+    });
+  }
+
+  async release(held: HeldRpc): Promise<void> {
+    this.held.splice(this.held.indexOf(held), 1);
+    const { command } = held.request;
+    if (command.type === "host.read_workspace_agent_context") {
+      this.respond(held.request, held.sessionId, {
+        ok: true,
+        result: EMPTY_WORKSPACE_AGENT_CONTEXT,
+      });
+      return;
+    }
+    if (command.type === "thread.stop") {
+      const retained = command.intent === "release" && this.activeTurn !== null;
+      if (command.intent === "interrupt" && this.activeTurn !== null) {
+        await this.endTurn("interrupted");
+      }
+      this.respond(held.request, held.sessionId, {
+        ok: true,
+        result: {
+          providerCheckpointId: null,
+          ...(retained ? { activeTurnRetained: true } : {}),
+        },
+      });
+      return;
+    }
+    if (command.type !== "turn.submit") return;
+    if (command.target.mode === "start" && this.activeTurn !== null) {
+      this.respond(held.request, held.sessionId, {
+        ok: false,
+        errorCode: "competing_turn",
+        errorMessage: `Refusing to start a competing turn for thread "${this.threadId}" while another turn is active or starting`,
+      });
+      return;
+    }
+    const labels = labelsOf(command.input);
+    let turn = this.activeTurn;
+    if (turn === null) {
+      turn = await this.startTurn("request", labels);
+    } else {
+      turn.labels.push(...labels);
+    }
+    this.deliveryOrder.push(...labels);
+    await this.post([
+      {
+        type: "turn/input/accepted",
+        threadId: this.threadId,
+        providerThreadId: this.providerThreadId,
+        scope: turnScope(turn.id),
+        clientRequestId: command.requestId,
+      },
+    ]);
+    this.respond(held.request, held.sessionId, {
+      ok: true,
+      result: { trace: { spans: [] } },
+    });
+  }
+
+  private async startTurn(
+    startedBy: DaemonTurn["startedBy"],
+    labels: string[],
+  ): Promise<DaemonTurn> {
+    const turn: DaemonTurn = {
+      id: `turn-${this.turns.length + 1}`,
+      labels: [...labels],
+      startedBy,
+    };
+    this.turns.push(turn);
+    this.activeTurn = turn;
+    await this.post([
+      {
+        type: "turn/started",
+        threadId: this.threadId,
+        providerThreadId: this.providerThreadId,
+        scope: turnScope(turn.id),
+      },
+    ]);
+    return turn;
+  }
+
+  async endTurn(status: "completed" | "interrupted"): Promise<void> {
+    const turn = this.activeTurn;
+    if (turn === null) throw new Error("Expected a running daemon turn");
+    this.activeTurn = null;
+    await this.post([
+      {
+        type: "turn/completed",
+        threadId: this.threadId,
+        providerThreadId: this.providerThreadId,
+        scope: turnScope(turn.id),
+        status,
+      },
+    ]);
+  }
+
+  async runProviderTurn(): Promise<void> {
+    await this.startTurn("provider", []);
+    await this.endTurn("completed");
+  }
+
+  disconnect(): void {
+    onDaemonSocketClose(this.harness.deps, this.sessionId);
+    this.connected = false;
+    for (const held of this.held) held.serverWaiting = false;
+  }
+
+  async reconnect(): Promise<void> {
+    const response = await this.harness.app.request("/internal/session/open", {
+      method: "POST",
+      headers: internalAuthHeaders(this.harness, { hostId: this.hostId }),
+      body: JSON.stringify({
+        hostId: this.hostId,
+        instanceId: "instance-1",
+        hostName: "Test Host",
+        hasMachineCredential: false,
+        platform: "darwin",
+        dataDir: `/tmp/bb-host-data/${this.hostId}`,
+        localApiPort: null,
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        activeThreads:
+          this.activeTurn === null ? [] : [{ threadId: this.threadId }],
+        openThreadWork: [],
+        undeliveredEventThreadIds:
+          this.bufferedEvents.length === 0 ? [] : [this.threadId],
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Session open failed: ${await response.text()}`);
+    }
+    this.sessionId = hostDaemonSessionOpenResponseSchema.parse(
+      await response.json(),
+    ).sessionId;
+    onDaemonSocketOpen(this.harness.deps, {
+      hostId: this.hostId,
+      sessionId: this.sessionId,
+      socket: this.socket,
+    });
+    this.connected = true;
+    const buffered = this.bufferedEvents;
+    this.bufferedEvents = [];
+    await this.post(buffered);
+  }
+
+  private async post(events: ThreadEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    if (!this.connected) {
+      this.bufferedEvents.push(...events);
+      return;
+    }
+    const response = await this.harness.app.request(
+      "/internal/session/events",
+      {
+        method: "POST",
+        headers: internalAuthHeaders(this.harness, { hostId: this.hostId }),
+        body: JSON.stringify({
+          sessionId: this.sessionId,
+          eventGroups: groupHostDaemonEvents(
+            events.map((event) => ({ threadId: event.threadId, event })),
+          ),
+        }),
+      },
+    );
+    if (!response.ok) {
+      this.violations.push(
+        `daemon events refused (${response.status}): ${await response.text()}`,
+      );
+    }
+  }
+}
+
+class Run {
+  readonly outcomes: UserOutcome[] = [];
+  private readonly pending = new Set<Promise<void>>();
+  private userIndex = 0;
+  private readonly remainingEvents: ScenarioEvent[];
+  private disconnected = false;
+  private followUpSent = false;
+
+  constructor(
+    private readonly harness: TestAppHarness,
+    readonly daemon: FakeDaemon,
+    private readonly scenario: Scenario,
+    private readonly environmentId: string,
+  ) {
+    this.remainingEvents = [...scenario.events];
+  }
+
+  private get threadId(): string {
+    return this.daemon.threadId;
+  }
+
+  private track(
+    label: string,
+    mode: SendMode | null,
+    work: () => Promise<string>,
+  ): void {
+    const outcome: UserOutcome = {
+      afterStop: this.outcomes.some((earlier) => earlier.label === "stop"),
+      label,
+      mode,
+      settled: "pending",
+      detail: "",
+    };
+    this.outcomes.push(outcome);
+    const tracked: Promise<void> = work()
+      .then(
+        (detail) => {
+          outcome.settled = "accepted";
+          outcome.detail = detail;
+        },
+        (error: unknown) => {
+          outcome.settled = "rejected";
+          outcome.detail =
+            error instanceof ApiError
+              ? `${error.body.code}: ${error.message}`
+              : String(error);
+        },
+      )
+      .finally(() => this.pending.delete(tracked));
+    this.pending.add(tracked);
+  }
+
+  send(label: string, mode: SendMode): void {
+    this.track(label, mode, async () => {
+      const thread = getThread(this.harness.db, this.threadId);
+      if (thread === null) throw new Error("Thread vanished");
+      const response = await acceptThreadSendRequest(this.harness.deps, {
+        thread,
+        payload: {
+          input: textInput(label),
+          mode,
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+      });
+      return response.delivery;
+    });
+  }
+
+  private stop(): void {
+    this.track("stop", null, async () => {
+      const thread = getThread(this.harness.db, this.threadId);
+      const environment = getEnvironment(this.harness.db, this.environmentId);
+      if (thread === null || environment === null) {
+        throw new Error("Thread or environment vanished");
+      }
+      await stopThreadForCurrentState(this.harness.deps, thread, {
+        id: environment.id,
+        hostId: environment.hostId,
+      });
+      return "stopped";
+    });
+  }
+
+  disconnect(): void {
+    this.disconnected = true;
+    this.daemon.disconnect();
+  }
+
+  private queuedRows() {
+    return listQueuedThreadMessages(this.harness.db, this.threadId);
+  }
+
+  private fingerprint(): string {
+    return JSON.stringify([
+      getThread(this.harness.db, this.threadId)?.status,
+      getLatestThreadSequence(this.harness.db, { threadId: this.threadId }),
+      this.queuedRows().map((row) => [
+        row.id,
+        row.state,
+        row.waitingOn,
+        row.failureReason,
+      ]),
+      this.daemon.held.map((held) => held.id),
+      this.pending.size,
+    ]);
+  }
+
+  async quiesce(): Promise<void> {
+    let last = this.fingerprint();
+    let stable = 0;
+    for (let tick = 0; tick < 2_000 && stable < 3; tick += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const next = this.fingerprint();
+      if (next === last && !hasPendingIoRequest()) {
+        stable += 1;
+      } else {
+        stable = 0;
+        last = next;
+      }
+    }
+  }
+
+  enabledActions(): Action[] {
+    const actions: Action[] = [];
+    const nextUser = this.scenario.user[this.userIndex];
+    if (nextUser !== undefined) {
+      actions.push({
+        label:
+          nextUser.kind === "send"
+            ? `${nextUser.mode === "steer" ? "steer" : "send"} ${nextUser.label}`
+            : "stop",
+        run: async () => {
+          this.userIndex += 1;
+          if (nextUser.kind === "send") {
+            this.send(nextUser.label, nextUser.mode);
+          } else {
+            this.stop();
+          }
+        },
+      });
+    }
+    for (const held of this.daemon.releasableRpcs()) {
+      actions.push({
+        label: `release ${describeRpc(held)}`,
+        run: () => this.daemon.release(held),
+      });
+    }
+    const activeTurn = this.daemon.activeTurn;
+    if (activeTurn !== null) {
+      actions.push({
+        label: `complete ${activeTurn.id}`,
+        run: () => this.daemon.endTurn("completed"),
+      });
+    }
+    const consume = (event: ScenarioEvent) => {
+      this.remainingEvents.splice(this.remainingEvents.indexOf(event), 1);
+    };
+    if (
+      this.remainingEvents.includes("drain") &&
+      this.queuedRows().length > 0
+    ) {
+      actions.push({
+        label: "drain wake",
+        run: async () => {
+          consume("drain");
+          requestQueuedMessageDispatch(this.harness.deps, {
+            kind: "thread-ready",
+            threadId: this.threadId,
+          });
+        },
+      });
+    }
+    if (this.remainingEvents.includes("provider-turn") && activeTurn === null) {
+      actions.push({
+        label: "provider turn",
+        run: async () => {
+          consume("provider-turn");
+          await this.daemon.runProviderTurn();
+        },
+      });
+    }
+    if (this.remainingEvents.includes("reconnect")) {
+      actions.push(
+        this.disconnected
+          ? {
+              label: "daemon reconnect",
+              run: async () => {
+                consume("reconnect");
+                await this.daemon.reconnect();
+              },
+            }
+          : {
+              label: "daemon disconnect",
+              run: async () => this.disconnect(),
+            },
+      );
+    }
+    if (this.remainingEvents.includes("timeout")) {
+      for (const held of this.daemon.timeoutableRpcs()) {
+        actions.push({
+          label: `timeout ${describeRpc(held)}`,
+          run: async () => {
+            consume("timeout");
+            this.daemon.fireTimeout(held);
+          },
+        });
+      }
+    }
+    return actions;
+  }
+
+  async finish(): Promise<boolean> {
+    for (let step = 0; step < MAX_STEPS; step += 1) {
+      await this.quiesce();
+      const held = this.daemon.held[0];
+      if (held !== undefined) {
+        await this.daemon.release(held);
+        continue;
+      }
+      if (this.daemon.activeTurn !== null) {
+        await this.daemon.endTurn("completed");
+        continue;
+      }
+      const scheduledAt = this.nextScheduledSend();
+      if (scheduledAt !== null) {
+        await sleep(Math.max(0, scheduledAt - Date.now()) + 50);
+        continue;
+      }
+      if (!this.followUpSent && this.queueHeldOnlyByManualStopPause()) {
+        this.followUpSent = true;
+        this.send(FOLLOW_UP_LABEL, "steer");
+        continue;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private nextScheduledSend(): number | null {
+    const sendAts = this.queuedRows().flatMap((row) =>
+      row.sendAt !== null && row.sendAt <= Date.now() + MAX_SCHEDULED_WAIT_MS
+        ? [row.sendAt]
+        : [],
+    );
+    return sendAts.length === 0 ? null : Math.min(...sendAts);
+  }
+
+  private queueHeldOnlyByManualStopPause(): boolean {
+    const rows = this.queuedRows();
+    if (
+      rows.length === 0 ||
+      !isThreadQueueAutoSendPaused(this.harness.db, this.threadId)
+    ) {
+      return false;
+    }
+    const queuedAfterStop = new Set(
+      this.outcomes
+        .filter((outcome) => outcome.afterStop)
+        .map((outcome) => outcome.label),
+    );
+    return rows.every((row) =>
+      labelsIn(row.content).every((label) => !queuedAfterStop.has(label)),
+    );
+  }
+
+  violations(): string[] {
+    const violations = [...this.daemon.violations];
+    for (const outcome of this.outcomes) {
+      if (outcome.settled === "pending") {
+        violations.push(`${outcome.label} never settled`);
+        continue;
+      }
+      if (outcome.label === "stop") {
+        if (
+          outcome.settled === "rejected" &&
+          !UNANSWERED_PATTERN.test(outcome.detail)
+        ) {
+          violations.push(`stop failed: ${outcome.detail}`);
+        }
+        continue;
+      }
+      const delivered = this.daemon.deliveries(outcome.label);
+      if (outcome.settled === "rejected") {
+        if (!UNANSWERED_PATTERN.test(outcome.detail)) {
+          violations.push(`${outcome.label} was refused: ${outcome.detail}`);
+        } else if (delivered > 0) {
+          violations.push(
+            `${outcome.label} was refused (${outcome.detail}) yet reached the agent ${delivered} times`,
+          );
+        }
+        continue;
+      }
+      if (delivered !== 1) {
+        violations.push(
+          `${outcome.label} (${outcome.detail}) reached the agent ${delivered} times`,
+        );
+      }
+    }
+    const queuedInOrder = this.outcomes.filter(
+      (outcome) =>
+        outcome.mode === "queue-if-active" &&
+        outcome.detail === "queued" &&
+        this.daemon.deliveries(outcome.label) === 1,
+    );
+    for (const [index, later] of queuedInOrder.entries()) {
+      for (const earlier of queuedInOrder.slice(0, index)) {
+        if (
+          earlier.afterStop === later.afterStop &&
+          this.daemon.deliveryOrder.indexOf(later.label) <
+            this.daemon.deliveryOrder.indexOf(earlier.label)
+        ) {
+          violations.push(
+            `queued ${later.label} overtook queued ${earlier.label}`,
+          );
+        }
+      }
+    }
+    for (const turn of this.daemon.turns) {
+      if (turn.startedBy === "request" && turn.labels.length === 0) {
+        violations.push(`${turn.id} started without input`);
+      }
+    }
+    const thread = getThread(this.harness.db, this.threadId);
+    if (thread?.status !== "idle") {
+      violations.push(`thread ended ${thread?.status ?? "missing"}`);
+    }
+    const queued = this.queuedRows();
+    if (queued.length > 0) {
+      violations.push(
+        `queue still holds ${queued
+          .map(
+            (row) =>
+              `${labelsIn(row.content).join("+")} [${row.state}${row.waitingOn === null ? "" : ` ${row.waitingOn}`}${row.failureReason === null ? "" : ` failed: ${row.failureReason}`}]`,
+          )
+          .join(", ")}`,
+      );
+    }
+    if (this.daemon.held.length > 0) {
+      violations.push(
+        `daemon still holds ${this.daemon.held.map(describeRpc).join(", ")}`,
+      );
+    }
+    return violations;
+  }
+}
+
+function seedRun(harness: TestAppHarness, scenario: Scenario): Run {
+  const { host, session } = seedHostSession(harness.deps, {
+    id: "host-interleavings",
+  });
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: host.id,
+    path: "/tmp/interleavings",
+  });
+  const environment = seedEnvironment(harness.deps, {
+    hostId: host.id,
+    projectId: project.id,
+    path: "/tmp/interleavings",
+    status: "ready",
+  });
+  const thread = seedThread(harness.deps, {
+    projectId: project.id,
+    environmentId: environment.id,
+    status: "idle",
+  });
+  const providerThreadId = "provider-interleavings";
+  seedThreadRuntimeState(harness.deps, {
+    environmentId: environment.id,
+    providerThreadId,
+    threadId: thread.id,
+  });
+  const daemon = new FakeDaemon(
+    harness,
+    host.id,
+    session.id,
+    thread.id,
+    providerThreadId,
+    scenario.holdPreparation,
+  );
+  return new Run(harness, daemon, scenario, environment.id);
+}
+
+async function startScenario(run: Run, scenario: Scenario): Promise<void> {
+  if (scenario.start === "disconnected") {
+    run.disconnect();
+    return;
+  }
+  if (scenario.start === "idle") return;
+  run.send("msg-seed", "steer");
+  for (let step = 0; step < 5 && run.daemon.activeTurn === null; step += 1) {
+    await run.quiesce();
+    const held = run.daemon.held[0];
+    if (held !== undefined) await run.daemon.release(held);
+  }
+  if (run.daemon.activeTurn === null) {
+    throw new Error("The seed message did not start a turn");
+  }
+}
+
+function describeOrdering(choices: readonly Choice[]): string {
+  return choices.map((choice) => choice.labels[choice.index]).join(" → ");
+}
+
+async function runOrdering(
+  scenario: Scenario,
+  prefix: readonly Choice[],
+): Promise<{ choices: Choice[]; violations: string[] }> {
+  return withTestHarness(async (harness) => {
+    const run = seedRun(harness, scenario);
+    await startScenario(run, scenario);
+    const choices: Choice[] = [];
+    for (;;) {
+      await run.quiesce();
+      const actions = run.enabledActions();
+      if (actions.length === 0) break;
+      if (choices.length === MAX_STEPS) {
+        return {
+          choices,
+          violations: [`ordering did not finish within ${MAX_STEPS} steps`],
+        };
+      }
+      const labels = actions.map((action) => action.label);
+      const planned = prefix[choices.length];
+      const index = planned?.index ?? 0;
+      if (
+        planned !== undefined &&
+        labels[index] !== planned.labels[planned.index]
+      ) {
+        return {
+          choices,
+          violations: [
+            `replay diverged: expected ${planned.labels[planned.index]}, found ${labels.join(", ")}`,
+          ],
+        };
+      }
+      choices.push({ index, labels });
+      await actions[index]!.run();
+    }
+    const settled = await run.finish();
+    await run.quiesce();
+    return {
+      choices,
+      violations: settled
+        ? run.violations()
+        : [`the tail did not settle within ${MAX_STEPS} steps`],
+    };
+  });
+}
+
+interface FailedOrdering {
+  ordering: string;
+  violations: string[];
+}
+
+async function exploreOrderings(
+  scenario: Scenario,
+): Promise<{ failures: FailedOrdering[]; orderings: number }> {
+  const failures: FailedOrdering[] = [];
+  let prefix: Choice[] = [];
+  let orderings = 0;
+  for (;;) {
+    const { choices, violations } = await runOrdering(scenario, prefix);
+    orderings += 1;
+    if (violations.length > 0) {
+      failures.push({ ordering: describeOrdering(choices), violations });
+    }
+    let backtrack = choices.length - 1;
+    while (
+      backtrack >= 0 &&
+      choices[backtrack]!.index + 1 >= choices[backtrack]!.labels.length
+    ) {
+      backtrack -= 1;
+    }
+    if (backtrack < 0) return { failures, orderings };
+    const next = choices[backtrack]!;
+    prefix = [
+      ...choices.slice(0, backtrack),
+      { index: next.index + 1, labels: next.labels },
+    ];
+  }
+}
+
+const UNANSWERED_SUBMIT_SETTLED =
+  "a turn.submit whose reply is lost to a daemon disconnect or an RPC timeout is settled as finished while the daemon still runs it, so the next message goes out as a competing start and is lost, or the thread ends in error";
+const CUT_STOP_LEAVES_THREAD_ACTIVE =
+  "a stop recorded while a new turn was starting has its interrupt cut by a daemon disconnect; the reconnect revives the thread from that running turn, the server skips the turn's normal completion because the stop predates the turn, and the thread stays active";
+
+const send = (label: string): UserStep => ({
+  kind: "send",
+  label,
+  mode: "queue-if-active",
+});
+const steer = (label: string): UserStep => ({
+  kind: "send",
+  label,
+  mode: "steer",
+});
+const stop: UserStep = { kind: "stop" };
+
+const scenarios: Scenario[] = [
+  {
+    name: "steers in flight while their turn ends",
+    start: "running-turn",
+    holdPreparation: false,
+    user: [steer("msg-A"), steer("msg-B")],
+    events: [],
+    knownFailures: [],
+  },
+  {
+    name: "a new turn in flight while a provider-initiated turn ends",
+    start: "idle",
+    holdPreparation: false,
+    user: [steer("msg-A"), steer("msg-B")],
+    events: ["provider-turn"],
+    knownFailures: [],
+  },
+  {
+    name: "concurrent sends to an idle thread while preparation is slow",
+    start: "idle",
+    holdPreparation: true,
+    user: [send("msg-A"), send("msg-B")],
+    events: [],
+    knownFailures: [],
+  },
+  {
+    name: "a queued send, a steer and a drain wake while preparation is slow",
+    start: "running-turn",
+    holdPreparation: true,
+    user: [send("msg-A"), steer("msg-B")],
+    events: ["drain"],
+    knownFailures: [],
+  },
+  {
+    name: "sends queued while the daemon is away, drained on reconnect while preparation is slow",
+    start: "disconnected",
+    holdPreparation: true,
+    user: [send("msg-A"), send("msg-B")],
+    events: ["reconnect", "drain"],
+    knownFailures: [],
+  },
+  {
+    name: "a steer, a queued send and the turn end across a daemon reconnect",
+    start: "running-turn",
+    holdPreparation: false,
+    user: [steer("msg-A"), send("msg-B")],
+    events: ["reconnect"],
+    knownFailures: [
+      {
+        cause: UNANSWERED_SUBMIT_SETTLED,
+        orderings: [
+          "steer msg-A → send msg-B → complete turn-1 → daemon disconnect → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → send msg-B → daemon disconnect → release submit(steer msg-A)#2 → complete turn-1 → daemon reconnect",
+          "steer msg-A → send msg-B → daemon disconnect → daemon reconnect → complete turn-1 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → complete turn-1 → send msg-B → daemon disconnect → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → complete turn-1 → daemon disconnect → send msg-B → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → complete turn-1 → daemon disconnect → daemon reconnect → send msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → daemon disconnect → send msg-B → complete turn-1 → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → daemon disconnect → send msg-B → daemon reconnect → complete turn-1 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → daemon disconnect → complete turn-1 → send msg-B → daemon reconnect → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → daemon disconnect → complete turn-1 → daemon reconnect → send msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → daemon disconnect → daemon reconnect → send msg-B → complete turn-1 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → daemon disconnect → daemon reconnect → complete turn-1 → send msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "complete turn-1 → steer msg-A → daemon disconnect → send msg-B → daemon reconnect → release submit(start msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "complete turn-1 → steer msg-A → daemon disconnect → daemon reconnect → send msg-B → release submit(start msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+        ],
+      },
+    ],
+  },
+  {
+    name: "a stop against a steer, a queued send and the turn end",
+    start: "running-turn",
+    holdPreparation: false,
+    user: [steer("msg-A"), stop, send("msg-B")],
+    events: [],
+    knownFailures: [],
+  },
+  {
+    name: "a stop between two queued sends",
+    start: "running-turn",
+    holdPreparation: false,
+    user: [send("msg-A"), stop, send("msg-B")],
+    events: [],
+    knownFailures: [],
+  },
+  {
+    name: "a stop and a steer across a daemon reconnect",
+    start: "running-turn",
+    holdPreparation: false,
+    user: [stop, steer("msg-A")],
+    events: ["reconnect"],
+    knownFailures: [
+      {
+        cause: UNANSWERED_SUBMIT_SETTLED,
+        orderings: [
+          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → release stop(interrupt)#4 → daemon reconnect",
+          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → complete turn-2 → release stop(interrupt)#4 → daemon reconnect",
+          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → complete turn-2 → daemon reconnect → release stop(interrupt)#4",
+          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → daemon reconnect → release submit(start msg-A)#3 → release stop(interrupt)#4",
+          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → daemon reconnect → release submit(start msg-A)#3 → complete turn-2 → release stop(interrupt)#4",
+        ],
+      },
+      {
+        cause: CUT_STOP_LEAVES_THREAD_ACTIVE,
+        orderings: [
+          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → release submit(start msg-A)#3 → daemon disconnect → daemon reconnect → complete turn-2 → release stop(interrupt)#4",
+          "complete turn-1 → stop → steer msg-A → release stop(release)#2 → daemon disconnect → release submit(start msg-A)#3 → daemon reconnect → complete turn-2 → release stop(interrupt)#4",
+        ],
+      },
+    ],
+  },
+  {
+    name: "an RPC timeout against steers and the turn end",
+    start: "running-turn",
+    holdPreparation: false,
+    user: [steer("msg-A"), steer("msg-B")],
+    events: ["timeout"],
+    knownFailures: [
+      {
+        cause: UNANSWERED_SUBMIT_SETTLED,
+        orderings: [
+          "steer msg-A → complete turn-1 → steer msg-B → timeout submit(steer msg-A)#2 → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → complete turn-1 → timeout submit(steer msg-A)#2 → steer msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+          "steer msg-A → timeout submit(steer msg-A)#2 → complete turn-1 → steer msg-B → release submit(steer msg-A)#2 → release submit(start msg-B)#3 → complete turn-2",
+        ],
+      },
+    ],
+  },
+  {
+    name: "an RPC timeout against a stop and a queued send",
+    start: "running-turn",
+    holdPreparation: false,
+    user: [stop, send("msg-A")],
+    events: ["timeout"],
+    knownFailures: [],
+  },
+];
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("send, queue and lifecycle interleavings", () => {
+  it.each(scenarios.map((scenario) => [scenario.name, scenario] as const))(
+    "%s",
+    async (_name, scenario) => {
+      const { failures, orderings } = await exploreOrderings(scenario);
+      const known = new Set(
+        scenario.knownFailures.flatMap((known) => known.orderings),
+      );
+      const failing = new Set(failures.map((failure) => failure.ordering));
+      expect(
+        {
+          unexpectedFailures: failures
+            .filter((failure) => !known.has(failure.ordering))
+            .map(
+              (failure) =>
+                `${failure.ordering} :: ${failure.violations.join("; ")}`,
+            ),
+          knownFailuresThatNowPass: [...known].filter(
+            (ordering) => !failing.has(ordering),
+          ),
+        },
+        `${failures.length} of ${orderings} orderings failed`,
+      ).toEqual({ unexpectedFailures: [], knownFailuresThatNowPass: [] });
+    },
+    600_000,
+  );
+});
