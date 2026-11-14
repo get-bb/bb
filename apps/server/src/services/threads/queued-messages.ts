@@ -731,7 +731,25 @@ export async function sendNextQueuedMessageIfPresent(
     }
     throw error;
   }
+  if (isHeldByPluginOnIdleThread(deps, nextQueuedMessages[0]!)) {
+    requestQueuedMessageDispatch(deps, {
+      kind: "thread-ready",
+      threadId: args.threadId,
+    });
+  }
   return true;
+}
+
+function isHeldByPluginOnIdleThread(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
+  lead: ClaimedQueuedMessage,
+): boolean {
+  const row = getQueuedThreadMessage(deps.db, lead.id);
+  return (
+    row !== null &&
+    parseStoredQueuedThreadMessageWaitingOn(row)?.kind === "plugin" &&
+    getThread(deps.db, row.threadId)?.status === "idle"
+  );
 }
 
 export function releaseStaleQueuedMessageDispatchClaims(

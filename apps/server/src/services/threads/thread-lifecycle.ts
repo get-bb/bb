@@ -26,6 +26,8 @@ import {
   type TurnStartDeadlineCandidate,
   requestThreadPurge,
   environments,
+  findLastCompletedRootStoredTurn,
+  findLatestUnresolvedClientTurnRequestIdAfterSequence,
   getEnvironment,
   getHost,
   getLatestSessionForHost,
@@ -33,7 +35,7 @@ import {
   getThread,
   hasStoredTerminalClientTurnRequestEvent,
   hasStoredTurnRequestEventSince,
-  listThreadIdsStoppedSinceLastTurnStart,
+  listThreadIdsStoppedSinceLastTurnRequest,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   liveThread,
@@ -109,6 +111,8 @@ import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { ApiError } from "../../errors.js";
 import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
+  HOST_CONNECTION_LOST_ERROR_CODE,
+  isHostUnavailableReportCode,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
   startLiveHostCommand,
@@ -822,6 +826,23 @@ function settleThreadCommandFailure(
   }
   if (
     args.command.type === "turn.submit" &&
+    args.report.errorCode === HOST_CONNECTION_LOST_ERROR_CODE
+  ) {
+    if (args.command.target.mode === "start") {
+      settleUnconfirmedTurnStartInTransaction(args.deps.db, {
+        requestId: args.command.requestId,
+        threadId: thread.id,
+      });
+    } else {
+      settleUnconfirmedSteerInTransaction(args.deps.db, {
+        requestId: args.command.requestId,
+        threadId: thread.id,
+      });
+    }
+    return emptyCommandResultSideEffects();
+  }
+  if (
+    args.command.type === "turn.submit" &&
     args.report.errorCode === STEER_UNCONFIRMED_ERROR_CODE
   ) {
     settleUnconfirmedSteerInTransaction(args.deps.db, {
@@ -856,7 +877,23 @@ function settleThreadCommandFailure(
       args.report.errorCode === COMPETING_TURN_ERROR_CODE &&
       getActiveTurnId(args.deps, thread.id) !== null
     ) {
-      return emptyCommandResultSideEffects();
+      const { requestId } = args.command;
+      return {
+        postCommitActions: [
+          {
+            run: async (deps) => {
+              const { requeueRefusedTurnRequest } =
+                await import("./turn-retry.js");
+              const current = getThread(deps.db, thread.id);
+              if (current === null) return;
+              await requeueRefusedTurnRequest(deps, {
+                requestId,
+                thread: current,
+              });
+            },
+          },
+        ],
+      };
     }
   }
   if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
@@ -1118,7 +1155,7 @@ export function settleThreadStopCommandResult(
   if (!args.report.ok) {
     if (
       args.report.errorCode !== "unknown_environment" &&
-      args.report.errorCode !== "host_unavailable" &&
+      !isHostUnavailableReportCode(args.report.errorCode) &&
       args.report.errorCode !== "command_timeout"
     ) {
       return emptyCommandResultSideEffects();
@@ -1588,8 +1625,9 @@ function rememberStopAwaitingDaemon(
   const { hostId } = args.execution;
   if (
     !args.report.ok &&
-    args.report.errorCode === "host_unavailable" &&
-    getLatestSessionForHost(args.deps.db, { hostId })?.status === "active"
+    (args.report.errorCode === HOST_CONNECTION_LOST_ERROR_CODE ||
+      (args.report.errorCode === "host_unavailable" &&
+        getLatestSessionForHost(args.deps.db, { hostId })?.status === "active"))
   ) {
     stopsAwaitingDaemon.set(args.command.threadId, {
       hostId,
@@ -2294,6 +2332,19 @@ export function finalizeStoppedThreadInTransaction(
   }
 }
 
+function hasTurnRequestAwaitingItsTurn(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  const lastCompletedTurn = findLastCompletedRootStoredTurn(db, { threadId });
+  return (
+    findLatestUnresolvedClientTurnRequestIdAfterSequence(db, {
+      afterSequence: lastCompletedTurn?.completedSequence ?? 0,
+      threadId,
+    }) !== null
+  );
+}
+
 export async function reconcileDaemonReportedThreads(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: ReconcileDaemonReportedThreadsArgs,
@@ -2414,10 +2465,16 @@ export async function reconcileDaemonReportedThreads(
     .all();
 
   interruptActiveThreads(deps, {
-    threads: activeButMissing.map((thread) => ({
-      environmentId: thread.environmentId,
-      threadId: thread.id,
-    })),
+    threads: activeButMissing
+      .filter(
+        (thread) =>
+          !args.sameDaemonInstance ||
+          !hasTurnRequestAwaitingItsTurn(deps.db, thread.id),
+      )
+      .map((thread) => ({
+        environmentId: thread.environmentId,
+        threadId: thread.id,
+      })),
     reason: "host-daemon-restarted",
     cause: args.sameDaemonInstance ? "host-connection-lost" : undefined,
     resumingThreadIds: new Set(),
@@ -2448,7 +2505,7 @@ export async function reconcileDaemonReportedThreads(
   );
 
   const stoppedWhileAwayThreadIds = new Set(
-    listThreadIdsStoppedSinceLastTurnStart(deps.db, {
+    listThreadIdsStoppedSinceLastTurnRequest(deps.db, {
       threadIds: inactiveButActive.map((thread) => thread.id),
     }),
   );
