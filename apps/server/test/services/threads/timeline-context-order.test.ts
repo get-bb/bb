@@ -9,6 +9,7 @@ import {
   getThreadEventRewriteGeneration,
 } from "@bb/db";
 import {
+  advanceTimelineOrderingContextLog,
   clearTimelineOrderingContextLogs,
   createTimelineOrderingContextLog,
   getTimelineGroupingContext,
@@ -287,6 +288,35 @@ describe("timeline grouping context", () => {
         expectIncrementalEqualsFresh(testThread, beforeChildren)
           .orderingBoundarySequence,
       ).toBeNull();
+    });
+  });
+
+  it("carries a computed context across advanced rows only when none of them is parented", () => {
+    withTestThread((testThread) => {
+      const seeded = appendRows(testThread, [
+        turnStarted("turn-1"),
+        rootToolCall("call-1", "turn-1", "item/started"),
+        child("call-1", 1),
+        turnCompleted("turn-1"),
+        userRequest("request-1"),
+      ]);
+      const warm = expectIncrementalEqualsFresh(testThread, seeded);
+      expect(warm.orderingBoundarySequence).toBeNull();
+      const log = logs.get(testThread)!.get(0)!.log;
+
+      const afterDeltas = appendRows(testThread, [
+        delta("turn-1", "Hello"),
+        reasoningDelta("turn-1"),
+      ]);
+      advanceTimelineOrderingContextLog(log, seeded, afterDeltas, false);
+      expect(expectIncrementalEqualsFresh(testThread, afterDeltas)).toBe(warm);
+
+      const afterChild = appendRows(testThread, [child("call-1", 2)]);
+      advanceTimelineOrderingContextLog(log, afterDeltas, afterChild, true);
+      expect(
+        expectIncrementalEqualsFresh(testThread, afterChild)
+          .orderingBoundarySequence,
+      ).toBe(5);
     });
   });
 

@@ -37,7 +37,10 @@ import {
   isCompactionOfferEnabled,
   withCompactionOffer,
 } from "./compaction-offer.js";
-import { decodeStoredEventRow } from "./timeline-projection.js";
+import {
+  decodeStoredEventRow,
+  type StoredEventRowDecoder,
+} from "./timeline-projection.js";
 
 export interface ThreadHeadStateOptions {
   compactionOfferEnabled: boolean;
@@ -59,10 +62,6 @@ export function resolveThreadHeadStateOptions(
     planCommand: resolveProviderPlanCommand(deps.providerRegistry, providerId),
   };
 }
-
-export type StoredEventRowDecoder = (
-  row: StoredEventRow,
-) => ThreadEventWithMeta;
 
 function decodeRows(
   rows: readonly StoredEventRow[],

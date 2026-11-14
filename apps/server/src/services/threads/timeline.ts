@@ -121,7 +121,6 @@ import { parseStoredEvent } from "./thread-data.js";
 import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
 import {
   readThreadHeadState,
-  type StoredEventRowDecoder,
   type ThreadHeadStateOptions,
 } from "./thread-head-state.js";
 import {
@@ -131,6 +130,7 @@ import {
 import {
   chargeDerivedRows,
   noPreviousDerived,
+  decodeEachRowOnce,
   decodeRowWithProjection,
   decodeStoredEventRow,
   peekTimelineProjection,
@@ -141,6 +141,7 @@ import {
   takeFoldedEventCount,
   type ProjectedPageableRows,
   type ProjectedTimeline,
+  type StoredEventRowDecoder,
   type StandardTimelineEventRowSelection,
   type ThreadTimelineEventSelectionStrategy,
   type ThreadTimelineProjection,
@@ -987,6 +988,7 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
 
 interface SelectTimelineEventRowsArgs {
   contentCursor: TimelineContentCursor | undefined;
+  decodeRow: StoredEventRowDecoder;
   epochSequenceStart: number;
   eventBudget: number;
   excludeDiagnosticEvents: boolean;
@@ -1015,7 +1017,7 @@ function selectStandardTimelineEventRows(
     profile,
   } = args;
   const source = args.source ?? databaseTimelineRowSource(db);
-  const decode: StoredEventDecoder = parseStoredEvent;
+  const decode: StoredEventDecoder = (row) => args.decodeRow(row).event;
   const beforeSequence =
     contentCursor?.beforeSequence ??
     (page.kind === "older" ? page.beforeCursor.anchorSeq : maxSeq + 1);
@@ -1430,9 +1432,10 @@ function resolveTimelineBuild(
             threadId: thread.id,
           },
           segmentLimit: options.page.segmentLimit,
-          select: (segmentLimit, groupingContext, rowSource) =>
+          select: (segmentLimit, groupingContext, rowSource, decodeRow) =>
             selectStandardTimelineEventRows(db, thread, {
               ...selectArgs,
+              decodeRow,
               groupingContext,
               page: { kind: "latest", segmentLimit },
               source: rowSource,
@@ -1461,10 +1464,15 @@ function resolveTimelineBuild(
             snapshot.maxSeq,
           ),
       );
+      const decodeRow = decodeEachRowOnce(
+        maxInlineOutputChars === null
+          ? decodeStoredEventRow
+          : decodeRowWithProjection(db, thread.id, maxInlineOutputChars),
+      );
       const { selection: selected } = selectStandardTimelineEventRows(
         db,
         thread,
-        { ...selectArgs, groupingContext },
+        { ...selectArgs, decodeRow, groupingContext },
       );
       const rows =
         maxInlineOutputChars === null
@@ -1473,12 +1481,7 @@ function resolveTimelineBuild(
       const events = measureThreadTimelineStage(
         profile,
         "event-json-decode",
-        () =>
-          rows.map(
-            maxInlineOutputChars === null
-              ? decodeStoredEventRow
-              : decodeRowWithProjection(db, thread.id, maxInlineOutputChars),
-          ),
+        () => rows.map(decodeRow),
       );
       return {
         events,

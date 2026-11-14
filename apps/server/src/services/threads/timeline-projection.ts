@@ -132,6 +132,7 @@ interface TimelineProjectionSelect {
     segmentLimit: number,
     groupingContext: TimelineGroupingContext,
     source: TimelineSelectionRowSource | undefined,
+    decode: StoredEventRowDecoder,
   ): StandardTimelineEventRowSelection;
 }
 
@@ -252,7 +253,7 @@ export interface ThreadTimelineProjection {
 
 export const MAX_TIMELINE_PROJECTIONS = 16;
 export const MAX_IDLE_TIMELINE_PROJECTIONS = 4;
-const MAX_RELEASED_EVENT_BYTES = 4_000_000;
+const MAX_RELEASED_EVENT_BYTES = 8_000_000;
 export const MAX_TIMELINE_PROJECTION_DATA_BYTES = 16_000_000;
 const MAX_APPENDED_ROWS_PER_CATCH_UP = 512;
 
@@ -437,6 +438,24 @@ function deepFreeze(value: unknown): void {
   for (const child of Object.values(value)) {
     deepFreeze(child);
   }
+}
+
+export type StoredEventRowDecoder = (
+  row: StoredEventRow,
+) => ThreadEventWithMeta;
+
+export function decodeEachRowOnce(
+  decode: StoredEventRowDecoder,
+): StoredEventRowDecoder {
+  const decoded = new Map<StoredEventRow, ThreadEventWithMeta>();
+  return (row) => {
+    let event = decoded.get(row);
+    if (event === undefined) {
+      event = decode(row);
+      decoded.set(row, event);
+    }
+    return event;
+  };
 }
 
 export function decodeStoredEventRow(row: StoredEventRow): ThreadEventWithMeta {
@@ -773,9 +792,10 @@ function appendToProjection(
   const orderingRowsAppended = appendedRows.some((row) =>
     ORDERING_CONTEXT_EVENT_TYPES.has(row.type),
   );
-  const orderingChanged =
-    orderingRowsAppended ||
-    appendedRows.some((row) => parentToolCallIdOf(row) !== null);
+  const parentedRowsAppended = appendedRows.some(
+    (row) => row.parentToolCallId !== null,
+  );
+  const orderingChanged = orderingRowsAppended || parentedRowsAppended;
   if (orderingRowsAppended) {
     extendTimelineOrderingContextLog(db, projection.orderingLog, maxSeq);
   } else {
@@ -783,6 +803,7 @@ function appendToProjection(
       projection.orderingLog,
       projection.maxSeq,
       maxSeq,
+      parentedRowsAppended,
     );
   }
   const catchUp: CatchUp = {
@@ -915,14 +936,18 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
   const groupingContext = build.measure("ordering-context-query", () =>
     readTimelineGroupingContext(db, orderingLog, maxSeq),
   );
+  const decodedById =
+    previous === null ? new Map<string, DecodedRow>() : decodedRowsOf(previous);
+  const decode = decodeEachRowOnce((row) =>
+    decodeReusing(decodedById.get(row.id), row),
+  );
   const result = build.select(
     build.segmentLimit,
     groupingContext,
     build.source,
+    decode,
   );
   const rows = result.selection.rows;
-  const decodedById =
-    previous === null ? new Map<string, DecodedRow>() : decodedRowsOf(previous);
   const released = releaseDroppedEvents(previous, rows);
   return {
     budgetFloorSequence: result.budgetFloorSequence,
@@ -941,9 +966,7 @@ function buildProjection(build: ProjectionBuild): ThreadTimelineProjection {
     dataBytes: dataBytesOfRows(rows),
     dataVersion: getDatabaseDataVersion(db),
     derived: createDerived(),
-    events: build.measure("event-json-decode", () =>
-      rows.map((row) => decodeReusing(decodedById.get(row.id), row)),
-    ),
+    events: build.measure("event-json-decode", () => rows.map(decode)),
     eventsById: new Map(),
     releasedBytes: released.bytes,
     releasedEvents: released.events,

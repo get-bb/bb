@@ -54,6 +54,7 @@ export interface TimelineOrderingContextLog {
 
 interface ComputedTimelineGroupingContext {
   readonly context: TimelineGroupingContext;
+  maxSeq: number;
   readonly ordering: TimelineOrderingContext;
 }
 
@@ -131,9 +132,15 @@ export function advanceTimelineOrderingContextLog(
   log: TimelineOrderingContextLog,
   scannedThroughSequence: number,
   throughSequence: number,
+  parentedRowsAppended: boolean,
 ): void {
-  if (log.throughSequence >= scannedThroughSequence) {
-    log.throughSequence = Math.max(log.throughSequence, throughSequence);
+  if (log.throughSequence < scannedThroughSequence) return;
+  log.throughSequence = Math.max(log.throughSequence, throughSequence);
+  if (parentedRowsAppended) return;
+  for (const computed of log.computed.values()) {
+    if (computed.maxSeq === scannedThroughSequence) {
+      computed.maxSeq = throughSequence;
+    }
   }
 }
 
@@ -160,6 +167,10 @@ export function readTimelineGroupingContext(
   const cut = sequenceCut(log.rows, maxSeq);
   const kept = log.computed.get(cut);
   log.computed.delete(cut);
+  if (kept?.maxSeq === maxSeq) {
+    log.computed.set(cut, kept);
+    return kept.context;
+  }
   const ordering =
     kept?.ordering ??
     computeTimelineOrderingContext(
@@ -185,7 +196,7 @@ export function readTimelineGroupingContext(
           clientRequests: ordering.clientRequests,
           orderingBoundarySequence,
         };
-  log.computed.set(cut, { context, ordering });
+  log.computed.set(cut, { context, maxSeq, ordering });
   if (log.computed.size > COMPUTED_CONTEXTS_PER_LOG) {
     log.computed.delete(log.computed.keys().next().value!);
   }
