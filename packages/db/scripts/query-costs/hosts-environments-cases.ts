@@ -1,6 +1,9 @@
 import {
   applyEnvironmentLifecycleEvent,
   applyEnvironmentLifecycleEventInTransaction,
+  recordProvisionedEnvironmentWorkspace,
+} from "../../src/data/environment-lifecycle.js";
+import {
   bindEnvironmentPath,
   claimEnvironmentPath,
   createEnvironment,
@@ -16,7 +19,6 @@ import {
   listRetiredLoadedEnvironmentIdsOnHost,
   markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
-  recordProvisionedEnvironmentWorkspace,
   releaseFinishedEnvironmentPreparationOwners,
   reserveEnvironment,
   updateEnvironmentMetadata,
@@ -121,6 +123,7 @@ import {
 } from "./hosts-environments-seed.js";
 
 const ENVIRONMENTS = "packages/db/src/data/environments.ts";
+const ENVIRONMENT_LIFECYCLE = "packages/db/src/data/environment-lifecycle.ts";
 const HOSTS = "packages/db/src/data/hosts.ts";
 const MACHINES = "packages/db/src/data/machines.ts";
 const BACKFILL = "packages/db/src/data/project-attachment-backfill.ts";
@@ -180,7 +183,7 @@ function firstNeighborThreadId(fixture: HistoryFixture): string {
 
 const ENVIRONMENT_CASES: readonly Case[] = [
   {
-    name: `${ENVIRONMENTS}#updateEnvironmentMetadata`,
+    name: `${ENVIRONMENT_LIFECYCLE}#updateEnvironmentMetadata`,
     run: (db, _fixture, seed) =>
       updateEnvironmentMetadata(db, noopNotifier, seed.readyEnvironmentId, {
         name: "Fix flaky deploy",
@@ -188,7 +191,7 @@ const ENVIRONMENT_CASES: readonly Case[] = [
       }),
   },
   {
-    name: `${ENVIRONMENTS}#recordEnvironmentCurrentBranch`,
+    name: `${ENVIRONMENT_LIFECYCLE}#recordEnvironmentCurrentBranch`,
     run: (db, _fixture, seed) =>
       recordEnvironmentCurrentBranch(
         db,
@@ -198,7 +201,7 @@ const ENVIRONMENT_CASES: readonly Case[] = [
       ),
   },
   {
-    name: `${ENVIRONMENTS}#recordProvisionedEnvironmentWorkspace`,
+    name: `${ENVIRONMENT_LIFECYCLE}#recordProvisionedEnvironmentWorkspace`,
     prepare: (db, fixture, seed) => {
       preparedEnvironment = reserveFixtureEnvironment(db, fixture, seed);
     },
@@ -218,7 +221,7 @@ const ENVIRONMENT_CASES: readonly Case[] = [
       ),
   },
   {
-    name: `${ENVIRONMENTS}#applyEnvironmentLifecycleEvent`,
+    name: `${ENVIRONMENT_LIFECYCLE}#applyEnvironmentLifecycleEvent`,
     run: (db, _fixture, seed) =>
       applyEnvironmentLifecycleEvent(db, noopNotifier, {
         environmentId: seed.readyEnvironmentId,
@@ -298,7 +301,7 @@ const ENVIRONMENT_CASES: readonly Case[] = [
       }),
   },
   {
-    name: `${ENVIRONMENTS}#applyEnvironmentLifecycleEventInTransaction`,
+    name: `${ENVIRONMENT_LIFECYCLE}#applyEnvironmentLifecycleEventInTransaction`,
     run: (db, _fixture, seed) =>
       db.transaction((tx) =>
         applyEnvironmentLifecycleEventInTransaction(tx, {

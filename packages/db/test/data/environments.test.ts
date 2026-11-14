@@ -3,6 +3,9 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
+  recordProvisionedEnvironmentWorkspace,
+} from "../../src/data/environment-lifecycle.js";
+import {
   bindEnvironmentPath,
   claimEnvironmentPath,
   createEnvironment,
@@ -11,7 +14,6 @@ import {
   listRetiredLoadedEnvironmentIdsOnHost,
   markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
-  recordProvisionedEnvironmentWorkspace,
   reserveEnvironment,
   updateEnvironmentMetadata,
 } from "../../src/data/environments.js";

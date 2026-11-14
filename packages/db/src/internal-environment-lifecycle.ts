@@ -3,8 +3,8 @@ export {
   applyEnvironmentLifecycleEventInTransaction,
   recordEnvironmentCurrentBranch,
   recordProvisionedEnvironmentWorkspace,
-} from "./data/environments.js";
+} from "./data/environment-lifecycle.js";
 export type {
   ApplyEnvironmentLifecycleEventArgs,
   ApplyEnvironmentLifecycleEventOutcome,
-} from "./data/environments.js";
+} from "./data/environment-lifecycle.js";
