@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isolateAgentState } from "./isolate-agent-state.mjs";
 
 const CELLS = [
   "settings-follow-up",
@@ -62,20 +64,38 @@ execFileSync(
   ],
   { cwd: repoRoot, stdio: "inherit" },
 );
-const run = spawnSync(
-  "pnpm",
-  [
-    "exec",
-    "vitest",
-    "run",
-    "--config",
-    "vitest.integration.config.ts",
-    "src/integration.record-scenario-cells.test.ts",
-  ],
-  {
-    cwd: join(repoRoot, "packages/agent-runtime"),
-    env: providerEnv(args),
-    stdio: "inherit",
-  },
+const runtimeDir = join(repoRoot, "packages/agent-runtime");
+const workspace = realpathSync(
+  mkdtempSync(join(tmpdir(), `bb-conf-${args.cell}-`)),
 );
+const env = providerEnv(args);
+env.BB_SCENARIO_RECORD_WORKSPACE = workspace;
+const isolation = await isolateAgentState(args.provider, env, [
+  workspace,
+  runtimeDir,
+]);
+Object.assign(env, isolation.env);
+let run;
+process.on("SIGINT", () => {});
+try {
+  run = spawnSync(
+    "pnpm",
+    [
+      "exec",
+      "vitest",
+      "run",
+      "--config",
+      "vitest.integration.config.ts",
+      "src/integration.record-scenario-cells.test.ts",
+    ],
+    {
+      cwd: runtimeDir,
+      env,
+      stdio: "inherit",
+    },
+  );
+} finally {
+  await isolation.finish();
+  rmSync(workspace, { recursive: true, force: true });
+}
 process.exit(run.status ?? 1);

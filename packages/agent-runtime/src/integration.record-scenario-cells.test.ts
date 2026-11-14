@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import type {
@@ -59,7 +58,8 @@ function note(ctx: Ctx, text: string): void {
 
 function createCtx(providerId: string, cell: string): Ctx {
   if (RECORD_ROOT === undefined) throw new Error("no record root");
-  const workspace = mkdtempSync(join(tmpdir(), `bb-conf-${cell}-`));
+  const workspace = process.env.BB_SCENARIO_RECORD_WORKSPACE;
+  if (workspace === undefined) throw new Error("no record workspace");
   const recordDir = join(RECORD_ROOT, cell);
   mkdirSync(recordDir, { recursive: true });
   const events: ThreadEvent[] = [];
@@ -696,7 +696,6 @@ describe.runIf(RECORD_ROOT !== undefined)("record a scenario cell", () => {
     } finally {
       writeNotes(ctx, RECORD_CELL, ctx.threadId, extra);
       await ctx.runtime.shutdown().catch(() => {});
-      rmSync(ctx.workspace, { recursive: true, force: true });
     }
   }, 900_000);
 });
