@@ -27,11 +27,11 @@ if (args.includes("--version")) {
   }
   if (process.env.FAKE_PI_VERSION === "crash") {
     process.stderr.write(
-      "Error: pi 0.99.0 failed to start\n    at main (pi.js:1:1)\n",
+      "Error: pi 0.84.0 failed to start\n    at main (pi.js:1:1)\n",
     );
     process.exit(1);
   }
-  process.stdout.write(`${process.env.FAKE_PI_VERSION ?? "0.99.0"}\n`);
+  process.stdout.write(`${process.env.FAKE_PI_VERSION ?? "0.84.0"}\n`);
   process.exit(0);
 }
 function flag(name) {
@@ -201,6 +201,9 @@ function respond(id, command, data) {
     ...(data === undefined ? {} : { data }),
   });
 }
+function promptDisposition(disposition) {
+  return supportsSettlement ? { disposition } : undefined;
+}
 function respondError(id, command, error) {
   send({ id, type: "response", command, success: false, error });
 }
@@ -269,7 +272,7 @@ async function prepareExtensionLoadPath(path) {
     "./core/session-manager.js",
     import.meta.resolve("@earendil-works/pi-coding-agent"),
   ).href;
-  const runtimeSource = `export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.99.0") : "0.83.0")};`;
+  const runtimeSource = `export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`;
   const runtimeShim = `data:text/javascript,${encodeURIComponent(runtimeSource)}`;
   const aliases = new Map([
     ["@earendil-works/pi-coding-agent", runtimeShim],
@@ -800,7 +803,7 @@ async function handle(command) {
         writeFileSync(promptDumpPath, JSON.stringify(command), "utf8");
       }
       if (command.message === "/handled") {
-        respond(id, "prompt", { disposition: "handled" });
+        respond(id, "prompt", promptDisposition("handled"));
         return;
       }
       if (isCompacting) {
@@ -821,10 +824,10 @@ async function handle(command) {
             type: "response",
             command: "prompt",
             success: true,
-            data: { disposition: "queued" },
+            ...(supportsSettlement ? { data: { disposition: "queued" } } : {}),
           });
         } else {
-          respond(id, "prompt", { disposition: "queued" });
+          respond(id, "prompt", promptDisposition("queued"));
         }
         if (holdAbort) {
           holdAbort("steer");
@@ -834,10 +837,10 @@ async function handle(command) {
       if (isStreaming) {
         followUp.push(command.message);
         queueUpdate();
-        respond(id, "prompt", { disposition: "queued" });
+        respond(id, "prompt", promptDisposition("queued"));
         return;
       }
-      respond(id, "prompt", { disposition: "started" });
+      respond(id, "prompt", promptDisposition("started"));
       await runPrompt(command.message);
       await drainFollowUps();
       await emitSettlement();

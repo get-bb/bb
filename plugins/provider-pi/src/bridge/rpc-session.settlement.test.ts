@@ -31,7 +31,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-function harness() {
+function harness(settlement = true) {
   const events: PiRpcEvent[] = [];
   const aDelivered = deferred();
   const requestOk = vi.fn(async () => undefined);
@@ -68,7 +68,7 @@ function harness() {
     pendingRunSettlements: unknown[];
   };
   control.child = { exited: false, requestOk, kill };
-  control.handleChannelMessage({ kind: "ready", agentSettled: true });
+  control.handleChannelMessage({ kind: "ready", agentSettled: settlement });
   let runId = 0;
   let previousSettlement: Record<string, unknown> | null = null;
   const event = (value: PiRpcEvent) => {
@@ -638,3 +638,20 @@ it("fails closed when the extension reports the wrong run identity", async () =>
   expect(h.onDone).toHaveBeenCalledTimes(1);
   expect(h.kill).toHaveBeenCalledTimes(1);
 });
+
+it.each(["stop", "aborted", "error"])(
+  "retains legacy agent_end fallback for %s",
+  async (reason) => {
+    const h = harness(false);
+    const dispatch = h.session.prompt("legacy");
+    await dispatch.admitted;
+    h.event({ type: "agent_start" });
+    h.end("legacy", reason);
+    const outcome = await dispatch.settled;
+    expect(outcome?.boundaryDelivered).toBe(true);
+    expect(outcome?.error instanceof Error).toBe(reason !== "stop");
+    await h.control.deliveryChain;
+    expect(h.control.runs.size).toBe(0);
+    expect(h.events.some((e) => e.deferSettlement)).toBe(false);
+  },
+);

@@ -18,6 +18,7 @@ afterEach(async () => {
 async function start(
   options: {
     version?: string;
+    settlement?: boolean;
     aborted?: string;
     duplicate?: boolean;
   } = {},
@@ -28,7 +29,8 @@ async function start(
     processLog: true,
   });
   h = harness;
-  vi.stubEnv("FAKE_PI_VERSION", options.version ?? "0.99.0");
+  vi.stubEnv("FAKE_PI_SETTLEMENT", options.settlement === false ? "0" : "1");
+  vi.stubEnv("FAKE_PI_VERSION", options.version ?? "0.84.0");
   vi.stubEnv("FAKE_PI_FINAL_LEAF", "settled-leaf");
   vi.stubEnv("FAKE_PI_COMMAND_LOG", join(harness.workspaceDir, "commands.log"));
   vi.stubEnv("FAKE_PI_EVENT_LOG", join(harness.workspaceDir, "events.jsonl"));
@@ -86,7 +88,7 @@ async function start(
   return { harness, send, turn, run, deltas, wireEvents, commands };
 }
 
-it.each(["0.99.0", "1.0.2"])(
+it.each(["0.84.0", "1.0.2"])(
   "uses authoritative settlement and its checkpoint on Pi %s",
   async (version) => {
     const t = await start({ version, duplicate: true });
@@ -215,25 +217,35 @@ it.each(["/threshold-cancel", "/stop-overflow-cancel", "/stop-overflow-error"])(
   },
 );
 
-it("refuses to start a Pi that does not report run settlement", async () => {
-  const harness = await startFakePiBridge({
-    prefix: "bb-pi-settlement-",
-    initialize: true,
-    processLog: true,
-  });
-  h = harness;
-  vi.stubEnv("FAKE_PI_SETTLEMENT", "0");
-  const response = await harness.startThread("thread");
-  expect(response.error).toMatchObject({
-    message: expect.stringContaining(
-      "This Pi does not report run settlement. Update Pi to 0.99.0 or newer.",
-    ),
-  });
-  await harness.waitFor(
-    () => harness.runningChildPids().length === 0,
-    "the refused Pi child to exit",
-  );
-});
+it.each([
+  ["hello", "completed"],
+  ["/unexpected-abort", "failed"],
+] as const)(
+  "ends the opened turn on agent_end when Pi does not report settlement (%s)",
+  async (text, status) => {
+    const t = await start({ settlement: false, version: "0.83.0" });
+    const response = await t.turn(text);
+    expect(response.result).toEqual({ admission: "accepted" });
+    await t.harness.waitForTurnBoundary("thread");
+    const deltas = t.deltas();
+    const accepted = deltas.findIndex((d) => d.kind === "input.accepted");
+    const opened = deltas.findIndex((d) => d.kind === "turn.open");
+    const boundaries = deltas.filter((d) => d.kind === "turn.boundary");
+    expect(accepted).toBeGreaterThanOrEqual(0);
+    expect(opened).toBeGreaterThan(accepted);
+    expect(boundaries).toEqual([expect.objectContaining({ status })]);
+    expect(deltas.findIndex((d) => d.kind === "turn.boundary")).toBeGreaterThan(
+      opened,
+    );
+    expect(t.wireEvents().some((e) => e.type === "agent_settled")).toBe(false);
+
+    expect((await t.turn("again")).result).toEqual({ admission: "accepted" });
+    await t.harness.waitFor(
+      () => t.deltas().filter((d) => d.kind === "turn.boundary").length === 2,
+      "the second legacy turn to end",
+    );
+  },
+);
 
 it("Stop interrupts intentionally and release never starts a new run", async () => {
   const t = await start();

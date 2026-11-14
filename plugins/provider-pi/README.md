@@ -1,7 +1,7 @@
 # Pi provider
 
 First-party plugin for the [Pi coding agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
-Pi is user-installed (`npm install -g @earendil-works/pi-coding-agent`, 0.99.0
+Pi is user-installed (`npm install -g @earendil-works/pi-coding-agent`, 0.84.0
 or newer); the plugin ships no agent tree.
 
 What lives here:
@@ -14,9 +14,8 @@ What lives here:
   (`src/native-roots.ts`).
 - `src/delta-translation.ts` — pi's session events become bb's thread deltas.
 - `src/bridge/provider-maintenance.ts` — the install gate (`pi --version`
-  ≥ 0.99.0, the first Pi whose prompt answer says whether it started a run)
-  and the install/update actions: install through npm; update a pi.dev
-  managed install (`src/bridge/pi-managed-install.ts`) with
+  ≥ 0.84.0) and the install/update actions: install through npm; update a
+  pi.dev managed install (`src/bridge/pi-managed-install.ts`) with
   `pi update --self`, a Bun or npm global install through that package
   manager, and any other install with `pi update --self`.
 - `src/bridge/extension-ui.ts` — pi extension dialogs reach the user:

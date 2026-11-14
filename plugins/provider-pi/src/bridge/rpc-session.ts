@@ -1,6 +1,5 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { PI_MINIMUM_SUPPORTED_VERSION } from "./provider-maintenance.js";
 import { runSettlementError } from "./run-settlement.js";
 import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
@@ -197,6 +196,7 @@ export interface PiRpcSessionState {
 export class PiRpcSession {
   private child: PiRpcChild | undefined;
   private isProcessing = false;
+  private supportsSettlement = false;
   private agentRunsStarted = 0;
   private agentRunsSettled = 0;
   private readonly runs = new Map<
@@ -220,6 +220,7 @@ export class PiRpcSession {
     followUp: [],
     steering: [],
   };
+  private autoRetryInProgress = false;
   private terminalSteerSettlement: Promise<void> | null = null;
   private readonly pendingRunSettlements: PendingRunSettlement[] = [];
   private readonly channelReplies = new Map<string, ChannelReply>();
@@ -743,7 +744,7 @@ export class PiRpcSession {
       return;
     }
     const event = raw as PiRpcEvent;
-    if (event.type === "agent_settled") {
+    if (event.type === "agent_settled" && this.supportsSettlement) {
       void this.deliverInOrder(async () => {
         this.deliverSettlement(await this.takeAgentSettledLeaf());
       });
@@ -751,7 +752,8 @@ export class PiRpcSession {
     }
     this.trackProcessingState(event);
     this.observeInputConsumption(event);
-    if (event.type === "agent_start") {
+    this.observeTerminalSteerSettlement(event);
+    if (event.type === "agent_start" && this.supportsSettlement) {
       const runId = this.agentRunsStarted;
       void this.deliverInOrder(async () => {
         const report = await this.takeAgentStart();
@@ -782,9 +784,13 @@ export class PiRpcSession {
         this.runs.set(runId, run);
         this.onEvent({
           ...event,
-          deferSettlement: true,
+          ...(this.supportsSettlement ? { deferSettlement: true } : {}),
           ...(leafId === null ? {} : { providerCheckpointId: leafId }),
         });
+        if (!this.supportsSettlement) {
+          this.settleRun(event);
+          if (event.willRetry !== true) this.retireRunsThrough(runId);
+        }
       });
       return;
     }
@@ -1026,18 +1032,12 @@ export class PiRpcSession {
   private handleChannelMessage(message: Record<string, unknown>): void {
     const child = this.child;
     if (message.kind === "ready") {
-      if (message.agentSettled === true) {
-        this.ready.resolve();
-      } else {
-        this.ready.reject(
-          new Error(
-            `This Pi does not report run settlement. Update Pi to ${PI_MINIMUM_SUPPORTED_VERSION} or newer.`,
-          ),
-        );
-      }
+      this.supportsSettlement = message.agentSettled === true;
+      this.ready.resolve();
       return;
     }
     if (message.kind === "agent-start") {
+      if (!this.supportsSettlement) return;
       const previousSettlement = parseSettlementReport(
         message.previousSettlement,
       );
@@ -1204,6 +1204,13 @@ export class PiRpcSession {
       this.agentRunsStarted += 1;
       this.runs.set(this.agentRunsStarted, {});
     }
+    if (
+      !this.supportsSettlement &&
+      event.type === "agent_end" &&
+      event.willRetry !== true
+    ) {
+      this.isProcessing = false;
+    }
     if (event.type === "compaction_end" && event.reason === "manual") {
       this.isProcessing = false;
       this.piManualCompactionActive = false;
@@ -1265,6 +1272,30 @@ export class PiRpcSession {
     }
   }
 
+  private observeTerminalSteerSettlement(event: PiRpcEvent): void {
+    if (this.supportsSettlement) return;
+    if (event.type === "agent_end") {
+      if (event.willRetry !== true) {
+        this.scheduleTerminalSteerSettlement();
+      }
+      return;
+    }
+    if (event.type === "auto_retry_start") {
+      this.autoRetryInProgress = true;
+      this.clearTerminalSteerSettlement();
+      return;
+    }
+    if (event.type === "auto_retry_end") {
+      this.autoRetryInProgress = false;
+      if (event.success !== true) {
+        this.rejectPendingInputConsumptions(
+          "Pi auto retry ended before steer was consumed",
+          "steering",
+        );
+      }
+    }
+  }
+
   private scheduleTerminalSteerSettlement(): void {
     if (
       !this.pendingInputConsumptions.some(
@@ -1290,7 +1321,7 @@ export class PiRpcSession {
           return;
         }
         this.terminalSteerSettlement = null;
-        if (streaming) {
+        if (this.autoRetryInProgress || streaming) {
           return;
         }
         this.rejectPendingInputConsumptions(

@@ -162,13 +162,13 @@ describe("Pi provider update command by install source", () => {
   it("points an unsupported managed install at pi update", async () => {
     const install = await managedInstall();
     probeState.executablePath = install.launcher;
-    probeState.version = "0.98.4";
+    probeState.version = "0.83.0";
 
     expect(await getPiInstallGate()).toMatchObject({
       ok: false,
       status: "unsupported_version",
       statusMessage:
-        "Pi 0.98.4 is older than the supported minimum 0.99.0. Update Pi to 0.99.0 or newer: pi update --self",
+        "Pi 0.83.0 is older than the supported minimum 0.84.0. Update Pi to 0.84.0 or newer: pi update --self",
     });
   });
 });

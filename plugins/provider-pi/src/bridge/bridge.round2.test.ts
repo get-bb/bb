@@ -235,49 +235,56 @@ function queueUpdateSteering(delta: Record<string, unknown>): unknown[] | null {
   return message.steering;
 }
 
-it("a steer still queued when the run ends is reported dropped through the delivery barrier, not a timer", async () => {
-  vi.stubEnv("FAKE_PI_DROP_STEER_AT_END", "1");
-  const threadId = "thr_r2_steer_drop";
-  await harness.startThread(threadId);
-  turnStart(threadId, "/hold", "creq_ab23456789");
-  await harness.waitForDelta(threadId, (d) => d.kind === "turn.open");
-  handleLine(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: (nextId += 1),
-      method: "turn/steer",
-      params: {
-        threadId,
-        providerThreadId: providerThreadIdFor(threadId),
-        expectedTurnId: "turn-1",
-        clientRequestId: "creq_cd23456789",
-        input: [{ type: "text", text: "never consumed", mentions: [] }],
-        options: FULL_PERMISSION_OPTIONS,
-      },
-    }),
-  );
-  await harness.waitForDelta(threadId, (d) => d.kind === "turn.boundary");
-  const deadline = Date.now() + 10_000;
-  while (
-    Date.now() < deadline &&
-    !harness.messages.some((m) => m.method === "error")
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  const error = harness.messages.find((m) => m.method === "error");
-  expect(error?.params).toMatchObject({
-    threadId,
-    message: expect.stringContaining("Pi turn ended before steer was consumed"),
-  });
-  expect(
-    harness
-      .deltasOf(threadId)
-      .some(
-        (d) =>
-          d.kind === "item.textDelta" && String(d.text).includes("Steered:"),
+it.each(["1", "0"])(
+  "a steer still queued when the run ends is reported dropped through the delivery barrier, not a timer (settlement=%s)",
+  async (settlement) => {
+    vi.stubEnv("FAKE_PI_SETTLEMENT", settlement);
+    vi.stubEnv("FAKE_PI_DROP_STEER_AT_END", "1");
+    const threadId = "thr_r2_steer_drop";
+    await harness.startThread(threadId);
+    turnStart(threadId, "/hold", "creq_ab23456789");
+    await harness.waitForDelta(threadId, (d) => d.kind === "turn.open");
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: (nextId += 1),
+        method: "turn/steer",
+        params: {
+          threadId,
+          providerThreadId: providerThreadIdFor(threadId),
+          expectedTurnId: "turn-1",
+          clientRequestId: "creq_cd23456789",
+          input: [{ type: "text", text: "never consumed", mentions: [] }],
+          options: FULL_PERMISSION_OPTIONS,
+        },
+      }),
+    );
+    await harness.waitForDelta(threadId, (d) => d.kind === "turn.boundary");
+    const deadline = Date.now() + 10_000;
+    while (
+      Date.now() < deadline &&
+      !harness.messages.some((m) => m.method === "error")
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const error = harness.messages.find((m) => m.method === "error");
+    expect(error?.params).toMatchObject({
+      threadId,
+      message: expect.stringContaining(
+        "Pi turn ended before steer was consumed",
       ),
-  ).toBe(false);
-}, 90_000);
+    });
+    expect(
+      harness
+        .deltasOf(threadId)
+        .some(
+          (d) =>
+            d.kind === "item.textDelta" && String(d.text).includes("Steered:"),
+        ),
+    ).toBe(false);
+  },
+  90_000,
+);
 
 it("recovers from one transient model mismatch by respawning", async () => {
   const catalog = await harness.request((nextId += 1), "model/list", {

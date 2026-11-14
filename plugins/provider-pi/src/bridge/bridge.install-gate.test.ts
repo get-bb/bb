@@ -40,8 +40,8 @@ it("reports ready with the installed version after the get_state probe", async (
     supported: true,
     health: {
       status: "ready",
-      installedVersion: "0.99.0",
-      minimumSupportedVersion: "0.99.0",
+      installedVersion: "0.84.0",
+      minimumSupportedVersion: "0.84.0",
       canInstall: true,
       canUpdate: true,
       loginCommand: "pi",
@@ -91,13 +91,13 @@ it.skipIf(process.platform !== "win32").each(["global", "local"])(
 );
 
 it("refuses a pi older than the supported minimum before spawning it", async () => {
-  vi.stubEnv("FAKE_PI_VERSION", "0.98.4");
+  vi.stubEnv("FAKE_PI_VERSION", "0.83.2");
   const health = await harness.request(nextRequestId(), "provider/health", {
     providerId: "pi",
     cwd: harness.workspaceDir,
   });
   expect(health.result).toMatchObject({
-    health: { status: "unsupported_version", installedVersion: "0.98.4" },
+    health: { status: "unsupported_version", installedVersion: "0.83.2" },
   });
   const models = await harness.request(nextRequestId(), "model/list", {
     cwd: harness.workspaceDir,
@@ -105,7 +105,7 @@ it("refuses a pi older than the supported minimum before spawning it", async () 
   expect(models.error).toMatchObject({
     code: BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
     message: expect.stringContaining(
-      "0.98.4 is older than the supported minimum 0.99.0",
+      "0.83.2 is older than the supported minimum 0.84.0",
     ),
   });
 });
@@ -141,7 +141,7 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
       installedVersion: null,
       statusMessage: expect.stringMatching(
         new RegExp(
-          `^Could not determine the pi version: \`.*--version\` exited with 1\\. Install @earendil-works/pi-coding-agent 0\\.99\\.0 or newer: ${process.platform === "win32" ? "npm\\.cmd" : "npm"} install -g @earendil-works/pi-coding-agent@latest$`,
+          `^Could not determine the pi version: \`.*--version\` exited with 1\\. Install @earendil-works/pi-coding-agent 0\\.84\\.0 or newer: ${process.platform === "win32" ? "npm\\.cmd" : "npm"} install -g @earendil-works/pi-coding-agent@latest$`,
           "u",
         ),
       ),

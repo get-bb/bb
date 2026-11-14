@@ -18,7 +18,7 @@ vi.mock("@get-bb/plugin-sdk/provider-bridge", async (importOriginal) => {
   return {
     ...original,
     experimental_commandOutput: vi.fn(async () => probeState.bunBin),
-    experimental_npmLatestVersion: vi.fn(async () => "1.0.0"),
+    experimental_npmLatestVersion: vi.fn(async () => "0.85.0"),
     experimental_probeNpmGlobalPackage: vi.fn(async () => ({
       npmBin: path.join(path.sep, "npm", "bin"),
       npmGlobalPackageVersion: null,
@@ -61,7 +61,7 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
       mkdir(path.dirname(probeState.executablePath), { recursive: true }),
     ]);
     await Promise.all([
-      writeFile(bunPi, "#!/bin/sh\nprintf '0.99.0\\n'\n", { mode: 0o755 }),
+      writeFile(bunPi, "#!/bin/sh\nprintf '0.84.0\\n'\n", { mode: 0o755 }),
       writeFile(
         probeState.executablePath,
         `#!/bin/sh\nexec "${bunPi}" "$@"\n`,
@@ -91,7 +91,7 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
     const compatibilityStatus = await getPiProviderInstallationStatus(false);
     expect(compatibilityStatus).toMatchObject({
       installed: true,
-      currentVersion: "0.99.0",
+      currentVersion: "0.84.0",
       latestVersion: null,
       versionUnsupported: false,
     });
