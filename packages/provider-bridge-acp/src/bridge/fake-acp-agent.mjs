@@ -196,6 +196,13 @@ if (apiIndex !== -1) {
     process.env.FAKE_ACP_OPENCODE_API_LOG,
     `${process.argv.slice(apiIndex + 1, apiIndex + 3).join(" ")}\n`,
   );
+  if (process.env.FAKE_ACP_KILL_AGENT_DURING_API === "1" && method === "GET") {
+    process.kill(
+      Number(readFileSync(process.env.FAKE_ACP_READY_FILE, "utf8")),
+      "SIGKILL",
+    );
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  }
   if (method === "PATCH" && flag === "-d") {
     writeFileSync(statePath, JSON.stringify(JSON.parse(body).permissions));
   } else {

@@ -1862,6 +1862,27 @@ describe("acp bridge", () => {
     },
   );
 
+  it("fails the start when the OpenCode 2 agent exits while bb applies its rules", async () => {
+    const permissionsFile = join(workspaceDir, "opencode-permissions.json");
+    const apiLog = join(workspaceDir, "opencode-api.log");
+    writeFileSync(permissionsFile, "[]");
+    writeFileSync(apiLog, "");
+    await expect(
+      startThread({
+        dialectId: "opencode",
+        agent: { command: process.execPath, args: [FAKE_AGENT_PATH, "acp"] },
+        permissionMode: "accept-edits",
+        envVars: {
+          FAKE_ACP_AGENT_VERSION: "2.0.22",
+          FAKE_ACP_OPENCODE_PERMISSIONS_FILE: permissionsFile,
+          FAKE_ACP_OPENCODE_API_LOG: apiLog,
+          FAKE_ACP_READY_FILE: join(workspaceDir, "agent.pid"),
+          FAKE_ACP_KILL_AGENT_DURING_API: "1",
+        },
+      }),
+    ).rejects.toThrow("exited while its session was being set up");
+  });
+
   it.each([
     { permissionMode: "accept-edits" as const, starts: false },
     { permissionMode: "full" as const, starts: true },
