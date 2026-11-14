@@ -24,6 +24,7 @@ import { attemptDispatch } from "./dispatch-attempt.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import {
   loadFailedTurn,
+  loadTurnRequest,
   retryChain,
   wasFailedTurnInputAccepted,
   type FailedTurnRecord,
@@ -300,8 +301,11 @@ export async function requeueBusyTurnRequest(
   if (thread === null) {
     return;
   }
-  const failed = loadFailedTurn(deps.db, thread.id);
-  if (failed === null || failed.request.requestId !== args.requestId) {
+  const failed = loadTurnRequest(deps.db, {
+    requestId: args.requestId,
+    threadId: thread.id,
+  });
+  if (failed === null) {
     return;
   }
   await dispatchRetry(deps, {

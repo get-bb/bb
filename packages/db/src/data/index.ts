@@ -341,6 +341,7 @@ export {
   getLastStoredProviderThreadId,
   getStoredProviderSession,
   getLastStoredTurnRequestEvent,
+  getStoredTurnRequestEventByRequestId,
   hasStoredTurnRequestEventSince,
   listStoredTaskTurnRequestEvents,
   listLatestTurnFinalAgentMessageEventRows,

@@ -5012,6 +5012,32 @@ export function getLastStoredTurnRequestEvent(
   );
 }
 
+export function getStoredTurnRequestEventByRequestId(
+  db: DbQueryConnection,
+  args: { requestId: string; threadId: string },
+): StoredTurnRequestEventRow | null {
+  return (
+    db
+      .select({
+        data: events.data,
+        sequence: events.sequence,
+        threadId: events.threadId,
+        type: events.type,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          sql`json_extract(${events.data}, '$.requestId') = ${args.requestId}`,
+        ),
+      )
+      .orderBy(sql`${events.sequence} DESC`)
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 export function hasStoredTurnRequestEventSince(
   db: DbQueryConnection,
   args: { since: number; threadId: string },

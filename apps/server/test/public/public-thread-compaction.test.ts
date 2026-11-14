@@ -338,6 +338,89 @@ describe("public thread compaction", () => {
     });
   });
 
+  it("re-sends every message the runtime refused busy, not only the latest", async () => {
+    await withTestHarness(async (harness) => {
+      const providerThreadId = "provider-thread-two-busy-sends";
+      const { host, session, thread } = seedCompactableThread(harness, {
+        providerId: "pi",
+        providerThreadId,
+        status: "active",
+      });
+      if (!thread.environmentId) {
+        throw new Error("Expected compactable thread environment");
+      }
+      let releaseBusy: () => void = () => {};
+      const bothSubmitted = new Promise<void>((resolve) => {
+        releaseBusy = resolve;
+      });
+      let submits = 0;
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: async ({ command }): Promise<HostRpcHandlerResult> => {
+          if (command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
+          }
+          if (command.type === "turn.submit") {
+            submits += 1;
+            if (submits >= 2) {
+              releaseBusy();
+            }
+            await Promise.race([
+              bothSubmitted,
+              new Promise((resolve) => setTimeout(resolve, 1_000)),
+            ]);
+            return {
+              ok: false,
+              errorCode: "thread_busy",
+              errorMessage: "The agent is compacting context.",
+            };
+          }
+          return { ok: true, result: {} };
+        },
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: thread.environmentId,
+        providerThreadId,
+        threadId: thread.id,
+        turnId: "turn-compaction-two-sends",
+      });
+
+      const send = (text: string) =>
+        harness.app.request(`/api/v1/threads/${thread.id}/send`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "steer",
+            input: [{ type: "text", text }],
+          }),
+        });
+      const responses = await Promise.all([send("first"), send("second")]);
+      expect(responses.map((response) => response.status)).toEqual([
+        200, 200,
+      ]);
+
+      const rejectedRequestIds = () =>
+        listEvents(harness.db, { threadId: thread.id }).flatMap((event) =>
+          event.type === "client/turn/rejected"
+            ? [JSON.parse(event.data).requestId as string]
+            : [],
+        );
+      await expect.poll(() => rejectedRequestIds().length).toBe(2);
+      await expect
+        .poll(() =>
+          listQueuedThreadMessages(harness.db, thread.id)
+            .flatMap((row) =>
+              row.retryOfTurnRequestId === null
+                ? []
+                : [row.retryOfTurnRequestId],
+            )
+            .sort(),
+        )
+        .toEqual([...rejectedRequestIds()].sort());
+    });
+  });
+
   it.each(["completed-item", "nested-item", "accepted-input"] as const)(
     "steers sends into an active turn whose compaction is not provider-started and running (%s)",
     async (scenario) => {
