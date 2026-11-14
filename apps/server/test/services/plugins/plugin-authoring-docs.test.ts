@@ -3,75 +3,47 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
-import {
-  type BbPluginApi,
-  type ExperimentalAppOverlayProps,
-  type ExperimentalMessageMetadataProps,
-  type PluginAppBuilder,
-  type PluginAppSlots,
-  type PluginContentScriptContext,
-  type PluginContentScriptRegistration,
-  type PluginDiffRendererProps,
-  type ExperimentalComposerProps,
-  type PluginFileOpenerProps,
-  type PluginHomepageSectionProps,
-  type PluginHttpAuthMode,
-  type PluginCommandContext,
-  type PluginCommandRegistration,
-  type PluginMessageActionContext,
-  type PluginMessageActionRegistration,
-  type ThreadChatMessageReference,
-  type PluginMessageDirectiveProps,
-  type ExperimentalCodeFenceRendererProps,
-  type PluginNavPanelProps,
-  type PluginNavPanelRegistration,
-  type PluginNewThreadPanelProps,
-  type PluginPendingInteractionProps,
-  type PluginEnvironmentProviderInputsProps,
-  type PluginMachineProviderInputsProps,
-  type PluginProviderIconRegistration,
-  type PluginTimelineRendererProps,
-  type PluginSettingDescriptor,
-  type PluginSettingsSectionProps,
-  type PluginSidebarFooterActionProps,
-  type PluginSourceCodeRendererProps,
-  type ExperimentalThreadContextSegmentProps,
-  type ExperimentalThreadInfoProps,
-  type ExperimentalThreadHeaderRowProps,
-  type ExperimentalThreadHeaderTitleProps,
-  type ExperimentalThreadContextCardProps,
-  type ExperimentalThreadRowMetadataProps,
-  type PluginThreadActionItemInput,
-  type ExperimentalPluginBrowserToolbarActionProps,
-  type PluginThreadListProps,
-  type ExperimentalSidebarNavigationProps,
-  type ExperimentalSidebarNavigationRegistration,
-  type ExperimentalSidebarHeaderProps,
-  type PluginSidebarFooterActionRegistration,
-  type PluginThreadEventPayloads,
-  type ExperimentalThreadActionTabProps,
-  type ThreadChatMessageAction,
-  type ThreadChatProps,
-} from "@get-bb/plugin-sdk";
 
-const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
 const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 
-const SKILL_ROOT = fileURLToPath(
-  new URL(
-    "../../../../../plugins/bb-guide/skills/bb-plugin-authoring/",
-    import.meta.url,
-  ),
+const SKILL_ROOT = join(
+  REPO_ROOT,
+  "plugins/bb-guide/skills/bb-plugin-authoring/",
 );
 
-function readSkillTree(directory = SKILL_ROOT): string {
+const SDK_DECLARATIONS = join(
+  REPO_ROOT,
+  "packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts",
+);
+
+const COMPILER_OPTIONS: ts.CompilerOptions = {
+  strict: true,
+  noEmit: true,
+  skipLibCheck: true,
+  target: ts.ScriptTarget.ESNext,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+};
+
+const FIELD_DOCUMENTED_TYPES = [
+  "PluginAppBuilder",
+  "PluginContentScriptContext",
+  "PluginContentScriptRegistration",
+  "ThreadChatProps",
+  "ThreadChatMessageAction",
+  "ThreadChatMessageReference",
+  "ExperimentalThreadActionTabProps",
+];
+
+function readSkillProse(directory = SKILL_ROOT): string {
   return readdirSync(directory, { withFileTypes: true })
     .sort((left, right) => left.name.localeCompare(right.name))
     .flatMap((entry) => {
       const entryPath = join(directory, entry.name);
-      if (entry.isDirectory()) return readSkillTree(entryPath);
-      return entry.name.endsWith(".md") ? readFileSync(entryPath, "utf8") : [];
+      if (entry.isDirectory()) return readSkillProse(entryPath);
+      return entry.name.endsWith(".md") && !entry.name.endsWith("-api-index.md")
+        ? readFileSync(entryPath, "utf8")
+        : [];
     })
     .join("\n");
 }
@@ -80,580 +52,81 @@ function readReference(name: string): string {
   return readFileSync(join(SKILL_ROOT, "references", name), "utf8");
 }
 
-function exportedTypeNames(source: string): string[] {
-  return [
-    ...source.matchAll(
-      /(\/\*\*(?:(?!\*\/)[\s\S])*\*\/\s*)?^export (?:interface|type) ([A-Za-z0-9_]+)/gm,
-    ),
-  ]
-    .filter((match) => !(match[1] ?? "").includes("@internal"))
-    .map((match) => match[2])
-    .filter((name): name is string => name !== undefined);
-}
-
-function exportedNames(source: string): string[] {
-  return [
-    ...source.matchAll(
-      /^export (?:async )?(?:interface|type|function|const|class) ([A-Za-z0-9_]+)/gm,
-    ),
-  ]
-    .map((match) => match[1])
-    .filter((name): name is string => name !== undefined);
-}
-
-function declarationExportNames(source: string): string[] {
-  return [...source.matchAll(/^export(?: type)? \{([^}]*)\};/gm)].flatMap(
-    (match) =>
-      (match[1] ?? "")
-        .split(",")
-        .map((name) => name.trim())
-        .filter(Boolean)
-        .map((name) => name.split(/\s+as\s+/).at(-1) ?? name),
+function loadSdkTypes() {
+  const program = ts.createProgram([SDK_DECLARATIONS], COMPILER_OPTIONS);
+  const checker = program.getTypeChecker();
+  const sourceFile = program.getSourceFile(SDK_DECLARATIONS);
+  const moduleSymbol =
+    sourceFile === undefined
+      ? undefined
+      : checker.getSymbolAtLocation(sourceFile);
+  if (moduleSymbol === undefined) {
+    throw new Error(`Cannot read the plugin SDK types at ${SDK_DECLARATIONS}`);
+  }
+  const exportsByName = new Map(
+    checker
+      .getExportsOfModule(moduleSymbol)
+      .map((symbol) => [symbol.name, symbol]),
   );
+
+  function parts(type: ts.Type): readonly ts.Type[] {
+    return type.isUnion() ? type.types : [type];
+  }
+
+  function exported(name: string): ts.Type {
+    const symbol = exportsByName.get(name);
+    if (symbol === undefined) {
+      throw new Error(`@get-bb/plugin-sdk does not export ${name}`);
+    }
+    return checker.getDeclaredTypeOfSymbol(
+      symbol.flags & ts.SymbolFlags.Alias
+        ? checker.getAliasedSymbol(symbol)
+        : symbol,
+    );
+  }
+
+  function members(type: ts.Type): ts.Symbol[] {
+    return parts(type)
+      .flatMap((part) => checker.getPropertiesOfType(part))
+      .filter((member) => !member.name.startsWith("internal_DO_NOT_USE_"));
+  }
+
+  function fields(type: ts.Type): string[] {
+    return [...new Set(members(type).map((member) => member.name))];
+  }
+
+  function receivedFields(member: ts.Symbol): string[] {
+    const received = parts(
+      checker.getNonNullableType(checker.getTypeOfSymbol(member)),
+    )
+      .flatMap((part) => [
+        ...part.getCallSignatures(),
+        ...part.getConstructSignatures(),
+      ])
+      .flatMap((signature) => signature.getParameters().slice(0, 1))
+      .flatMap((parameter) => fields(checker.getTypeOfSymbol(parameter)));
+    return [...new Set(received)];
+  }
+
+  function stringLiterals(type: ts.Type): string[] {
+    return parts(type).flatMap((part) =>
+      part.isStringLiteral() ? [part.value] : [],
+    );
+  }
+
+  return {
+    exported,
+    members,
+    fields,
+    receivedFields,
+    stringLiterals,
+    typeOf: (symbol: ts.Symbol) => checker.getTypeOfSymbol(symbol),
+  };
 }
-
-const appModule = readFileSync(
-  join(REPO_ROOT, "packages/plugin-sdk/src/app.ts"),
-  "utf8",
-);
-const rpcTypeBlock = appModule.match(
-  /export type \{([\s\S]*?)\} from "\.\/rpc-contract\.js";/,
-)?.[1];
-if (!rpcTypeBlock) throw new Error("The app RPC type export block is missing");
-
-const FRONTEND_TYPE_EXPORT_NAMES = [
-  ...exportedTypeNames(
-    readFileSync(
-      join(REPO_ROOT, "packages/plugin-sdk/src/app-contract.ts"),
-      "utf8",
-    ),
-  ),
-  ...exportedTypeNames(
-    readFileSync(
-      join(REPO_ROOT, "packages/plugin-sdk/src/json-value.ts"),
-      "utf8",
-    ),
-  ),
-  ...rpcTypeBlock
-    .split(",")
-    .map((name) => name.trim())
-    .filter(Boolean),
-].filter((name) => !name.startsWith("InternalDoNotUse"));
-
-const FRONTEND_TEST_EXPORT_NAMES = [
-  "packages/plugin-sdk/src/testing/app.tsx",
-  "packages/plugin-sdk/src/testing/host.ts",
-].flatMap((relativePath) =>
-  exportedNames(readFileSync(join(REPO_ROOT, relativePath), "utf8")),
-);
-
-const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
-  "bb-plugin-sdk.d.ts",
-  "bb-plugin-sdk-provider-bridge.d.ts",
-  "bb-plugin-sdk-provider-bridge-testing.d.ts",
-  "bb-plugin-sdk-provider-bridge-acp.d.ts",
-  "bb-plugin-sdk-host.d.ts",
-  "bb-plugin-sdk-testing.d.ts",
-].flatMap((filename) =>
-  declarationExportNames(
-    readFileSync(
-      join(REPO_ROOT, "packages/plugin-sdk/bundled-types", filename),
-      "utf8",
-    ),
-  ).filter(
-    (name) =>
-      !name.startsWith("InternalDoNotUse") &&
-      !name.startsWith("internal_DO_NOT_USE_"),
-  ),
-);
-
-const BB_PLUGIN_API_KEYS = [
-  "pluginId",
-  "log",
-  "settings",
-  "storage",
-  "http",
-  "rpc",
-  "realtime",
-  "background",
-  "cli",
-  "agents",
-  "providers",
-  "ui",
-  "events",
-  "status",
-  "server",
-  "hosts",
-  "experimental_aiServices",
-  "experimental_hooks",
-  "experimental_environments",
-  "experimental_machines",
-  "experimental_serverAccess",
-  "sdk",
-  "onDispose",
-  "onInstall",
-] as const satisfies readonly (keyof BbPluginApi)[];
-
-type MissingApiKey = Exclude<
-  keyof BbPluginApi,
-  (typeof BB_PLUGIN_API_KEYS)[number] | `internal_DO_NOT_USE_${string}`
->;
-const _assertAllApiKeysListed: MissingApiKey extends never ? true : never =
-  true;
-void _assertAllApiKeysListed;
-
-const SETTING_DESCRIPTOR_TYPES = [
-  "string",
-  "number",
-  "boolean",
-  "select",
-  "project",
-] as const satisfies readonly PluginSettingDescriptor["type"][];
-
-type MissingSettingType = Exclude<
-  PluginSettingDescriptor["type"],
-  (typeof SETTING_DESCRIPTOR_TYPES)[number]
->;
-const _assertAllSettingTypesListed: MissingSettingType extends never
-  ? true
-  : never = true;
-void _assertAllSettingTypesListed;
-
-const HTTP_AUTH_MODES = [
-  "local",
-  "token",
-  "none",
-] as const satisfies readonly PluginHttpAuthMode[];
-
-type MissingAuthMode = Exclude<
-  PluginHttpAuthMode,
-  (typeof HTTP_AUTH_MODES)[number]
->;
-const _assertAllAuthModesListed: MissingAuthMode extends never ? true : never =
-  true;
-void _assertAllAuthModesListed;
-
-const THREAD_EVENT_PAYLOAD_FIELDS = {
-  "experimental_thread.events": ["thread", "sequence"],
-  "experimental_thread.parentChanged": ["thread", "previousParentThreadId"],
-  "experimental_thread.read": ["thread"],
-  "experimental_terminal.input": ["terminal"],
-  "experimental_host.deleted": ["host"],
-  "experimental_environment.removed": ["removal"],
-  "thread.created": ["thread"],
-  "thread.active": ["thread"],
-  "thread.idle": ["thread", "lastAssistantText"],
-  "thread.failed": ["thread", "error"],
-  "thread.archived": ["thread"],
-  "thread.unarchived": ["thread"],
-  "thread.deleted": ["thread"],
-  "interaction.pending": ["thread", "interaction"],
-  "message.queued": ["entry"],
-  "message.dispatched": ["entry"],
-  "message.cancelled": ["entry"],
-  "turn.failed": [
-    "threadId",
-    "requestId",
-    "turnId",
-    "errorInfo",
-    "inputAccepted",
-    "rateLimits",
-    "attemptNumber",
-    "originPluginId",
-  ],
-} as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
-};
-
-type MissingThreadEventField = {
-  [E in keyof PluginThreadEventPayloads]: Exclude<
-    keyof PluginThreadEventPayloads[E],
-    (typeof THREAD_EVENT_PAYLOAD_FIELDS)[E][number]
-  >;
-}[keyof PluginThreadEventPayloads];
-const _assertAllThreadEventFieldsListed: MissingThreadEventField extends never
-  ? true
-  : never = true;
-void _assertAllThreadEventFieldsListed;
-
-type SlotPropsByName = {
-  homepageSection: PluginHomepageSectionProps;
-  settingsSection: PluginSettingsSectionProps;
-  experimental_appOverlay: ExperimentalAppOverlayProps;
-  navPanel: PluginNavPanelProps;
-  experimental_tab: ExperimentalThreadActionTabProps | PluginNavPanelProps;
-  experimental_newThreadPanelAction: PluginNewThreadPanelProps;
-  pendingInteraction: PluginPendingInteractionProps;
-  sidebarFooterAction: PluginSidebarFooterActionProps;
-  experimental_threadList: PluginThreadListProps;
-  experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
-  experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
-  experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
-  experimental_threadInfoRow: ExperimentalThreadInfoProps;
-  experimental_threadInfoSection: ExperimentalThreadInfoProps;
-  experimental_threadHeaderRow: ExperimentalThreadHeaderRowProps;
-  experimental_threadHeaderTitle: ExperimentalThreadHeaderTitleProps;
-  experimental_threadContextCardRow: ExperimentalThreadContextCardProps;
-  experimental_threadContextCardSection: ExperimentalThreadContextCardProps;
-  experimental_threadAction: PluginThreadActionItemInput<unknown>;
-  experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
-  fileOpener: PluginFileOpenerProps;
-  experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
-  experimental_diffRenderer: PluginDiffRendererProps;
-  experimental_composer: ExperimentalComposerProps;
-  messageDirective: PluginMessageDirectiveProps;
-  experimental_codeFenceRenderer: ExperimentalCodeFenceRendererProps;
-  messageAction: PluginMessageActionContext;
-  experimental_messageMetadata: ExperimentalMessageMetadataProps;
-  commandPaletteAction: PluginCommandContext;
-  experimental_providerIcon: PluginProviderIconRegistration;
-  experimental_timelineRenderer: PluginTimelineRendererProps;
-  experimental_environmentProviderInputs: PluginEnvironmentProviderInputsProps;
-  experimental_machineProviderInputs: PluginMachineProviderInputsProps;
-};
-
-type SlotPropKeys<T> = T extends unknown ? keyof T : never;
-
-type MissingSlot = Exclude<
-  keyof PluginAppSlots,
-  keyof SlotPropsByName | `internal_DO_NOT_USE_${string}`
->;
-const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
-void _assertAllSlotsListed;
-
-const APP_BUILDER_FIELDS = [
-  "commands",
-  "experimental_icons",
-  "slots",
-  "composer",
-  "contentScripts",
-  "experimental_sidebarFooter",
-] as const satisfies readonly (keyof PluginAppBuilder)[];
-
-type MissingAppBuilderField = Exclude<
-  keyof PluginAppBuilder,
-  (typeof APP_BUILDER_FIELDS)[number]
->;
-const _assertAllAppBuilderFieldsListed: MissingAppBuilderField extends never
-  ? true
-  : never = true;
-void _assertAllAppBuilderFieldsListed;
-
-const CONTENT_SCRIPT_CONTEXT_FIELDS = [
-  "pluginId",
-  "generation",
-  "signal",
-  "experimental_setThreadRowStatus",
-] as const satisfies readonly (keyof PluginContentScriptContext)[];
-
-type MissingContentScriptContextField = Exclude<
-  keyof PluginContentScriptContext,
-  (typeof CONTENT_SCRIPT_CONTEXT_FIELDS)[number]
->;
-const _assertAllContentScriptContextFieldsListed: MissingContentScriptContextField extends never
-  ? true
-  : never = true;
-void _assertAllContentScriptContextFieldsListed;
-
-const CONTENT_SCRIPT_REGISTRATION_FIELDS = [
-  "id",
-  "mount",
-] as const satisfies readonly (keyof PluginContentScriptRegistration)[];
-
-type MissingContentScriptRegistrationField = Exclude<
-  keyof PluginContentScriptRegistration,
-  (typeof CONTENT_SCRIPT_REGISTRATION_FIELDS)[number]
->;
-const _assertAllContentScriptRegistrationFieldsListed: MissingContentScriptRegistrationField extends never
-  ? true
-  : never = true;
-void _assertAllContentScriptRegistrationFieldsListed;
-
-const FRONTEND_SLOT_PROP_FIELDS = {
-  homepageSection: ["projectId"],
-  settingsSection: [],
-  experimental_appOverlay: [],
-  navPanel: ["subPath"],
-  experimental_tab: ["threadId", "environment", "subPath", "params"],
-  experimental_newThreadPanelAction: ["projectId", "params"],
-  pendingInteraction: ["interaction", "submit", "cancel"],
-  sidebarFooterAction: [],
-  experimental_threadList: [
-    "activeThreadId",
-    "activeProjectId",
-    "isCompactViewport",
-    "onNavigate",
-    "searchQuery",
-  ],
-  experimental_threadContextSegment: [
-    "threadId",
-    "projectId",
-    "environment",
-    "segments",
-    "isExpanded",
-    "onToggle",
-  ],
-  experimental_threadInfoRow: ["threadId", "projectId", "environment"],
-  experimental_threadInfoSection: ["threadId", "projectId", "environment"],
-  experimental_threadHeaderRow: ["threadId", "projectId", "environment"],
-  experimental_threadHeaderTitle: ["threadId", "projectId", "environment"],
-  experimental_threadContextCardRow: ["threadId", "projectId", "environment"],
-  experimental_threadContextCardSection: [
-    "threadId",
-    "projectId",
-    "environment",
-  ],
-  experimental_threadRowMetadata: ["thread", "data"],
-  experimental_threadAction: [
-    "thread",
-    "data",
-    "sdk",
-    "navigate",
-    "experimental_panel",
-  ],
-  experimental_browserToolbarAction: [
-    "threadId",
-    "tabId",
-    "url",
-    "experimental_page",
-    "isCompactViewport",
-  ],
-  fileOpener: ["path", "source", "experimental_lineRange", "Original"],
-  experimental_sourceCodeRenderer: [
-    "content",
-    "path",
-    "overflow",
-    "highlightedLines",
-    "Original",
-  ],
-  experimental_diffRenderer: [
-    "patch",
-    "path",
-    "view",
-    "overflow",
-    "showLineNumbers",
-    "experimental_fullFileContents",
-    "Original",
-  ],
-  experimental_composer: [],
-  messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
-  experimental_codeFenceRenderer: [
-    "code",
-    "language",
-    "status",
-    "index",
-    "message",
-    "Original",
-  ],
-  experimental_messageMetadata: ["message"],
-  messageAction: [
-    "threadId",
-    "message",
-    "selectedText",
-    "experimental_panel",
-    "composer",
-  ],
-  commandPaletteAction: ["threadId", "projectId", "experimental_panel"],
-  experimental_providerIcon: ["providerKind", "providerId", "icon"],
-  experimental_timelineRenderer: [
-    "row",
-    "payload",
-    "presentation",
-    "thread",
-    "Original",
-  ],
-  experimental_environmentProviderInputs: [
-    "projectId",
-    "target",
-    "value",
-    "onChange",
-  ],
-  experimental_machineProviderInputs: ["value", "onChange"],
-  experimental_sidebarNavigation: [
-    "isCompactViewport",
-    "placement",
-    "experimental_Original",
-  ],
-} as const satisfies {
-  [S in keyof SlotPropsByName]: readonly SlotPropKeys<SlotPropsByName[S]>[];
-};
-
-type MissingSlotPropField = {
-  [S in keyof SlotPropsByName]: Exclude<
-    SlotPropKeys<SlotPropsByName[S]>,
-    | (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
-    | `internal_DO_NOT_USE_${string}`
-  >;
-}[keyof SlotPropsByName];
-const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
-  ? true
-  : never = true;
-void _assertAllSlotPropFieldsListed;
-
-const SIDEBAR_NAVIGATION_REGISTRATION_FIELDS = [
-  "id",
-  "title",
-  "description",
-  "placement",
-  "component",
-  "headerComponent",
-] as const satisfies readonly (keyof ExperimentalSidebarNavigationRegistration)[];
-
-type MissingSidebarNavigationRegistrationField = Exclude<
-  keyof ExperimentalSidebarNavigationRegistration,
-  (typeof SIDEBAR_NAVIGATION_REGISTRATION_FIELDS)[number]
->;
-const _assertAllSidebarNavigationRegistrationFieldsListed: MissingSidebarNavigationRegistrationField extends never
-  ? true
-  : never = true;
-void _assertAllSidebarNavigationRegistrationFieldsListed;
-
-const SIDEBAR_HEADER_PROP_FIELDS = [
-  "width",
-  "controlSize",
-  "isCompactViewport",
-] as const satisfies readonly (keyof ExperimentalSidebarHeaderProps)[];
-
-type MissingSidebarHeaderPropField = Exclude<
-  keyof ExperimentalSidebarHeaderProps,
-  (typeof SIDEBAR_HEADER_PROP_FIELDS)[number]
->;
-const _assertAllSidebarHeaderPropFieldsListed: MissingSidebarHeaderPropField extends never
-  ? true
-  : never = true;
-void _assertAllSidebarHeaderPropFieldsListed;
-
-const NAV_PANEL_REGISTRATION_FIELDS = [
-  "id",
-  "title",
-  "icon",
-  "path",
-  "component",
-  "experimental_useBadge",
-  "experimental_usePageTitle",
-  "headerContent",
-  "experimental_sidebar",
-  "experimental_headerTitle",
-  "experimental_hideFromNavigation",
-] as const satisfies readonly (keyof PluginNavPanelRegistration)[];
-
-type MissingNavPanelRegistrationField = Exclude<
-  keyof PluginNavPanelRegistration,
-  (typeof NAV_PANEL_REGISTRATION_FIELDS)[number]
->;
-const _assertAllNavPanelRegistrationFieldsListed: MissingNavPanelRegistrationField extends never
-  ? true
-  : never = true;
-void _assertAllNavPanelRegistrationFieldsListed;
-
-const SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS = [
-  "id",
-  "title",
-  "icon",
-  "run",
-] as const satisfies readonly (keyof PluginSidebarFooterActionRegistration)[];
-
-type MissingSidebarFooterActionRegistrationField = Exclude<
-  keyof PluginSidebarFooterActionRegistration,
-  (typeof SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS)[number]
->;
-const _assertAllSidebarFooterActionRegistrationFieldsListed: MissingSidebarFooterActionRegistrationField extends never
-  ? true
-  : never = true;
-void _assertAllSidebarFooterActionRegistrationFieldsListed;
-
-const MESSAGE_ACTION_REGISTRATION_FIELDS = [
-  "id",
-  "title",
-  "icon",
-  "run",
-] as const satisfies readonly (keyof PluginMessageActionRegistration)[];
-
-type MissingMessageActionRegistrationField = Exclude<
-  keyof PluginMessageActionRegistration,
-  (typeof MESSAGE_ACTION_REGISTRATION_FIELDS)[number]
->;
-const _assertAllMessageActionRegistrationFieldsListed: MissingMessageActionRegistrationField extends never
-  ? true
-  : never = true;
-void _assertAllMessageActionRegistrationFieldsListed;
-
-const MESSAGE_REFERENCE_FIELDS = [
-  "id",
-  "threadId",
-  "role",
-  "text",
-  "sourceSeqEnd",
-  "experimental_messageSeq",
-] as const satisfies readonly (keyof ThreadChatMessageReference)[];
-
-type MissingMessageReferenceField = Exclude<
-  keyof ThreadChatMessageReference,
-  (typeof MESSAGE_REFERENCE_FIELDS)[number]
->;
-const _assertAllMessageReferenceFieldsListed: MissingMessageReferenceField extends never
-  ? true
-  : never = true;
-void _assertAllMessageReferenceFieldsListed;
-
-const COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS = [
-  "defaultShortcut",
-  "id",
-  "title",
-  "isAvailable",
-  "run",
-] as const satisfies readonly (keyof PluginCommandRegistration)[];
-
-type MissingCommandPaletteActionRegistrationField = Exclude<
-  keyof PluginCommandRegistration,
-  (typeof COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS)[number]
->;
-const _assertAllCommandPaletteActionRegistrationFieldsListed: MissingCommandPaletteActionRegistrationField extends never
-  ? true
-  : never = true;
-void _assertAllCommandPaletteActionRegistrationFieldsListed;
-
-const THREAD_CHAT_PROP_FIELDS = [
-  "threadId",
-  "variant",
-  "layout",
-  "focusRequest",
-  "permissionPolicy",
-  "className",
-  "leadingContent",
-  "messageActions",
-] as const satisfies readonly (keyof ThreadChatProps)[];
-
-type MissingThreadChatPropField = Exclude<
-  keyof ThreadChatProps,
-  (typeof THREAD_CHAT_PROP_FIELDS)[number]
->;
-const _assertAllThreadChatPropFieldsListed: MissingThreadChatPropField extends never
-  ? true
-  : never = true;
-void _assertAllThreadChatPropFieldsListed;
-
-const THREAD_CHAT_MESSAGE_ACTION_FIELDS = [
-  "id",
-  "title",
-  "icon",
-  "roles",
-  "run",
-] as const satisfies readonly (keyof ThreadChatMessageAction)[];
-
-type MissingThreadChatMessageActionField = Exclude<
-  keyof ThreadChatMessageAction,
-  (typeof THREAD_CHAT_MESSAGE_ACTION_FIELDS)[number]
->;
-const _assertAllThreadChatMessageActionFieldsListed: MissingThreadChatMessageActionField extends never
-  ? true
-  : never = true;
-void _assertAllThreadChatMessageActionFieldsListed;
 
 describe("bb-plugin-authoring skill", () => {
-  const skill = readSkillTree();
+  const skill = readSkillProse();
+  const sdk = loadSdkTypes();
 
   it("typechecks the machine provider guide example against the public SDK", () => {
     const source = readReference("backend-machines.md").match(
@@ -663,15 +136,7 @@ describe("bb-plugin-authoring skill", () => {
     const filename = fileURLToPath(
       new URL("./machine-guide-example.ts", import.meta.url),
     );
-    const options: ts.CompilerOptions = {
-      strict: true,
-      noEmit: true,
-      skipLibCheck: true,
-      target: ts.ScriptTarget.ESNext,
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    };
-    const host = ts.createCompilerHost(options);
+    const host = ts.createCompilerHost(COMPILER_OPTIONS);
     const readSource = host.getSourceFile.bind(host);
     host.getSourceFile = (
       file,
@@ -682,7 +147,7 @@ describe("bb-plugin-authoring skill", () => {
       resolve(file) === filename
         ? ts.createSourceFile(file, source!, languageVersion)
         : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
-    const program = ts.createProgram([filename], options, host);
+    const program = ts.createProgram([filename], COMPILER_OPTIONS, host);
     expect(
       ts
         .getPreEmitDiagnostics(program)
@@ -693,176 +158,75 @@ describe("bb-plugin-authoring skill", () => {
   });
 
   it("documents every BbPluginApi property", () => {
-    for (const key of BB_PLUGIN_API_KEYS) {
-      expect(skill, `bb.${key} is not documented in the skill`).toContain(
-        `bb.${key}`,
-      );
-    }
+    const undocumented = sdk
+      .fields(sdk.exported("BbPluginApi"))
+      .filter((key) => !skill.includes(`bb.${key}`));
+    expect(undocumented).toEqual([]);
   });
 
-  it("documents every @get-bb/plugin-sdk/app runtime export", () => {
-    for (const name of FRONTEND_RUNTIME_EXPORT_NAMES) {
-      expect(skill, `${name} is not documented in the skill`).toContain(name);
-    }
+  it("documents every settings descriptor type", () => {
+    const types = sdk
+      .members(sdk.exported("PluginSettingDescriptor"))
+      .filter((member) => member.name === "type")
+      .flatMap((member) => sdk.stringLiterals(sdk.typeOf(member)));
+    expect(types.length).toBeGreaterThan(0);
+    expect(types.filter((type) => !skill.includes(`type: "${type}"`))).toEqual(
+      [],
+    );
   });
 
-  it("accounts for every @get-bb/plugin-sdk/app type export", () => {
-    for (const name of FRONTEND_TYPE_EXPORT_NAMES) {
-      expect(skill, `${name} is not documented in the skill`).toContain(name);
-    }
+  it("documents every http auth mode", () => {
+    const modes = sdk.stringLiterals(sdk.exported("PluginHttpAuthMode"));
+    expect(modes.length).toBeGreaterThan(0);
+    expect(modes.filter((mode) => !skill.includes(`"${mode}"`))).toEqual([]);
   });
 
-  it("accounts for every frontend testing export", () => {
-    for (const name of FRONTEND_TEST_EXPORT_NAMES) {
-      expect(skill, `${name} is not documented in the skill`).toContain(name);
-    }
+  it("documents every thread event and its payload fields", () => {
+    const events = sdk.members(sdk.exported("PluginThreadEventPayloads"));
+    expect(events.length).toBeGreaterThan(0);
+    const undocumented = events.flatMap((event) => [
+      ...(skill.includes(`"${event.name}"`) ? [] : [event.name]),
+      ...sdk
+        .fields(sdk.typeOf(event))
+        .filter((field) => !skill.includes(field))
+        .map((field) => `${event.name}: ${field}`),
+    ]);
+    expect(undocumented).toEqual([]);
   });
 
-  it("accounts for every public backend and provider entrypoint export", () => {
-    for (const name of PUBLIC_PLUGIN_SDK_EXPORT_NAMES) {
-      expect(skill, `${name} is not documented in the skill`).toContain(name);
-    }
-  });
-
-  it("documents the complete frontend content-script lifecycle contract", () => {
-    for (const field of APP_BUILDER_FIELDS) {
-      expect(skill, `PluginAppBuilder.${field} is not documented`).toContain(
-        field,
-      );
-    }
-    for (const field of CONTENT_SCRIPT_CONTEXT_FIELDS) {
-      expect(
-        skill,
-        `content-script context.${field} is not documented`,
-      ).toContain(field);
-    }
-    for (const field of CONTENT_SCRIPT_REGISTRATION_FIELDS) {
-      expect(
-        skill,
-        `content-script registration.${field} is not documented`,
-      ).toContain(field);
-    }
+  it("documents every field of the types plugins fill in or read directly", () => {
+    const undocumented = FIELD_DOCUMENTED_TYPES.flatMap((name) =>
+      sdk
+        .fields(sdk.exported(name))
+        .filter((field) => !skill.includes(field))
+        .map((field) => `${name}.${field}`),
+    );
+    expect(undocumented).toEqual([]);
     expect(skill).toContain("not a security sandbox");
     expect(skill).toContain("reverse registration order");
   });
 
-  it("documents every settings descriptor type", () => {
-    for (const type of SETTING_DESCRIPTOR_TYPES) {
-      expect(
-        skill,
-        `settings descriptor type "${type}" is not documented in the skill`,
-      ).toContain(`type: "${type}"`);
-    }
-  });
-
-  it("documents every http auth mode", () => {
-    for (const mode of HTTP_AUTH_MODES) {
-      expect(
-        skill,
-        `http auth mode "${mode}" is not documented in the skill`,
-      ).toContain(`"${mode}"`);
-    }
-  });
-
-  it("documents every thread event and its payload fields", () => {
-    for (const [event, fields] of Object.entries(THREAD_EVENT_PAYLOAD_FIELDS)) {
-      expect(skill, `${event} is not documented in the skill`).toContain(
-        `"${event}"`,
+  it("documents every frontend slot, its registration fields, and what bb passes to its components and callbacks", () => {
+    const slots = sdk.members(sdk.exported("PluginAppSlots"));
+    expect(slots.length).toBeGreaterThan(0);
+    const undocumented = slots.flatMap((slot) => {
+      const registration = sdk
+        .typeOf(slot)
+        .getCallSignatures()
+        .flatMap((signature) => signature.getParameters().slice(0, 1))
+        .map((parameter) => sdk.typeOf(parameter));
+      const registrationMembers = registration.flatMap((type) =>
+        sdk.members(type),
       );
-      for (const field of fields) {
-        expect(
-          skill,
-          `${event} payload field "${field}" is not documented in the skill`,
-        ).toContain(field);
-      }
-    }
-  });
-
-  it("documents every sidebar navigation registration field and header prop", () => {
-    for (const field of [
-      ...SIDEBAR_NAVIGATION_REGISTRATION_FIELDS,
-      ...SIDEBAR_HEADER_PROP_FIELDS,
-    ]) {
-      expect(
-        skill,
-        `sidebar navigation field "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-  });
-
-  it("documents every navPanel registration field", () => {
-    for (const field of NAV_PANEL_REGISTRATION_FIELDS) {
-      expect(
-        skill,
-        `navPanel registration field "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-  });
-
-  it("documents every sidebarFooterAction registration field", () => {
-    for (const field of SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS) {
-      expect(
-        skill,
-        `sidebarFooterAction registration field "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-    expect(skill).toContain("openSettings");
-  });
-
-  it("documents every messageAction registration field", () => {
-    for (const field of MESSAGE_ACTION_REGISTRATION_FIELDS) {
-      expect(
-        skill,
-        `messageAction registration field "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-    for (const field of MESSAGE_REFERENCE_FIELDS) {
-      expect(
-        skill,
-        `message reference field "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-  });
-
-  it("documents every commandPaletteAction registration field", () => {
-    for (const field of COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS) {
-      expect(
-        skill,
-        `commandPaletteAction registration field "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-  });
-
-  it("documents every ThreadChat prop", () => {
-    for (const field of THREAD_CHAT_PROP_FIELDS) {
-      expect(
-        skill,
-        `ThreadChat prop "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-  });
-
-  it("documents every ThreadChat message-action field", () => {
-    expect(skill).toContain("ThreadChatMessageAction");
-    for (const field of THREAD_CHAT_MESSAGE_ACTION_FIELDS) {
-      expect(
-        skill,
-        `ThreadChatMessageAction field "${field}" is not documented in the skill`,
-      ).toContain(field);
-    }
-  });
-
-  it("documents every frontend slot and its prop fields", () => {
-    for (const [slot, fields] of Object.entries(FRONTEND_SLOT_PROP_FIELDS)) {
-      expect(skill, `slot ${slot} is not documented in the skill`).toContain(
-        slot,
-      );
-      for (const field of fields) {
-        expect(
-          skill,
-          `slot ${slot} prop field "${field}" is not documented in the skill`,
-        ).toContain(field);
-      }
-    }
+      const names = new Set([
+        slot.name,
+        ...registrationMembers.map((member) => member.name),
+        ...registrationMembers.flatMap((member) => sdk.receivedFields(member)),
+      ]);
+      return [...names]
+        .filter((name) => !skill.includes(name))
+        .map((name) => `${slot.name}: ${name}`);
+    });
+    expect(undocumented).toEqual([]);
   });
 });
