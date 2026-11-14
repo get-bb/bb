@@ -25,7 +25,10 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-import { isDispatchRequeuedRecently } from "./dispatch-hooks.js";
+import {
+  isDispatchRequeuedRecently,
+  isPluginDispatchRequeuedRecently,
+} from "./dispatch-hooks.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import { clearQueuedMessageWait } from "./queue-waits.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
@@ -264,7 +267,7 @@ async function executePreparedQueuedMessageDispatch(
         })) {
           await attemptAutomaticQueuedMessage(deps, row, {
             now: Date.now(),
-            pacedThreadIds: NO_PACED_THREADS,
+            respectRequeuePacing: false,
             retryingFailure: false,
           });
         }
@@ -278,7 +281,7 @@ async function executePreparedQueuedMessageDispatch(
         })) {
           await attemptAutomaticQueuedMessage(deps, row, {
             now: Date.now(),
-            pacedThreadIds: NO_PACED_THREADS,
+            respectRequeuePacing: false,
             retryingFailure: false,
           });
         }
@@ -376,7 +379,7 @@ async function runTurnStartedDispatch(
   for (const row of rows) {
     await attemptAutomaticQueuedMessage(deps, row, {
       now: Date.now(),
-      pacedThreadIds: NO_PACED_THREADS,
+      respectRequeuePacing: false,
       retryingFailure: false,
     });
   }
@@ -401,7 +404,7 @@ async function runWorkspaceReadyDispatch(
   for (const row of rows) {
     await attemptAutomaticQueuedMessage(deps, row, {
       now: Date.now(),
-      pacedThreadIds: NO_PACED_THREADS,
+      respectRequeuePacing: false,
       retryingFailure: false,
     });
   }
@@ -428,7 +431,7 @@ async function runEditReleasedDispatch(
 ): Promise<void> {
   await attemptAutomaticQueuedMessage(deps, row, {
     now: Date.now(),
-    pacedThreadIds: NO_PACED_THREADS,
+    respectRequeuePacing: false,
     retryingFailure: false,
   });
   await runThreadReadyDispatch(deps, row.threadId);
@@ -440,21 +443,9 @@ export async function attemptQueuedMessageNow(
 ): Promise<void> {
   await attemptAutomaticQueuedMessage(deps, row, {
     now: Date.now(),
-    pacedThreadIds: NO_PACED_THREADS,
+    respectRequeuePacing: false,
     retryingFailure: false,
   });
-}
-
-const NO_PACED_THREADS: ReadonlySet<string> = new Set();
-
-function threadIdsRequeuedRecently(
-  rows: readonly { threadId: string }[],
-): ReadonlySet<string> {
-  return new Set(
-    rows
-      .map((row) => row.threadId)
-      .filter((threadId) => isDispatchRequeuedRecently(threadId)),
-  );
 }
 
 async function attemptAutomaticQueuedMessage(
@@ -462,11 +453,12 @@ async function attemptAutomaticQueuedMessage(
   row: QueuedMessageDispatchRef,
   args: {
     now: number;
-    pacedThreadIds: ReadonlySet<string>;
+    respectRequeuePacing: boolean;
     retryingFailure: boolean;
   },
 ): Promise<void> {
-  if (args.pacedThreadIds.has(row.threadId)) return;
+  if (args.respectRequeuePacing && isDispatchRequeuedRecently(row.threadId))
+    return;
   if (getQueuedThreadMessage(deps.db, row.id) === null) return;
   const thread = getThread(deps.db, row.threadId);
   if (!thread || thread.deletedAt !== null) return;
@@ -518,12 +510,14 @@ async function runPluginRecheckDispatch(
   deps: QueueDispatchDeps,
 ): Promise<void> {
   const now = Date.now();
-  const rows = listQueuedThreadMessagePluginWaitRefs(deps.db);
-  const pacedThreadIds = threadIdsRequeuedRecently(rows);
-  for (const row of rows) {
+  for (const row of listQueuedThreadMessagePluginWaitRefs(deps.db)) {
+    const pluginId = row.waitHolder.slice(
+      QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX.length,
+    );
+    if (isPluginDispatchRequeuedRecently(row.threadId, pluginId)) continue;
     await attemptAutomaticQueuedMessage(deps, row, {
       now,
-      pacedThreadIds,
+      respectRequeuePacing: false,
       retryingFailure: false,
     });
   }
@@ -554,20 +548,15 @@ export function dueScheduledQueueSweep(
   deps: QueueDispatchDeps,
   now: number,
 ): ItemSweep {
-  let pacedThreadIds: ReadonlySet<string> = NO_PACED_THREADS;
   return defineItemSweep({
     name: "due-scheduled-queue-dispatch",
     concurrency: 1,
-    list: () => {
-      const rows = listDueScheduledQueuedThreadMessages(deps.db, now);
-      pacedThreadIds = threadIdsRequeuedRecently(rows);
-      return rows;
-    },
+    list: () => listDueScheduledQueuedThreadMessages(deps.db, now),
     key: (row) => row.id,
     process: (row) =>
       attemptAutomaticQueuedMessage(deps, row, {
         now,
-        pacedThreadIds,
+        respectRequeuePacing: true,
         retryingFailure: false,
       }),
   });
@@ -589,15 +578,10 @@ export function failedQueueRetrySweep(
   deps: QueueDispatchDeps,
   now: number,
 ): ItemSweep {
-  let pacedThreadIds: ReadonlySet<string> = NO_PACED_THREADS;
   return defineItemSweep({
     name: "failed-queue-message-retry",
     concurrency: 1,
-    list: () => {
-      const rows = listRetryableFailedQueuedThreadMessages(deps.db, now);
-      pacedThreadIds = threadIdsRequeuedRecently(rows);
-      return rows;
-    },
+    list: () => listRetryableFailedQueuedThreadMessages(deps.db, now),
     key: (row) => row.id,
     process: (row) => {
       deps.logger.info(
@@ -610,7 +594,7 @@ export function failedQueueRetrySweep(
       );
       return attemptAutomaticQueuedMessage(deps, row, {
         now,
-        pacedThreadIds,
+        respectRequeuePacing: true,
         retryingFailure: true,
       });
     },
@@ -622,26 +606,20 @@ type IdleQueueRecoveryItem =
   | { kind: "busy-thread-notice"; row: QueuedMessageDispatchRef };
 
 export function idleThreadQueueSweep(deps: QueueDispatchDeps): ItemSweep {
-  let pacedThreadIds: ReadonlySet<string> = NO_PACED_THREADS;
   return defineItemSweep<IdleQueueRecoveryItem>({
     name: "queued-message-auto-send",
     concurrency: 1,
-    list: () => {
-      const notices = listReadySystemNoticesOnBusyThreads(deps.db);
-      pacedThreadIds = threadIdsRequeuedRecently(notices);
-      return [
-        ...listIdleThreadsWithQueuedMessages(deps.db).map(
-          (candidate): IdleQueueRecoveryItem => ({
-            kind: "idle-thread",
-            threadId: candidate.threadId,
-          }),
-        ),
-        ...notices.map((row): IdleQueueRecoveryItem => ({
-          kind: "busy-thread-notice",
-          row,
-        })),
-      ];
-    },
+    list: () => [
+      ...listIdleThreadsWithQueuedMessages(deps.db).map(
+        (candidate): IdleQueueRecoveryItem => ({
+          kind: "idle-thread",
+          threadId: candidate.threadId,
+        }),
+      ),
+      ...listReadySystemNoticesOnBusyThreads(deps.db).map(
+        (row): IdleQueueRecoveryItem => ({ kind: "busy-thread-notice", row }),
+      ),
+    ],
     key: (item) =>
       item.kind === "idle-thread"
         ? `thread:${item.threadId}`
@@ -651,7 +629,7 @@ export function idleThreadQueueSweep(deps: QueueDispatchDeps): ItemSweep {
         ? runThreadReadyDispatch(deps, item.threadId)
         : attemptAutomaticQueuedMessage(deps, item.row, {
             now: Date.now(),
-            pacedThreadIds,
+            respectRequeuePacing: true,
             retryingFailure: false,
           }),
   });
