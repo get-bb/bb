@@ -193,7 +193,12 @@ export async function replayScenarioCell(
       divergence: replayDivergence(run, providerStderr),
     };
   } finally {
-    await rm(logDir, { recursive: true, force: true });
+    await rm(logDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 100,
+    });
   }
 }
 
