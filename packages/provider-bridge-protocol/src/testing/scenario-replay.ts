@@ -177,6 +177,7 @@ export async function replayScenarioCell(
       profile: probingProfile(bridge.profile, probeArgs(cell, logDir)),
       createAssembler: options.createAssembler,
       orderTimeoutMs: 1_000,
+      settleMs: 5_000,
       ...(options.timeoutMs === undefined
         ? {}
         : { timeoutMs: options.timeoutMs }),
