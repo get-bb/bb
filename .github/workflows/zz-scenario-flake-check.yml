@@ -39,4 +39,4 @@ jobs:
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        run: pnpm exec turbo run test --filter=@bb/provider-parity --force --output-logs=full
+        run: pnpm exec turbo run test --filter=@bb/provider-parity --filter=bb-plugin-provider-pi --force --output-logs=full
