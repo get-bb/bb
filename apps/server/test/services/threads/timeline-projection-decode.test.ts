@@ -259,6 +259,36 @@ describe("timeline projection decoding", () => {
     },
   );
 
+  it("throws for an appended row that does not parse and leaves the projection as it was", () => {
+    withTestThread((testThread) => {
+      const { db, thread } = testThread;
+      appendRows(testThread, openTurn());
+      buildLatest(testThread);
+      const [before] = projectionsOf(db, thread.id);
+      const kept = {
+        events: [...before!.events],
+        maxSeq: before!.maxSeq,
+        rows: [...before!.selection.rows],
+      };
+      const validSeq = appendRows(testThread, [messageDelta("one")]);
+      db.$client
+        .prepare(
+          `INSERT INTO events (id, thread_id, sequence, created_at, type, scope_kind, turn_id, provider_thread_id, item_id, item_kind, parent_tool_call_id, data)
+           SELECT 'evt_invalid', thread_id, sequence + 1, created_at + 1, type, scope_kind, turn_id, provider_thread_id, item_id, item_kind, parent_tool_call_id, '{not json'
+           FROM events WHERE thread_id = ? AND sequence = ?`,
+        )
+        .run(thread.id, validSeq);
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        expect(() => buildLatest(testThread)).toThrow(/is not valid JSON/u);
+      }
+      const [after] = projectionsOf(db, thread.id);
+      expect(after).toBe(before);
+      expect(after!.maxSeq).toBe(kept.maxSeq);
+      expect(after!.selection.rows).toEqual(kept.rows);
+      expect(after!.events).toEqual(kept.events);
+    });
+  });
+
   it("freezes decoded events while the server suite enables the test seam", () => {
     withTestThread((testThread) => {
       appendRows(testThread, openTurn());
