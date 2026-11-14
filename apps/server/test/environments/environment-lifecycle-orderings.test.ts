@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { createProjectSource, environments, threads } from "@bb/db";
@@ -203,6 +203,11 @@ async function gitSucceeds(cwd: string, ...args: string[]): Promise<boolean> {
     () => true,
     () => false,
   );
+}
+
+function comparablePath(path: string): string {
+  const resolved = resolve(path);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
 function deferred() {
@@ -1388,11 +1393,17 @@ class World {
     );
     const livePaths = new Set(
       rows.flatMap((row) =>
-        row.status !== "destroyed" && row.path !== null ? [row.path] : [],
+        row.status !== "destroyed" && row.path !== null
+          ? [comparablePath(row.path)]
+          : [],
       ),
     );
     const labelForPath = (path: string) => {
-      const row = rows.find((candidate) => candidate.path === path);
+      const row = rows.find(
+        (candidate) =>
+          candidate.path !== null &&
+          comparablePath(candidate.path) === comparablePath(path),
+      );
       return row === undefined ? path : this.environmentLabel(row.id);
     };
     const worktrees = (
@@ -1404,9 +1415,13 @@ class World {
         branch: /^branch refs\/heads\/(.*)$/m.exec(block)?.[1] ?? null,
         prunable: /^prunable/m.test(block),
       }))
-      .filter((entry) => entry.path !== "" && entry.path !== machine.repo);
+      .filter(
+        (entry) =>
+          entry.path !== "" &&
+          comparablePath(entry.path) !== comparablePath(machine.repo),
+      );
     for (const entry of worktrees)
-      if (entry.prunable || !livePaths.has(entry.path))
+      if (entry.prunable || !livePaths.has(comparablePath(entry.path)))
         this.violation(
           "orphaned-worktree",
           labelForPath(entry.path),
@@ -1422,7 +1437,7 @@ class World {
       }).catch(() => []);
       for (const child of children) {
         const path = join(machine.worktreesRoot, attempt, child.name);
-        if (child.isDirectory() && !livePaths.has(path))
+        if (child.isDirectory() && !livePaths.has(comparablePath(path)))
           this.violation(
             "orphaned-worktree",
             labelForPath(path),
