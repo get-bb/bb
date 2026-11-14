@@ -130,12 +130,15 @@ function withLivePromptIds(line) {
 
 const CHANNEL_ENV = "BB_PI_BRIDGE_CHANNEL";
 const upstreamChannel = process.env[CHANNEL_ENV];
+const channelOnDisk = process.platform !== "win32";
 const channelPath =
   upstreamChannel === undefined
     ? undefined
-    : join(tmpdir(), `bb-probe-${process.pid}.sock`);
+    : channelOnDisk
+      ? join(tmpdir(), `bb-probe-${process.pid}.sock`)
+      : `\\\\.\\pipe\\bb-probe-${process.pid}`;
 if (channelPath !== undefined) {
-  rmSync(channelPath, { force: true });
+  if (channelOnDisk) rmSync(channelPath, { force: true });
   const server = createServer((downstream) => {
     const upstream = connect(upstreamChannel);
     upstream.on("error", () => downstream.destroy());
@@ -160,7 +163,9 @@ if (channelPath !== undefined) {
   });
   server.listen(channelPath);
   server.unref();
-  process.on("exit", () => rmSync(channelPath, { force: true }));
+  if (channelOnDisk) {
+    process.on("exit", () => rmSync(channelPath, { force: true }));
+  }
 }
 
 const child = spawn(args.command[0], args.command.slice(1), {
