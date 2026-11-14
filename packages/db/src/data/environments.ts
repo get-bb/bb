@@ -1,18 +1,20 @@
-import { prepareCachedQuery } from "../connection.js";
-import { and, asc, eq, inArray, isNotNull, isNull, ne, or, placeholder, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import type {
   EnvironmentProviderSelection,
   EnvironmentStatus,
 } from "@bb/domain";
 import { areHostPathsEqual } from "@bb/domain";
-import type { DbConnection, DbTransaction, DbQueryConnection } from "../connection.js";
+import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { environments, threads } from "../schema.js";
 import { createEnvironmentId } from "../ids.js";
 import { hostPathContains, hostPathEquals } from "./host-path-sql.js";
 import { liveThread, threadHoldsEnvironment } from "./threads.js";
 
+import { getEnvironment } from "./environment-lifecycle.js";
+
 export {
+  getEnvironment,
   recordEnvironmentCurrentBranch,
   updateEnvironmentMetadata,
 } from "./environment-lifecycle.js";
@@ -81,17 +83,6 @@ export function createEnvironment(
     .get();
   notifier.notifyEnvironment(id, ["environment-created"]);
   return row;
-}
-
-const prepareGetEnvironment = (db: DbQueryConnection) =>
-  db
-    .select()
-    .from(environments)
-    .where(eq(environments.id, placeholder("id")))
-    .prepare();
-
-export function getEnvironment(db: EnvironmentReadConnection, id: string) {
-  return prepareCachedQuery(db, prepareGetEnvironment).get({ id }) ?? null;
 }
 
 export function findProjectEnvironmentByHostPath(

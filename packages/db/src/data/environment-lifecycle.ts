@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, placeholder } from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
@@ -6,13 +6,29 @@ import type {
   EnvironmentLifecycleNoopReason,
 } from "@bb/domain";
 import { evaluateEnvironmentLifecycleEvent } from "@bb/domain";
-import type { DbConnection, DbTransaction } from "../connection.js";
+import { prepareCachedQuery } from "../connection.js";
+import type {
+  DbConnection,
+  DbQueryConnection,
+  DbTransaction,
+} from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { environments } from "../schema.js";
-import { getEnvironment } from "./environments.js";
-import type { EnvironmentRow } from "./environments.js";
 
+type EnvironmentRow = typeof environments.$inferSelect;
+type EnvironmentReadConnection = DbConnection | DbTransaction;
 type EnvironmentWriteConnection = DbConnection | DbTransaction;
+
+const prepareGetEnvironment = (db: DbQueryConnection) =>
+  db
+    .select()
+    .from(environments)
+    .where(eq(environments.id, placeholder("id")))
+    .prepare();
+
+export function getEnvironment(db: EnvironmentReadConnection, id: string) {
+  return prepareCachedQuery(db, prepareGetEnvironment).get({ id }) ?? null;
+}
 
 interface EnvironmentMetadataUpdateColumns {
   baseBranch?: string | null;

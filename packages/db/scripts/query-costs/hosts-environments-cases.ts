@@ -252,7 +252,7 @@ const ENVIRONMENT_CASES: readonly Case[] = [
       }),
   },
   {
-    name: `${ENVIRONMENTS}#getEnvironment`,
+    name: `${ENVIRONMENT_LIFECYCLE}#getEnvironment`,
     run: (db, _fixture, seed) => getEnvironment(db, seed.readyEnvironmentId),
   },
   {
