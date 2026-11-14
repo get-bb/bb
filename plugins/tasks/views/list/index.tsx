@@ -11,7 +11,9 @@ import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  keyColumnWidth,
   matchesFilters,
+  matchesSearch,
   useLabels,
   useListTaskEdit,
   useListTasks,
@@ -107,6 +109,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     });
   };
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const labelProjectIds = useMemo(
     () =>
@@ -190,22 +193,27 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
-    return tasksQuery.data.filter((task) =>
-      matchesFilters(
-        task,
-        filters.statuses,
-        filters.priorities,
-        labelIds ?? [],
-      ),
+    return tasksQuery.data.filter(
+      (task) =>
+        matchesFilters(
+          task,
+          filters.statuses,
+          filters.priorities,
+          labelIds ?? [],
+        ) && matchesSearch(task, search),
     );
-  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds]);
+  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds, search]);
+  const keyWidth = useMemo(
+    () => keyColumnWidth(displayTasks ?? []),
+    [displayTasks],
+  );
   const groups = useMemo(
     () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
     [displayTasks, sort],
   );
 
   const showProject = projectId === null;
-  const filtered = hasActiveFilters(filters);
+  const filtered = hasActiveFilters(filters) || search.trim() !== "";
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
@@ -251,7 +259,10 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setFilters(EMPTY_FILTERS)}
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setSearch("");
+              }}
             >
               Clear filters
             </Button>
@@ -315,6 +326,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               onEdit={editTask}
               onOpen={openTask}
               pending={pendingTaskIds.has(task.id)}
+              keyWidth={keyWidth}
             />
           ))}
           {hiddenBelow > 0 ? (
@@ -330,6 +342,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       <ListFilterBar
         filters={filters}
         onChange={setFilters}
+        search={search}
+        onSearchChange={setSearch}
         sort={sort}
         onSortChange={setSort}
         labelOptions={labelOptions}

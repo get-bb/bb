@@ -101,6 +101,7 @@ interface TaskRowProps {
   onMoveToProject: (task: Task, projectId: string) => void;
   onOpen: (taskKey: string) => void;
   pending: boolean;
+  keyWidth: string;
 }
 
 export const TaskRow = memo(function TaskRow({
@@ -115,6 +116,7 @@ export const TaskRow = memo(function TaskRow({
   onMoveToProject,
   onOpen,
   pending,
+  keyWidth,
 }: TaskRowProps) {
   const [openMenu, setOpenMenu] = useState<"status" | "priority" | null>(null);
 
@@ -159,7 +161,11 @@ export const TaskRow = memo(function TaskRow({
           onOpenChange={(next) => setOpenMenu(next ? "priority" : null)}
           className="col-start-1 row-start-2"
         />
-        <span className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
+        <span
+          title={task.key}
+          style={{ width: keyWidth }}
+          className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:shrink-0"
+        >
           {task.key}
         </span>
         <StatusEditor

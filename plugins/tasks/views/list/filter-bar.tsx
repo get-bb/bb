@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import {
@@ -128,9 +129,42 @@ export function hasActiveFilters(filters: ListFilterState): boolean {
   );
 }
 
+function SearchInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative w-56 shrink-0 @max-md:w-40">
+      <Icon
+        name="Search"
+        className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        type="search"
+        aria-label="Search tasks"
+        placeholder="Search key or title"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && value !== "") {
+            event.preventDefault();
+            onChange("");
+          }
+        }}
+        className="h-6 pl-6 text-xs max-md:pointer-coarse:h-8"
+      />
+    </div>
+  );
+}
+
 export function ListFilterBar({
   filters,
   onChange,
+  search,
+  onSearchChange,
   sort,
   onSortChange,
   labelOptions,
@@ -138,6 +172,8 @@ export function ListFilterBar({
 }: {
   filters: ListFilterState;
   onChange: (filters: ListFilterState) => void;
+  search: string;
+  onSearchChange: (search: string) => void;
   sort: TaskSort;
   onSortChange: (sort: TaskSort) => void;
   labelOptions: readonly LabelFilterOption[];
@@ -148,6 +184,7 @@ export function ListFilterBar({
     labelOptions.length > 0 || filters.labelNames.length > 0;
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-border-hairline px-3.5 py-1.5">
+      <SearchInput value={search} onChange={onSearchChange} />
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
         <FilterChip
           icon="Circle"
@@ -269,10 +306,13 @@ export function ListFilterBar({
               ))}
           </FilterChip>
         ) : null}
-        {hasActiveFilters(filters) ? (
+        {hasActiveFilters(filters) || search !== "" ? (
           <button
             type="button"
-            onClick={() => onChange(EMPTY_FILTERS)}
+            onClick={() => {
+              onChange(EMPTY_FILTERS);
+              onSearchChange("");
+            }}
             className="flex h-6 shrink-0 items-center gap-1 rounded-md border border-dashed border-border px-2.5 text-xs text-muted-foreground hover:border-input hover:text-foreground max-md:pointer-coarse:h-8"
           >
             <Icon name="X" className="size-3" />

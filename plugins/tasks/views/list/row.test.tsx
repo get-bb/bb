@@ -278,3 +278,35 @@ describe("inline row editing", () => {
     );
   });
 });
+
+describe("list search and key column", () => {
+  it("filters rows by key or title from the search box", async () => {
+    const slot = renderList([
+      task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1, title: "Fix login" }),
+      task({ id: "01HZT2ZZZZZZZZZZZZZZZZZZT2", number: 2, title: "Ship docs" }),
+    ]);
+    await rowFor(slot, "TSK-1");
+    const search = slot.getByRole("searchbox", { name: "Search tasks" });
+    fireEvent.change(search, { target: { value: "LOGIN" } });
+    await waitFor(() => expect(slot.queryByText("TSK-2")).toBeNull());
+    expect(slot.getByText("TSK-1")).toBeTruthy();
+    fireEvent.change(search, { target: { value: "tsk-2" } });
+    await waitFor(() => expect(slot.queryByText("TSK-1")).toBeNull());
+    fireEvent.keyDown(search, { key: "Escape" });
+    await slot.findByText("TSK-1");
+    expect(slot.getByText("TSK-2")).toBeTruthy();
+  });
+
+  it("sizes the key column to the longest visible key", async () => {
+    const slot = renderList([
+      task({
+        id: "01HZT1ZZZZZZZZZZZZZZZZZZT1",
+        number: 223,
+        key: "AGENTS-223",
+      }),
+    ]);
+    const key = await slot.findByText("AGENTS-223");
+    expect(key.style.width).toBe("11ch");
+    expect(key.title).toBe("AGENTS-223");
+  });
+});

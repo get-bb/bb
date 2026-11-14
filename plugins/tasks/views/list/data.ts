@@ -56,6 +56,23 @@ export function matchesFilters(
   );
 }
 
+export function matchesSearch(task: Task, search: string): boolean {
+  const needle = search.trim().toLowerCase();
+  if (needle === "") return true;
+  return (
+    task.key.toLowerCase().includes(needle) ||
+    task.title.toLowerCase().includes(needle)
+  );
+}
+
+export function keyColumnWidth(tasks: readonly Task[]): string {
+  const longest = tasks.reduce(
+    (max, task) => Math.max(max, task.key.length),
+    0,
+  );
+  return `${Math.max(longest, 5) + 1}ch`;
+}
+
 export function listTasksQuery(
   projectId: string | null,
   activeOnly: boolean,
