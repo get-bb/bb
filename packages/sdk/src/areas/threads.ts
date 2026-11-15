@@ -1,3 +1,4 @@
+import type { ThreadVoiceCommand, ThreadVoiceResult } from "@bb/domain";
 import {
   type PromptInput,
   type PendingInteraction,
@@ -620,6 +621,10 @@ export interface ThreadsArea {
   compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearContext(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
+  voice(args: {
+    threadId: string;
+    command: ThreadVoiceCommand;
+  }): Promise<ThreadVoiceResult>;
   clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
     args: ThreadConversationOutlineArgs,
@@ -1637,6 +1642,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         }),
       );
       return { ok: true };
+    },
+    async voice(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].voice.$post({
+          param: { id: input.threadId },
+          json: input.command,
+        }),
+      );
     },
     async clearGoal(input) {
       await transport.readVoid(

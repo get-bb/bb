@@ -1,3 +1,4 @@
+import type { ThreadVoiceCommand, ThreadVoiceResult } from "@bb/domain";
 import type {
   PermissionMode,
   AvailableModel,
@@ -332,6 +333,11 @@ export interface AgentRuntime {
   steerTurn(args: SteerTurnArgs): Promise<SteerTurnResult>;
 
   stopThread(args: StopThreadArgs): Promise<StopThreadResult>;
+
+  voice?(args: {
+    threadId: string;
+    command: ThreadVoiceCommand;
+  }): Promise<ThreadVoiceResult>;
 
   clearThreadGoal(args: ClearThreadGoalArgs): Promise<{ cleared: boolean }>;
 

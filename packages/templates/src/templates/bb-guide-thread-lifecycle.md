@@ -15,6 +15,25 @@ Lifecycle:
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread clear [id]                     Clear model context for an idle or failed thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
+  bb thread voice start [id] --sdp-file <path|-> [--session <uuid>] [--self] [--json]
+  bb thread voice keep-alive [id] --session <uuid> [--self] [--json]
+  bb thread voice stop [id] --session <uuid> [--self] [--json]
+
+  Voice uses Codex's native two-way realtime session on the existing thread.
+  In the app, choose Start voice chat above a Codex thread's composer, allow
+  microphone access, then use Mute or End voice. The browser needs HTTPS and
+  WebRTC support. Leaving the thread ends voice; coding work can continue.
+  CLI/SDK clients supply a WebRTC SDP offer and receive an SDP answer; the CLI
+  does not capture or play audio. Start returns a session id used to stop that
+  same session, so another client's stale stop cannot end a newer call.
+  SDK: `threads.voice({ threadId, command: { action: "start", sessionId, sdp } })`
+  and `threads.voice({ threadId, command: { action: "stop", sessionId } })`.
+  Clients must renew the 60-second session lease every 15 seconds with
+  `bb thread voice keep-alive` or `threads.voice` using `action: "keepAlive"`.
+  The app renews automatically; losing the client ends the orphaned call.
+  A thread allows one voice session at a time. Codex account/model access still
+  determines whether native realtime is available.
+
   bb thread clear-goal [id]                Clear the provider's Goal
     --self                                 Target current thread
 

@@ -82,3 +82,15 @@ only on threads that already use them.
 
 Use the core CLI skill for command syntax and official Codex guidance for
 upstream product behavior.
+
+Native two-way voice chat is available through Start voice chat above the
+thread composer. It connects the browser's microphone and speaker to the same
+Codex thread over WebRTC, including native coding handoffs. Mute keeps the call
+open; End voice or leaving the thread releases capture and playback without
+stopping coding work. It requires HTTPS, microphone permission, WebRTC, and
+Codex realtime access. There is one call per thread. For clients that manage
+their own WebRTC peer, `bb thread voice start <id> --sdp-file offer.sdp --json`
+returns the answer and session id; `bb thread voice stop <id> --session <uuid>`
+ends it. External clients must call `bb thread voice keep-alive <id> --session <uuid>`
+every 15 seconds (SDK action `keepAlive`); an orphaned call expires after 60 seconds.
+The app renews automatically. SDK callers use `threads.voice({ threadId, command })`.

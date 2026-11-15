@@ -1,3 +1,4 @@
+import { threadVoiceResultSchema } from "@bb/domain";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
@@ -278,6 +279,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     AgentRuntimeProviderRecoveryHint
   >();
   const threadsRetryingBridgeRestartOnIdle = new Set<string>();
+  const voiceSessionIds = new Map<string, string>();
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   const pendingTurnStarts = new Map<
     string,
@@ -748,6 +750,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   function clearThreadRuntimeConfig(threadId: string): void {
     threadsAwaitingBridgeRestart.delete(threadId);
     threadsRetryingBridgeRestartOnIdle.delete(threadId);
+    voiceSessionIds.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
     pendingTurnStarts.delete(threadId);
     threadGoalState.clearThread(threadId);
@@ -863,6 +866,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function markHostedProviderSessionIdle(threadId: string): void {
     if (
+      voiceSessionIds.has(threadId) ||
       threadIdentityRegistry.getProviderSession(threadId) === null ||
       turnState.getActiveTurnId(threadId) !== null ||
       pendingTurnStarts.has(threadId)
@@ -875,6 +879,29 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function observeProviderSessionIdleState(event: ThreadEvent): void {
+    if (
+      event.type === "thread/extensionState/updated" &&
+      event.kind === "provider-codex/voice"
+    ) {
+      const state = z
+        .object({
+          sessionId: z.string(),
+          status: z.enum(["active", "closed", "error"]),
+        })
+        .safeParse(event.payload);
+      if (state.success) {
+        if (state.data.status === "active") {
+          voiceSessionIds.set(event.threadId, state.data.sessionId);
+          markProviderSessionNotIdle(event.threadId);
+        } else if (
+          voiceSessionIds.get(event.threadId) === state.data.sessionId
+        ) {
+          voiceSessionIds.delete(event.threadId);
+          markHostedProviderSessionIdle(event.threadId);
+        }
+      }
+    }
+
     if (event.type === "turn/started") {
       pendingTurnStarts.delete(event.threadId);
       markProviderSessionNotIdle(event.threadId);
@@ -899,6 +926,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     args: FindReapableIdleProviderSessionArgs,
   ): ReapIdleProviderSessionCandidate | null {
     if (
+      voiceSessionIds.has(args.threadId) ||
       threadHasInFlightOperation(args.threadId) ||
       pendingTurnStarts.has(args.threadId) ||
       turnState.getActiveTurnId(args.threadId) !== null
@@ -2318,6 +2346,31 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
+    async voice({ threadId, command }) {
+      return runThreadOperation({
+        threadId,
+        work: async () => {
+          const proc = requireProviderProcessForThread(threadId);
+          const plan = requireProviderRequestPlan({
+            commandType: "thread/voice",
+            plan: proc.adapter.buildCommandPlan({
+              type: "thread/voice",
+              threadId,
+              providerThreadId: requireProviderThreadId(threadId),
+              command,
+            }),
+            providerId:
+              threadIdentityRegistry.resolveProviderForThread(threadId),
+          });
+          return sendCommand({
+            proc,
+            message: plan,
+            resultSchema: threadVoiceResultSchema,
+          });
+        },
+      });
+    },
+
     async clearThreadGoal({ threadId }) {
       return runThreadOperation({
         threadId,
@@ -2680,6 +2733,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           discardStagedThreadRewind(leaseId),
         ),
       );
+      voiceSessionIds.clear();
       idleProviderSessionSinceMsByThreadId.clear();
       pendingTurnStarts.clear();
       threadOperationCounts.clear();

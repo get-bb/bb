@@ -503,6 +503,46 @@ export function registerThreadActionRoutes(
     return context.json({ ok: true });
   });
 
+  post(routes.voice, async (context, command) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    ensureThreadIsWritable(thread);
+    if (thread.providerId !== "codex")
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Voice chat requires a Codex thread",
+      );
+    const environment = await requireThreadCommandEnvironment(deps, { thread });
+    requireConnectedHostSession(deps, environment.hostId);
+    const execution = await buildExecutionOptions(
+      deps,
+      {},
+      { threadId: thread.id },
+    );
+    const prepared = await prepareTurnSubmitCommandPayload(deps, {
+      environment,
+      execution,
+      input: [],
+      permissionEscalation: "deny",
+      target: { mode: "auto", expectedTurnId: null },
+      thread,
+    });
+    const result = await runLiveHostCommand(deps, {
+      command: {
+        type: "thread.voice",
+        environmentId: environment.id,
+        threadId: thread.id,
+        command,
+        options: prepared.options,
+        resumeContext: prepared.resumeContext,
+        bridgeLaunch: prepared.bridgeLaunch,
+      },
+      hostId: environment.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
+    return context.json(result);
+  });
+
   post(routes.clearGoal, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     if (!threadHasGoal(deps, thread)) {

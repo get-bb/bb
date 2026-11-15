@@ -1,3 +1,4 @@
+import { CodexVoiceBanner } from "./src/voice-chat.js";
 import { useMemo, useState } from "react";
 import {
   definePluginApp,
@@ -510,6 +511,11 @@ export default definePluginApp((app) => {
   app.slots.pendingInteraction({
     id: "mcp-elicitation",
     component: CodexMcpElicitation,
+  });
+  app.composer.customize({
+    id: "voice",
+    scopes: ["thread"],
+    banners: [{ id: "voice", chrome: "bare", component: CodexVoiceBanner }],
   });
   app.composer.customize({
     id: "goal",
