@@ -1601,8 +1601,17 @@ with orange icons and package `app.getbb.mobile.dev`. Output is
 `apps/mobile/build-output/bb-dev.apk`; append `-- x86_64` for an Intel emulator.
 The build command sets `BB_MOBILE_VARIANT=dev` for Expo configuration. Direct
 Expo commands accept `BB_MOBILE_VARIANT=production` (the default) or `dev`;
-other values fail validation. The dev variant omits production Firebase and
-HTTPS app-link registration. See [mobile build instructions](../apps/mobile/README.md#android-local-apk-and-verification).
+other values fail validation. The dev variant omits production HTTPS app-link
+registration and uses `apps/mobile/google-services.dev.json` for optional
+Firebase push configuration. `GOOGLE_SERVICES_JSON` overrides the file path for
+either variant; the file must include an Android client matching that variant's
+package. Dev push also needs FCM V1 credentials in the build's Expo project and
+a rebuilt APK. See [mobile build instructions](../apps/mobile/README.md#android-local-apk-and-verification).
+
+For developer-owned mobile builds, `BB_MOBILE_EXPO_PROJECT_ID` overrides
+`extra.eas.projectId` with the specified Expo project UUID. Set it in
+`apps/mobile/.env.local` to retain it across local builds, and configure the
+Android FCM V1 credential in that Expo project.
 
 For source development only, `pnpm dev`, `pnpm start:worktree`,
 `pnpm start:worktree-remote`, and `pnpm start` load the repo-root

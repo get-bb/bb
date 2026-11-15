@@ -61,10 +61,16 @@ const expoPushResponseSchema = z.object({
   data: z.array(expoPushTicketSchema).optional(),
   errors: z
     .array(
-      z.object({ code: z.string().optional(), message: z.string().optional() }),
+      z.object({
+        code: z.string().optional(),
+        message: z.string().optional(),
+        details: z.unknown().optional(),
+      }),
     )
     .optional(),
 });
+
+const expoProjectGroupsSchema = z.record(z.string(), z.array(z.string()));
 
 export const lastSendOutcomeSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("never") }).strict(),
@@ -129,6 +135,7 @@ export interface ExpoAlertPushMessage {
   sound: "default";
   channelId: "threads";
   priority: "high";
+  categoryId?: "bb-thread-reply";
 }
 
 export interface ExpoBackgroundPushMessage {
@@ -275,10 +282,30 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
   const fetchImpl = args.fetch ?? undiciFetch;
   const pending = new Map<string, PendingThreadPush>();
   const inFlight = new Set<Promise<void>>();
+  const tokenProjects = new Map<string, string>();
   let dispatcher: EnvHttpProxyAgent | null = null;
   let lastNetworkWarningAt = Number.NEGATIVE_INFINITY;
   let lastOutcome: LastSendOutcome = { status: "never" };
   let running = false;
+
+  function deliveryBatches(deliveries: readonly Delivery[]): Delivery[][] {
+    const activeTokens = new Set(
+      deliveries.map((delivery) => delivery.message.to),
+    );
+    for (const token of tokenProjects.keys()) {
+      if (!activeTokens.has(token)) tokenProjects.delete(token);
+    }
+    const groups = new Map<string | undefined, Delivery[]>();
+    for (const delivery of deliveries) {
+      const project = tokenProjects.get(delivery.message.to);
+      const group = groups.get(project) ?? [];
+      group.push(delivery);
+      groups.set(project, group);
+    }
+    return [...groups.values()].flatMap((group) =>
+      chunks(group, EXPO_PUSH_BATCH_SIZE),
+    );
+  }
 
   async function setLastOutcome(outcome: LastSendOutcome): Promise<void> {
     lastOutcome = outcome;
@@ -471,11 +498,14 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         sound: "default",
         channelId: "threads",
         priority: "high",
+        ...(notification.thread === null
+          ? {}
+          : { categoryId: "bb-thread-reply" as const }),
       },
     }));
     let sentCount = 0;
     let failure: string | null = null;
-    for (const batch of chunks(deliveries, EXPO_PUSH_BATCH_SIZE)) {
+    for (const batch of deliveryBatches(deliveries)) {
       const result = await sendBatch(batch);
       sentCount += result.sentCount;
       failure ??= result.failure;
@@ -512,7 +542,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         priority: "normal",
       },
     }));
-    for (const batch of chunks(deliveries, EXPO_PUSH_BATCH_SIZE)) {
+    for (const batch of deliveryBatches(deliveries)) {
       await sendBatch(batch);
     }
   }
@@ -603,6 +633,48 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       return { sentCount: 0, failure: "relay returned an invalid response" };
     }
     if (parsed.data.errors && parsed.data.errors.length > 0) {
+      const [error] = parsed.data.errors;
+      if (
+        parsed.data.errors.length === 1 &&
+        error?.code === "PUSH_TOO_MANY_EXPERIENCE_IDS" &&
+        parsed.data.data === undefined
+      ) {
+        const partition = expoProjectGroupsSchema.safeParse(error.details);
+        if (partition.success) {
+          const deliveriesByToken = new Map(
+            batch.map((delivery) => [delivery.message.to, delivery]),
+          );
+          const remaining = new Set(deliveriesByToken.keys());
+          const groups: Delivery[][] = [];
+          let valid = true;
+          for (const tokens of Object.values(partition.data)) {
+            const group: Delivery[] = [];
+            for (const token of tokens) {
+              const delivery = deliveriesByToken.get(token);
+              if (!delivery || !remaining.delete(token)) {
+                valid = false;
+                break;
+              }
+              group.push(delivery);
+            }
+            if (group.length === 0) valid = false;
+            groups.push(group);
+          }
+          if (valid && remaining.size === 0 && groups.length > 1) {
+            for (const [project, tokens] of Object.entries(partition.data)) {
+              for (const token of tokens) tokenProjects.set(token, project);
+            }
+            let sentCount = 0;
+            let failure: string | null = null;
+            for (const group of groups) {
+              const result = await sendBatch(group);
+              sentCount += result.sentCount;
+              failure ??= result.failure;
+            }
+            return { sentCount, failure };
+          }
+        }
+      }
       const codes = parsed.data.errors.map((error) => error.code ?? "unknown");
       bb.log.warn(
         `Expo push request was rejected with codes ${codes.join(", ")}`,

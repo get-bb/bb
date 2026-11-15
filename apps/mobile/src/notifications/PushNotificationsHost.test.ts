@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 interface NotificationResponse {
+  actionIdentifier: string;
+  userText?: string;
   notification: {
     request: {
       content: {
@@ -17,9 +19,11 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   responseListener: vi.fn<(response: NotificationResponse) => void>(),
   setNotificationHandler: vi.fn(),
+  reply: vi.fn(async () => true),
 }));
 
 vi.mock("expo-notifications", () => ({
+  DEFAULT_ACTION_IDENTIFIER: "expo.modules.notifications.actions.DEFAULT",
   addNotificationResponseReceivedListener: vi.fn((listener) => {
     mocks.responseListener.mockImplementation(listener);
     return { remove: vi.fn() };
@@ -27,6 +31,11 @@ vi.mock("expo-notifications", () => ({
   clearLastNotificationResponse: mocks.clearLastNotificationResponse,
   getLastNotificationResponse: mocks.getLastNotificationResponse,
   setNotificationHandler: mocks.setNotificationHandler,
+}));
+
+vi.mock("./notification-reply", () => ({
+  registerNotificationReplyCategory: vi.fn(async () => undefined),
+  handleNotificationReply: mocks.reply,
 }));
 
 vi.mock("expo-router", () => ({
@@ -146,6 +155,7 @@ describe("PushNotificationsHost", () => {
 
   it("opens a project thread from a push response with its project route", async () => {
     mocks.responseListener({
+      actionIdentifier: "expo.modules.notifications.actions.DEFAULT",
       notification: {
         request: {
           content: {
@@ -179,8 +189,47 @@ describe("PushNotificationsHost", () => {
     );
   });
 
+  it("sends a notification reply before opening its thread", async () => {
+    let finish: ((sent: boolean) => void) | undefined;
+    mocks.reply.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const response: NotificationResponse = {
+      actionIdentifier: "bb-reply",
+      userText: "Continue",
+      notification: {
+        request: {
+          content: {
+            data: {
+              projectId: "proj_1",
+              serverUrl: "https://bb.example.test",
+              threadId: "thr_1",
+            },
+          },
+        },
+      },
+    };
+    mocks.responseListener(response);
+    expect(mocks.reply).toHaveBeenCalledWith(response);
+    expect(mocks.push).not.toHaveBeenCalled();
+    finish?.(true);
+    await vi.waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith({
+        pathname: "/webview",
+        params: {
+          path: "/projects/proj_1/threads/thr_1",
+          profileId: "profile-1",
+        },
+      }),
+    );
+  });
+
   it("switches to the server whose registration a threadless push names", async () => {
     mocks.responseListener({
+      actionIdentifier: "expo.modules.notifications.actions.DEFAULT",
       notification: {
         request: {
           content: { data: { kind: "message", subscriptionId: "sub-2" } },
@@ -204,6 +253,7 @@ describe("PushNotificationsHost", () => {
 
 function threadlessPush(serverUrl: string): NotificationResponse {
   return {
+    actionIdentifier: "expo.modules.notifications.actions.DEFAULT",
     notification: {
       request: {
         content: { data: { kind: "message", serverUrl } },

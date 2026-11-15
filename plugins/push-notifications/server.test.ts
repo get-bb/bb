@@ -32,17 +32,41 @@ interface FakeExpo {
   requests: ExpoPushMessage[][];
   ticketErrors: Map<string, string>;
   urls: string[];
+  projects: Map<string, string>;
 }
 
 function createFakeExpo(): FakeExpo {
   const requests: ExpoPushMessage[][] = [];
   const ticketErrors = new Map<string, string>();
   const urls: string[] = [];
+  const projects = new Map<string, string>();
   const fetch: PushSenderFetch = async (url, init) => {
     urls.push(url);
     expect(init.dispatcher).toBeInstanceOf(EnvHttpProxyAgent);
     const messages = JSON.parse(init.body) as ExpoPushMessage[];
     requests.push(messages);
+    const groups = new Map<string, string[]>();
+    for (const message of messages) {
+      const project = projects.get(message.to) ?? "default";
+      const tokens = groups.get(project) ?? [];
+      tokens.push(message.to);
+      groups.set(project, tokens);
+    }
+    if (groups.size > 1) {
+      return {
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({
+            errors: [
+              {
+                code: "PUSH_TOO_MANY_EXPERIENCE_IDS",
+                details: Object.fromEntries(groups),
+              },
+            ],
+          }),
+      };
+    }
     return {
       ok: true,
       status: 200,
@@ -57,7 +81,7 @@ function createFakeExpo(): FakeExpo {
         }),
     };
   };
-  return { fetch, requests, ticketErrors, urls };
+  return { fetch, requests, ticketErrors, urls, projects };
 }
 
 function alertMessage(
@@ -498,6 +522,7 @@ describe("push sender", () => {
         },
         sound: "default",
         channelId: "threads",
+        categoryId: "bb-thread-reply",
         priority: "high",
       });
       expect(host.expo.requests[0]?.[0]?.data).not.toHaveProperty("serverUrl");
@@ -850,6 +875,106 @@ describe("push sender", () => {
     }
   });
 
+  it("recovers mixed Expo projects and keeps later alerts and dismissals separated", async () => {
+    const expo = createFakeExpo();
+    const ios = "ExponentPushToken[ios]";
+    const android = "ExponentPushToken[android]";
+    const stale = "ExponentPushToken[stale]";
+    expo.projects.set(ios, "@team/production");
+    expo.projects.set(android, "@developer/development");
+    expo.projects.set(stale, "@developer/development");
+    expo.ticketErrors.set(stale, "DeviceNotRegistered");
+    const host = await setup({ expo, dismissReadNotifications: true });
+    try {
+      await host.addSubscription(ios, "iPhone", "ios");
+      await host.addSubscription(android, "Samsung", "android");
+      await host.addSubscription(stale, "Old phone", "android");
+      const thread = host.setThread();
+      const send = () =>
+        host.harness.behavior.callRpc("notifications.send", {
+          title: "Project batching check",
+          threadId: thread.id,
+        });
+      expect(await send()).toMatchObject({
+        channels: ["web", "desktop", "mobile"],
+      });
+      const status = await host.harness.behavior.runCli(["status", "--json"]);
+      expect(JSON.parse(status.stdout).lastSendOutcome).toMatchObject({
+        status: "sent",
+        sentCount: 2,
+      });
+      expect(
+        expo.requests.map((batch) => batch.map((message) => message.to)),
+      ).toEqual([[ios, android, stale], [ios], [android, stale]]);
+      expect(
+        listPushSubscriptionsOutputSchema.parse(
+          await host.harness.behavior.callRpc("pushSubscriptions.list", {}),
+        ).subscriptions,
+      ).toHaveLength(2);
+      expo.requests.length = 0;
+      await send();
+      await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
+        thread,
+      });
+      await vi.waitFor(() => expect(expo.requests).toHaveLength(4));
+      expect(
+        expo.requests.map((batch) => batch.map((message) => message.to)),
+      ).toEqual([[ios], [android], [ios], [android]]);
+      expect(
+        expo.requests
+          .slice(2)
+          .flat()
+          .every((message) => message.data.kind === "dismiss"),
+      ).toBe(true);
+      expect(JSON.stringify(host.harness.logEntries)).not.toContain(
+        "ExponentPushToken",
+      );
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it.each([
+    undefined,
+    { project: ["ExponentPushToken[first]", "ExponentPushToken[second]"] },
+    {
+      first: ["ExponentPushToken[first]"],
+      second: ["ExponentPushToken[unknown]"],
+    },
+    {
+      first: ["ExponentPushToken[first]"],
+      second: ["ExponentPushToken[first]", "ExponentPushToken[second]"],
+    },
+  ])(
+    "does not retry an invalid Expo project partition: %j",
+    async (details) => {
+      const fetch = vi.fn<PushSenderFetch>(async () => ({
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({
+            errors: [{ code: "PUSH_TOO_MANY_EXPERIENCE_IDS", details }],
+          }),
+      }));
+      const host = await setup({ fetch });
+      try {
+        await host.addSubscription("ExponentPushToken[first]");
+        await host.addSubscription("ExponentPushToken[second]");
+        expect(
+          await host.harness.behavior.callRpc("notifications.send", {
+            title: "Check",
+          }),
+        ).toMatchObject({ channels: ["web", "desktop"] });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(host.harness.logEntries)).not.toContain(
+          "ExponentPushToken",
+        );
+      } finally {
+        await host.cleanup();
+      }
+    },
+  );
+
   it("batches devices and removes rows that Expo rejects as unregistered", async () => {
     const host = await setup();
     try {
@@ -1053,6 +1178,7 @@ describe("sending notifications", () => {
       ]);
       expect(host.expo.requests).toHaveLength(1);
       const message = alertMessage(host.expo.requests[0]?.[0]);
+      expect(message).not.toHaveProperty("categoryId");
       expect(message.title).toHaveLength(80);
       expect(message).toMatchObject({
         to: "ExponentPushToken[phone]",

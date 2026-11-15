@@ -137,20 +137,39 @@ pnpm mobile:apk:dev
 adb install -r apps/mobile/build-output/bb-dev.apk
 ```
 
-The APK is `apps/mobile/build-output/bb-dev.apk`. It has an orange bb launcher
-icon, favicon, and splash logo, the name **bb dev**, and package `app.getbb.mobile.dev`, so it
-installs alongside the regular app with separate saved servers and data. It
+The APK is `apps/mobile/build-output/bb-dev.apk`. Its launcher icon matches the
+iOS dev artwork: a white BB mark on black with an orange DEV band. It has an
+orange favicon and splash logo, the name **bb dev**, and package
+`app.getbb.mobile.dev`, so it installs alongside the regular app with separate
+saved servers and data. It
 embeds the Release JS bundle and runs without Metro, EAS, Firebase, or production
 signing credentials. Pair it with the development server through Add server or
 a pairing code. It does not claim production HTTPS app links or use the
 production Firebase configuration; Android themed icons use the system tint.
-Dev launcher assets tint the existing shaded mobile artwork using the orange
-palette and tinting method from `apps/app/scripts/generate-pwa-icons.mjs`,
-preserving the original dimensions, alpha, and launcher padding. The transparent
+For push notifications, register `app.getbb.mobile.dev` as an Android app in
+Firebase and put its configuration in the gitignored
+`apps/mobile/google-services.dev.json`, or set `GOOGLE_SERVICES_JSON` to that
+file's absolute path. Configure its FCM V1 credential in the Expo project used
+by this build, then rebuild the APK. The configuration must contain a client
+matching the dev package; the production app's client alone cannot initialize
+Firebase for bb dev. Without this configuration, the app still runs, but
+Android push registration is unavailable.
+For a developer-owned Expo project, set `BB_MOBILE_EXPO_PROJECT_ID` to its UUID
+in `apps/mobile/.env.local` before building. This overrides the push project
+without changing the repository's production Expo configuration. The FCM V1
+credential must be configured for `app.getbb.mobile.dev` in that Expo project.
+The favicon and splash assets tint the existing shaded mobile artwork using
+the orange palette and tinting method from
+`apps/app/scripts/generate-pwa-icons.mjs`, preserving their dimensions and alpha.
+The transparent
 splash asset stores the original light logo's shading in orange RGB and uses
 the dark logo's silhouette alpha. This keeps transparency at the edges rather
 than throughout the shaded mark, avoiding darkening during native image
 generation. Both light and dark splash screens use the orange logo.
+
+`with-notification-actions` routes reply-enabled FCM notifications through Expo's
+native presenter so Android background notifications include the registered Reply
+action. Other FCM messages keep their normal handling.
 
 Use `pnpm mobile:apk:dev -- x86_64` for an Intel emulator. The default is
 `arm64-v8a` for a physical phone. Install Android SDK/build tools and JDK 17
