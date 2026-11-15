@@ -621,7 +621,8 @@ function ActiveChildThreadsCard({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
-  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
+  const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
+    useDisclosureFocusHandoff(isExpanded, onToggle);
   const cardRef = useRef<HTMLElement>(null);
   const [openQuestion, setOpenQuestion] = useState<{
     interactionId: string;
@@ -729,9 +730,9 @@ function ActiveChildThreadsCard({
     (
       backButtonRef.current ??
       titleLinkRef.current ??
-      focus.triggerRef.current
+      triggerRef.current
     )?.focus();
-  }, [currentInteractionId, pendingInteractions, focus.triggerRef]);
+  }, [currentInteractionId, pendingInteractions, triggerRef]);
   const newestQuestionTitle = useThreadTitleDisplayText(
     pendingInteractions[0]?.childTitle ?? "",
   );
@@ -789,7 +790,7 @@ function ActiveChildThreadsCard({
         />
       ) : (
         <button
-          ref={focus.triggerRef}
+          ref={triggerRef}
           type="button"
           id={SECTION_IDS.childThreads.toggle}
           aria-expanded={isExpanded}
@@ -799,7 +800,7 @@ function ActiveChildThreadsCard({
               ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${newestQuestionTitle}: ${collapsedQuestion.text}`
               : `${items.length} active ${childThreadNoun(items.length)}`
           }
-          onClick={focus.onTriggerClick}
+          onClick={onTriggerClick}
           className={activityRowClass(
             "active",
             cn(
@@ -867,11 +868,11 @@ function ActiveChildThreadsCard({
         )}
         {currentQuestion ? null : (
           <PromptStackCollapseRow
-            buttonRef={focus.collapseRef}
+            buttonRef={collapseRef}
             className="rounded-none"
             controlsId={SECTION_IDS.childThreads.body}
             label={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
-            onCollapse={focus.onCollapseClick}
+            onCollapse={onCollapseClick}
           />
         )}
       </AnimatedBody>

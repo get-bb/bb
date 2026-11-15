@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Icon, type IconName } from "./icon";
 import {
   DropdownMenu,
@@ -267,15 +267,61 @@ function InfoRowTouchActionsMenu({
   );
 }
 
+interface RelativeTimeClock {
+  timestamp: number;
+  subscribe: (onStoreChange: () => void) => () => void;
+  getSnapshot: () => number;
+}
+
+function createRelativeTimeClock(timestamp: number): RelativeTimeClock {
+  let now: number | undefined;
+  return {
+    timestamp,
+    subscribe: (onStoreChange) => {
+      const interval = setInterval(() => {
+        now = Date.now();
+        onStoreChange();
+      }, MINUTE_MS);
+      return () => clearInterval(interval);
+    },
+    getSnapshot: () => {
+      if (now === undefined) now = Date.now();
+      return now;
+    },
+  };
+}
+
+function subscribeToNothing(): () => void {
+  return () => {};
+}
+
+function useRelativeTimeNow(timestamp: number, enabled: boolean): number {
+  const [storedClock, setClock] = useState(() =>
+    createRelativeTimeClock(timestamp),
+  );
+  let clock = storedClock;
+  if (clock.timestamp !== timestamp) {
+    clock = createRelativeTimeClock(timestamp);
+    setClock(clock);
+  }
+  return useSyncExternalStore(
+    enabled ? clock.subscribe : subscribeToNothing,
+    clock.getSnapshot,
+    clock.getSnapshot,
+  );
+}
+
 export function InfoRowTime({
   timestamp,
   detail,
-  now = Date.now(),
+  now: nowProp,
 }: {
   timestamp: number;
   detail?: string;
   now?: number;
 }) {
+  const clockNow = useRelativeTimeNow(timestamp, nowProp === undefined);
+  const now = nowProp ?? clockNow;
   const date = new Date(timestamp);
   const fullDate = date.toLocaleString();
   return (

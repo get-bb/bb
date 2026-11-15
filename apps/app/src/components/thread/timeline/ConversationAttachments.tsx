@@ -1,6 +1,6 @@
 import { isVideoAttachment } from "@/lib/video-attachments";
 import { VideoThumbnail } from "@bb/shared-ui/video-thumbnail";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { TimelineConversationAttachments } from "@bb/server-contract";
 import { fileNameFromPath } from "@bb/thread-view";
 import { ImageLightbox } from "../../ui/image-lightbox.js";
@@ -126,12 +126,9 @@ export function ConversationAttachments({
   const hasMultipleImages = imageItems.length > 1;
   const justifyClassName = align === "end" ? "justify-end" : "justify-start";
 
-  useEffect(() => {
-    if (expandedImageIndex === null || expandedImageIndex < imageItems.length) {
-      return;
-    }
+  if (expandedImageIndex !== null && expandedImageIndex >= imageItems.length) {
     setExpandedImageIndex(null);
-  }, [expandedImageIndex, imageItems.length]);
+  }
 
   if (filePaths.length === 0 && imageItems.length === 0) {
     return null;

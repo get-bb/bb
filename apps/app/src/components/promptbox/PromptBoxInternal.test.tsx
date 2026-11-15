@@ -5152,12 +5152,7 @@ describe("ComposerBox mention triggers", () => {
     const changes: PromptChange[] = [];
     const promptBoxRef = createRef<PromptBoxHandle>();
 
-    function Harness({
-      mentionSuggestions,
-    }: {
-      mentionSuggestions: readonly PromptMentionSuggestion[];
-    }) {
-      setComposerSearchResults({ mentionSuggestions });
+    function Harness() {
       const [value, setValue] = useState("@atlas");
       const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
         [],
@@ -5181,7 +5176,8 @@ describe("ComposerBox mention triggers", () => {
     }
 
     const initialSuggestions = [threadSuggestion, sectionSuggestion];
-    const view = render(<Harness mentionSuggestions={initialSuggestions} />);
+    setComposerSearchResults({ mentionSuggestions: initialSuggestions });
+    render(<Harness />);
     await focusPromptEnd(promptBoxRef);
 
     const sectionButton = await screen.findByRole("button", {
@@ -5192,10 +5188,10 @@ describe("ComposerBox mention triggers", () => {
       expect(sectionButton.className).toContain("bg-state-active"),
     );
 
-    view.rerender(
-      <Harness
-        mentionSuggestions={[...initialSuggestions, delayedExactSuggestion]}
-      />,
+    act(() =>
+      setComposerSearchResults({
+        mentionSuggestions: [...initialSuggestions, delayedExactSuggestion],
+      }),
     );
     await screen.findByRole("button", { name: "Atlas" });
     await waitFor(() =>

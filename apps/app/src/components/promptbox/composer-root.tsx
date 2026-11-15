@@ -137,25 +137,27 @@ export function ComposerRoot({
       reportMenuLayout({ height: 0, isOpen: false });
       return;
     }
-    let active = true;
-    let unobserveMenu: (() => void) | null = null;
+    const subscription: {
+      active: boolean;
+      unobserveMenu: (() => void) | null;
+    } = { active: true, unobserveMenu: null };
     queueMicrotask(() => {
       const menu = menuRef?.current ?? null;
-      if (!active || menu === null) return;
+      if (!subscription.active || menu === null) return;
       const readHeight = () => menu.getBoundingClientRect().height;
       const reportOpenLayout = (height: number) => {
         reportMenuLayout({ height, isOpen: true });
       };
       reportOpenLayout(readHeight());
       if (typeof ResizeObserver === "undefined") return;
-      unobserveMenu = observeSharedResize(menu, {
+      subscription.unobserveMenu = observeSharedResize(menu, {
         read: readHeight,
         write: reportOpenLayout,
       });
     });
     return () => {
-      active = false;
-      unobserveMenu?.();
+      subscription.active = false;
+      subscription.unobserveMenu?.();
       reportMenuLayout({ height: 0, isOpen: false });
     };
   }, [menuOpen, menuRef, reportMenuLayout]);

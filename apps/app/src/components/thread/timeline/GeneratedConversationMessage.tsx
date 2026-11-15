@@ -3,6 +3,7 @@ import {
   useCallback,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
@@ -447,6 +448,7 @@ function GeneratedAutomationTitle({
   requestLabel,
   timestamp,
 }: GeneratedAutomationTitleProps) {
+  const [now] = useState(() => new Date());
   return (
     <span className="inline-flex min-w-0 max-w-full items-center gap-1 whitespace-nowrap text-sm leading-5">
       {automationLink === null ? (
@@ -469,7 +471,7 @@ function GeneratedAutomationTitle({
       </span>
       <MessageTime
         timestamp={timestamp}
-        label={formatShortMessageTime(timestamp, new Date())}
+        label={formatShortMessageTime(timestamp, now)}
         className="shrink-0 text-subtle-foreground"
       />
       {requestLabel === null ? null : (

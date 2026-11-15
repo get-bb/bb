@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { observeSharedResize } from "../../../lib/shared-resize-observer";
 
 export type MeasuredTarget<E extends Element> = RefObject<E | null> | E | null;
@@ -14,8 +14,10 @@ export function useMeasuredValue<E extends Element, T>(
   initial: T,
 ): T {
   const [value, setValue] = useState<T>(initial);
+  const elementRef = useRef<E | null>(null);
   useLayoutEffect(() => {
-    const element = resolveTarget(target);
+    elementRef.current = resolveTarget(target);
+    const element = elementRef.current;
     if (element === null) return;
     setValue(() => read(element));
     return observeSharedResize(element, {

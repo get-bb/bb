@@ -10,8 +10,10 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentPropsWithoutRef,
+  type Dispatch,
   type ReactNode,
   type Ref,
+  type SetStateAction,
 } from "react";
 import {
   isRawThreadId,
@@ -195,21 +197,14 @@ export function buildThreadTitleMentionResources(
 export function useSidebarThreadTitleMentionResources(
   navigation: ThreadTitleMentionNavigationSource | undefined,
 ): ThreadTitleMentionResources {
-  const cacheRef = useRef<{
-    navigation: ThreadTitleMentionNavigationSource | undefined;
-    resources: ThreadTitleMentionResources;
-  } | null>(null);
-  /* oxlint-disable react/refs -- render-time cache, see above */
-  const cached = cacheRef.current;
-  if (cached !== null && cached.navigation === navigation) {
-    return cached.resources;
-  }
-  const resources = buildThreadTitleMentionResources(
-    navigation,
-    cached?.resources ?? EMPTY_TITLE_MENTION_RESOURCES,
+  const [resources, setResources] = useState(() =>
+    buildThreadTitleMentionResources(navigation, EMPTY_TITLE_MENTION_RESOURCES),
   );
-  cacheRef.current = { navigation, resources };
-  /* oxlint-enable react/refs */
+  const next = buildThreadTitleMentionResources(navigation, resources);
+  if (next !== resources) {
+    setResources(next);
+    return next;
+  }
   return resources;
 }
 
@@ -231,17 +226,101 @@ const RawThreadMentionResolverContext =
     EMPTY_RAW_THREAD_MENTION_RESOLVER,
   );
 
+interface RawThreadMentionQueue {
+  scheduledOrResolvedIds: Set<string>;
+  retriedIds: Set<string>;
+  pendingIds: Set<string>;
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  activeControllers: Set<AbortController>;
+}
+
+function createRawThreadMentionQueue(): RawThreadMentionQueue {
+  return {
+    scheduledOrResolvedIds: new Set(),
+    retriedIds: new Set(),
+    pendingIds: new Set(),
+    flushTimer: null,
+    activeControllers: new Set(),
+  };
+}
+
+function flushRawThreadMentionQueue(
+  queue: RawThreadMentionQueue,
+  setResourceById: Dispatch<
+    SetStateAction<ReadonlyMap<string, PromptMentionResource>>
+  >,
+  setUnavailableIds: Dispatch<SetStateAction<ReadonlySet<string>>>,
+): void {
+  const threadIds = [...queue.pendingIds].slice(
+    0,
+    THREAD_MENTION_RESOLVE_MAX_IDS,
+  );
+  for (const threadId of threadIds) {
+    queue.pendingIds.delete(threadId);
+  }
+  queue.flushTimer = null;
+  if (threadIds.length === 0) return;
+
+  const controller = new AbortController();
+  queue.activeControllers.add(controller);
+  void sdk.threads
+    .resolveMentions({ threadIds, signal: controller.signal })
+    .then((resolutions) => {
+      if (controller.signal.aborted) return;
+      const resolvedIds = new Set(
+        resolutions.map((resolution) => resolution.threadId),
+      );
+      setResourceById((current) => {
+        const next = new Map(current);
+        for (const resolution of resolutions) {
+          next.set(resolution.threadId, {
+            kind: "thread",
+            threadId: resolution.threadId,
+            projectId: resolution.projectId,
+            label: resolution.label,
+          });
+        }
+        return next;
+      });
+      setUnavailableIds((current) => {
+        const next = new Set(current);
+        for (const threadId of threadIds) {
+          if (resolvedIds.has(threadId)) next.delete(threadId);
+          else next.add(threadId);
+        }
+        return next;
+      });
+    })
+    .catch(() => {
+      if (controller.signal.aborted) return;
+      for (const threadId of threadIds) {
+        if (queue.retriedIds.has(threadId)) continue;
+        queue.retriedIds.add(threadId);
+        queue.pendingIds.add(threadId);
+      }
+    })
+    .finally(() => {
+      queue.activeControllers.delete(controller);
+      if (queue.pendingIds.size > 0 && queue.flushTimer === null) {
+        queue.flushTimer = setTimeout(
+          () =>
+            flushRawThreadMentionQueue(
+              queue,
+              setResourceById,
+              setUnavailableIds,
+            ),
+          25,
+        );
+      }
+    });
+}
+
 function RawThreadMentionResolverProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const scheduledOrResolvedIdsRef = useRef(new Set<string>());
-  const retriedIdsRef = useRef(new Set<string>());
-  const pendingIdsRef = useRef(new Set<string>());
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flushPendingRef = useRef<() => void>(() => {});
-  const activeControllersRef = useRef(new Set<AbortController>());
+  const queueRef = useRef<RawThreadMentionQueue>(createRawThreadMentionQueue());
   const [resourceById, setResourceById] = useState<
     ReadonlyMap<string, PromptMentionResource>
   >(new Map());
@@ -249,77 +328,22 @@ function RawThreadMentionResolverProvider({
     new Set(),
   );
 
-  flushPendingRef.current = () => {
-    const threadIds = [...pendingIdsRef.current].slice(
-      0,
-      THREAD_MENTION_RESOLVE_MAX_IDS,
-    );
-    for (const threadId of threadIds) {
-      pendingIdsRef.current.delete(threadId);
-    }
-    flushTimerRef.current = null;
-    if (threadIds.length === 0) return;
-
-    const controller = new AbortController();
-    activeControllersRef.current.add(controller);
-    void sdk.threads
-      .resolveMentions({ threadIds, signal: controller.signal })
-      .then((resolutions) => {
-        if (controller.signal.aborted) return;
-        const resolvedIds = new Set(
-          resolutions.map((resolution) => resolution.threadId),
-        );
-        setResourceById((current) => {
-          const next = new Map(current);
-          for (const resolution of resolutions) {
-            next.set(resolution.threadId, {
-              kind: "thread",
-              threadId: resolution.threadId,
-              projectId: resolution.projectId,
-              label: resolution.label,
-            });
-          }
-          return next;
-        });
-        setUnavailableIds((current) => {
-          const next = new Set(current);
-          for (const threadId of threadIds) {
-            if (resolvedIds.has(threadId)) next.delete(threadId);
-            else next.add(threadId);
-          }
-          return next;
-        });
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        for (const threadId of threadIds) {
-          if (retriedIdsRef.current.has(threadId)) continue;
-          retriedIdsRef.current.add(threadId);
-          pendingIdsRef.current.add(threadId);
-        }
-      })
-      .finally(() => {
-        activeControllersRef.current.delete(controller);
-        if (pendingIdsRef.current.size > 0 && flushTimerRef.current === null) {
-          flushTimerRef.current = setTimeout(
-            () => flushPendingRef.current(),
-            25,
-          );
-        }
-      });
-  };
-
   const register = useCallback((threadId: string): void => {
-    if (scheduledOrResolvedIdsRef.current.has(threadId)) {
+    const queue = queueRef.current;
+    if (queue.scheduledOrResolvedIds.has(threadId)) {
       return;
     }
 
-    scheduledOrResolvedIdsRef.current.add(threadId);
-    pendingIdsRef.current.add(threadId);
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current);
+    queue.scheduledOrResolvedIds.add(threadId);
+    queue.pendingIds.add(threadId);
+    if (queue.flushTimer !== null) {
+      clearTimeout(queue.flushTimer);
     }
-    flushTimerRef.current = setTimeout(() => flushPendingRef.current(), 25);
+    queue.flushTimer = setTimeout(
+      () =>
+        flushRawThreadMentionQueue(queue, setResourceById, setUnavailableIds),
+      25,
+    );
   }, []);
 
   const value = useMemo(
@@ -329,17 +353,18 @@ function RawThreadMentionResolverProvider({
 
   useEffect(
     () => () => {
-      if (flushTimerRef.current !== null) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
+      const queue = queueRef.current;
+      if (queue.flushTimer !== null) {
+        clearTimeout(queue.flushTimer);
+        queue.flushTimer = null;
       }
-      pendingIdsRef.current.clear();
-      scheduledOrResolvedIdsRef.current.clear();
-      retriedIdsRef.current.clear();
-      for (const controller of activeControllersRef.current) {
+      queue.pendingIds.clear();
+      queue.scheduledOrResolvedIds.clear();
+      queue.retriedIds.clear();
+      for (const controller of queue.activeControllers) {
         controller.abort();
       }
-      activeControllersRef.current.clear();
+      queue.activeControllers.clear();
     },
     [],
   );
@@ -1013,10 +1038,15 @@ function ThreadTitleMentionsContent({
   const resources = mayContainTitleMention(title)
     ? use(ThreadTitleMentionResourcesContext)
     : EMPTY_TITLE_MENTION_RESOURCES;
+  const segments = threadTitleTextSegments(title, resources);
+  const segmentOffsets: number[] = [];
   let offset = 0;
-  return threadTitleTextSegments(title, resources).map((segment, index) => {
-    const segmentOffset = offset;
+  for (const segment of segments) {
+    segmentOffsets.push(offset);
     offset += (segment.serializedText ?? segment.text).length;
+  }
+  return segments.map((segment, index) => {
+    const segmentOffset = segmentOffsets[index] ?? 0;
     return segment.unresolvedThreadId !== null &&
       segment.serializedText !== null ? (
       <ResolvingThreadTitleMention

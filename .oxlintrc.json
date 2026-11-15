@@ -57,6 +57,19 @@
       }
     },
     {
+      "files": ["apps/app/**/*.{ts,tsx}", "packages/shared-ui/**/*.{ts,tsx}"],
+      "plugins": ["react"],
+      "rules": {
+        "react/preserve-manual-memoization": "error",
+        "react/incompatible-library": "error",
+        "react/immutability": "error",
+        "react/refs": "error",
+        "react/set-state-in-effect": "error",
+        "react/purity": "error",
+        "react/unsupported-syntax": "error"
+      }
+    },
+    {
       "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [

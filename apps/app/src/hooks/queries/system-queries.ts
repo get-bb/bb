@@ -1,5 +1,7 @@
+import { useCallback, useSyncExternalStore } from "react";
 import {
   hashKey,
+  partialMatchKey,
   queryOptions,
   useQueries,
   useQuery,
@@ -206,12 +208,6 @@ function shouldRetrySystemExecutionOptions(
   return true;
 }
 
-export function useKnownProviderModelCatalogScope(
-  providerId: string,
-): ProviderModelCatalogScope | undefined {
-  return findKnownProviderModelCatalogScope(useQueryClient(), providerId);
-}
-
 export function findKnownProviderModelCatalogScope(
   queryClient: QueryClient,
   providerId: string,
@@ -247,6 +243,37 @@ export function findKnownProviderModelCatalogScope(
   );
   return scopeIn(
     catalog === undefined ? undefined : selectProviderDirectory(catalog),
+  );
+}
+
+function subscribeToProviderCatalogQueries(
+  queryClient: QueryClient,
+  onChange: () => void,
+): () => void {
+  const executionOptionsPrefix = allSystemExecutionOptionsQueryKeyPrefix();
+  const providersPrefix = allSystemProvidersQueryKeyPrefix();
+  return queryClient.getQueryCache().subscribe((event) => {
+    const { queryKey } = event.query;
+    if (
+      partialMatchKey(queryKey, executionOptionsPrefix) ||
+      partialMatchKey(queryKey, providersPrefix)
+    ) {
+      onChange();
+    }
+  });
+}
+
+export function useKnownProviderModelCatalogScope(
+  providerId: string,
+): ProviderModelCatalogScope | undefined {
+  const queryClient = useQueryClient();
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      subscribeToProviderCatalogQueries(queryClient, onChange),
+    [queryClient],
+  );
+  return useSyncExternalStore(subscribe, () =>
+    findKnownProviderModelCatalogScope(queryClient, providerId),
   );
 }
 

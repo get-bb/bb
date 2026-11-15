@@ -246,6 +246,7 @@ function CollapsedWorkflowPreview() {
 
 function AutoAdvancePreview() {
   const [activePhase, setActivePhase] = useState(3);
+  const [startedAt, setStartedAt] = useState(() => Date.now() - 1_472_000);
   const [expanded, setExpanded] = useState(true);
   const workflow = useMemo(
     () =>
@@ -255,7 +256,7 @@ function AutoAdvancePreview() {
         taskStatus: "running",
         workflowName: "bb-repo-wide-audit",
         description: "Audit the entire repository across forty phases",
-        startedAt: Date.now() - 1_472_000,
+        startedAt,
         workflow: buildManyPhasesSnapshot(40, activePhase),
         usage: {
           totalTokens: 4_210_000,
@@ -263,13 +264,16 @@ function AutoAdvancePreview() {
           durationMs: 1_472_000,
         },
       }),
-    [activePhase],
+    [activePhase, startedAt],
   );
   return (
     <div className="flex flex-col gap-2">
       <button
         type="button"
-        onClick={() => setActivePhase((p) => Math.min(40, p + 1))}
+        onClick={() => {
+          setActivePhase((p) => Math.min(40, p + 1));
+          setStartedAt(Date.now() - 1_472_000);
+        }}
         className="self-start rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-state-hover"
       >
         Advance to phase {Math.min(40, activePhase + 1)}

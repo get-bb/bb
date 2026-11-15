@@ -465,16 +465,17 @@ export function ProjectlessMachineSlot({
 }: ProjectlessMachineSlotProps) {
   const machines = environment.machines ?? null;
   const selectedProviderHostId = environment.selectedProviderHostId ?? null;
+  const machineHosts = machines?.hosts;
   const availableHosts = useMemo(() => {
-    const selectable = selectHosts(machines?.hosts, "persistent");
-    const selected = machines?.hosts.find(
+    const selectable = selectHosts(machineHosts, "persistent");
+    const selected = machineHosts?.find(
       (candidate) => candidate.id === selectedProviderHostId,
     );
     return selected === undefined ||
       selectable.some((candidate) => candidate.id === selected.id)
       ? selectable
       : [...selectable, selected];
-  }, [machines?.hosts, selectedProviderHostId]);
+  }, [machineHosts, selectedProviderHostId]);
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
     [environment.value],

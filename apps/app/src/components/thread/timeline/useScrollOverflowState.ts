@@ -49,9 +49,12 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     );
   }, []);
 
+  if (options.enabled === false && (flags.above || flags.below)) {
+    setFlags({ above: false, below: false });
+  }
+
   useEffect(() => {
     if (options.enabled === false) {
-      applyFlags({ above: false, below: false });
       return;
     }
     if (!options.measureOverflow || typeof window === "undefined") {
@@ -63,18 +66,18 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
       return;
     }
 
-    let frame: number | null = null;
+    const pending: { frame: number | null } = { frame: null };
     const readFlags = (): OverflowFlags => ({
       above: scroll.scrollTop > 1,
       below: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 1,
     });
     const measure = () => {
-      frame = null;
+      pending.frame = null;
       applyFlags(readFlags());
     };
     const scheduleMeasure = () => {
-      if (frame !== null) return;
-      frame =
+      if (pending.frame !== null) return;
+      pending.frame =
         typeof window.requestAnimationFrame === "function"
           ? window.requestAnimationFrame(measure)
           : window.setTimeout(measure, 0);
@@ -99,11 +102,11 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     });
 
     return () => {
-      if (frame !== null) {
+      if (pending.frame !== null) {
         if (typeof window.cancelAnimationFrame === "function") {
-          window.cancelAnimationFrame(frame);
+          window.cancelAnimationFrame(pending.frame);
         } else {
-          window.clearTimeout(frame);
+          window.clearTimeout(pending.frame);
         }
       }
       scroll.removeEventListener("scroll", scheduleMeasure);
@@ -126,22 +129,21 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
       return;
     }
 
-    let aboveVisible = true;
-    let belowVisible = true;
+    const visible = { above: true, below: true };
 
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.target === topSentinel) {
-            aboveVisible = entry.isIntersecting;
+            visible.above = entry.isIntersecting;
           } else if (entry.target === bottomSentinel) {
-            belowVisible = entry.isIntersecting;
+            visible.below = entry.isIntersecting;
           }
         }
         const hasOverflow = scroll.scrollHeight - scroll.clientHeight > 1;
         applyFlags({
-          above: hasOverflow && !aboveVisible,
-          below: hasOverflow && !belowVisible,
+          above: hasOverflow && !visible.above,
+          below: hasOverflow && !visible.below,
         });
       },
       { root: scroll, threshold: 0 },

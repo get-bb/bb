@@ -31,21 +31,27 @@ export function TimelineDetailScroll({
   showAboveFade = true,
   children,
 }: TimelineDetailScrollProps) {
-  const sticky = useStickyBottomScroll<HTMLDivElement>({ streaming });
-  const overflow = useScrollOverflowState<HTMLDivElement>();
+  const {
+    ref: stickyRef,
+    contentRef,
+    positionKeeper,
+  } = useStickyBottomScroll<HTMLDivElement>({ streaming });
+  const {
+    scrollRef,
+    topSentinelRef,
+    bottomSentinelRef,
+    aboveOverflow,
+    belowOverflow,
+  } = useScrollOverflowState<HTMLDivElement>();
   const maxHeightClassName = getDetailScrollMaxHeightClass(size);
-  const { aboveOverflow, belowOverflow } = overflow;
 
-  const refCallback = useComposedRefs<HTMLDivElement>(
-    sticky.ref,
-    overflow.scrollRef,
-  );
+  const refCallback = useComposedRefs<HTMLDivElement>(stickyRef, scrollRef);
   const windowingScrollRoot = useMemo<TimelineWindowingScrollRoot>(
     () => ({
-      getScrollElement: () => sticky.ref.current,
-      positionKeeper: sticky.positionKeeper,
+      getScrollElement: () => stickyRef.current,
+      positionKeeper,
     }),
-    [sticky.positionKeeper, sticky.ref],
+    [positionKeeper, stickyRef],
   );
 
   return (
@@ -63,23 +69,15 @@ export function TimelineDetailScroll({
           scrollClassName,
         )}
       >
-        <div
-          ref={overflow.topSentinelRef}
-          aria-hidden
-          className="-mb-px h-px w-full"
-        />
-        <div ref={sticky.contentRef}>
+        <div ref={topSentinelRef} aria-hidden className="-mb-px h-px w-full" />
+        <div ref={contentRef}>
           <TimelineWindowingScrollRootContext.Provider
             value={windowingScrollRoot}
           >
             {children}
           </TimelineWindowingScrollRootContext.Provider>
         </div>
-        <div
-          ref={overflow.bottomSentinelRef}
-          aria-hidden
-          className="h-px w-full"
-        />
+        <div ref={bottomSentinelRef} aria-hidden className="h-px w-full" />
       </div>
       {showAboveFade && aboveOverflow ? (
         <div

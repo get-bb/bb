@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -110,10 +115,25 @@ const mocks = vi.hoisted(() => ({
   serverAccessReady: true,
   machineProviders: [] as SystemMachineProvider[],
   modelsLoading: false,
+  modelsLoadingListeners: new Set<() => void>(),
   permissionCeiling: undefined as "accept-edits" | "auto" | "full" | undefined,
   modelSessionOptions: undefined as ThreadSessionOption[] | undefined,
   openCreateDialogThen: vi.fn(),
 }));
+
+function subscribeToModelsLoading(onChange: () => void) {
+  mocks.modelsLoadingListeners.add(onChange);
+  return () => {
+    mocks.modelsLoadingListeners.delete(onChange);
+  };
+}
+
+function setModelsLoading(loading: boolean) {
+  act(() => {
+    mocks.modelsLoading = loading;
+    for (const listener of mocks.modelsLoadingListeners) listener();
+  });
+}
 
 vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
   RootComposePanelCommandHandlers: ({
@@ -311,7 +331,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     },
   }),
   useSystemExecutionOptions: () =>
-    mocks.modelsLoading
+    useSyncExternalStore(subscribeToModelsLoading, () => mocks.modelsLoading)
       ? {
           data: undefined,
           isLoading: true,
@@ -3243,7 +3263,7 @@ describe("NewThreadComposer setSelection", () => {
 
   it("waits for the model catalog before reporting, bounded by the settle timeout", async () => {
     mocks.modelsLoading = true;
-    const view = render(rootLikeElement("proj_1"));
+    render(rootLikeElement("proj_1"));
     let result: ExperimentalComposerSelection | null = null;
     void currentHost().setSelection!({ permissionMode: "accept-edits" }).then(
       (value) => {
@@ -3257,8 +3277,7 @@ describe("NewThreadComposer setSelection", () => {
     });
     expect(result).toBeNull();
 
-    mocks.modelsLoading = false;
-    view.rerender(rootLikeElement("proj_1"));
+    setModelsLoading(false);
     await waitFor(() => {
       expect(result).not.toBeNull();
     });
@@ -3269,8 +3288,7 @@ describe("NewThreadComposer setSelection", () => {
     });
 
     setComposerSelectionSettleTimeoutForTest(150);
-    mocks.modelsLoading = true;
-    view.rerender(rootLikeElement("proj_1"));
+    setModelsLoading(true);
     const bounded = await settled(
       currentHost().setSelection!({ permissionMode: "full" }),
       2_000,

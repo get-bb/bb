@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ComponentProps } from "react";
+import { useRef, useState, type ComponentProps } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -16,10 +16,7 @@ export function VoiceInputButton({
   const [open, setOpen] = useState(false);
   const [recoveredWarning, setRecoveredWarning] = useState<string | null>(null);
   const visibleWarning = recoveredWarning === warning ? null : warning;
-  const handleCaptureReady = useCallback(
-    () => setRecoveredWarning(warning),
-    [warning],
-  );
+  const handleCaptureReady = () => setRecoveredWarning(warning);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (

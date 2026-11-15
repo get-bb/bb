@@ -3,6 +3,7 @@ import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -132,23 +133,20 @@ export function ShowcaseHeroCarousel({
   );
 
   const handledRequestNonce = useRef<number | null>(null);
-  useEffect(() => {
-    if (composerDisabled) return;
-    if (
-      openRequest === null ||
-      openRequest.nonce === handledRequestNonce.current
-    ) {
+  const applyOpenRequest = useEffectEvent((request: typeof openRequest) => {
+    if (request === null || request.nonce === handledRequestNonce.current) {
       return;
     }
-    handledRequestNonce.current = openRequest.nonce;
-    // oxlint-disable-next-line react/set-state-in-effect
+    handledRequestNonce.current = request.nonce;
     setSeedAndNotify(
-      openRequest.close === true
-        ? null
-        : (openRequest.seed ?? composer.promptPrefix),
-      { replaceDraft: !openRequest.close && openRequest.seed !== undefined },
+      request.close === true ? null : (request.seed ?? composer.promptPrefix),
+      { replaceDraft: !request.close && request.seed !== undefined },
     );
-  }, [composer.promptPrefix, composerDisabled, openRequest, setSeedAndNotify]);
+  });
+  useEffect(() => {
+    if (composerDisabled) return;
+    applyOpenRequest(openRequest);
+  }, [composerDisabled, openRequest]);
 
   useEffect(() => {
     if (paused) return;

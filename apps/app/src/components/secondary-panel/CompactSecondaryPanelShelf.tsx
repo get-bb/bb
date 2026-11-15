@@ -4,7 +4,6 @@ import {
   useId,
   useLayoutEffect,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import { createPortal, flushSync } from "react-dom";
@@ -183,13 +182,10 @@ export function CompactSecondaryPanelShelf({
     suppressClick: true,
   });
 
-  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    setPortalTarget(document.body);
-  }, []);
+  const portalTarget = document.body;
 
   useEffect(() => {
-    if (!canSwipeOpen || portalTarget === null) {
+    if (!canSwipeOpen) {
       return;
     }
     const inset = portalTarget.ownerDocument.querySelector(
@@ -217,7 +213,7 @@ export function CompactSecondaryPanelShelf({
   }, [beginOpenPointerDrag, beginOpenTouchDrag, canSwipeOpen, portalTarget]);
 
   usePersistentOverlayFocus({
-    open: open && portalTarget !== null,
+    open,
     panelRef,
     requestClose,
   });
@@ -244,10 +240,6 @@ export function CompactSecondaryPanelShelf({
     );
     return () => window.clearTimeout(timer);
   }, [onContentAnimationEnd, open]);
-
-  if (portalTarget === null) {
-    return null;
-  }
 
   return createPortal(
     <div

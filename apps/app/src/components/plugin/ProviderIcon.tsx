@@ -39,7 +39,6 @@ export function ProviderIcon({
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: ExperimentalProviderIconProps) {
-  "use no memo";
   const { id: providerId, logoUrl, icon } = provider;
   const glyph = typeof icon === "string" ? icon : icon?.glyph;
   const tint = provider.strings?.iconTint;

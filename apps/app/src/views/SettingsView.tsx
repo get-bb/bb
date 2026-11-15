@@ -487,6 +487,23 @@ function LocalOpenTargetPreferenceControl({
   );
 }
 
+async function requestLocalOpenTargetAccess(
+  onRequestAccess: () => Promise<boolean>,
+  setPending: (pending: boolean) => void,
+): Promise<void> {
+  setPending(true);
+  try {
+    await onRequestAccess();
+  } catch (error) {
+    showMutationErrorToast({
+      error,
+      fallbackMessage: "Failed to connect to bb on this device",
+    });
+  } finally {
+    setPending(false);
+  }
+}
+
 export function LocalOpenTargetSettingsSection({
   accessState,
   directoryTargetId,
@@ -503,19 +520,8 @@ export function LocalOpenTargetSettingsSection({
     return null;
   }
 
-  const handleRequestAccess = async () => {
-    setAccessRequestPending(true);
-    try {
-      await onRequestAccess();
-    } catch (error) {
-      showMutationErrorToast({
-        error,
-        fallbackMessage: "Failed to connect to bb on this device",
-      });
-    } finally {
-      setAccessRequestPending(false);
-    }
-  };
+  const handleRequestAccess = () =>
+    requestLocalOpenTargetAccess(onRequestAccess, setAccessRequestPending);
 
   if (!hasDaemon) {
     const accessDenied = accessState === "denied";

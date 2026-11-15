@@ -87,6 +87,20 @@ export interface TimelineWindowedItemsProps {
   pinnedToEnd: boolean;
 }
 
+function TimelineWindowedItem({
+  index,
+  observeItemElement,
+  renderItem,
+  windowingEnabled,
+}: {
+  index: number;
+  observeItemElement: TimelineWindowedItemRenderState["itemRef"];
+  renderItem: TimelineWindowedItemsProps["renderItem"];
+  windowingEnabled: boolean;
+}) {
+  return renderItem(index, { itemRef: observeItemElement, windowingEnabled });
+}
+
 interface LayoutModel {
   heights: number[];
   offsets: number[];
@@ -444,7 +458,7 @@ export function TimelineWindowedItems({
     [measurements],
   );
 
-  const itemRef = useCallback(
+  const observeItemElement = useCallback(
     (node: HTMLDivElement | null) => {
       if (node === null) return undefined;
       const key = node.getAttribute(WINDOW_KEY_ATTRIBUTE);
@@ -660,7 +674,15 @@ export function TimelineWindowedItems({
         />,
       );
     }
-    children.push(renderItem(index, { itemRef, windowingEnabled }));
+    children.push(
+      <TimelineWindowedItem
+        key={itemKeys[index] ?? index}
+        index={index}
+        observeItemElement={observeItemElement}
+        renderItem={renderItem}
+        windowingEnabled={windowingEnabled}
+      />,
+    );
     previous = index;
   }
   if (mountedIndexes.length > 0 && previous < itemKeys.length - 1) {

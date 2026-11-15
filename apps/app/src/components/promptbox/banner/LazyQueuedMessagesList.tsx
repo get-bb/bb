@@ -3,6 +3,7 @@ import type { ThreadQueuedMessage, ThreadStatus } from "@bb/domain";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatQueuedMessagePreview } from "@bb/client-core";
 import { queuedMessageFallbackTitle } from "@/lib/queued-message-wait";
+import { useSecondTick } from "@/hooks/useSecondTick";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PromptStackCard,
@@ -112,6 +113,7 @@ function isAttachedToComposer({
 
 function QueuedMessagesListLoading(props: QueuedMessagesListProps) {
   const windowHeight = useWindowHeight();
+  const now = useSecondTick();
   return (
     <QueuedMessagesCardFrame
       attached={isAttachedToComposer(props)}
@@ -132,7 +134,7 @@ function QueuedMessagesListLoading(props: QueuedMessagesListProps) {
             >
               <span className="truncate">
                 {message.payload.kind === "retry"
-                  ? queuedMessageFallbackTitle({ ...message, now: Date.now() })
+                  ? queuedMessageFallbackTitle({ ...message, now })
                   : formatQueuedMessagePreview(message.content)}
               </span>
             </div>

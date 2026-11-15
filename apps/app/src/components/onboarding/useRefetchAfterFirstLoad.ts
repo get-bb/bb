@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefetchProviderStates } from "./useAgentSignIns";
 
 export function useRefetchAfterFirstLoad({
@@ -11,7 +11,12 @@ export function useRefetchAfterFirstLoad({
   refetch: RefetchProviderStates;
 }): { refetch: RefetchProviderStates; settledAt: number } {
   const [freshAfter, setFreshAfter] = useState<number | null>(null);
-  const deferred = freshAfter === Number.POSITIVE_INFINITY;
+  const [deferredRefetches, setDeferredRefetches] = useState(0);
+  const issuedDeferredRefetchesRef = useRef(0);
+  if (freshAfter === Number.POSITIVE_INFINITY && loaded) {
+    setFreshAfter(settledAt);
+    setDeferredRefetches((count) => count + 1);
+  }
   const refetchOrDefer = useCallback<RefetchProviderStates>(
     (options) => {
       if (loaded) {
@@ -23,10 +28,10 @@ export function useRefetchAfterFirstLoad({
     [loaded, refetch],
   );
   useEffect(() => {
-    if (!deferred || !loaded) return;
-    setFreshAfter(Date.now());
+    if (issuedDeferredRefetchesRef.current === deferredRefetches) return;
+    issuedDeferredRefetchesRef.current = deferredRefetches;
     refetch({ cancelRefetch: true });
-  }, [deferred, loaded, refetch]);
+  }, [deferredRefetches, refetch]);
   return {
     refetch: refetchOrDefer,
     settledAt: freshAfter !== null && settledAt <= freshAfter ? 0 : settledAt,

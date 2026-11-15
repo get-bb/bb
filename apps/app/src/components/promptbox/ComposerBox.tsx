@@ -379,6 +379,17 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
   else if (ref) ref.current = value;
 }
 
+function createPromptBoxHandle(
+  getEditor: () => ExperimentalComposerEditor,
+): PromptBoxHandle {
+  return {
+    focusEnd: () => getEditor().focusEnd(),
+    get voice() {
+      return getEditor().voice ?? null;
+    },
+  };
+}
+
 function useComposerRendererHostApi({
   draft: draftStore,
   onSubmit,
@@ -613,12 +624,7 @@ function useComposerRendererHostApi({
   const attachEditor = useCallback<ComposerRootHost["attachEditor"]>(
     (getEditor) => {
       getEditorRef.current = getEditor;
-      assignRef(promptBoxRef, {
-        focusEnd: () => getEditor().focusEnd(),
-        get voice() {
-          return getEditor().voice ?? null;
-        },
-      });
+      assignRef(promptBoxRef, createPromptBoxHandle(getEditor));
       return () => {
         getEditorRef.current = null;
         assignRef(promptBoxRef, null);
