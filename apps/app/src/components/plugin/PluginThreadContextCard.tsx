@@ -26,7 +26,7 @@ import {
   type GroupedPlacement,
 } from "@/lib/grouped-placement";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadContextCardRowSlot,
   type PluginThreadContextCardSectionSlot,
 } from "@/lib/plugin-slots";
@@ -125,7 +125,10 @@ export function ThreadContextCardProvider({
   coreSections: readonly CoreThreadContextCardSection[];
   children: ReactNode;
 }) {
-  const { threadContextCardRows, threadContextCardSections } = usePluginSlots();
+  const threadContextCardRows = usePluginSlotKind("threadContextCardRows");
+  const threadContextCardSections = usePluginSlotKind(
+    "threadContextCardSections",
+  );
   const [layout, setLayout] = useState<ThreadContextCardLayout>("banner");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [cardHasContent, setCardHasContent] = useState(false);

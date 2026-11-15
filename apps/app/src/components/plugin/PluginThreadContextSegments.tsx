@@ -6,7 +6,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadContextSegmentSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -115,7 +115,7 @@ export function useThreadContextSegments(
   entries: readonly ThreadContextSegmentEntry[];
   observers: ReactNode;
 } {
-  const { threadContextSegments } = usePluginSlots();
+  const threadContextSegments = usePluginSlotKind("threadContextSegments");
   const entries = sortThreadContextSegments([
     ...core.map((slot) => ({ owner: "core" as const, slot })),
     ...threadContextSegments.map((slot) => ({

@@ -30,7 +30,7 @@ import {
 } from "@/lib/plugin-panel-controller";
 import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 
 export const CORE_THREAD_ACTION_OWNER = "bb--core";
 
@@ -311,7 +311,7 @@ class ThreadActionCollectorBoundary extends Component<
 function useThreadActionRecords(
   coreRegistrations: readonly PluginThreadActionRegistration<unknown>[],
 ): readonly ThreadActionRegistrationRecord[] {
-  const slots = usePluginSlots().threadActions;
+  const slots = usePluginSlotKind("threadActions");
   const records = [
     ...coreRegistrations.map((registration) => ({
       key: `${CORE_THREAD_ACTION_OWNER}/${registration.id}`,

@@ -17,7 +17,10 @@ import {
   buildFileOpenerRef,
   useFileOpenerPreference,
 } from "@/lib/file-opener-preference";
-import { usePluginSlots, type PluginFileOpenerSlot } from "@/lib/plugin-slots";
+import {
+  usePluginSlotKind,
+  type PluginFileOpenerSlot,
+} from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SETTINGS_DROPDOWN_CONTENT_CLASS,
@@ -28,7 +31,7 @@ const AUTOMATIC_FILE_OPENER_PREFERENCE = "__automatic__";
 const BUILTIN_LABEL = "Built-in preview";
 
 export function FileOpenersSettingsSection() {
-  const { fileOpeners } = usePluginSlots();
+  const fileOpeners = usePluginSlotKind("fileOpeners");
   const [preference, setPreference] = useFileOpenerPreference();
 
   const extensions = useMemo(

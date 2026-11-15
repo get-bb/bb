@@ -33,7 +33,7 @@ import {
   type PluginSettingFieldDescriptor,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { arePluginSettingsAvailable } from "@/lib/plugin-settings-availability";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { PluginMachineServerAccessNotice } from "@/components/machines/MachineServerAccessNotice";
@@ -588,7 +588,7 @@ function PluginSettingsContent({
   onBackToDetails?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const { settingsSections } = usePluginSlots();
+  const settingsSections = usePluginSlotKind("settingsSections");
   const { toggle, enabled } = usePluginEnabledMutation(plugin, () =>
     invalidateMachineProviders({ queryClient }),
   );
@@ -644,7 +644,7 @@ function PluginSettingsContent({
 }
 
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
-  const { settingsSections } = usePluginSlots();
+  const settingsSections = usePluginSlotKind("settingsSections");
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
   );
