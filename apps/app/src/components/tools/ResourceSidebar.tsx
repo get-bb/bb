@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useLocation } from "react-router-dom";
 import {
   SectionSidebar,
@@ -15,12 +15,12 @@ export function ResourceSidebar({
   workspace,
   backTo,
   isResizing,
-  onResizeMouseDown,
+  onResizePointerDown,
 }: {
   workspace: ToolsSectionId;
   backTo: string | null;
   isResizing: boolean;
-  onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
   const location = useLocation();
   const activePage = resolveToolsActivePage(location.pathname, location.search);
@@ -31,7 +31,7 @@ export function ResourceSidebar({
       backTo={backTo}
       title={workspace === "plugins" ? "Plugins" : "Skills"}
       isResizing={isResizing}
-      onResizeMouseDown={onResizeMouseDown}
+      onResizePointerDown={onResizePointerDown}
       testIdPrefix={workspace}
     >
       <div className="mt-1 space-y-0.5">

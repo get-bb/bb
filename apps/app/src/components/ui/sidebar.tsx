@@ -27,6 +27,10 @@ const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.86;
 const SIDEBAR_MOBILE_MAX_WIDTH_PX = 360;
 const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, ${SIDEBAR_MOBILE_MAX_WIDTH_PX}px)`;
+const SIDEBAR_MOBILE_MIN_WIDTH_PX = 240;
+const SIDEBAR_MOBILE_VIEWPORT_MARGIN_PX = 48;
+const SIDEBAR_MOBILE_RESIZE_MOVE_THRESHOLD_PX = 4;
+const SIDEBAR_MOBILE_RESIZE_DOUBLE_TAP_MS = 300;
 const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
 const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
@@ -87,9 +91,36 @@ const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
   "--sidebar-width-mobile": SIDEBAR_WIDTH_MOBILE,
 };
 
+function sidebarMobileWidthStyleFor(
+  width: number | null,
+): SidebarMobileWidthStyle {
+  if (width === null) {
+    return sidebarMobileWidthStyle;
+  }
+  return {
+    "--sidebar-width-mobile": `min(${width}px, calc(100vw - ${SIDEBAR_MOBILE_VIEWPORT_MARGIN_PX}px))`,
+  };
+}
+
+function clampSidebarMobileWidth(width: number): number {
+  const max = Math.max(
+    SIDEBAR_MOBILE_MIN_WIDTH_PX,
+    window.innerWidth - SIDEBAR_MOBILE_VIEWPORT_MARGIN_PX,
+  );
+  return Math.round(
+    Math.min(max, Math.max(SIDEBAR_MOBILE_MIN_WIDTH_PX, width)),
+  );
+}
+
 function getSidebarMobilePanelWidth(): number {
   if (typeof window === "undefined") {
     return SIDEBAR_MOBILE_MAX_WIDTH_PX;
+  }
+
+  const { panel } = getSidebarMobileMotionNodes();
+  const measuredWidth = panel?.getBoundingClientRect().width ?? 0;
+  if (measuredWidth > 0) {
+    return measuredWidth;
   }
 
   return Math.min(
@@ -160,6 +191,17 @@ function clearSidebarMobileDragAttributes() {
   panel?.removeAttribute("data-vaul-animate");
   backdrop?.removeAttribute("data-vaul-animate");
   inset?.removeAttribute("data-vaul-animate");
+}
+
+function setSidebarMobileResizeTransitionsSuppressed(suppressed: boolean) {
+  const { backdrop, inset } = getSidebarMobileMotionNodes();
+  const transition = suppressed ? "none" : "";
+  if (inset !== null) {
+    inset.style.transition = transition;
+  }
+  if (backdrop !== null) {
+    backdrop.style.transition = transition;
+  }
 }
 
 function clearSidebarMobileDragStyles() {
@@ -400,6 +442,15 @@ const SidebarContext = React.createContext<SidebarContext | null>(null);
 
 const SidebarWidthContext = React.createContext<string>(SIDEBAR_WIDTH);
 
+type SidebarMobileResize = {
+  preview: (width: number) => void;
+  commit: (width: number) => void;
+  reset: () => void;
+};
+
+const SidebarMobileResizeContext =
+  React.createContext<SidebarMobileResize | null>(null);
+
 const SidebarShowingContext = React.createContext<boolean | null>(null);
 
 const SidebarCollapsedRailWidthContext = React.createContext<string | null>(
@@ -451,6 +502,8 @@ const SidebarProvider = React.forwardRef<
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     width?: string;
+    mobileWidth?: number | null;
+    onMobileWidthChange?: (width: number | null) => void;
     collapsedRailWidth?: string;
     framed?: boolean;
   }
@@ -461,6 +514,8 @@ const SidebarProvider = React.forwardRef<
       open: openProp,
       onOpenChange: setOpenProp,
       width = SIDEBAR_WIDTH,
+      mobileWidth = null,
+      onMobileWidthChange,
       collapsedRailWidth,
       framed = false,
       className,
@@ -656,56 +711,82 @@ const SidebarProvider = React.forwardRef<
 
     const isSidebarShowing = isCompactViewport ? openMobile : open;
 
+    const [previewMobileWidth, setPreviewMobileWidth] = React.useState<
+      number | null
+    >(null);
+    const mobileResize = React.useMemo<SidebarMobileResize | null>(() => {
+      if (onMobileWidthChange === undefined) {
+        return null;
+      }
+      return {
+        preview: setPreviewMobileWidth,
+        commit: (nextWidth) => {
+          flushSync(() => {
+            onMobileWidthChange(nextWidth);
+            setPreviewMobileWidth(null);
+          });
+        },
+        reset: () => {
+          setPreviewMobileWidth(null);
+          onMobileWidthChange(null);
+        },
+      };
+    }, [onMobileWidthChange]);
+
     return (
       <SidebarContext.Provider value={contextValue}>
         <SidebarShowingContext.Provider value={isSidebarShowing}>
-          <SidebarWidthContext.Provider value={width}>
-            <SidebarCollapsedRailWidthContext.Provider
-              value={desktopCollapsedRailWidth}
-            >
-              <SidebarFramedContext.Provider value={isFramed}>
-                {}
-                <div
-                  data-framed={isFramed ? "" : undefined}
-                  style={
-                    {
-                      ...sidebarMobileWidthStyle,
-                      ...(isFramed
-                        ? {
-                            "--bb-window-card-collapsed-left":
-                              desktopCollapsedRailWidth ??
-                              "var(--bb-window-frame-leading-lip)",
-                          }
-                        : {}),
-                      ...style,
-                    } as React.CSSProperties
-                  }
-                  className={cn(
-                    "group/sidebar-wrapper flex h-full min-h-0 w-full max-md:overflow-clip",
-                    isFramed && SIDEBAR_FRAME_CLASS,
-                    isFramed &&
-                      desktopCollapsedRailWidth === null &&
-                      SIDEBAR_FRAME_LEADING_LIP_CLASS,
-                    className,
-                  )}
-                  ref={ref}
-                  {...props}
-                >
-                  {isFramed ? (
-                    <div
-                      aria-hidden="true"
-                      data-testid="window-title-bar-drag-region"
-                      className={cn(
-                        "fixed inset-x-0 top-0 h-(--bb-window-title-bar-height)",
-                        MACOS_WINDOW_DRAG_CLASS,
-                      )}
-                    />
-                  ) : null}
-                  {children}
-                </div>
-              </SidebarFramedContext.Provider>
-            </SidebarCollapsedRailWidthContext.Provider>
-          </SidebarWidthContext.Provider>
+          <SidebarMobileResizeContext.Provider value={mobileResize}>
+            <SidebarWidthContext.Provider value={width}>
+              <SidebarCollapsedRailWidthContext.Provider
+                value={desktopCollapsedRailWidth}
+              >
+                <SidebarFramedContext.Provider value={isFramed}>
+                  {}
+                  <div
+                    data-framed={isFramed ? "" : undefined}
+                    style={
+                      {
+                        ...sidebarMobileWidthStyleFor(
+                          previewMobileWidth ?? mobileWidth,
+                        ),
+                        ...(isFramed
+                          ? {
+                              "--bb-window-card-collapsed-left":
+                                desktopCollapsedRailWidth ??
+                                "var(--bb-window-frame-leading-lip)",
+                            }
+                          : {}),
+                        ...style,
+                      } as React.CSSProperties
+                    }
+                    className={cn(
+                      "group/sidebar-wrapper flex h-full min-h-0 w-full max-md:overflow-clip",
+                      isFramed && SIDEBAR_FRAME_CLASS,
+                      isFramed &&
+                        desktopCollapsedRailWidth === null &&
+                        SIDEBAR_FRAME_LEADING_LIP_CLASS,
+                      className,
+                    )}
+                    ref={ref}
+                    {...props}
+                  >
+                    {isFramed ? (
+                      <div
+                        aria-hidden="true"
+                        data-testid="window-title-bar-drag-region"
+                        className={cn(
+                          "fixed inset-x-0 top-0 h-(--bb-window-title-bar-height)",
+                          MACOS_WINDOW_DRAG_CLASS,
+                        )}
+                      />
+                    ) : null}
+                    {children}
+                  </div>
+                </SidebarFramedContext.Provider>
+              </SidebarCollapsedRailWidthContext.Provider>
+            </SidebarWidthContext.Provider>
+          </SidebarMobileResizeContext.Provider>
         </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
     );
@@ -919,6 +1000,122 @@ function getSidebarMobileTabStops(panel: HTMLElement): HTMLElement[] {
   );
 }
 
+type SidebarMobileResizeSession = {
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  width: number;
+  moved: boolean;
+};
+
+function SidebarMobileResizeHandle({
+  resize,
+}: {
+  resize: SidebarMobileResize;
+}) {
+  const sessionRef = React.useRef<SidebarMobileResizeSession | null>(null);
+  const lastTapAtRef = React.useRef<number | null>(null);
+  const [isResizing, setIsResizing] = React.useState(false);
+
+  const finish = (event: React.PointerEvent<HTMLDivElement>) => {
+    const session = sessionRef.current;
+    if (session === null || session.pointerId !== event.pointerId) {
+      return;
+    }
+    event.stopPropagation();
+    sessionRef.current = null;
+    setIsResizing(false);
+    setSidebarMobileResizeTransitionsSuppressed(false);
+    if (session.moved) {
+      lastTapAtRef.current = null;
+      resize.commit(session.width);
+      return;
+    }
+    if (event.type !== "pointerup") {
+      return;
+    }
+    const lastTapAt = lastTapAtRef.current;
+    if (
+      lastTapAt !== null &&
+      event.timeStamp - lastTapAt <= SIDEBAR_MOBILE_RESIZE_DOUBLE_TAP_MS
+    ) {
+      lastTapAtRef.current = null;
+      resize.reset();
+      return;
+    }
+    lastTapAtRef.current = event.timeStamp;
+  };
+
+  React.useEffect(
+    () => () => {
+      if (sessionRef.current !== null) {
+        sessionRef.current = null;
+        setSidebarMobileResizeTransitionsSuppressed(false);
+      }
+    },
+    [],
+  );
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      data-testid="sidebar-mobile-resize-handle"
+      data-resizing={isResizing ? "" : undefined}
+      data-no-sidebar-swipe=""
+      className="group/resize absolute inset-y-0 -left-2 w-6 touch-none select-none"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (event.button !== 0 || sessionRef.current !== null) {
+          return;
+        }
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        clearSidebarMobileDragStyles();
+        setSidebarMobileResizeTransitionsSuppressed(true);
+        const startWidth = getSidebarMobilePanelWidth();
+        sessionRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startWidth,
+          width: clampSidebarMobileWidth(startWidth),
+          moved: false,
+        };
+        setIsResizing(true);
+      }}
+      onPointerMove={(event) => {
+        const session = sessionRef.current;
+        if (session === null || session.pointerId !== event.pointerId) {
+          return;
+        }
+        event.stopPropagation();
+        if (
+          !session.moved &&
+          Math.abs(event.clientX - session.startX) <
+            SIDEBAR_MOBILE_RESIZE_MOVE_THRESHOLD_PX
+        ) {
+          return;
+        }
+        session.moved = true;
+        session.width = clampSidebarMobileWidth(
+          session.startWidth + event.clientX - session.startX,
+        );
+        resize.preview(session.width);
+      }}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+      onTouchStart={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 left-2 h-12 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sidebar-border transition-[height,background-color] group-data-[resizing]/resize:h-16 group-data-[resizing]/resize:bg-muted-foreground"
+      />
+    </div>
+  );
+}
+
 const SidebarMobilePanel = React.forwardRef<
   HTMLDivElement,
   SidebarMobilePanelProps
@@ -1031,6 +1228,8 @@ const SidebarMobilePanel = React.forwardRef<
       };
     }, [open, onDismiss]);
 
+    const mobileResize = React.useContext(SidebarMobileResizeContext);
+
     const { beginPointerDrag, beginTouchDrag } = useHorizontalDismissDrag({
       direction: "left",
       dismissTiming: "settled",
@@ -1080,7 +1279,11 @@ const SidebarMobilePanel = React.forwardRef<
           onClick={onDismiss}
           onPointerDown={beginPointerDrag}
           onTouchStart={beginTouchDrag}
-        />
+        >
+          {mobileResize !== null && open ? (
+            <SidebarMobileResizeHandle resize={mobileResize} />
+          ) : null}
+        </div>
         <div
           ref={setPanelRef}
           role="dialog"
@@ -1100,12 +1303,7 @@ const SidebarMobilePanel = React.forwardRef<
             "border-border-seam data-[side=left]:border-r",
             className,
           )}
-          style={
-            {
-              ...sidebarMobileWidthStyle,
-              ...style,
-            } as SidebarMobileWidthStyle
-          }
+          style={style}
           onPointerDown={beginPanelPointerDrag}
           onTouchStart={beginPanelTouchDrag}
           {...props}
@@ -1461,10 +1659,7 @@ const SidebarInset = React.forwardRef<
       }
 
       const touch = event.touches.item(0);
-      if (
-        touch == null ||
-        touch.clientX < browserNavigationEdgeGuardPx()
-      ) {
+      if (touch == null || touch.clientX < browserNavigationEdgeGuardPx()) {
         return;
       }
 

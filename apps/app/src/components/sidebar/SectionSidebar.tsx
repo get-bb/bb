@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -104,7 +104,7 @@ export function SectionSidebar({
   children,
   headerSlot,
   isResizing,
-  onResizeMouseDown,
+  onResizePointerDown,
   testIdPrefix,
   title,
 }: {
@@ -112,7 +112,7 @@ export function SectionSidebar({
   children: ReactNode;
   headerSlot?: ReactNode;
   isResizing: boolean;
-  onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   testIdPrefix: string;
   title: string;
 }) {
@@ -162,7 +162,7 @@ export function SectionSidebar({
       <SidebarResizeHandle
         testId={`${testIdPrefix}-sidebar-resize-handle`}
         isResizing={isResizing}
-        onMouseDown={onResizeMouseDown}
+        onPointerDown={onResizePointerDown}
       />
     </div>
   );

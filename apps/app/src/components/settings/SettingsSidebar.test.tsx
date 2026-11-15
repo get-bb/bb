@@ -65,7 +65,7 @@ function renderSidebar({
             pluginEntries: [configurablePlugin],
             sections: SETTINGS_NAV_SECTIONS,
           }}
-          onResizeMouseDown={() => {}}
+          onResizePointerDown={() => {}}
           pluginSettingSearch={{
             entries: [linearApiKeySetting],
             isLoading: false,
@@ -219,7 +219,7 @@ describe("SettingsSidebarContent search", () => {
               pluginEntries: [configurablePlugin],
               sections: SETTINGS_NAV_SECTIONS,
             }}
-            onResizeMouseDown={() => {}}
+            onResizePointerDown={() => {}}
             pluginSettingSearch={{
               entries: [],
               isLoading: false,

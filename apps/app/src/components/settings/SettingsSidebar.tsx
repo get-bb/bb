@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -54,7 +54,7 @@ import { useSettingsSearchConditions } from "./useSettingsSearchConditions";
 
 interface SettingsSidebarProps {
   backTo: string | null;
-  onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   isResizing: boolean;
 }
 
@@ -291,7 +291,7 @@ function SettingsSearchResults({
 
 export function SettingsSidebarContent({
   backTo,
-  onResizeMouseDown,
+  onResizePointerDown,
   isResizing,
   navigation,
   pluginSettingSearch,
@@ -378,7 +378,7 @@ export function SettingsSidebarContent({
       backTo={backTo}
       title="Settings"
       isResizing={isResizing}
-      onResizeMouseDown={onResizeMouseDown}
+      onResizePointerDown={onResizePointerDown}
       testIdPrefix={testIdPrefix}
       headerSlot={
         <SettingsSearchField
@@ -495,7 +495,7 @@ export function SettingsSidebarContent({
 
 export function SettingsSidebar({
   backTo,
-  onResizeMouseDown,
+  onResizePointerDown,
   isResizing,
 }: SettingsSidebarProps) {
   const navigation = useSettingsNavState();
@@ -511,7 +511,7 @@ export function SettingsSidebar({
       backTo={backTo}
       isResizing={isResizing}
       navigation={navigation}
-      onResizeMouseDown={onResizeMouseDown}
+      onResizePointerDown={onResizePointerDown}
       pluginSettingSearch={{
         entries: pluginSettings.entries,
         isLoading: pluginSettings.isLoading,

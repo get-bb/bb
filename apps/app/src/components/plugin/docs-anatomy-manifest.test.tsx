@@ -137,7 +137,7 @@ function renderAppSidebar() {
                   <ThreadActionsProvider>
                     <SidebarProvider>
                       <AppSidebar
-                        onResizeMouseDown={() => {}}
+                        onResizePointerDown={() => {}}
                         isResizing={false}
                         isBodyHidden={false}
                         navigation={{ kind: "loading", placement: "rail" }}

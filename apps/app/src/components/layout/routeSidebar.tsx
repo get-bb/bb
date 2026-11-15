@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { matchPath } from "react-router-dom";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { LazySettingsSidebar } from "@/components/settings/LazySettingsSidebar";
@@ -14,7 +14,7 @@ import {
 export interface RouteSidebarProps {
   backTo: string | null;
   isResizing: boolean;
-  onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }
 
 export interface RouteSidebar {

@@ -1,6 +1,6 @@
 import {
   useState,
-  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -104,22 +104,28 @@ export function SidebarTopReserveRow({
 
 export function SidebarResizeHandle({
   isResizing,
-  onMouseDown,
+  onPointerDown,
   testId,
 }: {
   isResizing: boolean;
-  onMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   testId: string;
 }) {
   return (
     <div
       data-testid={testId}
+      data-resizing={isResizing ? "" : undefined}
       className={cn(
-        "absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize md:block",
+        "group/resize absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize touch-none select-none md:block pointer-coarse:-right-3 pointer-coarse:w-6",
         "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors hover:before:bg-sidebar-border",
         isResizing && "before:bg-sidebar-border",
       )}
-      onMouseDown={onMouseDown}
-    />
+      onPointerDown={onPointerDown}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 left-1/2 hidden h-12 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sidebar-border transition-[height,background-color] pointer-coarse:block group-data-[resizing]/resize:h-16 group-data-[resizing]/resize:bg-muted-foreground"
+      />
+    </div>
   );
 }

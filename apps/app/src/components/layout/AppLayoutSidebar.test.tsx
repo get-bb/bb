@@ -168,7 +168,7 @@ function SidebarModeHarness() {
       <AppLayoutSidebar
         routeSidebar={routeSidebar}
         isSettingsActive={pathname === "/settings"}
-        onResizeMouseDown={() => {}}
+        onResizePointerDown={() => {}}
         isResizing={false}
         settingsRoutePath="/settings"
         backToAppRoutePath={routeSidebar === null ? null : "/"}
@@ -437,12 +437,12 @@ function panelSidebarTree({
   target,
   pathname = "/plugins/home/home/inbox",
   compact = false,
-  onResizeMouseDown = vi.fn(),
+  onResizePointerDown = vi.fn(),
 }: {
   target?: ReturnType<typeof panelSidebar>;
   pathname?: string;
   compact?: boolean;
-  onResizeMouseDown?: () => void;
+  onResizePointerDown?: () => void;
 } = {}) {
   const client = new QueryClient();
   client.setQueryData(
@@ -460,7 +460,7 @@ function panelSidebarTree({
                 <AppLayoutSidebar
                   routeSidebar={routeSidebar}
                   isSettingsActive={pathname === "/settings"}
-                  onResizeMouseDown={onResizeMouseDown}
+                  onResizePointerDown={onResizePointerDown}
                   isResizing={false}
                   settingsRoutePath="/settings"
                   backToAppRoutePath={routeSidebar === null ? null : "/"}
@@ -525,15 +525,15 @@ describe("navigation panel sidebar composition", () => {
     },
   );
   it("restores the host resize handle and calls the native drag handler", () => {
-    const onResizeMouseDown = vi.fn();
+    const onResizePointerDown = vi.fn();
     render(
-      panelSidebarTree({ target: panelSidebar("inbox"), onResizeMouseDown }),
+      panelSidebarTree({ target: panelSidebar("inbox"), onResizePointerDown }),
     );
-    fireEvent.mouseDown(screen.getByTestId("plugin-sidebar-resize-handle"), {
+    fireEvent.pointerDown(screen.getByTestId("plugin-sidebar-resize-handle"), {
       clientX: 280,
       button: 0,
     });
-    expect(onResizeMouseDown).toHaveBeenCalledOnce();
+    expect(onResizePointerDown).toHaveBeenCalledOnce();
   });
   it("keeps native header/history controls and navigates back and forward", () => {
     render(

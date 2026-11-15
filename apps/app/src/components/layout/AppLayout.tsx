@@ -1,5 +1,5 @@
 import { useCorePageTitle } from "./core-page-title";
-import { type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
@@ -171,6 +171,28 @@ const sidebarWidthAtom = atomWithStorage<number>(
 );
 const sidebarLiveWidthAtom = atom<number | null>(null);
 
+const SIDEBAR_MOBILE_WIDTH_KEY = "bb.sidebar.mobileWidth";
+
+const sidebarMobileWidthStorage = createTabScopedStorage<number | null>({
+  parse: (storedValue, initialValue) => {
+    if (storedValue === null || storedValue === "") {
+      return initialValue;
+    }
+    const parsedValue = Number(storedValue);
+    return Number.isFinite(parsedValue) && parsedValue > 0
+      ? parsedValue
+      : initialValue;
+  },
+  serialize: (value) => (value === null ? "" : String(value)),
+});
+
+const sidebarMobileWidthAtom = atomWithStorage<number | null>(
+  SIDEBAR_MOBILE_WIDTH_KEY,
+  null,
+  sidebarMobileWidthStorage,
+  { getOnInit: true },
+);
+
 const sidebarOpenStorage = createTabScopedStorage<boolean>(
   {
     parse: (storedValue, initialValue) => {
@@ -195,7 +217,7 @@ interface SidebarStateBridgeProps {
   children: ReactNode;
 }
 
-type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
+type SidebarResizePointerEvent = ReactPointerEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
 function SidebarStateBridge({
@@ -206,6 +228,9 @@ function SidebarStateBridge({
   const hasRail = useSidebarNavigationPlacement() === "rail";
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
+  const [sidebarMobileWidth, setSidebarMobileWidth] = useAtom(
+    sidebarMobileWidthAtom,
+  );
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
     (nextOpen) => {
       setOpen(nextOpen);
@@ -220,6 +245,8 @@ function SidebarStateBridge({
   return (
     <SidebarProvider
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
+      mobileWidth={sidebarMobileWidth}
+      onMobileWidthChange={setSidebarMobileWidth}
       collapsedRailWidth={
         hasRail ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH : undefined
       }
@@ -604,6 +631,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       : null;
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const startXRef = useRef(0);
+  const resizePointerIdRef = useRef<number | null>(null);
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
@@ -747,9 +775,11 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     [],
   );
 
-  const handleResizeMouseDown = useCallback(
-    (event: SidebarResizeMouseEvent) => {
+  const handleResizePointerDown = useCallback(
+    (event: SidebarResizePointerEvent) => {
+      if (event.button !== 0 || resizePointerIdRef.current !== null) return;
       event.preventDefault();
+      resizePointerIdRef.current = event.pointerId;
       setIsSidebarResizing(true);
       startXRef.current = event.clientX;
       startWidthRef.current = store.get(sidebarWidthAtom);
@@ -769,6 +799,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       store.set(sidebarLiveWidthAtom, null);
     });
     dispatchBrowserViewBoundsSync();
+    resizePointerIdRef.current = null;
     setIsSidebarResizing(false);
     resetSidebarResizeDocumentState();
   }, [store]);
@@ -784,7 +815,8 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       dispatchBrowserViewBoundsSync();
     };
 
-    const handleMouseMove = (event: MouseEvent) => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== resizePointerIdRef.current) return;
       const delta = event.clientX - startXRef.current;
       liveWidthRef.current = clampSidebarWidth(startWidthRef.current + delta);
       if (animationFrameRef.current === null) {
@@ -799,19 +831,27 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       }
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", finishSidebarResize);
+    const handlePointerEnd = (event: PointerEvent) => {
+      if (event.pointerId !== resizePointerIdRef.current) return;
+      finishSidebarResize();
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
     window.addEventListener("blur", finishSidebarResize);
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", finishSidebarResize);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
       window.removeEventListener("blur", finishSidebarResize);
       window.removeEventListener("keydown", handleKeyDown);
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
+      resizePointerIdRef.current = null;
       store.set(sidebarLiveWidthAtom, null);
       resetSidebarResizeDocumentState();
     };
@@ -846,7 +886,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                 <AppLayoutSidebar
                   routeSidebar={routeSidebar}
                   isSettingsActive={isGlobalSettingsView}
-                  onResizeMouseDown={handleResizeMouseDown}
+                  onResizePointerDown={handleResizePointerDown}
                   isResizing={isSidebarResizing}
                   settingsRoutePath={settingsRoutePath}
                   backToAppRoutePath={backToAppRoutePath}

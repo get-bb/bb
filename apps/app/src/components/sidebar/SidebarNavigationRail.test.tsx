@@ -208,7 +208,7 @@ function RailHarness({
           <AppLayoutSidebar
             routeSidebar={resolveRouteSidebar(location.pathname, null)}
             isSettingsActive={isSettings}
-            onResizeMouseDown={() => {}}
+            onResizePointerDown={() => {}}
             isResizing={false}
             settingsRoutePath={SETTINGS_ROUTE_PATH}
             backToAppRoutePath={isSettings ? "/" : null}

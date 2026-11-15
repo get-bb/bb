@@ -1614,3 +1614,137 @@ describe("mobile sidebar text-selection arbitration", () => {
     expect(getMobilePanel()?.dataset.state).toBe("open");
   });
 });
+
+function ResizableCompactSidebarHarness({
+  onWidthChange,
+  initialWidth = null,
+}: {
+  onWidthChange: (width: number | null) => void;
+  initialWidth?: number | null;
+}) {
+  const [mobileWidth, setMobileWidth] = useState<number | null>(initialWidth);
+  return (
+    <CompactViewportOverrideProvider isCompactViewport>
+      <SidebarProvider
+        data-testid="sidebar-wrapper"
+        mobileWidth={mobileWidth}
+        onMobileWidthChange={(width) => {
+          onWidthChange(width);
+          setMobileWidth(width);
+        }}
+      >
+        <Sidebar>Sidebar content</Sidebar>
+        <SidebarInset>
+          <SidebarTrigger />
+          Main content
+        </SidebarInset>
+      </SidebarProvider>
+    </CompactViewportOverrideProvider>
+  );
+}
+
+function openResizableCompactSidebar(
+  onWidthChange: (width: number | null) => void,
+  initialWidth: number | null = null,
+): HTMLElement {
+  vi.useFakeTimers();
+  vi.spyOn(window, "innerWidth", "get").mockReturnValue(800);
+  render(
+    <ResizableCompactSidebarHarness
+      onWidthChange={onWidthChange}
+      initialWidth={initialWidth}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+  settleMobileToggle();
+  const handle = screen.getByTestId("sidebar-mobile-resize-handle");
+  handle.setPointerCapture = vi.fn();
+  return handle;
+}
+
+function mobileWidthVariable(): string {
+  return screen
+    .getByTestId("sidebar-wrapper")
+    .style.getPropertyValue("--sidebar-width-mobile");
+}
+
+describe("mobile sidebar resize handle", () => {
+  it("is absent while the drawer is closed and when resizing is not wired", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    expect(screen.queryByTestId("sidebar-mobile-resize-handle")).toBeNull();
+  });
+
+  it("previews while dragging, commits on release, and keeps the drawer open", () => {
+    const onWidthChange = vi.fn();
+    const handle = openResizableCompactSidebar(onWidthChange);
+
+    firePointer(handle, "pointerdown", 344, 200);
+    firePointer(handle, "pointermove", 444, 205);
+    expect(mobileWidthVariable()).toBe("min(460px, calc(100vw - 48px))");
+    expect(onWidthChange).not.toHaveBeenCalled();
+
+    firePointer(handle, "pointerup", 444, 205);
+    fireEvent.click(handle);
+    settleMobileToggle();
+
+    expect(onWidthChange).toHaveBeenCalledWith(460);
+    expect(mobileWidthVariable()).toBe("min(460px, calc(100vw - 48px))");
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+  });
+
+  it("clamps to the minimum width and the viewport margin", () => {
+    const onWidthChange = vi.fn();
+    const handle = openResizableCompactSidebar(onWidthChange);
+
+    firePointer(handle, "pointerdown", 344, 200);
+    firePointer(handle, "pointermove", 10, 200);
+    firePointer(handle, "pointerup", 10, 200);
+    expect(onWidthChange).toHaveBeenLastCalledWith(240);
+
+    firePointer(handle, "pointerdown", 240, 200, 2);
+    firePointer(handle, "pointermove", 2000, 200, 2);
+    firePointer(handle, "pointerup", 2000, 200, 2);
+    expect(onWidthChange).toHaveBeenLastCalledWith(752);
+  });
+
+  it("does not start the drawer's dismiss drag", () => {
+    const handle = openResizableCompactSidebar(vi.fn());
+
+    fireTouch(handle, "touchstart", createTouch(344, 160));
+    fireTouch(window, "touchmove", createTouch(120, 164));
+    fireTouchEnd(window, createTouch(120, 164));
+    settleMobileToggle();
+
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+  });
+
+  it("does not save a width for a tap without movement", () => {
+    const onWidthChange = vi.fn();
+    const handle = openResizableCompactSidebar(onWidthChange);
+
+    firePointer(handle, "pointerdown", 344, 200);
+    firePointer(handle, "pointermove", 346, 240);
+    firePointer(handle, "pointerup", 346, 240);
+
+    expect(onWidthChange).not.toHaveBeenCalled();
+    expect(mobileWidthVariable()).toBe("min(86vw, 360px)");
+  });
+
+  it("resets to the default width on a double tap", () => {
+    const onWidthChange = vi.fn();
+    const handle = openResizableCompactSidebar(onWidthChange, 300);
+    expect(mobileWidthVariable()).toBe("min(300px, calc(100vw - 48px))");
+
+    firePointer(handle, "pointerdown", 300, 200);
+    firePointer(handle, "pointerup", 300, 200);
+    firePointer(handle, "pointerdown", 300, 200);
+    firePointer(handle, "pointerup", 300, 200);
+
+    expect(onWidthChange).toHaveBeenCalledWith(null);
+    expect(mobileWidthVariable()).toBe("min(86vw, 360px)");
+  });
+});

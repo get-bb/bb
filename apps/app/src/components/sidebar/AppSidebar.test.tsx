@@ -69,7 +69,7 @@ function Harness() {
   const navigation = useResolvedSidebarNavigation();
   return (
     <AppSidebar
-      onResizeMouseDown={() => {}}
+      onResizePointerDown={() => {}}
       isResizing={false}
       isBodyHidden={false}
       navigation={navigation}

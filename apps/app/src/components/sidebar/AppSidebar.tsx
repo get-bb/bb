@@ -76,7 +76,7 @@ import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 
 interface AppSidebarProps {
-  onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onResizePointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   isBodyHidden: boolean;
   navigation: ResolvedSidebarNavigation;
@@ -86,7 +86,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
-  onResizeMouseDown,
+  onResizePointerDown,
   isResizing,
   isBodyHidden,
   navigation,
@@ -370,7 +370,7 @@ export function AppSidebar({
       <SidebarResizeHandle
         testId="app-sidebar-resize-handle"
         isResizing={isResizing}
-        onMouseDown={onResizeMouseDown}
+        onPointerDown={onResizePointerDown}
       />
     </>
   );

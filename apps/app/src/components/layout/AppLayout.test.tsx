@@ -23,7 +23,7 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { resetNativeShellForTests } from "@/lib/native-shell";
 import {
   useEffect,
-  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { Link, MemoryRouter, useLocation } from "react-router-dom";
@@ -57,6 +57,23 @@ const sidebarThreadsMock = vi.hoisted(() => {
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_STORAGE_KEY = "bb.sidebar.open";
+function firePointer(
+  target: Element | Window,
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
+  clientX: number,
+  pointerId = 1,
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    pointerId: { value: pointerId },
+    pointerType: { value: "touch" },
+    button: { value: 0 },
+    clientX: { value: clientX },
+    clientY: { value: 200 },
+  });
+  fireEvent(target, event);
+}
+
 const APP_ROUTE = "/projects/proj_one/threads/thr_one?message=12#event-12";
 const SETTINGS_ROUTE = "/settings/providers/codex?tab=models#preferred";
 const PLUGINS_ROUTE = "/plugins/ui-patterns?tab=settings#source";
@@ -68,13 +85,13 @@ vi.mock("./AppLayoutSidebar", async () => {
   >("@/components/ui/sidebar");
   return {
     AppLayoutSidebar: ({
-      onResizeMouseDown,
+      onResizePointerDown,
     }: {
-      onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+      onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
     }) => (
       <Sidebar>
         <div data-testid="sidebar-body">App sidebar</div>
-        <div data-testid="resize-handle" onMouseDown={onResizeMouseDown} />
+        <div data-testid="resize-handle" onPointerDown={onResizePointerDown} />
       </Sidebar>
     ),
   };
@@ -583,9 +600,7 @@ describe("AppLayout sidebar resize drag", () => {
     (route) => {
       renderLayout(APP_ROUTE);
       fireEvent.click(screen.getByRole("link", { name: route }));
-      fireEvent.mouseDown(screen.getByTestId("resize-handle"), {
-        clientX: 320,
-      });
+      firePointer(screen.getByTestId("resize-handle"), "pointerdown", 320);
       expect(document.body.classList.contains("sidebar-resizing")).toBe(true);
 
       fireEvent.keyDown(document, { key: "Escape" });
@@ -613,10 +628,10 @@ describe("AppLayout sidebar resize drag", () => {
     const handle = document.querySelector('[data-testid="resize-handle"]');
     if (!handle) throw new Error("missing handle");
     act(() => {
-      fireEvent.mouseDown(handle, { clientX: 320 });
+      firePointer(handle, "pointerdown", 320);
     });
     act(() => {
-      fireEvent.mouseMove(window, { clientX: 360 });
+      firePointer(window, "pointermove", 360);
     });
     flushFrames();
 
@@ -629,13 +644,41 @@ describe("AppLayout sidebar resize drag", () => {
     expect(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)).toBe("320");
 
     act(() => {
-      fireEvent.mouseUp(window);
+      firePointer(window, "pointerup", 360);
     });
 
     expect(widthVar(gap)).toBe("360px");
     expect(widthVar(panel)).toBe("360px");
     expect(widthVar(root)).toBe("");
     expect(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)).toBe("360");
+    expect(document.body.classList.contains("sidebar-resizing")).toBe(false);
+  });
+
+  it("follows only the pointer that started the drag and ends on pointercancel", () => {
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, "320");
+    renderLayout();
+    const panel = document.querySelector('[data-sidebar="panel"]');
+    const handle = screen.getByTestId("resize-handle");
+
+    act(() => {
+      firePointer(handle, "pointerdown", 320, 7);
+    });
+    act(() => {
+      firePointer(window, "pointermove", 420, 8);
+    });
+    flushFrames();
+    expect(widthVar(panel)).toBe("320px");
+
+    act(() => {
+      firePointer(window, "pointermove", 380, 7);
+    });
+    flushFrames();
+    expect(widthVar(panel)).toBe("380px");
+
+    act(() => {
+      firePointer(window, "pointercancel", 380, 7);
+    });
+    expect(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)).toBe("380");
     expect(document.body.classList.contains("sidebar-resizing")).toBe(false);
   });
 
@@ -649,7 +692,7 @@ describe("AppLayout sidebar resize drag", () => {
     const handle = document.querySelector('[data-testid="resize-handle"]');
     if (!handle) throw new Error("missing handle");
     act(() => {
-      fireEvent.mouseDown(handle, { clientX: 320 });
+      firePointer(handle, "pointerdown", 320);
     });
 
     const overlay = document.querySelector(
@@ -663,7 +706,7 @@ describe("AppLayout sidebar resize drag", () => {
     expect(root.contains(overlay)).toBe(false);
 
     act(() => {
-      fireEvent.mouseUp(window);
+      firePointer(window, "pointerup", 360);
     });
     expect(
       document.querySelector('[data-testid="iframe-drag-guard-overlay"]'),

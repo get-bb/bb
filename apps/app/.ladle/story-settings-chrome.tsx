@@ -84,7 +84,7 @@ export function SettingsStoryChrome({
             pluginEntries: [],
             sections: SETTINGS_NAV_SECTIONS,
           }}
-          onResizeMouseDown={() => {}}
+          onResizePointerDown={() => {}}
           pluginSettingSearch={{
             entries: [],
             isLoading: false,

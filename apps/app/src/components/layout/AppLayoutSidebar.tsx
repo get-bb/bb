@@ -1,4 +1,4 @@
-import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import {
   sidebarNavigationPlacement,
@@ -11,7 +11,7 @@ import type { RouteSidebar } from "./routeSidebar";
 interface AppLayoutSidebarProps {
   routeSidebar: RouteSidebar | null;
   isSettingsActive: boolean;
-  onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   settingsRoutePath: string;
   backToAppRoutePath: string | null;
@@ -20,7 +20,7 @@ interface AppLayoutSidebarProps {
 export function AppLayoutSidebar({
   routeSidebar,
   isSettingsActive,
-  onResizeMouseDown,
+  onResizePointerDown,
   isResizing,
   settingsRoutePath,
   backToAppRoutePath,
@@ -50,7 +50,7 @@ export function AppLayoutSidebar({
 
   return (
     <AppSidebar
-      onResizeMouseDown={onResizeMouseDown}
+      onResizePointerDown={onResizePointerDown}
       isResizing={isResizing}
       isBodyHidden={rendered.routeSidebar !== null}
       navigation={navigation}
@@ -60,7 +60,7 @@ export function AppLayoutSidebar({
         rendered.routeSidebar?.render({
           backTo,
           isResizing,
-          onResizeMouseDown,
+          onResizePointerDown,
         }) ?? null
       }
     />

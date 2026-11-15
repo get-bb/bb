@@ -428,7 +428,7 @@ function ScenarioStage({ scenario }: { scenario: Scenario }) {
               routeSidebar={null}
               isSettingsActive={false}
               isResizing={false}
-              onResizeMouseDown={() => {}}
+              onResizePointerDown={() => {}}
               settingsRoutePath="/settings/updates"
               backToAppRoutePath={null}
             />
@@ -555,7 +555,7 @@ export function MachineNotices() {
             routeSidebar={null}
             isSettingsActive={false}
             isResizing={false}
-            onResizeMouseDown={() => {}}
+            onResizePointerDown={() => {}}
             settingsRoutePath="/settings/machines"
             backToAppRoutePath={null}
           />
