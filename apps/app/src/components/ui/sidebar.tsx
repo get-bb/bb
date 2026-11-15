@@ -19,6 +19,7 @@ import {
   findTouchById,
   hasTextSelectionWithin,
   isHorizontallyScrollableElement,
+  listenToGesture,
 } from "./gesture-dom.js";
 import { useHorizontalDismissDrag } from "./use-horizontal-dismiss-drag.js";
 import { MACOS_WINDOW_DRAG_CLASS } from "@/lib/bb-desktop";
@@ -1461,10 +1462,7 @@ const SidebarInset = React.forwardRef<
       }
 
       const touch = event.touches.item(0);
-      if (
-        touch == null ||
-        touch.clientX < browserNavigationEdgeGuardPx()
-      ) {
+      if (touch == null || touch.clientX < browserNavigationEdgeGuardPx()) {
         return;
       }
 
@@ -1489,17 +1487,16 @@ const SidebarInset = React.forwardRef<
         canPreventDefault,
       });
 
-      const removeListeners = () => {
-        window.removeEventListener("touchmove", handleTouchMove);
-        window.removeEventListener("touchend", handleTouchEnd);
-        window.removeEventListener("touchcancel", handleTouchEnd);
+      const removers = [
+        listenToGesture(event.target, "touchmove", handleTouchMove, {
+          passive: !canPreventDefault,
+        }),
+        listenToGesture(event.target, "touchend", handleTouchEnd),
+        listenToGesture(event.target, "touchcancel", handleTouchEnd),
+      ];
+      removeSwipeListenersRef.current = () => {
+        for (const remove of removers) remove();
       };
-      window.addEventListener("touchmove", handleTouchMove, {
-        passive: !canPreventDefault,
-      });
-      window.addEventListener("touchend", handleTouchEnd);
-      window.addEventListener("touchcancel", handleTouchEnd);
-      removeSwipeListenersRef.current = removeListeners;
     },
     [
       clearSwipeSession,
@@ -1545,17 +1542,16 @@ const SidebarInset = React.forwardRef<
         canPreventDefault: true,
       });
 
-      const removeListeners = () => {
-        window.removeEventListener("pointermove", handleSwipeMove);
-        window.removeEventListener("pointerup", handleSwipeEnd);
-        window.removeEventListener("pointercancel", handleSwipeEnd);
+      const removers = [
+        listenToGesture(event.target, "pointermove", handleSwipeMove, {
+          passive: false,
+        }),
+        listenToGesture(event.target, "pointerup", handleSwipeEnd),
+        listenToGesture(event.target, "pointercancel", handleSwipeEnd),
+      ];
+      removeSwipeListenersRef.current = () => {
+        for (const remove of removers) remove();
       };
-      window.addEventListener("pointermove", handleSwipeMove, {
-        passive: false,
-      });
-      window.addEventListener("pointerup", handleSwipeEnd);
-      window.addEventListener("pointercancel", handleSwipeEnd);
-      removeSwipeListenersRef.current = removeListeners;
     },
     [
       clearSwipeSession,
