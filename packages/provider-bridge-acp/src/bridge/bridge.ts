@@ -3831,6 +3831,7 @@ async function handleRequest(
         capabilities: {
           sessionRestore: false,
           threadArchive: false,
+          threadVoice: false,
           threadRename: false,
           threadGoalClear: false,
           fork: "tip",

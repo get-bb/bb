@@ -1,4 +1,4 @@
-import type { ThreadVoiceCommand } from "@bb/domain";
+import type { ThreadVoiceContext, ThreadVoiceCommand } from "@bb/domain";
 import type {
   ClientTurnRequestId,
   DynamicTool,
@@ -120,6 +120,7 @@ export type AdapterCommand =
       threadId: string;
       providerThreadId: string;
       command: ThreadVoiceCommand;
+      context?: ThreadVoiceContext;
     }
   | {
       type: "thread/goal/clear";

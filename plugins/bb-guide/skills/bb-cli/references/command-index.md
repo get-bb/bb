@@ -208,6 +208,7 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb thread clear`
 - `bb thread cancel-plan`
 - `bb thread clear-goal`
+- `bb thread voice`
 - `bb thread voice start`
 - `bb thread voice stop`
 - `bb thread voice keep-alive`

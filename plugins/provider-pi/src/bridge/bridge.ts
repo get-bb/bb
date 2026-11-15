@@ -514,6 +514,7 @@ async function handleRequest(
         capabilities: {
           sessionRestore: true,
           threadArchive: false,
+          threadVoice: false,
           threadRename: false,
           threadGoalClear: false,
           fork: "checkpoint",

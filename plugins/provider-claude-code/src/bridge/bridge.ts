@@ -2290,6 +2290,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
         capabilities: {
           sessionRestore: true,
           threadArchive: false,
+          threadVoice: false,
           threadRename: false,
           threadGoalClear: false,
           fork: "checkpoint",

@@ -47,6 +47,8 @@ it("negotiates native WebRTC on the existing thread, including an answer before 
         transport: { type: "webrtc", sdp: "offer" },
         version: "v3",
         outputModality: "audio",
+        includeStartupContext: true,
+        initialItems: [],
       },
     }),
   );

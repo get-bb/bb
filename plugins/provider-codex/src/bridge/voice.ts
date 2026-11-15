@@ -67,6 +67,7 @@ export class CodexVoiceSession {
 
   async command(
     command: z.infer<typeof voiceCommandSchema>,
+    context: z.infer<typeof threadVoiceParamsSchema>["context"] = [],
   ): Promise<{ sdp: string | null }> {
     if (command.action === "keepAlive") {
       if (this.sessionId !== command.sessionId)
@@ -110,6 +111,8 @@ export class CodexVoiceSession {
             transport: { type: "webrtc", sdp: command.sdp },
             version: "v3",
             outputModality: "audio",
+            includeStartupContext: true,
+            initialItems: context,
           },
           resultSchema: z.object({}),
           timeoutMs: 30000,

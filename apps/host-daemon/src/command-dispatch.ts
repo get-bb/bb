@@ -442,6 +442,7 @@ const commandHandlers: CommandHandlerMap = {
     const result = await entry.runtime.voice({
       threadId: command.threadId,
       command: command.command,
+      context: command.context,
     });
     await options.eventSink.flush();
     return result;

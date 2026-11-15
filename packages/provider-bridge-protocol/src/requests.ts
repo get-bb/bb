@@ -1,4 +1,4 @@
-import { threadVoiceCommandSchema } from "@bb/domain";
+import { threadVoiceContextSchema, threadVoiceCommandSchema } from "@bb/domain";
 import {
   clientTurnRequestIdSchema,
   dynamicToolSchema,
@@ -100,6 +100,7 @@ export const threadUnarchiveParamsSchema = threadRefParams;
 export const threadGoalClearParamsSchema = threadRefParams;
 export const threadVoiceParamsSchema = threadRefParams.extend({
   command: threadVoiceCommandSchema,
+  context: threadVoiceContextSchema.default([]),
 });
 
 export const threadNameSetParamsSchema = z

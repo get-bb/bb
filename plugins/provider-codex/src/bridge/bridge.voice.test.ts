@@ -53,6 +53,12 @@ it("uses the existing native thread and process for voice and translates native 
     threadId,
     providerThreadId,
     command: { action: "start", sessionId, sdp: "browser-offer" },
+    context: [
+      {
+        role: "developer",
+        text: "Existing BB task: move voice beside dictation",
+      },
+    ],
   });
   expect((await harness.waitForResponse(2)).result).toEqual({
     sdp: "native-answer",
@@ -69,6 +75,7 @@ it("uses the existing native thread and process for voice and translates native 
   });
   expect((await harness.waitForResponse(3)).result).toEqual({ sdp: null });
   const requests = readFileSync(requestLogPath, "utf8");
+  expect(requests).toContain("Existing BB task: move voice beside dictation");
   expect(requests).toContain(
     '"threadId":"native-voice-thread","transport":{"type":"webrtc","sdp":"browser-offer"}',
   );

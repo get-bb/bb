@@ -2346,7 +2346,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async voice({ threadId, command }) {
+    async voice({ threadId, command, context = [] }) {
       return runThreadOperation({
         threadId,
         work: async () => {
@@ -2358,6 +2358,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               threadId,
               providerThreadId: requireProviderThreadId(threadId),
               command,
+              context,
             }),
             providerId:
               threadIdentityRegistry.resolveProviderForThread(threadId),

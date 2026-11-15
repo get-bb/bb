@@ -1,4 +1,8 @@
-import { threadVoiceCommandSchema, threadVoiceResultSchema } from "@bb/domain";
+import {
+  threadVoiceContextSchema,
+  threadVoiceCommandSchema,
+  threadVoiceResultSchema,
+} from "@bb/domain";
 import {
   desktopBrowserBrokerChallengeSchema,
   desktopBrowserBrokerProofSchema,
@@ -371,6 +375,7 @@ const threadVoiceCommand = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.voice"),
     command: threadVoiceCommandSchema,
+    context: threadVoiceContextSchema.default([]),
     options: runtimeThreadExecutionOptionsSchema,
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     resumeContext: turnResumeContextSchema,

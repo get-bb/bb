@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { threadVoiceParamsSchema } from "@get-bb/plugin-sdk/provider-bridge";
 import { CodexVoiceSession, voiceCommandSchema } from "./voice.js";
 
 import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
@@ -173,6 +174,7 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
       threadId: z.string().min(1),
       providerThreadId: z.string().min(1),
       command: voiceCommandSchema,
+      context: threadVoiceParamsSchema.shape.context,
     }),
   }),
   z.object({
@@ -2777,7 +2779,10 @@ async function handleRequest(
           );
           voiceSessions.set(session, voice);
         }
-        sendResult(request.id, await voice.command(request.params.command));
+        sendResult(
+          request.id,
+          await voice.command(request.params.command, request.params.context),
+        );
       } catch (error) {
         rejectWithCodexError(request.id, error);
       }

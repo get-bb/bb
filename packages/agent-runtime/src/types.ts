@@ -1,4 +1,8 @@
-import type { ThreadVoiceCommand, ThreadVoiceResult } from "@bb/domain";
+import type {
+  ThreadVoiceContext,
+  ThreadVoiceCommand,
+  ThreadVoiceResult,
+} from "@bb/domain";
 import type {
   PermissionMode,
   AvailableModel,
@@ -337,6 +341,7 @@ export interface AgentRuntime {
   voice?(args: {
     threadId: string;
     command: ThreadVoiceCommand;
+    context?: ThreadVoiceContext;
   }): Promise<ThreadVoiceResult>;
 
   clearThreadGoal(args: ClearThreadGoalArgs): Promise<{ cleared: boolean }>;

@@ -93,4 +93,9 @@ their own WebRTC peer, `bb thread voice start <id> --sdp-file offer.sdp --json`
 returns the answer and session id; `bb thread voice stop <id> --session <uuid>`
 ends it. External clients must call `bb thread voice keep-alive <id> --session <uuid>`
 every 15 seconds (SDK action `keepAlive`); an orphaned call expires after 60 seconds.
+Each call starts with native Codex startup context, a bounded brief of the existing
+BB thread, and recent user/assistant messages. Earlier details and tool output remain
+with the backing coding agent; voice can ask it to retrieve them. This context is
+refreshed when a new call starts, rather than loading the entire transcript.
+
 The app renews automatically. SDK callers use `threads.voice({ threadId, command })`.

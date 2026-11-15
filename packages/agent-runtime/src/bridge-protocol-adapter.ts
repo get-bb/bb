@@ -430,6 +430,7 @@ export function createBridgeProtocolAdapter(
               threadId: command.threadId,
               providerThreadId: command.providerThreadId,
               command: command.command,
+              context: command.context ?? [],
             },
           });
         case "thread/goal/clear":

@@ -1,3 +1,4 @@
+import { getVoiceContext } from "../../services/threads/thread-voice-context.js";
 import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
 import {
   deleteQueuedThreadMessage,
@@ -524,6 +525,7 @@ export function registerThreadActionRoutes(
     const result = await runLiveHostCommand(deps, {
       command: {
         type: "thread.voice",
+        context: command.action === "start" ? getVoiceContext(deps.db, thread) : [],
         environmentId: environment.id,
         threadId: thread.id,
         command,
