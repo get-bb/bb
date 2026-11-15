@@ -44,6 +44,7 @@ type ClaudeSystemSubtype =
   | "background_tasks_changed"
   | "commands_changed"
   | "compact_boundary"
+  | "dev_intent"
   | "elicitation_complete"
   | "files_persisted"
   | "hook_progress"
@@ -60,6 +61,7 @@ type ClaudeSystemSubtype =
   | "permission_denied"
   | "plugin_install"
   | "session_state_changed"
+  | "session_title_changed"
   | "status"
   | "task_notification"
   | "task_progress"
@@ -224,6 +226,7 @@ function toClaudeSystemSubtype(
     case "background_tasks_changed":
     case "commands_changed":
     case "compact_boundary":
+    case "dev_intent":
     case "elicitation_complete":
     case "files_persisted":
     case "hook_progress":
@@ -240,6 +243,7 @@ function toClaudeSystemSubtype(
     case "permission_denied":
     case "plugin_install":
     case "session_state_changed":
+    case "session_title_changed":
     case "status":
     case "task_notification":
     case "task_progress":
@@ -513,6 +517,7 @@ function describeParsedClaudeRawEvent(
           };
         case "init":
         case "commands_changed":
+        case "dev_intent":
         case "elicitation_complete":
         case "files_persisted":
         case "hook_progress":
@@ -524,6 +529,7 @@ function describeParsedClaudeRawEvent(
         case "notification":
         case "plugin_install":
         case "session_state_changed":
+        case "session_title_changed":
         case "thinking_tokens":
         case "ui_focus":
         case "ui_invalidate":
