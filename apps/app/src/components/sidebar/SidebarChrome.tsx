@@ -116,16 +116,11 @@ export function SidebarResizeHandle({
       data-testid={testId}
       data-resizing={isResizing ? "" : undefined}
       className={cn(
-        "group/resize absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize touch-none select-none md:block pointer-coarse:-right-4 pointer-coarse:w-8 pointer-coarse:before:bg-sidebar-border",
+        "absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize touch-none select-none md:block pointer-coarse:-right-4 pointer-coarse:w-8 pointer-coarse:before:bg-sidebar-border",
         "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors hover:before:bg-sidebar-border",
         isResizing && "before:bg-sidebar-border",
       )}
       onPointerDown={onPointerDown}
-    >
-      <span
-        aria-hidden="true"
-        className="absolute top-1/2 left-1/2 hidden h-20 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground ring-2 ring-sidebar transition-[height,background-color] pointer-coarse:block group-data-[resizing]/resize:h-28 group-data-[resizing]/resize:bg-foreground"
-      />
-    </div>
+    />
   );
 }

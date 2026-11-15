@@ -1064,7 +1064,7 @@ function SidebarMobileResizeHandle({
       data-testid="sidebar-mobile-resize-handle"
       data-resizing={isResizing ? "" : undefined}
       data-no-sidebar-swipe=""
-      className="group/resize absolute inset-y-0 -left-4 w-8 touch-none select-none"
+      className="absolute inset-y-0 -left-4 w-8 touch-none select-none before:absolute before:inset-y-0 before:left-4 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors data-[resizing]:before:bg-sidebar-border"
       onPointerDown={(event) => {
         event.stopPropagation();
         if (event.button !== 0 || sessionRef.current !== null) {
@@ -1107,12 +1107,7 @@ function SidebarMobileResizeHandle({
       onPointerCancel={finish}
       onTouchStart={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-    >
-      <span
-        aria-hidden="true"
-        className="absolute top-1/2 left-4 h-20 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground ring-2 ring-sidebar transition-[height,background-color] group-data-[resizing]/resize:h-28 group-data-[resizing]/resize:bg-foreground"
-      />
-    </div>
+    />
   );
 }
 
