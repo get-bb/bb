@@ -10,6 +10,7 @@ import {
   selectedLabelIds,
 } from "./lib.js";
 import { makeTask } from "../../test-fixtures.js";
+import { keyColumnWidth } from "./data.js";
 
 const ULID_A = "01ARZ3NDEKTSV4RRFFQ69G5FAA";
 const ULID_B = "01ARZ3NDEKTSV4RRFFQ69G5FAB";
@@ -132,5 +133,20 @@ describe("activeWorkLabel", () => {
     expect(
       activeWorkLabel(statuses.map((liveStatus) => ({ liveStatus }))),
     ).toBe(expected);
+  });
+});
+
+describe("keyColumnWidth", () => {
+  const withKeys = (...keys: string[]) => keys.map((key) => makeTask({ key }));
+
+  it("sizes from rendered text width so wide letters fit", () => {
+    const measure = (text: string) =>
+      [...text].reduce((sum, ch) => sum + (ch === "W" ? 11 : 7), 0);
+    expect(keyColumnWidth(withKeys("WWW-1", "AB-2"), measure)).toBe("59px");
+  });
+
+  it("falls back to a character estimate when text cannot be measured", () => {
+    expect(keyColumnWidth(withKeys("AGENTS-223"), () => null)).toBe("12ch");
+    expect(keyColumnWidth(withKeys("AB-1"))).toBe("7ch");
   });
 });

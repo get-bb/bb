@@ -65,12 +65,41 @@ export function matchesSearch(task: Task, search: string): boolean {
   );
 }
 
-export function keyColumnWidth(tasks: readonly Task[]): string {
+export function keyColumnWidth(
+  tasks: readonly Task[],
+  measure?: (text: string) => number | null,
+): string {
   const longest = tasks.reduce(
     (max, task) => Math.max(max, task.key.length),
     0,
   );
-  return `${Math.max(longest, 5) + 2}ch`;
+  const fallback = `${Math.max(longest, 5) + 2}ch`;
+  if (measure === undefined || tasks.length === 0) return fallback;
+  let widest = 0;
+  for (const task of tasks) {
+    const width = measure(task.key);
+    if (width === null) return fallback;
+    widest = Math.max(widest, width);
+  }
+  return `${Math.ceil(widest) + 12}px`;
+}
+
+let keyMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+export function measureKeyText(text: string): number | null {
+  if (typeof document === "undefined") return null;
+  if (keyMeasureContext === undefined) {
+    try {
+      keyMeasureContext = document.createElement("canvas").getContext("2d");
+    } catch {
+      keyMeasureContext = null;
+    }
+    if (keyMeasureContext !== null) {
+      const family = getComputedStyle(document.body).fontFamily;
+      keyMeasureContext.font = `12px ${family}`;
+    }
+  }
+  return keyMeasureContext?.measureText(text).width ?? null;
 }
 
 export function listTasksQuery(

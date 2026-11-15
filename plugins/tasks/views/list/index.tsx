@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   keyColumnWidth,
+  measureKeyText,
   matchesFilters,
   matchesSearch,
   useLabels,
@@ -204,7 +205,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     );
   }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds, search]);
   const keyWidth = useMemo(
-    () => keyColumnWidth(tasksQuery.data ?? []),
+    () => keyColumnWidth(tasksQuery.data ?? [], measureKeyText),
     [tasksQuery.data],
   );
   const groups = useMemo(
@@ -216,7 +217,13 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const filtered = hasActiveFilters(filters) || search.trim() !== "";
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
+  const scopeKey = listScrollScopeKey({
+    projectId,
+    activeOnly,
+    filters,
+    sort,
+    search,
+  });
   const settledScope = useRef(scopeKey);
   const scopeChanged = settledScope.current !== scopeKey;
   useEffect(() => {

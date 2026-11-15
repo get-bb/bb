@@ -61,6 +61,18 @@ describe("listScrollScopeKey", () => {
     );
   });
 
+  it("isolates a search query and keeps the unsearched key unchanged", () => {
+    expect(listScrollScopeKey({ ...base, search: "  " })).toBe(
+      listScrollScopeKey(base),
+    );
+    expect(listScrollScopeKey({ ...base, search: " Agents " })).toBe(
+      listScrollScopeKey({ ...base, search: "agents" }),
+    );
+    expect(listScrollScopeKey({ ...base, search: "agents" })).not.toBe(
+      listScrollScopeKey(base),
+    );
+  });
+
   it("distinguishes sort while holding the list fixed", () => {
     expect(listScrollScopeKey(base)).not.toBe(
       listScrollScopeKey({ ...base, sort: "priority" }),
