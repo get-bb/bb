@@ -41,7 +41,7 @@
     --bb-sidebar-control-icon-size: 16px;
   }
 
-  @media (width < 48rem) and (pointer: coarse) {
+  @media (pointer: coarse) {
     :root {
       --bb-sidebar-rail-padding: 12px;
       --bb-sidebar-control-size: 36px;
