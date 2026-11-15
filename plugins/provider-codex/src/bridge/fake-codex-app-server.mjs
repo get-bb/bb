@@ -837,7 +837,20 @@ async function handleRequest(message) {
         threadId: params.threadId,
         sdp: "native-answer",
       });
-      if (script?.voiceStartsTurn) runScriptedTurn(params.threadId);
+      if (script?.voiceStartsTurn) {
+        runScriptedTurn(params.threadId);
+        notify("thread/realtime/item/completed", {
+          threadId: params.threadId,
+          item: {
+            type: "transcriptSegment",
+            role: "assistant",
+            text: "Hey, I am here.",
+          },
+        });
+      }
+      return;
+    case "thread/realtime/appendText":
+      respond(id, {});
       return;
     case "thread/realtime/stop":
       respond(id, {});

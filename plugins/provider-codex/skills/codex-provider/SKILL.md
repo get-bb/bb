@@ -93,9 +93,12 @@ their own WebRTC peer, `bb thread voice start <id> --sdp-file offer.sdp --json`
 returns the answer and session id; `bb thread voice stop <id> --session <uuid>`
 ends it. External clients must call `bb thread voice keep-alive <id> --session <uuid>`
 every 15 seconds (SDK action `keepAlive`); an orphaned call expires after 60 seconds.
-Each call starts with native Codex startup context, a bounded brief of the existing
-BB thread, and recent user/assistant messages. Completed tool commands, statuses, and results are included within a 28,000-byte
-startup budget. Full source reads take priority over listings and setup/help text;
+Each call opens with only a short voice instruction: respond casually and briefly
+to the user, without an unsolicited recap or resuming earlier work. Native startup
+history is disabled for the opening. After the first assistant reply completes,
+a bounded BB thread brief, recent user/assistant messages, and tool results are
+appended quietly as background context. Completed tool commands, statuses, and results are included within a 28,000-byte
+context budget. Full source reads take priority over listings and setup/help text;
 failures retain error excerpts. Omitted or shortened results are labeled with
 event sequences so voice can ask the backing coding agent for the full output. This context is
 refreshed when a new call starts, rather than loading the entire transcript.

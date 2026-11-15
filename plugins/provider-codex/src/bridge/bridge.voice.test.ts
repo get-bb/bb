@@ -68,6 +68,11 @@ it("uses the existing native thread and process for voice and translates native 
     expect(log).toContain("hello from codex turn 1");
     expect(log).toContain("provider-codex/voice");
   });
+  await vi.waitFor(() =>
+    expect(readFileSync(requestLogPath, "utf8")).toContain(
+      '"method":"thread/realtime/appendText"',
+    ),
+  );
   harness.sendRequest(3, "thread/voice", {
     threadId,
     providerThreadId,
