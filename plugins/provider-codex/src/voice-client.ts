@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type VoiceRequest =
   | { action: "start"; sessionId: string; sdp: string }
   | { action: "keepAlive"; sessionId: string }
@@ -20,6 +22,12 @@ export class VoiceClient {
   private stream: MediaStream | null = null;
   private peer: RTCPeerConnection | null = null;
   private stopped = false;
+  private channel: RTCDataChannel | null = null;
+  private backgroundContext: string | null = null;
+  private contextSent = false;
+  private inputActive = false;
+  private assistantActive = false;
+  private contextPending = false;
   private requested = false;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private heartbeatPending = false;
@@ -79,7 +87,48 @@ export class VoiceClient {
           );
         }
       };
-      peer.createDataChannel("oai-events");
+      this.channel = peer.createDataChannel("oai-events");
+      this.channel.onopen = () => this.flushBackgroundContext();
+      this.channel.onmessage = (event) => {
+        if (this.stopped) return;
+        let value: unknown;
+        try {
+          value = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        const parsed = z
+          .object({
+            type: z.string(),
+            item: z.object({ text: z.string().optional() }).optional(),
+            turn: z.object({ role: z.string().optional() }).optional(),
+          })
+          .safeParse(value);
+        if (!parsed.success) return;
+        if (
+          parsed.data.type === "input_transcript.added" &&
+          parsed.data.item?.text?.trim()
+        ) {
+          this.inputActive = true;
+        }
+        if (
+          parsed.data.type === "output_transcript.added" ||
+          (parsed.data.type === "turn.created" &&
+            parsed.data.turn?.role === "assistant")
+        )
+          this.assistantActive = true;
+        if (parsed.data.type === "turn.done") {
+          if (parsed.data.turn?.role === "user") this.inputActive = false;
+          if (parsed.data.turn?.role === "assistant") {
+            this.assistantActive = false;
+            this.flushBackgroundContext();
+          }
+        }
+        if (parsed.data.type === "session.context.appended") {
+          this.contextPending = false;
+          this.flushBackgroundContext();
+        }
+      };
       const offer = await peer.createOffer();
       if (this.stopped) return;
       await peer.setLocalDescription(offer);
@@ -119,6 +168,57 @@ export class VoiceClient {
     }
   }
 
+  addBackgroundContext(text: string): void {
+    if (this.stopped || this.contextSent || this.backgroundContext || !text)
+      return;
+    this.backgroundContext = text;
+    this.flushBackgroundContext();
+  }
+
+  private flushBackgroundContext(): void {
+    if (
+      this.stopped ||
+      this.contextSent ||
+      this.contextPending ||
+      this.inputActive ||
+      this.assistantActive ||
+      !this.backgroundContext ||
+      this.channel?.readyState !== "open"
+    )
+      return;
+    const encoder = new TextEncoder();
+    let chunk = "";
+    let bytes = 0;
+    for (const character of this.backgroundContext) {
+      const length = encoder.encode(character).length;
+      if (bytes + length > 500) break;
+      chunk += character;
+      bytes += length;
+    }
+    try {
+      this.contextPending = true;
+      this.channel.send(
+        JSON.stringify({
+          type: "session.context.append",
+          channel: "developer",
+          content: [{ type: "input_text", text: chunk }],
+        }),
+      );
+      this.backgroundContext = this.backgroundContext.slice(chunk.length);
+      if (!this.backgroundContext) {
+        this.contextSent = true;
+        this.backgroundContext = null;
+      }
+    } catch {
+      this.contextSent = true;
+      this.backgroundContext = null;
+      this.options.state(
+        "active",
+        "Background context could not be delivered. Voice can still consult the coding agent.",
+      );
+    }
+  }
+
   mute(muted: boolean): void {
     this.stream?.getAudioTracks().forEach((track) => {
       track.enabled = !muted;
@@ -136,6 +236,13 @@ export class VoiceClient {
       track.stop();
     });
     this.stream = null;
+    this.backgroundContext = null;
+    if (this.channel) {
+      this.channel.onopen = null;
+      this.channel.onmessage = null;
+      this.channel.close();
+      this.channel = null;
+    }
     if (this.peer) {
       this.peer.ontrack = null;
       this.peer.onconnectionstatechange = null;

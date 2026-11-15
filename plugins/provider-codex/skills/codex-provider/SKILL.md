@@ -97,8 +97,16 @@ Each call opens with only a short voice instruction: respond casually and briefl
 to the user, without an unsolicited recap or resuming earlier work. Native startup
 history is disabled for the opening. After the first assistant reply completes,
 a bounded BB thread brief, recent user/assistant messages, and tool results are
-appended quietly as background context. Completed tool commands, statuses, and results are included within a 28,000-byte
-context budget. Full source reads take priority over listings and setup/help text;
+queued as background reference. While voice is idle, the browser sends that
+reference over the existing data channel with an explicit developer channel,
+waiting for each chunk acknowledgment and pausing during speech. It does not
+request a response or change the voice prompt.
+External WebRTC clients must observe the `provider-codex/voice` extension state and
+deliver its `backgroundContext` once for the matching session, using
+`session.context.append` frames with `channel: "developer"` and input-text chunks
+of at most 500 UTF-8 bytes, waiting for `session.context.appended` between
+chunks and pausing delivery during user and assistant speech. Completed tool
+commands, statuses, and results are included within a 28,000-byte context budget. Full source reads take priority over listings and setup/help text;
 failures retain error excerpts. Omitted or shortened results are labeled with
 event sequences so voice can ask the backing coding agent for the full output. This context is
 refreshed when a new call starts, rather than loading the entire transcript.

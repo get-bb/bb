@@ -47,6 +47,7 @@ function VoiceChat({ threadId }: { threadId: string }) {
   const remoteSessionId = state.success ? state.data.sessionId : null;
   const remoteStatus = state.success ? state.data.status : null;
   const remoteMessage = state.success ? state.data.message : null;
+  const remoteContext = state.success ? state.data.backgroundContext : null;
 
   useEffect(() => {
     const stop = () => {
@@ -60,13 +61,10 @@ function VoiceChat({ threadId }: { threadId: string }) {
     };
   }, [threadId]);
   useEffect(() => {
-    if (
-      remoteSessionId &&
-      remoteSessionId === client.current?.sessionId &&
-      remoteStatus !== "active"
-    )
-      client.current.stop(remoteMessage);
-  }, [remoteSessionId, remoteStatus, remoteMessage]);
+    if (remoteSessionId !== client.current?.sessionId) return;
+    if (remoteStatus !== "active") client.current?.stop(remoteMessage);
+    else if (remoteContext) client.current?.addBackgroundContext(remoteContext);
+  }, [remoteSessionId, remoteStatus, remoteMessage, remoteContext]);
 
   const start = () => {
     if (!audio.current) return;

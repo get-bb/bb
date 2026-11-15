@@ -20,7 +20,12 @@ it("connects from the Codex composer, mutes the microphone, and ends only voice"
     onconnectionstatechange: null as (() => void) | null,
     ontrack: null,
     addTrack: vi.fn(),
-    createDataChannel: vi.fn(),
+    createDataChannel: vi.fn(() => ({
+      readyState: "open",
+      onopen: null,
+      send: vi.fn(),
+      close: vi.fn(),
+    })),
     createOffer: async () => ({ type: "offer", sdp: "offer" }),
     setLocalDescription: async () => {},
     localDescription: { sdp: "offer" },

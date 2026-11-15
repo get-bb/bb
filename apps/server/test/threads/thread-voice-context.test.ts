@@ -38,7 +38,7 @@ it("preserves recent conversation order and includes an extractive task brief", 
   expect(items[0].text).toContain(
     "Latest request excerpt:\nPut the button beside the mic",
   );
-  expect(items[0].text).toContain("Delegate tool work");
+  expect(items[0].text).toContain("backing coding agent");
   expect(items.slice(1)).toEqual(messages);
 });
 
@@ -58,9 +58,9 @@ it("bounds multilingual histories without breaking Unicode or losing the latest 
 it("gives a new thread identity and an honest fallback for missing details", () => {
   const items = buildVoiceContext(null, []);
   expect(items).toHaveLength(1);
-  expect(items[0].text).toContain("ask the backing agent");
+  expect(items[0].text).toContain("backing coding agent");
   expect(items[0].text).toContain(
-    "Do not claim to have the entire BB transcript",
+    "bounded selection rather than the entire BB transcript",
   );
 });
 

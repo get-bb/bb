@@ -9,9 +9,16 @@ function setup() {
     getTracks: () => [track],
     getAudioTracks: () => [track],
   } as unknown as MediaStream;
+  const channel = {
+    readyState: "open",
+    onopen: null as (() => void) | null,
+    onmessage: null as ((event: { data: string }) => void) | null,
+    send: vi.fn(),
+    close: vi.fn(),
+  };
   const peer = {
     addTrack: vi.fn(),
-    createDataChannel: vi.fn(),
+    createDataChannel: vi.fn(() => channel),
     createOffer: vi.fn(async () => ({ type: "offer", sdp: "offer" })),
     setLocalDescription: vi.fn(async () => {}),
     localDescription: { sdp: "offer" },
@@ -36,7 +43,17 @@ function setup() {
     mediaDevices,
     createPeer: () => peer as unknown as RTCPeerConnection,
   });
-  return { client, track, stream, peer, request, state, audio, mediaDevices };
+  return {
+    client,
+    track,
+    stream,
+    peer,
+    channel,
+    request,
+    state,
+    audio,
+    mediaDevices,
+  };
 }
 
 it("uses native two-way WebRTC, mutes capture, and releases all local resources", async () => {
@@ -118,4 +135,98 @@ it("does not open a remote call if microphone permission is denied", async () =>
     "closed",
     "Microphone permission denied",
   );
+});
+
+it("sends background reference only on the developer channel in bounded Unicode-safe frames", async () => {
+  const { client, channel } = setup();
+  await client.start();
+  const text = "Source facts 🌿你好\n".repeat(250);
+  client.addBackgroundContext(text);
+  expect(channel.send).toHaveBeenCalledOnce();
+  client.addBackgroundContext(text);
+  for (let index = 0; index < 20; index++)
+    channel.onmessage?.({
+      data: JSON.stringify({ type: "session.context.appended" }),
+    });
+  const frames = channel.send.mock.calls.map((call) => JSON.parse(call[0]));
+  expect(frames.length).toBeGreaterThan(1);
+  expect(
+    frames.every(
+      (frame) =>
+        frame.type === "session.context.append" &&
+        frame.channel === "developer",
+    ),
+  ).toBe(true);
+  expect(frames.map((frame) => frame.content[0].text).join("")).toBe(text);
+  expect(
+    frames.every(
+      (frame) => new TextEncoder().encode(frame.content[0].text).length <= 500,
+    ),
+  ).toBe(true);
+  const count = channel.send.mock.calls.length;
+  client.addBackgroundContext(text);
+  expect(channel.send).toHaveBeenCalledTimes(count);
+  client.stop();
+});
+
+it("waits for the data channel and discards queued background after cancellation", async () => {
+  const { client, channel } = setup();
+  channel.readyState = "connecting";
+  await client.start();
+  client.addBackgroundContext("Reference facts");
+  expect(channel.send).not.toHaveBeenCalled();
+  channel.readyState = "open";
+  channel.onopen?.();
+  expect(channel.send).toHaveBeenCalledOnce();
+  client.stop();
+  client.addBackgroundContext("Late old context");
+  expect(channel.send).toHaveBeenCalledOnce();
+  expect(channel.onopen).toBeNull();
+  expect(channel.close).toHaveBeenCalledOnce();
+});
+
+it("does not deliver queued context if voice ends before the channel opens", async () => {
+  const { client, channel } = setup();
+  channel.readyState = "connecting";
+  await client.start();
+  client.addBackgroundContext("Reference facts");
+  const lateOpen = channel.onopen;
+  client.stop();
+  channel.readyState = "open";
+  lateOpen?.();
+  expect(channel.send).not.toHaveBeenCalled();
+});
+
+it("pauses background delivery during speech and resumes after the reply completes", async () => {
+  const { client, channel } = setup();
+  await client.start();
+  const text = "reference fact\n".repeat(200);
+  client.addBackgroundContext(text);
+  expect(channel.send).toHaveBeenCalledOnce();
+  channel.onmessage?.({
+    data: JSON.stringify({
+      type: "input_transcript.added",
+      item: { text: "My next question" },
+    }),
+  });
+  channel.onmessage?.({
+    data: JSON.stringify({ type: "session.context.appended" }),
+  });
+  expect(channel.send).toHaveBeenCalledOnce();
+  channel.onmessage?.({
+    data: JSON.stringify({ type: "turn.done", turn: { role: "user" } }),
+  });
+  channel.onmessage?.({
+    data: JSON.stringify({ type: "turn.created", turn: { role: "assistant" } }),
+  });
+  expect(channel.send).toHaveBeenCalledOnce();
+  channel.onmessage?.({
+    data: JSON.stringify({ type: "turn.done", turn: { role: "assistant" } }),
+  });
+  expect(channel.send).toHaveBeenCalledTimes(2);
+  channel.onmessage?.({
+    data: JSON.stringify({ type: "session.context.appended" }),
+  });
+  expect(channel.send).toHaveBeenCalledTimes(3);
+  client.stop();
 });

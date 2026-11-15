@@ -69,8 +69,8 @@ it("uses the existing native thread and process for voice and translates native 
     expect(log).toContain("provider-codex/voice");
   });
   await vi.waitFor(() =>
-    expect(readFileSync(requestLogPath, "utf8")).toContain(
-      '"method":"thread/realtime/appendText"',
+    expect(JSON.stringify(harness?.messages)).toContain(
+      "Existing BB task: move voice beside dictation",
     ),
   );
   harness.sendRequest(3, "thread/voice", {
@@ -80,7 +80,7 @@ it("uses the existing native thread and process for voice and translates native 
   });
   expect((await harness.waitForResponse(3)).result).toEqual({ sdp: null });
   const requests = readFileSync(requestLogPath, "utf8");
-  expect(requests).toContain("Existing BB task: move voice beside dictation");
+  expect(requests).not.toContain('"method":"thread/realtime/appendText"');
   expect(requests).toContain(
     '"threadId":"native-voice-thread","transport":{"type":"webrtc","sdp":"browser-offer"}',
   );

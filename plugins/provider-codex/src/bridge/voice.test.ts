@@ -165,7 +165,7 @@ const replyComplete = {
 };
 
 it("starts with only voice style and quietly adds history after the first assistant reply", async () => {
-  const { voice, request } = setup();
+  const { voice, request, publish } = setup();
   const context = [
     { role: "user" as const, text: "Historical request with tool evidence" },
   ];
@@ -195,20 +195,23 @@ it("starts with only voice style and quietly adds history after the first assist
   });
   expect(request).toHaveBeenCalledTimes(1);
   voice.notification("thread/realtime/item/completed", replyComplete);
-  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
-  expect(request).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      method: "thread/realtime/appendText",
-      params: {
-        threadId: "native-thread",
-        role: "developer",
-        text: expect.stringContaining(JSON.stringify(context)),
-      },
-    }),
-  );
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(publish).toHaveBeenLastCalledWith({
+    sessionId: first,
+    status: "active",
+    message: null,
+    backgroundContext: expect.stringContaining(
+      "Historical request with tool evidence",
+    ),
+  });
+  const count = publish.mock.calls.length;
   voice.notification("thread/realtime/item/completed", replyComplete);
-  await Promise.resolve();
-  expect(request).toHaveBeenCalledTimes(2);
+  expect(publish).toHaveBeenCalledTimes(count);
+  expect(
+    request.mock.calls.some(
+      (call) => call[0].method === "thread/realtime/appendText",
+    ),
+  ).toBe(false);
 });
 
 it("never appends deferred history after a session has ended", async () => {
@@ -228,46 +231,4 @@ it("never appends deferred history after a session has ended", async () => {
     "thread/realtime/start",
     "thread/realtime/stop",
   ]);
-});
-
-it("keeps the call active and bounds retries if deferred context is rejected", async () => {
-  const { voice, request, publish } = setup();
-  request.mockImplementation(async (args) => {
-    if (args.method === "thread/realtime/appendText")
-      throw new Error("Context unavailable");
-    return {};
-  });
-  const start = voice.command(
-    { action: "start", sessionId: first, sdp: "offer" },
-    [{ role: "user", text: "Earlier task" }],
-  );
-  voice.notification("thread/realtime/sdp", {
-    threadId: "native-thread",
-    sdp: "answer",
-  });
-  await start;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    voice.notification("thread/realtime/item/completed", replyComplete);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-  }
-  await vi.waitFor(() =>
-    expect(
-      request.mock.calls.filter(
-        (call) => call[0].method === "thread/realtime/appendText",
-      ),
-    ).toHaveLength(3),
-  );
-  expect(publish).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      status: "active",
-      message: expect.stringContaining("consult the backing"),
-    }),
-  );
-  expect(
-    request.mock.calls.some(
-      (call) => call[0].method === "thread/realtime/stop",
-    ),
-  ).toBe(false);
 });
