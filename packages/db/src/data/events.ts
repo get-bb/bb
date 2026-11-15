@@ -4279,6 +4279,28 @@ interface ListLatestTurnFinalAgentMessageEventRowsArgs {
   threadId: string;
 }
 
+export function listLatestCompletedToolEventRows(
+  db: DbConnection,
+  args: { threadId: string; afterSequence: number; limit: number },
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowSqlFields(null))
+    .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "item/completed"),
+        gt(events.sequence, args.afterSequence),
+        inArray(events.itemKind, [
+          "commandExecution", "toolCall", "webFetch", "webSearch", "fileChange",
+        ]),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(args.limit)
+    .all();
+}
+
 export function listLatestTurnFinalAgentMessageEventRows(
   db: DbConnection,
   args: ListLatestTurnFinalAgentMessageEventRowsArgs,

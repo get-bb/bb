@@ -94,8 +94,10 @@ returns the answer and session id; `bb thread voice stop <id> --session <uuid>`
 ends it. External clients must call `bb thread voice keep-alive <id> --session <uuid>`
 every 15 seconds (SDK action `keepAlive`); an orphaned call expires after 60 seconds.
 Each call starts with native Codex startup context, a bounded brief of the existing
-BB thread, and recent user/assistant messages. Earlier details and tool output remain
-with the backing coding agent; voice can ask it to retrieve them. This context is
+BB thread, and recent user/assistant messages. Completed tool commands, statuses, and results are included within a 28,000-byte
+startup budget. Full source reads take priority over listings and setup/help text;
+failures retain error excerpts. Omitted or shortened results are labeled with
+event sequences so voice can ask the backing coding agent for the full output. This context is
 refreshed when a new call starts, rather than loading the entire transcript.
 
 The app renews automatically. SDK callers use `threads.voice({ threadId, command })`.
