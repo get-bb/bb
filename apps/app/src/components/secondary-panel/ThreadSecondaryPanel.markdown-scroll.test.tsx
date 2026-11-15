@@ -312,7 +312,7 @@ describe("Markdown reading position in open secondary-panel tabs", () => {
   });
 
   it("waits for ready Markdown content before restoring", () => {
-    const harness = renderHarness();
+    renderHarness();
     scrollTo(780);
     selectTab("Browser");
     setLoading(true);
