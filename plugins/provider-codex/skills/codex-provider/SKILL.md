@@ -111,4 +111,15 @@ failures retain error excerpts. Omitted or shortened results are labeled with
 event sequences so voice can ask the backing coding agent for the full output. This context is
 refreshed when a new call starts, rather than loading the entire transcript.
 
+Voice answers from supplied background when sufficient and delegates specific
+missing facts, exact quotes, verification, and freshness checks to the same backing
+Codex thread. It requests focused evidence and uncertainty rather than complete
+files or tool logs, reusing facts already available. During the call, the backing
+agent receives retrieval guidance through native `realtimeStartInstructions`:
+search and read relevant passages, expand the read when accuracy requires it,
+and return an answer with short quotes, source references, and material caveats.
+The default handoff target is 100–300 words, with more detail when warranted.
+Automatic semantic briefing generation is not implemented; the initial background
+remains the bounded extractive thread context described above.
+
 The app renews automatically. SDK callers use `threads.voice({ threadId, command })`.

@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { CodexVoiceSession, VOICE_STYLE_INSTRUCTIONS } from "./voice.js";
+import {
+  CodexVoiceSession,
+  VOICE_STYLE_INSTRUCTIONS,
+  VOICE_BACKEND_INSTRUCTIONS,
+} from "./voice.js";
 import type { CodexAppServerConnection } from "./app-server-connection.js";
 
 const first = "11111111-1111-4111-8111-111111111111";
@@ -48,6 +52,7 @@ it("negotiates native WebRTC on the existing thread, including an answer before 
         version: "v3",
         outputModality: "audio",
         includeStartupContext: false,
+        realtimeStartInstructions: VOICE_BACKEND_INSTRUCTIONS,
         initialItems: [{ role: "developer", text: VOICE_STYLE_INSTRUCTIONS }],
       },
     }),
