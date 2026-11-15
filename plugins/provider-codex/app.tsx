@@ -1,4 +1,4 @@
-import { CodexVoiceBanner } from "./src/voice-chat.js";
+import { CodexVoiceAction } from "./src/voice-chat.js";
 import { useMemo, useState } from "react";
 import {
   definePluginApp,
@@ -515,7 +515,7 @@ export default definePluginApp((app) => {
   app.composer.customize({
     id: "voice",
     scopes: ["thread"],
-    banners: [{ id: "voice", chrome: "bare", component: CodexVoiceBanner }],
+    actions: [{ id: "voice", component: CodexVoiceAction }],
   });
   app.composer.customize({
     id: "goal",

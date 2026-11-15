@@ -20,7 +20,7 @@ Lifecycle:
   bb thread voice stop [id] --session <uuid> [--self] [--json]
 
   Voice uses Codex's native two-way realtime session on the existing thread.
-  In the app, choose Start voice chat above a Codex thread's composer, allow
+  In the app, choose Start voice chat next to the dictation microphone in a Codex thread's composer, allow
   microphone access, then use Mute or End voice. The browser needs HTTPS and
   WebRTC support. Leaving the thread ends voice; coding work can continue.
   CLI/SDK clients supply a WebRTC SDP offer and receive an SDP answer; the CLI

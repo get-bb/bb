@@ -2953,28 +2953,42 @@ describe("ComposerBox plugin composer actions", () => {
     expect(staleWrite).not.toHaveBeenCalled();
   });
 
-  it("does not mount plugin actions in compact layout", () => {
+  it("keeps plugin actions mounted beside dictation when the composer becomes compact", () => {
+    const mounted = vi.fn();
+    const cleaned = vi.fn();
+    function StatefulAction() {
+      const [count, setCount] = useState(0);
+      useEffect(() => {
+        mounted();
+        return () => {
+          cleaned();
+        };
+      }, []);
+      return (
+        <button onClick={() => setCount((value) => value + 1)}>
+          Voice action {count}
+        </button>
+      );
+    }
     setPluginSlotRegistrations(
       "compact",
       pluginRegistrationSet([
-        {
-          id: "tools",
-          actions: [
-            { id: "hidden", component: () => <button>Plugin action</button> },
-          ],
-        },
+        { id: "tools", actions: [{ id: "voice", component: StatefulAction }] },
       ]),
     );
-    render(
+    const props = createPromptBoxProps();
+    const view = render(<ComposerBox {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Voice action 0" }));
+    view.rerender(
       <ComposerBox
-        {...createPromptBoxProps({
-          compact: { when: "always", placeholder: "Ask a follow-up" },
-        })}
+        {...props}
+        compact={{ when: "always", placeholder: "Ask a follow-up" }}
       />,
     );
-
-    expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Voice action 1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    expect(mounted).toHaveBeenCalledTimes(1);
+    expect(cleaned).not.toHaveBeenCalled();
   });
 });
 

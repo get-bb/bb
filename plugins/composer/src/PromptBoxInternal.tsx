@@ -3592,7 +3592,7 @@ export function PromptBoxInternal({
                 inert={showVoiceActionGroup ? true : undefined}
               >
                 <>
-                  {!showCompactLayout ? <contributions.Actions /> : null}
+                  <contributions.Actions />
                   {compactBeforeSend}
                   {!showCompactLayout || showCompactVoiceAction ? (
                     <>

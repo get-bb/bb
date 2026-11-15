@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, expect, it, vi } from "vitest";
-import { CodexVoiceBanner } from "./voice-chat.js";
+import { CodexVoiceAction } from "./voice-chat.js";
 import type { VoiceRequest } from "./voice-client.js";
 
 afterEach(() => {
@@ -45,7 +45,7 @@ it("connects from the Codex composer, mutes the microphone, and ends only voice"
     sdp: command.action === "start" ? "answer" : null,
   }));
   renderSlot(
-    { component: CodexVoiceBanner },
+    { component: CodexVoiceAction },
     {},
     {
       composer: {
@@ -81,7 +81,7 @@ it("connects from the Codex composer, mutes the microphone, and ends only voice"
 
 it("keeps native Codex voice controls out of other provider threads", () => {
   renderSlot(
-    { component: CodexVoiceBanner },
+    { component: CodexVoiceAction },
     {},
     {
       composer: {

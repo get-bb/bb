@@ -83,7 +83,7 @@ only on threads that already use them.
 Use the core CLI skill for command syntax and official Codex guidance for
 upstream product behavior.
 
-Native two-way voice chat is available through Start voice chat above the
+Native two-way voice chat is available through Start voice chat next to the dictation microphone in the
 thread composer. It connects the browser's microphone and speaker to the same
 Codex thread over WebRTC, including native coding handoffs. Mute keeps the call
 open; End voice or leaving the thread releases capture and playback without

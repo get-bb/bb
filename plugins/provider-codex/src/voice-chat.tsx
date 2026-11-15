@@ -97,7 +97,7 @@ function VoiceChat({ threadId }: { threadId: string }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 px-1 pb-2 text-xs">
+    <div className="flex h-9 shrink-0 items-center gap-1 text-xs">
       <audio ref={audio} autoPlay />
       {status === "closed" ? (
         <TooltipProvider delayDuration={300}>
@@ -106,20 +106,25 @@ function VoiceChat({ threadId }: { threadId: string }) {
               <Button
                 type="button"
                 size="icon"
-                className="size-11 shrink-0 rounded-full"
+                variant="ghost"
+                className={`size-9 shrink-0 rounded-full ${message ? "text-destructive-text" : "text-muted-foreground hover:text-foreground"}`}
                 aria-label="Start voice chat"
                 onClick={start}
               >
-                <VoiceWaveform className="size-6" />
+                <VoiceWaveform className="size-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top">Start voice chat</TooltipContent>
+            <TooltipContent side="top">
+              {message ?? "Start voice chat"}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       ) : (
-        <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-2xl border border-border bg-surface-raised px-3 py-2">
-          <VoiceWaveform className="size-4 shrink-0" />
-          <span role="status" className="text-muted-foreground">
+        <>
+          <VoiceWaveform
+            className={`size-4 shrink-0 ${status === "connecting" ? "animate-pulse" : ""}`}
+          />
+          <span role="status" className="sr-only">
             {status === "connecting"
               ? "Connecting voice…"
               : muted
@@ -148,7 +153,7 @@ function VoiceChat({ threadId }: { threadId: string }) {
           >
             End voice
           </Button>
-        </div>
+        </>
       )}
       {audioBlocked && status !== "closed" ? (
         <Button
@@ -170,7 +175,7 @@ function VoiceChat({ threadId }: { threadId: string }) {
         </Button>
       ) : null}
       {message ? (
-        <p role="alert" className="w-full text-right text-destructive-text">
+        <p role="alert" className="sr-only">
           {message}
         </p>
       ) : null}
@@ -178,7 +183,7 @@ function VoiceChat({ threadId }: { threadId: string }) {
   );
 }
 
-export function CodexVoiceBanner() {
+export function CodexVoiceAction() {
   const { scope, selection } = useComposer();
   return scope.kind === "thread" && selection?.providerId === "codex" ? (
     <VoiceChat key={scope.threadId} threadId={scope.threadId} />
