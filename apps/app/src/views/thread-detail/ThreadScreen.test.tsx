@@ -42,6 +42,7 @@ vi.mock("@/components/thread/timeline", async (importOriginal) => {
     await importOriginal<typeof import("@/components/thread/timeline")>();
   return {
     ...actual,
+    useThreadTimelineController: () => TIMELINE,
     ThreadTimelineSurface: (props: Record<string, unknown>) => {
       mocks.surfaceProps.push(props);
       const addToChat = props.onSelectionAddToChat as
@@ -70,13 +71,13 @@ const THREAD = makeThreadResponse({
   runtime: { displayStatus: "active" },
 });
 
-const TIMELINE = {
+const TIMELINE: UseThreadTimelineControllerResult = {
   activeBackgroundCommands: [],
   activePromptMode: null,
   activeThinking: null,
   activeWorkflows: [],
   contextBoundarySeq: null,
-  contextWindowUsage: null,
+  contextWindowUsage: undefined,
   hasOlderTimelineRows: false,
   isCatchingUpTimeline: false,
   isLoadingOlderTimelineRows: false,
@@ -88,7 +89,7 @@ const TIMELINE = {
   timelineError: null,
   timelineLoading: false,
   timelineRows: [],
-} as unknown as UseThreadTimelineControllerResult;
+};
 
 const SIDE_CHAT_PRESENTATION: ThreadScreenPresentation = {
   kind: "panel",
@@ -113,7 +114,7 @@ function renderScreen(presentation: ThreadScreenPresentation) {
         projectId={THREAD.projectId}
         resolveMentionLink={() => null}
         thread={THREAD}
-        timeline={TIMELINE}
+        timelineEnabled
         timelineHost={{
           environmentHostName: null,
           includePluginMessageActions: false,
