@@ -27,6 +27,7 @@ import {
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import { appToast } from "@/components/ui/app-toast";
+import { getNativeShell } from "@/lib/native-shell/native-shell";
 import type {
   TerminalServerMessage,
   TerminalSession,
@@ -74,6 +75,7 @@ import {
   encodeTerminalArrow,
 } from "./terminal-mobile-input";
 import { forwardLateImeInput } from "./terminal-late-ime-input";
+import { attachTerminalTouchSelection } from "./terminal-touch-selection";
 import {
   createTerminalOsc8LinkHandler,
   isTerminalLinkActivation,
@@ -706,6 +708,7 @@ export function ThreadTerminalView({
   const findOpenRef = useRef(false);
   const viewRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
   const hoveredTerminalLinkRef = useRef<TerminalLinkTarget | null>(null);
   const pointerIsDownRef = useRef(false);
@@ -975,13 +978,42 @@ export function ThreadTerminalView({
 
   const handleTerminalTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (
+        event.touches.length === 1 &&
+        terminalRef.current?.hasSelection() === true
+      ) {
+        clearTerminalSelection();
+      }
       touchFocusGestureRef.current = startTerminalTouchFocusGesture(
         terminalTouchPoints(event.touches),
         event.timeStamp,
       );
     },
-    [],
+    [clearTerminalSelection],
   );
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!isTouchDevice || surface === null) {
+      return;
+    }
+    return attachTerminalTouchSelection({
+      surface,
+      getTerminal: () => terminalRef.current,
+      onSelectionStart: () => {
+        touchFocusGestureRef.current = null;
+        const shell = getNativeShell();
+        if (shell?.has("haptic")) {
+          shell.post({ type: "haptic", kind: "selection" });
+        }
+      },
+      onSelectionEnd: () => {
+        window.requestAnimationFrame(() => {
+          reportTerminalSelection(lastPointerReleaseAnchorRef.current);
+        });
+      },
+    });
+  }, [isTouchDevice, reportTerminalSelection]);
 
   const handleTerminalTouchMove = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
@@ -1437,8 +1469,9 @@ export function ThreadTerminalView({
           }
         }}
       >
-        <ContextMenuTrigger asChild>
+        <ContextMenuTrigger asChild disabled={isTouchDevice}>
           <div
+            ref={surfaceRef}
             className="relative min-h-0 w-full flex-1 overflow-hidden bg-sidebar p-2"
             onContextMenuCapture={captureTerminalContextMenu}
             onPointerDown={handleTerminalPointerDown}
