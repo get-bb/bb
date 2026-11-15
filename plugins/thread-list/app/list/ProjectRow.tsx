@@ -171,6 +171,7 @@ import {
   useSidebarThreadDragOverlayModifiers,
   SidebarThreadDragChip,
 } from "../dnd/sidebarThreadDragChip.js";
+import { useSortableItemIds } from "../dnd/useStableItemIds.js";
 
 const SIDEBAR_STICKY_PARENT_DEPTH_CAP = 4;
 
@@ -1948,9 +1949,9 @@ export const ChronologicalSectionThreadSections = memo(
       () => rootItems.filter((item) => item.kind !== "section"),
       [rootItems],
     );
-    const looseItemIds = useMemo(
-      () => looseItems.map(getSidebarDndItemId),
-      [looseItems],
+    const looseItemIds = useSortableItemIds(
+      useMemo(() => looseItems.map(getSidebarDndItemId), [looseItems]),
+      renderedSectionDnd?.isDragging === true,
     );
     const looseThreads = getProjectThreadItemDescendants(looseItems);
 

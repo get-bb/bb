@@ -114,6 +114,7 @@ function dragEnd(activeId: string, overId: string): DragEndEvent {
 
 interface HarnessProps {
   rootItems: readonly ProjectThreadItem[];
+  pinnedThreads?: readonly SidebarThread[];
 }
 
 function renderSectionThreadDnd(
@@ -122,11 +123,14 @@ function renderSectionThreadDnd(
   grouping: { groups?: boolean; containerProjectId?: string } = {},
 ) {
   const result: { current: SectionThreadDndState | null } = { current: null };
-  const pinnedState = buildPinnedSidebarState({
-    groupEnvironmentThreads: true,
-    threads: pinnedThreads,
-  });
-  function Harness({ rootItems }: HarnessProps) {
+  function Harness({
+    rootItems,
+    pinnedThreads: currentPinnedThreads = pinnedThreads,
+  }: HarnessProps) {
+    const pinnedState = buildPinnedSidebarState({
+      groupEnvironmentThreads: true,
+      threads: currentPinnedThreads,
+    });
     result.current = useSectionThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
       enabled: true,
@@ -135,7 +139,7 @@ function renderSectionThreadDnd(
       topLevelSectionOrder: ["pinned", "section:a", "section:b", "threads"],
       onTopLevelSectionOrderChange: vi.fn(),
       pinnedReorderPending: false,
-      pinnedThreads,
+      pinnedThreads: currentPinnedThreads,
       pinnedRootItems: pinnedState.rootItems,
       pinnedRootNodes: pinnedState.rootNodes,
       onReorderPinnedThread: vi.fn(),
@@ -161,6 +165,33 @@ function renderSectionThreadDnd(
     rerender: (props: HarnessProps) => slot.rerender(<Harness {...props} />),
   };
 }
+
+describe("useSectionThreadDnd item order", () => {
+  it("follows a pinned reorder while nothing is being dragged", () => {
+    const first = createThread({
+      id: "pinned-a",
+      pinnedAt: 1,
+      pinSortKey: "a",
+    });
+    const second = createThread({
+      id: "pinned-b",
+      pinnedAt: 1,
+      pinSortKey: "b",
+    });
+    const { result, rerender } = renderSectionThreadDnd(ROOT_ITEMS, [
+      first,
+      second,
+    ]);
+    expect(result.current?.pinnedItemIds).toEqual(["pinned-a", "pinned-b"]);
+
+    rerender({
+      rootItems: ROOT_ITEMS,
+      pinnedThreads: [first, { ...second, pinSortKey: "0" }],
+    });
+
+    expect(result.current?.pinnedItemIds).toEqual(["pinned-b", "pinned-a"]);
+  });
+});
 
 describe("useSectionThreadDnd pin mutations", () => {
   it("pins a dropped thread through the plugin SDK", async () => {

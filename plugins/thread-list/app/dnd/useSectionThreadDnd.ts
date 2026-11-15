@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/use-reorder-dnd";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { useNeighborReorderSortable } from "./useNeighborReorderSortable.js";
+import { canKeepSortableItemIds } from "./useStableItemIds.js";
 import {
   getSidebarThreadRowDroppableId,
   parseSidebarThreadRowDroppableId,
@@ -87,6 +88,7 @@ export interface SectionThreadReorderTarget {
 
 export interface SectionThreadDndState {
   activeItemId: string | null;
+  isDragging: boolean;
   activeThread: SidebarThread | null;
   draggedThreadIds: ReadonlySet<string> | null;
   consumeClickSuppression: ConsumeDragClickSuppression;
@@ -135,6 +137,39 @@ interface SectionThreadDndLookup {
   threadByItemId: Map<string, SidebarThread>;
   nodeByItemId: Map<string, ProjectThreadNode>;
   nestParentIdByItemId: Map<string, string>;
+}
+
+const sharedItemIdsByContainer = new Map<
+  string,
+  ReadonlyMap<string, readonly string[]>
+>();
+
+function shareItemIdsByParentKey(
+  containerId: string,
+  next: ReadonlyMap<string, readonly string[]>,
+  dragging: boolean,
+): ReadonlyMap<string, readonly string[]> {
+  const previous = sharedItemIdsByContainer.get(containerId);
+  let changed = previous === undefined || previous.size !== next.size;
+  const shared = new Map<string, readonly string[]>();
+  for (const [parentKey, itemIds] of next) {
+    const previousItemIds = previous?.get(parentKey);
+    if (
+      canKeepSortableItemIds(
+        previousItemIds,
+        itemIds,
+        dragging || parentKey === PINNED_THREAD_PARENT_KEY,
+      )
+    ) {
+      shared.set(parentKey, previousItemIds ?? itemIds);
+    } else {
+      shared.set(parentKey, itemIds);
+      changed = true;
+    }
+  }
+  if (!changed && previous !== undefined) return previous;
+  sharedItemIdsByContainer.set(containerId, shared);
+  return shared;
 }
 
 interface SectionThreadUpdate {
@@ -1181,6 +1216,7 @@ export function useSectionThreadDnd({
   });
   const setCollapsedSections = useSetAtom(sidebarCollapsedThreadSectionsAtom);
   const [activeThread, setActiveThread] = useState<SidebarThread | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [dragOverParentKey, setDragOverParentKey] = useState<string | null>(
     null,
   );
@@ -1232,6 +1268,7 @@ export function useSectionThreadDnd({
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      setIsDragging(true);
       const activeId =
         typeof event.active.id === "string" ? event.active.id : null;
       const thread = activeId
@@ -1417,6 +1454,7 @@ export function useSectionThreadDnd({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      setIsDragging(false);
       draggingThreadRef.current = false;
       clearDropDwell();
       clearNestCandidate();
@@ -1524,6 +1562,7 @@ export function useSectionThreadDnd({
   );
 
   const handleDragCancel = useCallback(() => {
+    setIsDragging(false);
     draggingThreadRef.current = false;
     clearDropDwell();
     clearProjectedDrag();
@@ -1579,14 +1618,24 @@ export function useSectionThreadDnd({
   }, [clearProjectedDrag, dropDecisionLanded]);
 
   const activeItemId = activeIdRef.current;
+  const itemIdsByParentKey = useMemo(
+    () =>
+      shareItemIdsByParentKey(
+        containerId,
+        lookup.itemIdsByParentKey,
+        isDragging,
+      ),
+    [containerId, isDragging, lookup],
+  );
   const state = useMemo<SectionThreadDndState>(
     () => ({
       activeItemId: dropDecisionLanded ? null : activeItemId,
+      isDragging,
       activeThread: dropDecisionLanded ? null : activeThread,
       draggedThreadIds: dropDecisionLanded ? null : draggedThreadIds,
       consumeClickSuppression,
       dndContextProps,
-      itemIdsByParentKey: lookup.itemIdsByParentKey,
+      itemIdsByParentKey,
       onClickCapture,
       dragOverParentKey:
         dropDecisionLanded || reorderTarget !== null ? null : dragOverParentKey,
@@ -1597,8 +1646,7 @@ export function useSectionThreadDnd({
       nestTarget: dropDecisionLanded ? null : rowDrop,
       nestPreviewBeforeKey: null,
       reorderTarget: dropDecisionLanded ? null : reorderTarget,
-      pinnedItemIds:
-        lookup.itemIdsByParentKey.get(PINNED_THREAD_PARENT_KEY) ?? [],
+      pinnedItemIds: itemIdsByParentKey.get(PINNED_THREAD_PARENT_KEY) ?? [],
       pinnedReorderPending,
     }),
     [
@@ -1609,7 +1657,8 @@ export function useSectionThreadDnd({
       draggedThreadIds,
       dragOverParentKey,
       dropDecisionLanded,
-      lookup,
+      isDragging,
+      itemIdsByParentKey,
       onClickCapture,
       pinnedReorderPending,
       reorderTarget,
