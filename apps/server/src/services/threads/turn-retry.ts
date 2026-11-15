@@ -19,6 +19,10 @@ import type {
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { emitPluginMessageQueued } from "../plugins/plugin-thread-events.js";
+import {
+  CONTINUE_TURN_TEXT,
+  continueTurnInput,
+} from "./continue-turn-input.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import {
@@ -95,8 +99,6 @@ export interface RetryFailedTurnArgs {
   request: RetryTurnRequest;
 }
 
-const CONTINUE_ACCEPTED_TURN_TEXT = "Please continue.";
-
 /**
  * What the re-attempt sends, decided by the provider's own acceptance record.
  *
@@ -117,16 +119,7 @@ function retryInput(
   args: { continuation: string; threadId: string; failed: FailedTurnRecord },
 ): { input: PromptInput[]; inputGroups?: PromptInput[][] } {
   if (wasFailedTurnInputAccepted(deps.db, args)) {
-    return {
-      input: [
-        {
-          type: "text",
-          text: args.continuation,
-          mentions: [],
-          visibility: "agent-only",
-        },
-      ],
-    };
+    return { input: continueTurnInput(args.continuation) };
   }
   const agentOnly = (block: PromptInput): PromptInput => ({
     ...block,
@@ -249,7 +242,7 @@ export async function retryFailedTurn(
   });
   return dispatchRetry(deps, {
     ...args,
-    continuation: CONTINUE_ACCEPTED_TURN_TEXT,
+    continuation: CONTINUE_TURN_TEXT,
     failed,
   });
 }

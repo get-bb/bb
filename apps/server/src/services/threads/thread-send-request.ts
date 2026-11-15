@@ -1,4 +1,5 @@
 import {
+  isBlankPromptInput,
   isStandaloneBuiltinClearCommand,
   isStandaloneBuiltinCompactCommand,
   type Thread,
@@ -9,6 +10,10 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import {
+  CONTINUE_TURN_TEXT,
+  continueTurnInput,
+} from "./continue-turn-input.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
@@ -29,7 +34,10 @@ export async function acceptThreadSendRequest(
     input: args.payload.input,
     providerId: args.thread.providerId,
   });
-  const { compactFirst, ...request } = args.payload;
+  const { compactFirst, ...submitted } = args.payload;
+  const request = isBlankPromptInput(submitted.input)
+    ? continueThreadRequest(args.thread, submitted)
+    : submitted;
   if (isStandaloneBuiltinClearCommand(request.input)) {
     if (compactFirst) throwInvalidCompactFirst("cannot clear the context");
     const environment = await requireThreadCommandEnvironment(deps, {
@@ -99,6 +107,27 @@ export async function acceptThreadSendRequest(
     delivery: "queued",
     queuedMessage: outcome.entry,
   };
+}
+
+function continueThreadRequest(
+  thread: Thread,
+  request: Omit<SendMessageRequest, "compactFirst">,
+): Omit<SendMessageRequest, "compactFirst"> {
+  if (thread.status !== "idle" && thread.status !== "error") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "A blank message only continues an idle thread; type a message to steer or queue it",
+    );
+  }
+  if (request.sendAt !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "A blank message cannot be scheduled with sendAt",
+    );
+  }
+  return { ...request, input: continueTurnInput(CONTINUE_TURN_TEXT) };
 }
 
 function throwInvalidCompactFirst(reason: string): never {

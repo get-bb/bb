@@ -627,6 +627,56 @@ describe("ThreadDetailPromptArea", () => {
     );
   });
 
+  it("sends an empty draft in an idle thread as a request to continue", async () => {
+    mocks.promptDraft.text = "  ";
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "idle" },
+        status: "idle",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    await act(async () => {
+      await mocks.composerSubmit?.();
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        mode: "queue-if-active",
+        input: [{ type: "text", text: "", mentions: [] }],
+      }),
+    );
+  });
+
+  it.each([
+    ["running", "active", undefined],
+    ["not started yet", "pending", undefined],
+    ["idle but the send is scheduled", "idle", 1234567890],
+  ] as const)(
+    "refuses an empty draft when the thread is %s",
+    async (_label, status, sendAt) => {
+      mocks.promptDraft.text = "";
+      renderPromptArea({
+        thread: makeThread({
+          runtime: { displayStatus: status },
+          status,
+        }),
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Capture plugin host" }),
+      );
+
+      await expect(
+        mocks.composerSubmit?.(sendAt === undefined ? {} : { sendAt }),
+      ).rejects.toThrow("Type a message before submitting it.");
+      expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+    },
+  );
+
   it("steers with sendAt and plugin data from the modifier action", async () => {
     mocks.promptDraft.text = "Steer this later";
     renderPromptArea({
