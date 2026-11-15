@@ -19,7 +19,7 @@ import {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
-export const PROFILING_APP_DIST = resolve(repoRoot, "apps/app/dist-profiling");
+const PROFILING_APP_DIST = resolve(repoRoot, "apps/app/dist-profiling");
 
 const SIDEBAR_THREAD_COUNT = 500;
 const TIMELINE_TURN_COUNT = 40;
