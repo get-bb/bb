@@ -50,6 +50,7 @@ interface UseVoiceInputOptions {
 
 type TranscriptionResult =
   | { kind: "transcript"; text: string }
+  | { kind: "empty" }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
 
@@ -425,9 +426,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
           signal,
         });
         const text = normalizeTranscript(transcript);
-        if (!signal.aborted && text.length === 0) {
-          throw new Error("Voice transcription returned an empty result.");
-        }
+        if (!signal.aborted && text.length === 0) return { kind: "empty" };
         await beforeDelivery?.();
         return signal.aborted
           ? { kind: "cancelled" }
@@ -452,6 +451,10 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         if (onCancel === "discard") {
           void deleteVoiceRecording(recording.id);
         }
+        return;
+      }
+      if (result.kind === "empty") {
+        void deleteVoiceRecording(recording.id);
         return;
       }
       if (result.kind === "failed") {
