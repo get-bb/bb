@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useSyncExternalStore } from "react";
 import {
   notifyManager,
   QueryClientContext,
@@ -124,64 +124,121 @@ function areSenderThreadMetadataEntriesEqual(
   );
 }
 
-function areSenderThreadMetadataMapsEqual(
-  left: ReadonlyMap<string, SenderThreadMetadata>,
-  right: ReadonlyMap<string, SenderThreadMetadata>,
-): boolean {
-  if (left === right) {
+function mergeSenderThreadMetadata(
+  current: ReadonlyMap<string, SenderThreadMetadata>,
+  next: ReadonlyMap<string, SenderThreadMetadata>,
+): ReadonlyMap<string, SenderThreadMetadata> {
+  let changed = current.size !== next.size;
+  const merged = new Map<string, SenderThreadMetadata>();
+  for (const [threadId, entry] of next) {
+    const previous = current.get(threadId);
+    if (
+      previous !== undefined &&
+      areSenderThreadMetadataEntriesEqual(previous, entry)
+    ) {
+      merged.set(threadId, previous);
+    } else {
+      merged.set(threadId, entry);
+      changed = true;
+    }
+  }
+  return changed ? merged : current;
+}
+
+interface SenderThreadMetadataStore {
+  getSnapshot(): ReadonlyMap<string, SenderThreadMetadata>;
+  subscribe(listener: () => void): () => void;
+}
+
+const EMPTY_SENDER_THREAD_METADATA: ReadonlyMap<string, SenderThreadMetadata> =
+  new Map();
+
+const NO_SENDER_THREAD_METADATA_STORE: SenderThreadMetadataStore = {
+  getSnapshot: () => EMPTY_SENDER_THREAD_METADATA,
+  subscribe: () => () => {},
+};
+
+function createSenderThreadMetadataStore(
+  queryClient: QueryClient,
+): SenderThreadMetadataStore {
+  let metadataById = buildSenderThreadMetadataById(queryClient);
+  const listeners = new Set<() => void>();
+  let unsubscribeCache: (() => void) | null = null;
+  const refresh = (): boolean => {
+    const next = mergeSenderThreadMetadata(
+      metadataById,
+      buildSenderThreadMetadataById(queryClient),
+    );
+    if (next === metadataById) return false;
+    metadataById = next;
     return true;
+  };
+  const sync = () => {
+    if (listeners.size === 0 || !refresh()) return;
+    for (const listener of [...listeners]) listener();
+  };
+  return {
+    getSnapshot: () => {
+      if (unsubscribeCache === null) refresh();
+      return metadataById;
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      if (unsubscribeCache === null) {
+        refresh();
+        unsubscribeCache = queryClient.getQueryCache().subscribe((event) => {
+          if (shouldSyncSenderThreadMetadata(event)) {
+            notifyManager.schedule(sync);
+          }
+        });
+      }
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && unsubscribeCache !== null) {
+          unsubscribeCache();
+          unsubscribeCache = null;
+        }
+      };
+    },
+  };
+}
+
+const senderThreadMetadataStores = new WeakMap<
+  QueryClient,
+  SenderThreadMetadataStore
+>();
+
+function useSenderThreadMetadataStore(): SenderThreadMetadataStore {
+  const queryClient = useContext(QueryClientContext) ?? null;
+  if (queryClient === null) return NO_SENDER_THREAD_METADATA_STORE;
+  let store = senderThreadMetadataStores.get(queryClient);
+  if (store === undefined) {
+    store = createSenderThreadMetadataStore(queryClient);
+    senderThreadMetadataStores.set(queryClient, store);
   }
-  if (left.size !== right.size) {
-    return false;
-  }
-  for (const [threadId, entry] of left) {
-    const other = right.get(threadId);
-    if (other === undefined) {
-      return false;
-    }
-    if (!areSenderThreadMetadataEntriesEqual(entry, other)) {
-      return false;
-    }
-  }
-  return true;
+  return store;
 }
 
 export function useSenderThreadMetadataById(): ReadonlyMap<
   string,
   SenderThreadMetadata
 > {
-  const queryClient = useContext(QueryClientContext) ?? null;
-  const [metadataById, setMetadataById] = useState(() =>
-    buildSenderThreadMetadataById(queryClient),
+  const store = useSenderThreadMetadataStore();
+  return useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
   );
+}
 
-  useEffect(() => {
-    if (queryClient === null) {
-      return;
-    }
-
-    let subscribed = true;
-    const syncMetadataById = () => {
-      if (subscribed) {
-        setMetadataById((current) => {
-          const next = buildSenderThreadMetadataById(queryClient);
-          return areSenderThreadMetadataMapsEqual(current, next)
-            ? current
-            : next;
-        });
-      }
-    };
-    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      if (shouldSyncSenderThreadMetadata(event)) {
-        notifyManager.schedule(syncMetadataById);
-      }
-    });
-
-    return () => {
-      subscribed = false;
-      unsubscribe();
-    };
-  }, [queryClient]);
-
-  return metadataById;
+export function useSenderThreadMetadata(
+  threadId: string | null,
+): SenderThreadMetadata | null {
+  const store = useSenderThreadMetadataStore();
+  const getEntry = useCallback(
+    () =>
+      threadId === null ? null : (store.getSnapshot().get(threadId) ?? null),
+    [store, threadId],
+  );
+  return useSyncExternalStore(store.subscribe, getEntry, getEntry);
 }
