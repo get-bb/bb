@@ -71,6 +71,7 @@ import {
   listLatestOpenBackgroundTaskStateRowsForThread,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestTurnFinalAgentMessageEventRows,
+  listLatestCompletedToolEventRows,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
   listOpenTurnInputAcceptedRowsByThreadIds,
@@ -1185,6 +1186,15 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       getTurnFinalAgentMessageEventRow(db, {
         threadId: fixture.threadId,
         turnId: lastTurn(fixture).turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listLatestCompletedToolEventRows`,
+    run: (db, fixture) =>
+      listLatestCompletedToolEventRows(db, {
+        threadId: fixture.threadId,
+        afterSequence: 0,
+        limit: 30,
       }),
   },
   {
