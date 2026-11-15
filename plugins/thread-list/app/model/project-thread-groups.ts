@@ -161,10 +161,7 @@ export function getProjectThreadItemDescendants(
   });
 }
 
-function hasSameElements<T>(
-  left: readonly T[],
-  right: readonly T[],
-): boolean {
+function hasSameElements<T>(left: readonly T[], right: readonly T[]): boolean {
   if (left === right) return true;
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index += 1) {
@@ -210,19 +207,25 @@ function reuseEnvironmentThreadGroup(
   return next;
 }
 
-const reusableSectionGroups = new Map<string, SidebarSectionGroup>();
+const reusableSectionGroups = new WeakMap<
+  ProjectThreadItem,
+  SidebarSectionGroup
+>();
 
 function reuseSectionGroup(next: SidebarSectionGroup): SidebarSectionGroup {
-  const previous = reusableSectionGroups.get(next.key);
+  const firstItem = next.items[0];
+  if (firstItem === undefined) return next;
+  const previous = reusableSectionGroups.get(firstItem);
   if (
     previous !== undefined &&
+    previous.key === next.key &&
     previous.id === next.id &&
     previous.name === next.name &&
     hasSameElements(previous.items, next.items)
   ) {
     return previous;
   }
-  reusableSectionGroups.set(next.key, next);
+  reusableSectionGroups.set(firstItem, next);
   return next;
 }
 

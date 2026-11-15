@@ -139,36 +139,43 @@ interface SectionThreadDndLookup {
   nestParentIdByItemId: Map<string, string>;
 }
 
-const sharedItemIdsByContainer = new Map<
-  string,
-  ReadonlyMap<string, readonly string[]>
->();
-
 function shareItemIdsByParentKey(
-  containerId: string,
+  previous: ReadonlyMap<string, readonly string[]>,
   next: ReadonlyMap<string, readonly string[]>,
   dragging: boolean,
 ): ReadonlyMap<string, readonly string[]> {
-  const previous = sharedItemIdsByContainer.get(containerId);
-  let changed = previous === undefined || previous.size !== next.size;
+  if (previous === next) return previous;
+  let changed = previous.size !== next.size;
   const shared = new Map<string, readonly string[]>();
   for (const [parentKey, itemIds] of next) {
-    const previousItemIds = previous?.get(parentKey);
+    const previousItemIds = previous.get(parentKey);
     if (
+      previousItemIds !== undefined &&
       canKeepSortableItemIds(
         previousItemIds,
         itemIds,
         dragging || parentKey === PINNED_THREAD_PARENT_KEY,
       )
     ) {
-      shared.set(parentKey, previousItemIds ?? itemIds);
+      shared.set(parentKey, previousItemIds);
     } else {
       shared.set(parentKey, itemIds);
       changed = true;
     }
   }
-  if (!changed && previous !== undefined) return previous;
-  sharedItemIdsByContainer.set(containerId, shared);
+  return changed ? shared : previous;
+}
+
+function useSharedItemIdsByParentKey(
+  next: ReadonlyMap<string, readonly string[]>,
+  dragging: boolean,
+): ReadonlyMap<string, readonly string[]> {
+  const [kept, setKept] = useState(next);
+  const shared = useMemo(
+    () => shareItemIdsByParentKey(kept, next, dragging),
+    [dragging, kept, next],
+  );
+  if (shared !== kept) setKept(shared);
   return shared;
 }
 
@@ -1618,14 +1625,9 @@ export function useSectionThreadDnd({
   }, [clearProjectedDrag, dropDecisionLanded]);
 
   const activeItemId = activeIdRef.current;
-  const itemIdsByParentKey = useMemo(
-    () =>
-      shareItemIdsByParentKey(
-        containerId,
-        lookup.itemIdsByParentKey,
-        isDragging,
-      ),
-    [containerId, isDragging, lookup],
+  const itemIdsByParentKey = useSharedItemIdsByParentKey(
+    lookup.itemIdsByParentKey,
+    isDragging,
   );
   const state = useMemo<SectionThreadDndState>(
     () => ({
