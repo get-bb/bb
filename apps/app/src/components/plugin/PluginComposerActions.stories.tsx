@@ -8,7 +8,7 @@ import {
   makeAttachmentsConfig,
   makeTypeaheadConfig,
 } from "../../../.ladle/story-fixtures";
-import { ComposerBox } from "@/components/promptbox/ComposerBox";
+import { ControlledComposerBox } from "@/test/fixtures/controlled-composer-box";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -86,7 +86,7 @@ function OverflowFixture() {
         />
       ))}
       <div className="w-full max-w-xl">
-        <ComposerBox
+        <ControlledComposerBox
           surface="thread"
           value={value}
           mentionRanges={[]}
@@ -149,7 +149,7 @@ export function NarrowUsageActions() {
           actions={variant === "wide" ? WIDE_ACTIONS : USAGE_ACTIONS}
         />
       ) : null}
-      <ComposerBox
+      <ControlledComposerBox
         surface="thread"
         value={value}
         mentionRanges={[]}

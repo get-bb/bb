@@ -69,7 +69,9 @@ import {
 import { buildProviderPromptActionProps } from "@bb/client-core";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
+  type ComposerDraftStore,
   type PluginComposerHost,
+  useComposerDraftSelector,
   useComposerHostSelection,
 } from "@/components/plugin/plugin-composer-host";
 import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
@@ -105,7 +107,6 @@ import type { CommandSuggestionSource } from "@/hooks/useCommandSuggestions";
 import {
   usePromptDraftController,
   usePromptDraftInputEmpty,
-  usePromptDraftSnapshot,
   type PromptDraftController,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
@@ -298,23 +299,28 @@ function NewThreadComposerStateRenderer({
 
 type LiveDraftNewThreadPromptBoxProps = Omit<
   NewThreadPromptBoxProps,
-  "attachments" | "history" | "mentionRanges" | "value"
+  "draft"
 > & {
-  attachments: Omit<NewThreadPromptBoxProps["attachments"], "items">;
-  history: Omit<NewThreadPromptBoxProps["history"], "currentDraft">;
   promptDraft: PromptDraftController;
   blockerReason: NewThreadBlockerReason | null;
 };
 
+const selectHasDraft = (draft: PromptDraftState) => !isPromptDraftEmpty(draft);
+
 function LiveDraftNewThreadPromptBox({
-  attachments,
-  history,
   promptDraft,
   blockerReason,
   ...promptBoxProps
 }: LiveDraftNewThreadPromptBoxProps) {
-  const draft = usePromptDraftSnapshot(promptDraft);
-  const hasDraft = !isPromptDraftEmpty(draft);
+  const draft = useMemo<ComposerDraftStore>(
+    () => ({
+      getCurrent: promptDraft.getCurrent,
+      subscribeDraft: promptDraft.subscribe,
+      setDraft: promptDraft.setDraft,
+    }),
+    [promptDraft],
+  );
+  const hasDraft = useComposerDraftSelector(draft, selectHasDraft);
   const reportedBlockers = useRef(new Set<NewThreadBlockerReason>());
   useEffect(() => {
     if (!hasDraft || blockerReason === null) return;
@@ -325,15 +331,7 @@ function LiveDraftNewThreadPromptBox({
       properties: { reason: blockerReason },
     });
   }, [blockerReason, hasDraft]);
-  return (
-    <NewThreadPromptBox
-      {...promptBoxProps}
-      value={draft.text}
-      mentionRanges={draft.mentions}
-      history={{ ...history, currentDraft: draft }}
-      attachments={{ ...attachments, items: draft.attachments }}
-    />
-  );
+  return <NewThreadPromptBox {...promptBoxProps} draft={draft} />;
 }
 
 type ProjectDefaultsState =
@@ -2014,7 +2012,6 @@ export function NewThreadComposer({
           promptDraft={promptDraft}
           id={options.id}
           focusRequest={promptBoxFocusRequest}
-          onChange={promptDraft.setTextAndMentions}
           onSubmit={(extras) =>
             handleSubmit(options.blocker?.message ?? null, extras)
           }

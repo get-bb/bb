@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import type { PromptTextMention, ThreadListEntry } from "@bb/domain";
+import type { ReactNode } from "react";
+import type { ThreadListEntry } from "@bb/domain";
 import {
   NewThreadPromptBoxUI,
   type NewThreadEnvironmentConfig,
@@ -27,6 +27,7 @@ import {
 import { RootComposeHome } from "./RootComposeHome";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+import { useComposerDraftFixture } from "@/test/fixtures/composer-draft";
 
 export const projectNamesById = new Map<string, string>([
   [PROJECT_IDS.bb, PROJECT_NAMES.bb],
@@ -164,24 +165,17 @@ export function StoryComposer({
 }: {
   initialValue?: string;
 }) {
-  const [value, setValue] = useState(initialValue);
-  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const draft = useComposerDraftFixture(initialValue);
   return (
     <ModelPickerStoryQueryProvider>
       <NewThreadPromptBoxUI
         mentionMenuPlacement="top"
         id="story-compact-home-composer"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={(nextValue, nextMentionRanges) => {
-          setValue(nextValue);
-          setMentionRanges(nextMentionRanges);
-        }}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
         history={{
-          currentDraft: { text: "", mentions: [], attachments: [] },
           entries: [],
           onSelectEntry: noop,
         }}
