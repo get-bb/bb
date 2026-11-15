@@ -195,6 +195,8 @@ for a first join is not supervised. When the installer starts a previously
 joined daemon without a service, its launcher restarts it after crashes and
 self-updates while the launcher remains running.
 
+On Linux, the systemd unit preserves the installer's `HOME` so child CLIs use the same user configuration and credentials after a service restart. When an existing daemon starts without `HOME`, it restores the operating-system account's home directory before launching subprocesses; an explicit `HOME` is preserved.
+
 The installed launchd/systemd service enables `--auto-update`. If session open
 reports a newer server protocol, the daemon downloads the server artifact,
 verifies its SHA-256 digest, updates its private install, then exits so the

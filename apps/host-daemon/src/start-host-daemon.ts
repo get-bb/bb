@@ -17,6 +17,7 @@ import {
 import type { HostDaemon } from "./daemon.js";
 import { enrollDaemonHost } from "./enroll.js";
 import { loadHostIdentity, persistHostId } from "./identity.js";
+import { ensureHomeEnvironment } from "./home-environment.js";
 import { acquireDaemonLock } from "./lock.js";
 import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
@@ -44,6 +45,7 @@ interface StartHostDaemonOptions {
 export async function startHostDaemon(
   options: StartHostDaemonOptions = {},
 ): Promise<HostDaemon> {
+  ensureHomeEnvironment();
   const resolvedConfig = loadHostDaemonStartConfig({});
   const dataDir = resolvedConfig.dataDir;
   const hostDaemonConfig = resolvedConfig.connectionConfig;
