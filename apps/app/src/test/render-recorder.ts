@@ -5,7 +5,14 @@ interface RecorderFiber {
   alternate: RecorderFiber | null;
   child: RecorderFiber | null;
   sibling: RecorderFiber | null;
+  return: RecorderFiber | null;
   memoizedProps: unknown;
+}
+
+interface RenderRecord {
+  name: string;
+  props: unknown;
+  ancestors: readonly string[];
 }
 
 interface RecorderHook {
@@ -22,6 +29,7 @@ interface RecorderHook {
 
 export interface RenderRecorder {
   propsOf(componentName: string): unknown[];
+  renderedOutside(componentName: string): string[];
   reset(): void;
   uninstall(): void;
 }
@@ -49,21 +57,32 @@ function componentName(fiber: RecorderFiber): string | null {
 }
 
 export function installRenderRecorder(): RenderRecorder {
-  const globalScope: { __REACT_DEVTOOLS_GLOBAL_HOOK__?: RecorderHook } =
-    globalThis;
+  const globalScope: typeof globalThis & {
+    __REACT_DEVTOOLS_GLOBAL_HOOK__?: RecorderHook;
+  } = globalThis;
   if (globalScope.__REACT_DEVTOOLS_GLOBAL_HOOK__ !== undefined) {
     throw new Error("A React DevTools hook is already installed.");
   }
-  const rendered = new Map<string, unknown[]>();
+  const records: RenderRecord[] = [];
   let nextRendererId = 1;
+  const ancestorsOf = (fiber: RecorderFiber): string[] => {
+    const names: string[] = [];
+    for (let parent = fiber.return; parent !== null; parent = parent.return) {
+      const name = componentName(parent);
+      if (name !== null) names.push(name);
+    }
+    return names;
+  };
   const record = (fiber: RecorderFiber) => {
     const name = componentName(fiber);
     if (name === null) return;
     const mounted = fiber.alternate === null;
     if (!mounted && (fiber.flags & PERFORMED_WORK) === 0) return;
-    const props = rendered.get(name) ?? [];
-    props.push(fiber.memoizedProps);
-    rendered.set(name, props);
+    records.push({
+      name,
+      props: fiber.memoizedProps,
+      ancestors: ancestorsOf(fiber),
+    });
   };
   const hook: RecorderHook = {
     renderers: new Map(),
@@ -95,8 +114,19 @@ export function installRenderRecorder(): RenderRecorder {
   };
   globalScope.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook;
   return {
-    propsOf: (name) => rendered.get(name) ?? [],
-    reset: () => rendered.clear(),
+    propsOf: (name) =>
+      records
+        .filter((entry) => entry.name === name)
+        .map((entry) => entry.props),
+    renderedOutside: (name) =>
+      records
+        .filter(
+          (entry) => entry.name !== name && !entry.ancestors.includes(name),
+        )
+        .map((entry) => entry.name),
+    reset: () => {
+      records.length = 0;
+    },
     uninstall: () => {
       delete globalScope.__REACT_DEVTOOLS_GLOBAL_HOOK__;
     },

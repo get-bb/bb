@@ -3,8 +3,13 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { Provider } from "jotai";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  defaultScheduler,
+  notifyManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
@@ -74,8 +79,13 @@ vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
   }),
 }));
 
+beforeEach(() => {
+  notifyManager.setScheduler((notify) => notify());
+});
+
 afterEach(() => {
   cleanup();
+  notifyManager.setScheduler(defaultScheduler);
   threadScreenRenders.count = 0;
 });
 
@@ -142,8 +152,8 @@ describe("ThreadDetailView timeline pushes", () => {
         timelineWith(["First answer.", "Second answer."]),
       );
     });
-    await screen.findByText("2 rows");
 
+    expect(screen.getByText("2 rows")).toBeDefined();
     expect(threadScreenRenders.count).toBe(rendersBeforePush);
   });
 });
