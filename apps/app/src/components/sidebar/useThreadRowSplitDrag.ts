@@ -9,15 +9,15 @@ import { beginSidebarPaneContentSplitDrag } from "./usePaneContentSplitDrag";
 interface UseThreadRowSplitDragArgs {
   projectId: string;
   threadId: string;
-  title: string;
-  mentionThreads?: readonly DroppedThreadMention[];
+  getTitle: () => string;
+  getMentionThreads?: () => readonly DroppedThreadMention[] | undefined;
 }
 
 export function useThreadRowSplitDrag({
   projectId,
   threadId,
-  title,
-  mentionThreads,
+  getTitle,
+  getMentionThreads,
 }: UseThreadRowSplitDragArgs): {
   onPointerDown: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined;
   openInSplit: () => void;
@@ -36,11 +36,11 @@ export function useThreadRowSplitDrag({
         store,
         navigate,
         content: { kind: "thread", projectId, threadId },
-        label: title,
-        mentionThreads,
+        label: getTitle(),
+        mentionThreads: getMentionThreads?.(),
       });
     },
-    [mentionThreads, navigate, projectId, store, threadId, title],
+    [getMentionThreads, getTitle, navigate, projectId, store, threadId],
   );
 
   const openInSplit = useCallback(() => {

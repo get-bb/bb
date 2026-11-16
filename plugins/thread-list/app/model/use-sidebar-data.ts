@@ -30,6 +30,7 @@ export interface SidebarData {
   projects: SidebarProject[];
   personalProject: SidebarProject | null;
   hostsById: ReadonlyMap<string, SidebarHost>;
+  projectNamesById: ReadonlyMap<string, string>;
 }
 
 function sameElements<T>(left: readonly T[], right: readonly T[]): boolean {
@@ -48,6 +49,17 @@ function sameHosts(
   for (const [id, host] of left) {
     const other = right.get(id);
     if (other === undefined || other.name !== host.name) return false;
+  }
+  return true;
+}
+
+function sameProjectNames(
+  left: ReadonlyMap<string, string>,
+  right: ReadonlyMap<string, string>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const [id, name] of left) {
+    if (right.get(id) !== name) return false;
   }
   return true;
 }
@@ -118,6 +130,9 @@ export function buildSidebarData(
     previous !== null && sameElements(previous.projects, groupedProjects)
       ? previous.projects
       : groupedProjects;
+  const projectNamesById = new Map(
+    projects.map((project) => [project.id, project.name]),
+  );
   return {
     status,
     sections,
@@ -128,6 +143,11 @@ export function buildSidebarData(
       previous !== null && sameHosts(previous.hostsById, hostsById)
         ? previous.hostsById
         : hostsById,
+    projectNamesById:
+      previous !== null &&
+      sameProjectNames(previous.projectNamesById, projectNamesById)
+        ? previous.projectNamesById
+        : projectNamesById,
   };
 }
 
@@ -178,17 +198,15 @@ export function resetSidebarDataCacheForTest(): void {
   sidebarDataCache = null;
 }
 
-export const SidebarProjectsContext = createContext<
-  readonly PluginSidebarProject[]
->([]);
+export const SidebarProjectNamesContext = createContext<
+  ReadonlyMap<string, string>
+>(new Map());
 
 export function useSidebarProjectName(
   projectId: string | null,
 ): string | undefined {
-  const projects = useContext(SidebarProjectsContext);
-  return projectId === null
-    ? undefined
-    : projects.find((project) => project.id === projectId)?.name;
+  const projectNamesById = useContext(SidebarProjectNamesContext);
+  return projectId === null ? undefined : projectNamesById.get(projectId);
 }
 
 export function useSidebarData() {

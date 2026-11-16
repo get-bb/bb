@@ -27,8 +27,6 @@ import {
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { SidebarThreadEntriesProvider } from "@/lib/sidebar-thread-entries";
 
 installTestPluginRuntime();
 const threadListApp = await loadPluginAppDefinition(
@@ -165,17 +163,14 @@ function useThreadListPlugin() {
 
 function ThreadListSidebar() {
   const replacement = useThreadListReplacement();
-  const { data } = useSidebarNavigation();
   return (
-    <SidebarThreadEntriesProvider navigation={data}>
-      <SidebarProvider defaultOpen className="min-h-0 w-auto">
-        <div className="flex h-[560px] w-72 shrink-0 flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground">
-          <SidebarContent>
-            <PluginThreadList replacement={replacement} onNavigate={() => {}} />
-          </SidebarContent>
-        </div>
-      </SidebarProvider>
-    </SidebarThreadEntriesProvider>
+    <SidebarProvider defaultOpen className="min-h-0 w-auto">
+      <div className="flex h-[560px] w-72 shrink-0 flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground">
+        <SidebarContent>
+          <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+        </SidebarContent>
+      </div>
+    </SidebarProvider>
   );
 }
 
@@ -298,21 +293,18 @@ const ACTION_PREFERENCES = {
 
 function ActionSidebar() {
   const replacement = useThreadListReplacement();
-  const { data } = useSidebarNavigation();
   return (
-    <SidebarThreadEntriesProvider navigation={data}>
-      <SidebarProvider defaultOpen className="min-h-0 w-auto">
-        <main
-          data-thread-row-fixture
-          className="bg-sidebar text-sidebar-foreground"
-          style={{ width: 288 }}
-        >
-          <SidebarContent>
-            <PluginThreadList replacement={replacement} onNavigate={() => {}} />
-          </SidebarContent>
-        </main>
-      </SidebarProvider>
-    </SidebarThreadEntriesProvider>
+    <SidebarProvider defaultOpen className="min-h-0 w-auto">
+      <main
+        data-thread-row-fixture
+        className="bg-sidebar text-sidebar-foreground"
+        style={{ width: 288 }}
+      >
+        <SidebarContent>
+          <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+        </SidebarContent>
+      </main>
+    </SidebarProvider>
   );
 }
 

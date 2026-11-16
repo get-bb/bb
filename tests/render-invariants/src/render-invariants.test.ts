@@ -108,61 +108,53 @@ describe("render invariants", () => {
     },
   );
 
-  pendingInvariant(
-    "renaming thread X re-renders no sidebar row but X's",
-    async () => {
-      const target = fixture.pushTargetThreadId;
-      await inThread(fixture.timelineThreadId, async (session) => {
-        const title = `Push target renamed ${Date.now()}`;
-        await session.reset();
-        await updateThread(fixture.harness.api, target, { title });
-        await session.page.waitForSelector(
-          `a[data-sidebar-thread-id="${target}"][aria-label*="${title}"]`,
-        );
-        await session.settle();
-        const report = await session.report();
-        expect(
-          report.renders.some((render) => render.sidebarThreadId === target),
-        ).toBe(true);
-        const otherRows = rerendered(report).filter(
-          (render) =>
-            render.sidebarThreadId !== null &&
-            render.sidebarThreadId !== target,
-        );
-        expect(summarize(otherRows)).toEqual([]);
-      });
-    },
-  );
+  it("renaming thread X re-renders no sidebar row but X's", async () => {
+    const target = fixture.pushTargetThreadId;
+    await inThread(fixture.timelineThreadId, async (session) => {
+      const title = `Push target renamed ${Date.now()}`;
+      await session.reset();
+      await updateThread(fixture.harness.api, target, { title });
+      await session.page.waitForSelector(
+        `a[data-sidebar-thread-id="${target}"][aria-label*="${title}"]`,
+      );
+      await session.settle();
+      const report = await session.report();
+      expect(
+        report.renders.some((render) => render.sidebarThreadId === target),
+      ).toBe(true);
+      const otherRows = rerendered(report).filter(
+        (render) =>
+          render.sidebarThreadId !== null && render.sidebarThreadId !== target,
+      );
+      expect(summarize(otherRows)).toEqual([]);
+    });
+  });
 
-  pendingInvariant(
-    "a turn in thread X re-renders no sidebar row but X's",
-    async () => {
-      const target = fixture.pushTargetThreadId;
-      await inThread(fixture.timelineThreadId, async (session) => {
-        await session.reset();
-        await sendTextMessage(fixture.harness.api, target, {
-          text: "delay:300 ping",
-        });
-        await waitForThreadStatus(
-          fixture.harness.api,
-          target,
-          "idle",
-          TURN_TIMEOUT_MS,
-        );
-        await session.settle();
-        const report = await session.report();
-        expect(
-          report.renders.some((render) => render.sidebarThreadId === target),
-        ).toBe(true);
-        const otherRows = rerendered(report).filter(
-          (render) =>
-            render.sidebarThreadId !== null &&
-            render.sidebarThreadId !== target,
-        );
-        expect(summarize(otherRows)).toEqual([]);
+  it("a turn in thread X re-renders no sidebar row but X's", async () => {
+    const target = fixture.pushTargetThreadId;
+    await inThread(fixture.timelineThreadId, async (session) => {
+      await session.reset();
+      await sendTextMessage(fixture.harness.api, target, {
+        text: "delay:300 ping",
       });
-    },
-  );
+      await waitForThreadStatus(
+        fixture.harness.api,
+        target,
+        "idle",
+        TURN_TIMEOUT_MS,
+      );
+      await session.settle();
+      const report = await session.report();
+      expect(
+        report.renders.some((render) => render.sidebarThreadId === target),
+      ).toBe(true);
+      const otherRows = rerendered(report).filter(
+        (render) =>
+          render.sidebarThreadId !== null && render.sidebarThreadId !== target,
+      );
+      expect(summarize(otherRows)).toEqual([]);
+    });
+  });
 
   pendingInvariant(
     "a streaming push re-renders no finished timeline row",
