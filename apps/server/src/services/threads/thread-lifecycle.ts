@@ -7,21 +7,25 @@ import {
 import {
   and,
   eq,
-  gte,
   inArray,
   isNotNull,
   isNull,
-  lte,
   notExists,
   notInArray,
   or,
   sql,
 } from "drizzle-orm";
 import {
+  getLatestStoredThreadEventOfTypes,
   getLatestThreadSequence,
+  hasStoredProviderTurnCompletedSince,
+  hasStoredThreadInterruptedSince,
+  hasStoredTurnCompleted,
+  isThreadAwaitingTurnStartPastDeadline,
+  listTurnStartDeadlineCandidates,
+  type TurnStartDeadlineCandidate,
   requestThreadPurge,
   environments,
-  events,
   getEnvironment,
   getHost,
   getLatestSessionForHost,
@@ -298,17 +302,6 @@ interface ThreadStartSuccessActivationArgs {
   threadId: string;
 }
 
-interface HasThreadInterruptedEventAtOrAfterArgs {
-  createdAt: number;
-  threadId: string;
-}
-
-interface HasProviderTurnCompletedEventAtOrAfterArgs {
-  createdAt: number;
-  providerThreadId: string;
-  threadId: string;
-}
-
 interface RequestThreadStopArgs extends Omit<ThreadStopCommandArgs, "intent"> {
   interruptionReason: SystemThreadInterruptedReason;
 }
@@ -568,18 +561,13 @@ function hasThreadInterruptedEvent(
   deps: ThreadLifecycleReadDeps,
   threadId: string,
 ): boolean {
-  const row = deps.db
-    .select({ id: events.id })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, threadId),
-        eq(events.type, "system/thread/interrupted"),
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
+  return (
+    getLatestStoredThreadEventOfTypes(deps.db, {
+      afterSequence: 0,
+      threadId,
+      types: ["system/thread/interrupted"],
+    }) !== null
+  );
 }
 
 function buildProvisioningStoppedEntry(): ProvisioningTranscriptEntry {
@@ -732,20 +720,10 @@ function hasExpectedTurnCompletedEvent(
     return false;
   }
 
-  return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, command.threadId),
-          eq(events.turnId, turnId),
-          eq(events.type, "turn/completed"),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
+  return hasStoredTurnCompleted(deps.db, {
+    threadId: command.threadId,
+    turnId,
+  });
 }
 
 function hasTerminalClientTurnRequestEvent(
@@ -761,57 +739,16 @@ function hasTerminalClientTurnRequestEvent(
   );
 }
 
-function hasThreadInterruptedEventAtOrAfter(
-  deps: ThreadLifecycleReadDeps,
-  args: HasThreadInterruptedEventAtOrAfterArgs,
-): boolean {
-  return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.type, "system/thread/interrupted"),
-          gte(events.createdAt, args.createdAt),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
-}
-
-function hasProviderTurnCompletedEventAtOrAfter(
-  deps: ThreadLifecycleReadDeps,
-  args: HasProviderTurnCompletedEventAtOrAfterArgs,
-): boolean {
-  return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.providerThreadId, args.providerThreadId),
-          eq(events.type, "turn/completed"),
-          gte(events.createdAt, args.createdAt),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
-}
-
 function isThreadStartActivationStale(
   deps: ThreadLifecycleReadDeps,
   args: ThreadStartSuccessActivationArgs,
 ): boolean {
   return (
-    hasThreadInterruptedEventAtOrAfter(deps, {
+    hasStoredThreadInterruptedSince(deps.db, {
       createdAt: args.commandStartedAt,
       threadId: args.threadId,
     }) ||
-    hasProviderTurnCompletedEventAtOrAfter(deps, {
+    hasStoredProviderTurnCompletedSince(deps.db, {
       createdAt: args.commandStartedAt,
       providerThreadId: args.providerThreadId,
       threadId: args.threadId,
@@ -1509,42 +1446,17 @@ function requestThreadStop(
 export const TURN_START_DEADLINE_MS = 5 * 60_000;
 export const TURN_START_DEADLINE_RECONNECT_GRACE_MS = 60_000;
 
-function isAwaitingTurnStartPastDeadline(deadline: number) {
-  return and(
-    eq(threads.status, "active"),
-    isNull(threads.deletedAt),
-    lte(threads.statusChangedAt, deadline),
-    sql`NOT EXISTS (
-      SELECT 1 FROM ${events}
-      WHERE ${events.threadId} = ${threads.id}
-        AND ${events.type} = 'turn/completed'
-        AND ${events.createdAt} > ${deadline}
-    )`,
-  );
-}
-
-interface TurnStartDeadlineCandidate {
-  environmentId: string;
-  hostId: string;
-  threadId: string;
-}
-
 function markTurnStartDeadlineStopInTransaction(
   deps: ThreadLifecycleTransactionDeps,
   args: { candidate: TurnStartDeadlineCandidate; deadline: number },
 ): boolean {
   const { candidate } = args;
-  const stillAwaiting = deps.db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.id, candidate.threadId),
-        isAwaitingTurnStartPastDeadline(args.deadline),
-      ),
-    )
-    .get();
-  if (stillAwaiting === undefined) {
+  if (
+    !isThreadAwaitingTurnStartPastDeadline(deps.db, {
+      deadline: args.deadline,
+      threadId: candidate.threadId,
+    })
+  ) {
     return false;
   }
   if (
@@ -1574,16 +1486,7 @@ export function turnStartDeadlineSweep(
     name: "turn-start-deadline",
     concurrency: 1,
     list: (): TurnStartDeadlineCandidate[] =>
-      deps.db
-        .select({
-          environmentId: environments.id,
-          hostId: environments.hostId,
-          threadId: threads.id,
-        })
-        .from(threads)
-        .innerJoin(environments, eq(threads.environmentId, environments.id))
-        .where(isAwaitingTurnStartPastDeadline(deadline))
-        .all(),
+      listTurnStartDeadlineCandidates(deps.db, { deadline }),
     key: (candidate) => candidate.threadId,
     process: (candidate) => {
       const daemonConnectedAt = deps.hub.getDaemonConnectedAtForHost(

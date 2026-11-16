@@ -1,4 +1,3 @@
-import { listEvents } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { sendTextMessage } from "../../helpers/api.js";
 import {
@@ -12,6 +11,7 @@ import {
   RECOVERY_TEST_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
+import { listEvents } from "@bb/db/testing";
 
 function backgroundTaskStates(harness: IntegrationHarness, threadId: string) {
   return listEvents(harness.db, { threadId }).flatMap((row) => {

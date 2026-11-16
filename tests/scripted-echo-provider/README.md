@@ -16,6 +16,8 @@ Prompt directives:
   with a resolved or an unresolved turn id and answers `Tool called: <name>`.
 - `bg_task` opens a background task that outlives the turn; `bg_task_done`
   settles every task the thread left open.
+- `stream:<chunks>:<intervalMs>` streams an agent message as `<chunks>` one-line
+  text deltas, one every `<intervalMs>`, then settles the turn.
 - Otherwise the turn answers `Response to: <prompt text>`.
 
 Session- and process-level behaviour (archived sessions, failing commands,

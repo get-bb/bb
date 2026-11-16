@@ -1,8 +1,4 @@
-import {
-  getQueuedThreadMessage,
-  listEvents,
-  listQueuedThreadMessages,
-} from "@bb/db";
+import { getQueuedThreadMessage, listQueuedThreadMessages } from "@bb/db";
 import { threadScope, turnScope, turnRequestEventDataSchema } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +20,7 @@ import {
 import { textInput } from "../helpers/prompt-input.js";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 function seedParentAndChild(
   harness: TestAppHarness,

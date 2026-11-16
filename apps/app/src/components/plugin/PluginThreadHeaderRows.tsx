@@ -3,7 +3,7 @@ import type { ExperimentalThreadHeaderRowProps } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadHeaderRowSlot,
 } from "@/lib/plugin-slots";
 
@@ -34,7 +34,7 @@ export function PluginThreadHeaderRows({
   projectId,
   environmentId,
 }: PluginThreadHeaderRowsProps) {
-  const { threadHeaderRows } = usePluginSlots();
+  const threadHeaderRows = usePluginSlotKind("threadHeaderRows");
   const props = useMemo<ExperimentalThreadHeaderRowProps>(
     () => ({
       threadId,

@@ -2,7 +2,6 @@ import {
   closeSession,
   getThread,
   hostDaemonSessions,
-  listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
 import { eq } from "drizzle-orm";
@@ -35,6 +34,7 @@ import {
 } from "../helpers/seed.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const HOST_DISCONNECTED_FOR_MS = 10 * 60_000;
 

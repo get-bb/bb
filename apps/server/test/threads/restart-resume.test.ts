@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import {
   getLatestThreadSequence,
   getThread,
-  listEvents,
   listQueuedThreadMessages,
   setExperiments,
   threads,
@@ -39,6 +38,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const HOST_ID = "host-restart";
 const RESUMED_WHILE_WORKING = expect.stringContaining(

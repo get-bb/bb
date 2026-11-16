@@ -3,7 +3,7 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { useSidebarThreads } from "@/lib/plugin-sidebar-hooks";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadRowMetadataSlot,
 } from "@/lib/plugin-slots";
 import {
@@ -59,7 +59,7 @@ export function ThreadRowMetadataCollectorsView() {
     lineThreadsStore.subscribe,
     lineThreadsStore.getSnapshot,
   );
-  const slots = usePluginSlots().threadRowMetadata.filter(
+  const slots = usePluginSlotKind("threadRowMetadata").filter(
     (slot) => slot.useData !== undefined,
   );
   if (mounted.length === 0 || slots.length === 0) return null;

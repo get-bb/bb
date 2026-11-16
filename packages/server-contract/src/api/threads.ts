@@ -328,7 +328,17 @@ export type SendMessageDelivery = z.infer<typeof sendMessageDeliverySchema>;
  * for now" would invite every caller to check fields that cannot exist.
  */
 export const sendMessageResponseSchema = z.discriminatedUnion("delivery", [
-  z.object({ ok: z.literal(true), delivery: z.literal("sent") }),
+  z.object({
+    ok: z.literal(true),
+    delivery: z.literal("sent"),
+    /**
+     * Thread event sequence of the delivered message, comparable with a
+     * timeline's `maxSeq`: a timeline whose `maxSeq` is at least this value
+     * already contains the message. Null when the send recorded no message,
+     * such as `/clear`.
+     */
+    messageSequence: z.number().int().nonnegative().nullable(),
+  }),
   z.object({
     ok: z.literal(true),
     delivery: z.literal("queued"),
@@ -487,7 +497,17 @@ export type SetQueuedMessageGroupBoundaryRequest = z.infer<
   typeof setQueuedMessageGroupBoundaryRequestSchema
 >;
 
-export const sendQueuedMessageResponseSchema = sendMessageResponseSchema;
+export const sendQueuedMessageResponseSchema = z.discriminatedUnion(
+  "delivery",
+  [
+    z.object({ ok: z.literal(true), delivery: z.literal("sent") }),
+    z.object({
+      ok: z.literal(true),
+      delivery: z.literal("queued"),
+      queuedMessage: threadQueuedMessageSchema,
+    }),
+  ],
+);
 export type SendQueuedMessageResponse = z.infer<
   typeof sendQueuedMessageResponseSchema
 >;

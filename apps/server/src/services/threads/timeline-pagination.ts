@@ -101,6 +101,16 @@ function buildTimelineLogicalSegments(
   return populated;
 }
 
+function firstLeafSourceSeqStart(rows: readonly TimelineRow[]): number | null {
+  let row = rows[0];
+  if (row === undefined) return null;
+  for (;;) {
+    const first = timelineRowChildren(row)?.[0];
+    if (first === undefined) return row.sourceSeqStart;
+    row = first;
+  }
+}
+
 function timelineRowChangesFrom(
   row: TimelineRow,
   sequence: number,
@@ -208,7 +218,12 @@ export function paginateTimelineRows(
         olderCursor: hasOlderRows
           ? timelineWindowCursor(segment.sequenceStart)
           : null,
-        ...omittedRows(contents.partialRowsSourceSeqEnd, segment.sequenceStart),
+        ...omittedRows(
+          contents.partialRowsSourceSeqEnd,
+          contents.start > 0
+            ? (firstLeafSourceSeqStart(contents.rows) ?? segment.sequenceStart)
+            : segment.sequenceStart,
+        ),
         contentCursor:
           contents.start > 0
             ? {

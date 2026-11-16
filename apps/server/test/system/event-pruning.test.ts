@@ -1,4 +1,4 @@
-import { getThread, listEvents, threadPruningCursors } from "@bb/db";
+import { getThread, threadPruningCursors } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
@@ -23,6 +23,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 interface SeedNoiseRowsArgs {
   endingSequence: number;

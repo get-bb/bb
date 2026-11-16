@@ -25,7 +25,8 @@
     "typecheck": "tsrs --noEmit",
     "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
-    "prepare:bundled": "bb-plugin-build prepare-bundled"
+    "prepare:bundled": "bb-plugin-build prepare-bundled",
+    "generate:api-index": "node ../../packages/plugin-sdk/scripts/generate-api-index.mjs skills/bb-plugin-authoring/references"
   },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",

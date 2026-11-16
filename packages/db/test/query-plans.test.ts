@@ -717,6 +717,10 @@ describe("slow query index plans", () => {
       sql: query.sql,
     });
     expect(details).toMatch(
+      /SEARCH events USING INDEX events_thread_type_sequence_idx \(thread_id=\? AND type=\? AND sequence>\? AND sequence<\?\)/u,
+    );
+    expect(details).not.toContain("SCAN spans");
+    expect(details).toMatch(
       /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
     );
     expect(details).toMatch(

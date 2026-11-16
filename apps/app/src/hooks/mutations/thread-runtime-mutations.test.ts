@@ -140,6 +140,7 @@ beforeEach(() => {
   vi.mocked(sdk.threads.send).mockResolvedValue({
     ok: true,
     delivery: "sent",
+    messageSequence: 1,
   });
   vi.mocked(sdk.threads.spawn).mockResolvedValue(makeThreadResponse());
   vi.mocked(sdk.threads.queuedMessages.delete).mockResolvedValue({ ok: true });

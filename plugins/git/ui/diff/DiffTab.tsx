@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 import {
   experimental_useFixedTabTarget as useFixedTabTarget,
@@ -28,7 +28,10 @@ import {
   useGitDiffIgnoreWhitespacePreference,
   useGitDiffLineOverflowModePreference,
 } from "./git-diff-view-preferences.js";
-import { buildGitDiffIdentity } from "./gitDiffPanelHelpers.js";
+import {
+  ALL_GIT_DIFF_SELECTION,
+  buildGitDiffIdentity,
+} from "./gitDiffPanelHelpers.js";
 import { GitDiffToolbar } from "./GitDiffToolbar.js";
 import {
   GitDiffLoadingSkeleton,
@@ -180,6 +183,36 @@ function EnvironmentDiffTab({
     ignoreWhitespace: gitDiffIgnoreWhitespace,
     enabled: isLive,
   });
+  const shownFiles = filesQuery.shown;
+  const isPendingPathSettled =
+    pendingScrollPath !== null &&
+    isLive &&
+    gitDiffSelectValue === ALL_GIT_DIFF_SELECTION &&
+    !filesQuery.isFetching &&
+    !filesQuery.isPlaceholder &&
+    shownFiles !== null &&
+    shownFiles.target === gitDiffTarget;
+  useEffect(() => {
+    if (!isPendingPathSettled || pendingScrollPath === null || !shownFiles) {
+      return;
+    }
+    const result = shownFiles.result;
+    if (result.outcome === "unavailable") return;
+    if (
+      result.outcome === "available" &&
+      result.files.some((file) => file.path === pendingScrollPath)
+    ) {
+      return;
+    }
+    clearPendingIntent();
+    openFilePreview(pendingScrollPath);
+  }, [
+    clearPendingIntent,
+    isPendingPathSettled,
+    openFilePreview,
+    pendingScrollPath,
+    shownFiles,
+  ]);
   const diffFilesResponse = filesQuery.shown?.result;
   const shownTarget = filesQuery.shown?.target ?? gitDiffTarget;
   const shownIgnoreWhitespace =

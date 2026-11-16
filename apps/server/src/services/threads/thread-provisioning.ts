@@ -298,10 +298,15 @@ async function startThreadIfEnvironmentReady(
   });
 }
 
+export interface RequestedThreadProvision {
+  context: ThreadProvisionContext;
+  messageSequence: number;
+}
+
 export function requestThreadProvision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadProvisionArgs,
-): ThreadProvisionContext {
+): RequestedThreadProvision {
   return deps.db.transaction(() => {
     const { initiator, senderThreadId } = args.author;
     const target: TurnRequestTarget = { kind: "thread-start" };
@@ -351,7 +356,7 @@ export function requestThreadProvision(
       threadId: args.thread.id,
       context,
     });
-    return context;
+    return { context, messageSequence: request.sequence };
   });
 }
 
@@ -399,7 +404,7 @@ export function requestThreadEnvironmentRestore(
 export function requestThreadTargetReprovision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadTargetReprovisionArgs,
-): ThreadProvisionContext {
+): RequestedThreadProvision {
   return deps.db.transaction(() => {
     const request = appendReprovisionTurnRequest(deps, args);
     const context = createThreadStartup({
@@ -435,7 +440,7 @@ export function requestThreadTargetReprovision(
       threadId: args.thread.id,
       context,
     });
-    return context;
+    return { context, messageSequence: request.sequence };
   });
 }
 

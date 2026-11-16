@@ -5,7 +5,6 @@ import {
   getPreparingEnvironment,
   getThread,
   listEnvironments,
-  listEvents,
 } from "@bb/db";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
@@ -49,6 +48,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const PLUGIN_ID = "claim-release";
 const PROVIDER_ID = "shared-checkout";

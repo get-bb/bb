@@ -1,4 +1,4 @@
-import { listEvents, listQueuedThreadMessages } from "@bb/db";
+import { listQueuedThreadMessages } from "@bb/db";
 import { queuedMessageWaitingOnSchema } from "@bb/domain";
 import { sendMessageResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
@@ -23,6 +23,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 describe("offline host follow-ups", () => {
   it("queues a follow-up for a host whose socket just dropped", async () => {

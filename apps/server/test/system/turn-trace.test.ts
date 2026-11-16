@@ -99,7 +99,11 @@ async function sendFollowUp(
       },
       thread,
     }),
-  ).resolves.toEqual({ ok: true, delivery: "sent" });
+  ).resolves.toEqual({
+    ok: true,
+    delivery: "sent",
+    messageSequence: expect.any(Number),
+  });
 }
 
 describe("turn trace", () => {

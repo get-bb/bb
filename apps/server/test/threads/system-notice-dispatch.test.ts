@@ -1,6 +1,5 @@
 import {
   claimQueuedThreadMessageGroup,
-  listEvents,
   listQueuedThreadMessages,
   setThreadExecutionOverride,
   updateQueuedThreadMessage,
@@ -52,6 +51,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const WORKSPACE_PATH = "/tmp/system-notice-project";
 
@@ -719,7 +719,11 @@ describe("notices to a parent mid-turn", () => {
 
   it("wait for an offline host, then steer into the same turn", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session, thread: parent } = seedRunnableThread(harness, {
+      const {
+        host,
+        session,
+        thread: parent,
+      } = seedRunnableThread(harness, {
         hostId: "host-steer-offline",
         status: "active",
       });

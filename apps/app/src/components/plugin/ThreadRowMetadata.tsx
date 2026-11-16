@@ -11,7 +11,7 @@ import {
   useRegisterLineThread,
 } from "@/lib/thread-row-metadata-store";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadRowMetadataSlot,
 } from "@/lib/plugin-slots";
 
@@ -92,7 +92,7 @@ function MountedThreadRowMetadata({
 export const ThreadRowMetadata = memo(function ThreadRowMetadata({
   thread,
 }: ExperimentalThreadRowMetadataLineProps) {
-  const { threadRowMetadata } = usePluginSlots();
+  const threadRowMetadata = usePluginSlotKind("threadRowMetadata");
   if (threadRowMetadata.length === 0) return null;
   return (
     <MountedThreadRowMetadata

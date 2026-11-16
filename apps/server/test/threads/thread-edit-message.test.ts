@@ -5,7 +5,6 @@ import {
   createPromptHistoryEntry,
   getThread,
   listActiveBackgroundTaskCountsByThreadIds,
-  listEvents,
   listOpenBackgroundTaskItemRowsForThread,
   listQueuedThreadMessages,
   listStoredProjectPromptHistoryRows,
@@ -40,6 +39,7 @@ import {
 } from "../helpers/seed.js";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const MESSAGE_EDIT_PROVIDERS = ["codex", "pi", "claude-code"] as const;
 const MESSAGE_EDIT_SCENARIOS = [

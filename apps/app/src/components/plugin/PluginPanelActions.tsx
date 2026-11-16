@@ -4,7 +4,7 @@ import { useMemo, type ReactNode } from "react";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginNewThreadPanelActionSlot,
   isThreadTab,
   isNavTab,
@@ -249,7 +249,7 @@ export function usePluginNewThreadPanelActions({
   panel: AppPanelController;
   projectId: string | null;
 }): readonly PluginPanelActionEntry[] {
-  const { newThreadPanelActions } = usePluginSlots();
+  const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
   return useMemo(
     () =>
       newThreadPanelActions.map((action) => ({
@@ -355,7 +355,7 @@ function RegisteredActionTabContent({
   tab: PluginPanelFixedPanelTab;
   context: Exclude<PluginPanelSurfaceContext, { kind: "new-thread" }>;
 }) {
-  const { tabs } = usePluginSlots();
+  const tabs = usePluginSlotKind("tabs");
   const action = tabs.find(
     (candidate) =>
       candidate.pluginId === tab.pluginId &&
@@ -402,7 +402,7 @@ function NewThreadActionTabContent({
   tab: PluginPanelFixedPanelTab;
   projectId: string | null;
 }) {
-  const { newThreadPanelActions } = usePluginSlots();
+  const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
   const action =
     newThreadPanelActions.find(
       (candidate) =>
@@ -436,7 +436,7 @@ function FileOpenerTabContent({
   original: ReactNode | undefined;
   tab: PluginPanelFixedPanelTab;
 }) {
-  const { fileOpeners } = usePluginSlots();
+  const fileOpeners = usePluginSlotKind("fileOpeners");
   const replacement = resolveReplacement(
     fileOpeners,
     (candidate) =>

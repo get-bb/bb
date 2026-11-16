@@ -43,6 +43,7 @@ import {
 import type { SendThreadMessageMutationRequest } from "../mutations/mutation-request-types";
 import {
   insertOptimisticTimelineRow,
+  insertOptimisticTimelineRowUnlessDelivered,
   optimisticallyInsertThread,
   removeOptimisticTimelineRow,
 } from "./query-cache";
@@ -961,17 +962,18 @@ export function applySendThreadMessageSuccess({
         queryClient,
         threadId: request.id,
       }).confirm([], readThreadBack(queryClient));
-      insertOptimisticTimelineRow(
+      insertOptimisticTimelineRowUnlessDelivered({
+        messageSequence: result.messageSequence,
         queryClient,
-        request.id,
-        buildOptimisticUserMessageRow({
+        row: buildOptimisticUserMessageRow({
           createdAt: optimisticCreatedAt,
           input: request.input,
           mode: request.mode,
           threadId: request.id,
           threadStatus: transaction.previousThreadStatus,
         }),
-      );
+        threadId: request.id,
+      });
     }
     invalidateThreadQueuedMessageListQuery({
       queryClient,

@@ -39,7 +39,7 @@ import {
   removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  usePluginSlots,
+  usePluginSlotKind,
 } from "./plugin-slots";
 import {
   getPluginThreadRowStatus,
@@ -143,7 +143,7 @@ function renderIntoBody(element: ReactElement): HTMLDivElement {
 }
 
 function MountedHomepageSections() {
-  const { homepageSections } = usePluginSlots();
+  const homepageSections = usePluginSlotKind("homepageSections");
   return createElement(
     "div",
     null,
@@ -256,8 +256,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     importRetryDelaysMs: [],
     applyCss: vi.fn(),

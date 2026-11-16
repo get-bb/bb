@@ -98,7 +98,6 @@ import {
 import { getAdjacentPaneId, getDirectionalPaneId } from "./splitPaneCommands";
 import {
   applyThreadPaneActionToLayout,
-  createSinglePaneLayout,
   focusedPaneRoute,
   paneContentRoute,
   reconcileLayoutForContent,
@@ -293,6 +292,18 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     [routeContent, routeThread],
   );
 
+  const [reconciledContent, setReconciledContent] =
+    useState<PaneContent | null>(null);
+  const layout = useMemo<SplitLayout | null>(() => {
+    if (currentContent === null) {
+      return storedLayout;
+    }
+    if (storedLayout !== null && currentContent === reconciledContent) {
+      return storedLayout;
+    }
+    return reconcileLayoutForContent(storedLayout, currentContent);
+  }, [currentContent, reconciledContent, storedLayout]);
+
   useEffect(() => {
     if (currentContent === null) {
       return;
@@ -300,15 +311,8 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     setLayout((previous) =>
       reconcileLayoutForContent(previous, currentContent),
     );
+    setReconciledContent(currentContent);
   }, [currentContent, setLayout]);
-
-  const layout: SplitLayout | null =
-    storedLayout ??
-    (currentContent?.kind === "thread" && routeThread
-      ? createSinglePaneLayout(routeThread)
-      : currentContent
-        ? reconcileLayoutForContent(null, currentContent)
-        : null);
   const panes = layout === null ? [] : listPanes(layout.root);
   const isSplitActive = splitWorkspaceActive && panes.length > 1;
   const maximizedPane =

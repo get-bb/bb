@@ -1,6 +1,6 @@
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginMachineProviderInputsSlot,
 } from "@/lib/plugin-slots";
 import type { JsonValue } from "@bb/domain";
@@ -48,7 +48,7 @@ export function useMachineProviderInputs({
   blockedReason: string | null;
   control: ReactNode;
 } {
-  const slots = usePluginSlots().machineProviderInputs;
+  const slots = usePluginSlotKind("machineProviderInputs");
   const registration = findRegistration(provider, slots);
   const scopeKey =
     provider === null

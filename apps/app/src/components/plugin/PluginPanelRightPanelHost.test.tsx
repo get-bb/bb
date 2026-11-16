@@ -225,8 +225,8 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandShortcut: () => null,
 }));
 
-vi.mock("@/lib/plugin-slots", () => ({
-  usePluginSlots: () => ({
+function mockPluginSlotSnapshot() {
+  return {
     tabs: fixedTabState.panelRegistered
       ? fixedTabState.registrations.map((tab) => ({
           ...tab,
@@ -252,7 +252,12 @@ vi.mock("@/lib/plugin-slots", () => ({
           },
         ]
       : [],
-  }),
+  };
+}
+
+vi.mock("@/lib/plugin-slots", () => ({
+  usePluginSlotKind: (kind: string) =>
+    Reflect.get(mockPluginSlotSnapshot(), kind),
 }));
 
 vi.mock("@/lib/file-opener-preference", () => ({

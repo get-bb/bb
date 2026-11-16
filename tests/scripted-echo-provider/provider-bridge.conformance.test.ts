@@ -23,33 +23,37 @@ afterEach(() => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it("passes the canonical protocol suite", async () => {
-  const report = await runBridgeConformance({
-    transport: { send: handleLine, takeMessages: output.takeMessages },
-    providerId: "scripted-echo",
-    session: {
-      cwd: workspaceDir,
-      promptInput: [{ type: "text", text: "say hello", mentions: [] }],
-      interruptiblePromptInput: [
-        { type: "text", text: "hold_turn", mentions: [] },
-      ],
-    },
-    timeoutMs: 5_000,
-  });
+it.each(["say hello", "stream:3:5"])(
+  "passes the canonical protocol suite replying to %s",
+  async (prompt) => {
+    const report = await runBridgeConformance({
+      transport: { send: handleLine, takeMessages: output.takeMessages },
+      providerId: "scripted-echo",
+      session: {
+        cwd: workspaceDir,
+        promptInput: [{ type: "text", text: prompt, mentions: [] }],
+        interruptiblePromptInput: [
+          { type: "text", text: "hold_turn", mentions: [] },
+        ],
+      },
+      timeoutMs: 5_000,
+    });
 
-  output.restore();
-  console.info(
-    `scripted echo bridge conformance:\n${formatConformanceReport(report)}`,
-  );
-  expect(report.results.filter((result) => result.status !== "pass")).toEqual(
-    [],
-  );
-  expect(report.results.map((result) => result.id)).toEqual(
-    expect.arrayContaining([
-      "recovery/session-archived",
-      "session/threads-independent",
-      "stop/interrupt-settles-before-result",
-    ]),
-  );
-  expect(report.passed).toBe(true);
-}, 30_000);
+    output.restore();
+    console.info(
+      `scripted echo bridge conformance:\n${formatConformanceReport(report)}`,
+    );
+    expect(report.results.filter((result) => result.status !== "pass")).toEqual(
+      [],
+    );
+    expect(report.results.map((result) => result.id)).toEqual(
+      expect.arrayContaining([
+        "recovery/session-archived",
+        "session/threads-independent",
+        "stop/interrupt-settles-before-result",
+      ]),
+    );
+    expect(report.passed).toBe(true);
+  },
+  30_000,
+);

@@ -20,7 +20,7 @@ import {
   runEnvironmentHook,
   ENVIRONMENT_HOOK_TIMEOUT_MS,
 } from "./environment-hooks.js";
-import { eq, and, isNull, ne, or, sql } from "drizzle-orm";
+import { eq, and, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import {
   releaseFinishedEnvironmentPreparationOwners,
@@ -40,7 +40,7 @@ import {
   type DbConnection,
   type DbTransaction,
   type EnvironmentRow,
-  events,
+  hasStoredCancelledThreadProvisioning,
   type DbNotifier,
   type DbQueryConnection,
   threads,
@@ -911,7 +911,12 @@ async function sweepProviderEnvironmentInSlot(
   if (record === undefined) return;
   const now = Date.now();
   if (shared) {
-    if (row.retireAt !== null && row.teardownStatus === null)
+    if (row.teardownStatus === "running" && row.status === "ready")
+      writeEnvironment(deps, environmentId, {
+        teardownStatus: null,
+        retireAt: null,
+      });
+    else if (row.retireAt !== null && row.teardownStatus === null)
       writeEnvironment(deps, environmentId, { retireAt: null });
     return;
   }
@@ -1258,6 +1263,7 @@ interface AdvanceEnvironmentProvisioningArgs {
   };
   environmentId: string | null | undefined;
   request?: EnvironmentProvisionRequest | null;
+  setupRunsOnConnectedDaemon?: boolean;
 }
 
 interface SettleEnvironmentProvisionCommandResultArgs {
@@ -1284,6 +1290,7 @@ interface FailEnvironmentProvisioningDurablyArgs {
 interface StartTrackedEnvironmentProvisionCommandArgs {
   environment: EnvironmentRow;
   request: EnvironmentProvisionRequest;
+  setupRunsOnConnectedDaemon: boolean;
 }
 
 interface SettleEnvironmentProvisionOutcomeArgs extends SettleEnvironmentProvisionCommandResultArgs {
@@ -1412,24 +1419,11 @@ function shouldPreserveThreadProvisionCancellationOutcome(
   args: { provisioningId: string; thread: LiveEnvironmentThread },
 ): boolean {
   if (args.thread.status === "stopping") return true;
-  return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.thread.id),
-          eq(events.type, "system/thread-provisioning"),
-          sql`json_extract(${events.data}, '$.status') = 'cancelled'`,
-          or(
-            sql`json_extract(${events.data}, '$.provisioningId') = ${args.provisioningId}`,
-            sql`${events.sequence} = (select max(last.sequence) from events last where last.thread_id = ${args.thread.id} and last.environment_id = ${args.thread.environmentId} and last.type = 'system/thread-provisioning')`,
-          ),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
+  return hasStoredCancelledThreadProvisioning(deps.db, {
+    environmentId: args.thread.environmentId,
+    provisioningId: args.provisioningId,
+    threadId: args.thread.id,
+  });
 }
 
 function recordEnvironmentProvisioningFailureInTransaction(
@@ -1836,6 +1830,26 @@ export async function resumeEnvironmentProvisioningForHost(
   deps: CommandResultSideEffectsDeps,
   args: { hostId: string },
 ): Promise<void> {
+  await resumeHostEnvironmentProvisioning(deps, {
+    hostId: args.hostId,
+    setupRunsOnConnectedDaemon: false,
+  });
+}
+
+export async function resumeEnvironmentProvisioningForReconnectedDaemon(
+  deps: CommandResultSideEffectsDeps,
+  args: { hostId: string },
+): Promise<void> {
+  await resumeHostEnvironmentProvisioning(deps, {
+    hostId: args.hostId,
+    setupRunsOnConnectedDaemon: true,
+  });
+}
+
+async function resumeHostEnvironmentProvisioning(
+  deps: CommandResultSideEffectsDeps,
+  args: { hostId: string; setupRunsOnConnectedDaemon: boolean },
+): Promise<void> {
   const environmentIds = deps.db
     .select({ id: environments.id })
     .from(environments)
@@ -1849,6 +1863,7 @@ export async function resumeEnvironmentProvisioningForHost(
   for (const environment of environmentIds) {
     await advanceEnvironmentProvisioning(deps, {
       environmentId: environment.id,
+      setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon,
     });
   }
 }
@@ -1884,7 +1899,11 @@ async function runEnvironmentProvisionCommand(
       .from(environmentHookOperations)
       .where(eq(environmentHookOperations.id, id))
       .get();
-    if (existing !== undefined && existing.finishedAt === null) {
+    if (
+      existing !== undefined &&
+      existing.finishedAt === null &&
+      !args.setupRunsOnConnectedDaemon
+    ) {
       interruptUnrecoverableEnvironmentProvisioning(deps, {
         environmentId: environment.id,
         reason: `An earlier setup has an unknown outcome. Archive its threads, inspect the workspace, then run bb environment cleanup ${environment.id} --recover.`,
@@ -2217,7 +2236,11 @@ export async function advanceEnvironmentProvisioning(
     map,
     key: row.id,
     run: () =>
-      runEnvironmentProvisionCommand(deps, { environment: row, request }),
+      runEnvironmentProvisionCommand(deps, {
+        environment: row,
+        request,
+        setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon === true,
+      }),
   });
 }
 

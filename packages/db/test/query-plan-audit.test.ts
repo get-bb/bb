@@ -12,6 +12,7 @@ function audit(sql: string, params: readonly QueryPlanParameter[]) {
   try {
     const result = auditQueryPlan(db.$client, sql, {
       largeTables: LARGE_TABLES,
+      boundedKeyColumns: new Map([["events", new Set(["turn_id"])]]),
       params,
     });
     if (result.status !== "audited") throw new Error(result.reason);
@@ -72,5 +73,98 @@ describe("auditQueryPlan", () => {
         ["thr_1", 4, "turn/started"],
       ),
     ).toEqual([]);
+  });
+
+  it("flags a correlated subquery that re-searches events for each outer row", () => {
+    const acceptedFilter = `accepted.thread_id = ? and accepted.type = ?`;
+    const chainFilter = `request.thread_id = ? and request.type = ?
+      and (json_extract(request.data, '$.requestId') = ?
+        or json_extract(request.data, '$.retryOfRequestId') = ?)`;
+    const params = [
+      "thr_1",
+      "turn/input/accepted",
+      "thr_1",
+      "client/turn/requested",
+      "req_1",
+      "req_1",
+      1,
+    ];
+
+    expect(
+      audit(
+        `select accepted.sequence from events accepted
+        where ${acceptedFilter} and exists (
+          select request.sequence from events request
+          where ${chainFilter}
+            and json_extract(request.data, '$.requestId') = json_extract(accepted.data, '$.clientRequestId'))
+        limit ?`,
+        params,
+      ),
+    ).toEqual(["correlated-subquery:events"]);
+    expect(
+      audit(
+        `select accepted.sequence from events accepted
+        where ${acceptedFilter} and json_extract(accepted.data, '$.clientRequestId') in (
+          select json_extract(request.data, '$.requestId') from events request
+          where ${chainFilter})
+        limit ?`,
+        params,
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts correlated lookups whose key does not grow with history", () => {
+    expect(
+      audit(
+        `select accepted.sequence from events accepted
+        where accepted.thread_id = ? and accepted.type = ? and exists (
+          select 1 from events started
+          where started.thread_id = accepted.thread_id
+            and started.sequence = accepted.sequence + 1
+            and started.type = ?)`,
+        ["thr_1", "turn/input/accepted", "turn/started"],
+      ),
+    ).toEqual([]);
+    expect(
+      audit(
+        `select started.sequence from events started
+        where started.thread_id = ? and started.type = ? and not exists (
+          select 1 from events completed
+          where completed.thread_id = started.thread_id
+            and completed.turn_id = started.turn_id
+            and completed.type = ?)`,
+        ["thr_1", "turn/started", "turn/completed"],
+      ),
+    ).not.toContain("correlated-subquery:events");
+  });
+
+  it("flags a loop over a CTE that runs once per history row", () => {
+    const spans = `WITH spans AS MATERIALIZED (
+      SELECT sequence AS start, sequence + 10 AS finish FROM events
+      WHERE thread_id = ? AND type = ?
+    )`;
+    const params = ["thr_1", "item/started", "thr_1", "client/turn/requested"];
+
+    expect(
+      audit(
+        `${spans}
+        SELECT min(events.sequence) FROM events
+        INNER JOIN spans ON events.sequence > spans.start AND events.sequence < spans.finish
+        WHERE events.thread_id = ? AND events.type = ?`,
+        params,
+      ),
+    ).toContain("nested-loop:events");
+    expect(
+      audit(
+        `${spans}
+        SELECT min((
+          SELECT events.sequence FROM events
+          WHERE events.thread_id = ? AND events.type = ?
+            AND events.sequence > spans.start AND events.sequence < spans.finish
+          ORDER BY events.sequence LIMIT 1
+        )) FROM spans`,
+        params,
+      ),
+    ).not.toContain("nested-loop:events");
   });
 });

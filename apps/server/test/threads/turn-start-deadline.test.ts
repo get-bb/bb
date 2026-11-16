@@ -1,4 +1,4 @@
-import { getThread, listEvents, updateThread } from "@bb/db";
+import { getThread, updateThread } from "@bb/db";
 import {
   turnRequestEventDataSchema,
   turnScope,
@@ -32,6 +32,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 afterEach(() => {
   vi.useRealTimers();

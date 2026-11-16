@@ -18,7 +18,7 @@ import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -1260,9 +1260,9 @@ function DevicesStepContainer({
     (host) => host.id !== hostId,
   ).length;
   const connect = connectAccessUrl(configQuery.data?.serverAccess);
-  const connectContributesSection = usePluginSlots().setupGuideSections.some(
-    (section) => section.pluginId === CONNECT_PLUGIN_ID,
-  );
+  const connectContributesSection = usePluginSlotKind(
+    "setupGuideSections",
+  ).some((section) => section.pluginId === CONNECT_PLUGIN_ID);
   const showMachines = devicesShowMachines(connect);
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",

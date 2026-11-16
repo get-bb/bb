@@ -1,7 +1,6 @@
 import {
   getThread,
   isThreadQueueAutoSendPaused,
-  listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
@@ -34,6 +33,7 @@ import {
   requestThreadStopForCurrentState,
   stopThreadForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
+import { listEvents } from "@bb/db/testing";
 
 describe("thread runtime stop", () => {
   it("releases and dismisses a question when the runtime ends during a failed interrupt", async () => {

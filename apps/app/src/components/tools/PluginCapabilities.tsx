@@ -29,7 +29,11 @@ import {
   reloadPlugin,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
+import {
+  usePluginSlotKind,
+  usePluginSlots,
+  type PluginSlotSnapshot,
+} from "@/lib/plugin-slots";
 import {
   getPluginConfigurationRoutePath,
   getPluginPanelRoutePath,
@@ -613,7 +617,7 @@ function PluginRuntimeStatusAlert({
   onReload: () => void;
   reloadPending: boolean;
 }) {
-  const { settingsSections } = usePluginSlots();
+  const settingsSections = usePluginSlotKind("settingsSections");
   const hasSettingsPage =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
