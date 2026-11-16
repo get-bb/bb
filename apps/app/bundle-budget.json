@@ -144,10 +144,15 @@
     "actually imports, so package barrels do not pull unused code forward. The",
     "PluginFrontend limits sit 25% above the new measurement. ThreadPage went",
     "from 95 chunks / 522.0 KB brotli to 4 / 460.2 KB, and NewThreadPage from 74 /",
-    "291.1 KB to 4 / 252.0 KB. Their limits are unchanged."
+    "291.1 KB to 4 / 252.0 KB. Their limits are unchanged.",
+    "",
+    "On 2026-11-15 both boot limits rose by 5.6 KiB raw and 5.25 KiB brotli for",
+    "the timeline row schemas: the timeline delta applier, which the boot path",
+    "reaches through thread queries and the push owner, now validates rows",
+    "patched by append-only deltas before caching them."
   ],
-  "maxBootBytes": 1722436,
-  "maxBootBrotliBytes": 424031,
+  "maxBootBytes": 1728170,
+  "maxBootBrotliBytes": 429407,
   "forbiddenBootPackages": [
     "@dnd-kit/accessibility",
     "@dnd-kit/core",
