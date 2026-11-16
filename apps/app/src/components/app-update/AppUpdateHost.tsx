@@ -21,6 +21,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useAcknowledgeAppUpdate } from "@/hooks/mutations/app-update-mutations";
 import { useAppUpdateStatus } from "@/hooks/queries/app-update-queries";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import {
   closeAppUpdateResultDetails,
   getAppUpdateResultDetailsSnapshot,
@@ -118,8 +119,10 @@ export function AppUpdateHost({
             {
               onError: (error) => {
                 appToast.error("Couldn't dismiss the update result", {
-                  description:
-                    error instanceof Error ? error.message : String(error),
+                  description: getMutationErrorMessage({
+                    error,
+                    fallbackMessage: "Try again.",
+                  }),
                 });
               },
               onSuccess: closeAppUpdateResultDetails,
