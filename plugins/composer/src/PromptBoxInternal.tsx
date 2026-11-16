@@ -3031,6 +3031,16 @@ export function PromptBoxInternal({
     submitPrompt();
   }, [pendingCommandSubmit, submitPrompt]);
 
+  const chooseSuggestion = useCallback(
+    (item: TypeaheadSuggestion) => {
+      applyTrigger(item);
+      if (item.kind === "command" && item.origin === "builtin") {
+        setPendingCommandSubmit(true);
+      }
+    },
+    [applyTrigger],
+  );
+
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
     if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
@@ -3173,13 +3183,10 @@ export function PromptBoxInternal({
           const selected =
             activeSuggestions[selectedIndex] ?? activeSuggestions[0];
           if (selected) {
-            applyTrigger(selected);
-            if (
-              event.key === "Enter" &&
-              selected.kind === "command" &&
-              selected.origin === "builtin"
-            ) {
-              setPendingCommandSubmit(true);
+            if (event.key === "Enter") {
+              chooseSuggestion(selected);
+            } else {
+              applyTrigger(selected);
             }
           }
           return true;
@@ -3290,6 +3297,7 @@ export function PromptBoxInternal({
       activeSuggestions,
       applyHistoryDraft,
       applyTrigger,
+      chooseSuggestion,
       dispatchAppCommandKey,
       handleComposerMenuKeyDown,
       history,
@@ -3299,7 +3307,6 @@ export function PromptBoxInternal({
       postCompositionKeyDownEvents,
       resetHistorySession,
       selectedIndex,
-      setPendingCommandSubmit,
       showTypeaheadMenu,
       submitModifierPrompt,
       submitPrompt,
@@ -3488,7 +3495,7 @@ export function PromptBoxInternal({
                 <MentionMenu
                   state={typeaheadMenuState}
                   selectedIndex={selectedIndex}
-                  onApply={applyTrigger}
+                  onApply={chooseSuggestion}
                   onDismiss={isPointerCoarse ? dismissComposerMenu : undefined}
                 />
               )}
