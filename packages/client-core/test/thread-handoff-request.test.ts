@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildThreadHandoffCreateRequest,
   buildThreadHandoffFollowUpDraft,
+  stripLeadingThreadHandoffCommand,
   stripThreadHandoffPrefix,
+  threadHandoffDraftAfterSourceRemoved,
   type ThreadHandoffCreateSeed,
   type ThreadHandoffExecutionSelection,
 } from "../src/prompt/thread-handoff-request.js";
@@ -247,6 +249,130 @@ describe("buildThreadHandoffCreateRequest", () => {
         execution: { ...EXECUTION, model: "" },
         seed: SEED,
       }),
+    ).toBeNull();
+  });
+});
+
+const HANDOFF_COMMAND_MENTION = {
+  start: 0,
+  end: 8,
+  resource: {
+    kind: "command" as const,
+    trigger: "/" as const,
+    name: "handoff",
+    source: "command" as const,
+    origin: "builtin" as const,
+    label: "handoff",
+    argumentHint: null,
+  },
+};
+
+describe("stripLeadingThreadHandoffCommand", () => {
+  it("removes a leading /handoff command and keeps the rest of the draft", () => {
+    const draft = stripLeadingThreadHandoffCommand({
+      text: "/handoff  fix @thread:thr_other",
+      mentions: [
+        HANDOFF_COMMAND_MENTION,
+        {
+          start: 14,
+          end: 31,
+          resource: {
+            kind: "thread",
+            projectId: "proj_source",
+            threadId: "thr_other",
+            label: "Other thread",
+          },
+        },
+      ],
+      attachments: [],
+    });
+
+    expect(draft?.text).toBe("fix @thread:thr_other");
+    expect(draft?.mentions).toEqual([
+      {
+        start: 4,
+        end: 21,
+        resource: {
+          kind: "thread",
+          projectId: "proj_source",
+          threadId: "thr_other",
+          label: "Other thread",
+        },
+      },
+    ]);
+  });
+
+  it("ignores typed /handoff text, a provider command, and a command after other text", () => {
+    expect(
+      stripLeadingThreadHandoffCommand({
+        text: "/handoff",
+        mentions: [],
+        attachments: [],
+      }),
+    ).toBeNull();
+    expect(
+      stripLeadingThreadHandoffCommand({
+        text: "/handoff",
+        mentions: [
+          {
+            ...HANDOFF_COMMAND_MENTION,
+            resource: { ...HANDOFF_COMMAND_MENTION.resource, origin: "user" },
+          },
+        ],
+        attachments: [],
+      }),
+    ).toBeNull();
+    expect(
+      stripLeadingThreadHandoffCommand({
+        text: "see /handoff",
+        mentions: [{ ...HANDOFF_COMMAND_MENTION, start: 4, end: 12 }],
+        attachments: [],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("threadHandoffDraftAfterSourceRemoved", () => {
+  const seeded = buildThreadHandoffFollowUpDraft(SEED, {
+    text: "keep going",
+    mentions: [],
+    attachments: [],
+  });
+
+  it("returns the draft without the block's leftover text once its source pill is deleted", () => {
+    const next = {
+      text: "Continue from \n\nkeep going",
+      mentions: [],
+      attachments: [],
+    };
+
+    expect(threadHandoffDraftAfterSourceRemoved(SEED, seeded, next)).toEqual({
+      text: "keep going",
+      mentions: [],
+      attachments: [],
+    });
+  });
+
+  it("returns an emptied draft as it is", () => {
+    const empty = { text: "", mentions: [], attachments: [] };
+
+    expect(threadHandoffDraftAfterSourceRemoved(SEED, seeded, empty)).toEqual(
+      empty,
+    );
+  });
+
+  it("returns null while the source pill remains or was never there", () => {
+    const edited = { ...seeded, text: seeded.text.replace("keep", "kept") };
+
+    expect(
+      threadHandoffDraftAfterSourceRemoved(SEED, seeded, edited),
+    ).toBeNull();
+    expect(
+      threadHandoffDraftAfterSourceRemoved(
+        SEED,
+        { text: "hi", mentions: [], attachments: [] },
+        { text: "", mentions: [], attachments: [] },
+      ),
     ).toBeNull();
   });
 });
