@@ -998,7 +998,7 @@ describe("acp bridge", () => {
       dialectId: "cursor",
       parameterizedModelPicker: true,
       reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
-      modelPickerPrimaryModels: ["default", "composer-2.5", "grok-4.6"],
+      modelPickerPrimaryModels: ["auto", "composer-2.5", "grok-4.6"],
       envVars: {
         FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
         FAKE_ACP_REQUEST_LOG: requestLog,
@@ -1016,7 +1016,7 @@ describe("acp bridge", () => {
     expect(
       result.models.map((model) => [model.id, model.supportedServiceTiers]),
     ).toEqual([
-      ["default", []],
+      ["auto", []],
       ["composer-2.5", []],
       ["grok-4.6", [{ id: "fast" }]],
     ]);
@@ -1041,7 +1041,7 @@ describe("acp bridge", () => {
         .slice(0, 2),
     ).toEqual(["grok-4.6", "grok-4.5"]);
     expect(result.models.map((model) => model.id)).toEqual([
-      "default",
+      "auto",
       "composer-2.5",
       "grok-4.6",
     ]);
@@ -1236,8 +1236,10 @@ describe("acp bridge", () => {
 
   it.each([
     ["thread/start", "cursor-grok-4.6-medium", "grok-4.6"],
+    ["thread/start", "default", "auto"],
     ["thread/resume", "claude-4.6-sonnet-medium-thinking", "claude-sonnet-4-6"],
-    ["thread/fork", "auto", "default"],
+    ["thread/resume", "default", "auto"],
+    ["thread/fork", "auto", "auto"],
   ] as const)(
     "translates a legacy Cursor model for %s session construction",
     async (method, legacyModel, selectedModel) => {
@@ -1282,7 +1284,7 @@ describe("acp bridge", () => {
           .filter((request) => request.method === "session/set_config_option")
           .map((request) => request.params?.["value"]),
       ).toEqual(
-        selectedModel === "default" ? [] : [selectedModel, "high", "true"],
+        selectedModel === "auto" ? [] : [selectedModel, "high", "true"],
       );
       const providerThreadId = providerThreadIdOf(response);
       bbThreadIdByProviderThreadId.set(providerThreadId, threadId);

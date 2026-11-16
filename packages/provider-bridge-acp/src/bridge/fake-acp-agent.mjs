@@ -305,7 +305,7 @@ function effortOptionForModel(model) {
 function cursorModelOptions() {
   return clientSupportsParameterizedModels
     ? [
-        { value: "default", name: "Auto" },
+        { value: "auto", name: "Auto" },
         { value: "composer-2.5", name: "Composer 2.5" },
         { value: "grok-4.6", name: "Cursor Grok 4.6" },
         { value: "grok-4.5", name: "Cursor Grok 4.5" },
@@ -899,7 +899,7 @@ async function handleMessage(message) {
           message.params?.clientCapabilities?._meta
             ?.parameterizedModelPicker === true;
         selectedModel = clientSupportsParameterizedModels
-          ? "default"
+          ? "auto"
           : "default[]";
       }
       send({

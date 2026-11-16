@@ -264,6 +264,12 @@ function buildAcpModelSelection(
           };
     return {
       ...modelSelection,
+      modelId:
+        parameterizedModelPicker &&
+        dialectId === "cursor" &&
+        modelSelection.modelId === "default"
+          ? "auto"
+          : modelSelection.modelId,
       ...(parameterizedModelPicker && options.serviceTier !== undefined
         ? { serviceTier: options.serviceTier }
         : {}),

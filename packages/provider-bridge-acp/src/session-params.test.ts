@@ -259,7 +259,7 @@ describe("buildAcpSessionParams", () => {
 
 describe("buildAcpSessionParams parameterized model selection", () => {
   const cursorParameterizedModelIds = new Set(
-    `default grok-4.6 composer-2.5 claude-opus-5 claude-opus-4-8
+    `auto grok-4.6 composer-2.5 claude-opus-5 claude-opus-4-8
 gpt-5.6-sol gpt-5.5 claude-fable-5 grok-4.5 gemini-3.7-flash gpt-5.6-terra
 claude-sonnet-5 claude-sonnet-4-6 gpt-5.3-codex claude-opus-4-7 gpt-5.4
 claude-opus-4-6 claude-opus-4-5 gpt-5.2 gpt-5.6-luna gemini-3.6-flash gemini-3.1-pro
@@ -297,11 +297,14 @@ gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-c
     expect("reasoningLevel" in selection).toBe(false);
   });
 
-  it("keeps Cursor's new default id unchanged", () => {
-    expect(cursorSessionParams({ model: "default" }).modelSelection).toEqual({
-      modelId: "default",
-    });
-  });
+  it.each(["default", "auto"])(
+    "selects Cursor Auto using the agent id for %s",
+    (model) => {
+      expect(cursorSessionParams({ model }).modelSelection).toEqual({
+        modelId: "auto",
+      });
+    },
+  );
 
   it("translates the union of checked-in persisted Cursor families", () => {
     const persistedFamilyIds = new Set(
