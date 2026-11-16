@@ -23,8 +23,7 @@ export async function readIsolatedClaudeContextUsage(args: {
 }): Promise<unknown> {
   args.signal.throwIfAborted();
   const options = args.sessionOptions;
-  const strictMcpConfig = await strictMcpConfigUnlessManaged();
-  args.signal.throwIfAborted();
+  const strictMcpConfig = strictMcpConfigUnlessManaged();
   const end = new AbortController();
   const session = query({
     prompt: promptWithoutMessages(end.signal),

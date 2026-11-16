@@ -36,7 +36,7 @@ async function withInitializedClaude<T>(
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({
     env: args.env,
   });
-  const strictMcpConfig = await strictMcpConfigUnlessManaged();
+  const strictMcpConfig = strictMcpConfigUnlessManaged();
   const promptEnd = new AbortController();
   let session: Query;
   try {

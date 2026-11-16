@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { existsSync } from "node:fs";
 
 function claudeManagedMcpConfigPath(): string {
   switch (process.platform) {
@@ -11,13 +11,8 @@ function claudeManagedMcpConfigPath(): string {
   }
 }
 
-export async function strictMcpConfigUnlessManaged(): Promise<{
-  strictMcpConfig?: true;
-}> {
-  try {
-    await access(claudeManagedMcpConfigPath());
-    return {};
-  } catch {
-    return { strictMcpConfig: true };
-  }
+export function strictMcpConfigUnlessManaged(): { strictMcpConfig?: true } {
+  return existsSync(claudeManagedMcpConfigPath())
+    ? {}
+    : { strictMcpConfig: true };
 }

@@ -1,13 +1,16 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { accessMock, queryMock } = vi.hoisted(() => ({
-  accessMock: vi.fn(),
+const { existsSyncMock, queryMock } = vi.hoisted(() => ({
+  existsSyncMock: vi.fn(),
   queryMock: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: queryMock }));
-vi.mock("node:fs/promises", () => ({ access: accessMock }));
+vi.mock("node:fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs")>()),
+  existsSync: existsSyncMock,
+}));
 
 import { readIsolatedClaudeContextUsage } from "../context-usage-probe.js";
 import { probeClaudeInitialization } from "../initialization-probe.js";
@@ -34,16 +37,14 @@ function readContextUsage(): Promise<unknown> {
 }
 
 function installManagedMcpConfig(): void {
-  accessMock.mockImplementation((path: string) =>
-    path.endsWith("managed-mcp.json")
-      ? Promise.resolve()
-      : Promise.reject(new Error("ENOENT")),
+  existsSyncMock.mockImplementation((path: string) =>
+    path.endsWith("managed-mcp.json"),
   );
 }
 
 beforeEach(() => {
-  accessMock.mockReset();
-  accessMock.mockRejectedValue(new Error("ENOENT"));
+  existsSyncMock.mockReset();
+  existsSyncMock.mockReturnValue(false);
   queryMock.mockReset();
   queryMock.mockReturnValue({
     initializationResult: () => Promise.resolve({ models: [] }),
