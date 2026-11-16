@@ -505,9 +505,22 @@ export function registerThreadActionRoutes(
 
   post(routes.voice, async (context, command) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadIsWritable(thread);
+    if (command.action === "start") ensureThreadIsWritable(thread);
     const environment = await requireThreadCommandEnvironment(deps, { thread });
     requireConnectedHostSession(deps, environment.hostId);
+    if (command.action !== "start") {
+      const result = await runLiveHostCommand(deps, {
+        command: {
+          type: "thread.voice",
+          environmentId: environment.id,
+          threadId: thread.id,
+          command,
+        },
+        hostId: environment.hostId,
+        timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      });
+      return context.json(result);
+    }
     const execution = await buildExecutionOptions(
       deps,
       {},

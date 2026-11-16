@@ -430,9 +430,9 @@ const commandHandlers: CommandHandlerMap = {
   },
   "thread.voice": async (command, options) => {
     const entry =
-      command.command.action !== "start"
-        ? await options.runtimeManager.getOrAwait(command.environmentId)
-        : await ensureThreadRuntime(command, options);
+      "options" in command
+        ? await ensureThreadRuntime(command, options)
+        : await options.runtimeManager.getOrAwait(command.environmentId);
     if (!entry) {
       if (command.command.action === "stop") return { sdp: null };
       throw new Error("Voice session is no longer active");

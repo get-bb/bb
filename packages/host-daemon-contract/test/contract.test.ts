@@ -3721,3 +3721,32 @@ describe("bounded file read contract", () => {
     ).toBe(false);
   });
 });
+
+describe("voice launch payload boundaries", () => {
+  const target = {
+    type: "thread.voice",
+    environmentId: "env-voice",
+    threadId: "thread-voice",
+  };
+  const sessionId = "0958a8c8-9527-40ee-9358-ab17ed9e6f98";
+  for (const action of ["keepAlive", "stop"] as const) {
+    it(`accepts lightweight ${action} and rejects ignored launch fields`, () => {
+      const command = { ...target, command: { action, sessionId } };
+      expect(hostDaemonCommandSchema.parse(command)).toEqual(command);
+      for (const field of ["options", "bridgeLaunch", "resumeContext"]) {
+        expect(
+          hostDaemonCommandSchema.safeParse({ ...command, [field]: {} })
+            .success,
+        ).toBe(false);
+      }
+    });
+  }
+  it("requires launch setup when starting a voice session", () => {
+    expect(
+      hostDaemonCommandSchema.safeParse({
+        ...target,
+        command: { action: "start", sessionId, sdp: "offer" },
+      }).success,
+    ).toBe(false);
+  });
+});
