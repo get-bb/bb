@@ -3042,7 +3042,7 @@ describe("bridge", () => {
           mentions: [skillMention(4, "$", "review")],
         },
       ],
-      expected: "/review Use  but keep $PATH and $review",
+      expected: "/review Use review but keep $PATH and $review",
     },
     {
       name: "an embedded slash skill",
@@ -3053,7 +3053,18 @@ describe("bridge", () => {
           mentions: [skillMention(11, "/", "review")],
         },
       ],
-      expected: "/review Please use  on this",
+      expected: "/review Please use review on this",
+    },
+    {
+      name: "a trailing dollar skill",
+      input: [
+        {
+          type: "text",
+          text: "use the $review",
+          mentions: [skillMention(8, "$", "review")],
+        },
+      ],
+      expected: "/review use the review",
     },
     {
       name: "a leading dollar skill",
@@ -3076,7 +3087,7 @@ describe("bridge", () => {
           mentions: [skillMention(0, "$", "review")],
         },
       ],
-      expected: "/review Inspect this fixture.\n",
+      expected: "/review Inspect this fixture.\nreview",
     },
     {
       name: "several selected skills",
