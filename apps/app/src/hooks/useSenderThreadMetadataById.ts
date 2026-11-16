@@ -162,42 +162,38 @@ function createSenderThreadMetadataStore(
   queryClient: QueryClient,
 ): SenderThreadMetadataStore {
   let metadataById = buildSenderThreadMetadataById(queryClient);
+  let notifiedMetadataById = metadataById;
+  let stale = false;
   const listeners = new Set<() => void>();
-  let unsubscribeCache: (() => void) | null = null;
-  const refresh = (): boolean => {
-    const next = mergeSenderThreadMetadata(
-      metadataById,
-      buildSenderThreadMetadataById(queryClient),
-    );
-    if (next === metadataById) return false;
-    metadataById = next;
-    return true;
+  const getSnapshot = () => {
+    if (stale) {
+      stale = false;
+      metadataById = mergeSenderThreadMetadata(
+        metadataById,
+        buildSenderThreadMetadataById(queryClient),
+      );
+    }
+    return metadataById;
   };
   const sync = () => {
-    if (listeners.size === 0 || !refresh()) return;
+    if (listeners.size === 0) return;
+    const next = getSnapshot();
+    if (next === notifiedMetadataById) return;
+    notifiedMetadataById = next;
     for (const listener of [...listeners]) listener();
   };
+  queryClient.getQueryCache().subscribe((event) => {
+    if (shouldSyncSenderThreadMetadata(event)) {
+      stale = true;
+      notifyManager.schedule(sync);
+    }
+  });
   return {
-    getSnapshot: () => {
-      if (unsubscribeCache === null) refresh();
-      return metadataById;
-    },
+    getSnapshot,
     subscribe: (listener) => {
       listeners.add(listener);
-      if (unsubscribeCache === null) {
-        refresh();
-        unsubscribeCache = queryClient.getQueryCache().subscribe((event) => {
-          if (shouldSyncSenderThreadMetadata(event)) {
-            notifyManager.schedule(sync);
-          }
-        });
-      }
       return () => {
         listeners.delete(listener);
-        if (listeners.size === 0 && unsubscribeCache !== null) {
-          unsubscribeCache();
-          unsubscribeCache = null;
-        }
       };
     },
   };
