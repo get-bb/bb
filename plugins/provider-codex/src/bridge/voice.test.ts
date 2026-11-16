@@ -152,3 +152,61 @@ it("expires abandoned clients while a healthy client can renew the call", async 
     voice.command({ action: "keepAlive", sessionId: first }),
   ).rejects.toThrow("no longer active");
 });
+
+it("supplies caller context and handoff instructions only at startup without core policy", async () => {
+  const { voice, request } = setup();
+  const started = voice.command({
+    action: "start",
+    sessionId: first,
+    sdp: "offer",
+    voice: "juniper",
+    initialContext: "Caller-selected historical reference",
+    instructions: "Caller-selected handoff guidance",
+  });
+  voice.notification("thread/realtime/sdp", {
+    threadId: "native-thread",
+    sdp: "answer",
+  });
+  await started;
+  expect(request).toHaveBeenCalledWith(
+    expect.objectContaining({
+      method: "thread/realtime/start",
+      params: expect.objectContaining({
+        voice: "juniper",
+        includeStartupContext: false,
+        initialItems: [
+          { role: "developer", text: "Caller-selected historical reference" },
+        ],
+        realtimeStartInstructions: "Caller-selected handoff guidance",
+      }),
+    }),
+  );
+  await voice.command({ action: "keepAlive", sessionId: first });
+  expect(request).toHaveBeenCalledTimes(1);
+  await voice.command({ action: "stop", sessionId: first });
+});
+
+it("distinguishes an explicit empty startup reference from provider defaults", async () => {
+  const { voice, request } = setup();
+  const started = voice.command({
+    action: "start",
+    sessionId: first,
+    sdp: "offer",
+    initialContext: "",
+  });
+  voice.notification("thread/realtime/sdp", {
+    threadId: "native-thread",
+    sdp: "answer",
+  });
+  await started;
+  expect(request).toHaveBeenCalledWith(
+    expect.objectContaining({
+      method: "thread/realtime/start",
+      params: expect.objectContaining({
+        includeStartupContext: false,
+        initialItems: [],
+      }),
+    }),
+  );
+  await voice.command({ action: "stop", sessionId: first });
+});

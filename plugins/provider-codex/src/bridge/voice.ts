@@ -110,6 +110,18 @@ export class CodexVoiceSession {
             transport: { type: "webrtc", sdp: command.sdp },
             version: "v3",
             outputModality: "audio",
+            ...(command.voice ? { voice: command.voice } : {}),
+            ...(command.instructions !== undefined
+              ? { realtimeStartInstructions: command.instructions }
+              : {}),
+            ...(command.initialContext !== undefined
+              ? {
+                  includeStartupContext: false,
+                  initialItems: command.initialContext
+                    ? [{ role: "developer", text: command.initialContext }]
+                    : [],
+                }
+              : {}),
           },
           resultSchema: z.object({}),
           timeoutMs: 30000,

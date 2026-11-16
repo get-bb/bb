@@ -30,6 +30,15 @@ Lifecycle:
   `bb thread voice keep-alive` or `threads.experimental_voice` with `action: "keepAlive"`.
   Ending voice leaves coding work running. Provider support is optional.
 
+  Optional start flags: --voice <name>, --context-file <path>, --no-context, and
+  --instructions-file <path>. The SDK start command accepts voice,
+  initialContext (at most 16,000 characters) and instructions (at most 8,000).
+  Supplying initialContext replaces native startup history with that reference;
+  an empty string supplies no history. Omitting it keeps provider defaults.
+  These values apply only at startup; core does not synthesize or append context.
+  Instructions guide native coding handoffs for this call. Context files may be
+  empty; input streams may be used once per command.
+
   A thread allows one voice session at a time. Codex account/model access still
   determines whether native realtime is available.
 

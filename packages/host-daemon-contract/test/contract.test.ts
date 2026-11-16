@@ -611,6 +611,12 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.command.initialContext":
+    "Omission keeps provider startup history; an explicit string replaces it, including an empty reference. The caller owns reference selection.",
+  "hostDaemonCommandSchema.command.instructions":
+    "Omission keeps provider handoff defaults; supplied instructions are call-scoped and bounded at the public boundary.",
+  "hostDaemonCommandSchema.command.voice":
+    "Omission keeps the provider default voice; supplied names are validated by the provider protocol.",
   "hostDaemonCommandSchema.resolution.description":
     "the interaction.resolve command's resolution is the persisted union, so it also admits the plugin_submitted arm and the description a plugin's describeSubmission returned. It never reaches the wire: a plugin interaction is settled in the server against its waiting requestInput promise and never queues a daemon command, so an older daemon never sees the field.",
   "hostDaemonCommandSchema.resolution.description.detail":

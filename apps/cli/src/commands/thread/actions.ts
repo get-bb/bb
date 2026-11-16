@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { CliUsageError } from "../../cli-usage-error.js";
 import { randomUUID } from "node:crypto";
 import {
   threadVisibilitySchema,
@@ -668,6 +669,13 @@ export function registerActionsCommands(
       `Read SDP offer from a file; ${TEXT_FILE_HELP_SUFFIX}`,
     )
     .option("--session <uuid>", "Client session id (defaults to a new UUID)")
+    .option("--voice <name>", "Provider voice for this call")
+    .option("--context-file <path>", "Initial reference text for this call")
+    .option("--no-context", "Start without provider startup history")
+    .option(
+      "--instructions-file <path>",
+      "Call-scoped instructions for native coding handoffs",
+    )
     .option("--self", "Target the current thread")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -676,12 +684,32 @@ export function registerActionsCommands(
           id: string | undefined,
           opts: {
             sdpFile: string;
+            voice?: string;
+            contextFile?: string;
+            context?: boolean;
+            instructionsFile?: string;
             session?: string;
             self?: boolean;
             json?: boolean;
           },
         ) => {
           const threadId = requireThreadIdOrSelf(id, opts);
+          if (
+            [opts.sdpFile, opts.contextFile, opts.instructionsFile].filter(
+              (path) => path === "-",
+            ).length > 1
+          )
+            throw new CliUsageError({
+              code: "invalid_value",
+              hint: null,
+              message: "Only one input file may read stdin.",
+            });
+          if (opts.context === false && opts.contextFile)
+            throw new CliUsageError({
+              code: "invalid_value",
+              hint: null,
+              message: "Use --no-context or --context-file, not both.",
+            });
           const sessionId = opts.session ?? randomUUID();
           const sdp = await requireTextInput({
             file: opts.sdpFile,
@@ -689,9 +717,38 @@ export function registerActionsCommands(
             inline: undefined,
             inlineLabel: "SDP offer",
           });
-          const result = await createCliBbSdk(getUrl()).threads.experimental_voice({
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).threads.experimental_voice({
             threadId,
-            command: { action: "start", sessionId, sdp },
+            command: {
+              action: "start",
+              sessionId,
+              sdp,
+              ...(opts.voice ? { voice: opts.voice } : {}),
+              ...(opts.context === false
+                ? { initialContext: "" }
+                : opts.contextFile
+                  ? {
+                      initialContext: await requireTextInput({
+                        file: opts.contextFile,
+                        fileLabel: "--context-file",
+                        inline: undefined,
+                        inlineLabel: "Initial context",
+                      }),
+                    }
+                  : {}),
+              ...(opts.instructionsFile
+                ? {
+                    instructions: await requireTextInput({
+                      file: opts.instructionsFile,
+                      fileLabel: "--instructions-file",
+                      inline: undefined,
+                      inlineLabel: "Handoff instructions",
+                    }),
+                  }
+                : {}),
+            },
           });
           if (outputJson(opts, { threadId, sessionId, ...result })) return;
           console.log(`Voice session ${sessionId}\n${result.sdp ?? ""}`);
