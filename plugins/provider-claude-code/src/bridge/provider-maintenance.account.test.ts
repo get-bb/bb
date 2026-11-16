@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
     "rate_limits_available" | "rate_limits"
   >,
   files: [] as string[],
+  profile: null as Response | null,
+  profileRequests: [] as Array<{ url: string; authorization: string | null }>,
 }));
 
 vi.mock("./initialization-probe.js", () => ({
@@ -25,11 +27,15 @@ vi.mock("node:fs/promises", () => ({
     readFile: (file: string) => {
       state.files.push(file);
       return Promise.resolve(
-        JSON.stringify({
-          oauthAccount: {
-            accountUuid: "4f6c1d2e-8a9b-4c3d-9e1f-2a3b4c5d6e7f",
-          },
-        }),
+        JSON.stringify(
+          file.endsWith(".credentials.json")
+            ? { claudeAiOauth: { accessToken: "stored-token" } }
+            : {
+                oauthAccount: {
+                  accountUuid: "4f6c1d2e-8a9b-4c3d-9e1f-2a3b4c5d6e7f",
+                },
+              },
+        ),
       );
     },
   },
@@ -68,11 +74,30 @@ beforeEach(() => {
     },
   };
   state.files = [];
+  state.profile = new Response("unavailable", { status: 503 });
+  state.profileRequests = [];
+  vi.stubGlobal("fetch", (url: string, init: RequestInit) => {
+    state.profileRequests.push({
+      url,
+      authorization: new Headers(init.headers).get("authorization"),
+    });
+    return Promise.resolve(state.profile);
+  });
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
+
+function liveProfile(organizationType: string, rateLimitTier: string) {
+  return Response.json({
+    organization: {
+      organization_type: organizationType,
+      rate_limit_tier: rateLimitTier,
+    },
+  });
+}
 
 describe("Claude Code account status", () => {
   it("reports the account Claude Code signs in with, keyed by the profile CLAUDE_CONFIG_DIR selects", async () => {
@@ -97,8 +122,39 @@ describe("Claude Code account status", () => {
         accountKey: "anthropic:account:4f6c1d2e-8a9b-4c3d-9e1f-2a3b4c5d6e7f",
       },
     });
-    expect(state.files).toEqual([path.join(profile, ".claude.json")]);
+    expect(state.files).toEqual(
+      expect.arrayContaining([
+        path.join(profile, ".claude.json"),
+        path.join(profile, ".credentials.json"),
+      ]),
+    );
   });
+
+  it.each([
+    ["claude_max", "default_claude_max_5x", "Max", "max"],
+    ["claude_max", "default_claude_max_20x", "Ultra", "ultra"],
+    ["claude_pro", "default_claude_ai", "Pro", "pro"],
+  ])(
+    "reports the live %s plan with tier %s over the plan Claude Code stored at login",
+    async (organizationType, rateLimitTier, label, id) => {
+      state.profile = liveProfile(organizationType, rateLimitTier);
+
+      expect(await getClaudeProviderUsage()).toMatchObject({
+        usage: { planLabel: label, plan: { id, multiplier: null } },
+      });
+      expect(state.profileRequests).toEqual([
+        {
+          url: "https://api.anthropic.com/api/oauth/profile",
+          authorization: "Bearer stored-token",
+        },
+      ]);
+
+      state.profile = liveProfile(organizationType, rateLimitTier);
+      expect(await getClaudeProviderHealth()).toMatchObject({
+        health: { status: "ready", planLabel: label },
+      });
+    },
+  );
 
   it.each([
     ["Claude Code has no usable login", signedOut, true],

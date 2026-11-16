@@ -31,11 +31,23 @@ import {
 const CLAUDE_NPM_PACKAGE = "@anthropic-ai/claude-code";
 const CLAUDE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
 const CLAUDE_POWERSHELL_INSTALL_SCRIPT_URL = "https://claude.ai/install.ps1";
+const CLAUDE_OAUTH_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 
 const claudeAccountFileSchema = z.object({
   oauthAccount: z
     .object({ accountUuid: z.string().uuid().nullish() })
     .nullish(),
+});
+
+const claudeCredentialsFileSchema = z.object({
+  claudeAiOauth: z.object({ accessToken: z.string().min(1) }),
+});
+
+const claudeOAuthProfileSchema = z.object({
+  organization: z.object({
+    organization_type: z.string().nullish(),
+    rate_limit_tier: z.string().nullish(),
+  }),
 });
 
 async function claudeExecutable(): Promise<string> {
@@ -269,10 +281,9 @@ function isSignedIn(account: AccountInfo): boolean {
   );
 }
 
-function claudePlan(
-  account: AccountInfo,
-): { id: string; label: string } | null {
-  const name = account.subscriptionType?.replace(/^claude\s+/iu, "").trim();
+type ClaudePlan = { id: string; label: string };
+
+function namedPlan(name: string | null | undefined): ClaudePlan | null {
   return name
     ? {
         id: name.toLowerCase(),
@@ -281,10 +292,51 @@ function claudePlan(
     : null;
 }
 
-function accountFields(account: AccountInfo) {
+function claudePlan(account: AccountInfo): ClaudePlan | null {
+  return namedPlan(
+    account.subscriptionType?.replace(/^claude\s+/iu, "").trim(),
+  );
+}
+
+async function readLivePlan(
+  env: NodeJS.ProcessEnv,
+): Promise<ClaudePlan | null> {
+  try {
+    const credentials = claudeCredentialsFileSchema.parse(
+      JSON.parse(
+        await fs.readFile(
+          path.join(
+            env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"),
+            ".credentials.json",
+          ),
+          "utf8",
+        ),
+      ),
+    );
+    const response = await fetch(CLAUDE_OAUTH_PROFILE_URL, {
+      headers: {
+        Authorization: `Bearer ${credentials.claudeAiOauth.accessToken}`,
+        "anthropic-beta": "oauth-2025-04-20",
+      },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return null;
+    const { organization } = claudeOAuthProfileSchema.parse(
+      await response.json(),
+    );
+    if (/max_20x/u.test(organization.rate_limit_tier ?? "")) {
+      return { id: "ultra", label: "Ultra" };
+    }
+    return namedPlan(organization.organization_type?.replace(/^claude_/u, ""));
+  } catch {
+    return null;
+  }
+}
+
+function accountFields(account: AccountInfo, plan: ClaudePlan | null) {
   return {
     accountEmail: account.email ?? null,
-    planLabel: claudePlan(account)?.label ?? null,
+    planLabel: (plan ?? claudePlan(account))?.label ?? null,
   };
 }
 
@@ -320,10 +372,11 @@ export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
   }
   const version = await readCliVersion(command);
   try {
-    const { account } = await probeClaudeInitialization(probeArgs());
+    const args = probeArgs();
+    const { account } = await probeClaudeInitialization(args);
     return isSignedIn(account)
       ? healthResult("ready", {
-          ...accountFields(account),
+          ...accountFields(account, await readLivePlan(args.env)),
           installedVersion: version,
         })
       : healthResult("unauthenticated", { installedVersion: version });
@@ -418,13 +471,17 @@ function scopedWindows(
   return windows;
 }
 
-function normalizeUsage(raw: unknown, account: AccountInfo): ProviderUsage {
+function normalizeUsage(
+  raw: unknown,
+  account: AccountInfo,
+  livePlan: ClaudePlan | null = null,
+): ProviderUsage {
   const parsed = claudeUsageResponseSchema.safeParse(raw);
   if (!parsed.success) {
     return {
       status: "error",
       message: "Claude usage response was malformed.",
-      ...accountFields(account),
+      ...accountFields(account, livePlan),
     };
   }
   const windows = [
@@ -432,7 +489,7 @@ function normalizeUsage(raw: unknown, account: AccountInfo): ProviderUsage {
     usageWindow(parsed.data.seven_day, "Weekly limit", "weekly"),
     ...scopedWindows(parsed.data.limits),
   ].filter((window): window is ProviderUsageWindow => window !== null);
-  const plan = claudePlan(account);
+  const plan = livePlan ?? claudePlan(account);
   return {
     status: "ok",
     accountEmail: account.email ?? null,
@@ -472,15 +529,18 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
       usage: {
         status: "error",
         message: "Claude Code could not read this account's plan usage.",
-        ...accountFields(account),
+        ...accountFields(account, null),
       },
     };
   }
-  const accountUuid = await readAccountUuid(args.env);
+  const [accountUuid, livePlan] = await Promise.all([
+    readAccountUuid(args.env),
+    readLivePlan(args.env),
+  ]);
   return {
     supported: true,
     usage: {
-      ...normalizeUsage(usage.rate_limits, account),
+      ...normalizeUsage(usage.rate_limits, account, livePlan),
       accountKey: accountUuid ? `anthropic:account:${accountUuid}` : null,
     },
   };
