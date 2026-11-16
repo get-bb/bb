@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { JsonObject } from "@bb/domain";
 import {
   THREAD_TIMELINE_WINDOW_FIELD_KEYS,
   TIMELINE_PAGE_FIELD_KEYS,
@@ -6,12 +7,16 @@ import {
   timelinePageMetadataSchema,
   threadTimelineSignalLenientSchema,
   type ThreadTimelineResponse,
+  type TimelineRowPatchOperation,
 } from "../src/api-types.js";
 import {
   applyThreadTimelineDelta,
   computeThreadTimelineDelta,
 } from "../src/thread-timeline-delta.js";
-import type { TimelineRow } from "../src/thread-timeline.js";
+import type {
+  TimelineRow,
+  TimelineToolWorkRow,
+} from "../src/thread-timeline.js";
 
 function row(id: string, title = "t"): TimelineRow {
   return {
@@ -45,6 +50,27 @@ function message(id: string, text: string, sourceSeqEnd = 1): TimelineRow {
     text,
     attachments: null,
     turnRequest: null,
+  };
+}
+
+function tool(id: string, toolArgs: JsonObject): TimelineToolWorkRow {
+  return {
+    id,
+    kind: "work",
+    workKind: "tool",
+    threadId: "thr_x",
+    turnId: "turn_x",
+    sourceSeqStart: 1,
+    sourceSeqEnd: 1,
+    startedAt: 0,
+    createdAt: 0,
+    status: "pending",
+    callId: "call",
+    toolName: "tool",
+    toolArgs,
+    output: "",
+    completedAt: null,
+    approvalStatus: null,
   };
 }
 
@@ -140,33 +166,9 @@ describe("thread timeline delta", () => {
   it("round-trips random growth, rewrites, added and removed keys and nested arrays", () => {
     const random = seededRandom(11);
     const words = ["alpha ", "beta\n", "", "gamma ", "\n\n"];
-    const nested = (seed: number) => ({
-      kind: "work" as const,
-      id: "w",
-      threadId: "thr_x",
-      turnId: "turn_x",
-      sourceSeqStart: 1,
-      sourceSeqEnd: seed,
-      startedAt: 0,
-      createdAt: 0,
-      workKind: "tool" as const,
-      status: "running" as const,
-      callId: "call",
-      toolName: "tool",
-      args: {
-        list: Array.from({ length: seed % 4 }, (_, index) => ({
-          index,
-          label: `item ${index}`,
-        })),
-      },
-      output: "",
-    });
     let text = "";
-    let work: Record<string, unknown> = nested(1);
-    let previous = timeline([
-      message("m", text),
-      work as unknown as TimelineRow,
-    ]);
+    let work = tool("w", { list: [] });
+    let previous = timeline([message("m", text), work]);
     for (let step = 0; step < 300; step += 1) {
       const choice = random();
       if (choice < 0.6) {
@@ -174,18 +176,30 @@ describe("thread timeline delta", () => {
       } else if (choice < 0.7) {
         text = text.slice(0, Math.floor(random() * text.length));
       }
-      const next: Record<string, unknown> = {
-        ...nested(step + 2),
-        output: `${String(work.output)}${step % 3 === 0 ? "out\n" : ""}`,
+      const toolArgs = {
+        list: Array.from({ length: step % 4 }, (_, index) => ({
+          index,
+          label: `item ${index}`,
+        })),
       };
-      if (random() < 0.3) {
-        next.extra = { flag: random() < 0.5, depth: [step] };
-      }
-      work = next;
-      const current = timeline(
-        [message("m", text, step + 2), work as unknown as TimelineRow],
-        { maxSeq: step + 2, tag: `tag-${step + 2}` },
-      );
+      const { outputPreview: _preview, ...base } = tool("w", toolArgs);
+      work = {
+        ...base,
+        sourceSeqEnd: step + 2,
+        output: `${work.output}${step % 3 === 0 ? "out\n" : ""}`,
+        ...(random() < 0.3
+          ? {
+              outputPreview: {
+                experimental_fullOutputAvailability: "available" as const,
+                totalChars: step,
+              },
+            }
+          : {}),
+      };
+      const current = timeline([message("m", text, step + 2), work], {
+        maxSeq: step + 2,
+        tag: `tag-${step + 2}`,
+      });
       expect(roundTrip(previous, current).applied).toEqual(current);
       previous = current;
     }
@@ -216,22 +230,39 @@ describe("thread timeline delta", () => {
     ).toEqual([message("m", "hello world")]);
   });
 
+  it("refuses a patch whose result is not a valid timeline row", () => {
+    const previous = timeline([message("m", "hello")]);
+    const apply = (ops: TimelineRowPatchOperation[]) =>
+      applyThreadTimelineDelta(previous, {
+        maxSeq: 2,
+        tag: "tag-2",
+        delta: {
+          afterTag: "tag-1",
+          upsertRows: [],
+          patchRows: [{ id: "m", ops }],
+          fields: {},
+        },
+      });
+    expect(apply([["set", ["text"], 5]])).toBeNull();
+    expect(apply([["set", ["role"], "narrator"]])).toBeNull();
+    expect(apply([["delete", ["text"]]])).toBeNull();
+    expect(apply([["set", ["id"], "other"]])).toBeNull();
+    expect(apply([["set", ["sourceSeqEnd"], 2]])?.rows).toEqual([
+      message("m", "hello", 2),
+    ]);
+  });
+
   it("keeps a patched __proto__ key as data", () => {
-    const before = JSON.parse('{"__proto__":{"a":1}}');
-    const after = JSON.parse('{"__proto__":{"a":2}}');
-    const work = (args: unknown) =>
-      ({ ...row("w"), args }) as unknown as TimelineRow;
-    const previous = timeline([work(before)]);
-    const current = timeline([work(after)], { tag: "tag-2" });
-    const { applied } = roundTrip(previous, current);
-    expect(JSON.stringify(applied?.rows[0])).toBe(
-      JSON.stringify(current.rows[0]),
-    );
-    expect(
-      Object.getPrototypeOf(
-        (applied?.rows[0] as unknown as { args: object }).args,
-      ),
-    ).toBe(Object.prototype);
+    const before: JsonObject = JSON.parse('{"__proto__":{"a":1}}');
+    const after: JsonObject = JSON.parse('{"__proto__":{"a":2}}');
+    const previous = timeline([tool("w", before)]);
+    const current = timeline([tool("w", after)], { tag: "tag-2" });
+    const applied = roundTrip(previous, current).applied?.rows[0];
+    expect(JSON.stringify(applied)).toBe(JSON.stringify(current.rows[0]));
+    if (applied?.kind !== "work" || applied.workKind !== "tool") {
+      throw new Error("Expected the patched tool row");
+    }
+    expect(Object.getPrototypeOf(applied.toolArgs)).toBe(Object.prototype);
   });
 
   it("encodes removals, inserts and moves as ranges over the previous rows", () => {

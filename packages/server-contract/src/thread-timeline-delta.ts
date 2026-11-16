@@ -12,7 +12,7 @@ import {
   type TimelineRowPatch,
   type TimelineRowPatchOperation,
 } from "./api/threads.js";
-import type { TimelineRow } from "./thread-timeline.js";
+import { timelineRowSchema, type TimelineRow } from "./thread-timeline.js";
 
 export function isThreadTimelineDelta(
   response: ThreadTimelineReadResponse,
@@ -267,12 +267,16 @@ function applyRowPatch(
   let patched: unknown = row;
   for (const op of ops) {
     const next = applyPatchOperation(patched, op, 0);
-    if (next === INVALID_PATCH || !isJsonObject(next)) {
+    if (next === INVALID_PATCH) {
       return null;
     }
     patched = next;
   }
-  return patched as TimelineRow;
+  return isTimelineRow(patched) && patched.id === row.id ? patched : null;
+}
+
+function isTimelineRow(value: unknown): value is TimelineRow {
+  return timelineRowSchema.safeParse(value).success;
 }
 
 function applyPatchOperation(
