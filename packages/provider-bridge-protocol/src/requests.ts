@@ -27,6 +27,9 @@ export const BRIDGE_REQUEST_METHODS = {
   threadGoalClear: "thread/goal/clear",
   turnStart: "turn/start",
   turnSteer: "turn/steer",
+  subagentList: "subagent/list",
+  subagentTell: "subagent/tell",
+  subagentCancel: "subagent/cancel",
   skillsConfigure: "skills/configure",
 } as const;
 
@@ -120,6 +123,37 @@ export const turnSteerParamsSchema = z
     ...turnInputFields,
     expectedTurnId: z.string().min(1),
   })
+  .passthrough();
+
+export const subagentListParamsSchema = z
+  .object({
+    threadId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+  })
+  .passthrough();
+
+const subagentActionFields = {
+  threadId: z.string().min(1),
+  providerThreadId: z.string().min(1),
+  childRef: z.string().min(1),
+  clientRequestId: clientTurnRequestIdSchema,
+  options: bridgeExecutionOptionsSchema,
+};
+
+export const subagentTellParamsSchema = z
+  .object({
+    ...subagentActionFields,
+    text: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0, {
+        message: "Subagent message text cannot be blank",
+      }),
+  })
+  .passthrough();
+
+export const subagentCancelParamsSchema = z
+  .object(subagentActionFields)
   .passthrough();
 
 export const skillsConfigureRootSchema = z

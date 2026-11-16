@@ -356,6 +356,7 @@ describe("agent capabilities", () => {
         auth: {},
         _meta: { "x.ai/fs_notify": true },
       },
+      _meta: { cancelRewind: true, futureRootMetadata: { retained: true } },
       authMethods: [
         { id: "cached_token", name: "cached_token" },
         {
@@ -399,6 +400,10 @@ describe("agent capabilities", () => {
           env: { INTERACTIVE: "1" },
         },
       ],
+      initializeMeta: {
+        cancelRewind: true,
+        futureRootMetadata: { retained: true },
+      },
       meta: { "x.ai/fs_notify": true },
     });
   });

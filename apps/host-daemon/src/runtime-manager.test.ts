@@ -189,6 +189,15 @@ function createFakeRuntime() {
     steerTurn: vi.fn(async (_args: SteerTurnArgs) => ({
       status: "steered" as const,
     })),
+    listSubagents: vi.fn(async () => []),
+    tellSubagent: vi.fn(async (args: { childRef: string }) => ({
+      childRef: args.childRef,
+      messageId: "message-1",
+    })),
+    cancelSubagent: vi.fn(async (args: { childRef: string }) => ({
+      childRef: args.childRef,
+      status: "cancelled" as const,
+    })),
     stopThread: vi.fn(async (_args: StopThreadArgs) => ({
       providerCheckpointId: null,
     })),

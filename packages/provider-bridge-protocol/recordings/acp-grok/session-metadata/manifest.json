@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "session-metadata",
+  "threadId": "grok-session-metadata",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-15",
+  "description": "session-metadata",
+  "note": "Synthetic Unicode session title, timestamp, and resume continuity.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 20,
+    "provider→bridge": 8,
+    "bridge→provider": 6
+  }
+}

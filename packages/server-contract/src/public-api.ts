@@ -191,6 +191,11 @@ import {
   type ResolveThreadMentionsResponse,
   type RespondPluginInteractionRequest,
   type SendMessageRequest,
+  type SubagentListResponse,
+  type SubagentTellRequest,
+  type SubagentTellResponse,
+  type SubagentCancelRequest,
+  type SubagentCancelResponse,
   type RetryTurnRequest,
   type RetryTurnResponse,
   type SendMessageResponse,
@@ -359,6 +364,8 @@ import {
   respondPluginInteractionRequestSchema,
   retryTurnRequestSchema,
   sendMessageRequestSchema,
+  subagentTellRequestSchema,
+  subagentCancelRequestSchema,
   editMessageRequestSchema,
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
@@ -1617,6 +1624,30 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),
     }),
+    subagents: {
+      list: defineRoute({
+        path: "/threads/:id/subagents",
+        method: "get",
+        request: noRequest<PathId>(),
+        response: jsonResponse<SubagentListResponse>(),
+      }),
+      tell: defineRoute({
+        path: "/threads/:id/subagents/tell",
+        method: "post",
+        request: jsonRequest<PathId, SubagentTellRequest>(
+          subagentTellRequestSchema,
+        ),
+        response: jsonResponse<SubagentTellResponse>(),
+      }),
+      cancel: defineRoute({
+        path: "/threads/:id/subagents/cancel",
+        method: "post",
+        request: jsonRequest<PathId, SubagentCancelRequest>(
+          subagentCancelRequestSchema,
+        ),
+        response: jsonResponse<SubagentCancelResponse>(),
+      }),
+    },
     open: defineRoute({
       path: "/threads/:id/open",
       method: "post",

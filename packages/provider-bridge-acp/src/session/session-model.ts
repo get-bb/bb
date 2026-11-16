@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   decodeAvailableCommands,
   decodeConfigOptions,
@@ -563,9 +564,19 @@ export function createAcpSessionModel(
             continue;
           }
           const value = update[field];
+          if (
+            field === "updatedAt" &&
+            typeof value === "string" &&
+            !z.iso.datetime().safeParse(value).success
+          ) {
+            continue;
+          }
           if (typeof value === "string" || value === null) {
             next[field] = value;
           }
+        }
+        if (next.title === info.title && next.updatedAt === info.updatedAt) {
+          return [];
         }
         info = next;
         return [{ type: "info", replay: replaying, info }];

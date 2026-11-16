@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvalPendingInteractionResolutionSchema,
   pendingInteractionMacOsPermissionsSchema,
   pendingInteractionCreateSchema,
   pendingInteractionSchema,
   USER_QUESTION_MAX_FREE_TEXT_LENGTH,
+  USER_QUESTION_MAX_PREVIEW_LENGTH,
   USER_QUESTION_MAX_OPTIONS,
   USER_QUESTION_MAX_QUESTIONS,
   USER_QUESTION_MAX_SELECTED,
@@ -186,6 +188,48 @@ describe("pending interaction schemas", () => {
         },
       },
     });
+  });
+
+  it("round trips option previews and enforces their bounds", () => {
+    const payload = {
+      kind: "user_question" as const,
+      questions: [
+        {
+          id: "q-preview",
+          prompt: "Which option?",
+          multiSelect: false,
+          options: [
+            {
+              value: "Alpha",
+              label: "Alpha",
+              preview: "Превью 😀",
+            },
+          ],
+          allowFreeText: false,
+        },
+      ],
+    };
+    expect(
+      userQuestionPendingInteractionPayloadSchema.parse(payload).questions[0]
+        ?.options?.[0]?.preview,
+    ).toBe("Превью 😀");
+
+    for (const preview of [
+      " ",
+      "x".repeat(USER_QUESTION_MAX_PREVIEW_LENGTH + 1),
+    ]) {
+      expect(() =>
+        userQuestionPendingInteractionPayloadSchema.parse({
+          ...payload,
+          questions: [
+            {
+              ...payload.questions[0],
+              options: [{ ...payload.questions[0].options[0], preview }],
+            },
+          ],
+        }),
+      ).toThrow(/preview/i);
+    }
   });
 
   it("treats a user question without a required flag as required and keeps an explicit optional one", () => {
@@ -610,5 +654,23 @@ describe("pending interaction schemas", () => {
         contacts: "none",
       }),
     ).toThrow();
+  });
+});
+
+describe("approval resolution comments", () => {
+  it("round trips request-changes comments and enforces their bounds", () => {
+    expect(
+      approvalPendingInteractionResolutionSchema.parse({
+        decision: "deny",
+        comments: "Please revise with tests.",
+      }),
+    ).toEqual({ decision: "deny", comments: "Please revise with tests." });
+
+    expect(() =>
+      approvalPendingInteractionResolutionSchema.parse({
+        decision: "deny",
+        comments: "x".repeat(4097),
+      }),
+    ).toThrow(/4096|comment/i);
   });
 });

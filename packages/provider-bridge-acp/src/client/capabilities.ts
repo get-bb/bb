@@ -34,6 +34,7 @@ export interface AcpAgentCapabilities {
   };
   logout: boolean;
   authMethods: AcpAuthMethod[];
+  initializeMeta: AcpJsonObject;
   meta: AcpJsonObject;
 }
 
@@ -161,6 +162,7 @@ export function readAcpAgentCapabilities(
     },
     logout: isPresent(auth, "logout"),
     authMethods: decodeAuthMethods(initializeResult["authMethods"]),
+    initializeMeta: readMeta(initializeResult) ?? {},
     meta: readMeta(agent) ?? {},
   };
 }

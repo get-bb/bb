@@ -3,6 +3,7 @@ import { ThreadEventGrammar } from "../thread-event-grammar.js";
 import type { ConformanceCheckResult } from "./types.js";
 
 export const RECORDED_CONFORMANCE_CELLS = [
+  "capability-discovery",
   "turn-tools",
   "steer",
   "stop-interrupt",

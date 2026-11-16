@@ -89,6 +89,9 @@ export function acpProviderDeclaration(
       ...(agent.supportsManualCompaction === true
         ? { supportsManualCompaction: true }
         : {}),
+      ...(agent.supportsNativeUserQuestion === true
+        ? { supportsNativeUserQuestion: true }
+        : {}),
       reasoningLevels:
         agent.reasoningLevels === undefined
           ? [...ACP_BASE_CAPABILITIES.reasoningLevels]

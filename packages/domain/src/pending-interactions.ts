@@ -206,6 +206,7 @@ export const USER_QUESTION_MAX_QUESTIONS = 10;
 export const USER_QUESTION_MAX_OPTIONS = 4;
 export const USER_QUESTION_MAX_SELECTED = 4;
 export const USER_QUESTION_MAX_FREE_TEXT_LENGTH = 4096;
+export const USER_QUESTION_MAX_PREVIEW_LENGTH = 16_000;
 
 const pendingInteractionUserQuestionIdSchema = z
   .string()
@@ -260,10 +261,22 @@ const pendingInteractionUserQuestionFreeTextSchema = z
     message: "User question free text cannot be blank",
   });
 
+const pendingInteractionUserQuestionOptionPreviewSchema = z
+  .string()
+  .min(1)
+  .max(
+    USER_QUESTION_MAX_PREVIEW_LENGTH,
+    `User question option previews cannot exceed ${USER_QUESTION_MAX_PREVIEW_LENGTH} characters`,
+  )
+  .refine((value) => value.trim().length > 0, {
+    message: "User question option previews cannot be blank",
+  });
+
 const pendingInteractionUserQuestionOptionSchema = z.object({
   value: pendingInteractionUserQuestionOptionValueSchema,
   label: pendingInteractionUserQuestionOptionLabelSchema,
   description: pendingInteractionUserQuestionOptionDescriptionSchema.optional(),
+  preview: pendingInteractionUserQuestionOptionPreviewSchema.optional(),
 });
 
 export const pendingInteractionUserQuestionQuestionSchema = z
@@ -407,6 +420,18 @@ export function isPluginExtensionInteractionRequestPayload(
 const approvalDecisionDiscriminatorError =
   "Invalid discriminator value. Expected 'allow_once' | 'allow_for_session' | 'deny'";
 
+const approvalResolutionCommentsSchema = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((value) => value.trim().length > 0, {
+    message: "Approval comments cannot be blank",
+  });
+
+const approvalResolutionCommentFields = {
+  comments: approvalResolutionCommentsSchema.optional(),
+};
+
 export const approvalPendingInteractionResolutionSchema = z.discriminatedUnion(
   "decision",
   [
@@ -414,14 +439,17 @@ export const approvalPendingInteractionResolutionSchema = z.discriminatedUnion(
       decision: z.literal("allow_once"),
       grantedPermissions:
         pendingInteractionGrantedPermissionProfileSchema.nullable(),
+      ...approvalResolutionCommentFields,
     }),
     z.object({
       decision: z.literal("allow_for_session"),
       grantedPermissions:
         pendingInteractionGrantedPermissionProfileSchema.nullable(),
+      ...approvalResolutionCommentFields,
     }),
     z.object({
       decision: z.literal("deny"),
+      ...approvalResolutionCommentFields,
     }),
   ],
   approvalDecisionDiscriminatorError,

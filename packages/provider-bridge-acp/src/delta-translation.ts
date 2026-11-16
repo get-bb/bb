@@ -175,6 +175,7 @@ export function createAcpDeltaTranslator(
   const dialect = options.dialect ?? GENERIC_ACP_DIALECT;
   const pathOptions = { cwd: options.cwd };
   const mergedToolCalls = new Map<string, AcpOpenToolCall>();
+  const completedDelegations = new Set<string>();
   const fileExistence = new Map<string, Map<string, boolean | undefined>>();
   const filesAddedThisTurn = new Set<string>();
 
@@ -696,7 +697,10 @@ export function createAcpDeltaTranslator(
           injectedToolBindings.set(announcedKey, bound);
         }
         noteEditedPaths(announcedKey, event);
-        if (isTerminalAcpStatus(event.status)) {
+        if (
+          isTerminalAcpStatus(event.status) &&
+          !dialect.deferToolCallCompletion?.(event)
+        ) {
           return [
             ...flush,
             toolCallClose({
@@ -739,7 +743,10 @@ export function createAcpDeltaTranslator(
           open?.clientFileWrites ?? [],
         );
         noteEditedPaths(key, merged);
-        if (isTerminalAcpStatus(merged.status)) {
+        if (
+          isTerminalAcpStatus(merged.status) &&
+          !dialect.deferToolCallCompletion?.(merged)
+        ) {
           mergedToolCalls.delete(key);
           return [
             toolCallClose({
@@ -1222,6 +1229,9 @@ export function createAcpDeltaTranslator(
     threadId: string,
     report: AcpDelegationReport,
   ): ThreadDelta[] {
+    if (completedDelegations.has(report.childRef)) {
+      return [];
+    }
     const context = { threadId };
     const key = callKey(context, report.toolCallId);
     const open = mergedToolCalls.get(key);
@@ -1251,6 +1261,43 @@ export function createAcpDeltaTranslator(
     ];
   }
 
+  function noteDelegationCompletion(
+    threadId: string,
+    report: AcpDelegationReport,
+    status: "completed" | "failed" | "interrupted",
+    resultText?: string,
+  ): ThreadDelta[] {
+    if (completedDelegations.has(report.childRef)) {
+      return [];
+    }
+    const context = { threadId };
+    const key = callKey(context, report.toolCallId);
+    const open = mergedToolCalls.get(key);
+    if (
+      open === undefined ||
+      classifyCall(context, open.event).item.type !== "delegation"
+    ) {
+      return [];
+    }
+    completedDelegations.add(report.childRef);
+    const event = {
+      ...open.event,
+      status: status === "interrupted" ? ("cancelled" as const) : status,
+      ...(resultText === undefined
+        ? {}
+        : { rawOutput: { type: "Text", text: resultText } }),
+    };
+    return [
+      toolCallClose({
+        context,
+        event,
+        status,
+        permissionTitle: open.permissionTitle,
+        delegation: report,
+      }),
+    ];
+  }
+
   function getInjectedToolBinding(
     threadId: string,
     toolCallId: string,
@@ -1262,6 +1309,7 @@ export function createAcpDeltaTranslator(
     configureInjectedTools,
     getInjectedToolBinding,
     noteDelegationReport,
+    noteDelegationCompletion,
     noteInjectedToolCall,
     notePermissionToolCall,
     translateAcpEvent,

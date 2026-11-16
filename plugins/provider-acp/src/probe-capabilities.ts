@@ -14,7 +14,7 @@ export function applyAcpAgentProbe(
     return null;
   }
   const declaredFork = agent.fork ?? "none";
-  if (declaredFork === "none" || probe.fork) {
+  if (declaredFork === "none" || probe.fork || probe.extensionFork === true) {
     return null;
   }
   return {

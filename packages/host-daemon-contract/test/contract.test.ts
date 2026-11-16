@@ -479,6 +479,19 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "turn.submit": {
     trace: { spans: [{ name: "bridge.turnStarted", atMs: 4.2 }] },
   },
+  "subagent.list": {
+    subagents: [
+      {
+        childRef: "child-1",
+        parentToolCallId: "call-1",
+        label: "child",
+        subagentType: "general-purpose",
+        status: "running",
+      },
+    ],
+  },
+  "subagent.tell": { childRef: "child-1", messageId: "message-1" },
+  "subagent.cancel": { childRef: "child-1", status: "cancelled" },
   "thread.stop": { providerCheckpointId: null },
   "thread.storage.delete": { providerCheckpointId: null },
   "thread.goal.clear": { cleared: true },
@@ -612,6 +625,8 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.resolution.comments":
+    "a rejected plan carries request-changes comments only when the reviewer supplied them; absence is a plain rejection.",
   "hostDaemonCommandSchema.resolution.description":
     "the interaction.resolve command's resolution is the persisted union, so it also admits the plugin_submitted arm and the description a plugin's describeSubmission returned. It never reaches the wire: a plugin interaction is settled in the server against its waiting requestInput promise and never queues a daemon command, so an older daemon never sees the field.",
   "hostDaemonCommandSchema.resolution.description.detail":
@@ -672,6 +687,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "a user question omits options when it takes free text only; absence is the question's shape, not missing choices.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.questions.options.description":
     "a question option carries a description only when its label needs a gloss; absence means the label stands alone.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.questions.options.preview":
+    "a question option carries a preview only when the provider supplied one; absence means the option has no separate preview.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.questions.shortLabel":
     "a user question omits shortLabel when its prompt is short enough to title the row itself.",
   "hostDaemonOnlineRpcCommandSchema.nativeRoots.commands.project.skipIfManifest":
@@ -1070,7 +1087,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(267);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(268);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1097,7 +1114,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(264)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(265)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(266)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(267)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(267)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(268)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);

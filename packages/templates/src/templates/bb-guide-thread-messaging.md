@@ -95,8 +95,8 @@ Interactions:
                                            Show one interaction (approval details, questions, or a plugin form's data)
   bb thread interactions approve <interaction-id> [id]
                                            Allow a command, file-change, plan, or tool-use approval
-  bb thread interactions deny <interaction-id> [id]
-                                           Deny an approval
+  bb thread interactions deny <interaction-id> [id] [--comments <comments>]
+                                           Deny an approval; optionally explain requested plan changes
   bb thread interactions grant <interaction-id> [id] --scope turn|session
                                            Grant a permission interaction
   bb thread interactions answer <interaction-id> [id] --choice <questionId=value> --text <questionId=text>
@@ -110,6 +110,16 @@ Interactions:
   `show` prints a plugin form's `Data` so you can shape the `--value` JSON.
   A provider's plugin-defined request cannot be cancelled; stop the thread to
   back out of it.
+
+Subagents:
+
+  bb thread subagents list [id]           List a thread's subagents and lifecycle
+  bb thread subagents tell <childRef> <text> [id]
+                                           Message one subagent without exposing provider protocol
+  bb thread subagents cancel <childRef> [id]
+                                           Cancel a running subagent without stopping its parent
+    --self                                 Target current thread (every subcommand)
+    --json                                 Machine-readable output (every subcommand)
 
 Queued messages:
 

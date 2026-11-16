@@ -15,6 +15,7 @@ export default experimental_defineHostEntry({
         args: input.args,
         env: input.env,
         cwd: context.experimental_paths.tempDir,
+        grokFork: input.grokFork,
       }),
     resolveNativeRoots: (input) =>
       resolveAcpNativeRoots({

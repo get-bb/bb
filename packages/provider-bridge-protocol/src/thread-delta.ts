@@ -12,6 +12,7 @@ import {
   providerRawEventSchema,
   threadEventItemPresentationSchema,
   threadEventItemStatusSchema,
+  threadEventModelTokenUsageSchema,
   threadEventPlanStepSchema,
   threadEventSearchModeSchema,
   threadEventTokenUsageBreakdownSchema,
@@ -326,6 +327,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     last: threadEventTokenUsageBreakdownSchema,
     modelContextWindow: z.number().nullable(),
     promptCacheTtlMs: promptCacheTtlMsSchema.optional(),
+    models: z.array(threadEventModelTokenUsageSchema).optional(),
     providerTurnId: providerTurnIdSchema.optional(),
   }),
 
