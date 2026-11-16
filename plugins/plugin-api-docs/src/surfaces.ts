@@ -1637,6 +1637,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         reference: [
           "Negotiate native Codex realtime voice on an existing thread through experimental_voice; supply WebRTC SDP and renew or stop the call without opening a second provider connection",
+          "Native voice requires Codex 0.147.0 or newer, checked on the running app-server. Native handoffs use the active turn or last submitted settings, not unsent composer choices; runtime resume allows normal user approvals",
+          "Startup handoff instructions enter coding-thread history on its first step during the call. Codex adds its generic end notice on the first post-call step; instructions are not removed. Back-to-back calls without a step between them may retain earlier guidance, so callers must not assume isolated per-call instructions",
           "Normalize and resolve host paths with experimental_normalizeHostPath(path) and experimental_resolveHostPath({ rootPath, path }) from @get-bb/plugin-sdk; invalid paths return null",
           "Recognize drive roots (including C:) and UNC paths with either Windows separator, regardless of the server OS; reject rootless backslashes and drive-relative paths such as C:foo during resolution",
           "Join relative paths, obtain dirname/basename, derive a slash-separated relative path within a root, and create case-insensitive Windows comparison keys with the experimental host-path helpers; invalid absolute inputs return null",

@@ -80,3 +80,44 @@ it("uses the existing native thread and process for voice and translates native 
       .filter((line) => line.startsWith("spawn:")),
   ).toHaveLength(1);
 }, 15000);
+
+it("rejects an older live app-server before sending unsupported realtime parameters", async () => {
+  workspaceDir = mkdtempSync(join(tmpdir(), "bb-voice-version-"));
+  processLogPath = join(workspaceDir, "process.log");
+  const requestLogPath = join(workspaceDir, "requests.ndjson");
+  const script = join(workspaceDir, "scenario.json");
+  writeFileSync(
+    script,
+    JSON.stringify({
+      processLogPath,
+      requestLogPath,
+      initializeUserAgent: "codex_cli_rs/0.146.0 (test)",
+    }),
+  );
+  stubFakeCodexAppServer(script);
+  harness = createHarness(handleLine);
+  harness.sendRequest(1, "thread/resume", {
+    threadId,
+    providerThreadId,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+  harness.sendRequest(2, "thread/voice", {
+    threadId,
+    providerThreadId,
+    command: {
+      action: "start",
+      sessionId,
+      sdp: "offer",
+      initialContext: "",
+      instructions: "guidance",
+    },
+  });
+  expect((await harness.waitForResponse(2)).error?.message).toContain(
+    "0.147.0",
+  );
+  const requests = readFileSync(requestLogPath, "utf8");
+  expect(requests).not.toContain("thread/realtime/start");
+});

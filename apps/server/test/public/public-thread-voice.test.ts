@@ -45,6 +45,40 @@ describe("voice session controls", () => {
     });
   }
 
+  it("uses user-initiated approval handling when preparing a voice runtime", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      vi.spyOn(threadCommands, "buildExecutionOptions").mockResolvedValue({
+        model: "test-model",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "accept-edits",
+        source: "client/turn/requested",
+      });
+      const setup = vi
+        .spyOn(threadCommands, "prepareTurnSubmitCommandPayload")
+        .mockRejectedValue(new Error("Preparation interrupted for inspection"));
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/voice`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "start", sessionId, sdp: "offer" }),
+        },
+      );
+      expect(response.status).toBe(500);
+      expect(setup).toHaveBeenCalledWith(
+        harness.deps,
+        expect.objectContaining({
+          permissionEscalation: "ask",
+          execution: expect.objectContaining({
+            permissionMode: "accept-edits",
+          }),
+        }),
+      );
+    });
+  });
+
   for (const state of ["archived", "stopping"] as const) {
     it(`allows hang-up while the thread is ${state}`, async () => {
       await withTestHarness(async (harness) => {

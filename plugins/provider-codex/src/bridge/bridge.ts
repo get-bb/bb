@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { CodexVoiceSession, voiceCommandSchema } from "./voice.js";
+import { CodexVoiceSession, requireNativeVoiceVersion, voiceCommandSchema } from "./voice.js";
 
 import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
 import { createHash } from "node:crypto";
@@ -1027,15 +1027,18 @@ function spawnChildConnection(callbacks: {
 
 const ignoredChildResultSchema = z.unknown();
 
+const initializedUserAgents = new WeakMap<CodexAppServerConnection, string | null>();
+
 async function initializeChild(
   connection: CodexAppServerConnection,
 ): Promise<void> {
-  await connection.request({
+  const initialized = await connection.request({
     method: "initialize",
     params: CODEX_INITIALIZE_PARAMS,
-    resultSchema: ignoredChildResultSchema,
+    resultSchema: z.object({ userAgent: z.string().optional() }).passthrough(),
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
+  initializedUserAgents.set(connection, initialized.userAgent ?? null);
   if (configuredSkillExtraRoots !== null) {
     await connection.request({
       method: "skills/extraRoots/set",
@@ -2760,6 +2763,8 @@ async function handleRequest(
           session.codexThreadId !== request.params.providerThreadId
         )
           throw new Error("Codex thread must be loaded before starting voice");
+        if (request.params.command.action === "start")
+          requireNativeVoiceVersion(initializedUserAgents.get(session.connection) ?? null);
         let voice = voiceSessions.get(session);
         if (!voice) {
           voice = new CodexVoiceSession(

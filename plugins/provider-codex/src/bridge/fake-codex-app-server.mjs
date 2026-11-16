@@ -440,7 +440,7 @@ async function handleRequest(message) {
   }
   switch (method) {
     case "initialize":
-      respond(id, {});
+      respond(id, { userAgent: script?.initializeUserAgent ?? "codex_cli_rs/0.160.1 (test)" });
       return;
     case "account/rateLimits/read":
       if (script?.rateLimitRead) {

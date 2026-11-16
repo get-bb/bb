@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { CodexVoiceSession } from "./voice.js";
+import { CodexVoiceSession, requireNativeVoiceVersion } from "./voice.js";
 import type { CodexAppServerConnection } from "./app-server-connection.js";
 
 const first = "11111111-1111-4111-8111-111111111111";
@@ -210,3 +210,25 @@ it("distinguishes an explicit empty startup reference from provider defaults", a
   );
   await voice.command({ action: "stop", sessionId: first });
 });
+
+it.each([
+  null,
+  "unknown",
+  "codex_cli_rs/0.136.0 (test)",
+  "codex_cli_rs/0.146.0 (test)",
+])(
+  "rejects native voice before unsupported startup fields can be silently ignored (%s)",
+  (userAgent) => {
+    expect(() => requireNativeVoiceVersion(userAgent)).toThrow("0.147.0");
+  },
+);
+it.each([
+  "codex_cli_rs/0.147.0 (test)",
+  "bb/0.160.1 (test; client 1.0.0)",
+  "codex_cli_rs/1.0.0",
+])(
+  "accepts an app-server version supporting all native voice startup fields (%s)",
+  (userAgent) => {
+    expect(() => requireNativeVoiceVersion(userAgent)).not.toThrow();
+  },
+);

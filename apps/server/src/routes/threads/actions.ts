@@ -69,6 +69,7 @@ import {
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
+import { resolvePermissionEscalation } from "../../services/threads/thread-runtime-config.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
 import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
@@ -530,7 +531,7 @@ export function registerThreadActionRoutes(
       environment,
       execution,
       input: [],
-      permissionEscalation: "deny",
+      permissionEscalation: resolvePermissionEscalation({ initiator: "user" }),
       target: { mode: "auto", expectedTurnId: null },
       thread,
     });

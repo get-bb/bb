@@ -614,7 +614,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.command.initialContext":
     "Omission keeps provider startup history; an explicit string replaces it, including an empty reference. The caller owns reference selection.",
   "hostDaemonCommandSchema.command.instructions":
-    "Omission keeps provider handoff defaults; supplied instructions are call-scoped and bounded at the public boundary.",
+    "Omission keeps provider handoff defaults; supplied startup instructions are bounded at the public boundary and follow Codex history semantics, not isolated call scope.",
   "hostDaemonCommandSchema.command.voice":
     "Omission keeps the provider default voice; supplied names are validated by the provider protocol.",
   "hostDaemonCommandSchema.resolution.description":
