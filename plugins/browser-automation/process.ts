@@ -1,3 +1,6 @@
+import { mkdtemp, open, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   experimental_hostToolchain as hostToolchain,
   experimental_spawnHostProcess as spawn,
@@ -65,50 +68,73 @@ export function supervise(
   };
 }
 
-export function execute(
+const MAX_OUTPUT_BYTES = 512_000;
+
+export async function execute(
   command: string,
   args: string[],
   env: NodeJS.ProcessEnv,
   signal: AbortSignal,
 ): Promise<string> {
   signal.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let bytes = 0;
-    let failure: Error | null = null;
-    const abort = () => {
-      failure = new Error("Browser work cancelled or timed out");
-      child.kill("SIGKILL");
-    };
-    signal.addEventListener("abort", abort, { once: true });
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      bytes += Buffer.byteLength(chunk);
-      if (bytes > 512_000) {
-        failure = new Error("DevBrowser output exceeded 512 KB");
+  const dir = await mkdtemp(join(tmpdir(), "bb-devbrowser-"));
+  const path = join(dir, "stdout");
+  const file = await open(path, "w", 0o600);
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  const sizeError = () =>
+    stdoutBytes + stderrBytes > MAX_OUTPUT_BYTES
+      ? new Error("DevBrowser output exceeded 512 KB")
+      : null;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(command, args, {
+        env,
+        stdio: ["ignore", file.fd, "pipe"],
+      });
+      let failure: Error | null = null;
+      const fail = (error: Error) => {
+        failure ??= error;
         child.kill("SIGKILL");
-      } else stdout += chunk;
+      };
+      const checkSize = () => {
+        const error = sizeError();
+        if (error) fail(error);
+      };
+      const abort = () =>
+        fail(new Error("Browser work cancelled or timed out"));
+      const watch = setInterval(() => {
+        file.stat().then(({ size }) => {
+          stdoutBytes = size;
+          checkSize();
+        }, fail);
+      }, 100);
+      const settle = () => {
+        clearInterval(watch);
+        signal.removeEventListener("abort", abort);
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderrBytes += chunk.length;
+        checkSize();
+      });
+      child.once("error", (error) => {
+        settle();
+        reject(error);
+      });
+      child.once("close", () => {
+        settle();
+        if (failure) reject(failure);
+        else resolve();
+      });
+      if (signal.aborted) abort();
     });
-    child.stderr.on("data", (chunk: Buffer) => {
-      bytes += chunk.length;
-      if (bytes > 512_000) {
-        failure = new Error("DevBrowser output exceeded 512 KB");
-        child.kill("SIGKILL");
-      }
-    });
-    child.once("error", (error) => {
-      signal.removeEventListener("abort", abort);
-      reject(error);
-    });
-    child.once("close", () => {
-      signal.removeEventListener("abort", abort);
-      if (failure) reject(failure);
-      else resolve(stdout);
-    });
-    if (signal.aborted) abort();
-  });
+    stdoutBytes = (await file.stat()).size;
+    const error = sizeError();
+    if (error) throw error;
+    return await readFile(path, "utf8");
+  } finally {
+    await file.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 }
