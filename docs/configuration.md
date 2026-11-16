@@ -52,10 +52,11 @@ children inherit those entries. Restart bb after changing these settings;
 existing sockets and workers keep their startup configuration.
 
 Built-in proxy support requires Node 22.21+ or 24.5+ (or Node 26); on older
-supported Node releases the launcher omits `--use-env-proxy`. Libraries that create their own agents
-or sockets can also bypass Node's global proxy support, including daemon
-WebSockets; these launch defaults do not configure those libraries or the OS
-proxy settings.
+supported Node releases the launcher omits `--use-env-proxy`. The daemon's
+server WebSocket and bb connect tunnel use Node's global agents, so they follow
+the same proxy and `NO_PROXY` settings. Libraries that create their own agents
+or sockets can still bypass Node's global proxy support; these launch defaults
+do not configure those libraries or the OS proxy settings.
 
 ## Host executable discovery
 

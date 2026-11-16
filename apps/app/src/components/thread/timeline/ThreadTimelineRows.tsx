@@ -128,10 +128,7 @@ import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-panel-queries";
 import { useThreadTimelineNavigation } from "./ThreadTimelineNavigationContext.js";
 import { type ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
-import {
-  useSenderThreadMetadataById,
-  type SenderThreadMetadata,
-} from "@/hooks/useSenderThreadMetadataById";
+import { useSenderThreadMetadata } from "@/hooks/useSenderThreadMetadataById";
 import {
   EMPTY_PLUGIN_SLOT_SNAPSHOT,
   usePluginSlotKind,
@@ -366,10 +363,6 @@ interface ConversationRowContentProps extends ConversationRowProps {
 
 const TimelineRendererStaticContext =
   createContext<TimelineRendererStaticContextValue | null>(null);
-const SenderThreadMetadataContext = createContext<ReadonlyMap<
-  string,
-  SenderThreadMetadata
-> | null>(null);
 const TimelineTurnStateContext =
   createContext<TimelineTurnStateContextValue | null>(null);
 const LatestActionableAssistantMessageIdContext = createContext<string | null>(
@@ -386,17 +379,6 @@ function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue 
   const context = useContext(TimelineRendererStaticContext);
   if (!context) {
     throw new Error("Thread timeline renderer context is missing");
-  }
-  return context;
-}
-
-function useSenderThreadMetadataContext(): ReadonlyMap<
-  string,
-  SenderThreadMetadata
-> {
-  const context = useContext(SenderThreadMetadataContext);
-  if (!context) {
-    throw new Error("Thread timeline sender metadata context is missing");
   }
   return context;
 }
@@ -908,7 +890,9 @@ const ConversationRowContent = memo(function ConversationRowContent({
     resolveUserAttachmentImageSrc,
     threadId,
   } = useTimelineRendererStaticContext();
-  const senderThreadMetadataById = useSenderThreadMetadataContext();
+  const senderThreadMetadata = useSenderThreadMetadata(
+    row.role === "user" ? row.senderThreadId : null,
+  );
   if (
     row.role === "user" &&
     inlineMessageEditor !== undefined &&
@@ -974,10 +958,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
       : { role: "assistant" }),
   };
   if (row.role === "user") {
-    const senderThreadMetadata =
-      row.senderThreadId === null
-        ? null
-        : (senderThreadMetadataById.get(row.senderThreadId) ?? null);
     const canEditMessage =
       onEditMessage !== undefined &&
       row.initiator === "user" &&
@@ -1699,7 +1679,7 @@ function SentThreadMessageRow({
   sentAt: number;
 }) {
   const context = useTimelineRendererStaticContext();
-  const recipient = useSenderThreadMetadataContext().get(message.threadId);
+  const recipient = useSenderThreadMetadata(message.threadId);
   return (
     <GeneratedConversationMessage
       attachmentItems={NO_ATTACHMENTS}
@@ -2377,7 +2357,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     props.initialExpanded ?? EMPTY_ROW_ID_SET,
   );
   const projectId = props.projectId;
-  const senderThreadMetadataById = useSenderThreadMetadataById();
   const messageDirectiveSlots = usePluginSlotKind("messageDirectives");
   const codeFenceRendererSlots = usePluginSlotKind("codeFenceRenderers");
   const messageActionSlots = usePluginSlotKind("messageActions");
@@ -2541,68 +2520,64 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       <SearchMessageLocationProvider threadId={props.threadId}>
         <MessageDirectiveRegistryProvider registry={messageDirectiveRegistry}>
           <TimelineRendererStaticContext.Provider value={staticContextValue}>
-            <SenderThreadMetadataContext.Provider
-              value={senderThreadMetadataById}
+            <LatestActionableAssistantMessageIdContext.Provider
+              value={latestActionableAssistantMessageId}
             >
-              <LatestActionableAssistantMessageIdContext.Provider
-                value={latestActionableAssistantMessageId}
+              <LatestActionableUserMessageIdContext.Provider
+                value={latestActionableUserMessageId}
               >
-                <LatestActionableUserMessageIdContext.Provider
-                  value={latestActionableUserMessageId}
+                <StreamingAssistantMessageIdContext.Provider
+                  value={streamingAssistantMessageId}
                 >
-                  <StreamingAssistantMessageIdContext.Provider
-                    value={streamingAssistantMessageId}
+                  <TimelineTurnStateContext.Provider
+                    value={turnStateContextValue}
                   >
-                    <TimelineTurnStateContext.Provider
-                      value={turnStateContextValue}
+                    <TimelineWindowingMeasurementsContext.Provider
+                      value={windowingMeasurements}
                     >
-                      <TimelineWindowingMeasurementsContext.Provider
-                        value={windowingMeasurements}
-                      >
-                        <div className="relative">
-                          <TimelineRowsList
-                            hasOlderTimelineRows={props.hasOlderTimelineRows}
-                            isLoadingOlderTimelineRows={
-                              props.isLoadingOlderTimelineRows
-                            }
-                            navigationTargetRowId={
-                              props.timelineNavigationTargetRowId
-                            }
-                            onLoadOlderRows={props.onLoadOlderRows}
-                            rows={rows}
-                            scopeActive={scopeActive}
-                            showAssistantMessageActions={true}
-                            compactActivityIntents={false}
-                            spacing="top-level"
-                            unreadDividerAutoScroll={
-                              props.unreadDividerAutoScroll ?? true
-                            }
-                            unreadDividerPlacement={
-                              props.unreadDividerPlacement ?? null
-                            }
-                          />
-                          {hasSelectionActions ? (
-                            <div
-                              ref={setSelectionMenuLayer}
-                              className="pointer-events-none absolute inset-0 z-10 [contain:layout]"
-                            />
-                          ) : null}
-                        </div>
-                      </TimelineWindowingMeasurementsContext.Provider>
-                      {hasSelectionActions ? (
-                        <TimelineSelectionMenu
-                          selection={activeSelection?.selection ?? null}
-                          onAddToChat={selectionAddToChatHandler}
-                          pluginActions={selectionPluginActions}
-                          onDismiss={dismissSelection}
-                          container={selectionMenuLayer}
+                      <div className="relative">
+                        <TimelineRowsList
+                          hasOlderTimelineRows={props.hasOlderTimelineRows}
+                          isLoadingOlderTimelineRows={
+                            props.isLoadingOlderTimelineRows
+                          }
+                          navigationTargetRowId={
+                            props.timelineNavigationTargetRowId
+                          }
+                          onLoadOlderRows={props.onLoadOlderRows}
+                          rows={rows}
+                          scopeActive={scopeActive}
+                          showAssistantMessageActions={true}
+                          compactActivityIntents={false}
+                          spacing="top-level"
+                          unreadDividerAutoScroll={
+                            props.unreadDividerAutoScroll ?? true
+                          }
+                          unreadDividerPlacement={
+                            props.unreadDividerPlacement ?? null
+                          }
                         />
-                      ) : null}
-                    </TimelineTurnStateContext.Provider>
-                  </StreamingAssistantMessageIdContext.Provider>
-                </LatestActionableUserMessageIdContext.Provider>
-              </LatestActionableAssistantMessageIdContext.Provider>
-            </SenderThreadMetadataContext.Provider>
+                        {hasSelectionActions ? (
+                          <div
+                            ref={setSelectionMenuLayer}
+                            className="pointer-events-none absolute inset-0 z-10 [contain:layout]"
+                          />
+                        ) : null}
+                      </div>
+                    </TimelineWindowingMeasurementsContext.Provider>
+                    {hasSelectionActions ? (
+                      <TimelineSelectionMenu
+                        selection={activeSelection?.selection ?? null}
+                        onAddToChat={selectionAddToChatHandler}
+                        pluginActions={selectionPluginActions}
+                        onDismiss={dismissSelection}
+                        container={selectionMenuLayer}
+                      />
+                    ) : null}
+                  </TimelineTurnStateContext.Provider>
+                </StreamingAssistantMessageIdContext.Provider>
+              </LatestActionableUserMessageIdContext.Provider>
+            </LatestActionableAssistantMessageIdContext.Provider>
           </TimelineRendererStaticContext.Provider>
         </MessageDirectiveRegistryProvider>
       </SearchMessageLocationProvider>
