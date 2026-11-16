@@ -1,9 +1,13 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }));
+const { accessMock, queryMock } = vi.hoisted(() => ({
+  accessMock: vi.fn(),
+  queryMock: vi.fn(),
+}));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: queryMock }));
+vi.mock("node:fs/promises", () => ({ access: accessMock }));
 
 import { readIsolatedClaudeContextUsage } from "../context-usage-probe.js";
 import { probeClaudeInitialization } from "../initialization-probe.js";
@@ -14,7 +18,32 @@ function probeOptions(): Options {
   return options;
 }
 
+function readContextUsage(): Promise<unknown> {
+  return readIsolatedClaudeContextUsage({
+    sessionOptions: {
+      cwd: "/tmp/probe",
+      systemPrompt: "Fixture",
+      allowBypassPermissions: false,
+    },
+    providerSessionId: "session-1",
+    dynamicTools: [
+      { name: "tool", description: "desc", inputSchema: { type: "object" } },
+    ],
+    signal: new AbortController().signal,
+  });
+}
+
+function installManagedMcpConfig(): void {
+  accessMock.mockImplementation((path: string) =>
+    path.endsWith("managed-mcp.json")
+      ? Promise.resolve()
+      : Promise.reject(new Error("ENOENT")),
+  );
+}
+
 beforeEach(() => {
+  accessMock.mockReset();
+  accessMock.mockRejectedValue(new Error("ENOENT"));
   queryMock.mockReset();
   queryMock.mockReturnValue({
     initializationResult: () => Promise.resolve({ models: [] }),
@@ -34,20 +63,19 @@ describe("Claude metadata probes", () => {
   });
 
   it("read context usage with only the bb bridge MCP server", async () => {
-    await readIsolatedClaudeContextUsage({
-      sessionOptions: {
-        cwd: "/tmp/probe",
-        systemPrompt: "Fixture",
-        allowBypassPermissions: false,
-      },
-      providerSessionId: "session-1",
-      dynamicTools: [
-        { name: "tool", description: "desc", inputSchema: { type: "object" } },
-      ],
-      signal: new AbortController().signal,
-    });
+    await readContextUsage();
 
     expect(probeOptions()).toMatchObject({ strictMcpConfig: true });
     expect(Object.keys(probeOptions().mcpServers ?? {})).toEqual(["bb-bridge"]);
+  });
+
+  it("leave MCP selection to an enterprise managed-mcp.json, which rejects strict MCP config", async () => {
+    installManagedMcpConfig();
+
+    await probeClaudeInitialization({ cwd: "/tmp/probe", env: {} });
+    expect(probeOptions().strictMcpConfig).toBeUndefined();
+
+    await readContextUsage();
+    expect(probeOptions().strictMcpConfig).toBeUndefined();
   });
 });
