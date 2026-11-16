@@ -1,5 +1,6 @@
 import {
   formatToolCallCommand,
+  isAbsoluteHostPath,
   isBackgroundAgentTaskType,
   isBackgroundCommandTaskType,
   isSettledWorkflowAgentState,
@@ -105,6 +106,10 @@ export type TimelineTitleDecoration =
 export type TimelineTitleAction =
   | {
       kind: "open-file-diff";
+      path: string;
+    }
+  | {
+      kind: "open-local-file";
       path: string;
     }
   | {
@@ -671,9 +676,12 @@ function mapFileChangeTitle(row: TimelineFileChangeWorkRow): TimelineTitle {
     mode: "compact",
   });
   const fullPath = formatFileChangePath({ change: row.change, mode: "full" });
+  const changedPath = row.change.movePath ?? row.change.path;
   const titleAction: TimelineTitleAction = {
-    kind: "open-file-diff",
-    path: row.change.movePath ?? row.change.path,
+    kind: isAbsoluteHostPath(changedPath)
+      ? "open-local-file"
+      : "open-file-diff",
+    path: changedPath,
   };
   const pathSegment = segment(compactPath, {
     em: true,
