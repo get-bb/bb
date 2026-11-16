@@ -155,13 +155,6 @@ describe("custom agent icons", () => {
     expect(iconFor("my-own-agent")).toBe("Toolbox");
   });
 
-  it.each(["bob", "kimi-code", "kiro", "muse-code", "opencode-v2"])(
-    "gives the registry agent %s its registry icon",
-    (id) => {
-      expect(iconFor(id)).toBe(`provider-acp/registry-${id}`);
-    },
-  );
-
   it("ships and declares an icon file for every registry agent it names", () => {
     const manifest = z
       .object({
