@@ -8,6 +8,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { useAtom } from "jotai";
 import type {
   ExperimentalThreadContextCardProps,
@@ -365,10 +366,16 @@ export function ThreadContextCard() {
       "[data-scroll-overlay]",
     );
     if (!overlay || !setLayout) return;
-    const measure = () =>
-      setLayout(resolveThreadContextCardLayout(overlay.clientWidth));
-    measure();
-    const observer = new ResizeObserver(measure);
+    const measured = {
+      layout: resolveThreadContextCardLayout(overlay.clientWidth),
+    };
+    setLayout(measured.layout);
+    const observer = new ResizeObserver(() => {
+      const next = resolveThreadContextCardLayout(overlay.clientWidth);
+      if (next === measured.layout) return;
+      measured.layout = next;
+      flushSync(() => setLayout(next));
+    });
     observer.observe(overlay);
     return () => observer.disconnect();
   }, [setLayout]);

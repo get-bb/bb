@@ -293,6 +293,41 @@ describe("thread context card", () => {
     ).toContain("Branch for thr_1");
   });
 
+  it("lays out the card and the transcript inset in the same frame as a resize", () => {
+    const resize: Array<() => void> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize.push(callback);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get");
+    renderPane({ paneWidth: 1600 });
+    const resizeTo = (paneWidth: number) => {
+      width.mockReturnValue(paneWidth);
+      for (const callback of resize) callback();
+    };
+    const card = () => screen.queryByRole("group", { name: "Thread context" });
+    const inset = () => screen.getByLabelText("Inset").textContent;
+
+    resizeTo(1200);
+    expect(card()).toBeTruthy();
+    expect(inset()).toBe("312");
+
+    resizeTo(900);
+    expect(card()).toBeNull();
+    expect(inset()).toBe("0");
+
+    resizeTo(1200);
+    expect(card()).toBeTruthy();
+    expect(inset()).toBe("312");
+    vi.unstubAllGlobals();
+  });
+
   it("opens the card from the header in a narrow pane and closes it when a row runs", () => {
     setPluginSlotRegistrations(
       "first",
