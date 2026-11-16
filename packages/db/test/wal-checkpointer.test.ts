@@ -135,7 +135,6 @@ describe("startWalCheckpointer", () => {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 250));
-        // The worker can be mid-checkpoint here; SQLite then answers busy=1, log=-1.
         let pinned: CheckpointRow | undefined;
         const busyUntil = performance.now() + 5_000;
         for (;;) {
