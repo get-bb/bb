@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentPropsWithoutRef,
   type ReactNode,
   type Ref,
@@ -20,7 +21,11 @@ import {
   type PromptTextMention,
   type ThreadListEntry,
 } from "@bb/domain";
-import { QueryClientContext } from "@tanstack/react-query";
+import {
+  hashKey,
+  QueryClientContext,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   THREAD_MENTION_RESOLVE_MAX_IDS,
   type ThreadResponse,
@@ -797,15 +802,71 @@ export function useThreadMentionResource(
   }, [sidebarResource, threadId, threadQuery.data]);
 }
 
+type CachedThreads = readonly (ThreadResponse | undefined)[];
+
+const NO_CACHED_THREADS: CachedThreads = [];
+
+function subscribeToNothing(): () => void {
+  return () => {};
+}
+
+function getNoCachedThreads(): CachedThreads {
+  return NO_CACHED_THREADS;
+}
+
+function createCachedThreadsStore(
+  queryClient: QueryClient,
+  threadIds: readonly string[],
+) {
+  const queryKeys = threadIds.map((threadId) => threadQueryKey(threadId));
+  const queryHashes = new Set(queryKeys.map((queryKey) => hashKey(queryKey)));
+  let snapshot: CachedThreads = NO_CACHED_THREADS;
+  return {
+    getSnapshot(): CachedThreads {
+      const next = queryKeys.map((queryKey) =>
+        queryClient.getQueryData<ThreadResponse>(queryKey),
+      );
+      if (
+        next.length === snapshot.length &&
+        next.every((thread, index) => thread === snapshot[index])
+      ) {
+        return snapshot;
+      }
+      snapshot = next;
+      return snapshot;
+    },
+    subscribe(onChange: () => void): () => void {
+      return queryClient.getQueryCache().subscribe((event) => {
+        if (queryHashes.has(event.query.queryHash)) {
+          onChange();
+        }
+      });
+    },
+  };
+}
+
+function useCachedThreads(threadIds: readonly string[]): CachedThreads {
+  const queryClient = useContext(QueryClientContext);
+  const store = useMemo(
+    () =>
+      queryClient === undefined
+        ? null
+        : createCachedThreadsStore(queryClient, threadIds),
+    [queryClient, threadIds],
+  );
+  return useSyncExternalStore(
+    store?.subscribe ?? subscribeToNothing,
+    store?.getSnapshot ?? getNoCachedThreads,
+  );
+}
+
 export function useRawThreadMentionResource(
   threadId: string,
 ): PromptMentionResource | null {
   const sidebarResource = useSidebarThreadMentionResource(threadId);
-  const queryClient = useContext(QueryClientContext);
+  const threadIds = useMemo(() => [threadId], [threadId]);
   const batch = useContext(RawThreadMentionBatchContext);
-  const cachedThread = queryClient?.getQueryData<ThreadResponse>(
-    threadQueryKey(threadId),
-  );
+  const [cachedThread] = useCachedThreads(threadIds);
   useEffect(() => {
     if (sidebarResource === null && cachedThread === undefined) {
       batch.register(threadId);
@@ -824,18 +885,16 @@ export function useRawThreadMentionResources(
   threadIds: readonly string[],
 ): ReadonlyMap<string, PromptMentionResource> {
   const resources = useContext(ThreadTitleMentionResourcesContext);
-  const queryClient = useContext(QueryClientContext);
   const batch = useContext(RawThreadMentionBatchContext);
   const resolver = useContext(RawThreadMentionResolverContext);
   const resolutionContext =
     batch === EMPTY_RAW_THREAD_MENTION_BATCH ? resolver : batch;
+  const cachedThreads = useCachedThreads(threadIds);
   useEffect(() => {
     let registeredCount = 0;
-    for (const threadId of threadIds) {
+    for (const [index, threadId] of threadIds.entries()) {
       const sidebarResource = threadMentionResource(threadId, resources);
-      const cachedThread = queryClient?.getQueryData<ThreadResponse>(
-        threadQueryKey(threadId),
-      );
+      const cachedThread = cachedThreads[index];
       if (
         sidebarResource === null &&
         cachedThread === undefined &&
@@ -845,19 +904,17 @@ export function useRawThreadMentionResources(
         registeredCount += 1;
       }
     }
-  }, [queryClient, resolutionContext, resources, threadIds]);
+  }, [cachedThreads, resolutionContext, resources, threadIds]);
 
   return useMemo(() => {
     const resourceById = new Map<string, PromptMentionResource>();
-    for (const threadId of threadIds) {
+    for (const [index, threadId] of threadIds.entries()) {
       const sidebarResource = threadMentionResource(threadId, resources);
       if (sidebarResource !== null) {
         resourceById.set(threadId, sidebarResource);
         continue;
       }
-      const cachedThread = queryClient?.getQueryData<ThreadResponse>(
-        threadQueryKey(threadId),
-      );
+      const cachedThread = cachedThreads[index];
       if (cachedThread !== undefined) {
         resourceById.set(
           threadId,
@@ -871,7 +928,7 @@ export function useRawThreadMentionResources(
       }
     }
     return resourceById;
-  }, [queryClient, resolutionContext.resourceById, resources, threadIds]);
+  }, [cachedThreads, resolutionContext.resourceById, resources, threadIds]);
 }
 
 interface ResolvingThreadTitleMentionProps {

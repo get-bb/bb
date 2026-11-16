@@ -125,6 +125,7 @@ import {
   resolveMarkdownPieces,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces.js";
+import { PAGE_CONTAINER_INSET_END_VARIABLE } from "./page-shell-content-style.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import { observeSharedResize } from "@/lib/shared-resize-observer";
@@ -314,7 +315,8 @@ type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 type MarkdownRemarkPlugins = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE = "--md-table-breakout-max";
-const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, 100cqw)))`;
+const MARKDOWN_PAGE_WIDTH = `(100cqw + var(${PAGE_CONTAINER_INSET_END_VARIABLE}, 0px))`;
+const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, ${MARKDOWN_PAGE_WIDTH} - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, ${MARKDOWN_PAGE_WIDTH})))`;
 const MARKDOWN_TABLE_BREAKOUT_START_MARGIN = `var(${MARKDOWN_TABLE_START_OFFSET_VARIABLE}, calc((100% - ${MARKDOWN_TABLE_BREAKOUT_WIDTH}) / 2))`;
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =

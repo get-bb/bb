@@ -197,7 +197,14 @@ still holds the window it served under that tag, it answers with a delta,
 answers with the full window. `delta` holds:
 
 - `afterTag`: the tag of the window the delta applies to;
-- `upsertRows`: rows that are new or whose content changed;
+- `upsertRows`: rows new to the window, in full;
+- `patchRows`, only when a row the base window holds changed: `{ id, ops }`
+  per changed row, where each op addresses a JSON path inside the row.
+  `["append", path, text]` appends to a string that grew at its end, which is
+  how streamed message text, reasoning and command output travel, so a push
+  carries only the new text, not the whole row. `["set", path, value]`
+  replaces a value or adds a key or array element, and `["delete", path]`
+  removes a key;
 - `rowOrder`, only when membership or order changed: the new order as a list
   of row ids new to the window and `[start, length]` ranges of the base
   window's rows, by position;

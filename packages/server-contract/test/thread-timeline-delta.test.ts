@@ -30,6 +30,24 @@ function row(id: string, title = "t"): TimelineRow {
   };
 }
 
+function message(id: string, text: string, sourceSeqEnd = 1): TimelineRow {
+  return {
+    id,
+    kind: "conversation",
+    role: "assistant",
+    threadId: "thr_x",
+    turnId: "turn_x",
+    sourceSeqStart: 1,
+    sourceSeqEnd,
+    startedAt: 0,
+    createdAt: 0,
+    messageSeq: 1,
+    text,
+    attachments: null,
+    turnRequest: null,
+  };
+}
+
 function timeline(
   rows: TimelineRow[],
   overrides: Partial<ThreadTimelineResponse> = {},
@@ -83,10 +101,137 @@ describe("thread timeline delta", () => {
       tag: "tag-3",
     });
     const { delta, applied } = roundTrip(previous, current);
-    expect(delta.delta.upsertRows.map((r) => r.id)).toEqual(["b", "c"]);
+    expect(delta.delta.upsertRows.map((r) => r.id)).toEqual(["c"]);
+    expect(delta.delta.patchRows).toEqual([
+      { id: "b", ops: [["set", ["title"], "changed"]] },
+    ]);
     expect(delta.delta.rowOrder).toEqual([[0, 2], "c"]);
     expect(delta.delta.fields).toEqual({});
     expect(applied).toEqual(current);
+  });
+
+  it("sends only the appended text of a row whose text grew", () => {
+    const settled =
+      "## Plan\n\n" + "A settled paragraph of streamed text.\n\n".repeat(400);
+    const previous = timeline([row("a"), message("m", settled, 5)]);
+    const current = timeline(
+      [row("a"), message("m", `${settled}Next line.\n`, 6)],
+      {
+        maxSeq: 6,
+        tag: "tag-6",
+      },
+    );
+    const { delta, applied } = roundTrip(previous, current);
+    expect(delta.delta.upsertRows).toEqual([]);
+    expect(delta.delta.patchRows).toEqual([
+      {
+        id: "m",
+        ops: [
+          ["set", ["sourceSeqEnd"], 6],
+          ["append", ["text"], "Next line.\n"],
+        ],
+      },
+    ]);
+    expect(JSON.stringify(delta)).not.toContain(settled.slice(0, 40));
+    expect(applied).toEqual(current);
+    expect(applied?.rows[0]).toBe(previous.rows[0]);
+  });
+
+  it("round-trips random growth, rewrites, added and removed keys and nested arrays", () => {
+    const random = seededRandom(11);
+    const words = ["alpha ", "beta\n", "", "gamma ", "\n\n"];
+    const nested = (seed: number) => ({
+      kind: "work" as const,
+      id: "w",
+      threadId: "thr_x",
+      turnId: "turn_x",
+      sourceSeqStart: 1,
+      sourceSeqEnd: seed,
+      startedAt: 0,
+      createdAt: 0,
+      workKind: "tool" as const,
+      status: "running" as const,
+      callId: "call",
+      toolName: "tool",
+      args: {
+        list: Array.from({ length: seed % 4 }, (_, index) => ({
+          index,
+          label: `item ${index}`,
+        })),
+      },
+      output: "",
+    });
+    let text = "";
+    let work: Record<string, unknown> = nested(1);
+    let previous = timeline([
+      message("m", text),
+      work as unknown as TimelineRow,
+    ]);
+    for (let step = 0; step < 300; step += 1) {
+      const choice = random();
+      if (choice < 0.6) {
+        text += words[Math.floor(random() * words.length)];
+      } else if (choice < 0.7) {
+        text = text.slice(0, Math.floor(random() * text.length));
+      }
+      const next: Record<string, unknown> = {
+        ...nested(step + 2),
+        output: `${String(work.output)}${step % 3 === 0 ? "out\n" : ""}`,
+      };
+      if (random() < 0.3) {
+        next.extra = { flag: random() < 0.5, depth: [step] };
+      }
+      work = next;
+      const current = timeline(
+        [message("m", text, step + 2), work as unknown as TimelineRow],
+        { maxSeq: step + 2, tag: `tag-${step + 2}` },
+      );
+      expect(roundTrip(previous, current).applied).toEqual(current);
+      previous = current;
+    }
+  });
+
+  it("refuses patches that do not fit the held rows", () => {
+    const previous = timeline([message("m", "hello")]);
+    const apply = (
+      patchRows: NonNullable<
+        ReturnType<typeof computeThreadTimelineDelta>["delta"]["patchRows"]
+      >,
+    ) =>
+      applyThreadTimelineDelta(previous, {
+        maxSeq: 2,
+        tag: "tag-2",
+        delta: { afterTag: "tag-1", upsertRows: [], patchRows, fields: {} },
+      });
+    expect(
+      apply([{ id: "m", ops: [["append", ["sourceSeqEnd"], "x"]] }]),
+    ).toBeNull();
+    expect(
+      apply([{ id: "m", ops: [["append", ["missing"], "x"]] }]),
+    ).toBeNull();
+    expect(apply([{ id: "m", ops: [["delete", ["missing"]]] }])).toBeNull();
+    expect(apply([{ id: "absent", ops: [["set", ["text"], "x"]] }])).toBeNull();
+    expect(
+      apply([{ id: "m", ops: [["append", ["text"], " world"]] }])?.rows,
+    ).toEqual([message("m", "hello world")]);
+  });
+
+  it("keeps a patched __proto__ key as data", () => {
+    const before = JSON.parse('{"__proto__":{"a":1}}');
+    const after = JSON.parse('{"__proto__":{"a":2}}');
+    const work = (args: unknown) =>
+      ({ ...row("w"), args }) as unknown as TimelineRow;
+    const previous = timeline([work(before)]);
+    const current = timeline([work(after)], { tag: "tag-2" });
+    const { applied } = roundTrip(previous, current);
+    expect(JSON.stringify(applied?.rows[0])).toBe(
+      JSON.stringify(current.rows[0]),
+    );
+    expect(
+      Object.getPrototypeOf(
+        (applied?.rows[0] as unknown as { args: object }).args,
+      ),
+    ).toBe(Object.prototype);
   });
 
   it("encodes removals, inserts and moves as ranges over the previous rows", () => {

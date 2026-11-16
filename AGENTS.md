@@ -40,6 +40,7 @@
 
 - Use sanctioned typography tokens instead of arbitrary `text-[Npx]` classes.
 - Derive theme colors from `--canvas`/`--ink` or other derived tokens; never use achromatic `oklch(L 0 0)` literals. Mix opaque steps in `oklch` and translucent steps in `oklab`. See `apps/app/src/components/ui/theme.css` and `theme.test.ts`.
+- Never make a scroll container a container-query container (`@container` or `container-type` with `overflow-*-auto`/`scroll`); Blink then lays out the whole scrolled subtree on every content change. Put the container on the scroller's content child. `scroll-container-queries.test.ts` enforces this.
 - Never use CSS `@scope`; it causes severe WebKit style-recalculation costs. Confine styles with zero-specificity `:where(<roots>)` descendant and compound selector arms, as implemented in `packages/plugin-build/src/scope-plugin-utilities.ts`.
 - Use the shared persistent responsive drawer for compact slide-out menus, pickers, popovers, and dialogs. Avoid modal primitives that add `inert` or `aria-hidden` to the app root. Start the transform before heavy content; realize content after two animation frames with a timeout fallback, then retain it. Verify representative drawers in iOS Simulator Safari and test app-root and deferred-realization behavior.
 
