@@ -211,7 +211,6 @@ interface AgentLaunchArgs {
   modelListArgs?: string[];
   selectFlag?: string;
   primaryModels?: string[];
-  reasoningProbePriorityModelIds?: string[];
   modelPickerPrimaryModels?: string[];
   reasoningCli?: {
     flag: string;
@@ -263,9 +262,6 @@ function launchProviderOptions(args: AgentLaunchArgs): Record<string, unknown> {
     ...(args.dialectId ? { acpDialect: args.dialectId } : {}),
     ...(args.parameterizedModelPicker === true
       ? { parameterizedModelPicker: true }
-      : {}),
-    ...(args.reasoningProbePriorityModelIds
-      ? { reasoningProbePriorityModelIds: args.reasoningProbePriorityModelIds }
       : {}),
     ...(args.modelPickerPrimaryModels
       ? { primaryModels: args.modelPickerPrimaryModels }
@@ -437,12 +433,6 @@ function sendModelList(
       ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
       ...(launch.parameterizedModelPicker === true
         ? { parameterizedModelPicker: true }
-        : {}),
-      ...(launch.reasoningProbePriorityModelIds
-        ? {
-            reasoningProbePriorityModelIds:
-              launch.reasoningProbePriorityModelIds,
-          }
         : {}),
       ...(launch.modelPickerPrimaryModels
         ? { primaryModels: launch.modelPickerPrimaryModels }
@@ -861,11 +851,15 @@ describe("acp bridge", () => {
     ).toEqual(["low", "medium", "high"]);
   });
 
-  it("discovers ACP-native models and per-model reasoning from session configOptions", async () => {
+  it("reads only the current model's reasoning when listing ACP-native models, without switching models", async () => {
+    const requestLog = join(workspaceDir, "list-without-probes.jsonl");
     const modelListId = sendModelList({
       envVars: {
         FAKE_ACP_MODEL_CONFIG: "1",
         FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        FAKE_ACP_MODEL_COUNT: "3",
+        FAKE_ACP_INITIAL_MODEL: "fake/strong",
+        FAKE_ACP_REQUEST_LOG: requestLog,
       },
     });
 
@@ -873,19 +867,16 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
-          supportedServiceTiers: [],
-          model: "fake/default",
           displayName: "Fake Default",
-          isDefault: true,
-          defaultReasoningEffort: "medium",
+          isDefault: false,
+          reasoningDiscovery: "unknown",
           supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
-          supportedServiceTiers: [],
-          model: "fake/strong",
           displayName: "Fake Strong",
-          isDefault: false,
+          isDefault: true,
+          reasoningDiscovery: "known",
           defaultReasoningEffort: "none",
           supportedReasoningEfforts: [
             { reasoningEffort: "none" },
@@ -895,9 +886,19 @@ describe("acp bridge", () => {
             { reasoningEffort: "xhigh" },
           ],
         },
+        {
+          id: "fake/gen-2",
+          reasoningDiscovery: "unknown",
+          supportedReasoningEfforts: [],
+        },
       ],
       selectedOnlyModels: [],
     });
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/set_config_option",
+      ),
+    ).toEqual([]);
   });
 
   it.each(["stale-once", "stale", "missing-model", "missing-value"])(
@@ -907,10 +908,10 @@ describe("acp bridge", () => {
         (
           await waitForResponse(
             sendModelList({
+              selectedModel: "fake/strong",
               envVars: {
                 FAKE_ACP_MODEL_CONFIG: "1",
                 FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-                FAKE_ACP_MODEL_COUNT: "3",
                 FAKE_ACP_MODEL_CONFIG_REPLY: reply,
               },
             }),
@@ -943,35 +944,46 @@ describe("acp bridge", () => {
               supportedReasoningEfforts: [],
             },
       );
-      expect(
-        result.models.find((model) => model.id === "fake/gen-2"),
-      ).toMatchObject({
-        reasoningDiscovery: "known",
-        defaultReasoningEffort: "low",
-        supportedReasoningEfforts: [
-          { reasoningEffort: "low" },
-          { reasoningEffort: "medium" },
-          { reasoningEffort: "high" },
-        ],
-      });
     },
   );
 
-  it.each<{ name: string; envVars: Record<string, string> }>([
-    { name: "every probe succeeds", envVars: {} },
+  it.each<{
+    name: string;
+    envVars: Record<string, string>;
+    restores: string[][];
+  }>([
     {
-      name: "the last probe fails",
+      name: "the probe changes the model and reasoning level",
+      envVars: {},
+      restores: [
+        ["model", "fake/strong"],
+        ["effort", "none"],
+      ],
+    },
+    {
+      name: "the probe fails",
       envVars: { FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/gen-2" },
+      restores: [["model", "fake/strong"]],
+    },
+    {
+      name: "the probe times out",
+      envVars: { FAKE_ACP_MODEL_DELAY_MS: "5500" },
+      restores: [
+        ["model", "fake/strong"],
+        ["effort", "none"],
+      ],
     },
   ])(
-    "restores the agent's original model after discovery when $name",
-    async ({ envVars }) => {
+    "restores the agent's starting settings after probing a selected model when $name",
+    async ({ envVars, restores }) => {
       const requestLog = join(workspaceDir, "discovery-restore-requests.jsonl");
       const modelListId = sendModelList({
+        selectedModel: "fake/gen-2",
         envVars: {
           FAKE_ACP_MODEL_CONFIG: "1",
           FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
           FAKE_ACP_MODEL_COUNT: "3",
+          FAKE_ACP_INITIAL_MODEL: "fake/strong",
           FAKE_ACP_REQUEST_LOG: requestLog,
           ...envVars,
         },
@@ -981,53 +993,22 @@ describe("acp bridge", () => {
       expect(
         loggedAcpRequests(requestLog)
           .filter((request) => request.method === "session/set_config_option")
-          .map((request) => request.params?.["value"]),
-      ).toEqual(["fake/strong", "fake/gen-2", "fake/default"]);
+          .map((request) => [
+            request.params?.["configId"],
+            request.params?.["value"],
+          ]),
+      ).toEqual([["model", "fake/gen-2"], ...restores]);
     },
+    30_000,
   );
-
-  it("keeps probing reasoning for later models after one model's probe fails", async () => {
-    const modelListId = sendModelList({
-      envVars: {
-        FAKE_ACP_MODEL_CONFIG: "1",
-        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-        FAKE_ACP_MODEL_COUNT: "3",
-        FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/strong",
-      },
-    });
-
-    expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [
-        {
-          id: "fake/default",
-          supportedServiceTiers: [],
-          supportedReasoningEfforts: [],
-        },
-        {
-          id: "fake/strong",
-          supportedServiceTiers: [],
-          supportedReasoningEfforts: [],
-        },
-        {
-          id: "fake/gen-2",
-          defaultReasoningEffort: "low",
-          supportedReasoningEfforts: [
-            { reasoningEffort: "low" },
-            { reasoningEffort: "medium" },
-            { reasoningEffort: "high" },
-          ],
-        },
-      ],
-    });
-  });
 
   it("advertises Cursor's parameterized model picker during discovery", async () => {
     const requestLog = join(workspaceDir, "cursor-discovery-requests.jsonl");
     const modelListId = sendModelList({
       dialectId: "cursor",
       parameterizedModelPicker: true,
-      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
       modelPickerPrimaryModels: ["default", "composer-2.5", "grok-4.6"],
+      selectedModel: "grok-4.6",
       envVars: {
         FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
         FAKE_ACP_REQUEST_LOG: requestLog,
@@ -1066,9 +1047,8 @@ describe("acp bridge", () => {
     expect(
       loggedAcpRequests(requestLog)
         .filter((request) => request.method === "session/set_config_option")
-        .map((request) => request.params?.["value"])
-        .slice(0, 2),
-    ).toEqual(["grok-4.6", "grok-4.5"]);
+        .map((request) => request.params?.["value"]),
+    ).toEqual(["grok-4.6", "default"]);
     expect(result.models.map((model) => model.id)).toEqual([
       "default",
       "composer-2.5",
@@ -1441,70 +1421,6 @@ describe("acp bridge", () => {
     });
   });
 
-  it("probes per-model reasoning across large catalogs instead of falling back", async () => {
-    const modelListId = sendModelList({
-      envVars: {
-        FAKE_ACP_MODEL_CONFIG: "1",
-        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-        FAKE_ACP_MODEL_COUNT: "60",
-      },
-    });
-
-    const result = (await waitForResponse(modelListId)).result as {
-      models: {
-        id: string;
-        supportedReasoningEfforts: { reasoningEffort: string }[];
-      }[];
-    };
-    expect(result.models).toHaveLength(60);
-    const lastGenerated = result.models.find(
-      (model) => model.id === "fake/gen-59",
-    );
-    expect(lastGenerated?.supportedReasoningEfforts).toEqual([
-      { reasoningEffort: "low", description: "low" },
-      { reasoningEffort: "medium", description: "medium" },
-      { reasoningEffort: "high", description: "high" },
-    ]);
-  });
-
-  it("leaves unprobed models unknown when a large native catalog exceeds the discovery budget", async () => {
-    const requestLog = join(workspaceDir, "large-catalog.jsonl");
-    const id = sendModelList({
-      reasoningProbePriorityModelIds: ["fake/gen-833"],
-      envVars: {
-        FAKE_ACP_MODEL_CONFIG: "1",
-        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-        FAKE_ACP_MODEL_COUNT: "836",
-        FAKE_ACP_INITIAL_MODEL: "fake/gen-835",
-        FAKE_ACP_MODEL_DELAY_MS: "150",
-        FAKE_ACP_REQUEST_LOG: requestLog,
-      },
-    });
-    const result = modelListResultSchema.parse(
-      (await waitForResponse(id)).result,
-    );
-    expect(result.models).toHaveLength(836);
-    expect(
-      result.models.find((model) => model.id === "fake/gen-834")
-        ?.supportedReasoningEfforts,
-    ).toEqual([]);
-    for (const id of ["fake/gen-833", "fake/gen-835"]) {
-      expect(
-        result.models
-          .find((model) => model.id === id)
-          ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
-      ).toEqual(["low", "medium", "high"]);
-    }
-    const probes = loggedAcpRequests(requestLog).filter(
-      (request) => request.method === "session/set_config_option",
-    );
-    expect(probes[0]?.params?.value).toBe("fake/gen-833");
-    expect(
-      probes.some((request) => request.params?.value === "fake/gen-835"),
-    ).toBe(false);
-    expect(probes.length).toBeLessThan(50);
-  }, 15_000);
-
   it("discovers only the selected late model without rescanning a large catalog or requiring metadata", async () => {
     const requestLog = join(workspaceDir, "selected-discovery.jsonl");
     const result = modelListResultSchema.parse(
@@ -1558,7 +1474,7 @@ describe("acp bridge", () => {
                 FAKE_ACP_REQUEST_LOG: requestLog,
                 ...(failure === "error"
                   ? { FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/strong" }
-                  : { FAKE_ACP_MODEL_DELAY_MS: "10000" }),
+                  : { FAKE_ACP_MODEL_DELAY_MS: "5500" }),
               },
             }),
           )
@@ -1572,38 +1488,10 @@ describe("acp bridge", () => {
         loggedAcpRequests(requestLog)
           .filter((request) => request.method === "session/set_config_option")
           .map((request) => request.params?.value),
-      ).toEqual(
-        failure === "error" ? ["fake/strong", "fake/default"] : ["fake/strong"],
-      );
+      ).toEqual(["fake/strong", "fake/default"]);
     },
-    15_000,
+    30_000,
   );
-
-  it("isolates individual model probe failures so later models still discover reasoning", async () => {
-    const result = modelListResultSchema.parse(
-      (
-        await waitForResponse(
-          sendModelList({
-            envVars: {
-              FAKE_ACP_MODEL_CONFIG: "1",
-              FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-              FAKE_ACP_MODEL_COUNT: "3",
-              FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/strong",
-            },
-          }),
-        )
-      ).result,
-    );
-    expect(
-      result.models.find((model) => model.model === "fake/strong")
-        ?.supportedReasoningEfforts,
-    ).toEqual([]);
-    expect(
-      result.models
-        .find((model) => model.model === "fake/gen-2")
-        ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
-    ).toEqual(["low", "medium", "high"]);
-  });
 
   it("times out hung ACP-native discovery, kills the child, and reports the timeout", async () => {
     const readyFile = join(workspaceDir, "discovery-agent-ready.txt");
@@ -2511,6 +2399,7 @@ describe("acp bridge", () => {
   it("confirms ACP-native models without thought_level have no selectable reasoning", async () => {
     const response = await waitForResponse(
       sendModelList({
+        selectedModel: "fake/strong",
         envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
       }),
     );
@@ -2526,6 +2415,7 @@ describe("acp bridge", () => {
       envVars: {
         FAKE_ACP_MODEL_CONFIG: "1",
         FAKE_ACP_UNMAPPED_REASONING_CONFIG: "1",
+        FAKE_ACP_INITIAL_MODEL: "fake/strong",
       },
     });
 
