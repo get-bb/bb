@@ -271,6 +271,15 @@ describe("provider usage footer disclosure", () => {
       "Codex personal@example.com",
       "Claude Code claude-team@example.com",
     ]);
+    expect(
+      slot
+        .getAllByRole("region")
+        .map((row) =>
+          row
+            .querySelector('[data-provider-kind="agent"]')
+            ?.getAttribute("data-provider-id"),
+        ),
+    ).toEqual(["codex", "codex", "claude-code"]);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/v1/plugins/bb--provider-usage/rpc/getUsage",
