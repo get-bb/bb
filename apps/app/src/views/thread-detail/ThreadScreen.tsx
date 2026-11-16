@@ -129,6 +129,7 @@ interface ThreadScreenProps {
 interface SentMessageEditSession {
   draft: PromptDraftState;
   operationId: string;
+  submitting: boolean;
   target: ThreadTimelineEditMessageTarget;
   threadId: string;
 }
@@ -287,6 +288,7 @@ function useSentMessageEditing({
       setSentMessageEditSession({
         draft: promptInputToDraft(target.input),
         operationId: nanoid(),
+        submitting: false,
         target,
         threadId,
       });
@@ -304,6 +306,7 @@ function useSentMessageEditing({
   const shouldDiscardMissingSentMessageEdit =
     sentMessageEditThreadId !== null &&
     sentMessageEditThreadId === threadId &&
+    sentMessageEditSession?.submitting === false &&
     !timelineLoading &&
     !sentMessageEditTargetStillPresent;
   useEffect(() => {
@@ -331,6 +334,16 @@ function useSentMessageEditing({
       current?.operationId === operationId ? null : current,
     );
   }, []);
+  const setSentMessageEditSubmitting = useCallback(
+    (operationId: string, submitting: boolean) => {
+      setSentMessageEditSession((current) =>
+        current?.operationId === operationId
+          ? { ...current, submitting }
+          : current,
+      );
+    },
+    [],
+  );
   const cancelSentMessageEdit = useCallback(() => {
     if (!activeSentMessageEditSession) {
       return;
@@ -346,6 +359,7 @@ function useSentMessageEditing({
       }
       const session = activeSentMessageEditSession;
       const execution = target.execution;
+      setSentMessageEditSubmitting(session.operationId, true);
       void editMessage
         .mutateAsync({
           id: session.threadId,
@@ -368,6 +382,7 @@ function useSentMessageEditing({
           closeSentMessageEdit(session.operationId);
         })
         .catch((error) => {
+          setSentMessageEditSubmitting(session.operationId, false);
           showMutationErrorToast({
             error,
             fallbackMessage: "Failed to edit the message",
@@ -375,7 +390,12 @@ function useSentMessageEditing({
           });
         });
     },
-    [activeSentMessageEditSession, closeSentMessageEdit, editMessage],
+    [
+      activeSentMessageEditSession,
+      closeSentMessageEdit,
+      editMessage,
+      setSentMessageEditSubmitting,
+    ],
   );
   const activeSentMessageEditTargetMessageId =
     activeSentMessageEditSession?.target.messageId ?? null;
