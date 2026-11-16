@@ -6,10 +6,16 @@ import {
   PROVIDER_TOOL_CALL_CANCELLED_METHOD,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createConnection } from "node:net";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 
@@ -19,7 +25,6 @@ const ENV_HOST = "BB_ACP_DYNAMIC_TOOL_HOST";
 const ENV_PORT = "BB_ACP_DYNAMIC_TOOL_PORT";
 const ENV_TOKEN = "BB_ACP_DYNAMIC_TOOL_TOKEN";
 const ENV_THREAD_ID = "BB_ACP_DYNAMIC_TOOL_THREAD_ID";
-const ENV_TOOLS = "BB_ACP_DYNAMIC_TOOLS";
 const ENV_TOOLS_FILE = "BB_ACP_DYNAMIC_TOOLS_FILE";
 const ENV_PROGRESS_INTERVAL_MS = "BB_ACP_DYNAMIC_TOOL_PROGRESS_INTERVAL_MS";
 
@@ -122,8 +127,12 @@ function writeToolsFile(tools: readonly DynamicTool[]): string {
       }
     });
   }
-  const path = join(toolsDirectory, `${randomUUID()}.json`);
-  writeFileSync(path, JSON.stringify(tools), { mode: 0o600, flag: "wx" });
+  const json = JSON.stringify(tools);
+  const hash = createHash("sha256").update(json).digest("hex");
+  const path = join(toolsDirectory, `${hash}.json`);
+  if (!existsSync(path)) {
+    writeFileSync(path, json, { mode: 0o600, flag: "wx" });
+  }
   return path;
 }
 
@@ -154,13 +163,10 @@ function readEnvironment(): McpServerEnvironment {
   const token = process.env[ENV_TOKEN];
   const threadId = process.env[ENV_THREAD_ID];
   const toolsFile = process.env[ENV_TOOLS_FILE];
-  const toolsJson = toolsFile
-    ? readFileSync(toolsFile, "utf8")
-    : process.env[ENV_TOOLS];
-  if (!host || !token || !threadId || !toolsJson) {
+  if (!host || !token || !threadId || !toolsFile) {
     throw new Error("Missing ACP dynamic tool MCP server environment");
   }
-  const parsedTools = JSON.parse(toolsJson) as unknown;
+  const parsedTools = JSON.parse(readFileSync(toolsFile, "utf8")) as unknown;
   const tools = dynamicToolSchema.array().parse(parsedTools);
   const rawProgressInterval = process.env[ENV_PROGRESS_INTERVAL_MS];
   const progressIntervalMs =

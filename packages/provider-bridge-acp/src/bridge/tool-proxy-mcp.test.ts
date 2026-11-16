@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createServer, type Server, type Socket } from "node:net";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { DynamicTool } from "@bb/domain";
 import { dirname, resolve } from "node:path";
@@ -137,16 +137,22 @@ function testMcpConfig(
   });
 }
 
+function toolsFilePath(config: AcpMcpServerConfig): string {
+  const path = config.env.find(
+    ({ name }) => name === "BB_ACP_DYNAMIC_TOOLS_FILE",
+  )?.value;
+  if (path === undefined) throw new Error("Missing tools file");
+  return path;
+}
+
 async function connectLikeOpenCode(
   port: number,
   tools?: DynamicTool[],
   existingConfig?: AcpMcpServerConfig,
 ): Promise<Client> {
   const config = existingConfig ?? testMcpConfig(port, tools);
-  const toolsFile = config.env.find(
-    ({ name }) => name === "BB_ACP_DYNAMIC_TOOLS_FILE",
-  )?.value;
-  if (toolsFile && process.platform !== "win32") {
+  const toolsFile = toolsFilePath(config);
+  if (process.platform !== "win32") {
     expect(statSync(toolsFile).mode & 0o777).toBe(0o600);
     expect(statSync(dirname(toolsFile)).mode & 0o777).toBe(0o700);
   }
@@ -193,6 +199,25 @@ describe("bb-bridge MCP server keeps long tool calls alive", () => {
     expect((await second.listTools()).tools).toEqual(tools);
   }, 20_000);
 
+  it("reuses one catalog file for identical tool lists across sessions", () => {
+    const tools = [
+      {
+        name: "shared_tool",
+        description: "Shared tool",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ];
+    const first = toolsFilePath(testMcpConfig(1, tools));
+    const fileCount = readdirSync(dirname(first)).length;
+    expect(toolsFilePath(testMcpConfig(1, [...tools]))).toBe(first);
+    expect(readdirSync(dirname(first))).toHaveLength(fileCount);
+    expect(
+      toolsFilePath(
+        testMcpConfig(1, [{ ...tools[0], description: "Changed tool" }]),
+      ),
+    ).not.toBe(first);
+  });
+
   it("removes catalog files when the owning launcher exits", () => {
     const module = new URL("./tool-proxy-mcp.ts", import.meta.url).href;
     const code = `
@@ -218,27 +243,6 @@ describe("bb-bridge MCP server keeps long tool calls alive", () => {
     const file = result.stdout.trim();
     expect(file).toContain("bb-acp-tools-");
     expect(existsSync(dirname(file))).toBe(false);
-  });
-
-  it("accepts the legacy environment format", async () => {
-    const fakeBridge = await listenFakeBridge({ responseDelayMs: 0 });
-    const tools = [
-      {
-        name: "legacy",
-        description: "Legacy tool",
-        inputSchema: { type: "object", properties: {} },
-      },
-    ];
-    const config = testMcpConfig(fakeBridge.port, tools);
-    config.env = config.env.filter(
-      ({ name }) => name !== "BB_ACP_DYNAMIC_TOOLS_FILE",
-    );
-    config.env.push({
-      name: "BB_ACP_DYNAMIC_TOOLS",
-      value: JSON.stringify(tools),
-    });
-    const client = await connectLikeOpenCode(fakeBridge.port, tools, config);
-    expect((await client.listTools()).tools).toEqual(tools);
   });
 
   it("sends progress notifications so an OpenCode-style client does not time out while the user answers", async () => {
