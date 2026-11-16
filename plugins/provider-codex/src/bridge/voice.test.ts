@@ -294,3 +294,51 @@ it("publishes the provider's close reason and a teardown reason without marking 
     },
   ]);
 });
+
+it("keeps a newer call open when an expired lease's stop completes after Codex already closed the old call", async () => {
+  vi.useFakeTimers();
+  const { voice, request, publish } = setup();
+  let finishStop: (error: Error) => void = () => {};
+  request.mockImplementation(async ({ method }) => {
+    if (method !== "thread/realtime/stop") return {};
+    return new Promise((_, reject) => {
+      finishStop = reject;
+    });
+  });
+  const started = voice.command({
+    action: "start",
+    sessionId: first,
+    sdp: "offer",
+  });
+  voice.notification("thread/realtime/sdp", {
+    threadId: "native-thread",
+    sdp: "answer",
+  });
+  await started;
+  await vi.advanceTimersByTimeAsync(60000);
+  voice.notification("thread/realtime/closed", {
+    threadId: "native-thread",
+    reason: null,
+  });
+  const restarted = voice.command({
+    action: "start",
+    sessionId: second,
+    sdp: "offer",
+  });
+  voice.notification("thread/realtime/sdp", {
+    threadId: "native-thread",
+    sdp: "answer",
+  });
+  await expect(restarted).resolves.toEqual({ sdp: "answer" });
+  finishStop(new Error("request timed out"));
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(publish.mock.calls.map(([state]) => state)).toEqual([
+    { sessionId: first, status: "active", message: null },
+    { sessionId: first, status: "closed", message: "The voice lease expired" },
+    { sessionId: second, status: "active", message: null },
+  ]);
+  await expect(
+    voice.command({ action: "keepAlive", sessionId: second }),
+  ).resolves.toEqual({ sdp: null });
+});

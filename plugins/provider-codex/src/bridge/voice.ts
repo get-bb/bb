@@ -23,6 +23,11 @@ export function requireNativeVoiceVersion(userAgent: string | null): void {
 export class CodexVoiceSession {
   private leaseTimer: ReturnType<typeof setTimeout> | undefined;
   private sessionId: string | null = null;
+  private stopping: {
+    sessionId: string;
+    reason: string | undefined;
+    done: Promise<void>;
+  } | null = null;
   private pending: {
     resolve(sdp: string): void;
     reject(error: Error): void;
@@ -53,15 +58,20 @@ export class CodexVoiceSession {
       this.pending?.resolve(event.data.sdp);
     if (method === "thread/realtime/error")
       this.close(event.data.message ?? "Codex voice failed");
-    if (method === "thread/realtime/closed")
-      this.close(event.data.reason ?? undefined, "closed");
+    if (method === "thread/realtime/closed") {
+      const stopReason =
+        this.stopping?.sessionId === this.sessionId
+          ? this.stopping.reason
+          : undefined;
+      this.close(stopReason ?? event.data.reason ?? undefined, "closed");
+    }
   }
 
   private renewLease(): void {
     clearTimeout(this.leaseTimer);
     this.leaseTimer = setTimeout(() => {
       const sessionId = this.sessionId;
-      if (sessionId) void this.stop("The voice lease expired");
+      if (sessionId) void this.stop(sessionId, "The voice lease expired");
     }, 60000);
     this.leaseTimer.unref?.();
   }
@@ -83,25 +93,32 @@ export class CodexVoiceSession {
       });
   }
 
-  private async stop(reason?: string): Promise<void> {
-    let unconfirmed: string | undefined;
-    try {
-      await this.connection.request({
-        method: "thread/realtime/stop",
-        params: { threadId: this.threadId },
-        resultSchema: z.object({}),
-        timeoutMs: 10000,
-      });
-    } catch (error) {
-      unconfirmed = `Codex did not confirm the voice stop: ${
-        error instanceof Error ? error.message : String(error)
-      }`;
-    }
-    this.close(
-      [reason, unconfirmed].filter((part) => part !== undefined).join(". ") ||
-        undefined,
-      "closed",
-    );
+  private stop(sessionId: string, reason?: string): Promise<void> {
+    if (this.stopping?.sessionId === sessionId) return this.stopping.done;
+    const done = (async () => {
+      let unconfirmed: string | undefined;
+      try {
+        await this.connection.request({
+          method: "thread/realtime/stop",
+          params: { threadId: this.threadId },
+          resultSchema: z.object({}),
+          timeoutMs: 10000,
+        });
+      } catch (error) {
+        unconfirmed = `Codex did not confirm the voice stop: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+      }
+      if (this.stopping?.sessionId === sessionId) this.stopping = null;
+      if (this.sessionId !== sessionId) return;
+      this.close(
+        [reason, unconfirmed].filter((part) => part !== undefined).join(". ") ||
+          undefined,
+        "closed",
+      );
+    })();
+    this.stopping = { sessionId, reason, done };
+    return done;
   }
 
   async command(
@@ -114,7 +131,8 @@ export class CodexVoiceSession {
       return { sdp: null };
     }
     if (command.action === "stop") {
-      if (this.sessionId === command.sessionId) await this.stop();
+      if (this.sessionId === command.sessionId)
+        await this.stop(command.sessionId);
       return { sdp: null };
     }
     if (this.sessionId !== null)
@@ -175,9 +193,12 @@ export class CodexVoiceSession {
           timeoutMs: 5000,
         })
         .catch(() => {});
-      this.close(
-        error instanceof Error ? error.message : "Could not start Codex voice",
-      );
+      if (this.sessionId === command.sessionId)
+        this.close(
+          error instanceof Error
+            ? error.message
+            : "Could not start Codex voice",
+        );
       throw error;
     } finally {
       clearTimeout(timer);
