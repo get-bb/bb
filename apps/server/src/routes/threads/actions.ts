@@ -506,12 +506,6 @@ export function registerThreadActionRoutes(
   post(routes.voice, async (context, command) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadIsWritable(thread);
-    if (thread.providerId !== "codex")
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "Voice chat requires a Codex thread",
-      );
     const environment = await requireThreadCommandEnvironment(deps, { thread });
     requireConnectedHostSession(deps, environment.hostId);
     const execution = await buildExecutionOptions(
