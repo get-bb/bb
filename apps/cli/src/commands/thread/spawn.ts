@@ -49,6 +49,7 @@ const PROVIDER_HELP =
 interface ThreadSpawnCommandOptions {
   prompt?: string;
   promptFile?: string;
+  initializeOnly?: boolean;
   json?: boolean;
   project?: string;
   environment?: string;
@@ -328,11 +329,15 @@ export function registerSpawnCommand(
     )
     .option(
       "--prompt <prompt>",
-      "Initial prompt for the thread (required unless --prompt-file is given)",
+      "Initial prompt for the thread (required unless --prompt-file or --initialize-only is given)",
     )
     .option(
       "--prompt-file <path>",
       `Read the initial prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
+    .option(
+      "--initialize-only",
+      "Initialize an idle provider session without submitting a task",
     )
     .option(
       "--lifecycle-owner-thread <id>",
@@ -421,12 +426,27 @@ export function registerSpawnCommand(
     )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
-        const prompt = await requireTextInput({
-          file: opts.promptFile,
-          fileLabel: "--prompt-file",
-          inline: opts.prompt,
-          inlineLabel: "--prompt <prompt>",
-        });
+        if (
+          opts.initializeOnly &&
+          (opts.prompt !== undefined ||
+            opts.promptFile !== undefined ||
+            opts.plan ||
+            opts.file?.length ||
+            opts.image?.length ||
+            opts.sendAt !== undefined)
+        ) {
+          throw new Error(
+            "--initialize-only cannot be combined with a prompt, attachments, --plan or --send-at.",
+          );
+        }
+        const prompt = opts.initializeOnly
+          ? null
+          : await requireTextInput({
+              file: opts.promptFile,
+              fileLabel: "--prompt-file",
+              inline: opts.prompt,
+              inlineLabel: "--prompt <prompt>",
+            });
         const projectId = resolveExplicitIdFlag({
           flagName: "--project flag",
           value: opts.project,
@@ -590,12 +610,15 @@ export function registerSpawnCommand(
         try {
           const sdk = createCliBbSdk(getUrl());
           const input = await uploadClientAttachmentInputs({
-            input: buildPromptInputs({
-              message: prompt,
-              plan: opts.plan,
-              files: opts.file,
-              images: opts.image,
-            }),
+            input:
+              prompt === null
+                ? []
+                : buildPromptInputs({
+                    message: prompt,
+                    plan: opts.plan,
+                    files: opts.file,
+                    images: opts.image,
+                  }),
             resolveProjectId: async () => projectId,
             sdk,
           });

@@ -295,13 +295,6 @@ const threadStartCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.fork === undefined && value.input.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "input must contain at least one entry",
-        path: ["input"],
-      });
-    }
     refineGroupedInputMatchesFlatInput(value, ctx);
   });
 
@@ -1980,7 +1973,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

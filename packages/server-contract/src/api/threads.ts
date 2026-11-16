@@ -204,11 +204,11 @@ export const createThreadRequestSchema = z
         path: ["originPluginId"],
       });
     }
-    if (value.originKind === null && value.input.length === 0) {
+    if (value.input.length === 0 && value.sendAt !== undefined) {
       ctx.addIssue({
         code: "custom",
-        message: "input must contain at least one entry",
-        path: ["input"],
+        message: "sendAt requires an initial message",
+        path: ["sendAt"],
       });
     }
     if (value.originKind === null && value.sourceSeqEnd !== undefined) {

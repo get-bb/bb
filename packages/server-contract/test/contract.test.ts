@@ -1608,21 +1608,30 @@ describe("server-contract canonical schemas", () => {
     ).toBe("sec_work");
   });
 
-  it("rejects empty input for a normal thread start", () => {
-    expect(() =>
-      createThreadRequestSchema.parse({
+  it.each(["app", "sdk", "plugin"] as const)(
+    "accepts input-free session initialization from %s",
+    (origin) => {
+      const request = {
         projectId: "proj_123",
         providerId: "codex",
-        origin: "app",
+        origin,
+        ...(origin === "plugin" ? { originPluginId: "live-voice" } : {}),
         input: [],
         environment: {
           type: "host",
           hostId: "host_abc",
           workspace: { type: "unmanaged", path: null },
         },
-      }),
-    ).toThrow("input must contain at least one entry");
-  });
+      };
+      expect(createThreadRequestSchema.parse(request)).toMatchObject({
+        input: [],
+        originKind: null,
+      });
+      expect(() =>
+        createThreadRequestSchema.parse({ ...request, sendAt: 1900000000000 }),
+      ).toThrow("sendAt requires an initial message");
+    },
+  );
 
   it("accepts empty input for an idle fork", () => {
     const parsed = createThreadRequestSchema.parse({

@@ -56,6 +56,57 @@ function installTelemetryCaptureSpy(harness: TestAppHarness) {
 }
 
 describe("thread creation initiator telemetry", () => {
+  it("initializes an independent empty-input voice thread without a task or source session", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-empty-voice",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/empty-voice",
+      });
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/empty-voice",
+      });
+      const thread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: "/tmp/empty-voice" },
+        },
+        input: [],
+        origin: "plugin",
+        originPluginId: "live-voice",
+        projectId: project.id,
+        providerId: "codex",
+        title: "Voice conversation",
+        startedOnBehalfOf: null,
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      expect(queued.command).toMatchObject({ type: "thread.start", input: [] });
+      expect(queued.command).not.toHaveProperty("fork");
+      await reportQueuedCommandSuccess(harness, queued, {
+        providerThreadId: "provider-empty-voice",
+      });
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "idle",
+        sourceThreadId: null,
+        originKind: null,
+      });
+      const events = listEvents(harness.db, { threadId: thread.id });
+      expect(events.some((event) => event.type === "turn/started")).toBe(false);
+      expect(capture).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: "user_message_sent" }),
+      );
+    });
+  });
   it("adds initiator to thread and message events only when the flag is on", async () => {
     await withTestHarness(async (harness) => {
       const capture = installTelemetryCaptureSpy(harness);
@@ -847,71 +898,77 @@ describe("thread creation child-thread boundary validation", () => {
     });
   });
 
-  it("auto-sends a queued first side-chat message after preload settles idle", async () => {
-    await withChildBoundaryHarness(
-      "empty-side-chat-preload-queued-message",
-      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
-        seedThreadIdentity(harness.deps, {
-          threadId: sourceThreadId,
-          providerThreadId: "provider-parent-session",
-        });
-        seedTurnStarted(harness.deps, {
-          threadId: sourceThreadId,
-          turnId: "turn-parent",
-          providerThreadId: "provider-parent-session",
-        });
+  it.each(["fork", "plain"] as const)(
+    "auto-sends a queued first message after empty %s initialization settles idle",
+    async (kind) => {
+      await withChildBoundaryHarness(
+        "empty-side-chat-preload-queued-message",
+        async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+          seedThreadIdentity(harness.deps, {
+            threadId: sourceThreadId,
+            providerThreadId: "provider-parent-session",
+          });
+          seedTurnStarted(harness.deps, {
+            threadId: sourceThreadId,
+            turnId: "turn-parent",
+            providerThreadId: "provider-parent-session",
+          });
 
-        const sideChat = await createThreadFromRequest(harness.deps, {
-          environment: {
-            type: "host",
-            hostId,
-            workspace: { type: "unmanaged", path },
-          },
-          input: [],
-          origin: "app",
-          originKind: "fork",
-          projectId,
-          providerId: "codex",
-          sourceThreadId,
-          startedOnBehalfOf: null,
-        });
+          const sideChat = await createThreadFromRequest(harness.deps, {
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: [],
+            origin: "app",
+            ...(kind === "fork"
+              ? { originKind: "fork" as const, sourceThreadId }
+              : {}),
+            projectId,
+            providerId: "codex",
+            startedOnBehalfOf: null,
+          });
 
-        const queuedStart = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "thread.start" && command.threadId === sideChat.id,
-        );
-        if (queuedStart.command.type !== "thread.start") {
-          throw new Error("Expected a thread.start command");
-        }
+          const queuedStart = await waitForQueuedCommand(
+            harness,
+            ({ command }) =>
+              command.type === "thread.start" &&
+              command.threadId === sideChat.id,
+          );
+          if (queuedStart.command.type !== "thread.start") {
+            throw new Error("Expected a thread.start command");
+          }
 
-        seedQueuedMessage(harness.deps, {
-          threadId: sideChat.id,
-          content: textInput("Queued first side-chat question"),
-          permissionMode: "auto",
-        });
+          seedQueuedMessage(harness.deps, {
+            threadId: sideChat.id,
+            content: textInput("Queued first side-chat question"),
+            permissionMode: "auto",
+          });
 
-        await reportQueuedCommandSuccess(harness, queuedStart, {
-          providerThreadId: "provider-side-chat-session",
-        });
+          await reportQueuedCommandSuccess(harness, queuedStart, {
+            providerThreadId: "provider-side-chat-session",
+          });
 
-        const queuedTurnSubmit = await waitForQueuedCommandAfter(
-          harness,
-          queuedStart.row.cursor,
-          ({ command }) =>
-            command.type === "turn.submit" && command.threadId === sideChat.id,
-        );
-        if (queuedTurnSubmit.command.type !== "turn.submit") {
-          throw new Error("Expected a turn.submit command");
-        }
-        const turnSubmitText = queuedTurnSubmit.command.input
-          .filter((entry) => entry.type === "text")
-          .map((entry) => entry.text)
-          .join("\n");
-        expect(turnSubmitText).toContain("Queued first side-chat question");
-      },
-    );
-  });
+          const queuedTurnSubmit = await waitForQueuedCommandAfter(
+            harness,
+            queuedStart.row.cursor,
+            ({ command }) =>
+              command.type === "turn.submit" &&
+              command.threadId === sideChat.id,
+          );
+          if (queuedTurnSubmit.command.type !== "turn.submit") {
+            throw new Error("Expected a turn.submit command");
+          }
+          const turnSubmitText = queuedTurnSubmit.command.input
+            .filter((entry) => entry.type === "text")
+            .map((entry) => entry.text)
+            .join("\n");
+          expect(turnSubmitText).toContain("Queued first side-chat question");
+        },
+      );
+    },
+  );
 
   it("rejects a fork whose target provider differs from the source provider", async () => {
     await withTestHarness(async (harness) => {

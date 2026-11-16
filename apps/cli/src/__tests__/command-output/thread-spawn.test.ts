@@ -27,6 +27,50 @@ describe("bb thread spawn command output", () => {
     return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   }
 
+  it("initializes an idle thread with real contract validation and no prompt", async () => {
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      const parsed = createThreadRequestSchema.parse(json);
+      expect(parsed.input).toEqual([]);
+      expect(parsed.originKind).toBeNull();
+      return fixtures.makeThread({
+        id: "thread-empty-session",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+    await runCommand(
+      ["thread", "spawn", "--project", "proj-1", "--initialize-only"],
+      register,
+    );
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["--prompt", "hello"],
+    ["--prompt-file", "/nonexistent"],
+    ["--file", "/nonexistent"],
+    ["--plan"],
+    ["--send-at", "2099-01-01T00:00:00Z"],
+  ])("rejects initialize-only combined with %s", async (...flags) => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--initialize-only",
+          ...flags,
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {
     const post = vi.fn(async ({ json }: { json: unknown }) => {
       createThreadRequestSchema.parse(json);

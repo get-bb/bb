@@ -57,6 +57,47 @@ describe("createAgentRuntime multi-thread routing", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("initializes empty input without a coding turn and accepts a later real request", async () => {
+    const events: ThreadEvent[] = [];
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+      },
+    });
+    try {
+      const result = await runtime.startThread({
+        environmentId: "env-empty",
+        threadId: "t-empty",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+        input: [],
+        clientRequestId: "creq_222222222z",
+      });
+      expect(result.providerThreadId).toBeTruthy();
+      expect(events.some((event) => event.type === "turn/started")).toBe(false);
+      expect(events.some((event) => event.type === "item/completed")).toBe(
+        false,
+      );
+      await runtime.runTurn({
+        clientRequestId: "creq_222222223a",
+        threadId: "t-empty",
+        input: [promptTextInput({ text: "First spoken request" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadTurnCompleted({
+        events,
+        providerId: "fake",
+        runtime,
+        threadId: "t-empty",
+      });
+      expect(events.some((event) => event.type === "turn/started")).toBe(true);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("handles multiple threads on the same provider", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createScriptedEchoRuntime({

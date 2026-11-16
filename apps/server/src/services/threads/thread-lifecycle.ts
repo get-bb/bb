@@ -759,7 +759,7 @@ function isThreadStartActivationStale(
 function lifecycleEventForSuccessfulThreadStart(
   command: ThreadStartCommand,
 ): ThreadLifecycleEvent {
-  if (command.fork && command.input.length === 0) {
+  if (command.input.length === 0) {
     return { type: "run.succeeded" };
   }
   return { type: "run.started" };
@@ -768,7 +768,7 @@ function lifecycleEventForSuccessfulThreadStart(
 function shouldAutoSendQueuedMessagesAfterThreadStart(
   command: ThreadStartCommand,
 ): boolean {
-  return command.fork !== null && command.input.length === 0;
+  return command.input.length === 0;
 }
 
 function recordEmptyThreadStartProviderSessionInTransaction(

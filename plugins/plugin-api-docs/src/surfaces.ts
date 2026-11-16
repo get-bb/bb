@@ -1631,6 +1631,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use bb's own API from plugin server code. With this, a plugin can:",
         bullets: [
           "Create threads attributed to the plugin, send messages, and manage projects and machines",
+          "Initialize a thread with input: [] before its first task; the provider becomes ready without starting a model turn",
           "Run plugin updates and provider CLI installs in the background and follow them to the end",
           "Find plugin releases outside the saved version range and change the range to take one",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
