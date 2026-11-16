@@ -59,7 +59,7 @@ import {
   listedComposerHandles,
   type ComposerSource,
 } from "@/lib/plugin-composer-handle";
-import { useSystemProviders } from "@/hooks/queries/system-queries";
+import { useProviderDirectory } from "@/hooks/queries/system-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -289,7 +289,7 @@ export function useSettings(): PluginSettingsState {
 const EMPTY_PROVIDERS: readonly never[] = [];
 
 export function useProviders(): PluginProvidersState {
-  const query = useSystemProviders();
+  const query = useProviderDirectory();
   const providers = query.data;
   return useMemo<PluginProvidersState>(
     () =>
