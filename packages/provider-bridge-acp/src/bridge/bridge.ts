@@ -74,6 +74,7 @@ import {
 } from "../bridge-protocol.js";
 import {
   createAcpDeltaTranslator,
+  SYSTEM_INSTRUCTIONS_OPEN_TAG,
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
 import {
@@ -1811,7 +1812,7 @@ function buildPromptContentBlocks(
     session.pendingInstructions = undefined;
     blocks.push({
       type: "text",
-      text: `<system_instructions>\n${instructions}\n</system_instructions>`,
+      text: `${SYSTEM_INSTRUCTIONS_OPEN_TAG}\n${instructions}\n</system_instructions>`,
     });
   }
 
