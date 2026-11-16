@@ -34,6 +34,7 @@ import type { PluginSettingsCandidate } from "@/components/settings/plugin-setti
 import { appQueryClient } from "@/lib/app-query-client";
 import { LazyCommandPaletteBody } from "./LazyCommandPaletteBody";
 import { ThreadSearchPalettePlaceholder } from "./ThreadSearchPalettePlaceholder";
+import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 
 const ThreadSearchPaletteMode = defineSplit({
   id: "thread-search-palette-mode",
@@ -260,6 +261,15 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
             !open ||
             !(event.target instanceof Node) ||
             !event.currentTarget.contains(event.target)
+          ) {
+            return;
+          }
+          if (
+            event.key.length === 1 &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            isEditableKeyboardTarget(event.target)
           ) {
             return;
           }
