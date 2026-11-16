@@ -84,6 +84,21 @@ describe("app shell serving", () => {
     expect(await res.text()).toContain('content="two"');
   });
 
+  it("inserts the rendered head verbatim when it contains replacement patterns", async () => {
+    shellHead = renderJsonScriptElement("boot", {
+      plugins: [{ id: "p", name: "$' $& $$ $` cost" }],
+    });
+
+    const html = await (await app.request("/")).text();
+
+    expect(html).toBe(
+      `<!doctype html><html><head><title>bb</title>${shellHead}</head><body><p>build-a</p></body></html>`,
+    );
+    expect(scriptJson(html)).toEqual({
+      plugins: [{ id: "p", name: "$' $& $$ $` cost" }],
+    });
+  });
+
   it("keeps /assets/ misses as 404 instead of the SPA fallback", async () => {
     const res = await app.request("/assets/stale-chunk.js");
     expect(res.status).toBe(404);

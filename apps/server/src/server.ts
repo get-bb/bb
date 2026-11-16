@@ -308,7 +308,10 @@ export function registerStaticAppRoutes(
     ifNoneMatchHeader: string | undefined,
   ): Promise<Response> => {
     const template = await readFile(shellPath, "utf8");
-    const html = template.replace("</head>", `${renderShellHead()}</head>`);
+    const html = template.replace(
+      "</head>",
+      () => `${renderShellHead()}</head>`,
+    );
     const etag = `W/"${createHash("sha256").update(html).digest("hex").slice(0, 32)}"`;
     const headers = new Headers();
     headers.set("cache-control", STATIC_INDEX_CACHE_CONTROL);
