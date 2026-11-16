@@ -153,6 +153,9 @@ it("completes hang-up after the native session is released and rejects a stale l
     activeTurnId: null,
   });
   expect((await harness.waitForResponse(3)).error).toBeUndefined();
+  expect(JSON.stringify(harness.messages)).toContain(
+    '"payload":{"sessionId":"11111111-1111-4111-8111-111111111111","status":"closed","message":"The Codex session was released"}',
+  );
   harness.sendRequest(4, "thread/voice", {
     threadId,
     providerThreadId,

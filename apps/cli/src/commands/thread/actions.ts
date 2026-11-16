@@ -797,7 +797,7 @@ export function registerActionsCommands(
             command: { action: "stop", sessionId: opts.session },
           });
           if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Voice session ${opts.session} ended`);
+          console.log(`Stop requested for voice session ${opts.session}`);
         },
       ),
     );

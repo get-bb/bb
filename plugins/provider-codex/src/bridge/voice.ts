@@ -53,20 +53,23 @@ export class CodexVoiceSession {
       this.pending?.resolve(event.data.sdp);
     if (method === "thread/realtime/error")
       this.close(event.data.message ?? "Codex voice failed");
-    if (method === "thread/realtime/closed") this.close();
+    if (method === "thread/realtime/closed")
+      this.close(event.data.reason ?? undefined, "closed");
   }
 
   private renewLease(): void {
     clearTimeout(this.leaseTimer);
     this.leaseTimer = setTimeout(() => {
       const sessionId = this.sessionId;
-      if (sessionId)
-        void this.command({ action: "stop", sessionId }).catch(() => {});
+      if (sessionId) void this.stop("The voice lease expired");
     }, 60000);
     this.leaseTimer.unref?.();
   }
 
-  close(message?: string): void {
+  close(
+    message?: string,
+    status: "closed" | "error" = message === undefined ? "closed" : "error",
+  ): void {
     clearTimeout(this.leaseTimer);
     const sessionId = this.sessionId;
     this.sessionId = null;
@@ -75,9 +78,30 @@ export class CodexVoiceSession {
     if (sessionId)
       this.publish({
         sessionId,
-        status: message ? "error" : "closed",
+        status,
         message: message ?? null,
       });
+  }
+
+  private async stop(reason?: string): Promise<void> {
+    let unconfirmed: string | undefined;
+    try {
+      await this.connection.request({
+        method: "thread/realtime/stop",
+        params: { threadId: this.threadId },
+        resultSchema: z.object({}),
+        timeoutMs: 10000,
+      });
+    } catch (error) {
+      unconfirmed = `Codex did not confirm the voice stop: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    }
+    this.close(
+      [reason, unconfirmed].filter((part) => part !== undefined).join(". ") ||
+        undefined,
+      "closed",
+    );
   }
 
   async command(
@@ -90,17 +114,7 @@ export class CodexVoiceSession {
       return { sdp: null };
     }
     if (command.action === "stop") {
-      if (this.sessionId !== command.sessionId) return { sdp: null };
-      try {
-        await this.connection.request({
-          method: "thread/realtime/stop",
-          params: { threadId: this.threadId },
-          resultSchema: z.object({}),
-          timeoutMs: 10000,
-        });
-      } finally {
-        this.close();
-      }
+      if (this.sessionId === command.sessionId) await this.stop();
       return { sdp: null };
     }
     if (this.sessionId !== null)

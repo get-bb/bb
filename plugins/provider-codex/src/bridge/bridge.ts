@@ -535,11 +535,14 @@ function currentSession(
   return session;
 }
 
-function releaseSession(session: CodexBridgeSession): Promise<void> {
+function releaseSession(
+  session: CodexBridgeSession,
+  voiceEndReason: string,
+): Promise<void> {
   if (session.releasePromise !== null) {
     return session.releasePromise;
   }
-  voiceSessions.get(session)?.close();
+  voiceSessions.get(session)?.close(voiceEndReason, "closed");
   session.closing = true;
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
@@ -1308,7 +1311,10 @@ async function constructThreadSession(
   };
   sessionsByBbThreadId.set(args.threadId, session);
   if (existing) {
-    const previousChildExit = releaseSession(existing);
+    const previousChildExit = releaseSession(
+      existing,
+      "The Codex session restarted",
+    );
     session.previousChildExit = previousChildExit;
     await previousChildExit;
     if (session.previousChildExit === previousChildExit) {
@@ -2256,7 +2262,7 @@ async function handleThreadStop(
 
   if (params.intent === "release") {
     if (session) {
-      await releaseSession(session);
+      await releaseSession(session, "The Codex session was released");
     }
     sendResult(id, { ok: true });
     return;
@@ -2318,7 +2324,10 @@ async function handleThreadStop(
       providerThreadId: session.codexThreadId,
     }),
   );
-  await releaseSession(session);
+  await releaseSession(
+    session,
+    "The Codex session was reset after stopping its turn",
+  );
   sendResult(id, { ok: true });
 }
 
@@ -2553,7 +2562,10 @@ async function handleThreadMaintenance(
     if (options?.releaseAfter) {
       const session = sessionsByBbThreadId.get(params.threadId);
       if (session) {
-        await releaseSession(session);
+        await releaseSession(
+          session,
+          `The Codex session was released for ${request.method}`,
+        );
       }
     }
     sendResult(id, { ok: true });
@@ -2854,6 +2866,7 @@ export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
 function killAllChildren(): void {
   for (const session of sessionsByBbThreadId.values()) {
+    voiceSessions.get(session)?.close("The Codex bridge shut down", "closed");
     session.closing = true;
     void session.connection?.kill();
     session.connection = null;

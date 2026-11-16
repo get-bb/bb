@@ -146,7 +146,7 @@ it("expires abandoned clients while a healthy client can renew the call", async 
   expect(publish).toHaveBeenLastCalledWith({
     sessionId: first,
     status: "closed",
-    message: null,
+    message: "The voice lease expired",
   });
   await expect(
     voice.command({ action: "keepAlive", sessionId: first }),
@@ -235,3 +235,62 @@ it.each([
     expect(() => requireNativeVoiceVersion(userAgent)).not.toThrow();
   },
 );
+
+it("completes hang-up and reports an unconfirmed upstream stop in the closed state", async () => {
+  const { voice, request, publish } = setup();
+  const started = voice.command({
+    action: "start",
+    sessionId: first,
+    sdp: "offer",
+  });
+  voice.notification("thread/realtime/sdp", {
+    threadId: "native-thread",
+    sdp: "answer",
+  });
+  await started;
+  request.mockRejectedValueOnce(new Error("request timed out"));
+  await expect(
+    voice.command({ action: "stop", sessionId: first }),
+  ).resolves.toEqual({ sdp: null });
+  expect(publish).toHaveBeenLastCalledWith({
+    sessionId: first,
+    status: "closed",
+    message: "Codex did not confirm the voice stop: request timed out",
+  });
+  await expect(
+    voice.command({ action: "keepAlive", sessionId: first }),
+  ).rejects.toThrow("no longer active");
+});
+
+it("publishes the provider's close reason and a teardown reason without marking them as errors", async () => {
+  const { voice, publish } = setup();
+  for (const [sessionId, end] of [
+    [
+      first,
+      () =>
+        voice.notification("thread/realtime/closed", {
+          threadId: "native-thread",
+          reason: "transport closed",
+        }),
+    ],
+    [second, () => voice.close("The Codex session restarted", "closed")],
+  ] as const) {
+    const started = voice.command({ action: "start", sessionId, sdp: "offer" });
+    voice.notification("thread/realtime/sdp", {
+      threadId: "native-thread",
+      sdp: "answer",
+    });
+    await started;
+    end();
+  }
+  expect(publish.mock.calls.map(([state]) => state)).toEqual([
+    { sessionId: first, status: "active", message: null },
+    { sessionId: first, status: "closed", message: "transport closed" },
+    { sessionId: second, status: "active", message: null },
+    {
+      sessionId: second,
+      status: "closed",
+      message: "The Codex session restarted",
+    },
+  ]);
+});

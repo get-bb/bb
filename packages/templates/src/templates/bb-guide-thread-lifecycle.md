@@ -30,7 +30,10 @@ Lifecycle:
   `bb thread voice keep-alive` or `threads.experimental_voice` with `action: "keepAlive"`.
   Ending voice leaves coding work running. Stopping a session that already
   ended, including after the provider session was released, succeeds without
-  resuming the provider; renewing an ended session fails.
+  resuming the provider; renewing an ended session fails. The Codex
+  `provider-codex/voice` extension state reports `closed` with a reason message
+  when the lease expires, Codex does not confirm a stop, or the provider session
+  is released or restarted; `error` marks a failed call.
 
   Provider support is optional. `bb provider list --json` reports eligibility as
   `capabilities.experimental_supportsThreadVoice`; starting voice on a thread
@@ -47,8 +50,9 @@ Lifecycle:
   them. Back-to-back calls without a step between them can retain earlier guidance.
   Context files may be empty; input streams may be used once per command.
   Native voice requires a verifiable Codex app-server version of at least 0.147.0.
-  Handoffs use the running turn's settings or last submitted settings; unsent
-  composer selections do not apply.
+  Handoffs use the settings Codex has applied: the running turn's, or those of
+  the last turn Codex accepted. A queued request, or one whose turn failed to
+  start, may not have been applied; unsent composer selections never apply.
 
   A thread allows one voice session at a time. Codex account/model access still
   determines whether native realtime is available.
