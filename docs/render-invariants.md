@@ -51,7 +51,7 @@ work happens that should not happen at all.
 | typing in the composer renders nothing outside the composer form             | everything outside the composer's `form` (keystrokes after the first)  | pending |
 | renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | on      |
 | a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | on      |
-| a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | pending |
+| a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | on      |
 
 Re-render invariants ignore mounts: windowed lists mount rows as they scroll,
 and a mounted child is always accompanied by its re-rendered parent. Typing
@@ -64,9 +64,7 @@ reason:
 
 - composer typing: the prompt area above the composer form
   (`ThreadDetailPromptArea`, `ComposerBox`, the banner slots) re-renders on
-  every keystroke;
-- streaming: every mounted `TimelineRowItemWrapper` re-renders on each
-  streamed delta.
+  every keystroke.
 
 The change that fixes one of these turns its test on by replacing
 `pendingInvariant(` with `it(` and removing its "pending" mark in the table
