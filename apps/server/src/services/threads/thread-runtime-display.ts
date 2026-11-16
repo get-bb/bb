@@ -1,5 +1,6 @@
 import {
   getEnvironment,
+  getHost,
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestClosedSessionsForHosts,
@@ -27,6 +28,7 @@ import {
 import type { ThreadResponse } from "@bb/server-contract";
 import type { NotificationHub } from "../../ws/hub.js";
 import { isHostDisconnectHidden } from "../hosts/host-disconnect-display.js";
+import { hostReconnectGraceMsForMachineProvider } from "../hosts/host-reconnect-grace.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { listQueuedThreadMessageCountsByThreadIds } from "@bb/db";
@@ -65,6 +67,7 @@ interface ResolveThreadRuntimeStateFromLatestSessionArgs {
   environmentHostId: string | null;
   hostConnected: boolean;
   latestClosedSession: HostDaemonSessionRow | null;
+  machineProviderId?: string | null;
   now?: number;
   status: ThreadStatus;
 }
@@ -177,6 +180,7 @@ export function resolveThreadRuntimeState(
       environmentHostId: args.environmentHostId,
       hostConnected: false,
       latestClosedSession: null,
+      machineProviderId: null,
       now: args.now,
       status: args.status,
     });
@@ -193,6 +197,7 @@ export function resolveThreadRuntimeState(
       hostConnected,
       hostId: args.environmentHostId,
     }),
+    machineProviderId: getHost(deps.db, args.environmentHostId)?.machineProviderId,
     now: args.now,
     status: args.status,
   });
@@ -210,11 +215,26 @@ function resolveThreadRuntimeStateFromLatestSession(
     return threadStatusRuntimeState(args.status);
   }
 
+  const hostReconnectGraceExpiresAt =
+    args.latestClosedSession?.closedAt === null ||
+    args.latestClosedSession?.closedAt === undefined
+      ? undefined
+      : args.latestClosedSession.closedAt +
+        hostReconnectGraceMsForMachineProvider(args.machineProviderId);
   if (
     args.hostConnected ||
-    isHostDisconnectHidden(args.latestClosedSession, args.now ?? Date.now())
+    isHostDisconnectHidden(
+      args.latestClosedSession,
+      args.now ?? Date.now(),
+      args.machineProviderId,
+    )
   ) {
-    return threadStatusRuntimeState("active");
+    return {
+      ...threadStatusRuntimeState("active"),
+      ...(hostReconnectGraceExpiresAt === undefined
+        ? {}
+        : { hostReconnectGraceExpiresAt }),
+    };
   }
   return { displayStatus: "waiting-for-host" };
 }

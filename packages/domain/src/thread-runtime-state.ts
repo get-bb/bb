@@ -13,6 +13,7 @@ export const threadRuntimeDisplayStatusSchema = z.enum(
 
 export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
+  hostReconnectGraceExpiresAt: z.number().int().positive().optional(),
 });
 
 export const threadActivityStateSchema = z.object({

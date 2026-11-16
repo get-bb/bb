@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   closeSession,
+  getHost,
   getSessionById,
   hostDaemonSessions,
   listActiveHostThreads,
@@ -13,7 +14,8 @@ import type {
   HostDaemonOpenThreadWork,
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
-import { HOST_RECONNECT_GRACE_MS, LEASE_TIMEOUT_MS } from "../constants.js";
+import { LEASE_TIMEOUT_MS } from "../constants.js";
+import { hostReconnectGraceMsForMachineProvider } from "../services/hosts/host-reconnect-grace.js";
 import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
@@ -223,7 +225,9 @@ function handleDaemonSessionLost(
   }
   deps.hub.scheduleDaemonDisconnect(
     args.sessionId,
-    HOST_RECONNECT_GRACE_MS,
+    hostReconnectGraceMsForMachineProvider(
+      getHost(deps.db, session.hostId)?.machineProviderId,
+    ),
     () => {
       if (deps.hub.hasDaemonForHost(session.hostId)) {
         return;

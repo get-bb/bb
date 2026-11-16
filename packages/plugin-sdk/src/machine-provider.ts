@@ -77,7 +77,8 @@ export interface PluginMachineProviderDefinition<
   /** Provider glyph, declared icon, or plugin-relative icon path. */
   icon: string;
   ephemeral?: boolean;
-  /** Persisted and readable by every plugin. Store secret references, never secrets. */
+  /** Optional grace period for providers whose machines can pause and resume (for example, cloud devboxes) without losing their processes. */
+  hostReconnectGraceMs?: number;
   inputs?: S;
   availability?():
     | PluginMachineProviderAvailability

@@ -340,7 +340,11 @@ async function waitForReconnectingDaemon(
     latestSession !== null &&
     ((latestSession.status === "active" &&
       latestSession.updatedAt + LEASE_TIMEOUT_MS > now) ||
-      isHostDisconnectHidden(latestSession, now));
+      isHostDisconnectHidden(
+        latestSession,
+        now,
+        getHost(deps.db, hostId)?.machineProviderId,
+      ));
   if (reconnecting) {
     await deps.hub.waitForDaemonForHost(hostId, HOST_DAEMON_RECONNECT_WAIT_MS);
   }

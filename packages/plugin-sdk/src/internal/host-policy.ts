@@ -2717,6 +2717,7 @@ export interface NormalizedPluginMachineProvider {
   description: string;
   icon: string;
   ephemeral: boolean;
+  hostReconnectGraceMs: number | null;
   inputs: StandardSchemaV1 | null;
   inputsJsonSchema: JsonValue | null;
   availability: NonNullable<
@@ -2746,6 +2747,13 @@ export function validatePluginMachineProviderDeclaration(
   const icon = z.string().trim().min(1).parse(declaration.icon);
   assertProviderIconShape("machine provider", id, icon);
   const ephemeral = z.boolean().default(false).parse(declaration.ephemeral);
+  const hostReconnectGraceMs = z
+    .number()
+    .finite()
+    .int()
+    .positive()
+    .nullable()
+    .parse(declaration.hostReconnectGraceMs ?? null);
   const inputs = normalizeProviderInputs(
     "machine provider",
     id,
@@ -2786,10 +2794,11 @@ export function validatePluginMachineProviderDeclaration(
     description,
     icon,
     ephemeral,
+    hostReconnectGraceMs,
     inputs: inputs === null ? null : inputs.schema,
     inputsJsonSchema: inputs === null ? null : inputs.jsonSchema,
-    availability: declaration.availability ?? null,
     validate: declaration.validate ?? null,
+    availability: declaration.availability ?? null,
     reconcileCleanup: declaration.reconcileCleanup,
     create: declaration.create,
     suspend: declaration.suspend ?? null,
