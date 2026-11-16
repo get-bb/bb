@@ -169,6 +169,75 @@ describe("CompactSecondaryPanelShelf", () => {
     }
   });
 
+  it("finishes an opening swipe whose touched node remounts mid-drag", () => {
+    vi.useFakeTimers();
+    try {
+      const onOpen = vi.fn();
+      Object.defineProperty(document.documentElement, "clientWidth", {
+        configurable: true,
+        value: 400,
+      });
+      const view = (version: number) => (
+        <>
+          <main data-sidebar="inset">
+            <div key={version} data-testid="main-body" />
+          </main>
+          <CompactSecondaryPanelShelf
+            open={false}
+            onClose={vi.fn()}
+            onOpen={onOpen}
+            srLabel="Right panel"
+          >
+            <div data-testid="panel-body" />
+          </CompactSecondaryPanelShelf>
+        </>
+      );
+      const { rerender } = render(view(1));
+      const inset = document.querySelector<HTMLElement>(
+        '[data-sidebar="inset"]',
+      );
+      if (inset === null) throw new Error("missing inset");
+      const body = screen.getByTestId("main-body");
+
+      fireTouch(body, "touchstart", createTouch(300, 160));
+      fireTouch(window, "touchmove", createTouch(260, 162));
+      rerender(view(2));
+      expect(body.isConnected).toBe(false);
+      fireTouch(body, "touchmove", createTouch(100, 162));
+      fireTouch(body, "touchend", createTouch(100, 162));
+      vi.advanceTimersByTime(250);
+
+      expect(onOpen).toHaveBeenCalledOnce();
+      expect(inset.style.translate).toBe("");
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+      Reflect.deleteProperty(document.documentElement, "clientWidth");
+    }
+  });
+
+  it("finishes a closing swipe whose touched node remounts mid-drag", () => {
+    const onClose = vi.fn();
+    const view = (version: number) => (
+      <CompactSecondaryPanelShelf open onClose={onClose} srLabel="Right panel">
+        <div key={version} data-testid="panel-body" />
+      </CompactSecondaryPanelShelf>
+    );
+    const { rerender } = render(view(1));
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    Object.defineProperty(shelf, "clientWidth", { value: 300 });
+    const body = screen.getByTestId("panel-body");
+
+    fireTouch(body, "touchstart", createTouch(60, 160));
+    fireTouch(window, "touchmove", createTouch(100, 162));
+    rerender(view(2));
+    expect(body.isConnected).toBe(false);
+    fireTouch(body, "touchmove", createTouch(240, 164));
+    fireTouch(body, "touchend", createTouch(240, 164));
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("navigates tab swipes without dismissing while preserving body dismissal", () => {
     const onClose = vi.fn();
     const tabs = ["README.md", "package.json", "AGENTS.md"].map((label) => ({

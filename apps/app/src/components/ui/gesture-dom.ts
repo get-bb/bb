@@ -34,3 +34,29 @@ export function hasTextSelectionWithin(root: Element): boolean {
     (selection.focusNode !== null && root.contains(selection.focusNode))
   );
 }
+
+export function listenToGesture<K extends keyof GlobalEventHandlersEventMap>(
+  origin: EventTarget | null,
+  type: K,
+  listener: (event: GlobalEventHandlersEventMap[K]) => void,
+  options?: AddEventListenerOptions,
+): () => void {
+  let lastEvent: Event | null = null;
+  const handle = (event: GlobalEventHandlersEventMap[K]) => {
+    if (event === lastEvent) return;
+    lastEvent = event;
+    listener(event);
+  };
+  const targets: GlobalEventHandlers[] = [window];
+  if (origin instanceof HTMLElement || origin instanceof SVGElement) {
+    targets.push(origin);
+  }
+  for (const target of targets) {
+    target.addEventListener(type, handle, options);
+  }
+  return () => {
+    for (const target of targets) {
+      target.removeEventListener(type, handle, options);
+    }
+  };
+}
