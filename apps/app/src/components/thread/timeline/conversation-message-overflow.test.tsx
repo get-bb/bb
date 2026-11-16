@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   ConversationMessageOverflowToggle,
-  useOverflowMeasurement,
+  useIsOverflowing,
 } from "./conversation-message-overflow";
 import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
@@ -27,21 +27,19 @@ afterEach(() => {
 
 function OverflowProbe({ name }: { name: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  const measurement = useOverflowMeasurement({
+  const overflowing = useIsOverflowing({
     axis: "vertical",
     elementRef: ref,
     enabled: true,
     measurementKey: name,
   });
-  return <div ref={ref} data-testid={name} data-measurement={measurement} />;
+  return <div ref={ref} data-testid={name} data-overflowing={overflowing} />;
 }
 
-describe("useOverflowMeasurement", () => {
-  it("measures every row before its first paint and shares one observer for later changes", () => {
+describe("useIsOverflowing", () => {
+  it("reads no layout while rows mount, then measures them all in one observer batch before paint", () => {
     let observerCallback: ResizeObserverCallback | null = null;
     const observe = vi.fn();
-    const unobserve = vi.fn();
-    const disconnect = vi.fn();
     const constructorSpy = vi.fn();
     vi.stubGlobal(
       "ResizeObserver",
@@ -51,8 +49,8 @@ describe("useOverflowMeasurement", () => {
           observerCallback = callback;
         }
         observe = observe;
-        unobserve = unobserve;
-        disconnect = disconnect;
+        unobserve = vi.fn();
+        disconnect = vi.fn();
       },
     );
     const scrollHeight = vi
@@ -62,12 +60,6 @@ describe("useOverflowMeasurement", () => {
       });
     const clientHeight = vi
       .spyOn(HTMLElement.prototype, "clientHeight", "get")
-      .mockReturnValue(20);
-    const scrollWidth = vi
-      .spyOn(HTMLElement.prototype, "scrollWidth", "get")
-      .mockReturnValue(20);
-    const clientWidth = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
       .mockReturnValue(20);
 
     render(
@@ -79,27 +71,29 @@ describe("useOverflowMeasurement", () => {
 
     const first = screen.getByTestId("first");
     const second = screen.getByTestId("second");
-    expect(first.dataset.measurement).toBe("overflowing");
-    expect(second.dataset.measurement).toBe("fits");
+    expect(scrollHeight).not.toHaveBeenCalled();
+    expect(clientHeight).not.toHaveBeenCalled();
     expect(constructorSpy).toHaveBeenCalledOnce();
     expect(observe).toHaveBeenCalledTimes(2);
 
-    scrollHeight.mockReturnValue(20);
-    act(() => {
-      observerCallback?.(
-        [
-          { target: first } as unknown as ResizeObserverEntry,
-          { target: second } as unknown as ResizeObserverEntry,
-        ],
-        {} as ResizeObserver,
-      );
-    });
+    const deliver = () =>
+      act(() => {
+        observerCallback?.(
+          [
+            { target: first } as unknown as ResizeObserverEntry,
+            { target: second } as unknown as ResizeObserverEntry,
+          ],
+          {} as ResizeObserver,
+        );
+      });
+    deliver();
+    expect(first.dataset.overflowing).toBe("true");
+    expect(second.dataset.overflowing).toBe("false");
 
-    expect(first.dataset.measurement).toBe("fits");
-    expect(second.dataset.measurement).toBe("fits");
-    expect(clientHeight).toHaveBeenCalled();
-    expect(scrollWidth).toHaveBeenCalled();
-    expect(clientWidth).toHaveBeenCalled();
+    scrollHeight.mockReturnValue(20);
+    deliver();
+    expect(first.dataset.overflowing).toBe("false");
+    expect(second.dataset.overflowing).toBe("false");
   });
 });
 

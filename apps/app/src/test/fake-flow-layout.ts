@@ -261,6 +261,23 @@ export function installFakeFlowLayout({
   globalThis.ResizeObserver =
     FakeResizeObserver as unknown as typeof ResizeObserver;
 
+  const frameCallbacks = new Map<number, FrameRequestCallback>();
+  let lastFrameId = 0;
+  const originalRequestAnimationFrame = window.requestAnimationFrame;
+  const originalCancelAnimationFrame = window.cancelAnimationFrame;
+  const requestFrame = (callback: FrameRequestCallback): number => {
+    lastFrameId += 1;
+    frameCallbacks.set(lastFrameId, callback);
+    return lastFrameId;
+  };
+  const framesAlreadyFaked = "clock" in originalRequestAnimationFrame;
+  if (!framesAlreadyFaked) {
+    window.requestAnimationFrame = requestFrame;
+    window.cancelAnimationFrame = (id: number) => {
+      frameCallbacks.delete(id);
+    };
+  }
+
   return {
     get scrollTop() {
       return scrollTop;
@@ -315,6 +332,20 @@ export function installFakeFlowLayout({
         observerSnapshot = previousSnapshot;
       }
     },
+    runFrameCallbacks() {
+      if (window.requestAnimationFrame !== requestFrame) {
+        vi.advanceTimersToNextFrame();
+        return;
+      }
+      const callbacks = [...frameCallbacks.values()];
+      frameCallbacks.clear();
+      const now = performance.now();
+      for (const callback of callbacks) callback(now);
+    },
+    frame() {
+      this.runFrameCallbacks();
+      this.flushResizeObservers();
+    },
     setViewportHeight(height: number) {
       viewportHeight = height;
     },
@@ -339,6 +370,10 @@ export function installFakeFlowLayout({
         }
       }
       globalThis.ResizeObserver = OriginalResizeObserver;
+      if (!framesAlreadyFaked) {
+        window.requestAnimationFrame = originalRequestAnimationFrame;
+        window.cancelAnimationFrame = originalCancelAnimationFrame;
+      }
     },
   };
 }

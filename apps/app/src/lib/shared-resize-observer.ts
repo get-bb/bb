@@ -1,3 +1,5 @@
+import { flushSync } from "react-dom";
+
 export interface SharedResizePhases<T> {
   read: (entry: ResizeObserverEntry | undefined) => T;
   write: (value: T) => void;
@@ -14,6 +16,7 @@ interface PhaseDispatch {
 
 const phasesByTarget = new Map<Element, Set<RegisteredPhases>>();
 let sharedResizeObserver: ResizeObserver | null = null;
+let batchSettles: Set<() => void> | null = null;
 
 function collectDispatches(
   entries: readonly ResizeObserverEntry[],
@@ -39,9 +42,28 @@ function dispatchPhased(dispatches: readonly PhaseDispatch[]): void {
   const writes = dispatches.map(({ registration, entry }) =>
     registration.read(entry),
   );
-  for (const write of writes) {
-    write();
+  const settles = new Set<() => void>();
+  batchSettles = settles;
+  try {
+    flushSync(() => {
+      for (const write of writes) {
+        write();
+      }
+    });
+  } finally {
+    batchSettles = null;
   }
+  for (const settle of settles) {
+    settle();
+  }
+}
+
+export function settleAfterSharedResizeWrites(settle: () => void): void {
+  if (batchSettles === null) {
+    settle();
+    return;
+  }
+  batchSettles.add(settle);
 }
 
 function getSharedResizeObserver(): ResizeObserver {
