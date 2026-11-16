@@ -3,7 +3,7 @@ import {
   pluginListResponseSchema,
 } from "@bb/server-contract";
 import type { QueryClient } from "@tanstack/react-query";
-import { pluginListQueryKey } from "@/hooks/queries/query-keys";
+import { applyAppShellPluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 
 function parseShellPluginList(text: string) {
   try {
@@ -27,7 +27,5 @@ export function seedPluginListFromAppShell(
     console.warn("bb: ignoring an unreadable plugin list in the app shell");
     return;
   }
-  queryClient.setQueryData(pluginListQueryKey(true), plugins, {
-    updatedAt: servedAt,
-  });
+  applyAppShellPluginList({ queryClient, plugins, servedAt });
 }

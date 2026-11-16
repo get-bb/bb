@@ -276,30 +276,6 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   return headers;
 }
 
-interface AppShellTemplate {
-  html: string;
-  mtimeMs: number;
-  size: number;
-}
-
-let appShellTemplate: AppShellTemplate | null = null;
-
-async function readAppShellTemplate(filePath: string): Promise<string> {
-  const fileStat = await stat(filePath);
-  if (
-    appShellTemplate === null ||
-    appShellTemplate.size !== fileStat.size ||
-    appShellTemplate.mtimeMs !== fileStat.mtimeMs
-  ) {
-    appShellTemplate = {
-      html: await readFile(filePath, "utf8"),
-      mtimeMs: fileStat.mtimeMs,
-      size: fileStat.size,
-    };
-  }
-  return appShellTemplate.html;
-}
-
 export function renderJsonScriptElement(id: string, value: unknown): string {
   const json = JSON.stringify(value).replace(/</gu, "\\u003c");
   return `<script type="application/json" id="${id}">${json}</script>`;
@@ -331,7 +307,7 @@ export function registerStaticAppRoutes(
   const serveAppShell = async (
     ifNoneMatchHeader: string | undefined,
   ): Promise<Response> => {
-    const template = await readAppShellTemplate(shellPath);
+    const template = await readFile(shellPath, "utf8");
     const html = template.replace("</head>", `${renderShellHead()}</head>`);
     const etag = `W/"${createHash("sha256").update(html).digest("hex").slice(0, 32)}"`;
     const headers = new Headers();
