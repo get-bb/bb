@@ -1,6 +1,6 @@
 import { memo } from "react";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type ExperimentalAppOverlaySlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -24,7 +24,7 @@ const PluginAppOverlay = memo(function PluginAppOverlay({
 });
 
 export function PluginAppOverlays() {
-  const { appOverlays } = usePluginSlots();
+  const appOverlays = usePluginSlotKind("appOverlays");
   if (appOverlays.length === 0) return null;
 
   return (

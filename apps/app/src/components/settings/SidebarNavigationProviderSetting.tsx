@@ -1,9 +1,11 @@
 import { sidebarNavigationProviderAtom } from "@/components/sidebar/sidebarNavigationProvider";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { ReplacementProviderSetting } from "./ReplacementProviderSetting";
 
 export function SidebarNavigationProviderSetting() {
-  const { experimentalSidebarNavigations } = usePluginSlots();
+  const experimentalSidebarNavigations = usePluginSlotKind(
+    "experimentalSidebarNavigations",
+  );
   return (
     <ReplacementProviderSetting
       label="Navigation"

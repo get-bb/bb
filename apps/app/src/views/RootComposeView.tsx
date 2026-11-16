@@ -74,7 +74,7 @@ import {
   createPanelActionDestination,
   usePluginNewThreadPanelActions,
 } from "@/components/plugin/PluginPanelActions";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useEnvironmentTerminals,
@@ -821,8 +821,9 @@ function RootComposeSurface({
     () => setShouldAutoFocusNewTab(false),
     [],
   );
-  const { newThreadPanelActions: rootPanelNewThreadPanelActions } =
-    usePluginSlots();
+  const rootPanelNewThreadPanelActions = usePluginSlotKind(
+    "newThreadPanelActions",
+  );
   const {
     browserTabs,
     activateTab,

@@ -3,7 +3,7 @@ import type { PluginComposerApi } from "@get-bb/plugin-sdk";
 import { useComposerCommand } from "@/components/promptbox/composer-commands";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginCommandPaletteActionSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -14,7 +14,7 @@ type ComposerCommandSlot = Extract<
 >;
 
 export function PluginComposerCommands() {
-  const { commandPaletteActions } = usePluginSlots();
+  const commandPaletteActions = usePluginSlotKind("commandPaletteActions");
   return commandPaletteActions.map((command) =>
     command.target === "composer" ? (
       <PluginSlotMount

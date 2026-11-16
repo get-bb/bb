@@ -75,7 +75,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import {
   FixedTabTargetScope,
@@ -167,7 +167,7 @@ export function PluginPanelRightPanelHost({
   flushPageInsets?: boolean;
   paneId?: string;
 }) {
-  const { navPanels } = usePluginSlots();
+  const navPanels = usePluginSlotKind("navPanels");
   const panel =
     navPanels.find(
       (candidate) =>

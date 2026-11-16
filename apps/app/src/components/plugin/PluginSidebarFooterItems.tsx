@@ -20,7 +20,7 @@ import {
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginSidebarFooterItemSlot,
 } from "@/lib/plugin-slots";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
@@ -60,7 +60,7 @@ function footerTriggerId(item: PluginSidebarFooterItemSlot): string {
 }
 
 export function usePluginSidebarFooterDisclosure() {
-  const { sidebarFooterItems } = usePluginSlots();
+  const sidebarFooterItems = usePluginSlotKind("sidebarFooterItems");
   const disclosures = useMemo(
     () => sidebarFooterItems.filter((item) => item.kind === "disclosure"),
     [sidebarFooterItems],

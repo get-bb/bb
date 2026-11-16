@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
@@ -135,8 +134,7 @@ import {
 } from "@/hooks/useSenderThreadMetadataById";
 import {
   EMPTY_PLUGIN_SLOT_SNAPSHOT,
-  getPluginSlotSnapshot,
-  subscribePluginSlots,
+  usePluginSlotKind,
   type PluginMessageActionSlot,
   type PluginMessageMetadataSlot,
 } from "@/lib/plugin-slots.js";
@@ -2190,77 +2188,77 @@ function TimelineRowsList({
   const isTopLevelList = spacing === "top-level";
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
-        <div
-          className={cn(
-            "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
-            timelineRowsListGapClassName(spacing),
-            className,
-          )}
-          data-timeline-row-list={spacing}
-          style={isInitialRevealPending ? { visibility: "hidden" } : undefined}
-          aria-busy={isInitialRevealPending || undefined}
-        >
-          <TimelineWindowedItems
-            alwaysMountedKeys={alwaysMountedKeys}
-            estimateItemHeight={(index) => {
-              const item = items[index];
-              return item?.kind === "row"
-                ? estimateTimelineWindowedRowHeight(item.row, spacing)
-                : 28;
-            }}
-            gap={spacing === "bundle" ? 0 : 8}
-            initialWindowAnchor={
-              isTopLevelList && detailScrollRoot === null ? scrollRestore : null
+      <div
+        className={cn(
+          "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
+          timelineRowsListGapClassName(spacing),
+          className,
+        )}
+        data-timeline-row-list={spacing}
+        style={isInitialRevealPending ? { visibility: "hidden" } : undefined}
+        aria-busy={isInitialRevealPending || undefined}
+      >
+        <TimelineWindowedItems
+          alwaysMountedKeys={alwaysMountedKeys}
+          estimateItemHeight={(index) => {
+            const item = items[index];
+            return item?.kind === "row"
+              ? estimateTimelineWindowedRowHeight(item.row, spacing)
+              : 28;
+          }}
+          gap={spacing === "bundle" ? 0 : 8}
+          initialWindowAnchor={
+            isTopLevelList && detailScrollRoot === null ? scrollRestore : null
+          }
+          itemKeys={itemKeys}
+          measurements={measurements}
+          positionKeeper={
+            detailScrollRoot?.positionKeeper ??
+            bottomAnchor?.positionKeeper ??
+            null
+          }
+          pinnedToEnd={
+            isTopLevelList &&
+            detailScrollRoot === null &&
+            bottomAnchor?.isAtBottom === true
+          }
+          renderItem={(index, windowedState) => {
+            const item = items[index];
+            if (item === undefined) {
+              return null;
             }
-            itemKeys={itemKeys}
-            measurements={measurements}
-            positionKeeper={
-              detailScrollRoot?.positionKeeper ??
-              bottomAnchor?.positionKeeper ??
-              null
-            }
-            pinnedToEnd={
-              isTopLevelList &&
-              detailScrollRoot === null &&
-              bottomAnchor?.isAtBottom === true
-            }
-            renderItem={(index, windowedState) => {
-              const item = items[index];
-              if (item === undefined) {
-                return null;
-              }
-              if (item.kind === "unread-divider") {
-                return (
-                  <div
-                    key={item.id}
-                    ref={windowedState.itemRef}
-                    data-scroll-landmark-id={item.id}
-                    data-timeline-window-key={`divider:${item.id}`}
-                  >
-                    <TimelineUnreadDivider />
-                  </div>
-                );
-              }
+            if (item.kind === "unread-divider") {
               return (
-                <TimelineRowItemWrapper
-                  key={item.row.id}
-                  row={item.row}
-                  spacing={spacing}
-                  windowedState={windowedState}
+                <div
+                  key={item.id}
+                  ref={windowedState.itemRef}
+                  data-scroll-landmark-id={item.id}
+                  data-timeline-window-key={`divider:${item.id}`}
                 >
-                  <MemoizedTimelineRowView
-                    activeLatestBundleId={activeLatestBundleId}
-                    row={item.row}
-                    scopeActive={scopeActive}
-                    showAssistantMessageActions={showAssistantMessageActions}
-                    spacing={spacing}
-                    compactActivityIntents={compactActivityIntents}
-                  />
-                </TimelineRowItemWrapper>
+                  <TimelineUnreadDivider />
+                </div>
               );
-            }}
-          />
-        </div>
+            }
+            return (
+              <TimelineRowItemWrapper
+                key={item.row.id}
+                row={item.row}
+                spacing={spacing}
+                windowedState={windowedState}
+              >
+                <MemoizedTimelineRowView
+                  activeLatestBundleId={activeLatestBundleId}
+                  row={item.row}
+                  scopeActive={scopeActive}
+                  showAssistantMessageActions={showAssistantMessageActions}
+                  spacing={spacing}
+                  compactActivityIntents={compactActivityIntents}
+                />
+              </TimelineRowItemWrapper>
+            );
+          }}
+        />
+      </div>
     </TimelineSearchExpansionContext.Provider>
   );
 }
@@ -2332,26 +2330,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const projectId = props.projectId;
   const senderThreadMetadataById = useSenderThreadMetadataById();
-  const messageDirectiveSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().messageDirectives,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageDirectives,
-  );
-  const codeFenceRendererSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().codeFenceRenderers,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.codeFenceRenderers,
-  );
-  const messageActionSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().messageActions,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions,
-  );
-  const messageMetadataSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().messageMetadata,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageMetadata,
-  );
+  const messageDirectiveSlots = usePluginSlotKind("messageDirectives");
+  const codeFenceRendererSlots = usePluginSlotKind("codeFenceRenderers");
+  const messageActionSlots = usePluginSlotKind("messageActions");
+  const messageMetadataSlots = usePluginSlotKind("messageMetadata");
   const messageDirectiveRegistry = useMemo(
     () => buildMessageDirectiveRegistry(messageDirectiveSlots),
     [messageDirectiveSlots],

@@ -83,7 +83,7 @@ import {
 } from "@/components/promptbox/composer-selection-settle";
 import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
@@ -1259,8 +1259,9 @@ export function NewThreadComposer({
   const providerTakesInputs =
     inputEnvironmentProvider !== undefined &&
     inputEnvironmentProvider.inputs !== null;
-  const pluginSlots = usePluginSlots();
-  const environmentProviderInputsSlots = pluginSlots.environmentProviderInputs;
+  const environmentProviderInputsSlots = usePluginSlotKind(
+    "environmentProviderInputs",
+  );
   const inputsControlProviderIds = useMemo(() => {
     const pluginIdByProviderId = new Map(
       (environmentProviders ?? []).map((provider) => [

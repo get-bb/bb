@@ -10,7 +10,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { resolvePendingInteraction } from "@/lib/plugin-slot-resolvers";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { sdk } from "@/lib/sdk";
 
@@ -37,7 +37,7 @@ export function PluginPendingInteractionComposer({
   origin,
   collapsedByDefault,
 }: PluginPendingInteractionComposerProps) {
-  const { pendingInteractions } = usePluginSlots();
+  const pendingInteractions = usePluginSlotKind("pendingInteractions");
   const pluginName = usePluginDisplayName(request.pluginId);
   const pluginsSettled = usePluginFrontendsSettled();
   const inline = useContext(InlinePendingInteractionContext) !== null;

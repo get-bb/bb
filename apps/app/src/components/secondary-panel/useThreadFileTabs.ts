@@ -27,7 +27,7 @@ import {
   type AttachmentFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { allowBrowserViewRecreation } from "./browserViewVisibilityCoordinator";
 import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
@@ -473,7 +473,7 @@ export function useThreadFileTabs({
     updateFixedPanelTabsState,
   ]);
 
-  const { fileOpeners } = usePluginSlots();
+  const fileOpeners = usePluginSlotKind("fileOpeners");
   const fileOpenerPreference = useFileOpenerPreferenceValue();
 
   const openResolvedTab = useCallback(

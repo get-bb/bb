@@ -3,11 +3,13 @@ import {
   diffRendererProviderAtom,
   sourceCodeRendererProviderAtom,
 } from "@/components/code/codeRendererProvider";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { ReplacementProviderSetting } from "./ReplacementProviderSetting";
 
 export function CodeRendererSettings() {
-  const { sourceCodeRenderers, diffRenderers, composers } = usePluginSlots();
+  const sourceCodeRenderers = usePluginSlotKind("sourceCodeRenderers");
+  const diffRenderers = usePluginSlotKind("diffRenderers");
+  const composers = usePluginSlotKind("composers");
   return (
     <>
       <ReplacementProviderSetting
