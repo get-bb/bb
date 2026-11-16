@@ -811,6 +811,47 @@ describe("createAgentRuntime process lifecycle", () => {
     return { processLog, processExits, runtime };
   }
 
+  it("keeps native voice alive while idle and makes the session reapable after voice stops", async () => {
+    const events: ThreadEvent[] = [];
+    const { runtime } = createCodexRuntime({ events });
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      if (!runtime.voice) throw new Error("Missing voice operation");
+      await expect(
+        runtime.voice({
+          threadId: "t1",
+          command: { action: "start", sessionId, sdp: "offer" },
+        }),
+      ).resolves.toEqual({ sdp: "native-answer" });
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
+      const held = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now() + 3600000,
+      });
+      expect(held.reapedSessions).toEqual([]);
+      await runtime.voice({
+        threadId: "t1",
+        command: { action: "stop", sessionId },
+      });
+      const released = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now() + 3600000,
+      });
+      expect(released.reapedSessions).toEqual([
+        expect.objectContaining({ threadId: "t1" }),
+      ]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("runs every codex thread on one provider process", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });

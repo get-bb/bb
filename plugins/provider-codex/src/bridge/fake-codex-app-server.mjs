@@ -826,6 +826,26 @@ async function handleRequest(message) {
     case "thread/goal/get":
       respond(id, { goal: goalsByThreadId.get(params.threadId) ?? null });
       return;
+    case "thread/realtime/start":
+      respond(id, {});
+      notify("thread/realtime/started", {
+        threadId: params.threadId,
+        realtimeSessionId: "native-voice",
+        version: "v3",
+      });
+      notify("thread/realtime/sdp", {
+        threadId: params.threadId,
+        sdp: "native-answer",
+      });
+      if (script?.voiceStartsTurn) runScriptedTurn(params.threadId);
+      return;
+    case "thread/realtime/stop":
+      respond(id, {});
+      notify("thread/realtime/closed", {
+        threadId: params.threadId,
+        reason: null,
+      });
+      return;
     case "thread/goal/clear":
       goalsByThreadId.delete(params.threadId);
       if (script?.goalClearError) {

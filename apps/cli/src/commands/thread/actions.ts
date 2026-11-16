@@ -655,6 +655,96 @@ export function registerActionsCommands(
       ),
     );
 
+  const voice = parent
+    .command("voice")
+    .description("Manage native two-way Codex voice chat");
+  voice
+    .command("start [id]")
+    .description(
+      "Negotiate voice using a WebRTC client's SDP offer; prints the answer and session id",
+    )
+    .requiredOption(
+      "--sdp-file <path>",
+      `Read SDP offer from a file; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
+    .option("--session <uuid>", "Client session id (defaults to a new UUID)")
+    .option("--self", "Target the current thread")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: {
+            sdpFile: string;
+            session?: string;
+            self?: boolean;
+            json?: boolean;
+          },
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sessionId = opts.session ?? randomUUID();
+          const sdp = await requireTextInput({
+            file: opts.sdpFile,
+            fileLabel: "--sdp-file",
+            inline: undefined,
+            inlineLabel: "SDP offer",
+          });
+          const result = await createCliBbSdk(getUrl()).threads.experimental_voice({
+            threadId,
+            command: { action: "start", sessionId, sdp },
+          });
+          if (outputJson(opts, { threadId, sessionId, ...result })) return;
+          console.log(`Voice session ${sessionId}\n${result.sdp ?? ""}`);
+        },
+      ),
+    );
+  voice
+    .command("keep-alive [id]")
+    .description(
+      "Renew a client's voice lease; call every 15 seconds while connected",
+    )
+    .requiredOption("--session <uuid>", "Active voice session id")
+    .option("--self", "Target the current thread")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: { session: string; self?: boolean; json?: boolean },
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          await createCliBbSdk(getUrl()).threads.experimental_voice({
+            threadId,
+            command: { action: "keepAlive", sessionId: opts.session },
+          });
+          if (outputJson(opts, { ok: true, threadId })) return;
+          console.log(`Voice session ${opts.session} renewed`);
+        },
+      ),
+    );
+  voice
+    .command("stop [id]")
+    .description("End a voice session without stopping the coding agent")
+    .requiredOption("--session <uuid>", "Session id returned by voice start")
+    .option("--self", "Target the current thread")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: { session: string; self?: boolean; json?: boolean },
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          await createCliBbSdk(getUrl()).threads.experimental_voice({
+            threadId,
+            command: { action: "stop", sessionId: opts.session },
+          });
+          if (outputJson(opts, { ok: true, threadId })) return;
+          console.log(`Voice session ${opts.session} ended`);
+        },
+      ),
+    );
+
   for (const { name, description, method, done } of [
     {
       name: "stop",

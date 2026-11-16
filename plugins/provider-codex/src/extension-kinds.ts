@@ -1,3 +1,4 @@
+import { voiceStateSchema } from "./voice-state.js";
 import { z } from "zod";
 
 export const CODEX_PLUGIN_ID = "provider-codex";
@@ -71,6 +72,7 @@ export type CodexAsyncQuestionState = z.infer<
 >;
 
 export const codexExtensionKinds = {
+  voice: { state: voiceStateSchema },
   goal: { state: codexGoalStateSchema },
   "macos-permission": { item: codexMacOsPermissionItemSchema },
   "async-question": { state: codexAsyncQuestionStateSchema },

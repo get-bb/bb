@@ -1631,6 +1631,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use bb's own API from plugin server code. With this, a plugin can:",
         bullets: [
           "Create threads attributed to the plugin, send messages, and manage projects and machines",
+          "Negotiate native Codex realtime voice on an existing thread through experimental_voice; supply WebRTC SDP and renew or stop the call without opening a second provider connection",
           "Run plugin updates and provider CLI installs in the background and follow them to the end",
           "Find plugin releases outside the saved version range and change the range to take one",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
@@ -1669,6 +1670,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.threads.experimental_listCascade",
           "PluginBbSdk.threads.experimental_regenerateTitle",
           "PluginBbSdk.threads.experimental_headState",
+          "PluginBbSdk.threads.experimental_voice",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

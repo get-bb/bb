@@ -4841,3 +4841,7 @@ precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
+
+## Thread-scoped native voice transport
+
+`threads.experimental_voice` negotiates start/keepAlive/stop on the backing provider connection through the same server/daemon path used by `bb thread voice`. Provider support is opt-in through the additive `threadVoice` capability. Codex implements WebRTC negotiation and publishes lifecycle through its provider extension state; no browser audio or conversation policy is supplied by core. Stabilization requires review of session ownership, lifecycle notifications and a provider-neutral active-session signal before adding another provider. The current concrete core caller is the CLI; plugin clients supply their own browser audio frontend.
