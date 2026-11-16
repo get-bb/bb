@@ -13,7 +13,6 @@ import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
 import {
-  ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION,
   encodeClientTurnRequestIdNumber,
   systemThreadProvisioningEventDataSchema,
 } from "@bb/domain";
@@ -3022,7 +3021,7 @@ it.each([false, true])(
   },
 );
 
-it("withdraws a requested removal once its thread is unarchived, and tells the thread", async () => {
+it("withdraws a requested removal once its thread is unarchived", async () => {
   await withTestHarness(async (harness) => {
     const remove = vi.fn(async () => ({ status: "removed" as const }));
     const fixture = setup(harness, { remove });
@@ -3053,15 +3052,6 @@ it("withdraws a requested removal once its thread is unarchived, and tells the t
       path: `/tmp/${fixture.thread.id}`,
     });
     expect(remove).not.toHaveBeenCalled();
-    expect(
-      listEvents(harness.db, { threadId: fixture.thread.id })
-        .filter((event) => event.type === "system/operation")
-        .map(
-          (event) =>
-            z.object({ operation: z.string() }).parse(JSON.parse(event.data))
-              .operation,
-        ),
-    ).toEqual([ENVIRONMENT_REMOVAL_WITHDRAWN_OPERATION]);
   });
 });
 

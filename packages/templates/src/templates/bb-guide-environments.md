@@ -120,8 +120,7 @@ Making your repo work with bb:
                                           live or stopping. The command returns with cleanup
                                           requested; lifecycle becomes destroyed only after
                                           provider removal completes. Unarchiving one of its
-                                          threads before removal starts cancels the request;
-                                          the thread's timeline shows "Workspace deletion cancelled"
+                                          threads before removal starts cancels the request
   bb environment cleanup <id>             Remove an unused provider-managed environment now
     --recover                             After inspection, acknowledge interrupted hooks and
                                           retry failed cleanup (Linux and macOS same-user process guard)
