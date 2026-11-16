@@ -674,7 +674,7 @@ export function registerActionsCommands(
     .option("--no-context", "Start without provider startup history")
     .option(
       "--instructions-file <path>",
-      "Call-scoped instructions for native coding handoffs",
+      "Startup handoff guidance retained in the coding thread history",
     )
     .option("--self", "Target the current thread")
     .option("--json", "Print machine-readable JSON output")

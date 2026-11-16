@@ -36,8 +36,13 @@ Lifecycle:
   Supplying initialContext replaces native startup history with that reference;
   an empty string supplies no history. Omitting it keeps provider defaults.
   These values apply only at startup; core does not synthesize or append context.
-  Instructions guide native coding handoffs for this call. Context files may be
-  empty; input streams may be used once per command.
+  Instructions enter the coding thread's history on its first step during voice;
+  Codex adds a generic end notice on the first post-call step rather than removing
+  them. Back-to-back calls without a step between them can retain earlier guidance.
+  Context files may be empty; input streams may be used once per command.
+  Native voice requires a verifiable Codex app-server version of at least 0.147.0.
+  Handoffs use the running turn's settings or last submitted settings; unsent
+  composer selections do not apply.
 
   A thread allows one voice session at a time. Codex account/model access still
   determines whether native realtime is available.

@@ -216,6 +216,7 @@ it.each([
   "unknown",
   "codex_cli_rs/0.136.0 (test)",
   "codex_cli_rs/0.146.0 (test)",
+  "codex_cli_rs/0.147.0-alpha.1 (test)",
 ])(
   "rejects native voice before unsupported startup fields can be silently ignored (%s)",
   (userAgent) => {
@@ -226,6 +227,8 @@ it.each([
   "codex_cli_rs/0.147.0 (test)",
   "bb/0.160.1 (test; client 1.0.0)",
   "codex_cli_rs/1.0.0",
+  "codex_cli_rs/0.161.0-alpha.2 (test)",
+  "codex_cli_rs/0.147.0+build.1 (test)",
 ])(
   "accepts an app-server version supporting all native voice startup fields (%s)",
   (userAgent) => {

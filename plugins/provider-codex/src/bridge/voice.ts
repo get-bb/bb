@@ -1,5 +1,6 @@
 import {
   experimental_compareVersions as compareVersions,
+  experimental_versionFrom as versionFrom,
   threadVoiceParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { VoiceState } from "../voice-state.js";
@@ -9,7 +10,9 @@ import type { CodexAppServerConnection } from "./app-server-connection.js";
 export const voiceCommandSchema = threadVoiceParamsSchema.shape.command;
 
 export function requireNativeVoiceVersion(userAgent: string | null): void {
-  const version = userAgent?.match(/^[^\s/]+\/(\d+\.\d+\.\d+)(?:\s|$)/)?.[1];
+  const version = versionFrom(
+    userAgent?.match(/^[^\s/]+\/(\S+)(?:\s|$)/)?.[1] ?? null,
+  );
   if (!version || compareVersions(version, "0.147.0") < 0) {
     throw new Error(
       "Native voice requires Codex 0.147.0 or newer with a verifiable app-server version",
