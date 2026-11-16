@@ -1,0 +1,28 @@
+{
+  "name": "@bb/render-invariants",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
+    "test:render-invariants": "vitest run --config vitest.render-invariants.config.ts",
+    "serve": "cross-env NODE_ENV=test node --conditions=source --import tsx src/serve.ts"
+  },
+  "dependencies": {
+    "@bb/db": "workspace:*",
+    "@bb/integration-tests": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@bb/app": "workspace:*",
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.20.5",
+    "cross-env": "^10.1.0",
+    "playwright-core": "1.58.2",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "tsx": "^4.23.15",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.12"
+  }
+}

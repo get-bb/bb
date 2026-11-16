@@ -801,6 +801,37 @@ describe.concurrent("WorkspaceReads", () => {
     ).toBe(0);
   });
 
+  it("uses origin's base branch when the local one only trails it", async ({
+    onTestFinished,
+  }) => {
+    const repoPath = await copyRepository(
+      await makeTempDir(onTestFinished, "bb-workspace-stale-base-"),
+    );
+    const git = (args: string[]) => runGit(args, { cwd: repoPath });
+    const staleMain = (await git(["rev-parse", "HEAD"])).stdout.trim();
+    await fs.writeFile(path.join(repoPath, "base.txt"), "new base\n");
+    await git(["add", "."]);
+    await git(["commit", "-m", "Base update"]);
+    await git(["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    await git(["checkout", "-b", "feature"]);
+    await git(["update-ref", "refs/heads/main", staleMain]);
+    await fs.writeFile(path.join(repoPath, "feature.txt"), "feature\n");
+    await git(["add", "."]);
+    await git(["commit", "-m", "Feature"]);
+
+    const workspace = new WorkspaceReads(repoPath, tmpdir());
+    const diffAgainst = (mergeBaseBranch: string) =>
+      workspace.getDiff({
+        ...UNLIMITED_DIFF,
+        freshness: fresh(),
+        target: { type: "branch_committed", mergeBaseBranch },
+      });
+    const short = await diffAgainst("main");
+    expect(short.diff).toContain("feature.txt");
+    expect(short.diff).not.toContain("base.txt");
+    expect((await diffAgainst("refs/heads/main")).diff).toContain("base.txt");
+  });
+
   it("reports unresolved merge bases instead of empty diffs", async ({
     onTestFinished,
   }) => {

@@ -187,7 +187,7 @@ export function createBrowserAutomationCli(deps: {
       run: cliCommand({
         summary: "Run a trusted DevBrowser script; runs serialize per session",
         description:
-          "Scripts may return at most 4 screenshots per run, JPEG only, 500 KB combined;\nanything larger or in another format fails the run.",
+          "Scripts may return at most 4 screenshots per run, JPEG only, 500 KB combined;\nanything larger or in another format fails the run. Output over 512 KB stops\nthe run with exit code 1 and keeps the session open.",
         positionals: [SESSION_POSITIONAL],
         constraints: [
           { kind: "exactly-one", options: ["script", "script-file"] },

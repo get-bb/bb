@@ -1028,6 +1028,21 @@ describe("buildTimelineRowTitle", () => {
     });
   });
 
+  it("opens files outside the workspace as local files instead of diffs", () => {
+    const outsideRow: TimelineFileChangeWorkRow = {
+      ...editedFileRow(),
+      change: {
+        ...editedFileRow().change,
+        path: "/Users/me/.bb/thread-storage/thr_1/notes.md",
+      },
+    };
+
+    expect(buildTimelineRowTitle(outsideRow, DEFAULT_OPTIONS).action).toEqual({
+      kind: "open-local-file",
+      path: "/Users/me/.bb/thread-storage/thr_1/notes.md",
+    });
+  });
+
   it("does not declare an action on non-file-change titles", () => {
     const commandRow = {
       ...baseRow("cmd-1"),

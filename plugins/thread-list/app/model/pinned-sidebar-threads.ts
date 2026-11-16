@@ -1,6 +1,7 @@
 import { compareCodepoint } from "./compare-codepoint.js";
 import {
   buildProjectThreadGroups,
+  sortEnvironmentGroupNodes,
   compareStandardThreads,
   type ProjectThreadItem,
   type ProjectThreadNode,
@@ -138,14 +139,7 @@ export function buildPinnedSidebarState({
     effectivePinnedThreads,
     compareStandardThreads,
     groupEnvironmentThreads,
-  );
-  for (const item of rootItems) {
-    if (item.kind === "environment") {
-      item.group.nodes.sort((left, right) =>
-        comparePinnedRoots(left.thread, right.thread),
-      );
-    }
-  }
+  ).map((item) => sortEnvironmentGroupNodes(item, comparePinnedRoots));
   rootItems.sort((left, right) =>
     comparePinnedRoots(getPinnedItemThread(left), getPinnedItemThread(right)),
   );

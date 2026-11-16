@@ -9,7 +9,7 @@ import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   isNavTab,
   isThreadTab,
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginTabSlot,
 } from "@/lib/plugin-slots";
 import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
@@ -91,7 +91,7 @@ function Visibility({
 }
 
 export function usePluginTabs(context: PluginTabContext | null) {
-  const { tabs } = usePluginSlots();
+  const tabs = usePluginSlotKind("tabs");
   const contextKey =
     context === null
       ? ""

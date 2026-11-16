@@ -8,6 +8,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { useAtom } from "jotai";
 import type {
   ExperimentalThreadContextCardProps,
@@ -26,7 +27,7 @@ import {
   type GroupedPlacement,
 } from "@/lib/grouped-placement";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadContextCardRowSlot,
   type PluginThreadContextCardSectionSlot,
 } from "@/lib/plugin-slots";
@@ -125,7 +126,10 @@ export function ThreadContextCardProvider({
   coreSections: readonly CoreThreadContextCardSection[];
   children: ReactNode;
 }) {
-  const { threadContextCardRows, threadContextCardSections } = usePluginSlots();
+  const threadContextCardRows = usePluginSlotKind("threadContextCardRows");
+  const threadContextCardSections = usePluginSlotKind(
+    "threadContextCardSections",
+  );
   const [layout, setLayout] = useState<ThreadContextCardLayout>("banner");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [cardHasContent, setCardHasContent] = useState(false);
@@ -365,10 +369,16 @@ export function ThreadContextCard() {
       "[data-scroll-overlay]",
     );
     if (!overlay || !setLayout) return;
-    const measure = () =>
-      setLayout(resolveThreadContextCardLayout(overlay.clientWidth));
-    measure();
-    const observer = new ResizeObserver(measure);
+    const measured = {
+      layout: resolveThreadContextCardLayout(overlay.clientWidth),
+    };
+    setLayout(measured.layout);
+    const observer = new ResizeObserver(() => {
+      const next = resolveThreadContextCardLayout(overlay.clientWidth);
+      if (next === measured.layout) return;
+      measured.layout = next;
+      flushSync(() => setLayout(next));
+    });
     observer.observe(overlay);
     return () => observer.disconnect();
   }, [setLayout]);

@@ -3,7 +3,7 @@ import type {
   ExperimentalRpcKeyedValue,
 } from "../rpc-contract.js";
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsFetching, type QueryClient } from "@tanstack/react-query";
 import {
   invalidateTags,
@@ -158,6 +158,18 @@ const tagsOf = (data: RpcResponse) => [
   ...data.tags,
   ...Object.values(data.keyTags).flat(),
 ];
+function useParsedRpcInput(input: unknown): JsonValue {
+  const identity = JSON.stringify(input ?? null);
+  const [parsed, setParsed] = useState(() => ({
+    identity,
+    value: jsonValueSchema.parse(input ?? null),
+  }));
+  if (parsed.identity === identity) return parsed.value;
+  const next = { identity, value: jsonValueSchema.parse(input ?? null) };
+  setParsed(next);
+  return next.value;
+}
+
 const owners = new WeakMap<
   QueryClient,
   Map<string, ReturnType<typeof createTaggedKeyedQueryOwner<JsonValue>>>
@@ -178,8 +190,11 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
   ) => {
     const host = useHost();
     const pluginId = resolvePluginId(host, options.pluginId);
-    const input = jsonValueSchema.parse(options.input ?? null);
-    const queryKey = rpcQueryKey(pluginId, options.method, input);
+    const input = useParsedRpcInput(options.input);
+    const queryKey = useMemo(
+      () => rpcQueryKey(pluginId, options.method, input),
+      [input, options.method, pluginId],
+    );
     useSubscription(host, pluginId, options.enabled ?? true);
     const watchIdentity = canonicalPluginReadInput(input);
     useEffect(() => {
@@ -203,21 +218,30 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
       },
       host.queryClient,
     );
-    return {
-      data: query.data?.result,
-      error:
-        query.error === null
+    const { refetch: refetchQuery, error: queryError } = query;
+    const refetch = useCallback(async () => {
+      await refetchQuery();
+    }, [refetchQuery]);
+    const error = useMemo(
+      () =>
+        queryError === null
           ? null
           : experimental_PluginRpcCallError.from(
-              query.error,
+              queryError,
               "invalid_response",
             ),
-      isLoading: (options.enabled ?? true) && query.isLoading,
-      isFetching: query.isFetching,
-      refetch: async () => {
-        await query.refetch();
-      },
-    } as ReturnType<PluginSdkApp["experimental_useRpcQuery"]>;
+      [queryError],
+    );
+    const data = query.data?.result;
+    const isLoading = (options.enabled ?? true) && query.isLoading;
+    const isFetching = query.isFetching;
+    return useMemo(
+      () =>
+        ({ data, error, isLoading, isFetching, refetch }) as ReturnType<
+          PluginSdkApp["experimental_useRpcQuery"]
+        >,
+      [data, error, isFetching, isLoading, refetch],
+    );
   };
   function experimental_useRpcKeyedQuery<
     Contract extends PluginRpcContract,
@@ -349,11 +373,15 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
       },
       [current, keys],
     );
-    return {
-      ...query,
-      refetch,
-      refetchKeys,
-    } as ExperimentalRpcKeyedQueryState<T, Selection>;
+    return useMemo(
+      () =>
+        ({
+          ...query,
+          refetch,
+          refetchKeys,
+        }) as ExperimentalRpcKeyedQueryState<T, Selection>,
+      [query, refetch, refetchKeys],
+    );
   }
   function experimental_useRpcMutation<
     Contract extends PluginRpcContract = PluginRpcContract,

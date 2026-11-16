@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import type { ComponentProps, CSSProperties } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
@@ -135,8 +134,7 @@ import {
 } from "@/hooks/useSenderThreadMetadataById";
 import {
   EMPTY_PLUGIN_SLOT_SNAPSHOT,
-  getPluginSlotSnapshot,
-  subscribePluginSlots,
+  usePluginSlotKind,
   type PluginMessageActionSlot,
   type PluginMessageMetadataSlot,
 } from "@/lib/plugin-slots.js";
@@ -2380,26 +2378,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const projectId = props.projectId;
   const senderThreadMetadataById = useSenderThreadMetadataById();
-  const messageDirectiveSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().messageDirectives,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageDirectives,
-  );
-  const codeFenceRendererSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().codeFenceRenderers,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.codeFenceRenderers,
-  );
-  const messageActionSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().messageActions,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions,
-  );
-  const messageMetadataSlots = useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().messageMetadata,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageMetadata,
-  );
+  const messageDirectiveSlots = usePluginSlotKind("messageDirectives");
+  const codeFenceRendererSlots = usePluginSlotKind("codeFenceRenderers");
+  const messageActionSlots = usePluginSlotKind("messageActions");
+  const messageMetadataSlots = usePluginSlotKind("messageMetadata");
   const messageDirectiveRegistry = useMemo(
     () => buildMessageDirectiveRegistry(messageDirectiveSlots),
     [messageDirectiveSlots],

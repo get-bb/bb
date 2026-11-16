@@ -69,6 +69,7 @@ export function useDiffFiles(args: {
     shown: current,
     error: query.error,
     isLoading: query.isLoading && current === null,
+    isFetching: query.isFetching,
     isPlaceholder: query.data === undefined && current !== null,
   };
 }

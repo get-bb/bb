@@ -10,6 +10,7 @@ import type {
   ExperimentalLiveFileTarget,
   ExperimentalThreadTabProps,
 } from "@get-bb/plugin-sdk/app";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { makeWorkspaceStatus } from "../../testing.js";
 import { gitRpcContract } from "../../rpc-contract.js";
 import type { GitStatusRow } from "../../contract.js";
@@ -76,6 +77,7 @@ function renderTab(
   rpc: Partial<PluginRpcTestHandlers<typeof gitRpcContract>> = {},
   options: {
     canOpenFileExternally?: (target: ExperimentalLiveFileTarget) => boolean;
+    experimental_fixedTabTarget?: { tabId: string; target: JsonValue };
     tabVisible?: boolean;
   } = {},
 ) {
@@ -156,9 +158,9 @@ describe("DiffTab", () => {
   it("reads no file list while the tab is not showing", async () => {
     const rendered = renderTab({}, { tabVisible: false });
     await waitFor(() =>
-      expect(
-        rendered.rpcCalls.some((call) => call.method === "status"),
-      ).toBe(true),
+      expect(rendered.rpcCalls.some((call) => call.method === "status")).toBe(
+        true,
+      ),
     );
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(rendered.rpcCalls.some((call) => call.method === "files")).toBe(
@@ -216,4 +218,67 @@ describe("DiffTab", () => {
       );
     },
   );
+
+  describe("opening a file from outside the panel", () => {
+    const filesWithA = () => ({
+      outcome: "available" as const,
+      files: [makeDiffFileEntry({ path: "a.ts", revision: "rev-a" })],
+      truncated: false,
+      shortstat: "",
+      mergeBaseRef: null,
+      initialPatches: [],
+    });
+    const previewCalls = (rendered: ReturnType<typeof renderTab>) =>
+      rendered.navigateCalls.filter(
+        (call) => call.method === "experimental_openFilePreview",
+      );
+
+    it("opens the file preview when the requested file has no diff", async () => {
+      const rendered = renderTab(
+        { files: filesWithA },
+        {
+          experimental_fixedTabTarget: {
+            tabId: "diff",
+            target: { kind: "file", path: "notes/ignored.md" },
+          },
+        },
+      );
+      await waitFor(() =>
+        expect(previewCalls(rendered)).toEqual([
+          {
+            method: "experimental_openFilePreview",
+            options: {
+              target: {
+                kind: "workspace",
+                environmentId: "env-1",
+                path: "notes/ignored.md",
+              },
+              location: null,
+            },
+          },
+        ]),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(previewCalls(rendered)).toHaveLength(1);
+    });
+
+    it("stays on the diff when the requested file has changes", async () => {
+      const rendered = renderTab(
+        { files: filesWithA },
+        {
+          experimental_fixedTabTarget: {
+            tabId: "diff",
+            target: { kind: "file", path: "a.ts" },
+          },
+        },
+      );
+      await waitFor(() =>
+        expect(rendered.rpcCalls.some((call) => call.method === "files")).toBe(
+          true,
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(previewCalls(rendered)).toEqual([]);
+    });
+  });
 });

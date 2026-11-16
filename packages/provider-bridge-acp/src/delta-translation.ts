@@ -97,6 +97,7 @@ export interface AcpBoundPermissionToolCall {
   event: AcpToolCallUpdateEvent | undefined;
 }
 
+export const SYSTEM_INSTRUCTIONS_OPEN_TAG = "<system_instructions>";
 const ASSISTANT_STREAM_KEY = "assistant";
 const THOUGHT_STREAM_KEY = "thought";
 const ACP_PLAN_STEP_STATUS_BY_ENTRY_STATUS = {
@@ -881,6 +882,7 @@ export function createAcpDeltaTranslator(
         if (
           typeof title !== "string" ||
           title.trim() === "" ||
+          title.trimStart().startsWith(SYSTEM_INSTRUCTIONS_OPEN_TAG) ||
           title === lastAgentTitle
         ) {
           return [];

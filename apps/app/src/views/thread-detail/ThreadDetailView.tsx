@@ -148,7 +148,7 @@ import {
   type OpenAttachmentRequest,
 } from "@/components/secondary-panel/AttachmentOpenerContext";
 import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToChatContext";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
@@ -437,10 +437,8 @@ function ThreadDetailViewInternal(
   });
   const openBrowser = panelBrowser.open;
   const openBrowserUrl = panelBrowser.openUrl;
-  const {
-    fileOpeners: pluginFileOpeners,
-    threadPanelActions: registeredThreadActions,
-  } = usePluginSlots();
+  const pluginFileOpeners = usePluginSlotKind("fileOpeners");
+  const registeredThreadActions = usePluginSlotKind("threadPanelActions");
   useThreadOpenFileSignal({
     threadId,
     environmentId: thread?.environmentId,
@@ -1112,7 +1110,21 @@ function ThreadDetailViewInternal(
       switch (action.kind) {
         case "open-file-diff":
           return () => {
-            openSecondaryPanelDiffFile(action.path);
+            if (openSecondaryPanelDiffFile(action.path)) return;
+            const environmentId = thread?.environmentId;
+            if (environmentId === null || environmentId === undefined) return;
+            openLiveFilePreview({
+              target: { kind: "workspace", environmentId, path: action.path },
+              location: null,
+            });
+          };
+        case "open-local-file":
+          return () => {
+            handleOpenTimelineLocalFileLink({
+              lineRange: null,
+              openTargetId: null,
+              path: action.path,
+            });
           };
         case "open-plugin-side-chat":
           return () => {
@@ -1129,7 +1141,14 @@ function ThreadDetailViewInternal(
           return assertNever(action);
       }
     },
-    [openSecondaryPanelDiffFile, panel, threadId],
+    [
+      handleOpenTimelineLocalFileLink,
+      openLiveFilePreview,
+      openSecondaryPanelDiffFile,
+      panel,
+      thread?.environmentId,
+      threadId,
+    ],
   );
   const metadataStorage = useMemo(
     () =>

@@ -36,7 +36,7 @@ import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginNavPanelSlot,
 } from "@/lib/plugin-slots";
 import { PLUGIN_PANEL_ROUTE_PATH } from "@/lib/route-paths";
@@ -2188,7 +2188,7 @@ describe("plugin thread panel actions", () => {
         threadId: "thr_one",
         environmentId: null,
       });
-      const { newThreadPanelActions } = usePluginSlots();
+      const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const threadEntries = usePluginPanelActions({
         actions,
         panel: usePanelFor(actions, recordOpen),
@@ -2269,7 +2269,7 @@ describe("plugin thread panel actions", () => {
       const [tab, setTab] = useState<ReturnType<
         typeof createPluginPanelFixedPanelTab
       > | null>(null);
-      const { newThreadPanelActions } = usePluginSlots();
+      const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const entries = usePluginNewThreadPanelActions({
         panel: usePanelFor(newThreadPanelActions, (args) =>
           setTab(createPluginPanelFixedPanelTab(args)),
