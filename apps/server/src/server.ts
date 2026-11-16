@@ -32,7 +32,11 @@ import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
 import { Hono } from "hono";
-import { terminalWebSocketQuerySchema } from "@bb/server-contract";
+import {
+  APP_SHELL_PLUGIN_LIST_ELEMENT_ID,
+  terminalWebSocketQuerySchema,
+  type PluginListResponse,
+} from "@bb/server-contract";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import type { ServerAppDeps } from "./types.js";
@@ -216,7 +220,6 @@ interface StaticResponseHeadersArgs {
   contentEncoding?: string;
   contentLength?: number;
   contentType: string;
-  etag?: string;
   urlPath: string;
 }
 
@@ -263,9 +266,6 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   const headers = new Headers();
   headers.set("content-type", args.contentType);
   headers.set("cache-control", staticCacheControlForPath(args.urlPath));
-  if (args.etag !== undefined) {
-    headers.set("etag", args.etag);
-  }
   if (args.contentEncoding !== undefined) {
     headers.set("content-encoding", args.contentEncoding);
     headers.set("vary", "Accept-Encoding");
@@ -276,35 +276,33 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   return headers;
 }
 
-const shellEtagCache = new Map<
-  string,
-  { etag: string; mtimeMs: number; size: number }
->();
+interface AppShellTemplate {
+  html: string;
+  mtimeMs: number;
+  size: number;
+}
 
-async function shellEtag(filePath: string): Promise<string | undefined> {
-  try {
-    const fileStat = await stat(filePath);
-    const cached = shellEtagCache.get(filePath);
-    if (
-      cached !== undefined &&
-      cached.size === fileStat.size &&
-      cached.mtimeMs === fileStat.mtimeMs
-    ) {
-      return cached.etag;
-    }
-    const digest = createHash("sha256")
-      .update(await readFile(filePath))
-      .digest("hex");
-    const etag = `W/"${digest.slice(0, 32)}"`;
-    shellEtagCache.set(filePath, {
-      etag,
+let appShellTemplate: AppShellTemplate | null = null;
+
+async function readAppShellTemplate(filePath: string): Promise<string> {
+  const fileStat = await stat(filePath);
+  if (
+    appShellTemplate === null ||
+    appShellTemplate.size !== fileStat.size ||
+    appShellTemplate.mtimeMs !== fileStat.mtimeMs
+  ) {
+    appShellTemplate = {
+      html: await readFile(filePath, "utf8"),
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,
-    });
-    return etag;
-  } catch {
-    return undefined;
+    };
   }
+  return appShellTemplate.html;
+}
+
+export function renderJsonScriptElement(id: string, value: unknown): string {
+  const json = JSON.stringify(value).replace(/</gu, "\\u003c");
+  return `<script type="application/json" id="${id}">${json}</script>`;
 }
 
 const STATIC_MIME_TYPES: Record<string, string> = {
@@ -322,29 +320,36 @@ const STATIC_MIME_TYPES: Record<string, string> = {
   ".map": "application/json",
 };
 
-export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
+export function registerStaticAppRoutes(
+  app: Hono,
+  staticDir: string,
+  renderShellHead: () => string,
+): void {
   const root = resolve(staticDir);
+  const shellPath = join(root, "index.html");
 
-  const serveStaticAppFile = async (args: {
+  const serveAppShell = async (
+    ifNoneMatchHeader: string | undefined,
+  ): Promise<Response> => {
+    const template = await readAppShellTemplate(shellPath);
+    const html = template.replace("</head>", `${renderShellHead()}</head>`);
+    const etag = `W/"${createHash("sha256").update(html).digest("hex").slice(0, 32)}"`;
+    const headers = new Headers();
+    headers.set("cache-control", STATIC_INDEX_CACHE_CONTROL);
+    headers.set("etag", etag);
+    if (requestMatchesEntityTag(ifNoneMatchHeader, etag)) {
+      return new Response(null, { status: 304, headers });
+    }
+    headers.set("content-type", "text/html");
+    return new Response(html, { headers });
+  };
+
+  const serveStaticFile = async (args: {
     acceptEncodingHeader: string | undefined;
     contentType: string;
     filePath: string;
-    ifNoneMatchHeader: string | undefined;
     urlPath: string;
   }): Promise<Response> => {
-    const etag =
-      args.contentType === "text/html"
-        ? await shellEtag(args.filePath)
-        : undefined;
-    if (
-      etag !== undefined &&
-      requestMatchesEntityTag(args.ifNoneMatchHeader, etag)
-    ) {
-      const headers = new Headers();
-      headers.set("cache-control", staticCacheControlForPath(args.urlPath));
-      headers.set("etag", etag);
-      return new Response(null, { status: 304, headers });
-    }
     const precompressedFile = await findPrecompressedStaticFile({
       acceptEncodingHeader: args.acceptEncodingHeader,
       contentType: args.contentType,
@@ -357,7 +362,6 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
           contentEncoding: precompressedFile.encoding,
           contentLength: precompressedFile.contentLength,
           contentType: args.contentType,
-          etag,
           urlPath: args.urlPath,
         }),
       });
@@ -366,27 +370,29 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
     return new Response(content, {
       headers: createStaticResponseHeaders({
         contentType: args.contentType,
-        etag,
         urlPath: args.urlPath,
       }),
     });
   };
 
   app.get("*", async (context) => {
+    const ifNoneMatchHeader = context.req.header("if-none-match");
     const urlPath = context.req.path === "/" ? "/index.html" : context.req.path;
     const filePath = join(root, urlPath);
     if (!filePath.startsWith(root)) {
       return context.notFound();
     }
+    if (filePath === shellPath) {
+      return serveAppShell(ifNoneMatchHeader);
+    }
     try {
       const fileStat = await stat(filePath);
       if (fileStat.isFile()) {
-        return await serveStaticAppFile({
+        return await serveStaticFile({
           acceptEncodingHeader: context.req.header("accept-encoding"),
           contentType:
             STATIC_MIME_TYPES[extname(filePath)] ?? "application/octet-stream",
           filePath,
-          ifNoneMatchHeader: context.req.header("if-none-match"),
           urlPath,
         });
       }
@@ -394,13 +400,7 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
     if (urlPath.startsWith("/assets/")) {
       return context.notFound();
     }
-    return serveStaticAppFile({
-      acceptEncodingHeader: context.req.header("accept-encoding"),
-      contentType: "text/html",
-      filePath: join(root, "index.html"),
-      ifNoneMatchHeader: context.req.header("if-none-match"),
-      urlPath: "/index.html",
-    });
+    return serveAppShell(ifNoneMatchHeader);
   });
 }
 
@@ -1088,7 +1088,11 @@ export function createApp(
   );
 
   if (options?.staticDir) {
-    registerStaticAppRoutes(app, options.staticDir);
+    registerStaticAppRoutes(app, options.staticDir, () =>
+      renderJsonScriptElement(APP_SHELL_PLUGIN_LIST_ELEMENT_ID, {
+        plugins: pluginService.list(),
+      } satisfies PluginListResponse),
+    );
   } else {
     app.get("/", (context) => context.text("bb server"));
   }

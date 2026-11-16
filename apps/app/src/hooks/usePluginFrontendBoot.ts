@@ -18,6 +18,7 @@ import { pluginListQueryOptions } from "./queries/plugin-settings-queries";
 import { appQueryClient } from "../lib/app-query-client";
 import { prefetchPluginModule } from "../lib/plugin-module-preload";
 import { prefetchPluginCss } from "../lib/plugin-css";
+import { warmPluginRuntimeGroups } from "../lib/plugin-runtime-groups";
 
 export const PLUGIN_FRONTEND_SETTLE_FLOOR_MS = 15_000;
 const PRIORITY_PRELOAD_HOLD_MAX_MS = 10_000;
@@ -45,6 +46,7 @@ export function usePluginFrontendBoot(): void {
           }
           const bundle = plugin.app.bundle;
           if (bundle === null || !bundle.compatible) continue;
+          warmPluginRuntimeGroups(bundle.runtimeSlots);
           prefetchPluginModule(bundle.jsUrl);
           if (bundle.cssUrl !== null) prefetchPluginCss(bundle.cssUrl);
         }

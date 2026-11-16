@@ -161,6 +161,13 @@ meantime. With `keepMounted: true`, a split stays mounted after `mountWhen`
 turns false again, so closing preserves its state. Downloading never mounts:
 preload does not render hidden UI or run its effects.
 
+Background UI mounted outside the route content, such as the toaster, passes
+`suspends: false`. The split renders `loading` until its module arrives and then
+mounts it without a Suspense boundary. Any boundary that switches between
+fallback and content makes React hold the next retry reveal anywhere in the app
+for 300 ms, so a background split that suspends and reveals while the route is
+still loading delays the route's own content by up to 300 ms.
+
 Keep the existing persistent responsive drawer's deferred realization and
 retained content. Avoid rendering a split merely to preload it.
 

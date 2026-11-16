@@ -8,4 +8,5 @@ export const ThreadRowMetadataCollectors = defineSplit({
     ),
   loading: () => null,
   tier: "preload",
+  suspends: false,
 });

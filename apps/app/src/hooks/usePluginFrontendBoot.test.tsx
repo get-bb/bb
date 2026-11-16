@@ -26,7 +26,10 @@ vi.mock("@/lib/split-prefetch", () => ({
   holdSplitPreloads: () => mocks.releaseSplitPreloads,
 }));
 
-vi.mock("@/lib/plugin-frontend-lazy", () => ({
+vi.mock("@/lib/plugin-frontend-lazy", async (importOriginal) => ({
+  createRetryingModuleLoader: (
+    await importOriginal<typeof import("@/lib/plugin-frontend-lazy")>()
+  ).createRetryingModuleLoader,
   bootPluginFrontends: mocks.bootPluginFrontends,
   preloadPluginFrontend: mocks.preloadPluginFrontend,
   whenPriorityPluginFrontendsLoaded: () => new Promise(() => {}),
