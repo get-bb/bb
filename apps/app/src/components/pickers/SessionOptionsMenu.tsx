@@ -229,7 +229,7 @@ export function SessionOptionsMenu({
     return trigger;
   }
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
