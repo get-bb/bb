@@ -477,4 +477,5 @@ provider CLIs, and agent shells keep the user's Node networking defaults. Config
 include `localhost,127.0.0.1,::1` in `NO_PROXY`. `NODE_EXTRA_CA_CERTS` adds a PEM
 bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the defaults.
 Restart bb after changes. Proxy support requires Node 22.21+, 24.5+, or 26;
-custom socket/agent libraries, including daemon WebSockets, can still bypass it.
+daemon WebSockets follow it, but other custom socket/agent libraries can still
+bypass it.
