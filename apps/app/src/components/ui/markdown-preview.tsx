@@ -127,7 +127,6 @@ import {
 } from "./markdown-incremental-pieces.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
-import { observeSharedResize } from "@/lib/shared-resize-observer";
 import type { PromptTextMention } from "@bb/domain";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
 import {
@@ -136,6 +135,7 @@ import {
 } from "@/lib/localhost-link-rewrite-preference";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { useHostPathExists } from "@/hooks/queries/host-path-queries";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import remarkDirective from "remark-directive";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";

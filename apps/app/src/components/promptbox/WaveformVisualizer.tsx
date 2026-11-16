@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface WaveformVisualizerProps {
@@ -78,11 +79,12 @@ export function WaveformVisualizer({
       ctx.globalAlpha = 1;
     };
 
-    const observeResize = (onResize: () => void): ResizeObserver | null => {
+    const observeResize = (onResize: () => void): (() => void) | null => {
       if (typeof ResizeObserver === "undefined") return null;
-      const observer = new ResizeObserver(onResize);
-      observer.observe(canvas);
-      return observer;
+      return observeSharedResize(canvas, {
+        read: () => undefined,
+        write: onResize,
+      });
     };
 
     const redrawOnResize = () => {
@@ -106,8 +108,8 @@ export function WaveformVisualizer({
         );
       }
       draw();
-      const observer = observeResize(redrawOnResize);
-      return () => observer?.disconnect();
+      const unobserve = observeResize(redrawOnResize);
+      return () => unobserve?.();
     }
 
     const audioCtx = new AudioContext();
@@ -145,12 +147,12 @@ export function WaveformVisualizer({
       rafId = requestAnimationFrame(tick);
     };
 
-    const observer = observeResize(redrawOnResize);
+    const unobserve = observeResize(redrawOnResize);
     rafId = requestAnimationFrame(tick);
 
     return () => {
       cancelAnimationFrame(rafId);
-      observer?.disconnect();
+      unobserve?.();
       source.disconnect();
       analyser.disconnect();
       analysisTrack.stop();

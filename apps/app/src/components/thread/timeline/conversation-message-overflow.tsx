@@ -5,12 +5,12 @@ import {
   type MouseEvent,
   type RefObject,
 } from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   observeSharedResize,
   settleAfterSharedResizeWrites,
-} from "@/lib/shared-resize-observer";
+} from "@bb/shared-ui/lib/shared-resize-observer";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 import { useTimelinePositionKeeper } from "./TimelineWindowedItems.js";
 
 interface UseOverflowMeasurementArgs {

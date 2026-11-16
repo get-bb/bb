@@ -159,11 +159,11 @@
               },
               {
                 "name": "node:fs",
-                "message": "Server must not use node:fs. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)"
+                "message": "Server must not use node:fs. Use daemon commands for workspace access. (attachments.ts is the only exception \u2014 it manages server-local storage.)"
               },
               {
                 "name": "node:fs/promises",
-                "message": "Server must not use node:fs/promises. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)"
+                "message": "Server must not use node:fs/promises. Use daemon commands for workspace access. (attachments.ts is the only exception \u2014 it manages server-local storage.)"
               }
             ]
           }
@@ -223,6 +223,29 @@
       "files": ["plugins/**/*.{ts,tsx,mts,cts,js,mjs,cjs}"],
       "rules": {
         "bb/forkable-plugin-imports": "error"
+      }
+    },
+    {
+      "files": [
+        "apps/**/*.{ts,tsx}",
+        "packages/**/*.{ts,tsx}",
+        "plugins/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "bb/no-raw-resize-observer": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/shared-ui/src/lib/shared-resize-observer.ts",
+        "apps/app/src/components/ui/scroll-position-keeper.ts",
+        "apps/web/src/landing/hero-window-stage.tsx",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx"
+      ],
+      "rules": {
+        "bb/no-raw-resize-observer": "off"
       }
     }
   ]

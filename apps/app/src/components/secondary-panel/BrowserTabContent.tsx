@@ -29,6 +29,7 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   getBrowserUrlSecurity,
@@ -636,13 +637,10 @@ export function BrowserTabContent({
     if (element === null || desktopBrowser === null) {
       return;
     }
-    const observer = new ResizeObserver(() => {
-      syncBoundsIfChanged();
+    return observeSharedResize(element, {
+      read: () => undefined,
+      write: syncBoundsIfChanged,
     });
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
   }, [desktopBrowser, syncBoundsIfChanged]);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { ComposerMaxHeightContext } from "@/components/promptbox/composer-max-height";
@@ -93,11 +94,10 @@ function useCompactHomeMetrics(isCompact: boolean) {
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(region);
-    observer.observe(composer);
-    observer.observe(scrollContent);
-    return () => observer.disconnect();
+    return observeSharedResize([region, composer, scrollContent], {
+      read: () => undefined,
+      write: measure,
+    });
   }, [isCompact]);
 
   return {

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import type { ReactNode, UIEvent } from "react";
 import type {
   AgentEnvironment,
@@ -189,22 +190,21 @@ export function AutomationScriptContent({ content }: { content: string }) {
     const scrollArea = scrollRef.current;
     if (!scrollArea) return;
 
-    const updateOverflow = () => {
-      setHasMoreBelow(
-        scrollArea.scrollTop + scrollArea.clientHeight <
-          scrollArea.scrollHeight - 1,
-      );
-    };
-    updateOverflow();
+    const readHasMoreBelow = () =>
+      scrollArea.scrollTop + scrollArea.clientHeight <
+      scrollArea.scrollHeight - 1;
+    setHasMoreBelow(readHasMoreBelow());
 
-    const resizeObserver =
+    const unobserve =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(updateOverflow);
-    resizeObserver?.observe(scrollArea);
+        : observeSharedResize(scrollArea, {
+            read: readHasMoreBelow,
+            write: setHasMoreBelow,
+          });
 
     return () => {
-      resizeObserver?.disconnect();
+      unobserve?.();
       if (scrollbarIdleTimeoutRef.current !== null) {
         window.clearTimeout(scrollbarIdleTimeoutRef.current);
       }

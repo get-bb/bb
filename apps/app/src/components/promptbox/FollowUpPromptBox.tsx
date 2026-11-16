@@ -1,6 +1,10 @@
 import { flushSync } from "react-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
+import {
+  observedBorderBoxBlockSize,
+  observeSharedResize,
+} from "@bb/shared-ui/lib/shared-resize-observer";
 import type { FollowUpSubmitMode, PromptDraftState } from "@bb/client-core";
 import {
   memo,
@@ -679,19 +683,17 @@ function FollowUpPromptBoxWithComposer({
   useEffect(() => {
     const element = stackRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries.find((candidate) => candidate.target === element);
-      if (!entry) return;
-      const borderBoxSize = Array.isArray(entry.borderBoxSize)
-        ? entry.borderBoxSize[0]
-        : entry.borderBoxSize;
-      const measured = borderBoxSize?.blockSize ?? entry.contentRect.height;
-      if (lastStackHeightRef.current === measured) return;
-      flushSync(() => applyStackHeight(measured));
-      positionKeeper?.remeasure();
+    return observeSharedResize(element, {
+      read: (entry) =>
+        entry === undefined
+          ? element.offsetHeight
+          : (observedBorderBoxBlockSize(entry) ?? element.offsetHeight),
+      write: (measured) => {
+        if (lastStackHeightRef.current === measured) return;
+        flushSync(() => applyStackHeight(measured));
+        positionKeeper?.remeasure();
+      },
     });
-    observer.observe(element);
-    return () => observer.disconnect();
   }, [applyStackHeight, positionKeeper]);
   const elasticTextareaMinHeight =
     stack === null

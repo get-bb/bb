@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 
 export const SCROLLBAR_HIDDEN_CLASS =
   "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
@@ -49,12 +50,25 @@ export function useScrollEdges(
     const element = ref.current;
     if (!element) return;
     sync();
-    const observer = new ResizeObserver(sync);
-    observer.observe(element);
-    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    const phases = {
+      read: () => scrollEdgeState(element),
+      write: (next: ScrollEdgeState) =>
+        setState((current) =>
+          current.canScrollLeft === next.canScrollLeft &&
+          current.canScrollRight === next.canScrollRight
+            ? current
+            : next,
+        ),
+    };
+    const unobserve = observeSharedResize(
+      [element, element.firstElementChild].filter(
+        (target): target is Element => target !== null,
+      ),
+      phases,
+    );
     element.addEventListener("scroll", sync, { passive: true });
     return () => {
-      observer.disconnect();
+      unobserve();
       element.removeEventListener("scroll", sync);
     };
   }, [ref, sync]);

@@ -4,8 +4,8 @@ import {
   type DiffFileFilters,
 } from "./diff-file-filters.js";
 import { useEffect, useRef } from "react";
-import { useResizeObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
+import { useMeasuredValue } from "@bb/shared-ui/hooks/use-measured-value";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
@@ -236,6 +236,16 @@ interface GitDiffToolbarProps {
   onIgnoreWhitespaceChange: (ignoreWhitespace: boolean) => void;
 }
 
+function readContentBoxWidth(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  return Math.max(
+    0,
+    element.clientWidth -
+      (Number.parseFloat(style.paddingLeft) || 0) -
+      (Number.parseFloat(style.paddingRight) || 0),
+  );
+}
+
 export function GitDiffToolbar({
   selectionValue,
   selectionOptions,
@@ -265,10 +275,7 @@ export function GitDiffToolbar({
     ? "Expand all files"
     : "Collapse all files";
   const rootRef = useRef<HTMLDivElement>(null!);
-  const { width: rootWidth = 0 } = useResizeObserver({
-    ref: rootRef,
-    box: "content-box",
-  });
+  const rootWidth = useMeasuredValue(rootRef, readContentBoxWidth, 0);
   const changeTally = { ...stats, lineStatsComplete: true };
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;

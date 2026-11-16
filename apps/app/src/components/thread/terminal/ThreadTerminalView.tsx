@@ -38,6 +38,7 @@ import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   anchorPointFromMouseEvent,
@@ -1042,7 +1043,7 @@ export function ThreadTerminalView({
     let resizeAnimationFrame: number | null = null;
     let connectionNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
     let selectionAnimationFrame: number | null = null;
-    let resizeObserver: ResizeObserver | null = null;
+    let unobserveResize: (() => void) | null = null;
     let selectionChangeDisposable: { dispose: () => void } | null = null;
     let lateImeInputDisposable: { dispose: () => void } | null = null;
     let stopObservingFonts: (() => void) | null = null;
@@ -1317,13 +1318,16 @@ export function ThreadTerminalView({
         scheduleSelectionReport,
       );
 
-      resizeObserver = new ResizeObserver((entries) => {
-        if (!hasVisibleTerminalSize({ containerElement, entries })) {
-          return;
-        }
-        scheduleFit();
+      unobserveResize = observeSharedResize(containerElement, {
+        read: (entry) =>
+          hasVisibleTerminalSize({
+            containerElement,
+            entries: entry === undefined ? undefined : [entry],
+          }),
+        write: (visible) => {
+          if (visible) scheduleFit();
+        },
       });
-      resizeObserver.observe(containerElement);
     }
 
     void mountTerminal(container).catch((error) => {
@@ -1349,7 +1353,7 @@ export function ThreadTerminalView({
         clearTimeout(connectionNoticeTimeout);
       }
       setConnectionNotice(null);
-      resizeObserver?.disconnect();
+      unobserveResize?.();
       selectionChangeDisposable?.dispose();
       lateImeInputDisposable?.dispose();
       document.removeEventListener(

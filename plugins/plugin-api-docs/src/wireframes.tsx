@@ -12,6 +12,7 @@ import {
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Switch } from "@/components/ui/switch";
 
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import {
   annotationChipClass,
@@ -289,7 +290,7 @@ function MeasuredBadge({
       }
       return { x, y };
     };
-    const measure = () => {
+    const readPosition = (): { left: number; top: number } | null => {
       const strategy = container.closest<HTMLElement>(
         "[data-guide-responsive-strategy]",
       );
@@ -316,8 +317,7 @@ function MeasuredBadge({
         const clipOrigin = layoutOrigin(clip);
         const left = targetOrigin.x - clipOrigin.x;
         if (left < 0 || left + target.offsetWidth > clip.clientWidth) {
-          setPosition(null);
-          return;
+          return null;
         }
       }
       const centerY = local.top + local.height / 2 - chipBox / 2;
@@ -367,26 +367,34 @@ function MeasuredBadge({
       next.top = clamp(next.top, container.offsetHeight);
       next.left += recenter;
       next.top += recenter;
-      setPosition((current) =>
-        current &&
-        Math.abs(current.left - next.left) < 0.5 &&
-        Math.abs(current.top - next.top) < 0.5
-          ? current
-          : next,
-      );
+      return next;
     };
+    const applyPosition = (next: { left: number; top: number } | null) =>
+      setPosition((current) =>
+        next === null
+          ? null
+          : current &&
+              Math.abs(current.left - next.left) < 0.5 &&
+              Math.abs(current.top - next.top) < 0.5
+            ? current
+            : next,
+      );
+    const measure = () => applyPosition(readPosition());
 
     measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    observer.observe(target);
+    const phases = { read: readPosition, write: applyPosition };
     const scaleWrapper = container.closest<HTMLElement>(
       "[data-guide-responsive-strategy]",
     );
-    if (scaleWrapper) observer.observe(scaleWrapper);
+    const unobserve = observeSharedResize(
+      [container, target, scaleWrapper].filter(
+        (element): element is HTMLElement => element !== null,
+      ),
+      phases,
+    );
     scope.addEventListener("scroll", measure, true);
     return () => {
-      observer.disconnect();
+      unobserve();
       scope.removeEventListener("scroll", measure, true);
     };
   }, [anchor, at, align, flush, clipTo]);

@@ -98,6 +98,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   countQueuedMessageAttachments,
@@ -1444,23 +1445,24 @@ export function QueuedMessagesList({
     const animationFrame = window.requestAnimationFrame(
       measureInlineEditorMaxHeight,
     );
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(measureInlineEditorMaxHeight);
-    if (viewport) resizeObserver?.observe(viewport);
-    if (surface) resizeObserver?.observe(surface);
-    if (listRef.current) resizeObserver?.observe(listRef.current);
     const editorElement = listRef.current?.querySelector<HTMLElement>(
       "[data-queued-message-inline-editor]",
     );
-    if (editorElement) resizeObserver?.observe(editorElement);
-    if (composerShell) resizeObserver?.observe(composerShell);
-    if (container) resizeObserver?.observe(container);
+    const unobserve = observeSharedResize(
+      [
+        viewport,
+        surface,
+        listRef.current,
+        editorElement,
+        composerShell,
+        container,
+      ].filter((target) => target !== null && target !== undefined),
+      { read: () => undefined, write: measureInlineEditorMaxHeight },
+    );
     window.addEventListener("resize", measureInlineEditorMaxHeight);
     return () => {
       window.cancelAnimationFrame(animationFrame);
-      resizeObserver?.disconnect();
+      unobserve();
       window.removeEventListener("resize", measureInlineEditorMaxHeight);
     };
   }, [getScrollElement, inlineEditorActive, measureInlineEditorMaxHeight]);
