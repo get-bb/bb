@@ -12,6 +12,9 @@ import type {
   ProviderRecoveryKind,
   RuntimeThreadExecutionOptions,
   ThreadEvent,
+  ThreadSubagent,
+  ThreadSubagentMessageResult,
+  ThreadSubagentCancelResult,
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
@@ -336,6 +339,17 @@ interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
   checkUpdates?: boolean;
 }
 
+export interface SubagentActionArgs {
+  threadId: string;
+  childRef: string;
+  clientRequestId: ClientTurnRequestId;
+  options: AgentRuntimeExecutionOptions;
+}
+
+export interface TellSubagentArgs extends SubagentActionArgs {
+  text: string;
+}
+
 export interface AgentRuntime {
   ensureProvider(args: EnsureProviderArgs): Promise<void>;
 
@@ -352,6 +366,12 @@ export interface AgentRuntime {
   runTurn(args: RunTurnArgs): Promise<RunTurnResult>;
 
   steerTurn(args: SteerTurnArgs): Promise<SteerTurnResult>;
+
+  listSubagents(threadId: string): Promise<ThreadSubagent[]>;
+
+  tellSubagent(args: TellSubagentArgs): Promise<ThreadSubagentMessageResult>;
+
+  cancelSubagent(args: SubagentActionArgs): Promise<ThreadSubagentCancelResult>;
 
   stopThread(args: StopThreadArgs): Promise<StopThreadResult>;
 

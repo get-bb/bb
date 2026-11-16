@@ -653,3 +653,63 @@ describe("deferred text flush", () => {
     }
   });
 });
+
+describe("subagent commands", () => {
+  it("maps list, tell, and cancel to provider-neutral bridge requests", () => {
+    const adapter = makeAdapter();
+    completeHandshake(adapter, {});
+    const providerThreadId = "provider-1";
+
+    expect(
+      adapter.buildCommandPlan({
+        type: "subagent/list",
+        threadId: "thr_1",
+        providerThreadId,
+      }),
+    ).toMatchObject({
+      kind: "request",
+      method: "subagent/list",
+      params: { threadId: "thr_1", providerThreadId },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "subagent/tell",
+        threadId: "thr_1",
+        providerThreadId,
+        childRef: "child-1",
+        text: "Hello 😀",
+        clientRequestId: "creq_abcdefghjk",
+        options: fullModeOptions,
+      }),
+    ).toMatchObject({
+      kind: "request",
+      method: "subagent/tell",
+      params: {
+        threadId: "thr_1",
+        providerThreadId,
+        childRef: "child-1",
+        text: "Hello 😀",
+        clientRequestId: "creq_abcdefghjk",
+      },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "subagent/cancel",
+        threadId: "thr_1",
+        providerThreadId,
+        childRef: "child-1",
+        clientRequestId: "creq_abcdefghjk",
+        options: fullModeOptions,
+      }),
+    ).toMatchObject({
+      kind: "request",
+      method: "subagent/cancel",
+      params: {
+        threadId: "thr_1",
+        providerThreadId,
+        childRef: "child-1",
+        clientRequestId: "creq_abcdefghjk",
+      },
+    });
+  });
+});

@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "queue-interject",
+  "threadId": "grok-queue-interject",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-10",
+  "description": "queue-interject",
+  "note": "Synthetic Grok native interjections preserve order and text; blank input is rejected before delivery.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 16,
+    "provider→bridge": 7,
+    "bridge→provider": 6
+  }
+}

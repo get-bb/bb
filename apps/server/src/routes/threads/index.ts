@@ -8,6 +8,7 @@ import { registerThreadDataRoutes } from "./data.js";
 import { registerThreadTransferRoutes } from "./transfer.js";
 import { registerThreadInteractionRoutes } from "./interactions.js";
 import { registerThreadTabRoutes } from "./tabs.js";
+import { registerThreadSubagentRoutes } from "./subagents.js";
 
 export function registerThreadRoutes(
   app: Hono,
@@ -19,6 +20,7 @@ export function registerThreadRoutes(
   registerThreadBackgroundTaskRoutes(app, deps);
   registerThreadDataRoutes(app, deps);
   registerThreadTransferRoutes(app, deps);
+  registerThreadSubagentRoutes(app, deps);
   registerThreadInteractionRoutes(app, deps);
   registerThreadTabRoutes(app, deps);
 }

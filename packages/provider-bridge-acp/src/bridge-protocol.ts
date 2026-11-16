@@ -10,6 +10,9 @@ import {
   providerMaintenanceParamsSchema,
   modelListParamsSchema as canonicalModelListParamsSchema,
   skillsConfigureParamsSchema,
+  subagentCancelParamsSchema as canonicalSubagentCancelParamsSchema,
+  subagentListParamsSchema as canonicalSubagentListParamsSchema,
+  subagentTellParamsSchema as canonicalSubagentTellParamsSchema,
   threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadForkParamsSchema as canonicalThreadForkParamsSchema,
   threadResumeParamsSchema as canonicalThreadResumeParamsSchema,
@@ -83,6 +86,18 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
     params: canonicalTurnSteerParamsSchema,
   }),
   z.object({
+    method: z.literal("subagent/list"),
+    params: canonicalSubagentListParamsSchema,
+  }),
+  z.object({
+    method: z.literal("subagent/tell"),
+    params: canonicalSubagentTellParamsSchema,
+  }),
+  z.object({
+    method: z.literal("subagent/cancel"),
+    params: canonicalSubagentCancelParamsSchema,
+  }),
+  z.object({
     method: z.literal("thread/stop"),
     params: canonicalThreadStopParamsSchema,
   }),
@@ -107,6 +122,7 @@ export const ACP_PROMPT_INTERRUPTED_METHOD = "acp/prompt/interrupted";
 export const ACP_COMPACTION_STARTED_METHOD = "acp/compaction/started";
 export const ACP_COMPACTION_COMPLETED_METHOD = "acp/compaction/completed";
 export const ACP_UPDATE_METHOD = "acp/update";
+export const ACP_CAPABILITIES_SNAPSHOT_METHOD = "acp/capabilities/snapshot";
 export const ACP_FS_WRITE_METHOD = "acp/fs/write";
 export const ACP_WARNING_METHOD = "acp/warning";
 

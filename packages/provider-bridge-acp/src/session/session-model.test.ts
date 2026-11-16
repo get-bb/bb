@@ -717,6 +717,10 @@ describe("commands, session info and usage", () => {
       availableCommands: [
         { name: "compact", description: "Compress history", input: null },
         { name: "web", description: "Search", input: { hint: "query" } },
+        { name: "web", description: "Duplicate", input: { hint: "wrong" } },
+        { name: "مراجعة", description: "Проверить 😀" },
+        { name: "", description: "empty" },
+        { name: "   ", description: "blank" },
         { description: "nameless" },
       ],
     });
@@ -727,6 +731,7 @@ describe("commands, session info and usage", () => {
         commands: [
           { name: "compact", description: "Compress history" },
           { name: "web", description: "Search", inputHint: "query" },
+          { name: "مراجعة", description: "Проверить 😀" },
         ],
       },
     ]);
@@ -753,6 +758,25 @@ describe("commands, session info and usage", () => {
         title: null,
       }),
     ).toMatchObject([{ info: { title: null } }]);
+  });
+
+  it("does not replace a valid timestamp with a malformed value", () => {
+    const session = model();
+    session.applySessionUpdate({
+      sessionUpdate: "session_info_update",
+      title: "Valid",
+      updatedAt: "2026-10-08T00:00:00Z",
+    });
+    expect(
+      session.applySessionUpdate({
+        sessionUpdate: "session_info_update",
+        updatedAt: "not-a-date",
+      }),
+    ).toEqual([]);
+    expect(session.snapshot().info).toEqual({
+      title: "Valid",
+      updatedAt: "2026-10-08T00:00:00Z",
+    });
   });
 
   it("carries cost and remembers the last cumulative cost when an update omits it", () => {

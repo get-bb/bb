@@ -307,6 +307,7 @@ interface SystemRowBase extends TimelineRowBase {
 interface DelegationRowArgs extends RowBaseOverrideArgs {
   callId?: string;
   childRows?: TimelineRow[] | null;
+  childRef?: string | null;
   description?: string | null;
   durationMs?: number | null;
   id?: string;
@@ -1228,6 +1229,7 @@ export function delegationRow({
       seq: 2,
     }),
   ],
+  childRef = null,
   description = "Review renderer",
   durationMs = 2_000,
   id = DEFAULT_DELEGATION_ID,
@@ -1260,7 +1262,7 @@ export function delegationRow({
     status,
     callId: callId ?? id,
     toolName,
-    childRef: null,
+    childRef,
     background: false,
     subagentType,
     description,

@@ -50,7 +50,9 @@ export interface AcpDialect {
     event: AcpToolCallUpdateEvent,
     call: AcpToolCallUpdateEvent,
   ): AcpToolCallUpdateEvent;
+  deferToolCallCompletion?(event: AcpToolCallUpdateEvent): boolean;
   readonly clientRequestMethods?: readonly string[];
+  readonly nativeInterjectMethod?: string;
   handleClientRequest?(
     method: string,
     params: unknown,
@@ -101,6 +103,8 @@ const grokSpawnSubagentInputSchema = z
     description: z.string().optional(),
     prompt: z.string().optional(),
     subagent_type: z.string().optional(),
+    run_in_background: z.boolean().optional(),
+    background: z.boolean().optional(),
   })
   .passthrough();
 
@@ -118,7 +122,7 @@ function grokClassifyToolCall(
     type: "delegation",
     childRef: event.toolCallId,
     label,
-    background: false,
+    background: input?.run_in_background ?? input?.background ?? false,
   };
   return {
     item: shape,
@@ -131,10 +135,24 @@ function grokClassifyToolCall(
   };
 }
 
+function deferGrokToolCallCompletion(event: AcpToolCallUpdateEvent): boolean {
+  if (grokToolIdentity(event)?.name !== GROK_SPAWN_SUBAGENT_TOOL) {
+    return false;
+  }
+  const input = grokSpawnSubagentInputSchema.safeParse(event.rawInput);
+  return (
+    input.success &&
+    (input.data.run_in_background === true || input.data.background === true)
+  );
+}
+
 export const GROK_ACP_DIALECT: AcpDialect = {
   id: "grok",
   toolIdentity: grokToolIdentity,
   classifyToolCall: grokClassifyToolCall,
+  deferToolCallCompletion: deferGrokToolCallCompletion,
+  clientRequestMethods: ["_x.ai/ask_user_question", "_x.ai/exit_plan_mode"],
+  nativeInterjectMethod: "_x.ai/interject",
 };
 
 const grokModelMetaSchema = z
@@ -184,20 +202,11 @@ export function grokContextWindowSizeFromSessionModels(
   if (!parsed.success) {
     return undefined;
   }
-  const available = parsed.data.availableModels ?? [];
   const currentId = parsed.data.currentModelId;
-  const ordered = [
-    ...(currentId === undefined
-      ? []
-      : available.filter((model) => model.modelId === currentId)),
-    ...available,
-  ];
-  for (const model of ordered) {
-    if (model._meta !== undefined) {
-      return model._meta.totalContextTokens;
-    }
-  }
-  return undefined;
+  const current = (parsed.data.availableModels ?? []).find(
+    (model) => model.modelId === currentId,
+  );
+  return current?._meta?.totalContextTokens;
 }
 
 export function grokContextUsageFromPromptResult(

@@ -27,7 +27,8 @@ export interface AcpAgentDefinition {
   installUrl?: string;
   iconTint?: { light: string; dark: string };
   supportsManualCompaction?: boolean;
-  fork?: "none" | "tip";
+  supportsNativeUserQuestion?: boolean;
+  fork?: "none" | "tip" | "checkpoint";
   reasoningLevels?: readonly PluginProviderReasoningLevel[];
   providerUsage?: boolean;
   providerInstallation?: boolean;

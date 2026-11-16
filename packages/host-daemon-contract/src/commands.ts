@@ -18,6 +18,9 @@ import {
   promptInputSchema,
   providerForkSchema,
   runtimeThreadExecutionOptionsSchema,
+  threadSubagentCancelResultSchema,
+  threadSubagentMessageResultSchema,
+  threadSubagentSchema,
   clientTurnRequestIdSchema,
   jsonObjectSchema,
   jsonValueSchema,
@@ -349,6 +352,41 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict()
   .superRefine(refineGroupedInputMatchesFlatInput);
+
+const subagentActionCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    childRef: z.string().min(1),
+    requestId: clientTurnRequestIdSchema,
+    options: runtimeThreadExecutionOptionsSchema,
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    resumeContext: turnResumeContextSchema,
+  })
+  .strict();
+
+const subagentTellCommandSchema = subagentActionCommandSchema
+  .extend({
+    type: z.literal("subagent.tell"),
+    text: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0, {
+        message: "Subagent message text cannot be blank",
+      }),
+  })
+  .strict();
+
+const subagentCancelCommandSchema = subagentActionCommandSchema
+  .extend({ type: z.literal("subagent.cancel") })
+  .strict();
+
+const subagentListCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    type: z.literal("subagent.list"),
+    options: runtimeThreadExecutionOptionsSchema,
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    resumeContext: turnResumeContextSchema,
+  })
+  .strict();
 
 const threadStopIntentSchema = z.enum(["interrupt", "release"]);
 
@@ -1256,6 +1294,10 @@ export const STEER_UNCONFIRMED_ERROR_CODE = "steer_unconfirmed" as const;
 export const TURN_START_UNCONFIRMED_ERROR_CODE =
   "turn_start_unconfirmed" as const;
 
+const subagentListResultSchema = z
+  .object({ subagents: z.array(threadSubagentSchema) })
+  .strict();
+
 const threadStopResultSchema = z
   .object({
     providerCheckpointId: z.string().min(1).nullable(),
@@ -1550,6 +1592,33 @@ export const hostDaemonCommandRegistry = {
     type: "turn.submit",
     schema: turnSubmitCommandSchema,
     resultSchema: turnSubmitResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
+  "subagent.list": defineHostDaemonCommandDescriptor({
+    type: "subagent.list",
+    schema: subagentListCommandSchema,
+    resultSchema: subagentListResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
+  "subagent.tell": defineHostDaemonCommandDescriptor({
+    type: "subagent.tell",
+    schema: subagentTellCommandSchema,
+    resultSchema: threadSubagentMessageResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
+  "subagent.cancel": defineHostDaemonCommandDescriptor({
+    type: "subagent.cancel",
+    schema: subagentCancelCommandSchema,
+    resultSchema: threadSubagentCancelResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,

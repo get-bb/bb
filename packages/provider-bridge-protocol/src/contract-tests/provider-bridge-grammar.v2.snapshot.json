@@ -179,6 +179,7 @@
       "last": "required",
       "modelContextWindow": "required",
       "promptCacheTtlMs": "optional",
+      "models": "optional",
       "providerTurnId": "optional"
     }
   },
@@ -326,6 +327,9 @@
     "provider/installation/status",
     "provider/usage",
     "skills/configure",
+    "subagent/cancel",
+    "subagent/list",
+    "subagent/tell",
     "thread/archive",
     "thread/backgroundTask/stop",
     "thread/discard",

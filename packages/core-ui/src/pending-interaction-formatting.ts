@@ -260,10 +260,12 @@ function resolveGrantedPermissionsForApproval(
 export function buildPendingInteractionApprovalResolution(
   interaction: PendingInteraction,
   decision: PendingInteractionApprovalDecision,
+  comments?: string,
 ): PendingInteractionResolution {
   if (decision === "deny") {
     return {
       decision,
+      ...(comments === undefined ? {} : { comments }),
     };
   }
 

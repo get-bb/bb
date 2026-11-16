@@ -281,6 +281,15 @@ export function createFakeRuntime() {
       state.steeredTurnWriteRoots = args.additionalWorkspaceWriteRoots;
       return { status: "steered" };
     },
+    async listSubagents() {
+      return [];
+    },
+    async tellSubagent(args: { childRef: string }) {
+      return { childRef: args.childRef, messageId: "message-1" };
+    },
+    async cancelSubagent(args: { childRef: string }) {
+      return { childRef: args.childRef, status: "cancelled" as const };
+    },
     async stopThread(args) {
       state.stoppedThreadId = args.threadId;
       activeTurnsByThreadId.delete(args.threadId);

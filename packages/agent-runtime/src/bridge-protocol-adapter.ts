@@ -393,6 +393,35 @@ export function createBridgeProtocolAdapter(
               ),
             },
           };
+        case "subagent/list":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.subagentList,
+            params: {
+              threadId: command.threadId,
+              providerThreadId: command.providerThreadId,
+            },
+          };
+        case "subagent/tell":
+        case "subagent/cancel":
+          return {
+            kind: "request",
+            method:
+              command.type === "subagent/tell"
+                ? BRIDGE_REQUEST_METHODS.subagentTell
+                : BRIDGE_REQUEST_METHODS.subagentCancel,
+            params: {
+              threadId: command.threadId,
+              providerThreadId: command.providerThreadId,
+              childRef: command.childRef,
+              clientRequestId: command.clientRequestId,
+              options: toBridgeWireOptions(
+                command.options,
+                options.staticProviderOptions,
+              ),
+              ...(command.text === undefined ? {} : { text: command.text }),
+            },
+          };
         case "thread/stop":
           return {
             kind: "request",

@@ -299,6 +299,15 @@ export type ThreadEventTokenUsageBreakdown = z.infer<
   typeof threadEventTokenUsageBreakdownSchema
 >;
 
+export const threadEventModelTokenUsageSchema = z.object({
+  modelId: z.string().min(1),
+  usage: threadEventTokenUsageBreakdownSchema,
+  cost: threadUsageCostSchema.optional(),
+});
+export type ThreadEventModelTokenUsage = z.infer<
+  typeof threadEventModelTokenUsageSchema
+>;
+
 export type ThreadUsageCost = z.infer<typeof threadUsageCostSchema>;
 
 const threadEventContextWindowUsageSchema = z.object({
@@ -319,6 +328,7 @@ const threadEventTokenUsageSchema = z.object({
   last: threadEventTokenUsageBreakdownSchema,
   modelContextWindow: z.number().nullable(),
   promptCacheTtlMs: promptCacheTtlMsSchema.optional(),
+  models: z.array(threadEventModelTokenUsageSchema).optional(),
 });
 
 export const threadEventWarningCategorySchema = z.enum([

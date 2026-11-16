@@ -116,6 +116,20 @@ export type AdapterCommand =
       activeTurnId: string | null;
     }
   | {
+      type: "subagent/list";
+      threadId: string;
+      providerThreadId: string;
+    }
+  | {
+      type: "subagent/tell" | "subagent/cancel";
+      threadId: string;
+      providerThreadId: string;
+      childRef: string;
+      text?: string;
+      clientRequestId: ClientTurnRequestId;
+      options: ProviderExecutionContext;
+    }
+  | {
       type: "thread/discard";
       threadId: string;
       providerThreadId: string;

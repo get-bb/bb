@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "capability-discovery",
+  "threadId": "grok-capabilities",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-10",
+  "description": "capability-discovery",
+  "note": "Synthetic Grok initialize and session/new capability discovery; no prompts or user content.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 5,
+    "provider→bridge": 2,
+    "bridge→provider": 2
+  }
+}

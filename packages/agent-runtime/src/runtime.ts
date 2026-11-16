@@ -2,9 +2,18 @@ import path from "node:path";
 import { z } from "zod";
 import {
   normalizeProviderThreadNameEvent,
+  threadSubagentCancelResultSchema,
+  threadSubagentMessageResultSchema,
+  threadSubagentSchema,
   toProviderExternalThreadName,
 } from "@bb/domain";
-import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
+import type {
+  DynamicTool,
+  InstructionMode,
+  ThreadEvent,
+  ThreadSubagentCancelResult,
+  ThreadSubagentMessageResult,
+} from "@bb/domain";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
@@ -67,6 +76,8 @@ import type {
   AgentRuntimeSkillRoot,
   ReapedIdleProviderSession,
   RunTurnResult,
+  SubagentActionArgs,
+  TellSubagentArgs,
 } from "./types.js";
 import {
   resolveContributedEnvironment,
@@ -1535,6 +1546,69 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
+  async function runSubagentAction(
+    args: TellSubagentArgs,
+    kind: "tell",
+  ): Promise<ThreadSubagentMessageResult>;
+  async function runSubagentAction(
+    args: SubagentActionArgs,
+    kind: "cancel",
+  ): Promise<ThreadSubagentCancelResult>;
+  async function runSubagentAction(
+    args: TellSubagentArgs | SubagentActionArgs,
+    kind: "tell" | "cancel",
+  ) {
+    const { threadId, childRef, clientRequestId, options: execOpts } = args;
+    return runThreadOperation({
+      threadId,
+      work: async () => {
+        const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
+        const currentProc = requireProviderProcessForThread(threadId);
+        assertProviderSupportsExecutionOptions({
+          adapter: currentProc.adapter,
+          options: execOpts,
+          providerId: pid,
+        });
+        const currentConfig = threadRuntimeConfigs.get(threadId);
+        if (!currentConfig) {
+          throw new Error(`No runtime configuration for thread ${threadId}`);
+        }
+        recordThreadExecutionOptions({ threadId, options: execOpts });
+        const providerThreadId = requireProviderThreadId(threadId);
+        const adapterCommand: AdapterCommand = {
+          type: kind === "tell" ? "subagent/tell" : "subagent/cancel",
+          threadId,
+          providerThreadId,
+          childRef,
+          clientRequestId,
+          options: toProviderExecutionContext({
+            envVars: currentConfig.envVars,
+            execOpts,
+            instructions: undefined,
+          }),
+          ...(kind === "tell" && "text" in args ? { text: args.text } : {}),
+        };
+        const cmd = requireProviderRequestPlan({
+          commandType: adapterCommand.type,
+          plan: currentProc.adapter.buildCommandPlan(adapterCommand),
+          providerId: pid,
+        });
+        if (kind === "tell") {
+          return sendCommand({
+            proc: currentProc,
+            message: cmd,
+            resultSchema: threadSubagentMessageResultSchema,
+          });
+        }
+        return sendCommand({
+          proc: currentProc,
+          message: cmd,
+          resultSchema: threadSubagentCancelResultSchema,
+        });
+      },
+    });
+  }
+
   const runtime: AgentRuntime = {
     async ensureProvider({
       providerId,
@@ -2317,6 +2391,42 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           return { status: "steered" };
         },
       });
+    },
+
+    async listSubagents(threadId) {
+      return runThreadOperation({
+        threadId,
+        work: async () => {
+          const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          const adapterCommand: AdapterCommand = {
+            type: "subagent/list",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId: pid,
+          });
+          const result = await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: z.object({
+              subagents: z.array(threadSubagentSchema),
+            }),
+          });
+          return result.subagents;
+        },
+      });
+    },
+
+    async tellSubagent(args) {
+      return runSubagentAction(args, "tell");
+    },
+
+    async cancelSubagent(args) {
+      return runSubagentAction(args, "cancel");
     },
 
     async stopThread({ threadId }) {

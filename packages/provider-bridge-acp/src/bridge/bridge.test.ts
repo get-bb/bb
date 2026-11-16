@@ -515,6 +515,25 @@ function loggedAcpRequests(path: string): LoggedAcpRequest[] {
     .map((line) => JSON.parse(line) as LoggedAcpRequest);
 }
 
+function acpMethodOrder(path: string): string[] {
+  return loggedAcpRequests(path).flatMap((request) =>
+    request.method === undefined ? [] : [request.method],
+  );
+}
+
+function sessionPromptBlocks(path: string): unknown[] {
+  const request = loggedAcpRequests(path).find(
+    (item) => item.method === "session/prompt",
+  );
+  const prompt = request?.params?.["prompt"];
+  return Array.isArray(prompt) ? prompt : [];
+}
+
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 async function advanceBusyQuietTimer(): Promise<void> {
   await waitFor(
     () => (vi.getTimerCount() > 0 ? true : undefined),
@@ -2404,6 +2423,46 @@ describe("acp bridge", () => {
     expect(loggedPrompts(promptLog)).toEqual([]);
   });
 
+  it("grok_models_unsupported_effort_rejects_without_mutation", async () => {
+    const promptLog = join(workspaceDir, "unsupported-effort-prompts.jsonl");
+    const launch: AgentLaunchArgs = {
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_UNMAPPED_REASONING_CONFIG: "1",
+        FAKE_ACP_PROMPT_LOG: promptLog,
+      },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/default",
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
+      options: executionOptions({
+        model: "fake/default",
+        reasoningLevel: "low",
+        providerOptions: launchProviderOptions(launch),
+      }),
+    });
+
+    expect((await waitForResponse(turnId)).error?.message).toContain(
+      'Reasoning level "low" is not supported',
+    );
+    expect(loggedPrompts(promptLog)).toEqual([]);
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-selected-effort",
+        executionOptions({
+          model: "fake/default",
+          providerOptions: launchProviderOptions(launch),
+        }),
+      ),
+    ).toBe("selected-effort:none");
+  });
+
   it("rebuilds the agent with the current turn's model selection", async () => {
     const envVars = { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_MODEL_CONFIG: "1" };
     const { providerThreadId } = await startThread({
@@ -2795,6 +2854,484 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
 
     expect(agentMessageTexts()).toContain("auth-method:cached_token");
+  });
+
+  it("grok_auth_advertised_cached_token_or_api_key_succeeds", async () => {
+    const syntheticKey = "xai-synthetic-key-value";
+    const apiKeyLog = join(workspaceDir, "grok-auth-api.jsonl");
+    const cachedLog = join(workspaceDir, "grok-auth-cached.jsonl");
+    const apiKeyThread = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token,xai.api_key",
+        XAI_API_KEY: syntheticKey,
+        FAKE_ACP_REQUEST_LOG: apiKeyLog,
+      },
+    });
+    const apiKeyTurn = sendTurnRequest(
+      "turn/start",
+      apiKeyThread.providerThreadId,
+      {
+        input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
+      },
+    );
+    expect((await waitForResponse(apiKeyTurn)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain("auth-method:xai.api_key");
+    expect(acpMethodOrder(apiKeyLog)).toEqual([
+      "initialize",
+      "authenticate",
+      "session/new",
+      "session/prompt",
+    ]);
+    expect(
+      loggedAcpRequests(apiKeyLog).find(
+        (request) => request.method === "authenticate",
+      )?.params?.["methodId"],
+    ).toBe("xai.api_key");
+    expect(readFileSync(apiKeyLog, "utf8")).not.toContain(syntheticKey);
+
+    const cachedThread = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token,xai.api_key",
+        FAKE_ACP_REQUEST_LOG: cachedLog,
+      },
+    });
+    const cachedTurn = sendTurnRequest(
+      "turn/start",
+      cachedThread.providerThreadId,
+      {
+        input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
+      },
+    );
+    expect((await waitForResponse(cachedTurn)).error).toBeUndefined();
+    expect(
+      loggedAcpRequests(cachedLog).find(
+        (request) => request.method === "authenticate",
+      )?.params?.["methodId"],
+    ).toBe("cached_token");
+  });
+
+  it("grok_auth_missing_methods_return_actionable_error", async () => {
+    const requestLog = join(workspaceDir, "grok-auth-missing.jsonl");
+    const response = await startThreadResponse({
+      FAKE_ACP_AUTH_METHODS: "agent.login",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    });
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain("Authentication required");
+    expect(response.error?.message).toContain("Sign in (agent.login)");
+    expect(response.error?.data).toMatchObject({
+      recovery: { kind: "authRequired", retryable: false },
+    });
+    expect(acpMethodOrder(requestLog)).not.toContain("authenticate");
+    expect(
+      loggedAcpRequests(requestLog).some(
+        (request) => request.params?.["methodId"] === "agent.login",
+      ),
+    ).toBe(false);
+  });
+
+  it("grok_auth_unknown_method_is_rejected", async () => {
+    const requestLog = join(workspaceDir, "grok-auth-unknown.jsonl");
+    const response = await startThreadResponse({
+      FAKE_ACP_AUTH_METHODS: "mystery.method",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    });
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain("Authentication required");
+    expect(response.error?.message).not.toContain("unsupported auth");
+    expect(
+      loggedAcpRequests(requestLog).some(
+        (request) => request.params?.["methodId"] === "mystery.method",
+      ),
+    ).toBe(false);
+  });
+
+  it("grok_auth_invalid_or_expired_credentials_do_not_create_session", async () => {
+    for (const reason of ["invalid", "expired"] as const) {
+      const requestLog = join(workspaceDir, `grok-auth-${reason}.jsonl`);
+      const response = await startThreadResponse({
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_AUTH_REJECT: reason,
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      });
+      expect(response.result).toBeUndefined();
+      expect(response.error?.message).toContain(
+        reason === "expired" ? "expired credentials" : "invalid credentials",
+      );
+      expect(response.error?.data).toMatchObject({
+        recovery: { kind: "authRequired", retryable: false },
+      });
+      expect(acpMethodOrder(requestLog)).toEqual([
+        "initialize",
+        "authenticate",
+      ]);
+      expect(readFileSync(requestLog, "utf8")).not.toContain("xai-");
+    }
+  });
+
+  it("grok_auth_failure_then_success_recovers", async () => {
+    const failedLog = join(workspaceDir, "grok-auth-failed-once.jsonl");
+    const first = await startThreadResponse({
+      FAKE_ACP_AUTH_METHODS: "cached_token",
+      FAKE_ACP_AUTH_FAILURE_ONCE: "1",
+      FAKE_ACP_REQUEST_LOG: failedLog,
+    });
+    expect(first.result).toBeUndefined();
+    expect(first.error?.message).toContain("synthetic auth failure");
+    expect(acpMethodOrder(failedLog)).toEqual(["initialize", "authenticate"]);
+
+    const recoveredLog = join(workspaceDir, "grok-auth-recovered.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_REQUEST_LOG: recoveredLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain("auth-method:cached_token");
+    expect(acpMethodOrder(recoveredLog).slice(0, 3)).toEqual([
+      "initialize",
+      "authenticate",
+      "session/new",
+    ]);
+  });
+
+  it("grok_auth_repeated_authentication_is_explicit", async () => {
+    const requestLog = join(workspaceDir, "grok-auth-repeated.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "authenticate",
+      ),
+    ).toHaveLength(1);
+    expect(
+      acpMethodOrder(requestLog).filter((method) => method === "session/new"),
+    ).toEqual(["session/new"]);
+  });
+
+  it("grok_auth_replacement_does_not_share_failure", async () => {
+    const healthyLog = join(workspaceDir, "grok-auth-healthy.jsonl");
+    const failedLog = join(workspaceDir, "grok-auth-neighbor.jsonl");
+    const healthy = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_REQUEST_LOG: healthyLog,
+      },
+    });
+    const failed = await startThreadResponse({
+      FAKE_ACP_AUTH_METHODS: "cached_token",
+      FAKE_ACP_AUTH_REJECT: "invalid",
+      FAKE_ACP_REQUEST_LOG: failedLog,
+    });
+    expect(failed.result).toBeUndefined();
+    expect(failed.error?.message).toContain("invalid credentials");
+
+    const turnId = sendTurnRequest("turn/start", healthy.providerThreadId, {
+      input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain("auth-method:cached_token");
+    expect(
+      loggedAcpRequests(healthyLog).filter(
+        (request) => request.method === "authenticate",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("grok_auth_disconnect_does_not_confirm_authentication", async () => {
+    const response = await startThreadResponse({
+      FAKE_ACP_AUTH_METHODS: "cached_token",
+      FAKE_ACP_EXIT_ON_AUTHENTICATE: "9",
+    });
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toMatch(/exited \(code 9/u);
+    expect(response.error?.message).not.toContain("providerThreadId");
+  });
+
+  it("grok_auth_resume_requires_valid_recovery", async () => {
+    const first = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_LOAD_SESSION: "1",
+      },
+    });
+    await stopThread(first.providerThreadId);
+
+    const rejected = await waitForResponse(
+      sendRequest("thread/resume", {
+        threadId: first.bbThreadId,
+        cwd: workspaceDir,
+        instructionMode: "append",
+        options: executionOptions({
+          providerOptions: launchProviderOptions({
+            dialectId: "grok",
+            envVars: {
+              FAKE_ACP_AUTH_METHODS: "cached_token",
+              FAKE_ACP_LOAD_SESSION: "1",
+              FAKE_ACP_AUTH_REJECT: "expired",
+            },
+          }),
+        }),
+        providerThreadId: first.providerThreadId,
+      }),
+    );
+    expect(rejected.result).toBeUndefined();
+    expect(rejected.error?.message).toContain("expired credentials");
+
+    const recovered = await waitForResponse(
+      sendRequest("thread/resume", {
+        threadId: first.bbThreadId,
+        cwd: workspaceDir,
+        instructionMode: "append",
+        options: executionOptions({
+          providerOptions: launchProviderOptions({
+            dialectId: "grok",
+            envVars: {
+              FAKE_ACP_AUTH_METHODS: "cached_token",
+              FAKE_ACP_LOAD_SESSION: "1",
+            },
+          }),
+        }),
+        providerThreadId: first.providerThreadId,
+      }),
+    );
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.result).toEqual({
+      providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
+    });
+  });
+
+  it("grok_data_url_image_is_inlined_and_remote_url_is_not_fetched", async () => {
+    const requestLog = join(workspaceDir, "grok-data-url.jsonl");
+    const dataUrl = `data:image/png;base64,${ONE_PIXEL_PNG.toString("base64")}`;
+    const remoteUrl = "https://example.com/prompt-image.png";
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_PROMPT_IMAGE: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [
+        { type: "text", text: "look", mentions: [] },
+        { type: "image", url: dataUrl },
+        { type: "image", url: remoteUrl },
+      ],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+
+    const prompt = sessionPromptBlocks(requestLog);
+    expect(prompt).toContainEqual({
+      type: "image",
+      data: ONE_PIXEL_PNG.toString("base64"),
+      mimeType: "image/png",
+    });
+    expect(prompt).toContainEqual({
+      type: "text",
+      text: `[image attachment: ${remoteUrl}]`,
+    });
+    expect(
+      prompt.filter(
+        (block) =>
+          typeof block === "object" &&
+          block !== null &&
+          (block as { type?: string }).type === "image",
+      ),
+    ).toEqual([
+      {
+        type: "image",
+        data: ONE_PIXEL_PNG.toString("base64"),
+        mimeType: "image/png",
+      },
+    ]);
+  });
+
+  it("grok_embedded_text_file_is_inlined_when_advertised", async () => {
+    const filePath = join(workspaceDir, "note.txt");
+    const embedded = "EMBED_OK 😀 مراجعة";
+    writeFileSync(filePath, embedded);
+    const requestLog = join(workspaceDir, "grok-embedded.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_PROMPT_EMBEDDED: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [
+        { type: "text", text: "read the file", mentions: [] },
+        { type: "localFile", path: filePath, name: "note.txt" },
+      ],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+
+    const prompt = sessionPromptBlocks(requestLog);
+    const resource = prompt.find(
+      (block) =>
+        typeof block === "object" &&
+        block !== null &&
+        (block as { type?: string }).type === "resource",
+    );
+    expect(resource).toMatchObject({
+      type: "resource",
+      resource: {
+        mimeType: "text/plain",
+        text: embedded,
+      },
+    });
+    expect(JSON.stringify(prompt)).not.toContain("resource_link");
+  });
+
+  it("grok_local_image_prompt_sends_advertised_bytes", async () => {
+    const imagePath = join(workspaceDir, "pixel.png");
+    writeFileSync(imagePath, ONE_PIXEL_PNG);
+    const requestLog = join(workspaceDir, "grok-local-image.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_PROMPT_IMAGE: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "localImage", path: imagePath }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    expect(sessionPromptBlocks(requestLog)).toContainEqual({
+      type: "image",
+      data: ONE_PIXEL_PNG.toString("base64"),
+      mimeType: "image/png",
+    });
+  });
+
+  it("grok_image_prompt_without_capability_stays_a_placeholder", async () => {
+    const imagePath = join(workspaceDir, "pixel.png");
+    writeFileSync(imagePath, ONE_PIXEL_PNG);
+    const requestLog = join(workspaceDir, "grok-no-image.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "localImage", path: imagePath }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    expect(sessionPromptBlocks(requestLog)).toContainEqual({
+      type: "text",
+      text: `[image attachment on disk: ${imagePath}]`,
+    });
+  });
+
+  it("grok_missing_image_does_not_send_image_bytes", async () => {
+    const imagePath = join(workspaceDir, "missing.png");
+    const requestLog = join(workspaceDir, "grok-missing-image.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_PROMPT_IMAGE: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "localImage", path: imagePath }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    const prompt = sessionPromptBlocks(requestLog);
+    expect(prompt).toContainEqual({
+      type: "text",
+      text: `[unreadable image attachment: ${imagePath}]`,
+    });
+    expect(
+      prompt.some(
+        (block) =>
+          typeof block === "object" &&
+          block !== null &&
+          (block as { type?: string }).type === "image",
+      ),
+    ).toBe(false);
+  });
+
+  it("grok_embedded_file_without_capability_stays_a_link", async () => {
+    const filePath = join(workspaceDir, "note.txt");
+    writeFileSync(filePath, "secret-note");
+    const requestLog = join(workspaceDir, "grok-link.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "localFile", path: filePath, name: "note.txt" }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    const serialized = JSON.stringify(sessionPromptBlocks(requestLog));
+    expect(serialized).toContain("resource_link");
+    expect(serialized).not.toContain("secret-note");
+  });
+
+  it("grok_oversized_or_binary_file_stays_a_link", async () => {
+    const bigPath = join(workspaceDir, "big.txt");
+    const binaryPath = join(workspaceDir, "blob.bin");
+    const badUtf8Path = join(workspaceDir, "bad.txt");
+    writeFileSync(bigPath, "x".repeat(64 * 1024 + 1));
+    writeFileSync(binaryPath, Buffer.from([0, 1, 2, 255]));
+    writeFileSync(badUtf8Path, Buffer.from([0xc3, 0x28]));
+    const requestLog = join(workspaceDir, "grok-skip-inline.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_PROMPT_EMBEDDED: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [
+        { type: "localFile", path: bigPath, name: "big.txt" },
+        { type: "localFile", path: binaryPath, name: "blob.bin" },
+        { type: "localFile", path: badUtf8Path, name: "bad.txt" },
+      ],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    await waitForTurnCompleted();
+    const serialized = JSON.stringify(sessionPromptBlocks(requestLog));
+    expect(serialized).not.toContain('resource":');
+    expect(serialized.match(/resource_link/gu)).toHaveLength(3);
+    expect(serialized).not.toContain("xxx");
+    expect(serialized).not.toContain("\uFFFD");
   });
 
   it("prefers xAI API-key auth when XAI_API_KEY is available", async () => {
@@ -3932,6 +4469,290 @@ describe("acp bridge", () => {
     }
   });
 
+  it("grok_interject_active_turn_preserves_session_and_new_text", async () => {
+    const requestLog = join(workspaceDir, "grok-interject-active.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const text = "INTERJECT_NOW 😀\nمراجعة";
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text, mentions: [] }],
+    });
+
+    expect((await waitForResponse(steerId)).error).toBeUndefined();
+    await waitFor(
+      () =>
+        agentMessageTexts().some((message) =>
+          message.includes(`grok-interject:${text}`),
+        )
+          ? true
+          : undefined,
+      "native interject output",
+    );
+    const requests = loggedAcpRequests(requestLog);
+    expect(
+      requests.filter((request) => request.method === "_x.ai/interject"),
+    ).toEqual([
+      {
+        id: expect.any(Number),
+        jsonrpc: "2.0",
+        method: "_x.ai/interject",
+        params: { sessionId: providerThreadId, text },
+      },
+    ]);
+    expect(
+      requests.filter((request) => request.method === "session/prompt"),
+    ).toHaveLength(1);
+    expect(
+      requests.filter((request) => request.method === "session/cancel"),
+    ).toHaveLength(0);
+    expect(
+      threadEventsOfType("turn/input/accepted").map(
+        (event) => event.clientRequestId,
+      ),
+    ).toEqual([CLIENT_REQUEST_ID, "creq_abcdefghjm"]);
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    await stopThread(providerThreadId);
+  });
+
+  it("grok_queue_two_busy_messages_arrive_once_in_order", async () => {
+    const requestLog = join(workspaceDir, "grok-interject-order.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const largeText = `QUEUE_SECOND 😀 ${"x".repeat(64_001)}`;
+    const first = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "QUEUE_FIRST", mentions: [] }],
+    });
+    const second = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjn",
+      input: [{ type: "text", text: largeText, mentions: [] }],
+    });
+    expect((await waitForResponse(first)).error).toBeUndefined();
+    expect((await waitForResponse(second)).error).toBeUndefined();
+
+    const interjects = loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "_x.ai/interject",
+    );
+    expect(interjects.map((request) => request.params?.text)).toEqual([
+      "QUEUE_FIRST",
+      largeText,
+    ]);
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(1);
+    expect(
+      threadEventsOfType("turn/input/accepted").map(
+        (event) => event.clientRequestId,
+      ),
+    ).toEqual([CLIENT_REQUEST_ID, "creq_abcdefghjm", "creq_abcdefghjn"]);
+    await stopThread(providerThreadId);
+  });
+
+  it("grok_interject_rejects_blank_and_non_text_input_before_calling_agent", async () => {
+    const requestLog = join(workspaceDir, "grok-interject-invalid-input.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const blank = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "  ", mentions: [] }],
+    });
+    expect((await waitForResponse(blank)).error?.message).toMatch(/blank/i);
+    const localFile = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      input: [{ type: "localFile", path: "/tmp/note.txt" }],
+    });
+    expect((await waitForResponse(localFile)).error?.message).toMatch(/text/i);
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "_x.ai/interject",
+      ),
+    ).toEqual([]);
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+    await stopThread(providerThreadId);
+  });
+
+  it.each<{ name: string; envVars: Record<string, string> }>([
+    {
+      name: "malformed",
+      envVars: { FAKE_ACP_GROK_INTERJECT_MALFORMED: "1" },
+    },
+    {
+      name: "provider",
+      envVars: { FAKE_ACP_GROK_INTERJECT_ERROR: "1" },
+    },
+  ])(
+    "grok_interject_does_not_acknowledge_$name_failure",
+    async ({ envVars }) => {
+      const requestLog = join(workspaceDir, "grok-interject-failure.jsonl");
+      const { providerThreadId } = await startThread({
+        dialectId: "grok",
+        envVars: { ...envVars, FAKE_ACP_REQUEST_LOG: requestLog },
+      });
+      await waitForResponse(
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [{ type: "text", text: "hang", mentions: [] }],
+        }),
+      );
+      const steerId = sendTurnRequest("turn/steer", providerThreadId, {
+        expectedTurnId: "turn-1",
+        clientRequestId: "creq_abcdefghjm",
+        input: [{ type: "text", text: "not delivered", mentions: [] }],
+      });
+      expect((await waitForResponse(steerId)).error).toBeDefined();
+      expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+      expect(
+        loggedAcpRequests(requestLog).filter(
+          (request) => request.method === "session/cancel",
+        ),
+      ).toHaveLength(0);
+      await stopThread(providerThreadId);
+    },
+  );
+
+  it("grok_interject_turn_completion_before_ack_does_not_accept", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_INTERJECT_DELAY_MS: "500" },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "slow", mentions: [] }],
+      }),
+    );
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "late interject", mentions: [] }],
+    });
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    expect((await waitForResponse(steerId)).error?.message).toMatch(
+      /No active turn|replaced/i,
+    );
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+  });
+
+  it("grok_queue_stale_ack_does_not_dispatch_replacement", async () => {
+    const requestLog = join(workspaceDir, "grok-interject-stale.jsonl");
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_REQUEST_LOG: requestLog,
+        FAKE_ACP_GROK_INTERJECT_DELAY_MS: "150",
+      },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "stale interject", mentions: [] }],
+    });
+    const restartOptions = executionOptions({
+      providerOptions: launchProviderOptions({
+        dialectId: "grok",
+        envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+      }),
+    });
+    const restartId = sendRequest("thread/start", {
+      threadId: bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: restartOptions,
+    });
+    const replacementProviderThreadId = providerThreadIdOf(
+      await waitForResponse(restartId),
+    );
+    bbThreadIdByProviderThreadId.set(replacementProviderThreadId, bbThreadId);
+    await waitForResponse(
+      sendTurnRequest("turn/start", replacementProviderThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+
+    expect((await waitForResponse(steerId)).error?.message).toMatch(
+      /replaced|stale/i,
+    );
+    expect(
+      threadEventsOfType("turn/input/accepted").map(
+        (event) => event.clientRequestId,
+      ),
+    ).toEqual([CLIENT_REQUEST_ID, CLIENT_REQUEST_ID]);
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "_x.ai/interject",
+      ),
+    ).toHaveLength(1);
+    await stopThread(replacementProviderThreadId);
+  });
+
+  it("grok_queue_disconnect_does_not_mark_sent", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_INTERJECT_DISCONNECT: "1" },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "lost interject", mentions: [] }],
+    });
+    expect((await waitForResponse(steerId)).error).toBeDefined();
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+  });
+
+  it("grok_queue_stop_before_ack_does_not_mark_sent", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_INTERJECT_DELAY_MS: "200" },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "cancelled interject", mentions: [] }],
+    });
+    await stopThread(providerThreadId);
+    expect((await waitForResponse(steerId)).error).toBeDefined();
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+  });
+
   it("keeps partial output from the cancelled prompt then continues", async () => {
     const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
@@ -4179,6 +5000,170 @@ describe("acp bridge", () => {
       expect(contextCompactionItems("item/started")).toHaveLength(1);
     },
   );
+  it("grok_compaction_success_preserves_identity_and_usage", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_COMPACTION_EVENTS: "1",
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect((await waitForTurnCompleted()).status).toBe("completed");
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+    expect(contextWindowDeltasFor(bbThreadId).at(-1)).toEqual({
+      used: 47_689,
+      size: 500_000,
+    });
+    expect(threadEventsOfType("provider/unhandled")).toHaveLength(0);
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "after-compaction",
+        executionOptions({}),
+      ),
+    ).toBe("echo:after-compaction");
+  });
+
+  it("grok_compaction_automatic_projects_token_reduction_without_second_turn", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_COMPACTION_EVENTS: "1",
+      },
+    });
+    sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "pressure", mentions: [] }],
+    });
+    expect((await waitForTurnCompleted()).status).toBe("completed");
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(1);
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(0);
+    expect(contextWindowDeltasFor(bbThreadId).at(-1)).toEqual({
+      used: 47_689,
+      size: 500_000,
+    });
+    expect(threadEventsOfType("provider/unhandled")).toHaveLength(0);
+  });
+
+  it("grok_compaction_malformed_result_does_not_complete", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_COMPACTION_MALFORMED: "1" },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect((await waitForTurnCompleted()).status).toBe("failed");
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(0);
+  });
+
+  it("grok_compaction_disconnect_returns_error", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_COMPACTION_DISCONNECT: "1" },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect((await waitForTurnCompleted()).status).toBe("failed");
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(0);
+  });
+
+  it("grok_compaction_empty_history_preserves_noop_semantics", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_COMPACTION_EMPTY: "1",
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect((await waitForTurnCompleted()).status).toBe("completed");
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+    expect(contextWindowDeltasFor(bbThreadId).at(-1)).toEqual({
+      used: 0,
+      size: 500_000,
+    });
+    expect(threadEventsOfType("provider/unhandled")).toHaveLength(0);
+  });
+
+  it("grok_compaction_inflight_serializes_or_rejects_explicitly", async () => {
+    const promptLog = join(workspaceDir, "grok-compaction-log.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_COMPACTION_EVENTS: "1",
+        FAKE_ACP_GROK_COMPACTION_DELAY_MS: "50",
+        FAKE_ACP_PROMPT_LOG: promptLog,
+      },
+    });
+    const first = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    const second = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(first)).error).toBeUndefined();
+    expect((await waitForResponse(second)).error?.message).toMatch(
+      /already active/i,
+    );
+    await waitForTurnCompleted();
+    expect(loggedPrompts(promptLog)).toEqual(["/compact"]);
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+    expect(threadEventsOfType("provider/unhandled")).toHaveLength(0);
+  });
+
+  it("grok_compaction_replacement_rejects_stale_completion", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_COMPACTION_EVENTS: "1",
+        FAKE_ACP_GROK_COMPACTION_DELAY_MS: "100",
+      },
+    });
+    sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    const restartOptions = executionOptions({
+      providerOptions: launchProviderOptions({
+        dialectId: "grok",
+        envVars: {
+          FAKE_ACP_GROK_COMPACTION_EVENTS: "1",
+          FAKE_ACP_GROK_COMPACTION_DELAY_MS: "100",
+        },
+      }),
+    });
+    const restartId = sendRequest("thread/start", {
+      threadId: bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: restartOptions,
+    });
+    const replacementProviderThreadId = providerThreadIdOf(
+      await waitForResponse(restartId),
+    );
+    bbThreadIdByProviderThreadId.set(replacementProviderThreadId, bbThreadId);
+    expect((await waitForTurnCompleted()).status).not.toBe("completed");
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(0);
+    expect(
+      await completeTurnWith(
+        replacementProviderThreadId,
+        "after-replacement",
+        executionOptions({}),
+      ),
+    ).toBe("echo:after-replacement");
+    await stopThread(replacementProviderThreadId);
+  });
 
   it("fails the compaction turn legibly when the agent rejects the request", async () => {
     const { providerThreadId } = await startThread({
@@ -4637,6 +5622,184 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-model:fake/strong");
   });
 
+  it("forks a Grok session through the extension and preserves the source", async () => {
+    const source = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_GROK_FORK: "1" },
+    });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpDialect: "grok",
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_GROK_FORK: "1" },
+          }),
+        },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    const childProviderThreadId = providerThreadIdOf(
+      await waitForResponse(forkId),
+    );
+    bbThreadIdByProviderThreadId.set(childProviderThreadId, "thread-grok-fork");
+
+    expect(childProviderThreadId).not.toBe(source.providerThreadId);
+    expect(childProviderThreadId).toContain("grok-fork-");
+    await completeTurnWith(
+      source.providerThreadId,
+      "echo-source-after-fork",
+      executionOptions({}),
+    );
+    await completeTurnWith(
+      childProviderThreadId,
+      "echo-child-after-fork",
+      executionOptions({}),
+    );
+    expect(agentMessageTexts()).toContain("echo:echo-source-after-fork");
+    expect(agentMessageTexts()).toContain("echo:echo-child-after-fork");
+  });
+
+  it("rejects a Grok fork when the extension is unavailable", async () => {
+    const source = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-unsupported-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpDialect: "grok",
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+          }),
+        },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error?.message).toContain("_x.ai/session/fork");
+    expect(
+      messagesForThread("thread-grok-unsupported-fork").filter(
+        (message) => message.method === "thread/identity",
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects a Grok fork child that reuses the source identity", async () => {
+    const source = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_GROK_FORK: "1",
+        FAKE_ACP_FORK_REUSE_SOURCE_ID: "1",
+      },
+    });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-colliding-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpDialect: "grok",
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_LOAD_SESSION: "1",
+              FAKE_ACP_GROK_FORK: "1",
+              FAKE_ACP_FORK_REUSE_SOURCE_ID: "1",
+            },
+          }),
+        },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error?.message).toMatch(/source session ID|identity/iu);
+    expect(
+      messagesForThread("thread-grok-colliding-fork").filter(
+        (message) => message.method === "thread/identity",
+      ),
+    ).toEqual([]);
+  });
+
+  it("gives concurrent Grok forks distinct child identities", async () => {
+    const source = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_GROK_FORK: "1" },
+    });
+    const forkParams = (threadId: string) => ({
+      threadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpDialect: "grok",
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_GROK_FORK: "1" },
+          }),
+        },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+    const firstId = sendRequest(
+      "thread/fork",
+      forkParams("thread-grok-fork-1"),
+    );
+    const secondId = sendRequest(
+      "thread/fork",
+      forkParams("thread-grok-fork-2"),
+    );
+    const [first, second] = await Promise.all([
+      waitForResponse(firstId),
+      waitForResponse(secondId),
+    ]);
+
+    expect(providerThreadIdOf(first)).not.toBe(providerThreadIdOf(second));
+  });
+
+  it("does not report a Grok fork when the agent disconnects", async () => {
+    const source = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_GROK_FORK: "1",
+        FAKE_ACP_GROK_FORK_DISCONNECT: "1",
+      },
+    });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-disconnect-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpDialect: "grok",
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_LOAD_SESSION: "1",
+              FAKE_ACP_GROK_FORK: "1",
+              FAKE_ACP_GROK_FORK_DISCONNECT: "1",
+            },
+          }),
+        },
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error).toBeDefined();
+    expect(
+      messagesForThread("thread-grok-disconnect-fork").filter(
+        (message) => message.method === "thread/identity",
+      ),
+    ).toEqual([]);
+  });
+
   it("rejects a checkpoint fork before session/fork", async () => {
     const forkLog = join(workspaceDir, "checkpoint-fork-params.json");
     const forkId = sendRequest("thread/fork", {
@@ -4801,6 +5964,77 @@ describe("acp bridge", () => {
     expect(forkResets[0]).toBeGreaterThan(forkIdentities[0] ?? Infinity);
   });
 
+  it("keeps Grok capability snapshots independent across concurrent sessions", async () => {
+    const first = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_CAPABILITIES: "1" },
+    });
+    const second = await startThread({ dialectId: "grok" });
+
+    const firstNotification = messagesForThread(first.bbThreadId).find(
+      (message) => message.method === "acp/capabilities/snapshot",
+    );
+    const secondNotification = messagesForThread(second.bbThreadId).find(
+      (message) => message.method === "acp/capabilities/snapshot",
+    );
+
+    expect(firstNotification?.params).toMatchObject({
+      threadId: first.bbThreadId,
+      capabilities: {
+        models: [
+          {
+            modelId: "grok-test",
+            totalContextTokens: 500_000,
+            supportsReasoningEffort: true,
+            reasoningEffort: "high",
+            reasoningEfforts: [
+              { id: "xhigh", name: "Extra High" },
+              { id: "high", name: "High", default: true },
+              { id: "medium" },
+            ],
+          },
+        ],
+        commands: [
+          { name: "compact", description: "Compact the session" },
+          { name: "goal", inputHint: "Describe the goal" },
+        ],
+        cancelRewind: true,
+        sessionRecap: true,
+        fsNotify: true,
+        hooks: {
+          blockingEvents: ["pre_tool_use", "stop"],
+          decisions: ["deny", "block"],
+        },
+        toolOverrides: {
+          x_keyword_search: true,
+          x_semantic_search: true,
+          x_user_search: false,
+          x_thread_fetch: false,
+        },
+      },
+    });
+    expect(secondNotification?.params).toMatchObject({
+      threadId: second.bbThreadId,
+      capabilities: {
+        models: [],
+        commands: [],
+        cancelRewind: false,
+        sessionRecap: false,
+        fsNotify: false,
+      },
+    });
+
+    await stopThread(first.providerThreadId);
+    expect(
+      messagesForThread(second.bbThreadId).filter(
+        (message) => message.method === "acp/capabilities/snapshot",
+      ),
+    ).toHaveLength(1);
+    expect(secondNotification?.params).toMatchObject({
+      capabilities: { cancelRewind: false },
+    });
+  });
+
   it("surfaces Grok context window size and prompt usage from session _meta", async () => {
     const { bbThreadId, providerThreadId } = await startThread({
       dialectId: "grok",
@@ -4820,6 +6054,251 @@ describe("acp bridge", () => {
       { used: 0, size: 500_000 },
       { used: 17_504, size: 500_000 },
     ]);
+  });
+
+  it("grok_models_context_window_tracks_selected_model", async () => {
+    const launch: AgentLaunchArgs = {
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_MODEL_CONFIG: "1",
+      },
+    };
+    const { bbThreadId, providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/default",
+    });
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-selected-model",
+        executionOptions({
+          model: "fake/strong",
+          providerOptions: launchProviderOptions(launch),
+        }),
+      ),
+    ).toBe("selected-model:fake/strong");
+
+    expect(contextWindowDeltasFor(bbThreadId)).toEqual([
+      { used: 0, size: 500_000 },
+      { used: 17_504, size: 256_000 },
+    ]);
+  });
+
+  it("grok_models_missing_context_window_clears_stale_size", async () => {
+    const launch: AgentLaunchArgs = {
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_CONTEXT_MISSING_MODEL: "fake/strong",
+        FAKE_ACP_MODEL_CONFIG: "1",
+      },
+    };
+    const { bbThreadId, providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/default",
+    });
+
+    await completeTurnWith(
+      providerThreadId,
+      "switch-to-unknown-window",
+      executionOptions({
+        model: "fake/strong",
+        providerOptions: launchProviderOptions(launch),
+      }),
+    );
+
+    expect(contextWindowDeltasFor(bbThreadId)).toEqual([
+      { used: 0, size: 500_000 },
+      { used: null, size: null },
+    ]);
+  });
+
+  it("grok_usage_full_metadata_preserves_token_and_cost_fields", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_USAGE: "1",
+      },
+    });
+    await completeTurnWith(providerThreadId, "first", executionOptions({}));
+    await completeTurnWith(providerThreadId, "second", executionOptions({}));
+    const events = threadEventsOfType("thread/tokenUsage/updated");
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      tokenUsage: {
+        total: {
+          totalTokens: 42_160,
+          inputTokens: 42_054,
+          cachedInputTokens: 4_352,
+          cacheReadInputTokens: 4_352,
+          cacheWriteInputTokens: 0,
+          outputTokens: 106,
+          reasoningOutputTokens: 100,
+        },
+        last: {
+          totalTokens: 21_080,
+          inputTokens: 21_027,
+          cachedInputTokens: 2_176,
+          cacheReadInputTokens: 2_176,
+          cacheWriteInputTokens: 0,
+          outputTokens: 53,
+          reasoningOutputTokens: 50,
+        },
+        models: [
+          {
+            modelId: "grok-4.7-build",
+            usage: {
+              totalTokens: 21_080,
+              inputTokens: 21_027,
+              cachedInputTokens: 2_176,
+              cacheReadInputTokens: 2_176,
+              cacheWriteInputTokens: 0,
+              outputTokens: 53,
+              reasoningOutputTokens: 50,
+            },
+            cost: { amount: 0.132_967_2, currency: "USD" },
+          },
+        ],
+      },
+    });
+    expect(
+      threadEventsOfType("thread/contextWindowUsage/updated").at(-1),
+    ).toMatchObject({
+      contextWindowUsage: {
+        cost: { amount: 0.132_967_2, currency: "USD" },
+      },
+    });
+  });
+
+  it("grok_usage_missing_fields_remain_unknown", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_USAGE_MISSING: "1",
+      },
+    });
+    await completeTurnWith(providerThreadId, "missing", executionOptions({}));
+    expect(threadEventsOfType("thread/tokenUsage/updated")).toHaveLength(0);
+    expect(
+      threadEventsOfType("thread/contextWindowUsage/updated").at(-1),
+    ).not.toHaveProperty("contextWindowUsage.cost");
+  });
+
+  it("grok_usage_actual_zero_is_not_missing", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_USAGE_ZERO: "1",
+      },
+    });
+    await completeTurnWith(providerThreadId, "zero", executionOptions({}));
+    expect(threadEventsOfType("thread/tokenUsage/updated")).toMatchObject([
+      {
+        tokenUsage: {
+          total: {
+            totalTokens: 0,
+            inputTokens: 0,
+            cachedInputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheWriteInputTokens: 0,
+            outputTokens: 0,
+            reasoningOutputTokens: 0,
+          },
+        },
+      },
+    ]);
+    expect(
+      threadEventsOfType("thread/contextWindowUsage/updated").at(-1),
+    ).toMatchObject({
+      contextWindowUsage: { cost: { amount: 0, currency: "USD" } },
+    });
+  });
+
+  it("grok_usage_malformed_metadata_does_not_project", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_USAGE_MALFORMED: "1" },
+    });
+    await completeTurnWith(providerThreadId, "bad", executionOptions({}));
+    expect(threadEventsOfType("thread/tokenUsage/updated")).toHaveLength(0);
+    expect(threadEventsOfType("provider/unhandled")).toHaveLength(0);
+  });
+
+  it("grok_usage_compaction_reduction_uses_tokens_after", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_USAGE: "1",
+        FAKE_ACP_GROK_COMPACTION_EVENTS: "1",
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect((await waitForTurnCompleted()).status).toBe("completed");
+    expect(contextWindowDeltasFor(bbThreadId).at(-1)).toEqual({
+      used: 47_689,
+      size: 500_000,
+    });
+    expect(threadEventsOfType("thread/tokenUsage/updated")).toHaveLength(1);
+  });
+
+  it("grok_usage_stale_session_and_replacement_are_ignored", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_USAGE: "1",
+        FAKE_ACP_GROK_USAGE_DELAY_MS: "100",
+      },
+    });
+    sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "stale-usage", mentions: [] }],
+    });
+    const restartOptions = executionOptions({
+      providerOptions: launchProviderOptions({
+        dialectId: "grok",
+        envVars: { FAKE_ACP_GROK_USAGE: "1" },
+      }),
+    });
+    const restartId = sendRequest("thread/start", {
+      threadId: bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: restartOptions,
+    });
+    const replacementProviderThreadId = providerThreadIdOf(
+      await waitForResponse(restartId),
+    );
+    bbThreadIdByProviderThreadId.set(replacementProviderThreadId, bbThreadId);
+    expect(
+      await completeTurnWith(
+        replacementProviderThreadId,
+        "new-usage",
+        executionOptions({}),
+      ),
+    ).toBe("echo:new-usage");
+    expect(threadEventsOfType("thread/tokenUsage/updated")).toHaveLength(1);
+    await stopThread(replacementProviderThreadId);
+  });
+
+  it("grok_usage_disconnect_does_not_complete_usage_update", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_GROK_USAGE_DISCONNECT: "1" },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "disconnect", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect((await waitForTurnCompleted()).status).toBe("failed");
+    expect(threadEventsOfType("thread/tokenUsage/updated")).toHaveLength(0);
   });
 
   it("ignores Grok-shaped session _meta on other ACP dialects", async () => {
@@ -6036,6 +7515,725 @@ describe("acp bridge: questions the agent asks", () => {
     expect(initialize?.params?.["clientCapabilities"]).toMatchObject({
       session: { compaction: {} },
     });
+  });
+
+  async function startGrokSubagentThread(
+    envVars: Record<string, string> = {},
+  ): Promise<{ bbThreadId: string; providerThreadId: string }> {
+    const thread = await startThread({ dialectId: "grok", envVars });
+    const turnId = sendTurnRequest("turn/start", thread.providerThreadId, {
+      input: [{ type: "text", text: "grok-subagent-spawn", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+    return thread;
+  }
+
+  function subagentRequest(
+    method: "subagent/list" | "subagent/tell" | "subagent/cancel",
+    providerThreadId: string,
+    params: Record<string, unknown> = {},
+  ): number {
+    return sendRequest(method, {
+      threadId: bbThreadIdFor(providerThreadId),
+      providerThreadId,
+      clientRequestId: CLIENT_REQUEST_ID,
+      options: executionOptions({}),
+      ...params,
+    });
+  }
+
+  it("grok_subagent_view_preserves_parent_child_and_progress", async () => {
+    const { providerThreadId } = await startGrokSubagentThread();
+    const response = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({
+      subagents: [
+        {
+          childRef: "child-alpha",
+          parentToolCallId: "spawn-alpha",
+          label: "CHILD_ALPHA",
+          subagentType: "general-purpose",
+          model: "grok-test",
+          status: "running",
+          progress: { turnCount: 1, toolCallCount: 0, tokensUsed: 100 },
+        },
+        {
+          childRef: "child-beta",
+          parentToolCallId: "spawn-beta",
+          label: "CHILD_BETA",
+          status: "completed",
+          result: "BETA_DONE",
+        },
+      ],
+    });
+    expect(response.result).not.toContain("child-stale");
+    expect(
+      threadEventsOfType("item/delegation/completed").filter((event) =>
+        JSON.stringify(event).includes('"childRef":"child-beta"'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("grok_subagent_tell_targets_only_requested_child", async () => {
+    const { providerThreadId } = await startGrokSubagentThread();
+    const text = `CHILD_MESSAGE 😀 مراجعة\n${"x".repeat(64_001)}`;
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text,
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      childRef: "child-alpha",
+      messageId: "message-child-alpha",
+    });
+    const listed = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(listed.result).toMatchObject({
+      subagents: [
+        { childRef: "child-alpha", status: "completed", result: text },
+        { childRef: "child-beta", status: "completed", result: "BETA_DONE" },
+      ],
+    });
+  });
+
+  it("grok_subagent_cancel_does_not_cancel_parent_or_sibling", async () => {
+    const { providerThreadId } = await startGrokSubagentThread();
+    const response = await waitForResponse(
+      subagentRequest("subagent/cancel", providerThreadId, {
+        childRef: "child-alpha",
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      childRef: "child-alpha",
+      status: "cancelled",
+    });
+    const listed = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(listed.result).toMatchObject({
+      subagents: [
+        {
+          childRef: "child-alpha",
+          status: "cancelled",
+          error: "Subagent was cancelled",
+        },
+        { childRef: "child-beta", status: "completed", result: "BETA_DONE" },
+      ],
+    });
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-parent-alive",
+        executionOptions({}),
+      ),
+    ).toBe("echo:echo-parent-alive");
+  });
+
+  it("grok_subagent_empty_message_rejected", async () => {
+    const { providerThreadId } = await startGrokSubagentThread();
+    const blank = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "  ",
+      }),
+    );
+    expect(blank.error?.message).toMatch(/blank/i);
+    const unknown = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-unknown",
+        text: "missing",
+      }),
+    );
+    expect(unknown.error).toBeDefined();
+  });
+
+  it.each<{ name: string; envVars: Record<string, string> }>([
+    {
+      name: "malformed",
+      envVars: { FAKE_ACP_GROK_SUBAGENT_MALFORMED: "1" },
+    },
+    {
+      name: "provider",
+      envVars: { FAKE_ACP_GROK_SUBAGENT_ACTION_ERROR: "1" },
+    },
+  ])(
+    "grok_subagent_message_failure_does_not_acknowledge_$name",
+    async ({ envVars }) => {
+      const { providerThreadId } = await startGrokSubagentThread(envVars);
+      const response = await waitForResponse(
+        subagentRequest("subagent/tell", providerThreadId, {
+          childRef: "child-alpha",
+          text: "not delivered",
+        }),
+      );
+      expect(response.error).toBeDefined();
+    },
+  );
+
+  it("grok_subagent_cancel_disconnect_returns_error", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_DISCONNECT: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/cancel", providerThreadId, {
+        childRef: "child-alpha",
+      }),
+    );
+    expect(response.error).toBeDefined();
+  });
+
+  it("grok_subagent_stale_response_does_not_resolve_replacement", async () => {
+    const { bbThreadId, providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_ACTION_DELAY_MS: "200",
+    });
+    const tellId = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "stale message",
+    });
+    const restartOptions = executionOptions({
+      providerOptions: launchProviderOptions({ dialectId: "grok" }),
+    });
+    const restartId = sendRequest("thread/start", {
+      threadId: bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: restartOptions,
+    });
+    const replacementProviderThreadId = providerThreadIdOf(
+      await waitForResponse(restartId),
+    );
+    bbThreadIdByProviderThreadId.set(replacementProviderThreadId, bbThreadId);
+    expect((await waitForResponse(tellId)).error?.message).toMatch(
+      /replaced|stale|cancel/i,
+    );
+    await waitForResponse(
+      sendTurnRequest("turn/start", replacementProviderThreadId, {
+        input: [{ type: "text", text: "grok-subagent-spawn", mentions: [] }],
+      }),
+    );
+    const listed = await waitForResponse(
+      subagentRequest("subagent/list", replacementProviderThreadId),
+    );
+    expect(listed.result).not.toMatchObject({
+      subagents: [{ childRef: "child-alpha", result: "stale message" }],
+    });
+    await stopThread(replacementProviderThreadId);
+  });
+
+  it("grok_subagent_cancel_completed_child_returns_error", async () => {
+    const { providerThreadId } = await startGrokSubagentThread();
+    const response = await waitForResponse(
+      subagentRequest("subagent/cancel", providerThreadId, {
+        childRef: "child-beta",
+      }),
+    );
+    expect(response.error).toBeDefined();
+  });
+
+  it("grok_plan_approve_returns_approved", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      permissionMode: "accept-edits",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [{ type: "text", text: "grok-plan-approve", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded Grok plan approval",
+    );
+    expect(forwarded.params).toMatchObject({
+      payload: {
+        kind: "approval",
+        subject: {
+          kind: "plan",
+          itemId: "grok-plan-tool-call",
+          plan: "# Hello function\n\n1. Add hello.\n2. Add a focused test.",
+          planFilePath: null,
+        },
+      },
+    });
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: { decision: "allow_once", grantedPermissions: null },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain('grok-plan:{"outcome":"approved"}');
+  });
+
+  it("grok_plan_request_changes_returns_cancelled_with_comments", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      permissionMode: "accept-edits",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [
+        { type: "text", text: "grok-plan-request-changes", mentions: [] },
+      ],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded Grok plan changes",
+    );
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          decision: "deny",
+          comments: "Please include a focused test.",
+        },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain(
+      'grok-plan:{"outcome":"cancelled","comments":"Please include a focused test."}',
+    );
+  });
+
+  it("grok_plan_stop_cancels_approval", async () => {
+    const requestLog = join(workspaceDir, "grok-plan-stop.log");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      permissionMode: "accept-edits",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [{ type: "text", text: "grok-plan-approve", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitFor(
+      () =>
+        output.messages.find(
+          (message) => message.method === "interaction/request",
+        ),
+      "forwarded Grok plan before stop",
+    );
+
+    await stopThread(providerThreadId);
+    await waitFor(
+      () =>
+        readFileSync(requestLog, "utf8").includes(
+          '{"grokPlanResult":{"outcome":"cancelled"}',
+        )
+          ? true
+          : undefined,
+      "Grok plan cancellation reaching the agent",
+    );
+  });
+
+  it("grok_plan_stale_response_does_not_resolve_replacement_session", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dialectId: "grok",
+      permissionMode: "accept-edits",
+    });
+    const firstTurn = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [{ type: "text", text: "grok-plan-approve", mentions: [] }],
+    });
+    await waitForResponse(firstTurn);
+    await waitFor(
+      () =>
+        output.messages.find(
+          (message) => message.method === "interaction/request",
+        ),
+      "first Grok plan interaction",
+    );
+
+    const restartOptions = executionOptions({
+      permissionMode: "accept-edits",
+      providerOptions: launchProviderOptions({ dialectId: "grok" }),
+    });
+    const restartId = sendRequest("thread/start", {
+      threadId: bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: restartOptions,
+    });
+    const replacementProviderThreadId = providerThreadIdOf(
+      await waitForResponse(restartId),
+    );
+    bbThreadIdByProviderThreadId.set(replacementProviderThreadId, bbThreadId);
+    const secondTurn = sendTurnRequest(
+      "turn/start",
+      replacementProviderThreadId,
+      {
+        options: executionOptions({ permissionMode: "accept-edits" }),
+        input: [{ type: "text", text: "grok-plan-approve", mentions: [] }],
+      },
+    );
+    await waitForResponse(secondTurn);
+    const interactions = await waitFor(() => {
+      const requests = output.messages.filter(
+        (message) =>
+          message.method === "interaction/request" && message.id !== undefined,
+      );
+      return requests.length === 2 ? requests : undefined;
+    }, "replacement Grok plan interaction");
+    const completionsBefore = threadEventsOfType("turn/completed").length;
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: interactions[0]!.id,
+        result: { decision: "allow_once", grantedPermissions: null },
+      }),
+    );
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: interactions[1]!.id,
+        result: {
+          decision: "deny",
+          comments: "Replacement session decides.",
+        },
+      }),
+    );
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length > completionsBefore
+          ? true
+          : undefined,
+      "replacement turn completion",
+    );
+    expect(agentMessageTexts().join("\n")).not.toContain(
+      '"outcome":"approved"',
+    );
+    expect(agentMessageTexts()).toContain(
+      'grok-plan:{"outcome":"cancelled","comments":"Replacement session decides."}',
+    );
+  });
+
+  it("grok_plan_malformed_request_returns_invalid_params", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      permissionMode: "accept-edits",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [{ type: "text", text: "grok-plan-malformed", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(
+      output.messages.filter(
+        (message) => message.method === "interaction/request",
+      ),
+    ).toEqual([]);
+    expect(agentMessageTexts().join("\n")).toContain("error");
+    expect(agentMessageTexts().join("\n")).toContain("plan");
+  });
+
+  it("grok_plan_disconnect_does_not_approve", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      permissionMode: "accept-edits",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [{ type: "text", text: "grok-plan-disconnect", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length === 1 ? true : undefined,
+      "failed turn after Grok disconnected during plan approval",
+    );
+
+    expect(
+      threadEventsOfType("turn/completed").map((event) => event.status),
+    ).toEqual(["failed"]);
+    expect(agentMessageTexts().join("\n")).not.toContain(
+      '"outcome":"approved"',
+    );
+  });
+
+  it("grok_single_question_answer_completes_turn", async () => {
+    const { providerThreadId } = await startThread({ dialectId: "grok" });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "grok-question-single", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded Grok question",
+    );
+    expect(forwarded.params).toMatchObject({
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "question-1",
+            prompt: "Choose synthetic option",
+            multiSelect: false,
+            options: [
+              {
+                value: "Alpha",
+                label: "Alpha",
+                description: "First synthetic choice",
+                preview: "PREVIEW_ALPHA",
+              },
+              {
+                value: "Beta",
+                label: "Beta",
+                description: "Second synthetic choice",
+                preview: "PREVIEW_BETA",
+              },
+            ],
+            allowFreeText: false,
+          },
+        ],
+      },
+    });
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          kind: "user_answer",
+          answers: { "question-1": { selected: ["Alpha"] } },
+        },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain(
+      'grok-question:{"outcome":"accepted","answers":{"Choose synthetic option":"Alpha"},"annotations":{"Choose synthetic option":{"preview":"PREVIEW_ALPHA"}}}',
+    );
+  });
+
+  it("grok_multi_question_answer_preserves_all_answers", async () => {
+    const { providerThreadId } = await startThread({ dialectId: "grok" });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "grok-question-multi", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded Grok multi-select question",
+    );
+    expect(forwarded.params).toMatchObject({
+      payload: {
+        questions: [{ id: "question-1", multiSelect: true }],
+      },
+    });
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          kind: "user_answer",
+          answers: { "question-1": { selected: ["Logo", "Icon"] } },
+        },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain(
+      'grok-question:{"outcome":"accepted","answers":{"Choose extras":["Logo","Icon"]},"annotations":{"Choose extras":{"preview":"LOGO_PREVIEW"}}}',
+    );
+  });
+
+  it("grok_other_answer_preserves_unicode_notes", async () => {
+    const { providerThreadId } = await startThread({ dialectId: "grok" });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "grok-question-other", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded Grok Other question",
+    );
+    expect(forwarded.params).toMatchObject({
+      payload: {
+        questions: [
+          {
+            id: "question-1",
+            prompt: "Выберите стек 😀",
+            allowFreeText: true,
+          },
+        ],
+      },
+    });
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          kind: "user_answer",
+          answers: {
+            "question-1": {
+              selected: ["Other (please specify)"],
+              freeText: "Rust и مراجعة 😀",
+            },
+          },
+        },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain(
+      'grok-question:{"outcome":"accepted","answers":{"Выберите стек 😀":"Other (please specify)"},"annotations":{"Выберите стек 😀":{"notes":"Rust и مراجعة 😀"}}}',
+    );
+  });
+
+  it("grok_malformed_question_returns_invalid_params_without_opening_interaction", async () => {
+    const { providerThreadId } = await startThread({ dialectId: "grok" });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "grok-question-malformed", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(
+      output.messages.filter(
+        (message) => message.method === "interaction/request",
+      ),
+    ).toEqual([]);
+    expect(agentMessageTexts().join("\n")).toContain("error");
+    expect(agentMessageTexts().join("\n")).toContain("options");
+  });
+
+  it("grok_stop_cancels_pending_question", async () => {
+    const requestLog = join(workspaceDir, "grok-stop-requests.log");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "grok-question-single", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitFor(
+      () =>
+        output.messages.find(
+          (message) => message.method === "interaction/request",
+        ),
+      "forwarded Grok question before stop",
+    );
+
+    await stopThread(providerThreadId);
+    await waitFor(
+      () =>
+        readFileSync(requestLog, "utf8").includes(
+          '{"grokQuestionResult":{"outcome":"skip_interview"}}',
+        )
+          ? true
+          : undefined,
+      "Grok skip_interview response reaching the agent",
+    );
+  });
+
+  it("grok_session_replacement_ignores_old_answer", async () => {
+    const requestLog = join(workspaceDir, "grok-replacement-requests.log");
+    const first = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const turnId = sendTurnRequest("turn/start", first.providerThreadId, {
+      input: [{ type: "text", text: "grok-question-single", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded question from the old Grok session",
+    );
+    await stopThread(first.providerThreadId);
+    await waitFor(
+      () =>
+        readFileSync(requestLog, "utf8").includes("skip_interview")
+          ? true
+          : undefined,
+      "old Grok session cancellation",
+    );
+
+    const second = await startThread({
+      dialectId: "grok",
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          kind: "user_answer",
+          answers: { "question-1": { selected: ["Alpha"] } },
+        },
+      }),
+    );
+    await completeTurnWith(
+      second.providerThreadId,
+      "echo-next-session",
+      executionOptions({}),
+    );
+    expect(readFileSync(requestLog, "utf8")).not.toContain(
+      '"outcome":"accepted"',
+    );
+  });
+
+  it("grok_disconnect_cancels_pending_question", async () => {
+    const { providerThreadId } = await startThread({ dialectId: "grok" });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "grok-question-disconnect", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length === 1 ? true : undefined,
+      "failed turn after Grok disconnected during a question",
+    );
+
+    expect(
+      threadEventsOfType("turn/completed").map((event) => event.status),
+    ).toEqual(["failed"]);
+    expect(agentMessageTexts().join("\n")).not.toContain(
+      '"outcome":"accepted"',
+    );
   });
 
   it("shows a form question as a user question and returns typed answers to the agent", async () => {

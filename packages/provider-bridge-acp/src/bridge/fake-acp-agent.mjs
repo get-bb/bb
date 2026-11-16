@@ -57,6 +57,12 @@
  *                              that enabled terminal authentication
  * - FAKE_ACP_AUTH_OPTIONAL=1 → advertise the auth methods but never require
  *                              authenticate (a signed-in agent, as Cursor is)
+ * - FAKE_ACP_AUTH_FAILURE_ONCE=1
+ *                            → fail the first authenticate, then accept it
+ * - FAKE_ACP_AUTH_REJECT=invalid|expired
+ *                            → reject an advertised method without a session
+ * - FAKE_ACP_EXIT_ON_AUTHENTICATE=<code>
+ *                            → exit during authenticate, before any session
  * - FAKE_ACP_SESSION_NEW_ERROR
  *                            → reject session/new with this message (-32603)
  * - FAKE_ACP_EXIT_ON_SESSION_NEW=<code>
@@ -86,6 +92,9 @@
  * - FAKE_ACP_LOST_SESSION_FILE
  *                            → marker that limits the lost session to the
  *                              first launch
+ * - FAKE_ACP_PROMPT_IMAGE=1  → advertise promptCapabilities.image
+ * - FAKE_ACP_PROMPT_EMBEDDED=1
+ *                            → advertise promptCapabilities.embeddedContext
  * - FAKE_ACP_GROK_CONTEXT=1  → advertise Grok model _meta.totalContextTokens
  *                              and prompt-result _meta.usage
  * - FAKE_ACP_COMPACT_STOP_REASON
@@ -121,7 +130,7 @@
  * - "hang-with-open-command"     → start a command, then hang until cancelled
  *                                  without ever closing it (Cursor's shape)
  * - "stop-reason:<reason>"       → end the turn with that stop reason
- * - "advertise-commands"         → advertise two slash commands, twice
+ * - "advertise-commands"         → advertise the configured slash commands, twice
  * - "ask-form"                   → ask a two-field form question
  * - "ask-form-too-large"         → ask a form with more fields than bb shows
  * - "request-permission-reject-only"
@@ -155,11 +164,18 @@ const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
 const grokContext = process.env.FAKE_ACP_GROK_CONTEXT === "1";
+const grokContextMissingModel = process.env.FAKE_ACP_GROK_CONTEXT_MISSING_MODEL;
+const grokCapabilities = process.env.FAKE_ACP_GROK_CAPABILITIES === "1";
 const unmappedReasoningConfig =
   process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const sessionOptionsConfig = process.env.FAKE_ACP_SESSION_OPTIONS === "1";
+const replaceCommands = process.env.FAKE_ACP_COMMANDS_REPLACE === "1";
+const sessionMetadata = process.env.FAKE_ACP_SESSION_METADATA === "1";
+let metadataSerial = 0;
+const metadataSessions = new Map();
+let commandAdvertisements = 0;
 const sessionOptionRejectedValue =
   process.env.FAKE_ACP_SESSION_OPTION_REJECTED_VALUE;
 let selectedApproach = "build";
@@ -188,6 +204,10 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .map((method) => method.trim())
   .filter(Boolean);
 const authOptional = process.env.FAKE_ACP_AUTH_OPTIONAL === "1";
+const authFailureOnce = process.env.FAKE_ACP_AUTH_FAILURE_ONCE === "1";
+const authReject = process.env.FAKE_ACP_AUTH_REJECT;
+const exitOnAuthenticate = process.env.FAKE_ACP_EXIT_ON_AUTHENTICATE;
+let authAttempts = 0;
 const terminalAuthArgs = process.env.FAKE_ACP_TERMINAL_AUTH_ARGS;
 const sessionNewError = process.env.FAKE_ACP_SESSION_NEW_ERROR;
 const exitOnSessionNew = process.env.FAKE_ACP_EXIT_ON_SESSION_NEW;
@@ -262,6 +282,7 @@ const fakeModels = [
 
 let activePromptId = null;
 let permissionRequestCount = 0;
+let grokForkSerial = 0;
 let stuckAfterCancel = false;
 let nextAgentRequestId = 1000;
 let selectedModel = process.env.FAKE_ACP_INITIAL_MODEL ?? "fake/default";
@@ -349,6 +370,17 @@ function messageChunk(text) {
     sessionUpdate: "agent_message_chunk",
     content: { type: "text", text },
   };
+}
+
+function notifySubagent(kind, update) {
+  send({
+    jsonrpc: "2.0",
+    method: "_x.ai/session_notification",
+    params: {
+      sessionId: activeSessionId,
+      update: { sessionUpdate: kind, ...update },
+    },
+  });
 }
 
 function effortOptionForModel(model) {
@@ -523,7 +555,14 @@ function configState() {
       availableModels: fakeModels.map((model) => ({
         modelId: model.value,
         name: model.name,
-        ...(grokContext ? { _meta: { totalContextTokens: 500_000 } } : {}),
+        ...(grokContext && model.value !== grokContextMissingModel
+          ? {
+              _meta: {
+                totalContextTokens:
+                  model.value === "fake/strong" ? 256_000 : 500_000,
+              },
+            }
+          : {}),
       })),
     };
   }
@@ -607,6 +646,268 @@ function captureMcpServers(message) {
   currentMcpServers = Array.isArray(message.params?.mcpServers)
     ? message.params.mcpServers
     : [];
+}
+
+function spawnGrokSubagent(args) {
+  const { childRef, description, toolCallId, result } = args;
+  const meta = {
+    "x.ai/tool": {
+      version: 1,
+      name: "spawn_subagent",
+      kind: "task",
+      namespace: "grok_build",
+      label: "Subagent",
+      read_only: false,
+    },
+  };
+  notifyUpdate({
+    sessionUpdate: "tool_call",
+    toolCallId,
+    title: "spawn_subagent",
+    rawInput: {
+      description,
+      prompt: result,
+      background: true,
+      run_in_background: true,
+    },
+    _meta: meta,
+  });
+  notifyUpdate({
+    sessionUpdate: "tool_call_update",
+    toolCallId,
+    title: description,
+    status: "completed",
+    rawInput: {
+      variant: "Task",
+      prompt: result,
+      description,
+      run_in_background: true,
+      task_id: null,
+    },
+    rawOutput: {
+      type: "Text",
+      text: `Subagent started in background.\nsubagent_id: ${childRef}\ndescription: ${description}`,
+    },
+    _meta: meta,
+  });
+  notifySubagent("subagent_spawned", {
+    subagent_id: childRef,
+    attempt_id: `attempt-${childRef}`,
+    parent_session_id: activeSessionId,
+    parent_prompt_id: "parent-prompt",
+    child_session_id: `session-${childRef}`,
+    subagent_type: "general-purpose",
+    description,
+    model: "grok-test",
+  });
+  notifySubagent("subagent_progress", {
+    subagent_id: childRef,
+    duration_ms: 20,
+    turn_count: 1,
+    tool_call_count: 0,
+    tokens_used: 100,
+  });
+  if (result !== null) {
+    for (let index = 0; index < 2; index += 1) {
+      notifySubagent("subagent_finished", {
+        subagent_id: childRef,
+        status: "completed",
+        output: result,
+        turns: 1,
+        duration_ms: 20,
+        will_wake: true,
+      });
+    }
+  }
+}
+
+function spawnGrokSubagentPair() {
+  spawnGrokSubagent({
+    childRef: "child-alpha",
+    description: "CHILD_ALPHA",
+    toolCallId: "spawn-alpha",
+    result: null,
+  });
+  spawnGrokSubagent({
+    childRef: "child-beta",
+    description: "CHILD_BETA",
+    toolCallId: "spawn-beta",
+    result: "BETA_DONE",
+  });
+  notifySubagent("subagent_finished", {
+    subagent_id: "child-stale",
+    status: "completed",
+    output: "STALE",
+  });
+}
+
+async function handleGrokSubagentTell(text) {
+  const childRef = /subagent_id="([^"]+)"/.exec(text)?.[1] ?? "missing";
+  const message = /text exactly ("(?:[^"\\]|\\.)*")/.exec(text)?.[1] ?? '""';
+  const content = JSON.parse(message);
+  notifyUpdate({
+    sessionUpdate: "tool_call",
+    toolCallId: `tell-${childRef}`,
+    title: "send_subagent_message",
+    rawInput: { subagent_id: childRef, text: content, delivery: "interject" },
+    _meta: {
+      "x.ai/tool": {
+        version: 1,
+        name: "send_subagent_message",
+        kind: "active_agent_message",
+      },
+    },
+  });
+  if (process.env.FAKE_ACP_GROK_SUBAGENT_DISCONNECT === "1") process.exit(7);
+  if (process.env.FAKE_ACP_GROK_SUBAGENT_ACTION_ERROR === "1") {
+    notifyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: `tell-${childRef}`,
+      status: "failed",
+      content: [
+        { type: "content", content: { type: "text", text: "send failed" } },
+      ],
+    });
+    return;
+  }
+  const delay = Number(
+    process.env.FAKE_ACP_GROK_SUBAGENT_ACTION_DELAY_MS ?? "0",
+  );
+  if (delay > 0) await sleep(delay);
+  notifyUpdate({
+    sessionUpdate: "tool_call_update",
+    toolCallId: `tell-${childRef}`,
+    title: "Sending message to subagent",
+    status: "completed",
+    rawOutput:
+      process.env.FAKE_ACP_GROK_SUBAGENT_MALFORMED === "1"
+        ? { type: "SendSubagentMessage", outcome: "failed" }
+        : {
+            type: "SendSubagentMessage",
+            outcome: "accepted",
+            message_id: `message-${childRef}`,
+          },
+  });
+  if (process.env.FAKE_ACP_GROK_SUBAGENT_KEEP_RUNNING !== "1") {
+    notifySubagent("subagent_finished", {
+      subagent_id: childRef,
+      status: "completed",
+      output: content,
+      turns: 2,
+      duration_ms: 40,
+      will_wake: true,
+    });
+  }
+}
+
+async function handleGrokSubagentCancel(text) {
+  const childRef = /task_ids=\["([^"]+)"\]/.exec(text)?.[1] ?? "missing";
+  notifyUpdate({
+    sessionUpdate: "tool_call",
+    toolCallId: `cancel-${childRef}`,
+    title: "kill_command_or_subagent",
+    rawInput: { task_id: childRef },
+    _meta: {
+      "x.ai/tool": {
+        version: 1,
+        name: "kill_command_or_subagent",
+        kind: "kill_task_action",
+      },
+    },
+  });
+  if (process.env.FAKE_ACP_GROK_SUBAGENT_DISCONNECT === "1") process.exit(7);
+  if (process.env.FAKE_ACP_GROK_SUBAGENT_ACTION_ERROR === "1") {
+    notifyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: `cancel-${childRef}`,
+      status: "failed",
+      content: [
+        { type: "content", content: { type: "text", text: "cancel failed" } },
+      ],
+    });
+    return;
+  }
+  const delay = Number(
+    process.env.FAKE_ACP_GROK_SUBAGENT_ACTION_DELAY_MS ?? "0",
+  );
+  if (delay > 0) await sleep(delay);
+  notifyUpdate({
+    sessionUpdate: "tool_call_update",
+    toolCallId: `cancel-${childRef}`,
+    title: `kill ${childRef} (killed)`,
+    status: "completed",
+    rawOutput:
+      process.env.FAKE_ACP_GROK_SUBAGENT_MALFORMED === "1"
+        ? { type: "KillTask", Result: { task_id: childRef, outcome: "failed" } }
+        : {
+            type: "KillTask",
+            Result: {
+              task_id: childRef,
+              outcome: "killed",
+              message: "Subagent cancellation initiated",
+            },
+          },
+  });
+  notifySubagent("subagent_finished", {
+    subagent_id: childRef,
+    status: "cancelled",
+    error: "Subagent was cancelled",
+    turns: 1,
+    duration_ms: 40,
+    will_wake: false,
+  });
+}
+
+async function maybeNotifyGrokCompaction() {
+  const events = process.env.FAKE_ACP_GROK_COMPACTION_EVENTS === "1";
+  const malformed = process.env.FAKE_ACP_GROK_COMPACTION_MALFORMED === "1";
+  const disconnect = process.env.FAKE_ACP_GROK_COMPACTION_DISCONNECT === "1";
+  const empty = process.env.FAKE_ACP_GROK_COMPACTION_EMPTY === "1";
+  if (!events && !malformed && !disconnect && !empty) return;
+  const delay = Number(process.env.FAKE_ACP_GROK_COMPACTION_DELAY_MS ?? "0");
+  if (delay > 0) await sleep(delay);
+  if (!empty) {
+    notifyUpdate({
+      sessionUpdate: "auto_compact_started",
+      tokens_used: 207_919,
+      context_window: 256_000,
+      percentage: 81,
+      reason: "Context window 81% full",
+    });
+  }
+  notifyUpdate({
+    sessionUpdate: "auto_compact_completed",
+    tokens_before: empty ? 0 : 207_919,
+    tokens_after: empty ? 0 : malformed ? "not-a-number" : 47_689,
+    elapsed_ms: 57_353,
+    summary_preview: null,
+  });
+  if (disconnect) process.exit(7);
+}
+
+function grokUsageMetadata() {
+  if (process.env.FAKE_ACP_GROK_USAGE_DISCONNECT === "1") process.exit(7);
+  const full = process.env.FAKE_ACP_GROK_USAGE === "1";
+  const missing = process.env.FAKE_ACP_GROK_USAGE_MISSING === "1";
+  const zero = process.env.FAKE_ACP_GROK_USAGE_ZERO === "1";
+  const malformed = process.env.FAKE_ACP_GROK_USAGE_MALFORMED === "1";
+  if (!full && !missing && !zero && !malformed) return null;
+  if (missing) return { totalTokens: 0 };
+  const metrics = {
+    inputTokens: malformed ? -1 : zero ? 0 : 21_027,
+    outputTokens: zero ? 0 : 53,
+    totalTokens: zero ? 0 : 21_080,
+    cachedReadTokens: zero ? 0 : 2_176,
+    cacheCreationTokens: zero ? 0 : 0,
+    reasoningTokens: zero ? 0 : 50,
+    modelCalls: 1,
+    apiDurationMs: 2_055,
+    costUsdTicks: malformed ? "not-a-number" : zero ? 0 : 132_967_200,
+    numTurns: 1,
+  };
+  return full || malformed
+    ? { ...metrics, modelUsage: { "grok-4.7-build": metrics } }
+    : metrics;
 }
 
 async function handlePrompt(message) {
@@ -872,11 +1173,38 @@ async function handlePrompt(message) {
           }
         });
     }, UNPROMPTED_DELAY_MS);
+  } else if (sessionMetadata && text.startsWith("/rename ")) {
+    const title = text.slice("/rename ".length);
+    const updatedAt = "2026-11-15T01:00:00Z";
+    metadataSessions.set(activeSessionId, { title, updatedAt });
+    notifyUpdate({ sessionUpdate: "session_info_update", title, updatedAt });
   } else if (text.includes("advertise-commands")) {
-    const availableCommands = [
-      { name: "review", description: "Review the current diff" },
-      { name: "web", description: "Search the web", input: { hint: "query" } },
-    ];
+    commandAdvertisements += 1;
+    const availableCommands =
+      replaceCommands && commandAdvertisements > 1
+        ? [
+            {
+              name: "web",
+              description: "Search the web",
+              input: { hint: "query" },
+            },
+            { name: "web", description: "Duplicate", input: { hint: "wrong" } },
+            { name: "", description: "Empty" },
+            { name: "مراجعة", description: "Проверить 😀" },
+            {
+              name: "goal",
+              description: "Set a goal",
+              input: { hint: "objective" },
+            },
+          ]
+        : [
+            { name: "review", description: "Review the current diff" },
+            {
+              name: "web",
+              description: "Search the web",
+              input: { hint: "query" },
+            },
+          ];
     notifyUpdate({
       sessionUpdate: "available_commands_update",
       availableCommands,
@@ -886,6 +1214,124 @@ async function handlePrompt(message) {
       availableCommands,
     });
     notifyUpdate(messageChunk("commands advertised"));
+  } else if (text.includes("grok-subagent-spawn")) {
+    activePromptId = null;
+    spawnGrokSubagentPair();
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { stopReason: "end_turn" },
+    });
+    return;
+  } else if (text.includes("send_subagent_message")) {
+    activePromptId = null;
+    await handleGrokSubagentTell(text);
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { stopReason: "end_turn" },
+    });
+    return;
+  } else if (text.includes("kill_command_or_subagent")) {
+    activePromptId = null;
+    await handleGrokSubagentCancel(text);
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { stopReason: "end_turn" },
+    });
+    return;
+  } else if (text.includes("grok-plan")) {
+    const pendingPlan = requestClient("_x.ai/exit_plan_mode", {
+      sessionId: activeSessionId,
+      toolCallId: "grok-plan-tool-call",
+      planContent: text.includes("malformed")
+        ? "  "
+        : "# Hello function\n\n1. Add hello.\n2. Add a focused test.",
+    }).catch((error) => ({ error: String(error) }));
+    if (text.includes("disconnect")) {
+      setTimeout(() => process.exit(7), 50);
+    }
+    const result = await pendingPlan;
+    if (requestLog) {
+      appendFileSync(
+        requestLog,
+        `${JSON.stringify({ grokPlanResult: result })}\n`,
+      );
+    }
+    notifyUpdate(messageChunk(`grok-plan:${JSON.stringify(result)}`));
+  } else if (text.includes("grok-question")) {
+    const malformed = text.includes("malformed");
+    const multi = text.includes("multi");
+    const other = text.includes("other");
+    const questions = malformed
+      ? [
+          {
+            question: "Too many options",
+            options: Array.from({ length: 5 }, (_, index) => ({
+              label: `Option ${index + 1}`,
+            })),
+            multiSelect: false,
+          },
+        ]
+      : multi
+        ? [
+            {
+              question: "Choose extras",
+              options: [
+                { label: "Logo", preview: "LOGO_PREVIEW" },
+                { label: "Tagline", preview: "TAGLINE_PREVIEW" },
+                { label: "Icon" },
+              ],
+              multiSelect: true,
+            },
+          ]
+        : other
+          ? [
+              {
+                question: "Выберите стек 😀",
+                options: [
+                  { label: "TypeScript", description: "詳細な選択肢" },
+                  { label: "Other (please specify)" },
+                ],
+                multiSelect: false,
+              },
+            ]
+          : [
+              {
+                question: "Choose synthetic option",
+                options: [
+                  {
+                    label: "Alpha",
+                    description: "First synthetic choice",
+                    preview: "PREVIEW_ALPHA",
+                  },
+                  {
+                    label: "Beta",
+                    description: "Second synthetic choice",
+                    preview: "PREVIEW_BETA",
+                  },
+                ],
+                multiSelect: false,
+              },
+            ];
+    const pendingQuestion = requestClient("_x.ai/ask_user_question", {
+      sessionId: activeSessionId,
+      toolCallId: "grok-question-tool-call",
+      questions,
+      mode: "default",
+    }).catch((error) => ({ error: String(error) }));
+    if (text.includes("disconnect")) {
+      setTimeout(() => process.exit(7), 50);
+    }
+    const result = await pendingQuestion;
+    if (requestLog) {
+      appendFileSync(
+        requestLog,
+        `${JSON.stringify({ grokQuestionResult: result })}\n`,
+      );
+    }
+    notifyUpdate(messageChunk(`grok-question:${JSON.stringify(result)}`));
   } else if (text.includes("ask-form")) {
     const droid = text.includes("ask-form-other-droid");
     const properties = text.includes("ask-form-other")
@@ -1008,6 +1454,7 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`echo:${text}`));
   }
 
+  await maybeNotifyGrokCompaction();
   if (activePromptId === message.id) {
     activePromptId = null;
     const scriptedStopReason = /stop-reason:([a-z_]+)/.exec(text)?.[1];
@@ -1015,14 +1462,19 @@ async function handlePrompt(message) {
       text === "/compact"
         ? (process.env.FAKE_ACP_COMPACT_STOP_REASON ?? "end_turn")
         : (scriptedStopReason ?? "end_turn");
+    const usageMetadata = grokUsageMetadata();
+    const usageDelay = Number(process.env.FAKE_ACP_GROK_USAGE_DELAY_MS ?? "0");
+    if (usageDelay > 0) await sleep(usageDelay);
     send({
       jsonrpc: "2.0",
       id: message.id,
       result: {
         stopReason,
-        ...(grokContext
-          ? { _meta: { usage: { inputTokens: 17_504, totalTokens: 17_531 } } }
-          : {}),
+        ...(usageMetadata !== null
+          ? { _meta: { usage: usageMetadata } }
+          : grokContext
+            ? { _meta: { usage: { inputTokens: 17_504, totalTokens: 17_531 } } }
+            : {}),
       },
     });
   }
@@ -1052,7 +1504,32 @@ async function handleMessage(message) {
           protocolVersion: 1,
           agentCapabilities: {
             loadSession,
-            promptCapabilities: { image: false },
+            promptCapabilities: {
+              image: process.env.FAKE_ACP_PROMPT_IMAGE === "1",
+              ...(process.env.FAKE_ACP_PROMPT_EMBEDDED === "1"
+                ? { embeddedContext: true }
+                : {}),
+            },
+            ...(grokCapabilities
+              ? {
+                  _meta: {
+                    "x.ai/fs_notify": true,
+                    "x.ai/hooks": {
+                      blockingEvents: ["pre_tool_use", "stop"],
+                      decisions: ["deny", "block"],
+                      stopSignals: ["continue", "stopReason"],
+                    },
+                    "x.ai/capabilities": {
+                      toolOverrides: {
+                        x_keyword_search: true,
+                        x_semantic_search: true,
+                        x_user_search: false,
+                        x_thread_fetch: false,
+                      },
+                    },
+                  },
+                }
+              : {}),
             ...(forkSession ||
             resumeSession ||
             closeSession ||
@@ -1079,6 +1556,38 @@ async function handleMessage(message) {
                 },
               }
             : {}),
+          ...(grokCapabilities
+            ? {
+                _meta: {
+                  modelState: {
+                    currentModelId: "grok-test",
+                    availableModels: [
+                      {
+                        modelId: "grok-test",
+                        _meta: {
+                          totalContextTokens: 500000,
+                          supportsReasoningEffort: true,
+                          reasoningEffort: "high",
+                          reasoningEfforts: [
+                            { id: "xhigh", name: "Extra High" },
+                            { id: "high", name: "High", default: true },
+                            { id: "medium" },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                  availableCommands: [
+                    { name: "compact", description: "Compact the session" },
+                    { name: "goal", inputHint: "Describe the goal" },
+                  ],
+                  cancelRewind: true,
+                  sessionRecap: true,
+                  feedbackTraceOffer: false,
+                  voiceMode: true,
+                },
+              }
+            : {}),
           ...(authMethods.length > 0
             ? {
                 authMethods: [
@@ -1102,11 +1611,37 @@ async function handleMessage(message) {
       return;
     case "authenticate": {
       const methodId = message.params?.methodId;
+      authAttempts += 1;
+      if (exitOnAuthenticate !== undefined) {
+        process.exit(Number(exitOnAuthenticate));
+      }
+      if (authFailureOnce && authAttempts === 1) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32000, message: "synthetic auth failure" },
+        });
+        return;
+      }
       if (!authMethods.includes(methodId)) {
         send({
           jsonrpc: "2.0",
           id: message.id,
           error: { code: -32602, message: `unsupported auth: ${methodId}` },
+        });
+        return;
+      }
+      if (authReject === "invalid" || authReject === "expired") {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: {
+            code: -32000,
+            message:
+              authReject === "expired"
+                ? "expired credentials"
+                : "invalid credentials",
+          },
         });
         return;
       }
@@ -1122,6 +1657,43 @@ async function handleMessage(message) {
       send({ jsonrpc: "2.0", id: message.id, result: null });
       return;
     }
+    case "session/list":
+      if (sessionMetadata) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            sessions: [...metadataSessions].map(([sessionId, info]) => ({
+              sessionId,
+              title: info.title,
+              updatedAt: info.updatedAt,
+            })),
+          },
+        });
+      } else {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "session/list is not supported" },
+        });
+      }
+      return;
+    case "session/close":
+      if (!metadataSessions.has(message.params?.sessionId)) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { _meta: { "x.ai/closeOutcome": "notResident" } },
+        });
+      } else {
+        metadataSessions.delete(message.params.sessionId);
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { _meta: { "x.ai/closeOutcome": "closed" } },
+        });
+      }
+      return;
     case "session/new":
       if (!requireAuthenticated(message)) {
         return;
@@ -1140,7 +1712,16 @@ async function handleMessage(message) {
       if (sessionNewDelayMs > 0) {
         await sleep(sessionNewDelayMs);
       }
-      activeSessionId = sessionId;
+      if (sessionMetadata) {
+        metadataSerial += 1;
+        activeSessionId = `fake-meta-${process.pid}-${metadataSerial}`;
+        metadataSessions.set(activeSessionId, {
+          title: null,
+          updatedAt: "2026-11-15T00:00:00Z",
+        });
+      } else {
+        activeSessionId = sessionId;
+      }
       captureMcpServers(message);
       sendSessionResponse(message, {
         sessionId: activeSessionId,
@@ -1238,6 +1819,43 @@ async function handleMessage(message) {
         result: resumeIdOnly ? {} : configState(),
       });
       return;
+    case "_x.ai/session/fork": {
+      if (!requireAuthenticated(message)) {
+        return;
+      }
+      if (process.env.FAKE_ACP_GROK_FORK !== "1") {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: {
+            code: -32601,
+            message: "_x.ai/session/fork is not supported",
+          },
+        });
+        return;
+      }
+      if (process.env.FAKE_ACP_GROK_FORK_DISCONNECT === "1") {
+        process.exit(7);
+      }
+      grokForkSerial += 1;
+      activeSessionId = forkReuseSourceId
+        ? message.params.sourceSessionId
+        : `grok-fork-${process.pid}-${grokForkSerial}`;
+      captureMcpServers(message);
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          newSessionId: activeSessionId,
+          chatMessagesCopied: 11,
+          updatesCopied: 7,
+          planStateCopied: false,
+          newCwd: message.params.newCwd,
+          parentSessionId: message.params.sourceSessionId,
+        },
+      });
+      return;
+    }
     case "session/fork":
       if (!requireAuthenticated(message)) {
         return;
@@ -1432,6 +2050,44 @@ async function handleMessage(message) {
         jsonrpc: "2.0",
         id: message.id,
         error: { code: -32602, message: `Unknown config ${configId}` },
+      });
+      return;
+    }
+    case "_x.ai/interject": {
+      if (message.params?.sessionId !== activeSessionId) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32602, message: "session not found" },
+        });
+        return;
+      }
+      if (process.env.FAKE_ACP_GROK_INTERJECT_DISCONNECT === "1") {
+        process.exit(7);
+      }
+      if (process.env.FAKE_ACP_GROK_INTERJECT_ERROR === "1") {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32602, message: "interject rejected" },
+        });
+        return;
+      }
+      const delayMs = Number(
+        process.env.FAKE_ACP_GROK_INTERJECT_DELAY_MS ?? "0",
+      );
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      if (process.env.FAKE_ACP_GROK_INTERJECT_MALFORMED === "1") {
+        send({ jsonrpc: "2.0", id: message.id, result: { result: {} } });
+        return;
+      }
+      notifyUpdate(messageChunk(`grok-interject:${message.params?.text}`));
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: { result: { status: "queued" } },
       });
       return;
     }
