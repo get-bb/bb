@@ -48,4 +48,20 @@ describe("voice control dispatch", () => {
     ).resolves.toEqual({ sdp: null });
     expect(harness.provisions).toHaveLength(0);
   });
+
+  it("fails a lease renewal after runtime teardown without creating a runtime", async () => {
+    const harness = createHarness();
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.voice",
+          environmentId: "env-1",
+          threadId: "thread-1",
+          command: { action: "keepAlive", sessionId },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).rejects.toThrow("Voice session is no longer active");
+    expect(harness.provisions).toHaveLength(0);
+  });
 });

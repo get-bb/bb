@@ -28,7 +28,11 @@ Lifecycle:
   and `threads.experimental_voice({ threadId, command: { action: "stop", sessionId } })`.
   Clients renew a call lease at least every 60 seconds through
   `bb thread voice keep-alive` or `threads.experimental_voice` with `action: "keepAlive"`.
-  Ending voice leaves coding work running. Provider support is optional.
+  Ending voice leaves coding work running. Stopping a session that already
+  ended, including after the provider session was released, succeeds without
+  resuming the provider; renewing an ended session fails.
+
+  Provider support is optional.
 
   Optional start flags: --voice <name>, --context-file <path>, --no-context, and
   --instructions-file <path>. The SDK start command accepts voice,

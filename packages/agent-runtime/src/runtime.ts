@@ -2347,6 +2347,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async voice({ threadId, command }) {
+      if (command.action !== "start" && !threadRuntimeConfigs.has(threadId)) {
+        voiceSessionIds.delete(threadId);
+        if (command.action === "stop") return { sdp: null };
+        throw new Error("Voice session is no longer active");
+      }
       return runThreadOperation({
         threadId,
         work: async () => {

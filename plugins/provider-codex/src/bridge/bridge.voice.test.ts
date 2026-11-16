@@ -121,3 +121,55 @@ it("rejects an older live app-server before sending unsupported realtime paramet
   const requests = readFileSync(requestLogPath, "utf8");
   expect(requests).not.toContain("thread/realtime/start");
 });
+
+it("completes hang-up after the native session is released and rejects a stale lease renewal", async () => {
+  workspaceDir = mkdtempSync(join(tmpdir(), "bb-voice-released-"));
+  processLogPath = join(workspaceDir, "process.log");
+  const requestLogPath = join(workspaceDir, "requests.ndjson");
+  const script = join(workspaceDir, "scenario.json");
+  writeFileSync(script, JSON.stringify({ processLogPath, requestLogPath }));
+  stubFakeCodexAppServer(script);
+  harness = createHarness(handleLine);
+  harness.sendRequest(1, "thread/resume", {
+    threadId,
+    providerThreadId,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+  harness.sendRequest(2, "thread/voice", {
+    threadId,
+    providerThreadId,
+    command: { action: "start", sessionId, sdp: "browser-offer" },
+  });
+  expect((await harness.waitForResponse(2)).result).toEqual({
+    sdp: "native-answer",
+  });
+  harness.sendRequest(3, "thread/stop", {
+    threadId,
+    providerThreadId,
+    intent: "release",
+    activeTurnId: null,
+  });
+  expect((await harness.waitForResponse(3)).error).toBeUndefined();
+  harness.sendRequest(4, "thread/voice", {
+    threadId,
+    providerThreadId,
+    command: { action: "stop", sessionId },
+  });
+  expect((await harness.waitForResponse(4)).result).toEqual({ sdp: null });
+  harness.sendRequest(5, "thread/voice", {
+    threadId,
+    providerThreadId,
+    command: { action: "keepAlive", sessionId },
+  });
+  expect((await harness.waitForResponse(5)).error?.message).toContain(
+    "Voice session is no longer active",
+  );
+  expect(
+    readFileSync(processLogPath, "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("spawn:")),
+  ).toHaveLength(1);
+}, 15000);

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-import { CodexVoiceSession, requireNativeVoiceVersion, voiceCommandSchema } from "./voice.js";
+import {
+  CodexVoiceSession,
+  requireNativeVoiceVersion,
+  voiceCommandSchema,
+} from "./voice.js";
 
 import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
 import { createHash } from "node:crypto";
@@ -1027,7 +1031,10 @@ function spawnChildConnection(callbacks: {
 
 const ignoredChildResultSchema = z.unknown();
 
-const initializedUserAgents = new WeakMap<CodexAppServerConnection, string | null>();
+const initializedUserAgents = new WeakMap<
+  CodexAppServerConnection,
+  string | null
+>();
 
 async function initializeChild(
   connection: CodexAppServerConnection,
@@ -2755,16 +2762,28 @@ async function handleRequest(
     case "thread/voice": {
       try {
         const session = sessionsByBbThreadId.get(request.params.threadId);
+        const { action } = request.params.command;
         if (
           !session ||
           session.closing ||
           !session.connection ||
           session.connection.exited ||
           session.codexThreadId !== request.params.providerThreadId
-        )
-          throw new Error("Codex thread must be loaded before starting voice");
-        if (request.params.command.action === "start")
-          requireNativeVoiceVersion(initializedUserAgents.get(session.connection) ?? null);
+        ) {
+          if (action === "stop") {
+            sendResult(request.id, { sdp: null });
+            return;
+          }
+          throw new Error(
+            action === "start"
+              ? "Codex thread must be loaded before starting voice"
+              : "Voice session is no longer active",
+          );
+        }
+        if (action === "start")
+          requireNativeVoiceVersion(
+            initializedUserAgents.get(session.connection) ?? null,
+          );
         let voice = voiceSessions.get(session);
         if (!voice) {
           voice = new CodexVoiceSession(
