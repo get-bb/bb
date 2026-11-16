@@ -7,6 +7,7 @@ import {
   threadScope,
   turnScope,
   type PendingInteractionCreate,
+  type ThreadEvent,
   type ToolCallRequest,
 } from "@bb/domain";
 import {
@@ -68,6 +69,7 @@ interface CreateFetchRecorderArgs {
   agentCpuPriority?: boolean;
   retiredEnvironmentIds?: string[];
   endedInteractiveRequestsOnReconnect?: HostDaemonInteractiveRequestKey[];
+  idleProviderSessionTimeoutMinutes?: number;
   sessionIds?: string[];
 }
 
@@ -144,7 +146,8 @@ function createFetchRecorder(
       return Response.json(
         {
           sessionId,
-          idleProviderSessionTimeoutMinutes: 30,
+          idleProviderSessionTimeoutMinutes:
+            args.idleProviderSessionTimeoutMinutes ?? 30,
           agentCpuPriority: args.agentCpuPriority ?? false,
           machineEnvironment: {
             revision: 0,
@@ -1000,7 +1003,7 @@ describe("createHostDaemonApp", () => {
     }
   });
 
-  it("uses the latest idle timeout without overlapping sweeps", async () => {
+  it("uses the latest idle timeout and runs a sweep requested mid-sweep once it ends", async () => {
     const logger = createLogger();
     const firstReap =
       createDeferredPromise<RuntimeManagerReapIdleProviderSessionsResult>();
@@ -1056,6 +1059,7 @@ describe("createHostDaemonApp", () => {
         reapIdleProviderSessions,
       },
       setIntervalFn,
+      setTimeoutFn: () => ({ clear: vi.fn(), unref: vi.fn() }),
     });
 
     expect(setIntervalFn).toHaveBeenCalledWith(expect.any(Function), 300_000);
@@ -1104,8 +1108,6 @@ describe("createHostDaemonApp", () => {
       "Reaped idle provider sessions",
     );
 
-    triggerTick();
-    await settleReaperPromiseChain();
     expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
     expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(2, {
       idleForMs: 3_600_000,
@@ -1130,6 +1132,243 @@ describe("createHostDaemonApp", () => {
     expect(timer.clear).toHaveBeenCalledTimes(1);
     triggerTick();
     expect(reapIdleProviderSessions).toHaveBeenCalledTimes(3);
+  });
+
+  describe("idle provider session deadlines", () => {
+    interface ScheduledTimeout {
+      callback: () => void;
+      delayMs: number;
+      cleared: boolean;
+    }
+
+    function turnCompleted(threadId: string): ThreadEvent {
+      return {
+        type: "turn/completed",
+        threadId,
+        providerThreadId: `provider-${threadId}`,
+        scope: turnScope(`turn-${threadId}`),
+        status: "completed",
+      };
+    }
+
+    function providerError(threadId: string, willRetry: boolean): ThreadEvent {
+      return {
+        type: "provider/error",
+        threadId,
+        providerThreadId: `provider-${threadId}`,
+        scope: threadScope(),
+        message: "provider failed",
+        willRetry,
+      };
+    }
+
+    function createDeadlineReaper(
+      reapIdleProviderSessions: StartIdleProviderSessionReaperArgsForTest["runtimeManager"]["reapIdleProviderSessions"],
+    ) {
+      const clock = { nowMs: 0 };
+      const timeouts: ScheduledTimeout[] = [];
+      const reaper = startIdleProviderSessionReaper({
+        logger: createLogger(),
+        nowMs: () => clock.nowMs,
+        runtimeManager: { reapIdleProviderSessions },
+        setIntervalFn: () => ({ clear: vi.fn(), unref: vi.fn() }),
+        setTimeoutFn: (callback, delayMs) => {
+          const scheduled: ScheduledTimeout = {
+            callback,
+            delayMs,
+            cleared: false,
+          };
+          timeouts.push(scheduled);
+          return {
+            clear() {
+              scheduled.cleared = true;
+            },
+            unref: vi.fn(),
+          };
+        },
+      });
+      const pending = (): ScheduledTimeout[] =>
+        timeouts.filter((timeout) => !timeout.cleared);
+      const fire = (atMs: number): void => {
+        const [next] = pending();
+        expect(next).toBeDefined();
+        clock.nowMs = atMs;
+        next!.cleared = true;
+        next!.callback();
+      };
+      return { clock, fire, pending, reaper };
+    }
+
+    it("releases each thread at its own idle deadline instead of the next sweep", async () => {
+      const reapIdleProviderSessions = vi.fn(async () => ({
+        reapedSessions: [],
+      }));
+      const { clock, fire, pending, reaper } = createDeadlineReaper(
+        reapIdleProviderSessions,
+      );
+
+      reaper.observeThreadEvent(turnCompleted("thread-a"));
+      expect(pending()).toEqual([]);
+
+      clock.nowMs = 1_000;
+      reaper.setTimeoutMinutes(5);
+      expect(pending().map((timeout) => timeout.delayMs)).toEqual([299_000]);
+
+      clock.nowMs = 61_000;
+      reaper.observeThreadEvent(providerError("thread-b", true));
+      expect(pending().map((timeout) => timeout.delayMs)).toEqual([299_000]);
+      reaper.observeThreadEvent(turnCompleted("thread-b"));
+      expect(pending().map((timeout) => timeout.delayMs)).toEqual([239_000]);
+      expect(reapIdleProviderSessions).not.toHaveBeenCalled();
+
+      fire(300_000);
+      await settleReaperPromiseChain();
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+      expect(reapIdleProviderSessions).toHaveBeenLastCalledWith({
+        idleForMs: 300_000,
+        nowMs: 300_000,
+      });
+      expect(pending().map((timeout) => timeout.delayMs)).toEqual([61_000]);
+
+      fire(361_000);
+      await settleReaperPromiseChain();
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+      expect(reapIdleProviderSessions).toHaveBeenLastCalledWith({
+        idleForMs: 300_000,
+        nowMs: 361_000,
+      });
+      expect(pending()).toEqual([]);
+
+      clock.nowMs = 400_000;
+      reaper.observeThreadEvent(turnCompleted("thread-c"));
+      reaper.stop();
+      expect(pending()).toEqual([]);
+    });
+
+    it("releases right after the turn ends at zero and runs one pass for turns ending mid-pass", async () => {
+      const firstPass =
+        createDeferredPromise<RuntimeManagerReapIdleProviderSessionsResult>();
+      const passes: Array<
+        () => Promise<RuntimeManagerReapIdleProviderSessionsResult>
+      > = [() => firstPass.promise];
+      const reapIdleProviderSessions = vi.fn(
+        (
+          _args: RuntimeManagerReapIdleProviderSessionsArgs,
+        ): Promise<RuntimeManagerReapIdleProviderSessionsResult> =>
+          passes.shift()?.() ?? Promise.resolve({ reapedSessions: [] }),
+      );
+      const { pending, reaper } = createDeadlineReaper(
+        reapIdleProviderSessions,
+      );
+
+      reaper.setTimeoutMinutes(0);
+      reaper.observeThreadEvent(turnCompleted("thread-a"));
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+      expect(reapIdleProviderSessions).toHaveBeenLastCalledWith({
+        idleForMs: 0,
+        nowMs: 0,
+      });
+
+      reaper.observeThreadEvent(turnCompleted("thread-b"));
+      reaper.observeThreadEvent(providerError("thread-c", false));
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+
+      firstPass.resolve({ reapedSessions: [] });
+      await settleReaperPromiseChain();
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+      expect(pending()).toEqual([]);
+    });
+
+    it("stays stopped for later turn ends, timeout updates and passes requested mid-pass", async () => {
+      const runningPass =
+        createDeferredPromise<RuntimeManagerReapIdleProviderSessionsResult>();
+      const reapIdleProviderSessions = vi.fn(
+        (
+          _args: RuntimeManagerReapIdleProviderSessionsArgs,
+        ): Promise<RuntimeManagerReapIdleProviderSessionsResult> =>
+          runningPass.promise,
+      );
+      const { pending, reaper } = createDeadlineReaper(
+        reapIdleProviderSessions,
+      );
+
+      reaper.setTimeoutMinutes(0);
+      reaper.observeThreadEvent(turnCompleted("thread-a"));
+      reaper.observeThreadEvent(turnCompleted("thread-b"));
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+
+      reaper.stop();
+      reaper.observeThreadEvent(turnCompleted("thread-c"));
+      reaper.setTimeoutMinutes(5);
+      reaper.observeThreadEvent(turnCompleted("thread-d"));
+      runningPass.resolve({ reapedSessions: [] });
+      await settleReaperPromiseChain();
+
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+      expect(pending()).toEqual([]);
+    });
+
+    it("moves pending deadlines when the timeout changes", async () => {
+      const reapIdleProviderSessions = vi.fn(async () => ({
+        reapedSessions: [],
+      }));
+      const { clock, pending, reaper } = createDeadlineReaper(
+        reapIdleProviderSessions,
+      );
+
+      reaper.setTimeoutMinutes(30);
+      reaper.observeThreadEvent(turnCompleted("thread-a"));
+      expect(pending().map((timeout) => timeout.delayMs)).toEqual([1_800_000]);
+
+      clock.nowMs = 120_000;
+      reaper.setTimeoutMinutes(5);
+      expect(pending().map((timeout) => timeout.delayMs)).toEqual([180_000]);
+      expect(reapIdleProviderSessions).not.toHaveBeenCalled();
+
+      reaper.setTimeoutMinutes(0);
+      await settleReaperPromiseChain();
+      expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+      expect(reapIdleProviderSessions).toHaveBeenLastCalledWith({
+        idleForMs: 0,
+        nowMs: 120_000,
+      });
+      expect(pending()).toEqual([]);
+    });
+  });
+
+  it("releases an idle provider session as soon as its runtime reports the turn ended when the timeout is zero", async () => {
+    const { app, runtimeOptions } = await createAppFixture({
+      idleProviderSessionTimeoutMinutes: 0,
+    });
+    try {
+      await app.connection.start();
+      await app.runtimeManager.ensureEnvironment({
+        environmentId: "env-app-idle-release",
+        workspacePath: await makeTempDir("bb-host-daemon-app-idle-release-"),
+      });
+      const options = runtimeOptions.current;
+      if (!options) {
+        throw new Error("Expected runtime callbacks to be captured");
+      }
+      const reap = vi.spyOn(app.runtimeManager, "reapIdleProviderSessions");
+
+      options.onEvent({
+        type: "turn/completed",
+        threadId: "thread-idle-release",
+        providerThreadId: "provider-thread-idle-release",
+        scope: turnScope("turn-idle-release"),
+        status: "completed",
+      });
+
+      await vi.waitFor(() => {
+        expect(reap).toHaveBeenCalledWith({
+          idleForMs: 0,
+          nowMs: expect.any(Number),
+        });
+      });
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
   });
 
   it("reconnects through the server connection when event posting sees an inactive session", async () => {
