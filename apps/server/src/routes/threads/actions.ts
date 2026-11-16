@@ -506,7 +506,17 @@ export function registerThreadActionRoutes(
 
   post(routes.voice, async (context, command) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (command.action === "start") ensureThreadIsWritable(thread);
+    if (command.action === "start") {
+      ensureThreadIsWritable(thread);
+      await deps.providerRegistry.whenRegistrationsSettled();
+      if (!deps.providerRegistry.supportsThreadVoice(thread.providerId)) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          `Provider "${thread.providerId}" does not support native thread voice`,
+        );
+      }
+    }
     const environment = await requireThreadCommandEnvironment(deps, { thread });
     requireConnectedHostSession(deps, environment.hostId);
     if (command.action !== "start") {

@@ -16,6 +16,7 @@ const BASE_INFO = {
     supportsNativeUserQuestion: false,
     supportsFork: false,
     supportsSessionRewind: false,
+    experimental_supportsThreadVoice: false,
     modelCatalogScope: "workspace" as const,
     permissionModes: ["full" as const],
   },

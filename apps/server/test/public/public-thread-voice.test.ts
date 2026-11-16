@@ -79,6 +79,35 @@ describe("voice session controls", () => {
     });
   });
 
+  it("refuses to start voice for a provider without native voice before preparing a runtime", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { providerId: "fake" },
+      });
+      const options = vi.spyOn(threadCommands, "buildExecutionOptions");
+      const setup = vi.spyOn(threadCommands, "prepareTurnSubmitCommandPayload");
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/voice`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "start", sessionId, sdp: "offer" }),
+        },
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "invalid_request",
+        message: 'Provider "fake" does not support native thread voice',
+      });
+      expect(options).not.toHaveBeenCalled();
+      expect(setup).not.toHaveBeenCalled();
+      expect(
+        harness.deps.providerRegistry.get("codex")?.info.capabilities
+          .experimental_supportsThreadVoice,
+      ).toBe(true);
+    });
+  });
+
   for (const state of ["archived", "stopping"] as const) {
     it(`allows hang-up while the thread is ${state}`, async () => {
       await withTestHarness(async (harness) => {

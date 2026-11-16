@@ -51,6 +51,7 @@ const providerCapabilitiesSchema = z.object({
   supportsNativeUserQuestion: z.boolean(),
   supportsFork: z.boolean(),
   supportsSessionRewind: z.boolean(),
+  experimental_supportsThreadVoice: z.boolean(),
   permissionModes: z.array(permissionModeSchema).min(1),
   modelCatalogScope: providerModelCatalogScopeSchema,
 });

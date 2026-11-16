@@ -1274,11 +1274,15 @@ export function providerAlreadyRegisteredMessage(id: string): string {
  */
 export type NormalizedPluginProviderDeclaration = Omit<
   PluginProviderDeclaration,
+  | "capabilities"
   | "experimental_nativeSkillRoots"
   | "experimental_nativeCommandRoots"
   | "experimental_resolvesNativeRoots"
   | "internal_DO_NOT_USE_guidedSignIn"
 > & {
+  readonly capabilities: PluginProviderCapabilities & {
+    readonly experimental_supportsThreadVoice: boolean;
+  };
   readonly experimental_nativeSkillRoots?: ProviderNativeRoots;
   readonly experimental_nativeCommandRoots?: ProviderNativeRoots;
   readonly experimental_resolvesNativeRoots: boolean;
@@ -1334,6 +1338,13 @@ const READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS: ReadonlySet<string> =
     "experimental_nativeCommandRoots",
     "experimental_resolvesNativeRoots",
   ]);
+
+type NormalizedProviderCapabilities =
+  NormalizedPluginProviderDeclaration["capabilities"];
+
+/** The `experimental_` capability keys the validator reads. */
+const READ_EXPERIMENTAL_PROVIDER_CAPABILITY_FIELDS: ReadonlySet<string> =
+  new Set(["experimental_supportsThreadVoice"]);
 
 const RENAMED_PROVIDER_FIELDS_SDK_VERSION = "0.4.16";
 
@@ -1452,7 +1463,7 @@ export function validatePluginProviderDeclaration(
     providerId: id,
     value: capabilities,
     scope: "capabilities.",
-    read: new Set(),
+    read: READ_EXPERIMENTAL_PROVIDER_CAPABILITY_FIELDS,
     renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
     verb: "moved",
   });
@@ -1488,6 +1499,15 @@ export function validatePluginProviderDeclaration(
       );
     }
   }
+  const supportsThreadVoice = capabilities.experimental_supportsThreadVoice;
+  if (
+    supportsThreadVoice !== undefined &&
+    typeof supportsThreadVoice !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_supportsThreadVoice must be a boolean`,
+    );
+  }
   if (
     !(PROVIDER_FORK_VALUES as readonly string[]).includes(capabilities.fork)
   ) {
@@ -1495,13 +1515,14 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
     );
   }
-  const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
+  const normalizedCapabilities: NormalizedProviderCapabilities = Object.freeze({
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,
     supportsManualCompaction: capabilities.supportsManualCompaction,
     supportsThreadArchive: capabilities.supportsThreadArchive,
     supportsThreadRename: capabilities.supportsThreadRename,
+    experimental_supportsThreadVoice: supportsThreadVoice ?? false,
     permissionModes: validateProviderLiteralArray({
       providerId: id,
       field: "capabilities.permissionModes",

@@ -32,7 +32,9 @@ Lifecycle:
   ended, including after the provider session was released, succeeds without
   resuming the provider; renewing an ended session fails.
 
-  Provider support is optional.
+  Provider support is optional. `bb provider list --json` reports eligibility as
+  `capabilities.experimental_supportsThreadVoice`; starting voice on a thread
+  whose provider reports false fails before any runtime is prepared.
 
   Optional start flags: --voice <name>, --context-file <path>, --no-context, and
   --instructions-file <path>. The SDK start command accepts voice,
