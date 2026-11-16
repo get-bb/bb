@@ -88,7 +88,9 @@ trusted JavaScript with Puppeteer-style DevBrowser APIs, not a sandbox.
 operations and `localhost` refer to the browser host. Transfer files explicitly.
 
 Stop cancels running and queued work and releases desktop control. Cancellation
-and timeout stop the session too; open a new session to resume. Close disposes
+and timeout stop the session too; open a new session to resume. A run whose
+output passes 512 KB fails with exit code 1 but keeps the session open; return
+or print less and run again. Close disposes
 owned Chrome and desktop tabs the session opened while preserving a `--tab` tab.
 Close sessions after use. When `close` or `stop` fails, the session still
 accepts no more commands, but its browser may still be running; run `close`

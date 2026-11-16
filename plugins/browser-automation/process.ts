@@ -70,6 +70,13 @@ export function supervise(
 
 const MAX_OUTPUT_BYTES = 512_000;
 
+export class OutputLimitError extends Error {
+  constructor() {
+    super("DevBrowser output exceeded 512 KB");
+    this.name = "OutputLimitError";
+  }
+}
+
 export async function execute(
   command: string,
   args: string[],
@@ -84,7 +91,7 @@ export async function execute(
   let stderrBytes = 0;
   const sizeError = () =>
     stdoutBytes + stderrBytes > MAX_OUTPUT_BYTES
-      ? new Error("DevBrowser output exceeded 512 KB")
+      ? new OutputLimitError()
       : null;
   try {
     await new Promise<void>((resolve, reject) => {
