@@ -10,6 +10,7 @@
   "include": [
     "vite.config.ts",
     "vite.dev.config.ts",
+    "vite.profiling.config.ts",
     "vite-bundle-stats.ts",
     "vite-font-preload.ts",
     "vite-split-prefetch.ts",
