@@ -3,6 +3,8 @@ import {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
   findUnnamedPluginRoots,
+  findUnscopedPluginNames,
+  keyPluginScopeOnAttribute,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -173,6 +175,68 @@ describe("dropAnonymousPluginRootScope", () => {
     ).toBe(
       `${scopePluginUtilities(utilities, '[data-bb-plugin="demo"]')}${authored}`,
     );
+  });
+});
+
+describe("keyPluginScopeOnAttribute", () => {
+  it("keys every utility on the plugin's own attribute name and leaves other CSS alone", () => {
+    const utilities =
+      "@layer utilities{.a,.b{color:red}@media (width>=40rem){.p-2{padding:.5rem}}}";
+    const authored =
+      '[data-bb-plugin="demo"] .x,[data-bb-plugin-root]:not([data-bb-plugin]) .y{opacity:.5}';
+    expect(
+      keyPluginScopeOnAttribute(
+        `${scopePluginUtilities(utilities, ROOTS)}${authored}`,
+      ),
+    ).toBe(
+      `${scopePluginUtilities(utilities, "[data-bb-plugin-scope-demo]")}${authored}`,
+    );
+  });
+
+  it.each([
+    ["an unquoted id", "[data-bb-plugin=bb--git]", "bb--git"],
+    ["a quoted id", '[data-bb-plugin="1password"]', "1password"],
+  ])("rewrites %s from minified CSS", (_name, root, pluginId) => {
+    expect(
+      keyPluginScopeOnAttribute(
+        `@layer utilities{:where(${root},[data-bb-plugin-root]:not([data-bb-plugin])) .flex{display:flex}}`,
+      ),
+    ).toBe(
+      `@layer utilities{:where([data-bb-plugin-scope-${pluginId}]) .flex{display:flex}}`,
+    );
+  });
+});
+
+describe("findUnscopedPluginNames", () => {
+  const current =
+    'function p(){return{"data-bb-portaled-overlay":"","data-bb-plugin-root":"",...e!==void 0?{"data-bb-plugin":e,[`data-bb-plugin-scope-${e}`]:""}:{}}}';
+  const preScope =
+    'function p(){return{"data-bb-portaled-overlay":"","data-bb-plugin-root":"",...e!==void 0?{"data-bb-plugin":e}:{}}}';
+
+  it.each([
+    ["no plugin ids", "var a=1;", 0],
+    ["the current portal-scope helper", current, 0],
+    ["a pre-scope portal-scope helper", preScope, 1],
+    [
+      "a folded scope attribute",
+      '{"data-bb-plugin":"git","data-bb-plugin-scope-git":""}',
+      0,
+    ],
+    ["a pre-scope helper next to a current one", `${current}${preScope}`, 1],
+    [
+      "two ids sharing one scope attribute",
+      '{"data-bb-plugin":a,"data-bb-plugin-scope-a":"","data-bb-plugin":b}',
+      1,
+    ],
+    ["an id written by setAttribute", 'e.setAttribute("data-bb-plugin",id)', 1],
+    ["an id in an HTML string", '`<div data-bb-plugin="x">`', 1],
+    [
+      "selectors and reads that never set an id",
+      'e.closest("[data-bb-plugin]");q(\'[data-bb-plugin="x"]\');q("[data-bb-plugin-root]:not([data-bb-plugin])");e.getAttribute("data-bb-plugin");e.hasAttribute(`data-bb-plugin`)',
+      0,
+    ],
+  ])("counts unscoped ids in %s", (_name, js, expected) => {
+    expect(findUnscopedPluginNames(js)).toHaveLength(expected);
   });
 });
 

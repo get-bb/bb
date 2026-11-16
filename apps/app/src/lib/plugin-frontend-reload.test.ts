@@ -206,7 +206,7 @@ function cssHrefs(pluginId: string): Array<string | null> {
 }
 
 function pluginSheet(pluginId: string, version: string): string {
-  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`;
 }
 
 function fireLoad(link: Element | null | undefined): void {
@@ -256,8 +256,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     importRetryDelaysMs: [],
     applyCss: vi.fn(),
@@ -1327,7 +1327,7 @@ describe("applyPluginCss", () => {
   });
 
   const sheet = (hash: string) =>
-    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`;
 
   it("keeps the same element for an unchanged URL and removes it on null", () => {
     retainPluginCss("hello");
@@ -1340,7 +1340,7 @@ describe("applyPluginCss", () => {
         .querySelector("link[data-bb-plugin-css-prefetch]")
         ?.getAttribute("href"),
     ).toBe(
-      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`,
     );
     void applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(cssLinks("hello")[0]).toBe(first);

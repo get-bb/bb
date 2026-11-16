@@ -7,7 +7,7 @@
   "files": [
     {
       "path": "registry/lib/portal-scope.ts",
-      "content": "declare const __BB_PLUGIN_ID__: string | undefined;\n\nexport function usePortalScopeProps(): {\n  \"data-bb-portaled-overlay\": \"\";\n  \"data-bb-plugin-root\"?: \"\";\n  \"data-bb-plugin\"?: string;\n} {\n  const pluginId =\n    typeof __BB_PLUGIN_ID__ === \"string\" ? __BB_PLUGIN_ID__ : undefined;\n  return {\n    \"data-bb-portaled-overlay\": \"\",\n    \"data-bb-plugin-root\": \"\",\n    ...(pluginId !== undefined ? { \"data-bb-plugin\": pluginId } : {}),\n  };\n}\n",
+      "content": "declare const __BB_PLUGIN_ID__: string | undefined;\n\nexport function usePortalScopeProps(): {\n  \"data-bb-portaled-overlay\": \"\";\n  \"data-bb-plugin-root\"?: \"\";\n  \"data-bb-plugin\"?: string;\n  [scope: `data-bb-plugin-scope-${string}`]: \"\";\n} {\n  const pluginId =\n    typeof __BB_PLUGIN_ID__ === \"string\" ? __BB_PLUGIN_ID__ : undefined;\n  return {\n    \"data-bb-portaled-overlay\": \"\",\n    \"data-bb-plugin-root\": \"\",\n    ...(pluginId !== undefined\n      ? {\n          \"data-bb-plugin\": pluginId,\n          [`data-bb-plugin-scope-${pluginId}`]: \"\",\n        }\n      : {}),\n  };\n}\n",
       "type": "registry:lib",
       "target": "lib/portal-scope.ts"
     }

@@ -40,6 +40,8 @@ import {
 import { retiredSdkMemberWarnings } from "./retired-sdk-members.js";
 import {
   findUnnamedPluginRoots,
+  findUnscopedPluginNames,
+  pluginScopeAttribute,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -692,6 +694,13 @@ export async function buildPluginApp(
     if (first !== undefined) {
       migrationWarnings.push(
         `app.js sets data-bb-plugin-root without data-bb-plugin ${unnamedRoots.length} time(s), so bb serves this plugin's utilities with the slower legacy scope. Refresh lib/portal-scope with "npx shadcn add @bb/portal-scope", or set data-bb-plugin="${pluginId}" next to data-bb-plugin-root. First match: ${builtJs.slice(Math.max(0, first - 40), first + 60)}`,
+      );
+    }
+    const unscopedNames = findUnscopedPluginNames(builtJs);
+    const [firstUnscoped] = unscopedNames;
+    if (firstUnscoped !== undefined) {
+      migrationWarnings.push(
+        `app.js sets data-bb-plugin without ${pluginScopeAttribute(pluginId)} ${unscopedNames.length} time(s), so bb serves this plugin's utilities with a scope that is slower to match inside other plugins. Refresh lib/portal-scope with "npx shadcn add @bb/portal-scope", or set ${pluginScopeAttribute(pluginId)}="" next to data-bb-plugin. First match: ${builtJs.slice(Math.max(0, firstUnscoped - 40), firstUnscoped + 60)}`,
       );
     }
 

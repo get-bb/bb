@@ -35,25 +35,43 @@ export function scopePluginUtilities(css: string, scopeRoots: string): string {
 
 const PLUGIN_ROOT_MARKER = /data-bb-plugin-root/g;
 const PLUGIN_NAME_MARKER = /data-bb-plugin(?![-\w])/g;
+const PLUGIN_NAME_WRITE_MARKER =
+  /(?<!\[|(?:get|has|remove)Attribute\(["'`])data-bb-plugin(?![-\w])/g;
+const PLUGIN_SCOPE_ATTRIBUTE_PREFIX = "data-bb-plugin-scope-";
+const PLUGIN_SCOPE_MARKER = new RegExp(PLUGIN_SCOPE_ATTRIBUTE_PREFIX, "g");
 const PLUGIN_NAME_SEARCH_RADIUS = 120;
 
+export function pluginScopeAttribute(pluginId: string): string {
+  return `${PLUGIN_SCOPE_ATTRIBUTE_PREFIX}${pluginId}`;
+}
+
 export function findUnnamedPluginRoots(js: string): number[] {
-  const names = [...js.matchAll(PLUGIN_NAME_MARKER)].map(
-    (match) => match.index,
-  );
+  return findUnpairedMarkers(js, PLUGIN_ROOT_MARKER, PLUGIN_NAME_MARKER);
+}
+
+export function findUnscopedPluginNames(js: string): number[] {
+  return findUnpairedMarkers(js, PLUGIN_NAME_WRITE_MARKER, PLUGIN_SCOPE_MARKER);
+}
+
+function findUnpairedMarkers(
+  js: string,
+  marker: RegExp,
+  partner: RegExp,
+): number[] {
+  const partners = [...js.matchAll(partner)].map((match) => match.index);
   const claimed = new Set<number>();
-  return [...js.matchAll(PLUGIN_ROOT_MARKER)]
+  return [...js.matchAll(marker)]
     .map((match) => match.index)
-    .filter((root) => {
+    .filter((position) => {
       let nearest: number | undefined;
-      for (const name of names) {
-        const distance = Math.abs(name - root);
+      for (const candidate of partners) {
+        const distance = Math.abs(candidate - position);
         if (
           distance <= PLUGIN_NAME_SEARCH_RADIUS &&
-          !claimed.has(name) &&
-          (nearest === undefined || distance < Math.abs(nearest - root))
+          !claimed.has(candidate) &&
+          (nearest === undefined || distance < Math.abs(nearest - position))
         ) {
-          nearest = name;
+          nearest = candidate;
         }
       }
       if (nearest === undefined) return true;
@@ -64,13 +82,35 @@ export function findUnnamedPluginRoots(js: string): number[] {
 
 const ANONYMOUS_PLUGIN_ROOT_ARM =
   /,\s*\[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)/g;
+const NAMED_PLUGIN_ROOT = /\[data-bb-plugin=("?)([a-z0-9][a-z0-9-]*)\1\]/g;
 
 export function dropAnonymousPluginRootScope(css: string): string {
+  return rewriteUtilitiesLayers(css, (body) =>
+    body.replace(ANONYMOUS_PLUGIN_ROOT_ARM, ""),
+  );
+}
+
+export function keyPluginScopeOnAttribute(css: string): string {
+  return rewriteUtilitiesLayers(css, (body) =>
+    body
+      .replace(ANONYMOUS_PLUGIN_ROOT_ARM, "")
+      .replace(
+        NAMED_PLUGIN_ROOT,
+        (_match, _quote, pluginId: string) =>
+          `[${pluginScopeAttribute(pluginId)}]`,
+      ),
+  );
+}
+
+function rewriteUtilitiesLayers(
+  css: string,
+  rewrite: (body: string) => string,
+): string {
   return splitStatements(css)
     .map((statement) => {
       if (statement.body === null) return statement.prelude;
       const body = isUtilitiesLayer(statement.prelude)
-        ? statement.body.replace(ANONYMOUS_PLUGIN_ROOT_ARM, "")
+        ? rewrite(statement.body)
         : statement.body;
       return `${statement.prelude}{${body}}`;
     })
