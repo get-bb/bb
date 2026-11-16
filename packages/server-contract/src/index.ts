@@ -6,6 +6,7 @@ export * from "./errors.js";
 export * from "./public-api.js";
 export * from "./thread-timeline.js";
 export * from "./thread-timeline-delta.js";
+export * from "./thread-timeline-row-patch.js";
 
 export { typedRoutes } from "@bb/hono-typed-routes";
 

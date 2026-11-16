@@ -9,10 +9,8 @@ import {
   type ThreadTimelineResponse,
   type TimelineRowPatchOperation,
 } from "../src/api-types.js";
-import {
-  applyThreadTimelineDelta,
-  computeThreadTimelineDelta,
-} from "../src/thread-timeline-delta.js";
+import { computeThreadTimelineDelta } from "../src/thread-timeline-delta.js";
+import { applyThreadTimelineDelta } from "../src/thread-timeline-row-patch.js";
 import type {
   TimelineRow,
   TimelineToolWorkRow,

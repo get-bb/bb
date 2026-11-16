@@ -4,7 +4,11 @@ import {
   type QueryClient,
   type QueryObserverResult,
 } from "@tanstack/react-query";
-import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
+import {
+  patchTimelineRow,
+  type ThreadTimelineResponse,
+  type TimelineRow,
+} from "@bb/server-contract";
 import {
   areTimelinePaginationCursorsEqual,
   buildLoadedTimelineState,
@@ -15,11 +19,14 @@ import {
   type LoadedTimelineState,
 } from "@bb/client-core";
 import { hasThreadTimelineUnseenEvents } from "@/hooks/cache-owners/thread-timeline-unseen-events";
+import { registerTimelineRowPatcher } from "@/hooks/cache-owners/timeline-row-patcher";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { useThreadTimeline } from "@/hooks/queries/thread-panel-queries";
 import { BbHttpError, sdk } from "@/lib/sdk";
+
+registerTimelineRowPatcher(patchTimelineRow);
 
 type TimelineQueryResultProp =
   keyof QueryObserverResult<ThreadTimelineResponse>;

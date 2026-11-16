@@ -21,10 +21,11 @@ import type {
 } from "@bb/server-contract";
 import { useDebouncedValue } from "../useDebouncedValue";
 import {
-  applyThreadTimelineDelta,
+  applyThreadTimelineDeltaWithRowPatcher,
   isThreadTimelineDelta,
 } from "@bb/server-contract";
 import type { ThreadListFilters } from "@bb/client-core";
+import { patchCachedTimelineRow } from "../cache-owners/timeline-row-patcher";
 import { sdk } from "@/lib/sdk";
 import {
   useThreadDetailRealtimeSubscription,
@@ -810,7 +811,11 @@ async function mergeThreadTimelineDelta(
   const merged =
     previous === undefined
       ? null
-      : applyThreadTimelineDelta(previous, response);
+      : applyThreadTimelineDeltaWithRowPatcher(
+          previous,
+          response,
+          patchCachedTimelineRow,
+        );
   return merged ?? fetchFull();
 }
 

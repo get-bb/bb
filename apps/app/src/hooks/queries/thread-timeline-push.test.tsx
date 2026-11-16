@@ -1,12 +1,21 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  ReceivedThreadTimelineSignal,
-  ThreadTimelineReadResponse,
-  ThreadTimelineResponse,
-  TimelineRowPatchOperation,
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
+import {
+  patchTimelineRow,
+  type ReceivedThreadTimelineSignal,
+  type ThreadTimelineReadResponse,
+  type ThreadTimelineResponse,
+  type TimelineRowPatchOperation,
 } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadTimelineRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
@@ -19,6 +28,7 @@ import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
 } from "../cache-owners/thread-timeline-push-owner";
 import { threadTimelineQueryKey } from "./query-keys";
+import { registerTimelineRowPatcher } from "../cache-owners/timeline-row-patcher";
 import { useThreadTimeline } from "./thread-panel-queries";
 
 vi.mock("@/lib/sdk", () => ({
@@ -118,6 +128,27 @@ describe("pushed thread timeline", () => {
     };
   }
 
+  function patchSignal(
+    ops: TimelineRowPatchOperation[],
+    afterTag: string,
+    maxSeq: number,
+  ): ReceivedThreadTimelineSignal {
+    return {
+      type: "thread-timeline",
+      target,
+      timeline: {
+        maxSeq,
+        tag: `timeline-${maxSeq}`,
+        delta: {
+          afterTag,
+          upsertRows: [],
+          patchRows: [{ id: "row-1", ops }],
+          fields: {},
+        },
+      },
+    };
+  }
+
   function cachedTimeline(
     queryClient: ReturnType<typeof createQueryClientTestHarness>["queryClient"],
   ) {
@@ -150,27 +181,10 @@ describe("pushed thread timeline", () => {
   });
 
   it("applies a row patch, and refetches instead of rendering a patch that yields an invalid row", async () => {
+    onTestFinished(registerTimelineRowPatcher(patchTimelineRow));
     const { queryClient, wrapper } = seedTimeline(7);
     renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
       wrapper,
-    });
-    const patchSignal = (
-      ops: TimelineRowPatchOperation[],
-      afterTag: string,
-      maxSeq: number,
-    ): ReceivedThreadTimelineSignal => ({
-      type: "thread-timeline",
-      target,
-      timeline: {
-        maxSeq,
-        tag: `timeline-${maxSeq}`,
-        delta: {
-          afterTag,
-          upsertRows: [],
-          patchRows: [{ id: "row-1", ops }],
-          fields: {},
-        },
-      },
     });
     applyThreadTimelineSignal(
       queryClient,
@@ -190,6 +204,26 @@ describe("pushed thread timeline", () => {
     await waitFor(() => {
       expect(sdk.threads.timeline).toHaveBeenCalledWith(
         expect.objectContaining({ afterTag: "timeline-8" }),
+      );
+    });
+  });
+
+  it("refetches a row patch that arrives before the timeline UI registers its patcher", async () => {
+    const { queryClient, wrapper } = seedTimeline(7);
+    renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
+      wrapper,
+    });
+    applyThreadTimelineSignal(
+      queryClient,
+      patchSignal([["append", ["title"], " grew"]], "timeline-7", 8),
+    );
+    expect(cachedTimeline(queryClient)).toMatchObject({
+      maxSeq: 7,
+      rows: [firstRow],
+    });
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledWith(
+        expect.objectContaining({ afterTag: "timeline-7" }),
       );
     });
   });
