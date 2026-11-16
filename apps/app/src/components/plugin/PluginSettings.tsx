@@ -621,7 +621,7 @@ function PluginSettingsContent({
           </div>
         </div>
         <Switch
-          className="mr-[13px] mt-1"
+          className="mr-[17px] mt-1"
           checked={enabled}
           disabled={toggle.isPending}
           onCheckedChange={(next) => toggle.mutate(next)}
