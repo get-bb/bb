@@ -405,9 +405,14 @@ the reading row never moves without the reader unless the content cannot hold
 it, and a reader's scroll is never moved. It runs 200 sequences by default; set
 `KEEPER_MODEL_SEEDS` for a deeper local run.
 
-Every layout change is reconciled before paint. Triggers are ResizeObservers on
-the root, its content, and every mounted row, plus each windowed list's layout
-effect after a commit. Within one reconciliation:
+Every layout change is reconciled before paint, after the browser has laid it
+out. Triggers are ResizeObservers on the root, its content, and every mounted
+row. Rows, the message overflow toggles, and markdown table geometry share one
+read-then-write observer (`observeSharedResize`): it reads every changed
+element first, applies all writes together (React state included), and then
+reconciles each affected owner once. Nothing reads layout while rows mount: no
+ref callback or layout effect under the timeline measures, so mounting never
+forces a layout ahead of the browser's own. Within one reconciliation:
 
 1. A scroll the owner did not make is folded into the position before the
    layout is read, even when its scroll event has not arrived yet. During an
@@ -427,7 +432,11 @@ effect after a commit. Within one reconciliation:
 4. It writes the target, clamped to the scroll extent. Attached means the
    maximum.
 5. Lists check that the visible range is mounted. If the viewport would show a
-   spacer, they render the rows synchronously before paint. The check uses the
+   spacer, they render the rows in the next animation frame callback, before
+   that frame's layout, never inside the scroll event; a scroll event fires just
+   before animation frame callbacks, so the rows still mount in the frame the
+   scroll lands in. Keys inserted inside the mounted range, or appended after a
+   range that reaches the end, mount in the same render. The check uses the
    heights the spacers were rendered with and the measured heights of mounted
    rows, so it describes what is on screen, not newer measurements the spacers
    have not used yet.

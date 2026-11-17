@@ -131,7 +131,14 @@ export function useAutoLoadOlderRows({
   }, [loadIfSentinelInRange, positionKeeper]);
 
   useEffect(() => {
-    loadIfSentinelInRange();
+    let timeout: number | null = null;
+    const frame = window.requestAnimationFrame(() => {
+      timeout = window.setTimeout(loadIfSentinelInRange, 0);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
   }, [
     isAutoLoadEnabled,
     isLoadingOlderTimelineRows,
