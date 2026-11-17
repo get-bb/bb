@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  PluginAgentToolResult,
+  PluginInteractionCancelReason,
+} from "@get-bb/plugin-sdk";
 import {
   ASK_USER_QUESTION_RENDERER_ID,
   interactionResponseSchema,
@@ -32,6 +36,24 @@ function questionTimeoutMs(value: string): number {
     throw new Error(`Unsupported question timeout: ${value}`);
   }
   return timeoutMs;
+}
+
+function cancelledMessage(
+  reason: PluginInteractionCancelReason,
+  askedAt: number,
+): string {
+  switch (reason) {
+    case "user":
+      return "The user dismissed the question without answering. Proceed with your best judgement, or ask again in your reply.";
+    case "timeout":
+      return buildTimeoutMessage(Date.now() - askedAt);
+    case "request-aborted":
+    case "thread-stopped":
+    case "thread-deleted":
+    case "plugin-disposed":
+    case "server-restarted":
+      return `The question closed before the user answered (${reason}); the user has not responded. Ask again in your reply if you still need the answer.`;
+  }
 }
 
 function errorResult(message: string): PluginAgentToolResult {
@@ -105,11 +127,7 @@ export default function plugin(bb: BbPluginApi) {
       }
 
       if (result.outcome === "cancelled") {
-        return errorResult(
-          result.reason === "timeout"
-            ? buildTimeoutMessage(Date.now() - askedAt)
-            : "The user dismissed the question without answering. Proceed with your best judgement, or ask again in your reply.",
-        );
+        return errorResult(cancelledMessage(result.reason, askedAt));
       }
 
       const parsed = interactionResponseSchema.safeParse(result.value);

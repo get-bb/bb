@@ -1552,6 +1552,32 @@ file read, search, web search, web fetch and plan-steps rows, and
    own uncollapsed variant. Decide which default a third-party bridge should
    get.
 
+## `experimental_unansweredInteractionWarning` (`@get-bb/plugin-sdk/provider-bridge`)
+
+Builds the `provider.warning` delta a bridge sends when it answers a provider
+question or permission request with something the user did not choose. The
+four causes are an unshowable request, a runtime error (bb stopped waiting),
+an unreadable resolution, and an answer that does not fit the question. The
+`answer` names what the provider got (an error or a protocol value such as
+`cancel`). Summary and details wording is bb's, and the delta is vouched to
+the open turn. Core callers: the ACP bridge (`packages/provider-bridge-acp`,
+which also sends `unansweredInteractionErrorMessage` as the JSON-RPC error),
+the Pi extension-dialog coordinator, and the Codex MCP elicitation path. The
+`unanswered-interactions` contract test in `@bb/provider-bridge-protocol`
+runs all first-party bridges, Claude Code included, through each cause and
+through a user stop.
+
+**Audit before stabilizing.**
+
+1. **The cause list is closed.** A third-party bridge with a fifth way to
+   answer without the user has no cause to name. Decide whether `cause` takes
+   free text before freezing the union.
+2. **The wording is a product decision**, as with the presentation builders:
+   English summary and details persist on the warning row.
+3. **Error versus cancel stays the bridge's call.** Decide whether the kit
+   should pick the provider answer too (it cannot without knowing each
+   protocol) or keep only the warning.
+
 ## `experimental_readBoundedLines` (`@get-bb/plugin-sdk/provider-bridge`)
 
 A newline-delimited line reader. It frames on LF only (never `readline`, which

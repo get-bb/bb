@@ -82,3 +82,62 @@ describe("POST /plugins/reload outcome", () => {
     });
   });
 });
+
+describe("plugin lifecycle routes report a plugin that did not load", () => {
+  let harness: TestAppHarness;
+  let rootDir: string;
+
+  beforeEach(async () => {
+    harness = await createTestAppHarness();
+    rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-keeper");
+    await mkdir(rootDir, { recursive: true });
+    await writeFile(
+      join(rootDir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-keeper",
+        version: "0.1.0",
+        bb: {
+          name: "Keeper",
+          description: "Lifecycle outcome fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await writeFile(join(rootDir, "server.ts"), HEALTHY_SOURCE);
+    await harness.pluginService.installPath(rootDir);
+    await harness.pluginService.setEnabled("keeper", false);
+    await writeFile(join(rootDir, "server.ts"), BROKEN_SOURCE);
+  });
+
+  afterEach(async () => {
+    await harness.cleanup();
+  });
+
+  it.each([
+    { route: "/api/v1/plugins/reload?id=keeper", enabledFirst: true },
+    { route: "/api/v1/plugins/keeper/enable", enabledFirst: false },
+  ])(
+    "$route answers 422 when the plugin ends in error (#5534)",
+    async ({ route, enabledFirst }) => {
+      if (enabledFirst) {
+        await harness.pluginService.setEnabled("keeper", true);
+      }
+      const response = await harness.app.request(`${BASE}${route}`, {
+        method: "POST",
+      });
+      const body: unknown = await response.json();
+      const listed = await harness.app.request(`${BASE}/api/v1/plugins`);
+      expect(await listed.json()).toMatchObject({
+        plugins: expect.arrayContaining([
+          expect.objectContaining({ id: "keeper", status: "error" }),
+        ]),
+      });
+      expect(response.status).toBe(422);
+      expect(body).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("boom on load"),
+      });
+    },
+  );
+});

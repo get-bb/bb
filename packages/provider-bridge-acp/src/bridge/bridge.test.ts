@@ -5929,12 +5929,12 @@ describe("acp bridge: questions the agent asks", () => {
     await waitForTurnCompleted();
 
     expect(agentMessageTexts()).toContain(
-      'elicitation:{"error":"Error: bb cannot show this form: bb shows at most 10 questions and this form has 11"}',
+      'elicitation:{"error":"Error: The user did not answer: bb could not show the question (bb shows at most 10 questions and this form has 11)."}',
     );
     expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
-      summary: "The agent asked a question bb could not show",
+      summary: "bb answered the agent without you",
       details:
-        "bb answered the agent with an error because bb shows at most 10 questions and this form has 11.",
+        "bb answered the agent with an error because it could not show the question: bb shows at most 10 questions and this form has 11.",
     });
     expect(
       output.messages.filter(

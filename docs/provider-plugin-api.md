@@ -427,6 +427,19 @@ the turn, as with a provider's question. `value` is untrusted input to the
 bridge: no form schema exists for the server to validate it against, so a
 bridge parses it as it would any client-supplied JSON.
 
+**Answering without the user.** Sometimes a bridge must answer the provider
+with something the user did not choose: it cannot show the request, the
+runtime answers `interaction/request` with an error (bb stopped waiting), the
+resolution does not parse, or the answer does not fit the provider's
+question. The bridge then sends the `provider.warning` delta that
+`experimental_unansweredInteractionWarning({ cause, answer })` builds, so the
+user sees that bb answered for them. It answers the provider with a JSON-RPC
+error where the protocol allows one, and with the protocol's cancel
+otherwise. A stop the user requested is the user's answer and gets no
+warning. `src/contract-tests/unanswered-interactions.test.ts` in
+`@bb/provider-bridge-protocol` runs every first-party bridge through each of
+these cases.
+
 ## 5. Projection and rendering
 
 Server-side projection folds every item, including extension items, into one

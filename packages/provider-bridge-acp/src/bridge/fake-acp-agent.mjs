@@ -116,6 +116,8 @@
  * - "advertise-commands"         → advertise two slash commands, twice
  * - "ask-form"                   → ask a two-field form question
  * - "ask-form-too-large"         → ask a form with more fields than bb shows
+ * - "request-permission-reject-only"
+ *                                → ask permission offering only reject options
  */
 
 import { spawn } from "node:child_process";
@@ -720,11 +722,17 @@ async function handlePrompt(message) {
           kind: "execute",
           rawInput: { command },
         },
-        options: [
-          { optionId: "yes", name: "Allow", kind: "allow_once" },
-          { optionId: "always", name: "Always allow", kind: "allow_always" },
-          { optionId: "no", name: "Deny", kind: "reject_once" },
-        ],
+        options: text.includes("request-permission-reject-only")
+          ? [{ optionId: "no", name: "Deny", kind: "reject_once" }]
+          : [
+              { optionId: "yes", name: "Allow", kind: "allow_once" },
+              {
+                optionId: "always",
+                name: "Always allow",
+                kind: "allow_always",
+              },
+              { optionId: "no", name: "Deny", kind: "reject_once" },
+            ],
       });
       outcome =
         result?.outcome?.outcome === "selected"
@@ -732,6 +740,12 @@ async function handlePrompt(message) {
           : "cancelled";
     } catch {
       outcome = "error";
+    }
+    if (requestLog) {
+      appendFileSync(
+        requestLog,
+        `${JSON.stringify({ permissionResult: outcome })}\n`,
+      );
     }
     notifyUpdate(messageChunk(`permission:${outcome}`));
   } else if (text.includes("permission-probe")) {

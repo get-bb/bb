@@ -1972,27 +1972,13 @@ export function registerPluginCommands(
       .option("--json", "Output JSON")
       .action(
         action(async (id: string, opts: JsonOutputOptions) => {
-          const response = pluginMutationResponseSchema.parse(
+          const result = pluginMutationResponseSchema.parse(
             await callPlugins(
               getUrl(),
               `/${encodeURIComponent(id)}/${name}`,
               "POST",
             ),
           );
-          const failedPlugin =
-            name === "enable" &&
-            response.plugin?.enabled === true &&
-            response.plugin.status === "error"
-              ? response.plugin
-              : null;
-          const result = failedPlugin
-            ? {
-                ...response,
-                ok: false,
-                error:
-                  failedPlugin.statusDetail ?? `plugin "${id}" failed to load`,
-              }
-            : response;
           if (outputMutationJson(opts, result)) return;
           if (result.plugin) printPlugin(result.plugin);
           if (!result.ok || !result.plugin) exitWithError(result);

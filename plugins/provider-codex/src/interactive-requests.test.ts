@@ -96,13 +96,16 @@ describe("buildCodexInteractiveResult", () => {
   if (!decoded) throw new Error("Expected a decoded elicitation");
   const cancel = { action: "cancel", content: null, _meta: null };
 
-  it("cancels the elicitation when the turn stops or the runtime disconnects", () => {
+  it("cancels the elicitation and names the runtime error when bb stops waiting", () => {
     expect(
       buildCodexInteractiveResult(decoded.payload, {
         status: "rejected",
         reason: new Error("Thread interrupted"),
       }),
-    ).toEqual(cancel);
+    ).toEqual({
+      response: cancel,
+      unanswered: { kind: "runtime-error", message: "Thread interrupted" },
+    });
   });
 
   it.each([
@@ -110,14 +113,20 @@ describe("buildCodexInteractiveResult", () => {
     { kind: "plugin_submitted" },
     { kind: "user_answer", answers: {} },
     null,
-  ])("cancels the elicitation for a non-answer resolution %j", (value) => {
-    expect(
-      buildCodexInteractiveResult(decoded.payload, {
-        status: "fulfilled",
-        value,
-      }),
-    ).toEqual(cancel);
-  });
+  ])(
+    "cancels the elicitation as unreadable for a non-answer resolution %j",
+    (value) => {
+      expect(
+        buildCodexInteractiveResult(decoded.payload, {
+          status: "fulfilled",
+          value,
+        }),
+      ).toEqual({
+        response: cancel,
+        unanswered: { kind: "unreadable-resolution" },
+      });
+    },
+  );
 
   it("encodes a request answer", () => {
     expect(
@@ -128,7 +137,14 @@ describe("buildCodexInteractiveResult", () => {
           value: { action: "accept", persist: "session" },
         },
       }),
-    ).toEqual({ action: "accept", content: {}, _meta: { persist: "session" } });
+    ).toEqual({
+      response: {
+        action: "accept",
+        content: {},
+        _meta: { persist: "session" },
+      },
+      unanswered: null,
+    });
   });
 
   it("still surfaces runtime failures for approvals", () => {

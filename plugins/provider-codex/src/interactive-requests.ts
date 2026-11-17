@@ -13,6 +13,7 @@ import {
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
   type ProviderInteractionOutcome,
+  type UnansweredInteractionCause,
   type UserQuestionInteractionOutcome,
   type UserQuestionPendingInteractionPayload,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -340,26 +341,47 @@ const requestAnswerResolutionSchema = z.object({
   kind: z.literal("request_answer"),
 });
 
+export interface CodexInteractiveResult {
+  response: CodexInteractiveResponse;
+  unanswered: UnansweredInteractionCause | null;
+}
+
 export function buildCodexInteractiveResult(
   payload: DecodedInteractiveRequest["payload"],
   runtimeResult: PromiseSettledResult<unknown>,
-): CodexInteractiveResponse {
-  if (
-    payload.kind === CODEX_MCP_ELICITATION_KIND &&
-    (runtimeResult.status === "rejected" ||
-      !requestAnswerResolutionSchema.safeParse(runtimeResult.value).success)
-  ) {
-    return CODEX_MCP_ELICITATION_CANCEL_RESPONSE;
+): CodexInteractiveResult {
+  if (payload.kind === CODEX_MCP_ELICITATION_KIND) {
+    if (runtimeResult.status === "rejected") {
+      return {
+        response: CODEX_MCP_ELICITATION_CANCEL_RESPONSE,
+        unanswered: {
+          kind: "runtime-error",
+          message:
+            runtimeResult.reason instanceof Error
+              ? runtimeResult.reason.message
+              : String(runtimeResult.reason),
+        },
+      };
+    }
+    if (!requestAnswerResolutionSchema.safeParse(runtimeResult.value).success) {
+      return {
+        response: CODEX_MCP_ELICITATION_CANCEL_RESPONSE,
+        unanswered: { kind: "unreadable-resolution" },
+      };
+    }
   }
   if (runtimeResult.status === "rejected") {
     throw runtimeResult.reason;
   }
-  return buildCodexInteractiveResponse(
-    providerInteractionOutcomeSchema.parse({
-      payload,
-      resolution: runtimeResult.value,
-    }),
-  );
+  return {
+    response: buildCodexInteractiveResponse(
+      providerInteractionOutcomeSchema.parse({
+        payload,
+        resolution: runtimeResult.value,
+      }),
+    ),
+    unanswered: null,
+  };
 }
 
 export function buildCodexInteractiveResponse(

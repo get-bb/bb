@@ -11,6 +11,7 @@ function forward(title: string) {
   const responses: PiExtensionUiResponseFields[] = [];
   const coordinator = createExtensionUiCoordinator({
     sendInteractionRequest: (request) => sent.push(request),
+    sendThreadDeltas: () => {},
   });
   coordinator.handle({
     scope: {},

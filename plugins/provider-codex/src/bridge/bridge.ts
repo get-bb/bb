@@ -46,6 +46,7 @@ import {
   type PreparedProviderCommandDispatch,
   type ProviderRuntimeEvent,
   experimental_defineProviderBridge,
+  experimental_unansweredInteractionWarning,
   experimental_compareVersions as compareVersions,
   experimental_versionFrom as versionFrom,
   type ProviderRecoveryHint,
@@ -497,6 +498,7 @@ interface CodexBridgeSession {
   previousChildExit: Promise<void> | null;
   releasePromise: Promise<void> | null;
   goalStatus: CodexGoalStatus | null;
+  stopsRequested: number;
 }
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
@@ -889,6 +891,7 @@ function handleChildRequest(
     );
     return;
   }
+  const stopsAtRequest = session.stopsRequested;
   void resolveCodexMcpElicitationAppIcon(decoded)
     .then(async (request) => {
       if (currentSession(bbThreadId, serial) !== session) {
@@ -902,9 +905,23 @@ function handleChildRequest(
           payload: request.payload,
         }),
       ]);
-      responder.result(
-        buildCodexInteractiveResult(request.payload, runtimeResult),
+      const result = buildCodexInteractiveResult(
+        request.payload,
+        runtimeResult,
       );
+      if (
+        result.unanswered !== null &&
+        currentSession(bbThreadId, serial) === session &&
+        session.stopsRequested === stopsAtRequest
+      ) {
+        sendThreadDeltas(session, [
+          experimental_unansweredInteractionWarning({
+            cause: result.unanswered,
+            answer: { kind: "value", value: "cancel" },
+          }),
+        ]);
+      }
+      responder.result(result.response);
     })
     .catch((error: unknown) => {
       responder.error(
@@ -1290,6 +1307,7 @@ async function constructThreadSession(
     previousChildExit: null,
     releasePromise: null,
     goalStatus: existing?.goalStatus ?? null,
+    stopsRequested: 0,
   };
   sessionsByBbThreadId.set(args.threadId, session);
   if (existing) {
@@ -1544,6 +1562,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     previousChildExit: null,
     releasePromise: null,
     goalStatus: session.goalStatus,
+    stopsRequested: 0,
   });
 }
 
@@ -2269,6 +2288,9 @@ async function handleThreadStop(
   params: ThreadStopParamsShape,
 ): Promise<void> {
   const session = sessionsByBbThreadId.get(params.threadId);
+  if (session && params.intent === "interrupt") {
+    session.stopsRequested += 1;
+  }
 
   if (params.intent === "release") {
     if (session) {

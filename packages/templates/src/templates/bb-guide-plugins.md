@@ -67,7 +67,8 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
   bb plugin enable|disable <id>  Load or unload an installed plugin. A
                                  builtin you never toggled follows bb's
                                  default; an explicit choice persists across
-                                 releases
+                                 releases. Enable exits 1 with the load error
+                                 when the plugin does not start
   bb plugin safe-mode [on|off]   Show or change safe mode. `on` stops every
                                  plugin you installed (official store plugins
                                  included) without changing its enabled
