@@ -21,7 +21,7 @@ import {
   PluginComposerHostProvider,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import { ComposerBox } from "./ComposerBox";
+import { ControlledComposerBox } from "@/test/fixtures/controlled-composer-box";
 import { testTypeaheadConfig } from "@/test/fixtures/composer-search";
 
 const SHORTCUT = {
@@ -101,7 +101,7 @@ function Composer({
         data-app-composer=""
         data-app-composer-role={role}
       >
-        <ComposerBox
+        <ControlledComposerBox
           surface="thread"
           value=""
           mentionRanges={[]}

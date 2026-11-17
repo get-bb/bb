@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -12,23 +12,23 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { ComposerBannersSlot } from "./PluginComposerBanners";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import {
+  createComposerDraftStore,
   PluginComposerViewProvider,
-  usePluginComposerViewModel,
+  usePluginComposerStaticViewModel,
+  type ComposerDraftStore,
 } from "./plugin-composer-host";
 
 const SCOPE = { kind: "thread", threadId: "thr_host" } as const;
 
-function ComposerHost({ text }: { text: string }) {
-  const view = usePluginComposerViewModel({
+function ComposerHost({ draft }: { draft: ComposerDraftStore }) {
+  const view = usePluginComposerStaticViewModel({
     scope: SCOPE,
     layout: "expanded",
-    text,
-    attachmentCount: 0,
     isRunning: false,
     isSubmitting: false,
   });
   return (
-    <PluginComposerViewProvider value={view}>
+    <PluginComposerViewProvider view={view} draft={draft}>
       <ComposerBannersSlot />
     </PluginComposerViewProvider>
   );
@@ -72,19 +72,22 @@ describe("composer host view context", () => {
       }),
     );
 
-    const view = render(
+    const draft = createComposerDraftStore({
+      text: "",
+      mentions: [],
+      attachments: [],
+    });
+    render(
       <MemoryRouter>
-        <ComposerHost text="" />
+        <ComposerHost draft={draft} />
       </MemoryRouter>,
     );
     const staticRendersBefore = staticRenders.mock.calls.length;
     const viewRendersBefore = viewRenders.mock.calls.length;
     for (const text of ["h", "he", "hel", "hell", "hello"]) {
-      view.rerender(
-        <MemoryRouter>
-          <ComposerHost text={text} />
-        </MemoryRouter>,
-      );
+      act(() => {
+        draft.setDraft({ text, mentions: [], attachments: [] });
+      });
     }
 
     expect(staticRenders).toHaveBeenCalledTimes(staticRendersBefore);

@@ -48,7 +48,7 @@ work happens that should not happen at all.
 | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------- |
 | renders nothing while the app sits idle for 10 s                             | every component, mounts included                                       | on      |
 | typing an Ask User Question answer renders nothing outside the question form | everything outside `[data-question-form]` (keystrokes after the first) | on      |
-| typing in the composer renders nothing outside the composer form             | everything outside the composer's `form` (keystrokes after the first)  | pending |
+| typing in the composer renders nothing outside the composer box              | everything outside `[data-composer-box]` (keystrokes after the first)  | on      |
 | renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | on      |
 | a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | on      |
 | a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | on      |
@@ -58,17 +58,12 @@ and a mounted child is always accompanied by its re-rendered parent. Typing
 invariants skip the first keystroke, which legitimately toggles controls such
 as the send button.
 
-Pending invariants describe behavior main does not meet yet. They are skipped
-unless `BB_RENDER_INVARIANTS_PENDING=1`. Each one fails on main for a known
-reason:
-
-- composer typing: the prompt area above the composer form
-  (`ThreadDetailPromptArea`, `ComposerBox`, the banner slots) re-renders on
-  every keystroke.
-
-The change that fixes one of these turns its test on by replacing
-`pendingInvariant(` with `it(` and removing its "pending" mark in the table
-above.
+Pending invariants describe behavior main does not meet yet. Declare one with
+`it.skipIf(process.env.BB_RENDER_INVARIANTS_PENDING !== "1")`, mark it
+"pending" in the table above and record why main fails it here; it runs only
+when `BB_RENDER_INVARIANTS_PENDING=1`. None are pending now. A change that
+fixes a pending invariant turns its test on by declaring it with `it` and
+removing its "pending" mark.
 
 ## Running locally
 
@@ -136,7 +131,7 @@ works against this build.
    to show it passes reliably.
 
 Do not assert commit counts, render counts or durations. If main violates
-the invariant, add it with `pendingInvariant` and record the cause above.
+the invariant, add it as a pending invariant and record the cause above.
 
 ## CI
 

@@ -41,10 +41,11 @@ import {
 } from "vitest";
 import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
-import type { PromptDraftAttachment } from "@bb/client-core";
+import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
   getPromptDraftAccessor,
-  usePromptDraftStorage,
+  usePromptDraftController,
+  type PromptDraftController,
 } from "@/hooks/usePromptDraftStorage";
 import { BbHttpError } from "@/lib/sdk";
 import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
@@ -61,7 +62,7 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 vi.mock("@/hooks/usePromptDraftStorage", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/usePromptDraftStorage")>()),
-  usePromptDraftStorage: vi.fn(),
+  usePromptDraftController: vi.fn(),
 }));
 
 function makeQueuedMessage(
@@ -212,8 +213,8 @@ describe("shared draft submission ownership", () => {
     const storage = await vi.importActual<
       typeof import("@/hooks/usePromptDraftStorage")
     >("@/hooks/usePromptDraftStorage");
-    vi.mocked(usePromptDraftStorage).mockImplementation(
-      storage.usePromptDraftStorage,
+    vi.mocked(usePromptDraftController).mockImplementation(
+      storage.usePromptDraftController,
     );
   });
 
@@ -362,12 +363,29 @@ describe("shared draft submission ownership", () => {
 });
 
 beforeEach(() => {
-  vi.mocked(usePromptDraftStorage).mockImplementation(() => ({
-    ...mocks.promptDraft,
-    value: mocks.promptDraft.text,
-    clear: vi.fn(),
+  const draftListeners = new Set<() => void>();
+  mocks.promptDraft.subscribe.mockImplementation((listener: () => void) => {
+    draftListeners.add(listener);
+    return () => {
+      draftListeners.delete(listener);
+    };
+  });
+  const promptDraftController: PromptDraftController = {
+    storageKey: mocks.promptDraft.storageKey,
+    getCurrent: mocks.promptDraft.getCurrent,
+    subscribe: mocks.promptDraft.subscribe,
+    setDraft: mocks.promptDraft.setDraft,
+    setTextAndMentions: mocks.promptDraft.setTextAndMentions,
     setAttachments: vi.fn(),
-  }));
+    addAttachment: mocks.promptDraft.addAttachment,
+    updateAttachments: mocks.promptDraft.updateAttachments,
+    clear: vi.fn(),
+    clearIfCurrentMatches: mocks.promptDraft.clearIfCurrentMatches,
+    restoreIfEmpty: mocks.promptDraft.restoreIfEmpty,
+  };
+  vi.mocked(usePromptDraftController).mockImplementation(
+    () => promptDraftController,
+  );
   testQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -380,11 +398,22 @@ beforeEach(() => {
   mocks.promptDraft.text = "";
   mocks.promptDraft.mentions = [];
   mocks.promptDraft.attachments = [];
-  mocks.promptDraft.getCurrent.mockImplementation(() => ({
-    attachments: mocks.promptDraft.attachments,
-    mentions: mocks.promptDraft.mentions,
-    text: mocks.promptDraft.text,
-  }));
+  let currentDraft: PromptDraftState | null = null;
+  mocks.promptDraft.getCurrent.mockImplementation(() => {
+    if (
+      currentDraft === null ||
+      currentDraft.text !== mocks.promptDraft.text ||
+      currentDraft.mentions !== mocks.promptDraft.mentions ||
+      currentDraft.attachments !== mocks.promptDraft.attachments
+    ) {
+      currentDraft = {
+        attachments: mocks.promptDraft.attachments,
+        mentions: mocks.promptDraft.mentions,
+        text: mocks.promptDraft.text,
+      };
+    }
+    return currentDraft;
+  });
   mocks.promptDraft.setDraft.mockImplementation(
     (draft: {
       attachments: PromptDraftAttachment[];
@@ -394,6 +423,7 @@ beforeEach(() => {
       mocks.promptDraft.attachments = draft.attachments;
       mocks.promptDraft.mentions = draft.mentions;
       mocks.promptDraft.text = draft.text;
+      for (const listener of [...draftListeners]) listener();
     },
   );
   mocks.queuedMessages = [];
@@ -1007,10 +1037,8 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.change(bottomComposer, {
       target: { value: "Still-usable bottom draft" },
     });
-    expect(mocks.promptDraft.setTextAndMentions).toHaveBeenCalledWith(
-      "Still-usable bottom draft",
-      [],
-    );
+    expect(mocks.promptDraft.text).toBe("Still-usable bottom draft");
+    mocks.promptDraft.setDraft.mockClear();
     fireEvent.change(
       inlineEditor.getByRole("textbox", { name: "Composer message" }),
       { target: { value: "Edited queued message" } },
@@ -1029,7 +1057,7 @@ describe("ThreadDetailPromptArea", () => {
     });
     expect(mocks.deleteQueuedMessageMutateAsync).not.toHaveBeenCalled();
     expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
-    expect(mocks.promptDraft.text).toBe("Keep this bottom draft");
+    expect(mocks.promptDraft.text).toBe("Still-usable bottom draft");
     await waitFor(() => {
       expect(
         (
@@ -1037,7 +1065,7 @@ describe("ThreadDetailPromptArea", () => {
             name: "Composer message",
           }) as HTMLTextAreaElement
         ).value,
-      ).toBe("Keep this bottom draft");
+      ).toBe("Still-usable bottom draft");
     });
     expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
   });

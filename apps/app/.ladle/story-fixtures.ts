@@ -92,7 +92,6 @@ export function makeAttachmentsConfig(
   overrides: Partial<AttachmentsConfig> = {},
 ): AttachmentsConfig {
   const base: AttachmentsConfig = {
-    items: [],
     projectId: PROJECT_IDS.bb,
     onAttachFiles: async () => [],
     onUpdate: noop,
