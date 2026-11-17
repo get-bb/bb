@@ -46,6 +46,7 @@ import {
   seedThread,
   seedThreadFixture,
   seedThreadRuntimeState,
+  seedThreadStop,
 } from "../helpers/seed.js";
 import { startTestServer, withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
@@ -942,6 +943,7 @@ describe("internal event and tool-call routes", () => {
           reason: "manual-stop",
         },
       });
+      seedThreadStop(harness.deps, { acked: true, threadId: thread.id });
 
       const response = await postEventBatch({
         harness,

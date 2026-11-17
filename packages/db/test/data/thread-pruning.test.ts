@@ -23,14 +23,26 @@ import {
   appendDaemonEventsInTransaction,
   getHighWaterMarks,
   deleteThreadEventSuffixInTransaction,
+  getActiveStoredTurnId,
   getLastStoredProviderThreadId,
   getLatestStoredRateLimitsEvent,
-  listThreadTurnInterruptionEventStates,
 } from "../../src/data/events.js";
 import { advanceLiveEventPruning } from "../../src/data/resolved-item-pruning.js";
 import { getThreadEventRewriteGeneration } from "../../src/data/event-rewrite-generation.js";
 import { THREAD_CONTEXT_CLEAR_OPERATION, turnScope } from "@bb/domain";
 import { createMigratedConnection } from "../../src/testing.js";
+
+function turnInterruptionState(
+  db: Parameters<typeof getActiveStoredTurnId>[0],
+  threadId: string,
+) {
+  return {
+    activeTurnId: getActiveStoredTurnId(db, threadId),
+    latestProviderThreadId: getLastStoredProviderThreadId(db, threadId),
+    threadId,
+  };
+}
+
 
 function setup() {
   const db = createMigratedConnection();
@@ -760,9 +772,7 @@ describe("thread pruning", () => {
       expect(getHighWaterMarks(f.db, [f.thread.id])[f.thread.id]).toBe(3);
       expect(getLastStoredProviderThreadId(f.db, f.thread.id)).toBeNull();
       expect(
-        listThreadTurnInterruptionEventStates(f.db, {
-          threadIds: [f.thread.id],
-        })[0]?.latestProviderThreadId,
+        [turnInterruptionState(f.db, f.thread.id)][0]?.latestProviderThreadId,
       ).toBeNull();
       const result = f.db.transaction((tx) =>
         appendDaemonEventsInTransaction(tx, [
@@ -860,9 +870,7 @@ describe("thread pruning", () => {
       expect(sequences(f)).toEqual([1, 2, 4, 6, 7]);
       expect(getLastStoredProviderThreadId(f.db, f.thread.id)).toBe("new");
       expect(
-        listThreadTurnInterruptionEventStates(f.db, {
-          threadIds: [f.thread.id],
-        })[0]?.latestProviderThreadId,
+        [turnInterruptionState(f.db, f.thread.id)][0]?.latestProviderThreadId,
       ).toBe("new");
       seed(f, 8, {
         type: "system/operation",

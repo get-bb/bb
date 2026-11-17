@@ -14,7 +14,7 @@ import {
 import { retryTurnRequestSchema } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runPeriodicSweeps } from "../../src/services/system/periodic-sweeps.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import {
   TURN_START_DEADLINE_MS,
   TURN_START_DEADLINE_RECONNECT_GRACE_MS,
@@ -389,8 +389,8 @@ describe("turn start deadline", () => {
               },
             });
             if (settlesThread) {
-              applyLoggedThreadLifecycleEvent(harness.deps, {
-                event: { type: "run.succeeded" },
+              moveThreadStatus(harness.deps, {
+                move: "run.succeeded",
                 threadId: fixture.thread.id,
               });
             }
