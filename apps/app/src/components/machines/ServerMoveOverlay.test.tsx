@@ -60,6 +60,8 @@ vi.mock("@/components/ui/app-toast", () => ({
   appToast: { success: vi.fn(), error: vi.fn() },
 }));
 
+await import("./ServerMoveOverlayView");
+
 function steps(
   statuses: Partial<Record<ServerMoveStepId, ServerMoveStepStatus>> = {},
 ): ServerMoveStep[] {
