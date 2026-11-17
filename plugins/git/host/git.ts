@@ -6,6 +6,7 @@ import {
   type GitTimeoutOptions,
   runGit,
   type RunGitOptions,
+  resolveBranchRef,
   trimOutput,
   WorkspaceError,
 } from "bb-environment-provider-host/workspace-git";
@@ -298,36 +299,13 @@ export async function resolveMergeBaseBranch(
   ref: string,
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
-  const gitOptions = {
-    cwd,
-    ...options,
-    priority: options.priority ?? gitPriority(),
-    allowFailure: true,
-  };
-  const resolveCommit = async (candidate: string) => {
-    const result = await runGit(
-      ["rev-parse", "--verify", "--end-of-options", `${candidate}^{commit}`],
-      gitOptions,
-    );
-    return result.exitCode === 0 && trimOutput(result.stdout)
-      ? trimOutput(result.stdout)
-      : undefined;
-  };
-  if (ref.startsWith("refs/") || ref.startsWith("origin/")) {
-    return resolveCommit(ref);
-  }
-  const [local, remote] = await Promise.all([
-    resolveCommit(ref),
-    resolveCommit(`refs/remotes/origin/${ref}`),
-  ]);
-  if (local === undefined || remote === undefined || local === remote) {
-    return local ?? remote;
-  }
-  const localTrailsRemote = await runGit(
-    ["merge-base", "--is-ancestor", local, remote],
-    gitOptions,
+  const gitOptions = { ...options, priority: options.priority ?? gitPriority() };
+  const resolved = await resolveBranchRef(cwd, ref, gitOptions);
+  const result = await runGit(
+    ["rev-parse", "--verify", "--end-of-options", `${resolved.ref}^{commit}`],
+    { cwd, ...gitOptions, allowFailure: true },
   );
-  return localTrailsRemote.exitCode === 0 ? remote : local;
+  return result.exitCode === 0 ? trimOutput(result.stdout) || undefined : undefined;
 }
 
 export async function readMergeBaseRef(

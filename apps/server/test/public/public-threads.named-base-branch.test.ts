@@ -33,6 +33,7 @@ function buildCheckout(
     hasUncommittedChanges: false,
     operation: { kind: "none" },
     originDefaultBranch: "origin/main",
+    defaultWorktreeBaseBranch: "origin/main",
   };
 }
 
@@ -45,6 +46,7 @@ function buildDetachedSingleBranchCheckout(): GitSourceInspection {
     hasUncommittedChanges: false,
     operation: { kind: "none" },
     originDefaultBranch: null,
+    defaultWorktreeBaseBranch: null,
   };
 }
 

@@ -5,6 +5,7 @@ import {
   readCheckoutRef,
   readGitRepo,
   readRefs,
+  resolveBranchRef,
   runGit,
   WorkspaceError,
   type GitRepo,
@@ -58,7 +59,7 @@ type BranchLocation = "local" | "origin" | "missing";
 interface SwitchPlan {
   switchArgs: string[];
   startPoint: string | null;
-  location: BranchLocation;
+  existingBranchMissing: boolean;
 }
 
 async function locateBranch(
@@ -108,7 +109,7 @@ async function assertSwitchable(
         `Cannot inspect current checkout: ${ref.reason}`,
       );
   }
-  if (branch.kind === "existing" && plan.location === "missing") {
+  if (plan.existingBranchMissing) {
     throw new WorkspaceError(
       "checkout_missing_branch",
       `Cannot checkout missing branch ${branch.name}`,
@@ -148,16 +149,17 @@ async function planSwitch(
           ? ["switch", "--track", `origin/${branch.name}`]
           : ["switch", branch.name],
       startPoint: null,
-      location,
+      existingBranchMissing: location === "missing",
     };
   }
-  const location = await locateBranch(repo, branch.baseBranch);
-  const startPoint =
-    location === "origin" ? `origin/${branch.baseBranch}` : branch.baseBranch;
+  const { ref: startPoint } = await resolveBranchRef(
+    repo.path,
+    branch.baseBranch,
+  );
   return {
     switchArgs: ["switch", "--no-track", "-C", branch.name, startPoint],
     startPoint,
-    location,
+    existingBranchMissing: false,
   };
 }
 
