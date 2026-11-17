@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "steer-race",
+  "threadId": "thr_76142a5360",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 1.5.2 (rpc)",
+  "recordedAt": "2026-11-14",
+  "description": "A steer sent as its turn ends, then a follow-up turn.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 33,
+    "provider→bridge": 60,
+    "bridge→provider": 10
+  }
+}

@@ -1830,6 +1830,136 @@ describe("acp bridge", () => {
     });
   });
 
+  it.each([
+    { version: "2.0.22", applied: true },
+    { version: "1.4.0", applied: false },
+  ])(
+    "sets OpenCode $version session permission rules: $applied",
+    async ({ version, applied }) => {
+      const directoryRule = {
+        action: "external_directory",
+        resource: "/extra/*",
+        effect: "allow",
+      };
+      const permissionsFile = join(workspaceDir, "opencode-permissions.json");
+      const apiLog = join(workspaceDir, "opencode-api.log");
+      writeFileSync(permissionsFile, JSON.stringify([directoryRule]));
+      writeFileSync(apiLog, "");
+      const envVars = {
+        FAKE_ACP_AGENT_VERSION: version,
+        FAKE_ACP_OPENCODE_PERMISSIONS_FILE: permissionsFile,
+        FAKE_ACP_OPENCODE_API_LOG: apiLog,
+        FAKE_ACP_LOAD_SESSION: "1",
+      };
+      const rules = (effect: "allow" | "ask") => [
+        { action: "edit", resource: "*", effect: "allow" },
+        { action: "shell", resource: "*", effect },
+        { action: "webfetch", resource: "*", effect },
+        { action: "external_directory", resource: "*", effect },
+        directoryRule,
+      ];
+      const permissions = () =>
+        JSON.parse(readFileSync(permissionsFile, "utf8"));
+      const { providerThreadId } = await startThread({
+        dialectId: "opencode",
+        agent: { command: process.execPath, args: [FAKE_AGENT_PATH, "acp"] },
+        permissionMode: "accept-edits",
+        envVars,
+      });
+      expect(permissions()).toEqual(applied ? rules("ask") : [directoryRule]);
+
+      await completeTurnWith(
+        providerThreadId,
+        "hi",
+        executionOptions({ permissionMode: "full", envVars }),
+      );
+      expect(permissions()).toEqual(applied ? rules("allow") : [directoryRule]);
+      expect(readFileSync(apiLog, "utf8") === "").toBe(!applied);
+    },
+  );
+
+  it("restores the session on the next turn when the agent exits during a session restore", async () => {
+    const restoreEnv = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_EXIT_ON_FIRST_LOAD: join(workspaceDir, "exited-on-load"),
+    };
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    const failed = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hi", mentions: [] }],
+      options: executionOptions({ envVars: restoreEnv }),
+    });
+    expect((await waitForResponse(failed)).error?.message).toMatch(
+      /exited|not running/,
+    );
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "hi again",
+        executionOptions({ envVars: restoreEnv }),
+      ),
+    ).toBe("echo:hi again");
+    expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+      providerThreadId,
+      contextLost: false,
+    });
+  });
+
+  it("fails the start when the OpenCode 2 agent exits while bb applies its rules", async () => {
+    const permissionsFile = join(workspaceDir, "opencode-permissions.json");
+    const apiLog = join(workspaceDir, "opencode-api.log");
+    writeFileSync(permissionsFile, "[]");
+    writeFileSync(apiLog, "");
+    await expect(
+      startThread({
+        dialectId: "opencode",
+        agent: { command: process.execPath, args: [FAKE_AGENT_PATH, "acp"] },
+        permissionMode: "accept-edits",
+        envVars: {
+          FAKE_ACP_AGENT_VERSION: "2.0.22",
+          FAKE_ACP_OPENCODE_PERMISSIONS_FILE: permissionsFile,
+          FAKE_ACP_OPENCODE_API_LOG: apiLog,
+          FAKE_ACP_READY_FILE: join(workspaceDir, "agent.pid"),
+          FAKE_ACP_KILL_AGENT_DURING_API: "1",
+        },
+      }),
+    ).rejects.toThrow("exited while its session was being set up");
+  });
+
+  it.each([
+    { permissionMode: "accept-edits" as const, starts: false },
+    { permissionMode: "full" as const, starts: true },
+  ])(
+    "starts a custom OpenCode 2 agent whose launch does not end in acp: $permissionMode -> $starts",
+    async ({ permissionMode, starts }) => {
+      const thread = startThread({
+        dialectId: "opencode",
+        permissionMode,
+        permissionEscalation: "ask",
+        envVars: { FAKE_ACP_AGENT_VERSION: "2.0.22" },
+      });
+      if (!starts) {
+        await expect(thread).rejects.toThrow(
+          'the launch command must end with "acp"',
+        );
+        return;
+      }
+      const { providerThreadId } = await thread;
+      expect(
+        await completeTurnWith(
+          providerThreadId,
+          "hi",
+          executionOptions({
+            permissionMode,
+            envVars: { FAKE_ACP_AGENT_VERSION: "2.0.22" },
+          }),
+        ),
+      ).toBe("echo:hi");
+    },
+  );
+
   it("gives agents other than OpenCode no OpenCode permission policy", async () => {
     const { providerThreadId } = await startThread();
     expect(
@@ -3286,34 +3416,88 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("permission:yes");
   });
 
-  it("answers session-grant decisions with the allow_always option", async () => {
-    const { providerThreadId } = await startThread({
+  it("keeps session grants in the bridge instead of asking the agent to always allow", async () => {
+    const forwardedPermissions = (): BridgeJsonRpcOutputMessage[] =>
+      output.messages.filter(
+        (message) =>
+          message.method === "interaction/request" && message.id !== undefined,
+      );
+    const runPermissionTurn = async (
+      providerThreadId: string,
+      text: string,
+      answer: "allow_once" | "allow_for_session" | null,
+    ): Promise<string | undefined> => {
+      const completedBefore = threadEventsOfType("turn/completed").length;
+      const forwardedBefore = forwardedPermissions().length;
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        options: executionOptions({ permissionMode: "accept-edits" }),
+        input: [{ type: "text", text, mentions: [] }],
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+      if (answer !== null) {
+        const forwarded = await waitFor(
+          () => forwardedPermissions()[forwardedBefore],
+          "forwarded permission request",
+        );
+        handleLine(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: forwarded.id,
+            result: { decision: answer, grantedPermissions: null },
+          }),
+        );
+      }
+      await waitFor(
+        () =>
+          threadEventsOfType("turn/completed").length > completedBefore
+            ? true
+            : undefined,
+        "next turn/completed thread event",
+      );
+      return agentMessageTexts().at(-1);
+    };
+    const first = await startThread({
       permissionMode: "accept-edits",
       permissionEscalation: "ask",
     });
-    const turnId = sendTurnRequest("turn/start", providerThreadId, {
-      options: executionOptions({ permissionMode: "accept-edits" }),
-      input: [{ type: "text", text: "request-permission", mentions: [] }],
+
+    expect(
+      await runPermissionTurn(
+        first.providerThreadId,
+        "request-permission:uname",
+        "allow_for_session",
+      ),
+    ).toBe("permission:yes");
+    const askedAfterGrant = forwardedPermissions().length;
+    expect(
+      await runPermissionTurn(
+        first.providerThreadId,
+        "request-permission:uname",
+        null,
+      ),
+    ).toBe("permission:yes");
+    expect(forwardedPermissions()).toHaveLength(askedAfterGrant);
+    expect(
+      await runPermissionTurn(
+        first.providerThreadId,
+        "request-permission:whoami",
+        "allow_once",
+      ),
+    ).toBe("permission:yes");
+    expect(forwardedPermissions()).toHaveLength(askedAfterGrant + 1);
+
+    const second = await startThread({
+      permissionMode: "accept-edits",
+      permissionEscalation: "ask",
     });
-    await waitForResponse(turnId);
-    const forwarded = await waitFor(
-      () =>
-        output.messages.find(
-          (message) =>
-            message.method === "interaction/request" &&
-            message.id !== undefined,
-        ),
-      "forwarded permission request",
-    );
-    handleLine(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: forwarded.id,
-        result: { decision: "allow_for_session", grantedPermissions: null },
-      }),
-    );
-    await waitForTurnCompleted();
-    expect(agentMessageTexts()).toContain("permission:always");
+    expect(
+      await runPermissionTurn(
+        second.providerThreadId,
+        "request-permission:uname",
+        "allow_once",
+      ),
+    ).toBe("permission:yes");
+    expect(forwardedPermissions()).toHaveLength(askedAfterGrant + 2);
   });
 
   it.each(["add", "update"])("acknowledges fs %s writes", async (kind) => {
