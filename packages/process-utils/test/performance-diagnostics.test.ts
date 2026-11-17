@@ -1,3 +1,6 @@
+import assert from "node:assert/strict";
+import { threadCpuUsage } from "node:process";
+import { createContext, Script } from "node:vm";
 import {
   mkdtemp,
   mkdir,
@@ -17,10 +20,84 @@ import { console as inspectorConsole } from "node:inspector";
 import { setTimeout as delay } from "node:timers/promises";
 import { startPerformanceDiagnostics } from "../src/performance-diagnostics.js";
 
+const blockerSource = "bb-performance-blocker.fixture.js";
+const heartbeatSource = "bb-performance-heartbeat.fixture.js";
+
+function createBlocker(cpuMs: number) {
+  const context = createContext({ performance, threadCpuUsage, cpuMs });
+  const script = new Script(
+    `const started = threadCpuUsage();
+    let consumed;
+    do {
+      const until = performance.now() + 1;
+      while (performance.now() < until) Math.sqrt(performance.now());
+      consumed = threadCpuUsage(started);
+    } while (consumed.user + consumed.system < cpuMs * 1_000);`,
+    { filename: blockerSource },
+  );
+  const heartbeat = new Script("1", { filename: heartbeatSource });
+  return {
+    run: () => script.runInContext(context),
+    heartbeat: () => heartbeat.runInContext(context),
+  };
+}
+
+function expectSampledBlocker(profile: unknown) {
+  assert(profile && typeof profile === "object");
+  assert("nodes" in profile && Array.isArray(profile.nodes));
+  assert("samples" in profile && Array.isArray(profile.samples));
+  const children = new Map<number, number[]>();
+  const blockerNodes: number[] = [];
+  for (const node of profile.nodes) {
+    assert(node && typeof node === "object");
+    assert(typeof node.id === "number");
+    assert(node.callFrame && typeof node.callFrame === "object");
+    if (node.callFrame.url === blockerSource) blockerNodes.push(node.id);
+    const ids: unknown = node.children ?? [];
+    assert(Array.isArray(ids));
+    assert(ids.every((id): id is number => typeof id === "number"));
+    children.set(node.id, ids);
+  }
+  const descendants = new Set<number>();
+  for (const id of blockerNodes) {
+    if (descendants.has(id)) continue;
+    descendants.add(id);
+    blockerNodes.push(...(children.get(id) ?? []));
+  }
+  expect(
+    profile.samples.some(
+      (id: unknown) => typeof id === "number" && descendants.has(id),
+    ),
+  ).toBe(true);
+}
+
+function readCalibration(record: object) {
+  assert("clockCalibration" in record);
+  const calibration = record.clockCalibration;
+  assert(calibration && typeof calibration === "object");
+  assert(
+    "minimumOffsetMs" in calibration &&
+      typeof calibration.minimumOffsetMs === "number",
+  );
+  assert(
+    "maximumOffsetMs" in calibration &&
+      typeof calibration.maximumOffsetMs === "number",
+  );
+  assert("status" in calibration);
+  assert("offsetUs" in calibration);
+  return {
+    minimumOffsetMs: calibration.minimumOffsetMs,
+    maximumOffsetMs: calibration.maximumOffsetMs,
+    status: calibration.status,
+    offsetUs: calibration.offsetUs,
+  };
+}
+
 describe("performance diagnostics", () => {
   it("saves an actual CPU profile on shutdown and stops idempotently", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-test-"));
     const warnings: unknown[] = [];
+    const blocker = createBlocker(80);
     const monitor = await startPerformanceDiagnostics({
       codeOwners: () => [],
       dataDir,
@@ -32,11 +109,7 @@ describe("performance diagnostics", () => {
       },
     });
     try {
-      function mainThreadWork() {
-        const until = performance.now() + 80;
-        while (performance.now() < until) Math.sqrt(performance.now());
-      }
-      mainThreadWork();
+      blocker.run();
       await Promise.all([monitor.stop(), monitor.stop()]);
       const directory = join(dataDir, "logs", "performance");
       const files = await readdir(directory);
@@ -44,15 +117,7 @@ describe("performance diagnostics", () => {
       expect(files[0]).toMatch(/^profile-\d+-[0-9a-f-]+\.cpuprofile$/);
       const path = join(directory, files[0]!);
       const profile = JSON.parse(await readFile(path, "utf8"));
-      expect(profile.nodes).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            callFrame: expect.objectContaining({
-              functionName: "mainThreadWork",
-            }),
-          }),
-        ]),
-      );
+      expectSampledBlocker(profile);
       expect(profile.samples.length).toBeGreaterThan(0);
       expect(profile.endTime).toBeGreaterThan(profile.startTime);
       if (process.platform !== "win32")
@@ -75,6 +140,7 @@ describe("performance diagnostics", () => {
       const dataDir = await mkdtemp(join(tmpdir(), "bb-stall-attribution-"));
       const records: object[] = [];
       const warnings: object[] = [];
+      const blocker = createBlocker(200);
       const realNow = process.hrtime.bigint;
       const clock = vi
         .spyOn(process.hrtime, "bigint")
@@ -82,9 +148,10 @@ describe("performance diagnostics", () => {
       const monitor = await startPerformanceDiagnostics({
         codeOwners: () => [
           {
-            location: "performance-diagnostics.test.ts",
+            location: blockerSource,
             owner: "plugin:probe",
           },
+          { location: heartbeatSource, owner: "plugin:heartbeat" },
         ],
         dataDir,
         logger: {
@@ -97,35 +164,31 @@ describe("performance diagnostics", () => {
           },
         },
       });
-      function unwrappedPluginBlocker() {
-        const until = performance.now() + 200;
-        while (performance.now() < until) Math.sqrt(performance.now());
-      }
-      function shortHeartbeat() {
-        return 1;
-      }
       try {
         await delay(40);
-        unwrappedPluginBlocker();
-        shortHeartbeat();
+        blocker.run();
+        blocker.heartbeat();
         await delay(40);
         clock.mockImplementation(
           () => realNow() + BigInt(offsetMs + clockJumpMs) * 1_000_000n,
         );
         await monitor.stop();
-        if (clockJumpMs === 0)
-          expect(records).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                stallAttribution: "sampled",
-                owners: expect.arrayContaining([
-                  { owner: "plugin:probe", sampledMs: expect.any(Number) },
-                ]),
-              }),
-            ]),
-          );
-        else {
-          expect(records.length).toBeGreaterThan(0);
+        expect(records.length).toBeGreaterThan(0);
+        const calibration = readCalibration(records[0]!);
+        const { minimumOffsetMs, maximumOffsetMs } = calibration;
+        const rejected =
+          minimumOffsetMs > maximumOffsetMs ||
+          maximumOffsetMs - minimumOffsetMs > 10;
+        if (clockJumpMs !== 0)
+          expect(minimumOffsetMs).toBeGreaterThan(maximumOffsetMs);
+        for (const record of records)
+          expect(readCalibration(record)).toEqual(calibration);
+        if (rejected) {
+          expect(calibration).toMatchObject({
+            status:
+              minimumOffsetMs > maximumOffsetMs ? "disjoint" : "uncertain",
+            offsetUs: null,
+          });
           for (const record of records)
             expect(record).toMatchObject({
               stallAttribution: "unattributed",
@@ -133,30 +196,44 @@ describe("performance diagnostics", () => {
               owners: [],
               stacks: [],
             });
-        }
-        if (offsetMs === 0)
+        } else {
+          expect(calibration).toMatchObject({
+            status: "calibrated",
+            offsetUs: ((minimumOffsetMs + maximumOffsetMs) / 2) * 1_000,
+          });
           expect(records).toEqual(
             expect.arrayContaining([
               expect.objectContaining({
+                stallAttribution: "sampled",
+                owners: expect.arrayContaining([
+                  { owner: "plugin:probe", sampledMs: expect.any(Number) },
+                ]),
                 stacks: expect.arrayContaining([
                   expect.objectContaining({
+                    owner: "plugin:probe",
                     frames: expect.arrayContaining([
-                      expect.objectContaining({
-                        functionName: "unwrappedPluginBlocker",
-                      }),
+                      expect.objectContaining({ url: blockerSource }),
                     ]),
                   }),
                 ]),
               }),
             ]),
           );
+        }
         const files = await readdir(join(dataDir, "logs", "performance"));
         expect(files).toHaveLength(1);
         expect(files[0]).toMatch(/\.cpuprofile$/);
-        expect(warnings).toEqual([]);
-        expect(JSON.stringify(records)).not.toContain(
-          '"functionName":"shortHeartbeat"',
+        expectSampledBlocker(
+          JSON.parse(
+            await readFile(
+              join(dataDir, "logs", "performance", files[0]!),
+              "utf8",
+            ),
+          ),
         );
+        expect(warnings).toEqual([]);
+        expect(JSON.stringify(records)).not.toContain(heartbeatSource);
+        expect(JSON.stringify(records)).not.toContain("plugin:heartbeat");
       } finally {
         try {
           await monitor.stop();

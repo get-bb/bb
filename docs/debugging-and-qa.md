@@ -1146,6 +1146,13 @@ applied chunk.
    in the profile worker when available, otherwise coordinates refer to the
    generated code. Profile scanning and stack formatting run in that worker;
    the main thread only collects and transfers bounded timing windows.
+   `clockCalibration` reports the profiler-to-stall clock offset bounds in
+   milliseconds. Status `calibrated` includes the applied `offsetUs`;
+   `disjoint` means the start and end bounds disagree, and `uncertain` means
+   their intersection exceeds 10 ms. Rejected calibration leaves attribution
+   empty rather than assigning samples to the wrong window. The saved raw
+   profile retains its samples and original V8 timestamps; its save record
+   includes the same calibration diagnostic.
    `sampledMs` is elapsed sampling coverage, not CPU time; native frames can
    include waiting. Each sample contributes at most 20 ms so a long sampling
    gap cannot be blamed on one frame. `unobservedMs` reports missing coverage,
