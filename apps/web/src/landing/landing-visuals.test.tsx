@@ -213,6 +213,7 @@ describe("PluginMorph", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     document.body.replaceChildren();
+    vi.restoreAllMocks();
   });
 
   function mount(reduce = false) {
