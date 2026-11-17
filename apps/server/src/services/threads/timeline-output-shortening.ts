@@ -97,6 +97,8 @@ export function previewTimelineRowOutput(row: TimelineRow): TimelineRow {
   };
 }
 
+const shortenedRowCaches = new Map<string, WeakMap<TimelineRow, TimelineRow>>();
+
 interface ShortenTimelineResponseOutputsOptions {
   maxInlineOutputChars: number;
   preview: boolean;
@@ -106,11 +108,22 @@ export function shortenTimelineResponseOutputs(
   response: ThreadTimelineWindow,
   { maxInlineOutputChars, preview }: ShortenTimelineResponseOutputsOptions,
 ): ThreadTimelineWindow {
+  const cacheKey = `${maxInlineOutputChars}:${preview}`;
+  let cache = shortenedRowCaches.get(cacheKey);
+  if (cache === undefined) {
+    cache = new WeakMap();
+    shortenedRowCaches.set(cacheKey, cache);
+  }
+  const rowCache = cache;
   const shorten = (rows: TimelineRow[]) =>
-    mapTimelineRowTree(rows, (row) => {
-      const truncated = truncateRowOutputs(row, maxInlineOutputChars);
-      return preview ? previewTimelineRowOutput(truncated) : truncated;
-    });
+    mapTimelineRowTree(
+      rows,
+      (row) => {
+        const truncated = truncateRowOutputs(row, maxInlineOutputChars);
+        return preview ? previewTimelineRowOutput(truncated) : truncated;
+      },
+      rowCache,
+    );
   const rows = shorten(response.rows);
   const updates = response.timelinePage.olderRowUpdates;
   const olderRowUpdates = updates && shorten(updates);

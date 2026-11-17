@@ -133,4 +133,27 @@ describe("shortenTimelineResponseOutputs", () => {
     expect(row.output).toContain("characters omitted from preview");
     expect(row.output.endsWith("more characters truncated]")).toBe(true);
   });
+
+  it("returns the same shortened rows for unchanged input rows", () => {
+    const child = commandRow("p".repeat(5_000));
+    const turn: TimelineRow = {
+      ...base,
+      kind: "turn",
+      turnId: "turn_1",
+      status: "completed",
+      summaryCount: 1,
+      completedAt: 1,
+      children: [child],
+    };
+    const options = {
+      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      preview: true,
+    };
+    const first = shortenTimelineResponseOutputs(response([turn]), options);
+    const second = shortenTimelineResponseOutputs(response([turn]), options);
+    expect(first.rows[0]).not.toBe(turn);
+    expect(second.rows[0]).toBe(first.rows[0]);
+    const truncatedOnly = truncateOnly(response([turn]));
+    expect(truncatedOnly.rows[0]).toBe(turn);
+  });
 });
