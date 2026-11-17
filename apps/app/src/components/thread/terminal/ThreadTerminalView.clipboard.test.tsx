@@ -60,14 +60,15 @@ afterEach(() => {
 });
 
 async function mountTerminal() {
-  const terminals: Terminal[] = [];
   const open = Terminal.prototype.open;
-  vi.spyOn(Terminal.prototype, "open").mockImplementation(function (
-    this: Terminal,
-    parent: HTMLElement,
-  ) {
-    terminals.push(this);
-    open.call(this, parent);
+  const opened = new Promise<Terminal>((resolve) => {
+    vi.spyOn(Terminal.prototype, "open").mockImplementation(function (
+      this: Terminal,
+      parent: HTMLElement,
+    ) {
+      open.call(this, parent);
+      resolve(this);
+    });
   });
   const view = render(
     <ThreadTerminalView
@@ -76,13 +77,11 @@ async function mountTerminal() {
       session={makeTerminalSession({ status: "running" })}
     />,
   );
-  await waitFor(() =>
-    expect(view.container.querySelector(".xterm-screen")).not.toBeNull(),
-  );
-  const mountedTerminal = terminals[0];
-  if (mountedTerminal === undefined) {
-    throw new Error("Expected a mounted terminal");
-  }
+  await act(async () => {
+    await opened;
+  });
+  const mountedTerminal = await opened;
+  expect(view.container.querySelector(".xterm-screen")).not.toBeNull();
   await act(
     () =>
       new Promise<void>((resolve) => {

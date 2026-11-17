@@ -46,7 +46,10 @@ import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugi
 import { LocationProbe } from "@/test/location-probe";
 
 beforeAll(async () => {
-  await import("./ThreadSearchPaletteMode");
+  await Promise.all([
+    import("./CommandPaletteBody"),
+    import("./ThreadSearchPaletteMode"),
+  ]);
 });
 
 const PALETTE_SHORTCUT = {
