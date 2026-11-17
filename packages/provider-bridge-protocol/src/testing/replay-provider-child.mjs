@@ -474,6 +474,9 @@ function main() {
   let stallTimer = null;
   let lookaheadTimer = null;
   let emitTimer = null;
+  let piState = null;
+  let piStreaming = false;
+  let piPromptProbePending = false;
 
   const channel = dialect.channel ?? null;
   const channelSocket = channel ? connectChannel(channel) : null;
@@ -487,6 +490,22 @@ function main() {
 
   function emitRecorded(step) {
     const { message, classified } = step;
+    if (args.dialect === "pi-rpc") {
+      if (
+        message.type === "response" &&
+        message.command === "get_state" &&
+        message.success === true &&
+        typeof message.data === "object" &&
+        message.data !== null
+      ) {
+        piState = message.data;
+        piStreaming = piState?.isStreaming === true;
+      } else if (message.type === "agent_start") {
+        piStreaming = true;
+      } else if (message.type === "agent_end") {
+        piStreaming = false;
+      }
+    }
     if (classified.kind === "response") {
       const liveId = liveIdByRecordedId.get(String(classified.id));
       emit(dialect.withResponseId(message, liveId === undefined ? classified.id : liveId));
@@ -583,6 +602,24 @@ function main() {
       const live = takeMatchingLive(step);
       if (live === null) {
         return;
+      }
+      if (args.dialect === "pi-rpc" && step.classified.key === "prompt") {
+        piPromptProbePending = live.message.streamingBehavior !== "steer";
+        for (let index = position + 1; index < script.length; index += 1) {
+          const next = script[index];
+          if (
+            next.dir === "bridge→provider" &&
+            next.classified.key === "prompt"
+          )
+            break;
+          if (
+            next.dir === "provider→bridge" &&
+            next.message?.type === "agent_start"
+          ) {
+            piStreaming = true;
+            break;
+          }
+        }
       }
       if (step.classified.kind === "request") {
         liveIdByRecordedId.set(String(step.classified.id), live.classified.id);
@@ -705,6 +742,25 @@ function main() {
       if (segmentSessionKey !== null && live.classified.key !== segmentSessionKey) {
         releaseSegment(live);
       }
+    }
+    if (
+      args.dialect === "pi-rpc" &&
+      live.classified.kind === "request" &&
+      live.classified.key === "get_state" &&
+      piPromptProbePending &&
+      piState !== null &&
+      script.slice(position).find((step) => step.dir === "bridge→provider")
+        ?.classified.key !== "get_state"
+    ) {
+      piPromptProbePending = false;
+      emit({
+        id: live.classified.id,
+        type: "response",
+        command: "get_state",
+        success: true,
+        data: { ...piState, isStreaming: piStreaming },
+      });
+      return;
     }
     if (position >= script.length) {
       answerGenerically(live, "past end of segment");
