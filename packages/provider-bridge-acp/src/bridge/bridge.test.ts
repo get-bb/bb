@@ -1,3 +1,5 @@
+import { ChildProcess } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import {
   chmodSync,
   existsSync,
@@ -48,6 +50,19 @@ const FAKE_AGENT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "fake-acp-agent.mjs",
 );
+
+const spawnedChildren: ChildProcess[] = [];
+const childProcessChannel = channel("child_process");
+const onChildProcess = (message: unknown): void => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "process" in message &&
+    message.process instanceof ChildProcess
+  ) {
+    spawnedChildren.push(message.process);
+  }
+};
 
 let output: CapturedBridgeJsonRpcOutput;
 let workspaceDir: string;
@@ -646,21 +661,21 @@ function callDynamicToolBridge(args: {
 async function waitForAgentExit(readyFile: string): Promise<void> {
   const pid = Number(readFileSync(readyFile, "utf8"));
   expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
+  const child = [...spawnedChildren]
+    .reverse()
+    .find((candidate) => candidate.pid === pid);
+  if (child === undefined)
+    throw new Error(`No tracked ACP child for pid ${pid}`);
   await waitFor(
-    () => {
-      try {
-        process.kill(pid, 0);
-        return undefined;
-      } catch {
-        return true;
-      }
-    },
+    () => child.exitCode !== null || child.signalCode !== null || undefined,
     "agent termination",
     5_000,
   );
 }
 
 beforeEach(({ signal }) => {
+  spawnedChildren.length = 0;
+  childProcessChannel.subscribe(onChildProcess);
   testSignal = signal;
   bbThreadIdByProviderThreadId.clear();
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-acp-bridge-test-"));
@@ -707,6 +722,7 @@ afterEach(async () => {
       null,
     );
   } finally {
+    childProcessChannel.unsubscribe(onChildProcess);
     sentRequestIds.clear();
     threadStartRequests.clear();
     vi.unstubAllEnvs();

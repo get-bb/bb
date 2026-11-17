@@ -13,6 +13,7 @@ import * as appServer from "./app-server-connection.js";
 import { handleLine } from "./bridge.js";
 import {
   cleanupBridgeProcessTest,
+  trackAppServerChildren,
   spawnedAppServerPids,
   waitForAppServerProcessStep,
 } from "./bridge-process.test-support.js";
@@ -38,6 +39,7 @@ const changedSessionOptions = {
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir = "";
 let processLogPath = "";
+let children: ReturnType<typeof trackAppServerChildren> | undefined;
 let writerLockPath = "";
 let releaseHeldWriter: (() => void) | null = null;
 
@@ -54,6 +56,7 @@ beforeEach(() => {
       stdinCloseDelayMs: 500,
     }),
   );
+  children = trackAppServerChildren(scriptPath);
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -67,7 +70,7 @@ afterEach(async () => {
     cleanupId: 995_001,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
-    processLogPath,
+    children,
     workspaceDir,
     unstubEnvs: vi.unstubAllEnvs,
   });
