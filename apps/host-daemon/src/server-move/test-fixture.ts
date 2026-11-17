@@ -545,12 +545,12 @@ export async function createFixture(args: FixtureArgs = {}) {
     commands,
     launches,
     reserveServerPort,
-    isPendingServerRunning(pid: number): boolean {
+    pendingServer(pid: number): ChildProcess {
       const child = pendingChildren.get(pid);
       if (child === undefined) {
         throw new Error(`No retained pending server child for pid ${pid}`);
       }
-      return child.kill(0);
+      return child;
     },
     logger,
   };

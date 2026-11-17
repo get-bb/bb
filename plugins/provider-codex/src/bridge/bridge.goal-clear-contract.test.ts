@@ -3,11 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import { handleLine } from "./bridge.js";
 import {
-  cleanupBridgeProcessTest,
-  trackAppServerChildren,
-} from "./bridge-process.test-support.js";
+  experimental_trackChildProcesses,
+  type ExperimentalChildProcessTracker,
+} from "@get-bb/plugin-sdk/testing";
+import { handleLine } from "./bridge.js";
+import { cleanupBridgeProcessTest } from "./bridge-process.test-support.js";
 import { stubFakeCodexAppServer } from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_goal_contract";
@@ -15,7 +16,7 @@ const PROVIDER_THREAD_ID = "rollout-goal-contract";
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness> | undefined;
 let workspaceDir = "";
 let processLogPath = "";
-let children: ReturnType<typeof trackAppServerChildren> | undefined;
+let children: ExperimentalChildProcessTracker | undefined;
 
 afterEach(async () => {
   await cleanupBridgeProcessTest({
@@ -50,7 +51,7 @@ it.each([
         goalClearError: scenario.nativeError,
       }),
     );
-    children = trackAppServerChildren(scriptPath);
+    children = experimental_trackChildProcesses();
     stubFakeCodexAppServer(scriptPath);
     harness = createBridgeJsonRpcTestHarness(handleLine);
     harness.sendRequest(1, "thread/goal/clear", {

@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
 import { existsSync } from "node:fs";
 import {
   cp,
@@ -14,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { experimental_createProcessLifeline } from "@get-bb/plugin-sdk/testing";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import {
   afterAll,
@@ -54,15 +56,6 @@ afterAll(async () => {
     await rm(repositoryTemplate, { recursive: true, force: true });
   }
 });
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
   const result = await execFileAsync("git", args, {
@@ -833,11 +826,12 @@ describe.concurrent("worktree host entry", () => {
     async ({ onTestFinished }) => {
       const { root, sourcePath, dataDir } =
         await createSourceRepository(onTestFinished);
-      const hookPidPath = join(root, "hook.pid");
+      const lifeline = await experimental_createProcessLifeline();
+      onTestFinished(() => lifeline.close());
       const hookPath = join(sourcePath, ".git", "hooks", "post-checkout");
       await writeFile(
         hookPath,
-        `#!/bin/sh\necho $$ > "${hookPidPath}"\nexec sleep 30\n`,
+        `#!/bin/sh\nexec "${process.execPath}" -e '${lifeline.holdSource("hook")}setInterval(() => {}, 1000);'\n`,
         { mode: 0o755 },
       );
       const harness = createHarness(dataDir);
@@ -854,15 +848,13 @@ describe.concurrent("worktree host entry", () => {
           { signal: controller.signal },
         )
         .catch((error: unknown) => error);
-      await expect
-        .poll(() => existsSync(hookPidPath), { timeout: 10_000 })
-        .toBe(true);
-      const hookPid = Number((await readFile(hookPidPath, "utf8")).trim());
+      const [hook] = await lifeline.waitForHolders(1);
       const abortedAt = performance.now();
       controller.abort();
       expect(await created).toBeInstanceOf(Error);
       expect(performance.now() - abortedAt).toBeLessThan(3_000);
-      await expect.poll(() => isPidAlive(hookPid)).toBe(false);
+      await hook?.exited;
+      expect(hook?.alive()).toBe(false);
       await harness.experimental_dispose();
     },
   );
@@ -1131,10 +1123,10 @@ describe.concurrent("worktree host entry", () => {
       path: created.path,
       ownedBranch: null,
     });
-    const lingeringAlive = isPidAlive(lingering.pid ?? 0);
-    lingering.kill("SIGKILL");
+    if (lingering.exitCode === null && lingering.signalCode === null) {
+      await once(lingering, "exit");
+    }
     expect(removed).toEqual({ status: "removed" });
-    expect(lingeringAlive).toBe(false);
     expect(progressText(harness)).not.toContain("tearing-down");
     expect(existsSync(join(root, "teardown.marker"))).toBe(false);
     expect(existsSync(created.path)).toBe(false);

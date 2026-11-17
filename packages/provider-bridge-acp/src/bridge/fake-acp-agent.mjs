@@ -70,10 +70,10 @@
  *                              session/fork responses
  * - FAKE_ACP_IGNORE_CANCEL=1 → never answer a prompt after session/cancel
  * - FAKE_ACP_READY_FILE      → written once the agent process is up
- * - FAKE_ACP_LINGERING_DESCENDANT_PID_FILE
+ * - FAKE_ACP_LINGERING_DESCENDANT_HOLD
  *                            → spawn a descendant that ignores SIGTERM, so
  *                              process-tree cleanup outlasts the agent's exit,
- *                              and write its pid here
+ *                              and run this source in it (a test lifeline)
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
@@ -260,20 +260,16 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-if (process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE) {
+if (process.env.FAKE_ACP_LINGERING_DESCENDANT_HOLD) {
   spawn(
     process.execPath,
     [
       "-e",
       [
         "process.on('SIGTERM', () => {});",
-        "const fs = require('node:fs');",
-        "const pidFile = process.argv[1];",
-        "fs.writeFileSync(pidFile + '.tmp', String(process.pid));",
-        "fs.renameSync(pidFile + '.tmp', pidFile);",
+        process.env.FAKE_ACP_LINGERING_DESCENDANT_HOLD,
         "setInterval(() => {}, 1000);",
       ].join(" "),
-      process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE,
     ],
     { stdio: "ignore" },
   );

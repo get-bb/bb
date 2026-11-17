@@ -3,11 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import {
+  experimental_trackChildProcesses,
+  type ExperimentalChildProcessTracker,
+} from "@get-bb/plugin-sdk/testing";
 import type { BridgeJsonRpcOutputMessage } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { handleLine } from "./bridge.js";
 import {
   cleanupBridgeProcessTest,
-  trackAppServerChildren,
   spawnedAppServerPids,
 } from "./bridge-process.test-support.js";
 import {
@@ -35,7 +38,7 @@ let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir = "";
 let archiveStatePath = "";
 let processLogPath = "";
-let children: ReturnType<typeof trackAppServerChildren> | undefined;
+let children: ExperimentalChildProcessTracker | undefined;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-archived-rebuild-"));
@@ -46,7 +49,7 @@ beforeEach(() => {
     scriptPath,
     JSON.stringify({ archiveStatePath, processLogPath }),
   );
-  children = trackAppServerChildren(scriptPath);
+  children = experimental_trackChildProcesses();
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });

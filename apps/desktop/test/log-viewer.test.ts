@@ -1,8 +1,13 @@
 import { appendFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { killProcessesReferencingPath } from "@bb/test-helpers";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  hasExited,
+  killProcessesReferencingPath,
+  trackChildProcesses,
+  waitForExit,
+} from "@bb/test-helpers";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import {
   createLogLineBuffer,
   createLogTailer,
@@ -58,15 +63,6 @@ async function waitFor(args: WaitForArgs): Promise<void> {
     await new Promise((resolvePromise) => {
       setTimeout(resolvePromise, 25);
     });
-  }
-}
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -255,6 +251,8 @@ describe("log viewer", () => {
       const tempDir = await createTempDir();
       await writeFile(join(tempDir.path, "server.1.log"), "");
       await writeFile(join(tempDir.path, "host-daemon.1.log"), "");
+      const tracker = trackChildProcesses();
+      onTestFinished(() => tracker.dispose());
       const tailer = createLogTailer({
         logDir: tempDir.path,
         onLines() {},
@@ -264,14 +262,14 @@ describe("log viewer", () => {
 
       const processIds = tailer.processIds();
       expect(processIds).toHaveLength(2);
-      expect(processIds.every(isProcessRunning)).toBe(true);
+      const tails = tracker
+        .running()
+        .filter((child) => processIds.includes(child.pid ?? 0));
+      expect(tails).toHaveLength(2);
 
       tailer.stop();
-      await waitFor({
-        predicate() {
-          return processIds.every((pid) => !isProcessRunning(pid));
-        },
-      });
+      await Promise.all(tails.map(waitForExit));
+      expect(tails.every(hasExited)).toBe(true);
     },
   );
 

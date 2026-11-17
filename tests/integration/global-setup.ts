@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setupMigratedConnectionTemplate } from "@bb/db/testing";
+import { readProcessIdentity } from "@bb/process-utils";
 import {
   killProcessesReferencingPath,
   listOpenFilePids,
@@ -14,47 +15,48 @@ import { setupTestGitRepoTemplate } from "./helpers/seed.js";
 
 const INTEGRATION_TMP_PREFIX = "bb-integration-";
 const STALE_TMP_ROOT_AGE_MS = 60 * 60_000;
+const PS_START_TIME_RESOLUTION_MS = 1_000;
 
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ESRCH") {
-      return false;
+function signal(pids: Iterable<number>, name: NodeJS.Signals): void {
+  for (const pid of pids) {
+    try {
+      process.kill(pid, name);
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ESRCH") throw error;
     }
-    throw error;
   }
 }
 
-async function killProcess(pid: number): Promise<void> {
-  if (!isProcessAlive(pid)) {
-    return;
-  }
-
-  process.kill(pid, "SIGTERM");
+async function stopOpenFileHolders(tmpRoot: string): Promise<void> {
+  let remaining = await listOpenFilePids(tmpRoot);
+  if (remaining.length === 0) return;
+  signal(remaining, "SIGTERM");
   const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    if (!isProcessAlive(pid)) {
-      return;
-    }
+  while (remaining.length > 0 && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 100));
+    const stillHolding = new Set(await listOpenFilePids(tmpRoot));
+    remaining = remaining.filter((pid) => stillHolding.has(pid));
   }
-
-  if (!isProcessAlive(pid)) {
-    return;
-  }
-
-  process.kill(pid, "SIGKILL");
+  signal(remaining, "SIGKILL");
 }
 
 async function cleanupTmpRoot(tmpRoot: string): Promise<void> {
   await killProcessesReferencingPath(tmpRoot);
-  const openFilePids = new Set(await listOpenFilePids(tmpRoot));
-  for (const pid of openFilePids) {
-    await killProcess(pid).catch(() => undefined);
-  }
+  await stopOpenFileHolders(tmpRoot).catch(() => undefined);
   await removePathWithRetry(tmpRoot);
+}
+
+async function hasLiveOwner(tmpRoot: string): Promise<boolean> {
+  const pidFilePath = path.join(tmpRoot, "parent.pid");
+  const writer = await readPositivePidFile(pidFilePath);
+  if (writer === null) return false;
+  const recordedAt = (await fs.stat(pidFilePath)).mtimeMs;
+  const identity = await readProcessIdentity(writer);
+  if (identity === null) return false;
+  return (
+    identity.startedAt === null ||
+    identity.startedAt <= recordedAt + PS_START_TIME_RESOLUTION_MS
+  );
 }
 
 async function listIntegrationTmpRoots(): Promise<string[]> {
@@ -75,10 +77,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       continue;
     }
 
-    const parentPid = await readPositivePidFile(
-      path.join(tmpRoot, "parent.pid"),
-    );
-    if (parentPid && isProcessAlive(parentPid)) {
+    if (await hasLiveOwner(tmpRoot)) {
       continue;
     }
 

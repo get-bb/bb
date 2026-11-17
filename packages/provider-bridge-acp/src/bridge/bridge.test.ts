@@ -1,5 +1,3 @@
-import { ChildProcess } from "node:child_process";
-import { channel } from "node:diagnostics_channel";
 import {
   chmodSync,
   existsSync,
@@ -14,8 +12,22 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { killProcessesReferencingPath } from "@bb/test-helpers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createProcessLifeline,
+  killProcessesReferencingPath,
+  trackChildProcesses,
+  waitForExit,
+  type ChildProcessTracker,
+} from "@bb/test-helpers";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import { z } from "zod";
 import {
   availableModelSchema,
@@ -51,20 +63,8 @@ const FAKE_AGENT_PATH = resolve(
   "fake-acp-agent.mjs",
 );
 
-const spawnedChildren: ChildProcess[] = [];
-const childProcessChannel = channel("child_process");
-const onChildProcess = (message: unknown): void => {
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    "process" in message &&
-    message.process instanceof ChildProcess
-  ) {
-    spawnedChildren.push(message.process);
-  }
-};
-
 let output: CapturedBridgeJsonRpcOutput;
+let childProcesses: ChildProcessTracker;
 let workspaceDir: string;
 let nextThreadSerial = 0;
 let nextRequestId = 1;
@@ -661,21 +661,16 @@ function callDynamicToolBridge(args: {
 async function waitForAgentExit(readyFile: string): Promise<void> {
   const pid = Number(readFileSync(readyFile, "utf8"));
   expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
-  const child = [...spawnedChildren]
+  const child = [...childProcesses.children]
     .reverse()
     .find((candidate) => candidate.pid === pid);
   if (child === undefined)
     throw new Error(`No tracked ACP child for pid ${pid}`);
-  await waitFor(
-    () => child.exitCode !== null || child.signalCode !== null || undefined,
-    "agent termination",
-    5_000,
-  );
+  await waitForExit(child);
 }
 
 beforeEach(({ signal }) => {
-  spawnedChildren.length = 0;
-  childProcessChannel.subscribe(onChildProcess);
+  childProcesses = trackChildProcesses();
   testSignal = signal;
   bbThreadIdByProviderThreadId.clear();
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-acp-bridge-test-"));
@@ -722,7 +717,7 @@ afterEach(async () => {
       null,
     );
   } finally {
-    childProcessChannel.unsubscribe(onChildProcess);
+    childProcesses.dispose();
     sentRequestIds.clear();
     threadStartRequests.clear();
     vi.unstubAllEnvs();
@@ -5072,11 +5067,12 @@ describe("acp bridge", () => {
     "fails the interrupted turn and accepts the next message while an exited agent's process tree is still being cleaned up",
     async () => {
       const readyFile = join(workspaceDir, "agent-ready");
-      const descendantPidFile = join(workspaceDir, "descendant-pid");
+      const lifeline = await createProcessLifeline();
+      onTestFinished(() => lifeline.close());
       const promptLog = join(workspaceDir, "prompts.jsonl");
       const { providerThreadId } = await startThread({
         envVars: {
-          FAKE_ACP_LINGERING_DESCENDANT_PID_FILE: descendantPidFile,
+          FAKE_ACP_LINGERING_DESCENDANT_HOLD: lifeline.holdSource("descendant"),
           FAKE_ACP_READY_FILE: readyFile,
           FAKE_ACP_PROMPT_LOG: promptLog,
         },
@@ -5090,8 +5086,7 @@ describe("acp bridge", () => {
         () => loggedPrompts(promptLog).includes("hang") || undefined,
         "pending prompt before exit",
       );
-      await waitForFileWithRealTimer(descendantPidFile);
-      const descendantPid = Number(readFileSync(descendantPidFile, "utf8"));
+      const [descendant] = await lifeline.waitForHolders(1);
       vi.useFakeTimers({
         toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
       });
@@ -5100,7 +5095,7 @@ describe("acp bridge", () => {
         expect(await waitForTurnCompleted()).toMatchObject({
           status: "failed",
         });
-        expect(process.kill(descendantPid, 0)).toBe(true);
+        expect(descendant?.alive()).toBe(true);
 
         const steer = await waitForResponse(
           sendTurnRequest("turn/steer", providerThreadId, {

@@ -52,6 +52,8 @@ interface SpawnMockState {
   execFileInvocations: ExecFileInvocation[];
   openFilePidsStdout: string;
   processScanErrorCode: ProcessScanErrorCode | null;
+  processStartErrorCode: string | null;
+  processStarts: Map<number, string>;
   invocations: SpawnInvocation[];
   tempDirs: string[];
 }
@@ -83,6 +85,8 @@ function createSpawnMockState(): SpawnMockState {
     execFileInvocations: [],
     openFilePidsStdout: "",
     processScanErrorCode: null,
+    processStartErrorCode: null,
+    processStarts: new Map(),
     invocations: [],
     tempDirs: [],
   };
@@ -92,6 +96,28 @@ const spawnMockState = vi.hoisted(createSpawnMockState);
 
 function createProcessKillError(code: string): ProcessKillError {
   return Object.assign(new Error(`kill ${code}`), { code });
+}
+
+function startedProcesses(starts: Record<number, number>): void {
+  for (const [pid, startedAt] of Object.entries(starts)) {
+    spawnMockState.processStarts.set(
+      Number(pid),
+      new Date(startedAt).toString().slice(0, 24),
+    );
+  }
+}
+
+function recordSignals(): string[] {
+  const signals: string[] = [];
+  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (!spawnMockState.processStarts.has(pid)) {
+      throw createProcessKillError("ESRCH");
+    }
+    signals.push(`${String(pid)}:${String(signal)}`);
+    spawnMockState.processStarts.delete(pid);
+    return true;
+  });
+  return signals;
 }
 
 function useIsolatedStandaloneTmpDir(): string {
@@ -148,6 +174,20 @@ vi.mock("node:child_process", async (importOriginal) => {
       return child;
     }
 
+    if (command === "ps" && commandArgs?.[0] === "-p") {
+      const startErrorCode = spawnMockState.processStartErrorCode;
+      const started = spawnMockState.processStarts.get(Number(commandArgs[1]));
+      const error =
+        startErrorCode !== null
+          ? Object.assign(new Error(`spawn ${startErrorCode}`), {
+              code: startErrorCode,
+            })
+          : started === undefined
+            ? Object.assign(new Error("ps exited 1"), { code: 1 })
+            : null;
+      queueMicrotask(() => callbackArg?.(error, started ?? "", ""));
+      return child;
+    }
     const stdout = command === "lsof" ? spawnMockState.openFilePidsStdout : "";
     queueMicrotask(() => callbackArg?.(null, stdout, ""));
     return child;
@@ -218,6 +258,8 @@ afterEach(() => {
   spawnMockState.execFileInvocations.length = 0;
   spawnMockState.openFilePidsStdout = "";
   spawnMockState.processScanErrorCode = null;
+  spawnMockState.processStartErrorCode = null;
+  spawnMockState.processStarts.clear();
   spawnMockState.invocations.length = 0;
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -358,7 +400,33 @@ describe("cleanupStandaloneOrphans", () => {
     },
   );
 
-  it("skips a standalone root whose parent process exists but is not signalable", async () => {
+  it("skips a standalone root whose parent process started before the root", async () => {
+    const tmpDir = useIsolatedStandaloneTmpDir();
+    const tmpRoot = createStandaloneRoot({
+      name: "bb-standalone-owned-live",
+      state: {
+        daemon: { pid: 1111 },
+        parentPid: 4242,
+        server: { pid: 2222 },
+      },
+      tmpDir,
+    });
+    startedProcesses({
+      4242: Date.now() - 60_000,
+      1111: Date.now(),
+      2222: Date.now(),
+    });
+    const signals = recordSignals();
+
+    await expect(cleanupStandaloneOrphans()).resolves.toMatchObject({
+      killedPids: [],
+      removedRoots: [],
+    });
+    expect(existsSync(tmpRoot)).toBe(true);
+    expect(signals).toEqual([]);
+  });
+
+  it("skips a standalone root whose parent process cannot be inspected", async () => {
     const tmpDir = useIsolatedStandaloneTmpDir();
     const tmpRoot = createStandaloneRoot({
       name: "bb-standalone-unowned",
@@ -369,59 +437,52 @@ describe("cleanupStandaloneOrphans", () => {
       },
       tmpDir,
     });
-    const killedSignals: string[] = [];
+    spawnMockState.processStartErrorCode = "EPERM";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-      if (pid === 1 && signal === 0) {
-        throw createProcessKillError("EPERM");
-      }
-      killedSignals.push(`${String(pid)}:${String(signal)}`);
-      return true;
-    });
+    const signals = recordSignals();
 
     await expect(cleanupStandaloneOrphans()).resolves.toMatchObject({
       killedPids: [],
       removedRoots: [],
     });
     expect(existsSync(tmpRoot)).toBe(true);
-    expect(killedSignals).toEqual([]);
+    expect(signals).toEqual([]);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("parent process 1 is not signalable"),
+      expect.stringContaining("parent process 1 could not be inspected"),
     );
   });
 
-  it("removes stale standalone roots whose parent process is gone", async () => {
-    const tmpDir = useIsolatedStandaloneTmpDir();
-    const tmpRoot = createStandaloneRoot({
-      name: "bb-standalone-owned-stale",
-      state: {
-        daemon: { pid: 1111 },
-        parentPid: 4242,
-        server: { pid: 2222 },
-      },
-      tmpDir,
-    });
-    const runningPids = new Set([1111, 2222]);
-    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-      if (pid === 4242 && signal === 0) {
-        throw createProcessKillError("ESRCH");
-      }
-      if (signal === 0) {
-        if (runningPids.has(pid)) {
-          return true;
-        }
-        throw createProcessKillError("ESRCH");
-      }
-      runningPids.delete(pid);
-      return true;
-    });
+  const parentStarts: Array<[string, Record<number, number>]> = [
+    ["is gone", {}],
+    [
+      "now belongs to a process started after the root",
+      { 4242: Date.now() + 60_000 },
+    ],
+  ];
+  it.each(parentStarts)(
+    "removes stale standalone roots whose parent PID %s",
+    async (_case, parentStart) => {
+      const tmpDir = useIsolatedStandaloneTmpDir();
+      const tmpRoot = createStandaloneRoot({
+        name: "bb-standalone-owned-stale",
+        state: {
+          daemon: { pid: 1111 },
+          parentPid: 4242,
+          server: { pid: 2222 },
+        },
+        tmpDir,
+      });
+      startedProcesses({ ...parentStart, 1111: Date.now(), 2222: Date.now() });
+      const signals = recordSignals();
 
-    await expect(cleanupStandaloneOrphans()).resolves.toMatchObject({
-      killedPids: [1111, 2222],
-      removedRoots: [tmpRoot],
-    });
-    expect(existsSync(tmpRoot)).toBe(false);
-  });
+      await expect(cleanupStandaloneOrphans()).resolves.toMatchObject({
+        killedPids: [1111, 2222],
+        removedRoots: [tmpRoot],
+      });
+      expect(existsSync(tmpRoot)).toBe(false);
+      expect(signals).toEqual(["1111:SIGTERM", "2222:SIGTERM"]);
+    },
+  );
 
   it("kills the restarted daemon and open file holders of a stale standalone root", async () => {
     const tmpDir = useIsolatedStandaloneTmpDir();
@@ -438,20 +499,13 @@ describe("cleanupStandaloneOrphans", () => {
       tmpDir,
     });
     spawnMockState.openFilePidsStdout = "4444\nnot-a-pid\n0\n";
-    const runningPids = new Set([1111, 2222, 3333, 4444]);
-    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-      if (pid === 4242 && signal === 0) {
-        throw createProcessKillError("ESRCH");
-      }
-      if (signal === 0) {
-        if (runningPids.has(pid)) {
-          return true;
-        }
-        throw createProcessKillError("ESRCH");
-      }
-      runningPids.delete(pid);
-      return true;
+    startedProcesses({
+      1111: Date.now(),
+      2222: Date.now(),
+      3333: Date.now(),
+      4444: Date.now(),
     });
+    recordSignals();
 
     await expect(cleanupStandaloneOrphans()).resolves.toMatchObject({
       killedPids: [1111, 2222, 3333, 4444],
@@ -461,6 +515,6 @@ describe("cleanupStandaloneOrphans", () => {
       args: ["-t", "+D", tmpRoot],
       command: "lsof",
     });
-    expect(runningPids.size).toBe(0);
+    expect(spawnMockState.processStarts.size).toBe(0);
   });
 });

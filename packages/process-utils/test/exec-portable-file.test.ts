@@ -1,3 +1,4 @@
+import { createProcessLifeline } from "@bb/test-helpers";
 import { expect, it, vi, onTestFinished } from "vitest";
 import {
   execPortableFile,
@@ -84,55 +85,47 @@ it("streams split UTF-8 stderr and closes stdin after writing the input", async 
 
 it("cancels a command with its descendants and retains prior output", async () => {
   const controller = new AbortController();
+  const lifeline = await createProcessLifeline();
+  onTestFinished(() => lifeline.close());
   let output = "";
-  let pids: number[] = [];
-  const isAlive = (pid: number) => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  try {
-    await expect(
-      execPortableFile(
-        process.execPath,
-        [
-          "-e",
-          `
+  await expect(
+    execPortableFile(
+      process.execPath,
+      [
+        "-e",
+        `
     const { spawn } = require("node:child_process");
     process.on("SIGTERM", () => process.exit(0));
-    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    ${lifeline.holdSource("command")}
+    const child = spawn(process.execPath, ["-e", ${JSON.stringify(`${lifeline.holdSource("descendant")}setInterval(() => {}, 1000)`)}], { stdio: "ignore" });
     child.once("spawn", () => process.stderr.write(JSON.stringify([process.pid, child.pid]) + "\\n"));
     setInterval(() => {}, 1000);
   `,
-        ],
-        {
-          ...options,
-          signal: controller.signal,
-          onStderr: (chunk) => {
-            output += chunk;
-            if (output.endsWith("\n")) {
-              pids = JSON.parse(output);
-              controller.abort("cancelled by caller");
-            }
-          },
+      ],
+      {
+        ...options,
+        signal: controller.signal,
+        onStderr: (chunk) => {
+          output += chunk;
+          if (output.endsWith("\n")) {
+            void lifeline
+              .waitForHolders(2)
+              .then(() => controller.abort("cancelled by caller"));
+          }
         },
-      ),
-    ).rejects.toMatchObject({
-      name: "AbortError",
-      code: "ABORT_ERR",
-      cause: "cancelled by caller",
-      killed: true,
-      signal: "SIGTERM",
-      stderr: expect.stringContaining("["),
-    });
-    expect(pids).toHaveLength(2);
-    await expect.poll(() => pids.some(isAlive), { timeout: 1000 }).toBe(false);
-  } finally {
-    for (const pid of pids) {
-      if (isAlive(pid)) process.kill(pid, "SIGKILL");
-    }
-  }
+      },
+    ),
+  ).rejects.toMatchObject({
+    name: "AbortError",
+    code: "ABORT_ERR",
+    cause: "cancelled by caller",
+    killed: true,
+    signal: "SIGTERM",
+    stderr: expect.stringContaining("["),
+  });
+  expect(lifeline.holders.map((holder) => holder.label).sort()).toEqual([
+    "command",
+    "descendant",
+  ]);
+  await Promise.all(lifeline.holders.map((holder) => holder.exited));
 });

@@ -135,6 +135,19 @@ the package, and private `@bb/*` dependencies. It permits public SDK paths,
 Zod, Node modules, package-local files, and declared extra patterns. It skips
 `node_modules` and `dist`.
 
+To check that processes exit, observe a handle rather than a PID; a
+recycled PID makes `process.kill(pid, 0)` report an unrelated process.
+`experimental_trackChildProcesses()` records every `ChildProcess` the test
+process spawns, including ones your code spawns internally; assert on
+`running()` or await `waitForExit()`, and `dispose()` it in cleanup. For
+descendants, call `experimental_createProcessLifeline()` and embed
+`lifeline.holdSource("label")` in the descendant's Node script. Then await
+`(await lifeline.waitForHolders(1))[0].exited`, clean up with `holder.kill()`,
+and `await lifeline.close()` at the end. A shell descendant that must start
+instantly, for example one racing a short timeout, can instead redirect into
+`experimental_createDescendantPipe()`'s `path` (POSIX only). Await `opened`,
+then `closed`.
+
 Host entry (`host.ts`) — `@get-bb/plugin-sdk/testing/host`:
 
 ```ts

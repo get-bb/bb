@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,15 +14,6 @@ async function createDataDir(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "bb-personal-workspace-plugin-"));
   temporaryRoots.push(root);
   return join(root, "plugin-data");
-}
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function createHarness(dataDir: string) {
@@ -73,7 +65,9 @@ describe("personal workspace host entry", () => {
 
       expect(removed).toEqual({ removed: true });
       expect(existsSync(created.path)).toBe(false);
-      expect(isPidAlive(child.pid ?? 0)).toBe(false);
+      if (child.exitCode === null && child.signalCode === null) {
+        await once(child, "exit");
+      }
     } finally {
       child.kill("SIGKILL");
     }

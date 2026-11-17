@@ -69,6 +69,9 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_BRANCH" || true
           node scripts/check-provider-literal-ratchet.mjs --base "origin/$BASE_BRANCH"
 
+      - name: Check tests observe processes by handle
+        run: node scripts/check-test-process-identity.mjs
+
   dependencies:
     name: Validate dependencies
     needs: plan

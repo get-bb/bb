@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -1054,16 +1055,7 @@ it.skipIf(process.platform === "win32")(
     const neighbor = run(path.join(root, "thr_neighbor"));
     const worker = experimental_createHostEntryHarness(hostEntry);
     try {
-      await expect
-        .poll(async () => {
-          try {
-            process.kill(busy.child.pid!, 0);
-            return true;
-          } catch {
-            return false;
-          }
-        })
-        .toBe(true);
+      await once(busy.child, "spawn");
       expect(
         await worker.experimental_call("discard", {
           rootPath: root,

@@ -6,7 +6,10 @@ import fs from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { killProcessesReferencingPath } from "@bb/test-helpers";
+import {
+  createProcessLifeline,
+  killProcessesReferencingPath,
+} from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
   buildDaemonRestartCommand,
@@ -56,37 +59,8 @@ function extractProviderEnvBlock(command: string): string {
   return command.slice(blockStart, blockEnd);
 }
 
-async function delay(ms: number): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForPidFile(
-  pidPath: string,
-  previousPid?: number,
-): Promise<number> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 2_000) {
-    try {
-      const rawPid = await fs.readFile(pidPath, "utf8");
-      const pid = Number.parseInt(rawPid.trim(), 10);
-      if (Number.isInteger(pid) && pid > 0 && pid !== previousPid) {
-        return pid;
-      }
-    } catch {}
-    await delay(50);
-  }
-  throw new Error("Timed out waiting for restarted daemon pid file");
+async function readPidFile(pidPath: string): Promise<number> {
+  return Number.parseInt((await fs.readFile(pidPath, "utf8")).trim(), 10);
 }
 
 async function runShellCommand(
@@ -368,6 +342,7 @@ describe("standalone restart command", () => {
     const pidPath = path.join(tempDir, "daemon.pid");
     const logPath = path.join(tempDir, "host-daemon.log");
     const entrypoint = path.join(tempDir, "daemon-child.mjs");
+    const lifeline = await createProcessLifeline();
     const server = createServer((request, response) => {
       if (request.url === "/api/v1/hosts") {
         response.setHeader("content-type", "application/json");
@@ -381,7 +356,12 @@ describe("standalone restart command", () => {
     try {
       await fs.writeFile(
         entrypoint,
-        "setInterval(() => undefined, 1_000);\n",
+        [
+          lifeline.holdSource("daemon"),
+          `process.on("SIGUSR2", () => ${lifeline.holdSource("signal-fence")});`,
+          "setInterval(() => undefined, 1_000);",
+          "",
+        ].join("\n"),
         "utf8",
       );
 
@@ -415,22 +395,27 @@ describe("standalone restart command", () => {
       const shellResult = await runShellCommand(command, {
         PATH: process.env.PATH ?? "",
       });
-      const firstDaemonPid = await waitForPidFile(pidPath);
-      expect(isProcessRunning(firstDaemonPid)).toBe(true);
+      const [first] = await lifeline.waitForHolders(1);
+      expect(await readPidFile(pidPath)).toBe(first?.pid);
 
       signalProcessGroup(shellResult.processGroupId);
-      await delay(500);
-
-      expect(isProcessRunning(firstDaemonPid)).toBe(true);
+      expect(first?.kill("SIGUSR2")).toBe(true);
+      const [, fence] = await lifeline.waitForHolders(2);
+      expect(fence?.label).toBe("signal-fence");
+      expect(first?.alive()).toBe(true);
 
       await runShellCommand(command, {
         PATH: process.env.PATH ?? "",
       });
-      const restartedDaemonPid = await waitForPidFile(pidPath, firstDaemonPid);
+      await first?.exited;
+      const restarted = (await lifeline.waitForHolders(3)).find(
+        (holder) => holder.label === "daemon" && holder !== first,
+      );
 
-      expect(isProcessRunning(firstDaemonPid)).toBe(false);
-      expect(isProcessRunning(restartedDaemonPid)).toBe(true);
+      expect(restarted?.alive()).toBe(true);
+      expect(await readPidFile(pidPath)).toBe(restarted?.pid);
     } finally {
+      await lifeline.close();
       await killProcessesReferencingPath(tempDir);
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

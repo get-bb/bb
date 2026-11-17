@@ -3,7 +3,16 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
+import { hasExited, trackChildProcesses } from "@bb/test-helpers";
 import {
   FrpcSupervisor,
   frpProxyDiff,
@@ -14,7 +23,7 @@ import {
 import {
   GATE_REFUSAL_REASON,
   installTestFrp,
-  processAlive,
+  runningChild,
   startFrps,
   startGateHooks,
   vhostGet,
@@ -447,6 +456,8 @@ describe("MachineNextTunnel with real frpc and frps", () => {
   }
 
   it("serves declared ports at <label>--<port>, hot-reloading the list", async () => {
+    const children = trackChildProcesses();
+    onTestFinished(() => children.dispose());
     const lines: LogLine[] = [];
     const first = await startDevServer();
     const second = await startDevServer();
@@ -478,8 +489,7 @@ describe("MachineNextTunnel with real frpc and frps", () => {
         .filter((call) => call.op === "NewProxy")
         .map((call) => call.content.subdomain),
     ).toContain(`${LABEL}--${first.port}`);
-    const pid = runner.childPid();
-    expect(pid).not.toBeNull();
+    const frpc = runningChild(children, runner.childPid());
 
     await runner.setPorts([first.port, second.port]);
     await waitFor(
@@ -491,7 +501,7 @@ describe("MachineNextTunnel with real frpc and frps", () => {
       () => vhostGet(frps.vhostPort, `${LABEL}--${first.port}`, "/a"),
       (answer) => answer.status === 404,
     );
-    expect(runner.childPid()).toBe(pid);
+    expect(runningChild(children, runner.childPid())).toBe(frpc);
     expect(runner.status().shares.map((share) => share.port)).toEqual([
       second.port,
     ]);
@@ -525,7 +535,7 @@ describe("MachineNextTunnel with real frpc and frps", () => {
     await runner.setPorts([]);
     await runner.idle();
     expect(runner.childPid()).toBeNull();
-    expect(processAlive(pid ?? 0)).toBe(false);
+    expect(hasExited(frpc)).toBe(true);
     expect(runner.status().state).toBe("idle");
     expect(lines.map((line) => line.message).join("\n")).not.toContain(
       CREDENTIAL,

@@ -170,6 +170,31 @@ for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM
 bb_connect_gate_events WHERE blob4 = '<handle>.getbb.app' ORDER BY timestamp
 DESC`.
 
+## Observing Processes in Tests
+
+A test must not decide whether a process is alive from its PID. The operating
+system reuses PIDs (Windows quickly), so `process.kill(pid, 0)`, a liveness
+helper given a PID, and `expect(newPid).not.toBe(oldPid)` can all answer for an
+unrelated process. `node scripts/check-test-process-identity.mjs`, run in CI's
+plan job, rejects them in test code. Use the fixtures in
+`@bb/test-helpers/child-processes` instead; forkable plugins get the same ones
+as `experimental_` exports of `@get-bb/plugin-sdk/testing`.
+
+- **Direct children:** `trackChildProcesses()` records every `ChildProcess`
+  spawned in the test process, including ones production code spawns
+  internally. Use `running()`, `waitForExit()`, `waitForClose()` and
+  `killRunning()`.
+- **Node descendants:** `createProcessLifeline()` gives a socket the descendant
+  joins with `holdSource(label, onHeld?)`. Await `holder.exited`; `holder.kill()`
+  never signals a reused PID.
+- **Shell descendants on POSIX:** redirect into `createDescendantPipe()`'s
+  `path` and await `opened`, then `closed`.
+- **Restarted processes:** compare an identity the process reports itself, such
+  as a boot id.
+
+Waits are event-driven and bounded by the test's own timeout, not by a separate
+deadline.
+
 ## Reproducing Test Order Failures
 
 CI's test shards shuffle test files and tests within each file. Vitest prints the seed for

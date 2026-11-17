@@ -15,7 +15,10 @@ import {
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
-import { killProcessesReferencingPath } from "@bb/test-helpers";
+import {
+  createProcessLifeline,
+  killProcessesReferencingPath,
+} from "@bb/test-helpers";
 import { afterEach, describe, expect, it } from "vitest";
 
 const SCRIPT_PATH = new URL(
@@ -122,6 +125,7 @@ function createEnrollingBbAppScript(args: {
   hostId: string;
   invocationPath?: string;
   statusServerUrl?: string;
+  daemonHoldSource?: string;
 }): string {
   const recordInvocation =
     args.invocationPath === undefined
@@ -166,6 +170,7 @@ if (cliArgs[0] === "machine" && cliArgs[1] === "enroll") {
   process.exit(0);
 }
 ${recordInvocation}
+${args.daemonHoldSource ?? ""}
 const port = Number(option("--host-daemon-port"));
 const serverUrl = option("--server-url");
 const statusServerUrl = ${JSON.stringify(args.statusServerUrl)} ?? serverUrl;
@@ -277,10 +282,16 @@ function writeEnrollingBbApp(
   invocationPath: string,
   hostId = "host-test",
   statusServerUrl?: string,
+  daemonHoldSource?: string,
 ): void {
   writeExecutable(
     join(fixture.binDir, "bb-app"),
-    createEnrollingBbAppScript({ hostId, invocationPath, statusServerUrl }),
+    createEnrollingBbAppScript({
+      hostId,
+      invocationPath,
+      statusServerUrl,
+      daemonHoldSource,
+    }),
   );
   writeEnrollingBb(fixture, hostId);
 }
@@ -850,12 +861,19 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     }
   });
 
-  it("restarts its own running daemon on reconnect when service setup is skipped", () => {
+  it("restarts its own running daemon on reconnect when service setup is skipped", async () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
     const daemonPidPath = join(fixture.dataDir, "install-daemon.pid");
+    const lifeline = await createProcessLifeline();
     writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, invocationPath);
+    writeEnrollingBbApp(
+      fixture,
+      invocationPath,
+      "host-test",
+      undefined,
+      lifeline.holdSource("daemon"),
+    );
     const reconnectEnv = {
       BB_DATA_DIR: "",
       BB_INSTALL_SKIP_SERVICE: "1",
@@ -865,34 +883,22 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
         dataDir: fixture.dataDir,
       }),
     };
-    const running = new Set<number>();
-    const isRunning = (pid: number) => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    const readPid = () => {
-      const pid = Number(readFileSync(daemonPidPath, "utf8"));
-      running.add(pid);
-      return pid;
-    };
+    const readPid = () => Number(readFileSync(daemonPidPath, "utf8"));
     try {
       const installed = runScript(BOOTSTRAP_ARGS, fixture, {
         BB_INSTALL_SKIP_SERVICE: "1",
       });
       expect(installed.status, installed.stderr).toBe(0);
-      const oldPid = readPid();
+      const [first] = await lifeline.waitForHolders(1);
+      expect(readPid()).toBe(first?.pid);
 
       const reconnected = runScript(BOOTSTRAP_ARGS, fixture, reconnectEnv);
       expect(reconnected.status, reconnected.stderr).toBe(0);
       expect(reconnected.stdout).toContain("Stopped the host daemon");
-      const newPid = readPid();
-      expect(newPid).not.toBe(oldPid);
-      expect(isRunning(oldPid)).toBe(false);
-      expect(isRunning(newPid)).toBe(true);
+      await first?.exited;
+      const [, restarted] = await lifeline.waitForHolders(2);
+      expect(restarted?.alive()).toBe(true);
+      expect(readPid()).toBe(restarted?.pid);
 
       rmSync(daemonPidPath);
       const unowned = runScript(BOOTSTRAP_ARGS, fixture, reconnectEnv);
@@ -900,11 +906,16 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
       expect(unowned.stdout + unowned.stderr).toContain(
         "this installer did not start",
       );
-      expect(isRunning(newPid)).toBe(true);
+      const port = readFileSync(
+        join(fixture.dataDir, "host-daemon-port"),
+        "utf8",
+      ).trim();
+      const status = await fetch(`http://127.0.0.1:${port}/status`);
+      expect(await status.json()).toMatchObject({ hostId: "host-test" });
+      expect(restarted?.alive()).toBe(true);
+      expect(lifeline.holders).toHaveLength(2);
     } finally {
-      for (const pid of running) {
-        if (isRunning(pid)) process.kill(pid, "SIGTERM");
-      }
+      await lifeline.close();
     }
   });
 
