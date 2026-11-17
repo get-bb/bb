@@ -3,7 +3,15 @@ import {
   type TestConnectDb,
   createTestConnectDb,
 } from "@bb/connect-db-pg/testing";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  onTestFinished,
+} from "vitest";
 import {
   OAUTH_ACCESS_TOKEN_TTL_MS,
   OAUTH_CODE_TTL_MS,
@@ -1135,11 +1143,88 @@ describe("token endpoint: refresh_token", () => {
   });
 
   it("keeps a bounded number of refresh rows for a long-lived grant", async () => {
+    const cryptoTiming: Record<string, { count: number; total: number }> = {};
+    const dbStart = performance.now();
+    const originalQuery = database.pglite.query.bind(database.pglite);
+    vi.spyOn(database.pglite, "query").mockImplementation(async (...args) => {
+      const start = performance.now();
+      try {
+        return await originalQuery(...args);
+      } finally {
+        const stat = (cryptoTiming.query ??= { count: 0, total: 0 });
+        stat.count++;
+        stat.total += performance.now() - start;
+      }
+    });
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, "digest").mockImplementation(async (...args) => {
+      const start = performance.now();
+      try {
+        return await digest(...args);
+      } finally {
+        const stat = (cryptoTiming.digest ??= { count: 0, total: 0 });
+        stat.count++;
+        stat.total += performance.now() - start;
+      }
+    });
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, "importKey").mockImplementation(async (...args) => {
+      const start = performance.now();
+      try {
+        return await importKey(...args);
+      } finally {
+        const stat = (cryptoTiming.importKey ??= { count: 0, total: 0 });
+        stat.count++;
+        stat.total += performance.now() - start;
+      }
+    });
+    const sign = crypto.subtle.sign.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, "sign").mockImplementation(async (...args) => {
+      const start = performance.now();
+      try {
+        return await sign(...args);
+      } finally {
+        const stat = (cryptoTiming.sign ??= { count: 0, total: 0 });
+        stat.count++;
+        stat.total += performance.now() - start;
+      }
+    });
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+      console.log(
+        JSON.stringify({
+          probe: "oauth-operations",
+          cryptoTiming,
+          elapsed: performance.now() - dbStart,
+        }),
+      );
+    });
+    const phaseStart = performance.now();
     let current = await exchange();
+    console.log(
+      JSON.stringify({
+        probe: "oauth-exchange",
+        elapsed: performance.now() - phaseStart,
+      }),
+    );
     for (let hour = 0; hour < 72; hour += 1) {
       now += 60 * 60 * 1000;
+      const iterationStart = performance.now();
       current = await tokens(await refresh(current.refresh_token));
+      console.log(
+        JSON.stringify({
+          probe: "oauth-refresh",
+          hour,
+          elapsed: performance.now() - iterationStart,
+        }),
+      );
     }
+    console.log(
+      JSON.stringify({
+        probe: "oauth-body",
+        elapsed: performance.now() - phaseStart,
+      }),
+    );
     expect(await db.$count(oauthRefreshToken)).toBeLessThanOrEqual(26);
     expect((await grantRows())[0]?.revokedAt).toBeNull();
   });
