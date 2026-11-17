@@ -119,6 +119,7 @@ interface BuildFlatProjectionDataResult {
   activeThinking: ActiveThinking | null;
   activeWorkflows: EventProjectionWorkflowMessage[];
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
+  delegatedTurnIds: ReadonlySet<string>;
   messages: EventProjectionMessage[];
 }
 
@@ -126,6 +127,7 @@ interface BuildDetailedProjectionArgs {
   activeThinking: ActiveThinking | null;
   activeWorkflows: EventProjectionWorkflowMessage[];
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
+  delegatedTurnIds: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
@@ -1012,6 +1014,21 @@ function foldProjectionEvent(
   }
 }
 
+function nestDelegatedTurnMessages(
+  messages: EventProjectionMessage[],
+  parentToolCallIdsByTurnId: ReadonlyMap<string, string>,
+): EventProjectionMessage[] {
+  return messages.map((message) => {
+    if (message.parentToolCallId || message.scope.kind !== "turn") {
+      return message;
+    }
+    const parentToolCallId = parentToolCallIdsByTurnId.get(
+      message.scope.turnId,
+    );
+    return parentToolCallId ? { ...message, parentToolCallId } : message;
+  });
+}
+
 function finishFlatProjection(
   state: ProjectionState,
   orderedEvents: ThreadEventWithMeta[],
@@ -1020,7 +1037,10 @@ function finishFlatProjection(
 ): BuildFlatProjectionDataResult {
   finalizeProjectionState({ state, options: options });
   const messages = sortEventProjectionMessagesBySource(
-    normalizeProvisioningFailures(orderedEvents, state.messages),
+    nestDelegatedTurnMessages(
+      normalizeProvisioningFailures(orderedEvents, state.messages),
+      state.delegationParentToolCallIdsByTurnId,
+    ),
   );
   const callMessageById = buildCallMessageById(messages);
   enrichBackgroundAgentModels(messages, callMessageById);
@@ -1033,6 +1053,7 @@ function finishFlatProjection(
       messages,
       callMessageById,
     ),
+    delegatedTurnIds: new Set(state.delegationParentToolCallIdsByTurnId.keys()),
     messages,
   };
 }
@@ -1060,6 +1081,7 @@ function buildDetailedProjection(
   args: BuildDetailedProjectionArgs,
 ): EventProjection {
   const projection = groupEventProjectionTurns({
+    delegatedTurnIds: args.delegatedTurnIds,
     events: args.events,
     messages: args.messages,
   });
@@ -1093,6 +1115,7 @@ function buildFullEventProjection(
     activeThinking: flatProjection.activeThinking,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    delegatedTurnIds: flatProjection.delegatedTurnIds,
     events,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -1127,6 +1150,7 @@ export function buildEventProjectionEntries(
     activeThinking: null,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -1220,6 +1244,7 @@ export function finishEventProjectionFold(
     activeThinking: flatProjection.activeThinking,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
     messages: flatProjection.messages,
     turnMessageDetail: fold.options.turnMessageDetail,
