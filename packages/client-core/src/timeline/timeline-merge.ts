@@ -427,6 +427,8 @@ function loadedTimelineStateFromLatest(
   };
 }
 
+const joinedTimelineRows = new WeakSet<TimelineRow>();
+
 export function mergeLoadedTimelineWithLatest({
   current,
   latestTimeline,
@@ -443,12 +445,18 @@ export function mergeLoadedTimelineWithLatest({
   const currentRowsById = new Map(current.rows.map((row) => [row.id, row]));
   const latestRows = latestTimeline.rows.map((row) => {
     const loaded = currentRowsById.get(row.id);
-    return loaded === undefined
-      ? row
-      : prependOlderTimelineRows({
-          olderRows: [loaded],
-          loadedRows: [row],
-        })[0]!;
+    if (
+      loaded === undefined ||
+      (loaded === row && joinedTimelineRows.has(row))
+    ) {
+      return row;
+    }
+    const joined = prependOlderTimelineRows({
+      olderRows: [loaded],
+      loadedRows: [row],
+    })[0]!;
+    if (joined === row) joinedTimelineRows.add(row);
+    return joined;
   });
   const latestMerge = mergeLatestIntoLoadedRows({
     current,

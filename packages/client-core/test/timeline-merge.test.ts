@@ -1195,4 +1195,28 @@ describe("snapshot content pagination", () => {
       }),
     ).toEqual([{ ...summary, children: [child] }]);
   });
+
+  it("deduplicates children of an unchanged row once and then reuses it", () => {
+    const child = commandRow({ id: "repeated-command", sequence: 2 });
+    const summary = turnSummaryRow({
+      id: "summary",
+      sequence: 2,
+      children: [child, child],
+    });
+    const latestTimeline = makeTimelineResponse([summary], null);
+    const first = mergeLoadedTimelineWithLatest({
+      current: makeLoadedTimelineState([summary], null),
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+    expect(first.rows).toEqual([{ ...summary, children: [child] }]);
+
+    const deduped = first.rows[0]!;
+    const second = mergeLoadedTimelineWithLatest({
+      current: first,
+      latestTimeline: makeTimelineResponse([deduped], null),
+      surfaceKey: "thread-1:default",
+    });
+    expect(second.rows[0]).toBe(deduped);
+  });
 });
