@@ -99,7 +99,15 @@ export function MachinePickerUI({
       showSearch ? searchMachineHosts(orderedHosts, searchQuery) : orderedHosts,
     [orderedHosts, searchQuery, showSearch],
   );
-  const now = Date.now();
+  const [hostClock, setHostClock] = useState(() => ({
+    open,
+    hosts: availableHosts,
+    now: Date.now(),
+  }));
+  if (hostClock.open !== open || hostClock.hosts !== availableHosts) {
+    setHostClock(() => ({ open, hosts: availableHosts, now: Date.now() }));
+  }
+  const now = hostClock.now;
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) {

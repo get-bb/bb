@@ -60,7 +60,8 @@ export function CollapsibleActiveStackCard({
   children,
 }: CollapsibleActiveStackCardProps) {
   const activity = isActive ? "active" : "pending";
-  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
+  const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
+    useDisclosureFocusHandoff(isExpanded, onToggle);
   return (
     <PromptStackCard
       ariaLabel={cardAriaLabel}
@@ -73,13 +74,13 @@ export function CollapsibleActiveStackCard({
         className={HEADER_GROUP_CLASS}
       >
         <button
-          ref={focus.triggerRef}
+          ref={triggerRef}
           type="button"
           id={toggleId}
           aria-expanded={isExpanded}
           aria-controls={bodyId}
           aria-label={toggleAriaLabel}
-          onClick={focus.onTriggerClick}
+          onClick={onTriggerClick}
           className={cn(
             HEADER_BUTTON_CLASS,
             PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
@@ -122,8 +123,8 @@ export function CollapsibleActiveStackCard({
         isExpanded={isExpanded}
         collapsedBorder="none"
         collapseLabel={`Collapse ${title}`}
-        collapseRef={focus.collapseRef}
-        onCollapse={focus.onCollapseClick}
+        collapseRef={collapseRef}
+        onCollapse={onCollapseClick}
       >
         {children}
       </AnimatedDisclosureBody>

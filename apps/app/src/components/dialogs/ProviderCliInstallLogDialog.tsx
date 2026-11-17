@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,16 +28,15 @@ export function ProviderCliInstallLogDialog({
   state,
   onClose,
 }: ProviderCliInstallLogDialogProps) {
-  const renderedStateRef = useRef<ProviderCliInstallLogDialogState | null>(
-    state,
-  );
+  const [renderedState, setRenderedState] =
+    useState<ProviderCliInstallLogDialogState | null>(state);
   const isOpen = state !== null;
 
-  if (state !== null) {
-    renderedStateRef.current = state;
+  if (state !== null && state !== renderedState) {
+    setRenderedState(state);
   }
 
-  const currentState = state ?? renderedStateRef.current;
+  const currentState = state ?? renderedState;
 
   return (
     <Dialog

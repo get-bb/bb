@@ -1,5 +1,9 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
 import { sdk } from "@/lib/sdk";
 import { isThreadForkable, type AppCreateThreadRequest } from "@bb/client-core";
@@ -18,6 +22,68 @@ interface UseForkThreadFromMessageArgs {
 
 interface ForkThreadFromMessageTarget {
   sourceSeqEnd: number;
+}
+
+type ForkThreadMutation = (
+  request: AppCreateThreadRequest,
+) => Promise<{ id: string; projectId: string }>;
+
+async function forkThreadFromMessage({
+  forkInFlightRef,
+  forkThreadRef,
+  navigateInPaneRef,
+  queryClient,
+  source,
+  target,
+}: {
+  forkInFlightRef: RefObject<boolean>;
+  forkThreadRef: RefObject<ForkThreadMutation>;
+  navigateInPaneRef: RefObject<(thread: ThreadRoutePathArgs) => void>;
+  queryClient: QueryClient;
+  source: Thread;
+  target: ForkThreadFromMessageTarget;
+}): Promise<void> {
+  forkInFlightRef.current = true;
+  try {
+    const executionOptions = await queryClient.fetchQuery({
+      queryKey: threadDefaultExecutionOptionsQueryKey(source.id),
+      queryFn: ({ signal }) =>
+        sdk.threads.defaultExecutionOptions({
+          signal,
+          threadId: source.id,
+        }),
+    });
+    if (executionOptions === null || source.environmentId === null) {
+      return;
+    }
+
+    const fork = await forkThreadRef.current({
+      environment: { type: "reuse", environmentId: source.environmentId },
+      input: [],
+      model: executionOptions.model,
+      originKind: "fork",
+      permissionMode: executionOptions.permissionMode,
+      pinned: source.pinnedAt !== null,
+      projectId: source.projectId,
+      providerId: source.providerId,
+      reasoningLevel: executionOptions.reasoningLevel,
+      sectionId: source.sectionId,
+      ...(executionOptions.serviceTier
+        ? { serviceTier: executionOptions.serviceTier }
+        : {}),
+      sourceSeqEnd: target.sourceSeqEnd,
+      sourceThreadId: source.id,
+      startedOnBehalfOf: null,
+    });
+    navigateInPaneRef.current({
+      projectId: fork.projectId,
+      threadId: fork.id,
+    });
+  } catch {
+    return;
+  } finally {
+    forkInFlightRef.current = false;
+  }
 }
 
 export function useForkThreadFromMessage({
@@ -44,7 +110,7 @@ export function useForkThreadFromMessage({
       applyCreateThreadResult({ queryClient, request, thread });
     },
   });
-  const forkThreadRef = useRef(forkThread.mutateAsync);
+  const forkThreadRef = useRef<ForkThreadMutation>(forkThread.mutateAsync);
   const forkInFlightRef = useRef(false);
   const sourceThreadRef = useRef(sourceThread);
   const navigateInPaneRef = useRef(navigateInPane);
@@ -69,47 +135,14 @@ export function useForkThreadFromMessage({
         return;
       }
 
-      forkInFlightRef.current = true;
-      try {
-        const executionOptions = await queryClient.fetchQuery({
-          queryKey: threadDefaultExecutionOptionsQueryKey(source.id),
-          queryFn: ({ signal }) =>
-            sdk.threads.defaultExecutionOptions({
-              signal,
-              threadId: source.id,
-            }),
-        });
-        if (executionOptions === null || source.environmentId === null) {
-          return;
-        }
-
-        const fork = await forkThreadRef.current({
-          environment: { type: "reuse", environmentId: source.environmentId },
-          input: [],
-          model: executionOptions.model,
-          originKind: "fork",
-          permissionMode: executionOptions.permissionMode,
-          pinned: source.pinnedAt !== null,
-          projectId: source.projectId,
-          providerId: source.providerId,
-          reasoningLevel: executionOptions.reasoningLevel,
-          sectionId: source.sectionId,
-          ...(executionOptions.serviceTier
-            ? { serviceTier: executionOptions.serviceTier }
-            : {}),
-          sourceSeqEnd: target.sourceSeqEnd,
-          sourceThreadId: source.id,
-          startedOnBehalfOf: null,
-        });
-        navigateInPaneRef.current({
-          projectId: fork.projectId,
-          threadId: fork.id,
-        });
-      } catch {
-        return;
-      } finally {
-        forkInFlightRef.current = false;
-      }
+      await forkThreadFromMessage({
+        forkInFlightRef,
+        forkThreadRef,
+        navigateInPaneRef,
+        queryClient,
+        source,
+        target,
+      });
     },
     [queryClient],
   );

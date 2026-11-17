@@ -1,6 +1,6 @@
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import { usePluginEnabledMutation } from "@/components/plugin/usePluginEnabledMutation";
-import { useEffect, useId, useState, type FocusEvent } from "react";
+import { useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
@@ -338,11 +338,24 @@ function AutosavingPluginSetting({
     },
   });
 
-  useEffect(() => {
+  const syncInputs = {
+    hasNewerDraft: draftState.hasNewerDraft,
+    initialDraft,
+    isError: save.isError,
+    isPending: save.isPending,
+  };
+  const [syncedInputs, setSyncedInputs] = useState(syncInputs);
+  if (
+    syncedInputs.hasNewerDraft !== syncInputs.hasNewerDraft ||
+    syncedInputs.initialDraft !== syncInputs.initialDraft ||
+    syncedInputs.isError !== syncInputs.isError ||
+    syncedInputs.isPending !== syncInputs.isPending
+  ) {
+    setSyncedInputs(syncInputs);
     if (!draftState.hasNewerDraft && !save.isPending && !save.isError) {
       setDraftState({ value: initialDraft, hasNewerDraft: false });
     }
-  }, [draftState.hasNewerDraft, initialDraft, save.isError, save.isPending]);
+  }
 
   function changeDraft(value: string | boolean): void {
     setDraftState({

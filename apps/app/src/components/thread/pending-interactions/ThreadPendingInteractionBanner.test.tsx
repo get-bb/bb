@@ -433,11 +433,12 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       "ResizeObserver",
       class {
         callback: () => void;
-        constructor(callback: () => void) {
-          this.callback = callback;
-          observers.add(callback);
+        constructor(callback: (entries: ResizeObserverEntry[]) => void) {
+          this.callback = () => callback([]);
+          observers.add(this.callback);
         }
         observe() {}
+        unobserve() {}
         disconnect() {
           observers.delete(this.callback);
         }

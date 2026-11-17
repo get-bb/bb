@@ -114,15 +114,15 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
   useEffect(() => {
     const timeline = timelineRef.current;
     if (!open || !timeline) return;
-    let frame: number | null = null;
+    const scheduled: { frame: number | null } = { frame: null };
     const refresh = () => {
       const images = Array.from(collectImages().values());
       setGallery((current) => current && reconcileGallery(current, images));
     };
     const scheduleRefresh = () => {
-      if (frame !== null) return;
-      frame = requestAnimationFrame(() => {
-        frame = null;
+      if (scheduled.frame !== null) return;
+      scheduled.frame = requestAnimationFrame(() => {
+        scheduled.frame = null;
         refresh();
       });
     };
@@ -151,7 +151,7 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
       observer.disconnect();
       timeline.removeEventListener("load", scheduleRefresh, true);
       window.removeEventListener("resize", scheduleRefresh);
-      if (frame !== null) cancelAnimationFrame(frame);
+      if (scheduled.frame !== null) cancelAnimationFrame(scheduled.frame);
     };
   }, [collectImages, open]);
 

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import {
   ancestorsOf,
   buildTree,
@@ -75,17 +76,13 @@ export function FileTreePanel({
   useLayoutEffect(() => {
     const parent = panelRef.current?.parentElement;
     if (parent === null || parent === undefined) return;
-    const fit = () => {
-      const next = clampTreeHeight(
-        requestedHeightRef.current,
-        parent.clientHeight,
-      );
+    const readFit = () =>
+      clampTreeHeight(requestedHeightRef.current, parent.clientHeight);
+    const applyFit = (next: number) => {
       if (next !== heightRef.current) setHeight(next);
     };
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(parent);
-    return () => observer.disconnect();
+    applyFit(readFit());
+    return observeSharedResize(parent, { read: readFit, write: applyFit });
   }, []);
 
   const openMenu = (event: React.MouseEvent, node: TreeNode) => {

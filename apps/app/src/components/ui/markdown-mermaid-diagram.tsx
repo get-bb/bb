@@ -317,6 +317,13 @@ function MermaidDiagramDialog({
   );
 }
 
+interface PreparedMermaidRender {
+  cacheKey: string;
+  kind: "cached" | "immediate" | "debounced";
+  preferredTheme: MarkdownMermaidDiagramProps["preferredTheme"];
+  source: string;
+}
+
 export function MarkdownMermaidDiagram({
   preferredTheme,
   source,
@@ -343,9 +350,51 @@ export function MarkdownMermaidDiagram({
   const [hasEnteredViewport, setHasEnteredViewport] = useState(
     initialCachedDiagram !== null,
   );
-  const renderedSourceRef = useRef<string | null>(
+  const [renderedSource, setRenderedSource] = useState<string | null>(
     initialCachedDiagram === null ? null : source,
   );
+  const [preparedRender, setPreparedRender] =
+    useState<PreparedMermaidRender | null>(null);
+  const cacheKey = buildMermaidRenderCacheKey({
+    appThemeEpoch,
+    preferredTheme,
+    source,
+  });
+
+  if (
+    hasEnteredViewport &&
+    (preparedRender === null || preparedRender.cacheKey !== cacheKey)
+  ) {
+    const cachedDiagram = peekMermaidRenderCache(cacheKey);
+    const isSourceUpdate = renderedSource !== null && renderedSource !== source;
+    setRenderedSource(source);
+    if (cachedDiagram !== null) {
+      setRenderState((currentState) =>
+        currentState.kind === "rendered" &&
+        currentState.diagram === cachedDiagram
+          ? currentState
+          : { kind: "rendered", diagram: cachedDiagram },
+      );
+      setDisplayMode("preview");
+      setPreparedRender({
+        cacheKey,
+        kind: "cached",
+        preferredTheme,
+        source,
+      });
+    } else {
+      if (!isSourceUpdate) {
+        setRenderState({ kind: "loading" });
+        setDisplayMode("preview");
+      }
+      setPreparedRender({
+        cacheKey,
+        kind: isSourceUpdate ? "debounced" : "immediate",
+        preferredTheme,
+        source,
+      });
+    }
+  }
 
   useEffect(() => {
     const containerElement = containerElementRef.current;
@@ -358,56 +407,40 @@ export function MarkdownMermaidDiagram({
   }, [hasEnteredViewport]);
 
   useEffect(() => {
-    if (!hasEnteredViewport) {
+    if (preparedRender === null) {
       return;
     }
-    const cacheKey = buildMermaidRenderCacheKey({
-      appThemeEpoch,
-      preferredTheme,
-      source,
-    });
-    const cachedDiagram = readMermaidRenderCache(cacheKey);
-    const isSourceUpdate =
-      renderedSourceRef.current !== null &&
-      renderedSourceRef.current !== source;
-    renderedSourceRef.current = source;
-    if (cachedDiagram !== null) {
-      setRenderState((currentState) =>
-        currentState.kind === "rendered" &&
-        currentState.diagram === cachedDiagram
-          ? currentState
-          : { kind: "rendered", diagram: cachedDiagram },
-      );
-      setDisplayMode("preview");
+    if (preparedRender.kind === "cached") {
+      readMermaidRenderCache(preparedRender.cacheKey);
       return;
     }
 
-    let isCurrentRender = true;
+    const lifecycle = { isCurrentRender: true };
     const runRender = () => {
       loadMermaid()
         .then((mermaid) => {
-          if (!isCurrentRender) {
+          if (!lifecycle.isCurrentRender) {
             return null;
           }
-          mermaid.initialize(buildMermaidConfig(preferredTheme));
+          mermaid.initialize(buildMermaidConfig(preparedRender.preferredTheme));
           return mermaid.render(
             `${renderId}-${++renderAttemptRef.current}`,
-            source,
+            preparedRender.source,
           );
         })
         .then((renderResult) => {
-          if (!isCurrentRender || renderResult === null) {
+          if (!lifecycle.isCurrentRender || renderResult === null) {
             return;
           }
           const diagram: RenderedMermaidDiagram = {
             bindFunctions: renderResult.bindFunctions,
             svg: renderResult.svg,
           };
-          storeMermaidRenderCache(cacheKey, diagram);
+          storeMermaidRenderCache(preparedRender.cacheKey, diagram);
           setRenderState({ kind: "rendered", diagram });
         })
         .catch(() => {
-          if (!isCurrentRender) {
+          if (!lifecycle.isCurrentRender) {
             return;
           }
           setRenderState((currentState) =>
@@ -418,12 +451,10 @@ export function MarkdownMermaidDiagram({
         });
     };
 
-    if (!isSourceUpdate) {
-      setRenderState({ kind: "loading" });
-      setDisplayMode("preview");
+    if (preparedRender.kind === "immediate") {
       runRender();
       return () => {
-        isCurrentRender = false;
+        lifecycle.isCurrentRender = false;
       };
     }
     const timeoutId = window.setTimeout(
@@ -431,10 +462,10 @@ export function MarkdownMermaidDiagram({
       MERMAID_SOURCE_RENDER_DEBOUNCE_MS,
     );
     return () => {
-      isCurrentRender = false;
+      lifecycle.isCurrentRender = false;
       window.clearTimeout(timeoutId);
     };
-  }, [appThemeEpoch, hasEnteredViewport, preferredTheme, renderId, source]);
+  }, [preparedRender, renderId]);
 
   useEffect(() => {
     if (renderState.kind !== "rendered" || displayMode !== "preview") {

@@ -246,7 +246,8 @@ export function AiServicesSettingsSection() {
                 if (selection === null) return;
                 setTestResults((current) => {
                   if (testTask === null) return current;
-                  const { [testTask]: _cleared, ...rest } = current;
+                  const rest = { ...current };
+                  delete rest[testTask];
                   return rest;
                 });
                 select.mutate({ task: row.task, selection });

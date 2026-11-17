@@ -75,6 +75,16 @@ import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 
+interface ThreadShortcuts {
+  targets: readonly SidebarThreadShortcutTarget[];
+  keysById: ReadonlyMap<string, SidebarThreadShortcutPresentation>;
+}
+
+const EMPTY_THREAD_SHORTCUTS: ThreadShortcuts = {
+  targets: [],
+  keysById: EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
+};
+
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
@@ -109,13 +119,10 @@ export function AppSidebar({
     setFooterCustomizing(false),
   );
   const setNavigationCustomizing = navigationCustomize.setCustomizing;
-  const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
-    ReadonlyMap<string, SidebarThreadShortcutPresentation>
-  >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
+  const [threadShortcuts, setThreadShortcuts] = useState<ThreadShortcuts>(
+    EMPTY_THREAD_SHORTCUTS,
+  );
   const sidebarRef = useRef<HTMLDivElement | null>(null);
-  const threadShortcutTargetsRef = useRef<
-    readonly SidebarThreadShortcutTarget[]
-  >([]);
   const threadJumpShortcuts = useAppCommandShortcuts(
     THREAD_JUMP_APP_COMMAND_IDS,
   );
@@ -132,9 +139,9 @@ export function AppSidebar({
 
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
-    threadShortcutTargetsRef.current = targets;
-    setThreadShortcutKeysById(
-      new Map(
+    setThreadShortcuts({
+      targets,
+      keysById: new Map(
         targets.flatMap((target, index) => {
           const command = THREAD_JUMP_APP_COMMAND_IDS[index];
           const shortcut = command
@@ -143,23 +150,25 @@ export function AppSidebar({
           return shortcut ? [[target.threadId, shortcut] as const] : [];
         }),
       ),
-    );
+    });
   }, [threadJumpShortcuts]);
 
-  const hideThreadShortcuts = useCallback(() => {
-    threadShortcutTargetsRef.current = [];
-    setThreadShortcutKeysById(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
-  }, []);
+  if (!isAppCommandModifierHeld && threadShortcuts !== EMPTY_THREAD_SHORTCUTS) {
+    setThreadShortcuts(EMPTY_THREAD_SHORTCUTS);
+  }
 
-  const activateThreadShortcut = useCallback((index: number): boolean => {
-    const targets = threadShortcutTargetsRef.current;
-    const target =
-      targets[index] ??
-      getSidebarThreadShortcutTargets(sidebarRef.current)[index];
-    if (!target?.element) return false;
-    target.element.click();
-    return true;
-  }, []);
+  const shortcutTargets = threadShortcuts.targets;
+  const activateThreadShortcut = useCallback(
+    (index: number): boolean => {
+      const target =
+        shortcutTargets[index] ??
+        getSidebarThreadShortcutTargets(sidebarRef.current)[index];
+      if (!target?.element) return false;
+      target.element.click();
+      return true;
+    },
+    [shortcutTargets],
+  );
 
   const activateAdjacentThread = useCallback(
     (offset: -1 | 1): boolean => {
@@ -193,11 +202,22 @@ export function AppSidebar({
     [activeThreadId, closeOnMobile, navigate],
   );
 
-  useEffect(() => {
-    if (!isCompactViewport) return;
-    if (!openMobile || isBodyHidden) setFooterCustomizing(false);
-    if (!openMobile) setNavigationCustomizing(false);
-  }, [isBodyHidden, isCompactViewport, openMobile, setNavigationCustomizing]);
+  const [customizeVisibility, setCustomizeVisibility] = useState({
+    isBodyHidden,
+    isCompactViewport,
+    openMobile,
+  });
+  if (
+    customizeVisibility.isBodyHidden !== isBodyHidden ||
+    customizeVisibility.isCompactViewport !== isCompactViewport ||
+    customizeVisibility.openMobile !== openMobile
+  ) {
+    setCustomizeVisibility({ isBodyHidden, isCompactViewport, openMobile });
+    if (isCompactViewport) {
+      if (!openMobile || isBodyHidden) setFooterCustomizing(false);
+      if (!openMobile) setNavigationCustomizing(false);
+    }
+  }
   const activateVisibleThreadShortcut = useCallback(
     (index: number) => (isBodyHidden ? false : activateThreadShortcut(index)),
     [activateThreadShortcut, isBodyHidden],
@@ -214,12 +234,8 @@ export function AppSidebar({
   );
 
   useEffect(() => {
-    if (isAppCommandModifierHeld) {
-      showThreadShortcuts();
-      return;
-    }
-    hideThreadShortcuts();
-  }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
+    if (isAppCommandModifierHeld) showThreadShortcuts();
+  }, [isAppCommandModifierHeld, showThreadShortcuts]);
 
   const navigationRegion = (className: string) => (
     <SidebarNavigationRegion
@@ -376,7 +392,7 @@ export function AppSidebar({
   );
 
   return (
-    <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
+    <SidebarThreadShortcutKeysContext.Provider value={threadShortcuts.keysById}>
       <SidebarNavigationModelProvider
         onNavigate={closeOnMobile}
         onNewChat={handleNewChat}

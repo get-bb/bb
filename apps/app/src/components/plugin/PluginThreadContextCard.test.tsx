@@ -297,11 +297,11 @@ describe("thread context card", () => {
   });
 
   it("lays out the card and the transcript inset in the same frame as a resize", () => {
-    const resize: Array<() => void> = [];
+    const resize: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal(
       "ResizeObserver",
       class {
-        constructor(callback: () => void) {
+        constructor(callback: (entries: ResizeObserverEntry[]) => void) {
           resize.push(callback);
         }
         observe() {}
@@ -312,7 +312,7 @@ describe("thread context card", () => {
     renderPane({ paneWidth: 1600 });
     const resizeTo = (paneWidth: number) => {
       width.mockReturnValue(paneWidth);
-      for (const callback of resize) callback();
+      for (const callback of resize) callback([]);
     };
     const card = () => screen.queryByRole("group", { name: "Thread context" });
     const inset = () => screen.getByLabelText("Inset").textContent;

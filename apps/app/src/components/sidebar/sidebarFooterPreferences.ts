@@ -1,5 +1,6 @@
 import { type RefObject, useLayoutEffect } from "react";
 import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import {
   usePluginSlotKind,
   type PluginSidebarFooterItemSlot,
@@ -26,21 +27,18 @@ export function useMeasureSidebarFooterCapacity(
     const row = rowRef.current;
     const more = moreRef.current;
     if (!row || !more) return;
-    const measure = () => {
+    const measure = (): number | null => {
       const width = row.getBoundingClientRect().width;
       const controlWidth = more.getBoundingClientRect().width;
-      if (width === 0 || controlWidth === 0) return;
+      if (width === 0 || controlWidth === 0) return null;
       const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
-      setCapacity(
-        Math.max(0, Math.floor((width + gap) / (controlWidth + gap)) - 1),
-      );
+      return Math.max(0, Math.floor((width + gap) / (controlWidth + gap)) - 1);
     };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(row);
-    observer.observe(more);
-    return () => observer.disconnect();
+    const apply = (capacity: number | null) => {
+      if (capacity !== null) setCapacity(capacity);
+    };
+    apply(measure());
+    return observeSharedResize([row, more], { read: measure, write: apply });
   }, [rowRef, moreRef, setCapacity]);
 }
 

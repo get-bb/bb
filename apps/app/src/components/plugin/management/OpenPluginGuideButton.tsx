@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
@@ -28,12 +28,18 @@ export function OpenPluginGuideButton() {
     null,
   );
   const [installJobId, setInstallJobId] = useState<string | null>(null);
+  const [succeededJobId, setSucceededJobId] = useState<string | null>(null);
   const installJob = usePluginInstallJob(installJobId);
-  useEffect(() => {
-    if (installJob === null || isActivePluginInstallJob(installJob)) return;
+  if (installJob !== null && !isActivePluginInstallJob(installJob)) {
     setInstallJobId(null);
-    if (installJob.state === "succeeded") void navigate(PLUGIN_GUIDE_PATH);
-  }, [installJob, navigate]);
+    if (installJob.state === "succeeded") setSucceededJobId(installJob.id);
+  }
+  const openGuide = useEffectEvent(() => {
+    void navigate(PLUGIN_GUIDE_PATH);
+  });
+  useEffect(() => {
+    if (succeededJobId !== null) openGuide();
+  }, [succeededJobId]);
   const open = useMutation({
     meta: { showErrorToast: false },
     mutationFn: async () => {

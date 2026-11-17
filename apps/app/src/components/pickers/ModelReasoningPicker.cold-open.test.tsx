@@ -49,6 +49,7 @@ it("keeps search typing and keyboard selection across the first menu download", 
       onModelChange={onModelChange}
       reasoningValue="medium"
       reasoningOptions={[{ value: "medium", label: "Medium" }]}
+      reasoningIsLoading={false}
       onReasoningChange={() => {}}
       serviceTierValue={undefined}
       serviceTierOptions={[]}

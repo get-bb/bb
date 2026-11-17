@@ -44,6 +44,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { Input as BbInput } from "@/components/ui/input";
 import { PluginCompactIconMask } from "@/components/ui/plugin-icon";
 import {
@@ -1600,11 +1601,9 @@ function Frame({
   useLayoutEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    const measure = () => setWidth(el.clientWidth);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
+    const readWidth = () => el.clientWidth;
+    setWidth(readWidth());
+    return observeSharedResize(el, { read: readWidth, write: setWidth });
   }, []);
   return (
     <div ref={hostRef} style={{ minWidth: 0 }}>
@@ -3468,18 +3467,19 @@ function PreviewPage({ subPath }: { subPath: string }) {
   useLayoutEffect(() => {
     const header = headerRef.current;
     if (!header) return;
-    const measure = () => setHeaderHeight(header.offsetHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(header);
-    return () => ro.disconnect();
+    const readHeight = () => header.offsetHeight;
+    setHeaderHeight(readHeight());
+    return observeSharedResize(header, {
+      read: readHeight,
+      write: setHeaderHeight,
+    });
   }, []);
 
   useLayoutEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-    const measure = () => {
-      const width = el.clientWidth;
+    const readWidth = () => el.clientWidth;
+    const applyWidth = (width: number) => {
       const band = layoutBandForWidth(width);
       setLayout((current) =>
         current.band === band && current.width === width
@@ -3487,12 +3487,15 @@ function PreviewPage({ subPath }: { subPath: string }) {
           : { band, width },
       );
     };
+    const measure = () => applyWidth(readWidth());
     measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    const unobserve = observeSharedResize(el, {
+      read: readWidth,
+      write: applyWidth,
+    });
     window.addEventListener("resize", measure);
     return () => {
-      ro.disconnect();
+      unobserve();
       window.removeEventListener("resize", measure);
     };
   }, []);

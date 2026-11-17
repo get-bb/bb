@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { vi } from "vitest";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
@@ -17,10 +18,32 @@ import type {
   usePromptMentions,
 } from "@/hooks/usePromptMentions";
 
-const state: {
+interface ComposerSearchResults {
   mentionSuggestions: readonly PromptMentionSuggestion[];
   commandSuggestions: readonly ProviderCommandSuggestion[];
-} = { mentionSuggestions: [], commandSuggestions: [] };
+}
+
+let state: ComposerSearchResults = {
+  mentionSuggestions: [],
+  commandSuggestions: [],
+};
+const listeners = new Set<() => void>();
+
+function subscribeToComposerSearchResults(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function readComposerSearchResults(): ComposerSearchResults {
+  return state;
+}
+
+function sameItems<T>(left: readonly T[], right: readonly T[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((item, index) => item === right[index])
+  );
+}
 
 export const composerSearchQueries = {
   mention: vi.fn<(text: string | null, trigger: string | null) => void>(),
@@ -34,16 +57,31 @@ export function setComposerSearchResults({
   mentionSuggestions?: readonly PromptMentionSuggestion[];
   commandSuggestions?: readonly ProviderCommandSuggestion[];
 } = {}): void {
-  state.mentionSuggestions = mentionSuggestions;
-  state.commandSuggestions = commandSuggestions;
   composerSearchQueries.mention.mockClear();
   composerSearchQueries.command.mockClear();
+  if (
+    sameItems(state.mentionSuggestions, mentionSuggestions) &&
+    sameItems(state.commandSuggestions, commandSuggestions)
+  ) {
+    return;
+  }
+  state = { mentionSuggestions, commandSuggestions };
+  for (const listener of [...listeners]) listener();
 }
 
-function fakeUsePromptMentions(
+function useComposerSearchResults(): ComposerSearchResults {
+  return useSyncExternalStore(
+    subscribeToComposerSearchResults,
+    readComposerSearchResults,
+    readComposerSearchResults,
+  );
+}
+
+function useFakePromptMentions(
   _source: PromptMentionSource,
   mention: { text: string; trigger: PluginMentionTrigger } | null,
 ): ReturnType<typeof usePromptMentions> {
+  const { mentionSuggestions } = useComposerSearchResults();
   composerSearchQueries.mention(
     mention?.text ?? null,
     mention?.trigger ?? null,
@@ -51,7 +89,7 @@ function fakeUsePromptMentions(
   return {
     results: orderPromptMentionSuggestions({
       query: mention?.text.trim() ?? "",
-      suggestions: state.mentionSuggestions,
+      suggestions: mentionSuggestions,
     }),
     isLoading: false,
     isRefreshing: false,
@@ -59,15 +97,16 @@ function fakeUsePromptMentions(
   };
 }
 
-function fakeUseCommandSuggestions(
+function useFakeCommandSuggestions(
   args: CommandSuggestionSource & {
     activeTrigger: PromptMentionCommandTrigger | null;
     query: string | null;
   },
 ): ReturnType<typeof useCommandSuggestions> {
+  const { commandSuggestions } = useComposerSearchResults();
   composerSearchQueries.command(args.query, args.activeTrigger);
   return {
-    suggestions: [...state.commandSuggestions],
+    suggestions: [...commandSuggestions],
     isLoading: false,
     isRefreshing: false,
     isError: false,
@@ -76,7 +115,7 @@ function fakeUseCommandSuggestions(
 
 export function fakePromptMentionsModule() {
   return {
-    usePromptMentions: fakeUsePromptMentions,
+    usePromptMentions: useFakePromptMentions,
     usePromptMentionTriggers: (): readonly PluginMentionTrigger[] => [
       DEFAULT_PLUGIN_MENTION_TRIGGER,
     ],
@@ -84,7 +123,7 @@ export function fakePromptMentionsModule() {
 }
 
 export function fakeCommandSuggestionsModule() {
-  return { useCommandSuggestions: fakeUseCommandSuggestions };
+  return { useCommandSuggestions: useFakeCommandSuggestions };
 }
 
 export function testTypeaheadConfig({

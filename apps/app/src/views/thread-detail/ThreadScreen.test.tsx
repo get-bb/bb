@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   pendingInteractions: [] as PendingInteraction[],
   promptAreaProps: [] as Array<Record<string, unknown>>,
   surfaceProps: [] as Array<Record<string, unknown>>,
+  timeline: null as UseThreadTimelineControllerResult | null,
   toastWarning: vi.fn(),
 }));
 
@@ -66,6 +67,7 @@ vi.mock("@/components/thread/timeline", async (importOriginal) => {
     await importOriginal<typeof import("@/components/thread/timeline")>();
   return {
     ...actual,
+    useThreadTimelineController: () => mocks.timeline,
     ThreadTimelineSurface: (props: Record<string, unknown>) => {
       mocks.surfaceProps.push(props);
       const addToChat = props.onSelectionAddToChat as
@@ -94,13 +96,13 @@ const THREAD = makeThreadResponse({
   runtime: { displayStatus: "active" },
 });
 
-const TIMELINE = {
+const TIMELINE: UseThreadTimelineControllerResult = {
   activeBackgroundCommands: [],
   activePromptMode: null,
   activeThinking: null,
   activeWorkflows: [],
   contextBoundarySeq: null,
-  contextWindowUsage: null,
+  contextWindowUsage: undefined,
   hasOlderTimelineRows: false,
   isCatchingUpTimeline: false,
   isLoadingOlderTimelineRows: false,
@@ -112,7 +114,7 @@ const TIMELINE = {
   timelineError: null,
   timelineLoading: false,
   timelineRows: [],
-} as unknown as UseThreadTimelineControllerResult;
+};
 
 const SIDE_CHAT_PRESENTATION: ThreadScreenPresentation = {
   kind: "panel",
@@ -125,14 +127,12 @@ function renderScreen(
   presentation: ThreadScreenPresentation,
   timeline: UseThreadTimelineControllerResult = TIMELINE,
 ) {
+  mocks.timeline = timeline;
   const { wrapper: Wrapper } = createQueryClientTestHarness();
-  return render(screenElement(presentation, timeline), { wrapper: Wrapper });
+  return render(screenElement(presentation), { wrapper: Wrapper });
 }
 
-function screenElement(
-  presentation: ThreadScreenPresentation,
-  timeline: UseThreadTimelineControllerResult,
-) {
+function screenElement(presentation: ThreadScreenPresentation) {
   return (
     <ThreadScreen
       composer={{
@@ -146,7 +146,7 @@ function screenElement(
       projectId={THREAD.projectId}
       resolveMentionLink={() => null}
       thread={THREAD}
-      timeline={timeline}
+      timelineEnabled
       timelineHost={{
         environmentHostName: null,
         includePluginMessageActions: false,
@@ -219,6 +219,7 @@ beforeEach(() => {
   mocks.pendingInteractions = [];
   mocks.promptAreaProps = [];
   mocks.surfaceProps = [];
+  mocks.timeline = null;
 });
 
 afterEach(() => {
@@ -273,9 +274,8 @@ describe("ThreadScreen", () => {
     startEditingMessage("msg_1");
     submitSentMessageEdit();
 
-    view.rerender(
-      screenElement({ kind: "page" }, timelineWithRowIds(["msg_2"])),
-    );
+    mocks.timeline = timelineWithRowIds(["msg_2"]);
+    view.rerender(screenElement({ kind: "page" }));
     expect(mocks.toastWarning).not.toHaveBeenCalled();
     expect(latestSentMessageEdit()).toBeDefined();
 
@@ -290,9 +290,8 @@ describe("ThreadScreen", () => {
     const view = renderScreen({ kind: "page" }, timelineWithRowIds(["msg_1"]));
     startEditingMessage("msg_1");
 
-    view.rerender(
-      screenElement({ kind: "page" }, timelineWithRowIds(["msg_2"])),
-    );
+    mocks.timeline = timelineWithRowIds(["msg_2"]);
+    view.rerender(screenElement({ kind: "page" }));
 
     expect(mocks.toastWarning).toHaveBeenCalledWith(
       "The message being edited is no longer available.",
@@ -310,9 +309,8 @@ describe("ThreadScreen", () => {
     const view = renderScreen({ kind: "page" }, timelineWithRowIds(["msg_1"]));
     startEditingMessage("msg_1");
     submitSentMessageEdit();
-    view.rerender(
-      screenElement({ kind: "page" }, timelineWithRowIds(["msg_2"])),
-    );
+    mocks.timeline = timelineWithRowIds(["msg_2"]);
+    view.rerender(screenElement({ kind: "page" }));
     expect(mocks.toastWarning).not.toHaveBeenCalled();
 
     await act(async () => {

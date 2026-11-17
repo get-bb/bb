@@ -144,10 +144,21 @@
     "actually imports, so package barrels do not pull unused code forward. The",
     "PluginFrontend limits sit 25% above the new measurement. ThreadPage went",
     "from 95 chunks / 522.0 KB brotli to 4 / 460.2 KB, and NewThreadPage from 74 /",
-    "291.1 KB to 4 / 252.0 KB. Their limits are unchanged."
+    "291.1 KB to 4 / 252.0 KB. Their limits are unchanged.",
+    "",
+    "On 2026-11-16 the boot brotli limit rose 1 KiB. Routing every resize",
+    "observer through the shared same-frame scheduler added 0.9 KB raw and",
+    "1.0 KB brotli to the boot path, and main sat 0.9 KB under the limit. The",
+    "raw limit did not change.",
+    "",
+    "On 2026-11-15 the boot brotli limit rose 3 KiB (425,055 to 428,127 bytes)",
+    "when the React Compiler became authoritative: about 100 functions it used",
+    "to skip, AppLayout and the sidebar navigation model among them, now carry",
+    "memo caches. The boot payload measured 417.2 KB brotli. The raw limit did",
+    "not change."
   ],
   "maxBootBytes": 1722436,
-  "maxBootBrotliBytes": 424031,
+  "maxBootBrotliBytes": 428127,
   "forbiddenBootPackages": [
     "@dnd-kit/accessibility",
     "@dnd-kit/core",

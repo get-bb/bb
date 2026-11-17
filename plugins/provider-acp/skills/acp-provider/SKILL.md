@@ -90,25 +90,27 @@ OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
 does not expose compatible compaction. Check the actual agent's capabilities
 before attempting provider-specific recovery.
 
-BB reuses the initial model's advertised reasoning choices and probes other
-models within a five-second budget, trying configured priority models first.
-Selecting an unprobed model starts a separate discovery session that probes only
-that model, with a five-second timeout. Results are cached by model. While
+Listing models reads only the reasoning choices the agent reports for its
+current model; it never switches the agent's model. Selecting an unprobed model
+starts a separate discovery session that switches to only that model, with a
+five-second timeout, then sets the session's starting model and other changed
+options, such as the reasoning level and Fast, back before closing it, including
+after a failed or timed-out probe. This matters for agents that save every model
+change as their default. Results are cached by model. While
 loading, or after failure or an unrecognized response, BB shows no reasoning
 selector. Sending never waits for discovery: when a model's catalog entry does
 not list the thread's reasoning level, BB leaves reasoning out of the request and
 the agent keeps its own setting. CLI and SDK reasoning preferences stay stored.
 Failed probes have a 30-second server retry cooldown; a probe the agent answers
 without levels is not repeated until the catalog is refreshed. Discovered levels
-survive later catalog refreshes. Individual probe failures do not stop bulk
-discovery of other models. In `bb provider models
+survive later catalog refreshes. In `bb provider models
 <provider-id> --json`, `reasoningDiscovery: "unknown"` means BB has not
 discovered the model's levels yet; `"known"` with an empty
 `supportedReasoningEfforts` means the model has no selectable levels, not that
 it cannot reason. Use `bb provider models <provider-id> --selected-model <model-id>
 --json` (SDK: `providers.models({ providerId, selectedModel })`) to request
 the same discovery without the picker. Refresh the catalog after changing the
-agent's default or priority models. This does not require omp's proposed `_meta.thoughtLevels` extension.
+agent's default model. This does not require omp's proposed `_meta.thoughtLevels` extension.
 
 OpenCode Go subscription usage is available in Provider usage when the selected
 machine has OpenCode installed and a Go subscription. Sign in to Go in OpenCode

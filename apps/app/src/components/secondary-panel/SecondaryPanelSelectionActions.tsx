@@ -108,6 +108,10 @@ function readSelectionWithinPanel({
   return nextSelection;
 }
 
+interface ScheduledSelectionReport {
+  frame: number | null;
+}
+
 export function SecondaryPanelSelectionActions({
   children,
   markdown = false,
@@ -145,16 +149,16 @@ export function SecondaryPanelSelectionActions({
   useEffect(() => {
     if (!isEnabled || typeof window === "undefined") return;
 
-    let frame: number | null = null;
+    const scheduled: ScheduledSelectionReport = { frame: null };
     const cancelFrame = () => {
-      if (frame === null) return;
-      window.cancelAnimationFrame(frame);
-      frame = null;
+      if (scheduled.frame === null) return;
+      window.cancelAnimationFrame(scheduled.frame);
+      scheduled.frame = null;
     };
     const scheduleReport = (anchor: SelectionAnchor | null = null) => {
       cancelFrame();
-      frame = window.requestAnimationFrame(() => {
-        frame = null;
+      scheduled.frame = window.requestAnimationFrame(() => {
+        scheduled.frame = null;
         reportSelection(anchor);
       });
     };

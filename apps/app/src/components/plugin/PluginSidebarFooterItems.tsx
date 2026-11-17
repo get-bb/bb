@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
@@ -149,13 +150,13 @@ export function PluginSidebarFooterDisclosure({
   useLayoutEffect(() => {
     const content = contentRef.current;
     if (content === null) return;
-    const measure = () =>
-      setContentHeight(content.getBoundingClientRect().height);
-    measure();
+    const measure = () => content.getBoundingClientRect().height;
+    setContentHeight(measure());
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(content);
-    return () => observer.disconnect();
+    return observeSharedResize(content, {
+      read: measure,
+      write: setContentHeight,
+    });
   }, [item]);
 
   if (item === null || item.kind !== "disclosure") return null;

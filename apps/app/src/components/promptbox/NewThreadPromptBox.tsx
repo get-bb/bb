@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
+import type { Host, ProjectSource } from "@bb/domain";
 import type {
   SystemEnvironmentProvider,
   SystemMachineProvider,
@@ -20,8 +20,9 @@ import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
 import {
   composerScopeIdentity,
+  type ComposerDraftStore,
   type PluginComposerHost,
-  usePluginComposerViewModel,
+  usePluginComposerStaticViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
   ComposerExtensionHost,
@@ -122,9 +123,7 @@ export interface NewThreadModeConfig {
 interface NewThreadPromptBoxUIProps {
   id?: string;
 
-  value: string;
-  mentionRanges: readonly PromptTextMention[];
-  onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
+  draft: ComposerDraftStore;
   onSubmit: (extras?: ComposerSubmitExtras) => void | Promise<void>;
   focusRequest?: string;
   isSubmitting: boolean;
@@ -155,9 +154,7 @@ function getNewThreadPromptPlaceholder(isProjectless: boolean): string {
 
 export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   id,
-  value,
-  mentionRanges,
-  onChange,
+  draft,
   onSubmit,
   focusRequest,
   isSubmitting,
@@ -192,20 +189,18 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       : undefined,
     pluginComposerHost ? composerScopeIdentity(pluginComposerHost.scope) : null,
   );
-  const attachmentCount = attachments.items?.length ?? 0;
   const [composerLayout, setComposerLayout] =
     useState<ComposerView["layout"]>("expanded");
-  const composerView = usePluginComposerViewModel({
+  const composerView = usePluginComposerStaticViewModel({
     scope: pluginComposerHost?.scope ?? DEFAULT_COMPOSER_SCOPE,
     layout: composerLayout,
-    text: value,
-    attachmentCount,
     isRunning: false,
     isSubmitting,
   });
   const controller = useComposerExtensionController({
     host: pluginComposerHost ?? null,
     view: composerView,
+    draft,
     focusDefault,
   });
 
@@ -215,9 +210,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       defaultRenderer={
         <DefaultNewThreadComposer
           id={id}
-          value={value}
-          mentionRanges={mentionRanges}
-          onChange={onChange}
+          draft={draft}
           onSubmit={onSubmit}
           promptBoxRef={promptBoxRef}
           isSubmitting={isSubmitting}
@@ -255,9 +248,7 @@ interface DefaultNewThreadComposerProps extends Omit<
 
 const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   id,
-  value,
-  mentionRanges,
-  onChange,
+  draft,
   onSubmit,
   promptBoxRef,
   isSubmitting,
@@ -284,8 +275,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   const { permissionDisplayOverride, permissionPickerDisabledByPlanMode } =
     usePromptModePermissionDisplay({
       execution,
-      value,
-      mentionRanges,
+      draft,
       activePromptMode: null,
     });
   const submitTitle = isSubmitting
@@ -311,9 +301,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
       <ComposerBox
         id={id}
         promptBoxRef={promptBoxRef}
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={onSubmit}
         textEffects={textEffects}
         onComposerLayoutChange={onComposerLayoutChange}
@@ -477,16 +465,17 @@ export function ProjectlessMachineSlot({
 }: ProjectlessMachineSlotProps) {
   const machines = environment.machines ?? null;
   const selectedProviderHostId = environment.selectedProviderHostId ?? null;
+  const machineHosts = machines?.hosts;
   const availableHosts = useMemo(() => {
-    const selectable = selectHosts(machines?.hosts, "persistent");
-    const selected = machines?.hosts.find(
+    const selectable = selectHosts(machineHosts, "persistent");
+    const selected = machineHosts?.find(
       (candidate) => candidate.id === selectedProviderHostId,
     );
     return selected === undefined ||
       selectable.some((candidate) => candidate.id === selected.id)
       ? selectable
       : [...selectable, selected];
-  }, [machines?.hosts, selectedProviderHostId]);
+  }, [machineHosts, selectedProviderHostId]);
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
     [environment.value],

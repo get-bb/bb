@@ -48,9 +48,7 @@ import { MACHINE_BADGE_CLASS_NAME, orderLocalHostFirst } from "./MachinePicker";
 import { ListLoadingPlaceholder } from "@bb/shared-ui/list-loading-placeholder";
 import { MachineIcon } from "@/components/machines/MachineLabel";
 import { searchMachineHosts } from "./machine-picker-search";
-import {
-  useResetPickerScroll,
-} from "@bb/shared-ui/hooks/use-reset-picker-scroll";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 
 interface SelectedEnvironment {
   modeLabel: string;
@@ -359,6 +357,19 @@ export function EnvironmentPickerUI({
     selectedProvider,
   ]);
   const pickerOpen = open ?? uncontrolledOpen;
+  const availableHosts = availableMachines?.hosts ?? null;
+  const [hostClock, setHostClock] = useState(() => ({
+    open: pickerOpen,
+    hosts: availableHosts,
+    now: Date.now(),
+  }));
+  if (hostClock.open !== pickerOpen || hostClock.hosts !== availableHosts) {
+    setHostClock(() => ({
+      open: pickerOpen,
+      hosts: availableHosts,
+      now: Date.now(),
+    }));
+  }
   const handleOpenChange = (nextOpen: boolean) => {
     setUncontrolledOpen(nextOpen);
     onOpenChange?.(nextOpen);
@@ -497,6 +508,7 @@ export function EnvironmentPickerUI({
                   <MachineContextualEnvironmentOptions
                     machines={availableMachines}
                     sources={sources}
+                    now={hostClock.now}
                     selectedHostId={
                       parsed?.type === "provider"
                         ? selectedProviderHostId
@@ -524,6 +536,7 @@ export function EnvironmentPickerUI({
                     <MachineGroupedEnvironmentOptions
                       machines={availableMachines}
                       sources={sources}
+                      now={hostClock.now}
                       value={value}
                       onRequestMachineSetup={
                         onRequestMachineSetup ? requestMachineSetup : undefined
@@ -732,6 +745,7 @@ function EnvironmentOptionsSection({
 interface MachineGroupedEnvironmentOptionsProps {
   machines: EnvironmentPickerMachines;
   sources: readonly ProjectSource[];
+  now: number;
   value: string;
   onRequestMachineSetup: ((host: Host) => void) | undefined;
   environmentProviders: readonly SystemEnvironmentProvider[];
@@ -746,6 +760,7 @@ interface MachineGroupedEnvironmentOptionsProps {
 function MachineGroupedEnvironmentOptions({
   machines,
   sources,
+  now,
   value,
   onRequestMachineSetup,
   environmentProviders,
@@ -754,7 +769,6 @@ function MachineGroupedEnvironmentOptions({
   inputsControlProviderIds,
   onSelectProvider,
 }: MachineGroupedEnvironmentOptionsProps) {
-  const now = Date.now();
   const orderedHosts = useMemo(
     () => orderLocalHostFirst(machines.hosts, machines.localDaemonHostId),
     [machines.hosts, machines.localDaemonHostId],
@@ -799,6 +813,7 @@ interface MachineContextualEnvironmentOptionsProps extends MachineGroupedEnviron
 function MachineContextualEnvironmentOptions({
   machines,
   sources,
+  now,
   selectedHostId,
   previewHostId,
   value,
@@ -814,7 +829,6 @@ function MachineContextualEnvironmentOptions({
   onSelectProvider,
 }: MachineContextualEnvironmentOptionsProps) {
   const machineListRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
-  const now = Date.now();
   const orderedHosts = useMemo(
     () =>
       [...machines.hosts].sort(

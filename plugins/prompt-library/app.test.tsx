@@ -26,9 +26,11 @@ const originalScroll = Object.getOwnPropertyDescriptor(
 );
 
 class TestResizeObserver {
-  constructor(private readonly callback: () => void) {}
+  constructor(
+    private readonly callback: (entries: ResizeObserverEntry[]) => void,
+  ) {}
   observe() {
-    this.callback();
+    this.callback([]);
   }
   disconnect() {}
   unobserve() {}

@@ -78,6 +78,7 @@ function FooterSettingsRow({
     id: item.key,
     disabled: false,
   });
+  const { setActivatorNodeRef, attributes, listeners } = dragBindings;
   return (
     <div
       ref={setNodeRef}
@@ -89,9 +90,9 @@ function FooterSettingsRow({
         variant="ghost"
         size="icon"
         className="size-7 touch-none text-muted-foreground"
-        ref={dragBindings.setActivatorNodeRef}
-        {...dragBindings.attributes}
-        {...dragBindings.listeners}
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
         aria-label={`Reorder ${item.label}`}
       >
         <Icon name="DragDropVertical" className="size-4" />

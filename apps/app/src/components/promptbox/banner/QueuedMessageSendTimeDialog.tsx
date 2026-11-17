@@ -70,6 +70,48 @@ function initialSelection(
       };
 }
 
+async function saveQueuedMessageSendTime({
+  sendAt,
+  queuedMessage,
+  onBusyChange,
+  onDone,
+  onChangeSendTime,
+  setError,
+}: {
+  sendAt: number | null;
+  queuedMessage: ThreadQueuedMessage;
+  onBusyChange: (busy: boolean) => void;
+  onDone: () => void;
+  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => Promise<void>;
+  setError: (error: string | null) => void;
+}): Promise<void> {
+  onBusyChange(true);
+  setError(null);
+  try {
+    await onChangeSendTime({
+      expectedUpdatedAt: queuedMessage.updatedAt,
+      queuedMessageId: queuedMessage.id,
+      sendAt,
+    });
+    onDone();
+    appToast.success(
+      sendAt === null
+        ? "Send time removed"
+        : `Sending ${formatScheduleTime(sendAt, Date.now())}`,
+    );
+  } catch (saveError: unknown) {
+    setError(
+      getMutationErrorMessage({
+        error: saveError,
+        fallbackMessage: "Failed to change when the queued message sends",
+        lifecycleOperation: "update_queued_message",
+      }),
+    );
+  } finally {
+    onBusyChange(false);
+  }
+}
+
 function QueuedMessageSendTimeForm({
   busy,
   queuedMessage,
@@ -99,33 +141,15 @@ function QueuedMessageSendTimeForm({
     return () => clearInterval(interval);
   }, []);
 
-  const save = async (sendAt: number | null) => {
-    onBusyChange(true);
-    setError(null);
-    try {
-      await onChangeSendTime({
-        expectedUpdatedAt: queuedMessage.updatedAt,
-        queuedMessageId: queuedMessage.id,
-        sendAt,
-      });
-      onDone();
-      appToast.success(
-        sendAt === null
-          ? "Send time removed"
-          : `Sending ${formatScheduleTime(sendAt, Date.now())}`,
-      );
-    } catch (saveError: unknown) {
-      setError(
-        getMutationErrorMessage({
-          error: saveError,
-          fallbackMessage: "Failed to change when the queued message sends",
-          lifecycleOperation: "update_queued_message",
-        }),
-      );
-    } finally {
-      onBusyChange(false);
-    }
-  };
+  const save = (sendAt: number | null) =>
+    saveQueuedMessageSendTime({
+      sendAt,
+      queuedMessage,
+      onBusyChange,
+      onDone,
+      onChangeSendTime,
+      setError,
+    });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

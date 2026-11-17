@@ -10,6 +10,7 @@ import {
   makeExecutionControlsProps,
   makeTypeaheadConfig,
 } from "../../../../.ladle/story-fixtures";
+import { useComposerDraftFixture } from "@/test/fixtures/composer-draft";
 
 export default {
   title: "thread/timeline/Catch-up indicator",
@@ -95,7 +96,7 @@ function ToggleControl({
 export function Overview() {
   const [isCatchingUp, setIsCatchingUp] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
-  const [message, setMessage] = useState("");
+  const draft = useComposerDraftFixture();
   const threadRuntimeDisplayStatus = isRunning ? "active" : "idle";
 
   return (
@@ -126,18 +127,11 @@ export function Overview() {
               stack={null}
               composer={{
                 history: {
-                  currentDraft: {
-                    text: message,
-                    mentions: [],
-                    attachments: [],
-                  },
                   entries: [],
                   onSelectEntry: noop,
                 },
                 isFollowUpSubmitting: false,
-                message,
-                mentionRanges: [],
-                onChangeMessage: setMessage,
+                draft,
                 onModifierSubmit: noop,
                 onSubmit: noop,
                 compactPromptPlaceholder: "Ask for a follow-up",

@@ -2,8 +2,8 @@ import {
   createContext,
   useContext,
   useLayoutEffect,
-  useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 
@@ -21,6 +21,25 @@ const DeferredPluginDetailOpenerContext = createContext<
   ((open: PluginDetailOpener) => () => void) | null
 >(null);
 
+function createDeferredPluginDetailOpener() {
+  let current: PluginDetailOpener | null = null;
+  const pending: PluginDetailDestination[] = [];
+  return {
+    open(destination: PluginDetailDestination) {
+      if (current !== null) return current(destination);
+      pending.push(destination);
+      return true;
+    },
+    register(open: PluginDetailOpener) {
+      current = open;
+      for (const destination of pending.splice(0)) open(destination);
+      return () => {
+        current = null;
+      };
+    },
+  };
+}
+
 export function PluginDetailOpenerBoundary({
   children,
   isFocused,
@@ -28,24 +47,7 @@ export function PluginDetailOpenerBoundary({
   children: ReactNode;
   isFocused: boolean;
 }) {
-  const deferred = useMemo(() => {
-    let current: PluginDetailOpener | null = null;
-    const pending: PluginDetailDestination[] = [];
-    return {
-      open(destination: PluginDetailDestination) {
-        if (current !== null) return current(destination);
-        pending.push(destination);
-        return true;
-      },
-      register(open: PluginDetailOpener) {
-        current = open;
-        for (const destination of pending.splice(0)) open(destination);
-        return () => {
-          current = null;
-        };
-      },
-    };
-  }, []);
+  const [deferred] = useState(createDeferredPluginDetailOpener);
   usePublishPluginDetailOpener(deferred.open, isFocused);
   return (
     <DeferredPluginDetailOpenerContext.Provider value={deferred.register}>

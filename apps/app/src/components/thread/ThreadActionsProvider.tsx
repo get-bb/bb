@@ -100,6 +100,23 @@ function describeThreadCount(count: number): string {
 
 const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
 
+async function restoreArchivedThreads(
+  archivedThreadIds: readonly string[],
+  unarchiveThread: (threadId: string) => Promise<unknown>,
+  afterRestore: () => void,
+): Promise<void> {
+  try {
+    for (const threadId of [...archivedThreadIds].reverse())
+      await unarchiveThread(threadId);
+    afterRestore();
+  } catch (error) {
+    showMutationErrorToast({
+      error,
+      fallbackMessage: "Failed to restore archived threads",
+    });
+  }
+}
+
 function hasRunningWork(thread: Thread): boolean {
   return (
     thread.archivedAt === null &&
@@ -366,22 +383,17 @@ export function ThreadActionsProvider({
           cancel: {
             label: "Undo",
             onClick: () => {
-              void (async () => {
-                try {
-                  for (const threadId of [...archivedThreadIds].reverse())
-                    await browserSdk.threads.unarchive({ threadId });
+              void restoreArchivedThreads(
+                archivedThreadIds,
+                (threadId) => browserSdk.threads.unarchive({ threadId }),
+                () => {
                   if (
                     destination !== null &&
                     viewedRouteRef.current === destination
                   )
                     navigate(previousRoute);
-                } catch (error) {
-                  showMutationErrorToast({
-                    error,
-                    fallbackMessage: "Failed to restore archived threads",
-                  });
-                }
-              })();
+                },
+              );
             },
           },
           duration: ARCHIVE_UNDO_TOAST_DURATION_MS,

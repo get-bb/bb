@@ -170,6 +170,7 @@ export function PluginProviderModelPicker({
       formatModelLabel={formatModelLabel}
       reasoningValue={controller.reasoningLevel}
       reasoningOptions={controller.reasoningOptions}
+      reasoningIsLoading={controller.isLoadingReasoning}
       onReasoningChange={handleReasoningChange}
       serviceTierValue={controller.serviceTier}
       serviceTierOptions={controller.serviceTierOptions}

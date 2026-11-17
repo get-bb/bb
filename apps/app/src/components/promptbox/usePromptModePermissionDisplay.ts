@@ -1,50 +1,58 @@
-import { useMemo } from "react";
-import type {
-  PromptTextMention,
-  ThreadTimelineActivePromptMode,
-} from "@bb/domain";
+import { useCallback, useMemo } from "react";
+import type { ThreadTimelineActivePromptMode } from "@bb/domain";
 import {
   isPlanModePrompt,
   permissionDisplayForActivePromptMode,
-  permissionDisplayForPromptMode,
+  planPermissionDisplay,
   shouldDisablePermissionPickerForActivePromptMode,
+  type PromptDraftState,
 } from "@bb/client-core";
 import type { ExecutionControlsProps } from "@/components/promptbox/ExecutionControls";
+import {
+  useComposerDraftSelector,
+  type ComposerDraftSource,
+} from "@/components/plugin/plugin-composer-host";
 
 interface UsePromptModePermissionDisplayArgs {
   execution: ExecutionControlsProps;
-  value: string;
-  mentionRanges: readonly PromptTextMention[];
+  draft: ComposerDraftSource;
   activePromptMode: ThreadTimelineActivePromptMode | null;
 }
 
 export function usePromptModePermissionDisplay({
   execution,
-  value,
-  mentionRanges,
+  draft,
   activePromptMode,
 }: UsePromptModePermissionDisplayArgs) {
   const selectedProviderPlanModeCopy = execution.provider.options?.find(
     (option) => option.value === execution.provider.selectedId,
   )?.planModeCopy;
-  const promptModeInput = useMemo(
-    () => ({
-      planModeCopy: selectedProviderPlanModeCopy,
-      value,
-      mentionRanges,
-    }),
-    [mentionRanges, selectedProviderPlanModeCopy, value],
+  const selectIsPlanModePrompt = useCallback(
+    (current: PromptDraftState) =>
+      isPlanModePrompt({
+        planModeCopy: selectedProviderPlanModeCopy,
+        value: current.text,
+        mentionRanges: current.mentions,
+      }),
+    [selectedProviderPlanModeCopy],
+  );
+  const planModePrompt = useComposerDraftSelector(
+    draft,
+    selectIsPlanModePrompt,
   );
   const permissionDisplayOverride = useMemo(
     () =>
       permissionDisplayForActivePromptMode(
         activePromptMode,
         selectedProviderPlanModeCopy,
-      ) ?? permissionDisplayForPromptMode(promptModeInput),
-    [activePromptMode, promptModeInput, selectedProviderPlanModeCopy],
+      ) ??
+      (planModePrompt && selectedProviderPlanModeCopy !== undefined
+        ? planPermissionDisplay(selectedProviderPlanModeCopy)
+        : undefined),
+    [activePromptMode, planModePrompt, selectedProviderPlanModeCopy],
   );
   const permissionPickerDisabledByPlanMode =
     shouldDisablePermissionPickerForActivePromptMode(activePromptMode) ||
-    isPlanModePrompt(promptModeInput);
+    planModePrompt;
   return { permissionDisplayOverride, permissionPickerDisabledByPlanMode };
 }

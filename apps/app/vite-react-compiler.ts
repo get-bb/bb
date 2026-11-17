@@ -80,12 +80,24 @@ export async function cachedReactCompiler(cacheDirectory?: string): Promise<
     };
   }
 > {
-  const plugin = await babel({ presets: [reactCompilerPreset()] });
+  const plugin = await babel({
+    presets: [reactCompilerPreset({ panicThreshold: "all_errors" })],
+  });
   const transform = plugin.transform;
   if (!transform || typeof transform === "function") {
     throw new Error("Expected the Babel plugin's filtered transform hook");
   }
-  const handler = transform.handler;
+  const babelHandler = transform.handler;
+  const handler: typeof babelHandler = async function (code, id, options) {
+    try {
+      return await babelHandler.call(this, code, id, options);
+    } catch (error) {
+      throw new Error(
+        `React Compiler could not compile ${relative(root, id)}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  };
   if (
     !("configResolved" in plugin) ||
     typeof plugin.configResolved !== "function"
@@ -129,12 +141,10 @@ export async function cachedReactCompiler(cacheDirectory?: string): Promise<
       ]),
     ].sort((a, b) => relative(root, a).localeCompare(relative(root, b)));
     const dependencies = await Promise.all(
-      files.map(
-        async (file): Promise<[string, string]> => [
-          relative(root, file),
-          await readFile(file, "utf8"),
-        ],
-      ),
+      files.map(async (file): Promise<[string, string]> => [
+        relative(root, file),
+        await readFile(file, "utf8"),
+      ]),
     );
     cache = {
       directory: cacheDirectory ?? directory,
@@ -226,4 +236,30 @@ export async function cachedReactCompiler(cacheDirectory?: string): Promise<
         );
     },
   };
+}
+
+export function testReactCompiler() {
+  const preset = reactCompilerPreset();
+  const pluginSources = resolve(
+    fileURLToPath(new URL("../../plugins/", import.meta.url)),
+  ).replaceAll("\\", "/");
+  return babel({
+    presets: [
+      {
+        ...preset,
+        rolldown: {
+          ...preset.rolldown,
+          filter: {
+            ...preset.rolldown.filter,
+            id: {
+              exclude: new RegExp(
+                `^${pluginSources.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`,
+              ),
+            },
+          },
+          applyToEnvironmentHook: () => true,
+        },
+      },
+    ],
+  });
 }

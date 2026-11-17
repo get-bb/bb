@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import { useDeletedResourceRouteOwner } from "./cache-owners/resource-route-owner";
@@ -14,10 +14,9 @@ import {
 export function useWebSocket(): void {
   const queryClient = useQueryClient();
   const handleDeletedResourceRouteChange = useDeletedResourceRouteOwner();
-  const deletedResourceRouteChangeRef = useRef(
+  const onDeletedResourceRouteChange = useEffectEvent(
     handleDeletedResourceRouteChange,
   );
-  deletedResourceRouteChangeRef.current = handleDeletedResourceRouteChange;
 
   useEffect(() => {
     const cacheEffects = createRealtimeCacheEffects({
@@ -44,7 +43,7 @@ export function useWebSocket(): void {
     });
     const unsubscribe = wsManager.onChanged((message) => {
       cacheEffects.handleChanged(message);
-      deletedResourceRouteChangeRef.current(message);
+      onDeletedResourceRouteChange(message);
       handleArchivedThreadBrowsers.handleChanged(message);
     });
 

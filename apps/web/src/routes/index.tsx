@@ -3,6 +3,7 @@ import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import type { CSSProperties, ReactNode, Ref } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
@@ -191,16 +192,19 @@ function CompanyProofMarquee({
     const firstCopy = marquee?.querySelector(".company-proof-logos");
     if (!marquee || !firstCopy) return;
 
-    const measure = () => {
+    const readCopies = () => {
       const copyWidth = firstCopy.getBoundingClientRect().width;
-      if (copyWidth === 0) return;
-      setCopies(Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1));
+      if (copyWidth === 0) return null;
+      return Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1);
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(marquee);
-    observer.observe(firstCopy);
-    return () => observer.disconnect();
+    const applyCopies = (next: number | null) => {
+      if (next !== null) setCopies(next);
+    };
+    applyCopies(readCopies());
+    return observeSharedResize([marquee, firstCopy], {
+      read: readCopies,
+      write: applyCopies,
+    });
   }, []);
 
   return (

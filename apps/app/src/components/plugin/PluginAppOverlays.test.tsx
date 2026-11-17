@@ -60,13 +60,15 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({ data: undefined }),
 }));
 
+const useSidebarThreadActions =
+  pluginSdkAppImplementation.experimental_useSidebarThreadActions;
+
 function PortaledProbe() {
   const context = useBbContext();
   const navigate = useBbNavigate();
   const rpc = useRpc();
   const settings = useSettings();
-  const sidebarThreadActions =
-    pluginSdkAppImplementation.experimental_useSidebarThreadActions();
+  const sidebarThreadActions = useSidebarThreadActions();
   const [rpcResult, setRpcResult] = useState("idle");
 
   return (
