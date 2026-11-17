@@ -1,3 +1,5 @@
+import { once } from "node:events";
+import { createServer, Socket } from "node:net";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   pluginInstallJobListResponseSchema,
@@ -143,21 +145,68 @@ describe("plugin install jobs", () => {
 });
 
 describe("install cancellation", () => {
-  const sleeper = [
-    "-e",
-    "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'], { stdio: 'inherit' }); setTimeout(() => {}, 60_000)",
-  ];
-
-  it("kills the running install command and its children when the install is cancelled", async () => {
+  it("kills the running install command and its children when the install is cancelled", async ({
+    signal,
+    onTestFinished,
+  }) => {
     const controller = new AbortController();
-    const started = Date.now();
-    const command = runCancellableInstall(controller.signal, () =>
-      runInstallCommand(process.execPath, sleeper),
-    );
-    setTimeout(() => controller.abort(), 50);
+    const sockets = new Set<Socket>();
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.on("error", () => {});
+    });
+    const connected = once(server, "connection", { signal });
+    void connected.catch(() => {});
+    let command: Promise<string> | null = null;
+    let cleanupPromise: Promise<void> | undefined;
+    const cleanup = () => {
+      cleanupPromise ??= (async () => {
+        controller.abort();
+        for (const socket of sockets) socket.end();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await command?.catch(() => {});
+      })();
+      return cleanupPromise;
+    };
+    onTestFinished(cleanup);
+    try {
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening", { signal });
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Expected a TCP listener");
+      }
+      const descendant = `const socket = require('node:net').connect(${address.port}, '127.0.0.1'); socket.resume(); socket.on('end', () => process.exit(0)); socket.on('error', () => process.exit(1));`;
+      const parent = `const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], { stdio: 'inherit' }); child.on('exit', code => process.exit(code ?? 1)); child.on('error', () => process.exit(1));`;
+      command = runCancellableInstall(controller.signal, () =>
+        runInstallCommand(process.execPath, ["-e", parent]),
+      );
+      const outcome = command.catch((error: unknown) => error);
+      const [socket]: unknown[] = await connected;
+      if (!(socket instanceof Socket)) {
+        throw new Error("Expected a descendant connection");
+      }
+      signal.throwIfAborted();
+      const closed = new Promise<void>((resolve, reject) => {
+        const onAbort = () => reject(signal.reason);
+        signal.addEventListener("abort", onAbort, { once: true });
+        socket.once("close", () => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        });
+      });
+      void closed.catch(() => {});
+      const started = performance.now();
+      controller.abort();
 
-    await expect(command).rejects.toBeInstanceOf(PluginInstallCancelledError);
-    expect(Date.now() - started).toBeLessThan(10_000);
+      const result = await outcome;
+      signal.throwIfAborted();
+      expect(result).toBeInstanceOf(PluginInstallCancelledError);
+      await closed;
+      expect(performance.now() - started).toBeLessThan(10_000);
+    } finally {
+      await cleanup();
+    }
   });
 
   it("refuses to register a cancelled install and ignores cancellation once registered", async () => {

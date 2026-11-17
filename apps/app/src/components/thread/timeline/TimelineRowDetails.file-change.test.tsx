@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { fileChangeRow } from "@/test/fixtures/thread-timeline-rows";
 import { LazyTimelineFileDiffBlock } from "./LazyTimelineFileDiffBlock";
 import { WorkRowBody } from "./TimelineRowDetails";
 
 const EDIT_ERROR = "Could not find the exact text in src/app.ts.";
 
-beforeAll(() => LazyTimelineFileDiffBlock.preload());
+await LazyTimelineFileDiffBlock.preload();
 afterEach(cleanup);
 
 describe("file-change row body", () => {

@@ -1,10 +1,30 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+let fixtureRoot: string;
+
+beforeAll(() => {
+  fixtureRoot = mkdtempSync(resolve(tmpdir(), "bb-pr-gate-"));
+  mkdirSync(resolve(fixtureRoot, ".github"));
+  writeFileSync(
+    resolve(fixtureRoot, ".github/APPROVED_CONTRIBUTORS"),
+    "  bb-slop-cop[bot]  \nDependabot[bot]\n\n",
+  );
+});
+
+afterAll(() => rmSync(fixtureRoot, { recursive: true, force: true }));
 
 function stepScript(workflow: string, step: string): string {
   const lines = readFileSync(
@@ -27,7 +47,7 @@ function stepScript(workflow: string, step: string): string {
 
 function run(script: string, env: Record<string, string>) {
   return spawnSync("bash", ["-c", script], {
-    cwd: repoRoot,
+    cwd: fixtureRoot,
     encoding: "utf8",
     env: { ...process.env, ...env },
   });

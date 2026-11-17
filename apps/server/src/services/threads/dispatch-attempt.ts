@@ -700,7 +700,7 @@ async function runDispatchAttempt(
     });
     if (outcome.kind === "wait") {
       if (claimed !== null) {
-        noteDispatchRequeued(thread.id);
+        noteDispatchRequeued(thread.id, outcome.waiter.pluginId);
       }
       return waitOn(
         {

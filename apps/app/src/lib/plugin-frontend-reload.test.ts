@@ -50,6 +50,10 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { appQueryClient } from "./app-query-client";
+import { defaultExperiments } from "@bb/domain";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
@@ -1323,11 +1327,48 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
+    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
   const sheet = (hash: string) =>
     `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+
+  function setKeyedPluginCss(keyedPluginCss: boolean): void {
+    appQueryClient.setQueryData(
+      systemConfigQueryKey(),
+      makeSystemConfig({
+        experiments: { ...defaultExperiments, keyedPluginCss },
+      }),
+    );
+  }
+
+  it.each([
+    [false, "owned-root-v1"],
+    [true, "plugin-attribute-v1"],
+  ])(
+    "with keyedPluginCss %s, requests the %s stylesheet",
+    (keyedPluginCss, scope) => {
+      setKeyedPluginCss(keyedPluginCss);
+      retainPluginCss("hello");
+      void applyPluginCss("hello", "/assets/app.css?h=aaa");
+      expect(cssHrefs("hello")[0]).toBe(
+        `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=${scope}`,
+      );
+    },
+  );
+
+  it("keys plugin UI labeled the old way once it requests a keyed stylesheet", async () => {
+    setKeyedPluginCss(true);
+    retainPluginCss("hello");
+    void applyPluginCss("hello", "/assets/app.css?h=aaa");
+    const overlay = document.createElement("div");
+    overlay.dataset.bbPlugin = "hello";
+    document.body.append(overlay);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(overlay.hasAttribute("data-bb-plugin-scope-hello")).toBe(true);
+    overlay.remove();
+  });
 
   it("keeps the same element for an unchanged URL and removes it on null", () => {
     retainPluginCss("hello");

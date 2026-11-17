@@ -211,3 +211,13 @@ export function resolveAcpPermissionDecision(args: {
   }
   return { decision: args.resolution.decision };
 }
+
+export function acpSessionGrantKey(
+  payload: PendingInteractionPayload,
+): string | null {
+  if (!isApprovalPendingInteractionPayload(payload)) {
+    return null;
+  }
+  const { itemId: _itemId, ...grant } = payload.subject;
+  return JSON.stringify(grant);
+}

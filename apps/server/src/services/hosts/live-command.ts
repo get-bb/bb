@@ -6,7 +6,7 @@ import {
   type HostDaemonCommandResult,
   type HostDaemonSettledCommandType,
 } from "@bb/host-daemon-contract";
-import { ApiError } from "../../errors.js";
+import { ApiError, HostConnectionLostApiError } from "../../errors.js";
 import {
   buildCommandResultSettlementDeps,
   type CommandResultPostCommitAction,
@@ -108,7 +108,19 @@ interface LiveHostCommandBaseLogFields {
 
 const EXPECTED_LIVE_HOST_COMMAND_ERROR_CODES = new Set(["provision_cancelled"]);
 
+export const HOST_CONNECTION_LOST_ERROR_CODE = "host_connection_lost";
+
+export function isHostUnavailableReportCode(errorCode: string): boolean {
+  return (
+    errorCode === "host_unavailable" ||
+    errorCode === HOST_CONNECTION_LOST_ERROR_CODE
+  );
+}
+
 function commandFailureCode(error: Error): string {
+  if (error instanceof HostConnectionLostApiError) {
+    return HOST_CONNECTION_LOST_ERROR_CODE;
+  }
   if (error instanceof ApiError) {
     return error.body.code;
   }

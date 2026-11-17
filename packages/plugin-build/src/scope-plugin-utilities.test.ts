@@ -3,6 +3,7 @@ import {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
   findUnnamedPluginRoots,
+  keyPluginScopeOnAttribute,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -172,6 +173,35 @@ describe("dropAnonymousPluginRootScope", () => {
       ),
     ).toBe(
       `${scopePluginUtilities(utilities, '[data-bb-plugin="demo"]')}${authored}`,
+    );
+  });
+});
+
+describe("keyPluginScopeOnAttribute", () => {
+  it("keys every utility on the plugin's own attribute name and leaves other CSS alone", () => {
+    const utilities =
+      "@layer utilities{.a,.b{color:red}@media (width>=40rem){.p-2{padding:.5rem}}}";
+    const authored =
+      '[data-bb-plugin="demo"] .x,[data-bb-plugin-root]:not([data-bb-plugin]) .y{opacity:.5}';
+    expect(
+      keyPluginScopeOnAttribute(
+        `${scopePluginUtilities(utilities, ROOTS)}${authored}`,
+      ),
+    ).toBe(
+      `${scopePluginUtilities(utilities, "[data-bb-plugin-scope-demo]")}${authored}`,
+    );
+  });
+
+  it.each([
+    ["an unquoted id", "[data-bb-plugin=bb--git]", "bb--git"],
+    ["a quoted id", '[data-bb-plugin="1password"]', "1password"],
+  ])("rewrites %s from minified CSS", (_name, root, pluginId) => {
+    expect(
+      keyPluginScopeOnAttribute(
+        `@layer utilities{:where(${root},[data-bb-plugin-root]:not([data-bb-plugin])) .flex{display:flex}}`,
+      ),
+    ).toBe(
+      `@layer utilities{:where([data-bb-plugin-scope-${pluginId}]) .flex{display:flex}}`,
     );
   });
 });

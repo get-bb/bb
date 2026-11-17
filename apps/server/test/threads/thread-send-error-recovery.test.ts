@@ -71,7 +71,7 @@ describe("errored thread correction", () => {
           candidate.command.threadId === thread.id,
       );
       expect(queued.command).toMatchObject({
-        target: { mode: "start" },
+        target: { mode: "auto", expectedTurnId: null },
         threadId: thread.id,
         type: "turn.submit",
       });

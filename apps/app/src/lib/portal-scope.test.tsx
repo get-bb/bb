@@ -59,6 +59,7 @@ describe("usePortalScopeProps", () => {
     expect(scoped.length).toBe(2);
     for (const root of scoped) {
       expect(root.getAttribute("data-bb-plugin")).toBe("test-plugin");
+      expect(root.getAttribute("data-bb-plugin-scope-test-plugin")).toBe("");
     }
     expect(
       baseElement.querySelectorAll("[data-bb-portaled-overlay]").length,
@@ -83,6 +84,12 @@ describe("usePortalScopeProps", () => {
     expect(portals).toHaveLength(2);
     for (const portal of portals) {
       expect(portal.getAttribute("data-bb-plugin")).toBe("inner-plugin");
+      expect(portal.hasAttribute("data-bb-plugin-scope-inner-plugin")).toBe(
+        true,
+      );
+      expect(portal.hasAttribute("data-bb-plugin-scope-outer-plugin")).toBe(
+        false,
+      );
     }
   });
 
