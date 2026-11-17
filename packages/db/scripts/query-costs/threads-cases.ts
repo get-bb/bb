@@ -1,4 +1,5 @@
 import type { DbConnection } from "../../src/connection.js";
+import { bumpThreadEventRewriteGeneration } from "../../src/data/event-rewrite-generation.js";
 import {
   createPromptHistoryEntry,
   listPromptHistoryPage,
@@ -643,6 +644,17 @@ const OUTLINE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
         projectionKey: `v3:${fixture.latestSequence + 1}`,
         itemsJson: nextOutlineItemsJson,
       }),
+  },
+  {
+    name: "packages/db/src/data/event-rewrite-generation.ts#bumpThreadEventRewriteGeneration",
+    prepare: (db, fixture) =>
+      upsertThreadConversationOutlineRecord(db, {
+        threadId: fixture.threadId,
+        projectionKey: `v3:${fixture.latestSequence}`,
+        itemsJson: outlineItemsJson(fixture.turns.length),
+      }),
+    run: (db, fixture) =>
+      bumpThreadEventRewriteGeneration(db, fixture.threadId),
   },
 ];
 

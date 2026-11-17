@@ -1,5 +1,6 @@
+import { eq } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
-import { deleteThreadConversationOutlineRecord } from "./thread-conversation-outlines.js";
+import { threadConversationOutlines } from "../schema.js";
 
 const generationsByThreadId = new Map<string, number>();
 
@@ -11,7 +12,9 @@ export function bumpThreadEventRewriteGeneration(
   db: DbQueryConnection,
   threadId: string,
 ): void {
-  deleteThreadConversationOutlineRecord(db, threadId);
+  db.delete(threadConversationOutlines)
+    .where(eq(threadConversationOutlines.threadId, threadId))
+    .run();
   generationsByThreadId.set(
     threadId,
     getThreadEventRewriteGeneration(threadId) + 1,
