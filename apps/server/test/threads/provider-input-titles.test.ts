@@ -1,4 +1,9 @@
-import { getThread, listQueuedThreadMessages, updateThread } from "@bb/db";
+import {
+  getThread,
+  listQueuedThreadMessages,
+  setAiServiceSelection,
+  updateThread,
+} from "@bb/db";
 import { listEvents } from "@bb/db/testing";
 import { turnScope } from "@bb/domain";
 import {
@@ -47,7 +52,10 @@ async function setup(
     ...(args.title ? { title: args.title } : {}),
   });
   if (!args.title) {
-    updateThread(harness.db, harness.deps.hub, thread.id, { title: null });
+    updateThread(harness.db, harness.deps.hub, thread.id, {
+      title: null,
+      titleFallback: null,
+    });
   }
   if (args.requestText !== undefined) {
     seedThreadRuntimeState(harness.deps, {
@@ -190,6 +198,35 @@ describe("titles from native provider input", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(t.title()).toBe("My own title");
       expect(completeTitle).toHaveBeenCalledOnce();
+    } finally {
+      await t.harness.cleanup();
+    }
+  });
+
+  it("keeps a bounded visible fallback when the title service is off", async () => {
+    const t = await setup({ requestText: "" });
+    setAiServiceSelection(t.harness.db, "thread-title", { mode: "off" });
+    const longRequest = `${HANDOFF} ${"and every follow-up detail ".repeat(20)}`;
+    try {
+      await t.post([t.turnStarted, t.userMessage(longRequest)]);
+      await vi.waitFor(() =>
+        expect(getThread(t.harness.db, t.thread.id)?.titleFallback).toMatch(
+          /^Compare the release checklist.*\.\.\.$/u,
+        ),
+      );
+      const fallback =
+        getThread(t.harness.db, t.thread.id)?.titleFallback ?? "";
+      expect(fallback.length).toBeLessThanOrEqual(80);
+      expect(t.title()).toBeNull();
+      expect(completeTitle).not.toHaveBeenCalled();
+      updateThread(t.harness.db, t.harness.deps.hub, t.thread.id, {
+        titleFallback: "Kept fallback",
+      });
+      await t.post([t.userMessage(`${HANDOFF} once more`)]);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(getThread(t.harness.db, t.thread.id)?.titleFallback).toBe(
+        "Kept fallback",
+      );
     } finally {
       await t.harness.cleanup();
     }

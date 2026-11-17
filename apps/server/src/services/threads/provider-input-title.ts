@@ -1,10 +1,17 @@
-import { getThread, listStoredTaskTurnRequestEvents } from "@bb/db";
+import {
+  getThread,
+  listStoredTaskTurnRequestEvents,
+  updateThread,
+} from "@bb/db";
 import type { PromptInput, ThreadEvent } from "@bb/domain";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
-import { titleUntitledThreadFromInput } from "./title-generation.js";
+import {
+  deriveTitleFallback,
+  titleUntitledThreadFromInput,
+} from "./title-generation.js";
 
 const MAX_PROVIDER_INPUT_TITLE_SOURCE_LENGTH = 8000;
 
@@ -53,9 +60,14 @@ export function titleUntitledThreadFromProviderInput(
   if (text.length === 0) {
     return;
   }
+  const input: PromptInput[] = [{ type: "text", text, mentions: [] }];
+  const fallback = deriveTitleFallback(input);
+  if (fallback !== null && thread.titleFallback === null) {
+    updateThread(deps.db, deps.hub, thread.id, { titleFallback: fallback });
+  }
   void titleUntitledThreadFromInput(deps, {
     threadId: thread.id,
-    input: [{ type: "text", text, mentions: [] }],
+    input,
   }).catch((error: unknown) => {
     deps.logger.warn(
       { threadId: thread.id, ...runtimeErrorLogFields(deps.config, error) },
