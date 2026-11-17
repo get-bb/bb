@@ -87,7 +87,6 @@ describe("createProcessLifeline", () => {
 
     const [grandchild] = await lifeline.waitForHolders(1);
     expect(grandchild?.label).toBe("grandchild");
-    expect(grandchild?.pid).not.toBe(parent.pid);
     expect(grandchild?.alive()).toBe(true);
 
     expect(grandchild?.kill()).toBe(true);
@@ -148,7 +147,7 @@ describe("createProcessLifeline", () => {
     holder.stdin.write("exit\n");
     await recycled?.exited;
 
-    expect(() => process.kill(recycledPid, 0)).not.toThrow();
+    expect(hasExited(bystander)).toBe(false);
     expect(recycled?.alive()).toBe(false);
     expect(recycled?.kill()).toBe(false);
   });

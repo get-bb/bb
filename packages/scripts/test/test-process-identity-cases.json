@@ -1,0 +1,97 @@
+{
+  "rejected": [
+    {
+      "name": "#7681 Codex app-server teardown",
+      "source": "function processIsAlive(pid: number): boolean {\n  try {\n    process.kill(pid, 0);\n    return true;\n  } catch (error) {\n    if (error instanceof Error && Reflect.get(error, \"code\") === \"ESRCH\") {\n      return false;\n    }\n    throw error;\n  }\n}\nwhile (childPids.some(processIsAlive)) {}",
+      "rules": ["pid-liveness-helper", "signal-zero-probe"]
+    },
+    {
+      "name": "#7681 ACP descendant check",
+      "source": "expect(process.kill(descendantPid, 0)).toBe(true);",
+      "rules": ["signal-zero-probe"]
+    },
+    {
+      "name": "#7683 restarted host worker",
+      "source": "expect(Reflect.get(Object(restarted.output), \"pid\")).not.toBe(firstPid);",
+      "rules": ["pid-identity-assertion"]
+    },
+    {
+      "name": "#5052 replacement provider",
+      "source": "expect(replacementProvider.child.pid).not.toBe(exitedPid);",
+      "rules": ["pid-identity-assertion"]
+    },
+    {
+      "name": "#5487 server-move pending server",
+      "source": "expect(isProcessGroupAlive(prepared.pid)).toBe(false);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "#6248 runtime shutdown",
+      "source": "function processIsAlive(pid: number): boolean {\n  try { process.kill(pid, 0); return true; } catch { return false; }\n}\nexpect(processIsAlive(replacementProcess.child.pid ?? 0)).toBe(false);",
+      "rules": ["pid-liveness-helper", "signal-zero-probe"]
+    },
+    {
+      "name": "imported PID helper",
+      "source": "expect(isProcessRunning(args.pid)).toBe(true);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "PID helper passed as a callback",
+      "source": "return processIds.every((pid) => !isProcessRunning(pid)) && pids.some(isAlive);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "a probe split across lines",
+      "source": "process.kill(\n  busy.child.pid!,\n  0,\n);",
+      "rules": ["signal-zero-probe"]
+    },
+    {
+      "name": "an assertion split across lines",
+      "source": "expect(\n  restartedDaemonPid,\n)\n  .not.toBe(firstDaemonPid);",
+      "rules": ["pid-identity-assertion"]
+    }
+  ],
+  "accepted": [
+    {
+      "name": "an owned exit state",
+      "source": "expect(child.exitCode !== null || child.signalCode !== null).toBe(true);"
+    },
+    {
+      "name": "a real signal",
+      "source": "process.kill(pid, \"SIGKILL\");"
+    },
+    {
+      "name": "a boot identity",
+      "source": "expect(restarted.bootId).not.toBe(firstBootId);"
+    },
+    {
+      "name": "a present PID",
+      "source": "expect(pid).not.toBeNull();"
+    },
+    {
+      "name": "a lifeline holder",
+      "source": "await holder.exited; expect(holder.alive()).toBe(false);"
+    },
+    {
+      "name": "a group probe through the owned leader",
+      "source": "expect(isProcessGroupAlive(child)).toBe(true);"
+    },
+    {
+      "name": "a tracker query",
+      "source": "expect(tracker.running()).toEqual([]);"
+    },
+    {
+      "name": "an unrelated inequality",
+      "source": "expect(next.title).not.toBe(previous.title);"
+    },
+    {
+      "name": "a PID file name",
+      "source": "expect(hasLiveOwner(join(root, \"parent.pid\"))).toBe(true);"
+    }
+  ],
+  "lineReport": {
+    "source": "const a = 1;\n\nprocess.kill(pid, 0);\n",
+    "line": 3,
+    "rule": "signal-zero-probe"
+  }
+}

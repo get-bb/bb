@@ -1,8 +1,16 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   findProcessIdentityChecks,
   isTestSource,
 } from "../../../scripts/check-test-process-identity.mjs";
+
+const cases = JSON.parse(
+  readFileSync(
+    new URL("./test-process-identity-cases.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 const rulesIn = (source) =>
   [
@@ -12,113 +20,25 @@ const rulesIn = (source) =>
   ].sort();
 
 describe("findProcessIdentityChecks on checks that past fixes removed", () => {
-  it.each([
-    [
-      "#7681 Codex app-server teardown",
-      `function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && Reflect.get(error, "code") === "ESRCH") {
-      return false;
-    }
-    throw error;
-  }
-}
-while (childPids.some(processIsAlive)) {}`,
-      ["pid-liveness-helper", "signal-zero-probe"],
-    ],
-    [
-      "#7681 ACP descendant check",
-      `expect(process.kill(descendantPid, 0)).toBe(true);`,
-      ["signal-zero-probe"],
-    ],
-    [
-      "#7683 restarted host worker",
-      `expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);`,
-      ["pid-identity-assertion"],
-    ],
-    [
-      "#5052 replacement provider",
-      `expect(replacementProvider.child.pid).not.toBe(exitedPid);`,
-      ["pid-identity-assertion"],
-    ],
-    [
-      "#5487 server-move pending server",
-      `expect(isProcessGroupAlive(prepared.pid)).toBe(false);`,
-      ["pid-liveness-helper"],
-    ],
-    [
-      "#6248 runtime shutdown",
-      `function processIsAlive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch { return false; }
-}
-expect(processIsAlive(replacementProcess.child.pid ?? 0)).toBe(false);`,
-      ["pid-liveness-helper", "signal-zero-probe"],
-    ],
-    [
-      "imported PID helper",
-      `expect(isProcessRunning(args.pid)).toBe(true);`,
-      ["pid-liveness-helper"],
-    ],
-    [
-      "PID helper passed as a callback",
-      `return processIds.every((pid) => !isProcessRunning(pid)) && pids.some(isAlive);`,
-      ["pid-liveness-helper"],
-    ],
-    [
-      "a probe split across lines",
-      `process.kill(
-  busy.child.pid!,
-  0,
-);`,
-      ["signal-zero-probe"],
-    ],
-    [
-      "an assertion split across lines",
-      `expect(
-  restartedDaemonPid,
-)
-  .not.toBe(firstDaemonPid);`,
-      ["pid-identity-assertion"],
-    ],
-  ])("finds the %s", (_name, source, rules) => {
+  it.each(
+    cases.rejected.map(({ name, source, rules }) => [name, source, rules]),
+  )("finds the %s", (_name, source, rules) => {
     expect(rulesIn(source)).toEqual(rules);
   });
 });
 
 describe("findProcessIdentityChecks on handle-based checks", () => {
-  it.each([
-    [
-      "an owned exit state",
-      `expect(child.exitCode !== null || child.signalCode !== null).toBe(true);`,
-    ],
-    ["a real signal", `process.kill(pid, "SIGKILL");`],
-    ["a boot identity", `expect(restarted.bootId).not.toBe(firstBootId);`],
-    ["a present PID", `expect(pid).not.toBeNull();`],
-    [
-      "a lifeline holder",
-      `await holder.exited; expect(holder.alive()).toBe(false);`,
-    ],
-    [
-      "a group probe through the owned leader",
-      `expect(isProcessGroupAlive(child)).toBe(true);`,
-    ],
-    ["a tracker query", `expect(tracker.running()).toEqual([]);`],
-    ["an unrelated inequality", `expect(next.title).not.toBe(previous.title);`],
-    [
-      "a PID file name",
-      `expect(hasLiveOwner(join(root, "parent.pid"))).toBe(true);`,
-    ],
-  ])("accepts %s", (_name, source) => {
-    expect(rulesIn(source)).toEqual([]);
-  });
+  it.each(cases.accepted.map(({ name, source }) => [name, source]))(
+    "accepts %s",
+    (_name, source) => {
+      expect(rulesIn(source)).toEqual([]);
+    },
+  );
 
   it("reports the line of each finding", () => {
-    expect(
-      findProcessIdentityChecks("const a = 1;\n\nprocess.kill(pid, 0);\n"),
-    ).toMatchObject([{ line: 3, rule: "signal-zero-probe" }]);
+    expect(findProcessIdentityChecks(cases.lineReport.source)).toMatchObject([
+      { line: cases.lineReport.line, rule: cases.lineReport.rule },
+    ]);
   });
 });
 
