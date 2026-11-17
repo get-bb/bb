@@ -196,7 +196,7 @@ describe("createPluginFrontendPageLifecycle", () => {
   function createDeps() {
     return {
       restore: vi.fn(),
-      teardown: vi.fn(),
+      discard: vi.fn(),
     };
   }
 
@@ -204,20 +204,17 @@ describe("createPluginFrontendPageLifecycle", () => {
     const deps = createDeps();
     const lifecycle = createPluginFrontendPageLifecycle(deps);
     lifecycle.onPageHide({ persisted: true });
-    expect(deps.teardown).not.toHaveBeenCalled();
+    expect(deps.discard).not.toHaveBeenCalled();
 
     lifecycle.onPageShow({ persisted: true });
     expect(deps.restore).toHaveBeenCalledTimes(1);
   });
 
-  it("tears down on a real unload and delegates a later persisted restore", () => {
+  it("discards frontends when the page unloads without entering the cache", () => {
     const deps = createDeps();
-    const lifecycle = createPluginFrontendPageLifecycle(deps);
-    lifecycle.onPageHide({ persisted: false });
-    expect(deps.teardown).toHaveBeenCalledTimes(1);
-
-    lifecycle.onPageShow({ persisted: true });
-    expect(deps.restore).toHaveBeenCalledTimes(1);
+    createPluginFrontendPageLifecycle(deps).onPageHide({ persisted: false });
+    expect(deps.discard).toHaveBeenCalledTimes(1);
+    expect(deps.restore).not.toHaveBeenCalled();
   });
 
   it("ignores the initial (non-persisted) pageshow", () => {

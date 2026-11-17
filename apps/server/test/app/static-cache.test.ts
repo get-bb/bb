@@ -142,4 +142,36 @@ describe("production static cache headers", () => {
       await rm(staticDir, { force: true, recursive: true });
     }
   });
+
+  it("embeds the plugin list the API serves in the shell so plugin boot never waits on it", async () => {
+    const staticDir = await mkdtemp(join(tmpdir(), "bb-server-shell-"));
+    await writeFile(
+      join(staticDir, "index.html"),
+      '<!doctype html><html><head><title>bb</title></head><body><script type="module" src="/assets/index-test.js"></script></body></html>',
+    );
+    const harness = await createTestAppHarness();
+    const serverApp = createApp(harness.deps, { staticDir });
+    try {
+      const listed = await (
+        await serverApp.app.request("/api/v1/plugins")
+      ).json();
+      const shellResponse = await serverApp.app.request("/threads/thr_123", {
+        headers: { "accept-encoding": "gzip" },
+      });
+      expect(shellResponse.headers.get("content-encoding")).toBe("gzip");
+      const shell = await new Response(
+        shellResponse.body?.pipeThrough(new DecompressionStream("gzip")),
+      ).text();
+      const embedded =
+        /<script type="application\/json" id="bb-plugin-list">(.*?)<\/script><\/head>/su.exec(
+          shell,
+        )?.[1];
+      expect(embedded).toBeDefined();
+      expect(JSON.parse(embedded ?? "")).toEqual(listed);
+    } finally {
+      await serverApp.closeWebSockets();
+      await harness.cleanup();
+      await rm(staticDir, { force: true, recursive: true });
+    }
+  });
 });
