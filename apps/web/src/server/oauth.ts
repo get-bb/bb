@@ -39,6 +39,7 @@ export const OAUTH_CLIENT_NAME_MAX_LENGTH = 80;
 export const OAUTH_AUDIT_ACTION_GRANT = "mcp.oauth.grant";
 export const OAUTH_AUDIT_ACTION_REVOKE = "mcp.oauth.revoke";
 
+const OAUTH_AS_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED = ["none"] as const;
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const IPV4_LITERAL = /^\d+(\.\d+){3}$/u;
 const CODE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
@@ -134,7 +135,9 @@ export function oauthAuthorizationServerMetadata(
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: [
+      ...OAUTH_AS_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED,
+    ],
     scopes_supported: [...MCP_SCOPES],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
@@ -272,6 +275,38 @@ function isJsonContentType(value: string | null): boolean {
   );
 }
 
+const PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE =
+  "only public clients (token_endpoint_auth_method none) are supported";
+
+function publicClientTokenAuthSupported(
+  document: Record<string, unknown>,
+): string | null {
+  const supportedByAs = new Set<string>(
+    OAUTH_AS_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED,
+  );
+  const plural = document.token_endpoint_auth_methods_supported;
+  if (plural !== undefined) {
+    if (
+      !Array.isArray(plural) ||
+      !plural.every((entry): entry is string => typeof entry === "string")
+    ) {
+      return "client metadata has invalid token_endpoint_auth_methods_supported";
+    }
+    if (plural.some((method) => supportedByAs.has(method))) {
+      return null;
+    }
+    return PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE;
+  }
+  const singular = document.token_endpoint_auth_method;
+  if (singular === undefined || singular === "none") {
+    return null;
+  }
+  if (typeof singular !== "string") {
+    return PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE;
+  }
+  return PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE;
+}
+
 function parseClientMetadataDocument(
   clientId: string,
   text: string,
@@ -313,15 +348,9 @@ function parseClientMetadataDocument(
   ) {
     return { ok: false, message: "client metadata has no redirect_uris" };
   }
-  if (
-    document.token_endpoint_auth_method !== undefined &&
-    document.token_endpoint_auth_method !== "none"
-  ) {
-    return {
-      ok: false,
-      message:
-        "only public clients (token_endpoint_auth_method none) are supported",
-    };
+  const authProblem = publicClientTokenAuthSupported(document);
+  if (authProblem !== null) {
+    return { ok: false, message: authProblem };
   }
   return { ok: true, client: { clientId, clientName, redirectUris } };
 }

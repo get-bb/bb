@@ -396,6 +396,64 @@ describe("client metadata documents", () => {
     expect((await load(documentFetch(over))).ok).toBe(false);
   });
 
+  it("accepts ChatGPT metadata that prefers private_key_jwt but also advertises none", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: "private_key_jwt",
+        token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts metadata that only lists none in token_endpoint_auth_methods_supported", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: ["none"],
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects metadata whose supported methods omit none", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: ["private_key_jwt"],
+      }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("accepts legacy metadata with token_endpoint_auth_method none", async () => {
+    const result = await load(
+      documentFetch({ token_endpoint_auth_method: "none" }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([
+    ["client_secret_basic", "client_secret_basic"],
+    ["client_secret_post", "client_secret_post"],
+    ["singular private_key_jwt without a supported plural", "private_key_jwt"],
+  ])("rejects token_endpoint_auth_method %s", async (_label, method) => {
+    const result = await load(
+      documentFetch({ token_endpoint_auth_method: method }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a non-string token_endpoint_auth_methods_supported entry", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: ["none", 1],
+      }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
   it("rejects a non-JSON content type", async () => {
     const result = await load(
       fetchReturning(
