@@ -29,7 +29,6 @@ import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginAppOverlays } from "./PluginAppOverlays";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import { LocationProbe } from "@/test/location-probe";
-import { SidebarThreadEntriesTestProvider } from "@/test/sidebarThreadEntriesTestProvider";
 
 vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
   ThreadDeleteDialog: () => null,
@@ -59,16 +58,6 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({ data: undefined }),
-}));
-
-vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({
-    data: {
-      personalProject: { id: "personal", name: "Personal", threads: [] },
-      projects: [],
-    },
-    isError: false,
-  }),
 }));
 
 function PortaledProbe() {
@@ -184,16 +173,14 @@ describe("PluginAppOverlays", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <SidebarThreadEntriesTestProvider>
-          <MemoryRouter initialEntries={["/projects/proj_1/threads/thr_1"]}>
-            <RouteNavigationProvider>
-              <ThreadActionsProvider>
-                <PluginAppOverlays />
-                <LocationProbe />
-              </ThreadActionsProvider>
-            </RouteNavigationProvider>
-          </MemoryRouter>
-        </SidebarThreadEntriesTestProvider>
+        <MemoryRouter initialEntries={["/projects/proj_1/threads/thr_1"]}>
+          <RouteNavigationProvider>
+            <ThreadActionsProvider>
+              <PluginAppOverlays />
+              <LocationProbe />
+            </ThreadActionsProvider>
+          </RouteNavigationProvider>
+        </MemoryRouter>
       </QueryClientProvider>,
     );
 

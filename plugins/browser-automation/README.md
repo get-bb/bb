@@ -154,6 +154,8 @@ bounded to 1–120 seconds. Runs are serialized per session.
 
 DevBrowser scripts are trusted code, not a security sandbox. Script output is
 bounded to 512 KB before parsing and 160,000 text characters after parsing.
+A run whose output passes 512 KB is stopped and fails with exit code 1; the
+session stays open.
 Up to four JPEGs fit within a combined 500 KB budget. Image file paths
 must resolve inside that session's capture directory; oversized files and
 escaping symlinks fail. CLI `run` and `screenshot` JSON returns `hostId` plus

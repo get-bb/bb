@@ -49,6 +49,7 @@ function dndState(
 ): SectionThreadDndState {
   return {
     activeItemId: activeThread?.id ?? null,
+    isDragging: activeThread !== null,
     draggedThreadIds: null,
     activeThread,
     dragOverParentKey,

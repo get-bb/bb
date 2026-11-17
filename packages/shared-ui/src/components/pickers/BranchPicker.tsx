@@ -199,7 +199,7 @@ export function BranchPicker({
   variant = "default",
   muted,
   defaultOpen = false,
-  modal = true,
+  modal = false,
   popoverAlign = "start",
 }: BranchPickerProps) {
   const [open, setOpen] = useState(defaultOpen);

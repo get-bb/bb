@@ -8,7 +8,10 @@ import {
 import { threadTimelineResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { EXTENSION_PAYLOAD_MAX_BYTES } from "../../src/internal/extension-payloads.js";
+import {
+  EXTENSION_PAYLOAD_MAX_BYTES,
+  EXTENSION_REJECTION_REASON_MAX_CHARS,
+} from "../../src/internal/extension-payloads.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { resolvePendingThreadSessionOptions } from "../../src/services/threads/thread-session-options.js";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -83,6 +86,7 @@ async function setup() {
         item: z.object({ objective: z.string().min(1) }),
         state: z.object({ status: z.enum(["active", "done"]) }),
       },
+      tags: { item: z.array(z.string()) },
     },
   });
   const { host, session } = seedHostSession(harness.deps);
@@ -341,6 +345,139 @@ describe("extension payload ingest validation", () => {
           },
         },
       ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it.each([
+    ["item", extensionItemEvent, "objective"],
+    ["state", extensionStateEvent, "status"],
+  ] as const)(
+    "bounds persisted diagnostics for an oversized %s payload",
+    async (surface, makeEvent, field) => {
+      const { harness, session, thread } = await setup();
+      try {
+        const payload = { [field]: "\u00e9".repeat(128 * 1024) };
+        const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
+        const response = await post(harness, session.id, [
+          turnStarted(thread.id),
+          makeEvent(thread.id, payload),
+        ]);
+        expect(response.status).toBe(200);
+        const rows = storedRows(harness, thread.id);
+        expect(rows.map((row) => row.type)).toEqual([
+          "turn/started",
+          "provider/unhandled",
+        ]);
+        expect(rows[1]).toMatchObject({
+          scopeKind: surface === "item" ? "turn" : "thread",
+          turnId: surface === "item" ? "turn-1" : null,
+          data: {
+            providerThreadId: "prov-1",
+            providerId: PROVIDER_ID,
+            rawType: `extension/${surface}:${GOAL_KIND}`,
+            ...(surface === "item" ? { parentToolCallId: "parent-1" } : {}),
+            rawEvent: {
+              method:
+                surface === "item"
+                  ? "item/started"
+                  : "thread/extensionState/updated",
+              params: {
+                kind: GOAL_KIND,
+                payloadOmitted: true,
+                payloadBytes,
+                reason: `payload is ${payloadBytes} bytes; the limit is 65536`,
+              },
+            },
+          },
+        });
+        expect(Buffer.byteLength(JSON.stringify(rows[1]!.data))).toBeLessThan(
+          EXTENSION_PAYLOAD_MAX_BYTES,
+        );
+      } finally {
+        await harness.cleanup();
+      }
+    },
+  );
+
+  it("keeps a rejected payload at the size limit and omits one a byte over it, whatever the rejection reason", async () => {
+    const { harness, session, thread } = await setup();
+    try {
+      const padded = (bytes: number) => {
+        const pad = bytes - JSON.stringify({ objective: "" }).length;
+        return { objective: "x".repeat(pad) };
+      };
+      const atLimit = padded(EXTENSION_PAYLOAD_MAX_BYTES);
+      const overLimit = padded(EXTENSION_PAYLOAD_MAX_BYTES + 1);
+      const response = await post(harness, session.id, [
+        turnStarted(thread.id),
+        extensionItemEvent(thread.id, atLimit, "provider-nobody/goal"),
+        extensionItemEvent(thread.id, overLimit, "provider-nobody/goal"),
+        extensionItemEvent(thread.id, overLimit, `${PLUGIN_ID}/widget`),
+        extensionStateEvent(
+          thread.id,
+          {
+            commands: [
+              {
+                name: "x".repeat(EXTENSION_PAYLOAD_MAX_BYTES),
+                description: "",
+              },
+            ],
+          },
+          "bb/provider-commands",
+        ),
+      ]);
+      expect(response.status).toBe(200);
+      const params = storedRows(harness, thread.id)
+        .slice(1)
+        .map(
+          (row) =>
+            (row.data as { rawEvent: { params: Record<string, unknown> } })
+              .rawEvent.params,
+        );
+      expect(params[0]).toMatchObject({ payload: atLimit });
+      expect(params[0]).not.toHaveProperty("payloadOmitted");
+      for (const omitted of params.slice(1)) {
+        expect(omitted).not.toHaveProperty("payload");
+        expect(omitted).toMatchObject({
+          payloadOmitted: true,
+          payloadBytes: expect.any(Number),
+        });
+      }
+      expect(params.slice(1, 3).map((p) => p.payloadBytes)).toEqual([
+        EXTENSION_PAYLOAD_MAX_BYTES + 1,
+        EXTENSION_PAYLOAD_MAX_BYTES + 1,
+      ]);
+      expect(params[1]!.reason).toContain("is owned by plugin");
+      expect(params[2]!.reason).toContain("declares no");
+      expect(params[3]!.reason).toContain("bytes; the limit is");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("truncates a large validator reason in the persisted diagnostic", async () => {
+    const { harness, session, thread } = await setup();
+    try {
+      const response = await post(harness, session.id, [
+        turnStarted(thread.id),
+        extensionItemEvent(
+          thread.id,
+          Array.from({ length: 10_000 }, (_, index) => index),
+          `${PLUGIN_ID}/tags`,
+        ),
+      ]);
+      expect(response.status).toBe(200);
+      const [, row] = storedRows(harness, thread.id);
+      const { reason } = (
+        row!.data as { rawEvent: { params: { reason: string } } }
+      ).rawEvent.params;
+      expect(reason.startsWith("0: ")).toBe(true);
+      expect(reason.endsWith("[truncated]")).toBe(true);
+      expect(Buffer.byteLength(reason)).toBeLessThanOrEqual(
+        EXTENSION_REJECTION_REASON_MAX_CHARS,
+      );
     } finally {
       await harness.cleanup();
     }

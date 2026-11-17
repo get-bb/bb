@@ -49,8 +49,8 @@ work happens that should not happen at all.
 | renders nothing while the app sits idle for 10 s                             | every component, mounts included                                       | on      |
 | typing an Ask User Question answer renders nothing outside the question form | everything outside `[data-question-form]` (keystrokes after the first) | on      |
 | typing in the composer renders nothing outside the composer form             | everything outside the composer's `form` (keystrokes after the first)  | pending |
-| renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | pending |
-| a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | pending |
+| renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | on      |
+| a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | on      |
 | a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | pending |
 
 Re-render invariants ignore mounts: windowed lists mount rows as they scroll,
@@ -65,8 +65,6 @@ reason:
 - composer typing: the prompt area above the composer form
   (`ThreadDetailPromptArea`, `ComposerBox`, the banner slots) re-renders on
   every keystroke;
-- sidebar pushes: every mounted sidebar row re-renders on a push for any one
-  thread;
 - streaming: every mounted `TimelineRowItemWrapper` re-renders on each
   streamed delta.
 

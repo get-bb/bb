@@ -451,7 +451,7 @@ export function ModelReasoningMenu({
             <div className="shrink-0 border-t border-border" />
             <div className="shrink-0 p-1">
               <MenuActionButton
-                label="Handoff to new thread"
+                label="Hand off to new thread"
                 iconName="MessageSquarePlus"
                 onClick={onStartHandoff}
               />

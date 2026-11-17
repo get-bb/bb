@@ -6152,6 +6152,40 @@ describe("ComposerBox command typeahead submit", () => {
     });
   });
 
+  it("submits when a built-in command is clicked in the menu", async () => {
+    const { changes, onSubmit, promptBoxRef } =
+      renderCommandPromptBox(compactSuggestion);
+    await openCommandMenu(promptBoxRef, "/compact", "compact");
+
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: /compact/ }));
+    });
+    await act(async () => {});
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(latestChange(changes)?.mentions?.[0]?.resource).toMatchObject({
+      name: "compact",
+      origin: "builtin",
+    });
+  });
+
+  it("does not submit when a non-built-in command is clicked in the menu", async () => {
+    const { changes, onSubmit, promptBoxRef } =
+      renderCommandPromptBox(userSkillSuggestion);
+    await openCommandMenu(promptBoxRef, "/review", "review");
+
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: /review/ }));
+    });
+    await act(async () => {});
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(latestChange(changes)?.mentions?.[0]?.resource).toMatchObject({
+      name: "review",
+      origin: "user",
+    });
+  });
+
   it("does not submit when a built-in command is selected with Tab", async () => {
     const { onSubmit, promptBoxRef } =
       renderCommandPromptBox(compactSuggestion);

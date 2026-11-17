@@ -1,8 +1,10 @@
 import {
   createContext,
+  use,
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -416,6 +418,14 @@ export interface ThreadTitleMentionResourcesProviderProps {
   threadById: ReadonlyMap<string, ThreadTitleMentionThread>;
 }
 
+const ThreadTitleMentionResourcesGetterContext = createContext<
+  () => ThreadTitleMentionResources
+>(() => EMPTY_TITLE_MENTION_RESOURCES);
+
+export function useThreadTitleMentionResourcesGetter(): () => ThreadTitleMentionResources {
+  return useContext(ThreadTitleMentionResourcesGetterContext);
+}
+
 export function ThreadTitleMentionResourcesProvider({
   children,
   sectionNamesById,
@@ -427,11 +437,18 @@ export function ThreadTitleMentionResourcesProvider({
     () => ({ sectionNamesById, projectNamesById, threadById }),
     [sectionNamesById, projectNamesById, threadById],
   );
+  const latestValue = useRef(value);
+  useLayoutEffect(() => {
+    latestValue.current = value;
+  }, [value]);
+  const getValue = useCallback(() => latestValue.current, []);
 
   const content = (
-    <ThreadTitleMentionResourcesContext.Provider value={value}>
-      {children}
-    </ThreadTitleMentionResourcesContext.Provider>
+    <ThreadTitleMentionResourcesGetterContext.Provider value={getValue}>
+      <ThreadTitleMentionResourcesContext.Provider value={value}>
+        {children}
+      </ThreadTitleMentionResourcesContext.Provider>
+    </ThreadTitleMentionResourcesGetterContext.Provider>
   );
   return resolver === EMPTY_RAW_THREAD_MENTION_RESOLVER ? (
     <RawThreadMentionResolverProvider>
@@ -586,6 +603,13 @@ interface ThreadTitleTextSegment {
 function serializedThreadMentionId(token: string): string | null {
   const prefix = "@thread:";
   return token.startsWith(prefix) ? token.slice(prefix.length) : null;
+}
+
+function mayContainTitleMention(title: string): boolean {
+  TITLE_MENTION_PATTERN.lastIndex = 0;
+  const found = TITLE_MENTION_PATTERN.test(title);
+  TITLE_MENTION_PATTERN.lastIndex = 0;
+  return found;
 }
 
 function threadTitleTextSegments(
@@ -929,7 +953,9 @@ function ThreadTitleMentionsContent({
   title,
   highlightRanges = [],
 }: ThreadTitleMentionsProps) {
-  const resources = useContext(ThreadTitleMentionResourcesContext);
+  const resources = mayContainTitleMention(title)
+    ? use(ThreadTitleMentionResourcesContext)
+    : EMPTY_TITLE_MENTION_RESOURCES;
   let offset = 0;
   return threadTitleTextSegments(title, resources).map((segment, index) => {
     const segmentOffset = offset;
