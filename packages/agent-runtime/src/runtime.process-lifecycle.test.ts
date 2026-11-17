@@ -1,3 +1,5 @@
+import { ChildProcess } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import {
   existsSync,
   mkdirSync,
@@ -59,6 +61,19 @@ interface CreateProviderProcessManagerArgs {
   workspacePath: string;
 }
 
+const spawnedChildren: ChildProcess[] = [];
+const childProcessChannel = channel("child_process");
+const onChildProcess = (message: unknown): void => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "process" in message &&
+    message.process instanceof ChildProcess
+  ) {
+    spawnedChildren.push(message.process);
+  }
+};
+
 function processIsAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -69,10 +84,18 @@ function processIsAlive(pid: number): boolean {
 }
 
 function stoppedProcessPids(log: string[]): number[] {
-  return log
-    .filter((line) => line.startsWith("spawn:"))
-    .map((line) => Number(line.slice("spawn:".length)))
-    .filter((pid) => !processIsAlive(pid));
+  const loggedPids = new Set(
+    log
+      .filter((line) => line.startsWith("spawn:"))
+      .map((line) => Number(line.slice("spawn:".length))),
+  );
+  return spawnedChildren.flatMap((child) =>
+    child.pid !== undefined &&
+    loggedPids.has(child.pid) &&
+    (child.exitCode !== null || child.signalCode !== null)
+      ? [child.pid]
+      : [],
+  );
 }
 
 const CODEX_SCRIPT: ScriptedEchoLaunchScript = {
@@ -99,10 +122,13 @@ describe("createAgentRuntime process lifecycle", () => {
   let fixturePidFile: string | undefined;
 
   beforeEach(() => {
+    spawnedChildren.length = 0;
+    childProcessChannel.subscribe(onChildProcess);
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-test-"));
   });
 
   afterEach(async () => {
+    childProcessChannel.unsubscribe(onChildProcess);
     if (fixturePidFile && existsSync(fixturePidFile)) {
       const pid = Number(readFileSync(fixturePidFile, "utf8"));
       if (processIsAlive(pid)) process.kill(pid, "SIGKILL");
@@ -295,7 +321,10 @@ describe("createAgentRuntime process lifecycle", () => {
       providerId: "fake",
     });
 
-    expect(processIsAlive(staleProcess.child.pid ?? 0)).toBe(false);
+    expect(
+      staleProcess.child.exitCode !== null ||
+        staleProcess.child.signalCode !== null,
+    ).toBe(true);
     expect(() =>
       manager.requireProviderProcess({
         processKey: staleKey,
