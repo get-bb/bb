@@ -62,6 +62,7 @@ import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
 import {
   closeSync,
+  constants,
   fstatSync,
   openSync,
   promises as fs,
@@ -2000,6 +2001,10 @@ function textWithBbSkillCommandsSpelledOut(
 }
 
 const EMBEDDED_TEXT_BYTE_LIMIT = 64 * 1024;
+const EMBEDDED_TEXT_OPEN_FLAGS =
+  process.platform === "win32"
+    ? "r"
+    : constants.O_RDONLY | constants.O_NONBLOCK;
 
 function imageBlockFromDataUrl(
   url: string,
@@ -2021,7 +2026,7 @@ function embeddedTextResource(
 ): AcpContentBlock | undefined {
   let fd: number | undefined;
   try {
-    fd = openSync(path, "r");
+    fd = openSync(path, EMBEDDED_TEXT_OPEN_FLAGS);
     const info = fstatSync(fd);
     if (!info.isFile() || info.size > EMBEDDED_TEXT_BYTE_LIMIT) {
       return undefined;

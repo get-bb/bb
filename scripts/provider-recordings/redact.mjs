@@ -82,6 +82,7 @@ const PRESERVED_ENV_VALUES = new Map([
 const GROK_SUBAGENT_ACTION_PROMPT =
   /^Use (?:send_subagent_message|kill_command_or_subagent) with /;
 const GROK_SYNTHETIC_SUBAGENT_MESSAGE = "CHILD_MESSAGE 😀 مراجعة";
+const PRESERVED_RAW_INPUT_KEYS = ["subagent_id", "task_id", "delivery"];
 const GROK_SYNTHETIC_SPAWN_RESULTS = new Set([
   "Subagent started in background.\nsubagent_id: child-alpha\ndescription: CHILD_ALPHA",
   "Subagent started in background.\nsubagent_id: child-beta\ndescription: CHILD_BETA",
@@ -146,6 +147,10 @@ const CATALOG_KEYS = new Set([
   "mcp_servers",
   "commands",
 ]);
+
+function isSecretShapedKey(key) {
+  return key !== "authMethods" && SECRET_ENV_KEY.test(key);
+}
 
 function isEnvMap(key, value) {
   return (
@@ -237,7 +242,7 @@ function redactValue(value, key, catalogContext) {
         out[childKey] = redactEnvMap(childValue);
       } else if (isProtocolDeltaKey(childKey, childValue)) {
         out[childKey] = redactValue(childValue, childKey, catalogContext);
-      } else if (SECRET_ENV_KEY.test(childKey)) {
+      } else if (isSecretShapedKey(childKey)) {
         out[childKey] = redactAllStrings(childValue);
       } else if (USER_CONTENT_KEYS.has(childKey)) {
         out[childKey] = redactUserContent(childValue);
@@ -258,10 +263,21 @@ function isClaudeCatalogMessage(message) {
 }
 
 function preserveGrokToolResults(value, redacted) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (Array.isArray(value)) {
+    if (!Array.isArray(redacted)) return;
+    for (let index = 0; index < value.length; index += 1) {
+      preserveGrokToolResults(value[index], redacted[index]);
+    }
     return;
   }
-  if (redacted === null || typeof redacted !== "object") return;
+  if (value === null || typeof value !== "object") return;
+  if (
+    redacted === null ||
+    typeof redacted !== "object" ||
+    Array.isArray(redacted)
+  ) {
+    return;
+  }
   if (
     value.rawInput !== null &&
     typeof value.rawInput === "object" &&
@@ -270,6 +286,28 @@ function preserveGrokToolResults(value, redacted) {
     typeof redacted.rawInput === "object"
   ) {
     redacted.rawInput.variant = "Task";
+  }
+  if (
+    value.rawInput !== null &&
+    typeof value.rawInput === "object" &&
+    !Array.isArray(value.rawInput) &&
+    redacted.rawInput !== null &&
+    typeof redacted.rawInput === "object" &&
+    !Array.isArray(redacted.rawInput)
+  ) {
+    for (const key of PRESERVED_RAW_INPUT_KEYS) {
+      const original = value.rawInput[key];
+      if (typeof original === "string" && original.length > 0) {
+        redacted.rawInput[key] = original;
+      }
+    }
+    const taskIds = value.rawInput.task_ids;
+    if (
+      Array.isArray(taskIds) &&
+      taskIds.every((entry) => typeof entry === "string" && entry.length > 0)
+    ) {
+      redacted.rawInput.task_ids = [...taskIds];
+    }
   }
   const rawOutput = value.rawOutput;
   const redactedOutput = redacted.rawOutput;

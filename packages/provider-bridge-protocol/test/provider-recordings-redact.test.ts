@@ -87,6 +87,63 @@ it("preserves existing recordings when the input directory is empty", () => {
   }
 });
 
+it("preserves auth method ids and subagent targets", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-ids-"));
+  const inputDir = join(root, "input");
+  const outputDir = join(root, "output");
+  const token = `sk-${"a".repeat(24)}`;
+  const message = {
+    authMethods: [{ id: "cached_token", name: "Sign in (cached_token)" }],
+    authToken: token,
+    update: {
+      rawInput: {
+        subagent_id: "child-alpha",
+        task_id: "child-alpha",
+        task_ids: ["child-alpha"],
+        delivery: "interject",
+        text: "secret note",
+      },
+    },
+  };
+  try {
+    mkdirSync(inputDir);
+    writeFileSync(
+      join(inputDir, "ids.ndjson"),
+      `${JSON.stringify({ line: JSON.stringify(message) })}\n`,
+    );
+    execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(REDACT_SCRIPT),
+        inputDir,
+        outputDir,
+        "--home",
+        "/home/tester",
+      ],
+      { encoding: "utf8" },
+    );
+    const output = JSON.parse(
+      JSON.parse(readFileSync(join(outputDir, "ids.ndjson"), "utf8")).line,
+    );
+    expect(output.authMethods).toEqual([
+      { id: "cached_token", name: "Sign in (cached_token)" },
+    ]);
+    expect(output.authToken).toBe("REDACTED");
+    expect(output.update.rawInput).toEqual({
+      subagent_id: "child-alpha",
+      task_id: "child-alpha",
+      task_ids: ["child-alpha"],
+      delivery: "interject",
+      text: "REDACTED_TEXT",
+    });
+    expect(readFileSync(join(outputDir, "ids.ndjson"), "utf8")).not.toContain(
+      token,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("refuses an output directory that contains the input recordings", () => {
   const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-parent-"));
   const inputDir = join(root, "raw");

@@ -11,7 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import type { ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, normalize } from "node:path";
@@ -3343,6 +3343,54 @@ describe("acp bridge", () => {
     expect(serialized).not.toContain("xxx");
     expect(serialized).not.toContain("\uFFFD");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "grok_fifo_attachment_stays_a_link_and_a_symlink_to_a_file_is_embedded",
+    async () => {
+      const filePath = join(workspaceDir, "note.txt");
+      const embedded = "EMBED_OK";
+      writeFileSync(filePath, embedded);
+      const linkPath = join(workspaceDir, "note.link");
+      symlinkSync(filePath, linkPath);
+      const fifoPath = join(workspaceDir, "note.fifo");
+      execFileSync("mkfifo", [fifoPath]);
+      const fifoLink = join(workspaceDir, "fifo.link");
+      symlinkSync(fifoPath, fifoLink);
+      const requestLog = join(workspaceDir, "grok-fifo.jsonl");
+      const { providerThreadId } = await startThread({
+        dialectId: "grok",
+        envVars: {
+          FAKE_ACP_PROMPT_EMBEDDED: "1",
+          FAKE_ACP_REQUEST_LOG: requestLog,
+        },
+      });
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [
+          { type: "localFile", path: linkPath, name: "note.link" },
+          { type: "localFile", path: fifoPath, name: "note.fifo" },
+          { type: "localFile", path: fifoLink, name: "fifo.link" },
+        ],
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+      await waitForTurnCompleted();
+      const prompt = sessionPromptBlocks(requestLog);
+      expect(prompt).toContainEqual({
+        type: "resource",
+        resource: {
+          uri: expect.stringMatching(/^file:\/\/.+\/note\.link$/u),
+          mimeType: "text/plain",
+          text: embedded,
+        },
+      });
+      const links = prompt.filter(
+        (block) =>
+          typeof block === "object" &&
+          block !== null &&
+          (block as { type?: string }).type === "resource_link",
+      );
+      expect(links).toHaveLength(2);
+    },
+  );
 
   it("prefers xAI API-key auth when XAI_API_KEY is available", async () => {
     const { providerThreadId } = await startThread({
