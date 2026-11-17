@@ -570,8 +570,20 @@ function emitGrokTokenUsageFromPromptResult(
         },
       ]);
     }
-    session.grokPromptCost = grokUsageCostFromMetrics(metrics);
+    rememberGrokPromptCost(session, grokUsageCostFromMetrics(metrics));
   } catch {}
+}
+
+function rememberGrokPromptCost(
+  session: AcpThreadSession,
+  cost: ThreadUsageCost | undefined,
+): void {
+  if (cost === undefined) return;
+  const previous = session.grokPromptCost;
+  session.grokPromptCost =
+    previous === undefined || previous.currency !== cost.currency
+      ? cost
+      : { amount: previous.amount + cost.amount, currency: cost.currency };
 }
 
 function emitGrokPromptUsage(session: AcpThreadSession, result: unknown): void {
@@ -4433,6 +4445,29 @@ function handleGrokSubagentNotification(
   );
 }
 
+function grokSubagentToolTarget(
+  toolName: PendingGrokSubagentAction["toolName"],
+  rawInput: unknown,
+): string | undefined {
+  if (!isJsonObject(rawInput)) return undefined;
+  if (toolName === "send_subagent_message") {
+    const childRef = rawInput["subagent_id"];
+    return typeof childRef === "string" && childRef.length > 0
+      ? childRef
+      : undefined;
+  }
+  const taskId = rawInput["task_id"];
+  if (typeof taskId === "string" && taskId.length > 0) return taskId;
+  const taskIds = rawInput["task_ids"];
+  const onlyTaskId = Array.isArray(taskIds) ? taskIds[0] : undefined;
+  return Array.isArray(taskIds) &&
+    taskIds.length === 1 &&
+    typeof onlyTaskId === "string" &&
+    onlyTaskId.length > 0
+    ? onlyTaskId
+    : undefined;
+}
+
 function noteGrokSubagentToolCall(
   session: AcpThreadSession,
   update: {
@@ -4464,7 +4499,9 @@ function noteGrokSubagentToolCall(
     const pending = Array.from(session.pendingSubagentActions.values()).find(
       (candidate) =>
         candidate.toolCallId === undefined &&
-        candidate.toolName === update.title,
+        candidate.toolName === update.title &&
+        grokSubagentToolTarget(candidate.toolName, update.rawInput) ===
+          candidate.childRef,
     );
     if (pending !== undefined && update.sessionUpdate === "tool_call") {
       pending.toolCallId = update.toolCallId;
@@ -4487,6 +4524,14 @@ function noteGrokSubagentToolCall(
       action.toolName,
       update.rawOutput,
     );
+    if (result.kind === "cancel" && result.childRef !== action.childRef) {
+      failPendingSubagentAction(
+        session,
+        action,
+        `Grok cancel action finished for subagent "${result.childRef}" instead of "${action.childRef}"`,
+      );
+      return;
+    }
     if (!session.pendingSubagentActions.delete(String(action.requestId))) {
       return;
     }

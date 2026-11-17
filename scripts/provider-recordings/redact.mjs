@@ -547,6 +547,11 @@ function main() {
   let rewritten = 0;
   try {
     const files = walk(inputRoot);
+    if (files.length === 0) {
+      throw new Error(
+        `refusing to replace ${outDir}: the input recordings are empty`,
+      );
+    }
     const survivors = [];
     for (const file of files) {
       const rel = relative(inputRoot, file);

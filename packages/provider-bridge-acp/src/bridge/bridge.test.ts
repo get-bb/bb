@@ -6258,7 +6258,7 @@ describe("acp bridge", () => {
       threadEventsOfType("thread/contextWindowUsage/updated").at(-1),
     ).toMatchObject({
       contextWindowUsage: {
-        cost: { amount: 0.132_967_2, currency: "USD" },
+        cost: { amount: 0.265_934_4, currency: "USD" },
       },
     });
   });
@@ -7692,6 +7692,31 @@ describe("acp bridge: questions the agent asks", () => {
     });
   });
 
+  it("does not acknowledge a tell addressed to a different child", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_WRONG_TARGET: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "for alpha only",
+      }),
+    );
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+    const listed = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(listed.result).toMatchObject({
+      subagents: [
+        { childRef: "child-alpha", status: "running" },
+        { childRef: "child-beta", status: "completed" },
+      ],
+    });
+  });
+
   it("grok_subagent_cancel_does_not_cancel_parent_or_sibling", async () => {
     const { providerThreadId } = await startGrokSubagentThread();
     const response = await waitForResponse(
@@ -7724,6 +7749,30 @@ describe("acp bridge: questions the agent asks", () => {
         executionOptions({}),
       ),
     ).toBe("echo:echo-parent-alive");
+  });
+
+  it("does not report a cancel that finished a different child", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_CANCEL_RESULT_CHILD: "child-beta",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/cancel", providerThreadId, {
+        childRef: "child-alpha",
+      }),
+    );
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      'finished for subagent "child-beta" instead of "child-alpha"',
+    );
+    const listed = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(listed.result).toMatchObject({
+      subagents: [
+        { childRef: "child-alpha", status: "running" },
+        { childRef: "child-beta", status: "completed", result: "BETA_DONE" },
+      ],
+    });
   });
 
   it("grok_subagent_empty_message_rejected", async () => {

@@ -743,13 +743,21 @@ function spawnGrokSubagentPair() {
 
 async function handleGrokSubagentTell(text) {
   const childRef = /subagent_id="([^"]+)"/.exec(text)?.[1] ?? "missing";
+  const addressed =
+    process.env.FAKE_ACP_GROK_SUBAGENT_WRONG_TARGET === "1"
+      ? "child-beta"
+      : childRef;
   const message = /text exactly ("(?:[^"\\]|\\.)*")/.exec(text)?.[1] ?? '""';
   const content = JSON.parse(message);
   notifyUpdate({
     sessionUpdate: "tool_call",
-    toolCallId: `tell-${childRef}`,
+    toolCallId: `tell-${addressed}`,
     title: "send_subagent_message",
-    rawInput: { subagent_id: childRef, text: content, delivery: "interject" },
+    rawInput: {
+      subagent_id: addressed,
+      text: content,
+      delivery: "interject",
+    },
     _meta: {
       "x.ai/tool": {
         version: 1,
@@ -762,7 +770,7 @@ async function handleGrokSubagentTell(text) {
   if (process.env.FAKE_ACP_GROK_SUBAGENT_ACTION_ERROR === "1") {
     notifyUpdate({
       sessionUpdate: "tool_call_update",
-      toolCallId: `tell-${childRef}`,
+      toolCallId: `tell-${addressed}`,
       status: "failed",
       content: [
         { type: "content", content: { type: "text", text: "send failed" } },
@@ -776,7 +784,7 @@ async function handleGrokSubagentTell(text) {
   if (delay > 0) await sleep(delay);
   notifyUpdate({
     sessionUpdate: "tool_call_update",
-    toolCallId: `tell-${childRef}`,
+    toolCallId: `tell-${addressed}`,
     title: "Sending message to subagent",
     status: "completed",
     rawOutput:
@@ -785,12 +793,12 @@ async function handleGrokSubagentTell(text) {
         : {
             type: "SendSubagentMessage",
             outcome: "accepted",
-            message_id: `message-${childRef}`,
+            message_id: `message-${addressed}`,
           },
   });
   if (process.env.FAKE_ACP_GROK_SUBAGENT_KEEP_RUNNING !== "1") {
     notifySubagent("subagent_finished", {
-      subagent_id: childRef,
+      subagent_id: addressed,
       status: "completed",
       output: content,
       turns: 2,
@@ -831,6 +839,8 @@ async function handleGrokSubagentCancel(text) {
     process.env.FAKE_ACP_GROK_SUBAGENT_ACTION_DELAY_MS ?? "0",
   );
   if (delay > 0) await sleep(delay);
+  const resultChild =
+    process.env.FAKE_ACP_GROK_SUBAGENT_CANCEL_RESULT_CHILD ?? childRef;
   notifyUpdate({
     sessionUpdate: "tool_call_update",
     toolCallId: `cancel-${childRef}`,
@@ -838,18 +848,21 @@ async function handleGrokSubagentCancel(text) {
     status: "completed",
     rawOutput:
       process.env.FAKE_ACP_GROK_SUBAGENT_MALFORMED === "1"
-        ? { type: "KillTask", Result: { task_id: childRef, outcome: "failed" } }
+        ? {
+            type: "KillTask",
+            Result: { task_id: resultChild, outcome: "failed" },
+          }
         : {
             type: "KillTask",
             Result: {
-              task_id: childRef,
+              task_id: resultChild,
               outcome: "killed",
               message: "Subagent cancellation initiated",
             },
           },
   });
   notifySubagent("subagent_finished", {
-    subagent_id: childRef,
+    subagent_id: resultChild,
     status: "cancelled",
     error: "Subagent was cancelled",
     turns: 1,
