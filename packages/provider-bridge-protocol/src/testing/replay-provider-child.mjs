@@ -603,6 +603,9 @@ function main() {
       if (live === null) {
         return;
       }
+      if (args.dialect === "pi-rpc" && step.classified.key === "get_state") {
+        piPromptProbePending = false;
+      }
       if (args.dialect === "pi-rpc" && step.classified.key === "prompt") {
         piPromptProbePending = live.message.streamingBehavior !== "steer";
         for (let index = position + 1; index < script.length; index += 1) {
