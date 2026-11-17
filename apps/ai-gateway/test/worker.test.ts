@@ -11,11 +11,45 @@ import {
   type Request as MiniflareRequest,
   Response as MiniflareResponse,
 } from "miniflare";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { sha256Hex } from "@bb/connect-db";
+
+vi.mock("miniflare", async (importOriginal) => {
+  const miniflare = await importOriginal<typeof import("miniflare")>();
+  const getServices = miniflare.RATELIMIT_PLUGIN.getServices;
+  vi.spyOn(miniflare.RATELIMIT_PLUGIN, "getServices").mockImplementation(
+    async (options) => {
+      const result = await getServices(options);
+      const services = Array.isArray(result) ? result : result?.services;
+      for (const service of services ?? []) {
+        if (!("worker" in service)) continue;
+        const worker = service.worker;
+        if (worker === undefined || !("modules" in worker)) continue;
+        for (const module of worker.modules ?? []) {
+          if ("esModule" in module && module.esModule !== undefined) {
+            module.esModule = `${CLOCK_SCRIPT}\n${module.esModule}`;
+          }
+        }
+      }
+      return result;
+    },
+  );
+  return miniflare;
+});
+
+afterAll(() => vi.restoreAllMocks());
 
 const CREDENTIAL = "bbcred_miniflare_server";
 const NOW = Date.now();
+const CLOCK_SCRIPT = `Date.now = () => ${NOW};`;
 const upstreamBodies: unknown[] = [];
 
 async function bundleWorker(): Promise<string> {
@@ -26,7 +60,7 @@ async function bundleWorker(): Promise<string> {
     target: "esnext",
     conditions: ["workerd", "worker", "browser"],
     plugins: [workerNodeBuiltinsPlugin],
-    banner: { js: `Date.now = () => ${NOW};` },
+    banner: { js: CLOCK_SCRIPT },
     write: false,
   });
   return result.outputFiles[0].text;
