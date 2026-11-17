@@ -200,6 +200,105 @@ describe("thread pruning", () => {
     }
   });
 
+  it("prunes a command's first output delta once its started row and completed output exist", () => {
+    const f = setup();
+    try {
+      const started = (sequence: number, itemId: string, parentToolCallId?: string) =>
+        seed(f, sequence, {
+          type: "item/started",
+          itemId,
+          itemKind: "commandExecution",
+          parentToolCallId,
+          data: "{}",
+        });
+      const delta = (sequence: number, itemId: string, parentToolCallId?: string) =>
+        seed(f, sequence, {
+          type: "item/commandExecution/outputDelta",
+          itemId,
+          parentToolCallId,
+          data: '{"delta":"whole output"}',
+        });
+      const completed = (
+        sequence: number,
+        itemId: string,
+        data: string,
+        parentToolCallId?: string,
+      ) =>
+        seed(f, sequence, {
+          type: "item/completed",
+          itemId,
+          itemKind: "commandExecution",
+          parentToolCallId,
+          data,
+        });
+      const withOutput = '{"item":{"aggregatedOutput":"whole output"}}';
+      started(1, "pi");
+      delta(2, "pi");
+      completed(3, "pi", withOutput);
+      delta(4, "no-started");
+      completed(5, "no-started", withOutput);
+      started(6, "no-output");
+      delta(7, "no-output");
+      completed(8, "no-output", '{"item":{}}');
+      started(9, "nested", "other-parent");
+      delta(10, "nested", "parent");
+      completed(11, "nested", withOutput, "parent");
+      seed(f, 12, { type: "turn/completed" });
+      cycle(f, "resolved-items");
+      expect(sequences(f)).toEqual([1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("revisits first output deltas left by an older resting cursor version", () => {
+    const f = setup();
+    try {
+      seed(f, 1, {
+        type: "item/started",
+        itemId: "pi",
+        itemKind: "commandExecution",
+        data: "{}",
+      });
+      seed(f, 2, {
+        type: "item/commandExecution/outputDelta",
+        itemId: "pi",
+        data: '{"delta":"whole output"}',
+      });
+      seed(f, 3, {
+        type: "item/completed",
+        itemId: "pi",
+        itemKind: "commandExecution",
+        data: '{"item":{"aggregatedOutput":"whole output"}}',
+      });
+      seed(f, 4, { type: "turn/completed" });
+      f.db
+        .insert(threadPruningCursors)
+        .values({
+          policy: "deltas",
+          scope: f.thread.id,
+          threadId: f.thread.id,
+          version: 2,
+          sequence: 3,
+          upperSequence: 3,
+          updatedAt: 1,
+        })
+        .run();
+      const batch = f.db.transaction((tx) =>
+        advanceLiveEventPruning(tx, {
+          threadId: f.thread.id,
+          kind: "deltas",
+          limit: 32,
+          deadline: Number.POSITIVE_INFINITY,
+        }),
+      );
+      expect(batch).toMatchObject({ removed: 1, complete: true });
+      expect(sequences(f)).toEqual([1, 3, 4]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("rotates scoped live policies durably and drains active usage without global idle cleanup", () => {
     let f = setup();
     try {

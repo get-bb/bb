@@ -6,14 +6,14 @@ allocation and provider-session recovery always have a tail to read.
 
 ## Retention rules
 
-| Event                                         | Keep                                                                                           | Delete                                                                 |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Rate-limit snapshots                          | Latest snapshot in an unarchived thread                                                        | Older snapshots; all snapshots in an archived thread                   |
-| Context-window usage                          | Latest root snapshot and latest root snapshot containing context-window capacity, if different | Other snapshots                                                        |
-| Token usage                                   | Latest root snapshot                                                                           | Other snapshots                                                        |
-| Turn-diff snapshots                           | Incoming snapshots are skipped before sequence allocation                                      | Historical snapshots                                                   |
-| Message, reasoning, and command-output deltas | Unresolved deltas and the first delta of each type in an item scope                            | Subsequent deltas once matching completed output exists                |
-| Background-task progress                      | Latest progress for an unfinished task                                                         | Superseded progress, and all progress after background-task completion |
+| Event                                         | Keep                                                                                                               | Delete                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Rate-limit snapshots                          | Latest snapshot in an unarchived thread                                                                            | Older snapshots; all snapshots in an archived thread                   |
+| Context-window usage                          | Latest root snapshot and latest root snapshot containing context-window capacity, if different                     | Other snapshots                                                        |
+| Token usage                                   | Latest root snapshot                                                                                               | Other snapshots                                                        |
+| Turn-diff snapshots                           | Incoming snapshots are skipped before sequence allocation                                                          | Historical snapshots                                                   |
+| Message, reasoning, and command-output deltas | Unresolved deltas and the first delta of each type in an item scope, except a started command's first output delta | Subsequent deltas once matching completed output exists                |
+| Background-task progress                      | Latest progress for an unfinished task                                                                             | Superseded progress, and all progress after background-task completion |
 
 The latest-event safeguard takes precedence over every rule, including archived
 rate limits; a later pass can delete the previous tail once another event
@@ -23,7 +23,9 @@ per-state retention counts.
 Root usage excludes turns started by a parent tool call. The context indicator
 combines the latest usage with the last known capacity, which is why a second
 root context snapshot can be kept. Command-output deltas are deleted only when
-the completed item carries `aggregatedOutput`. Completed items and `fileChange`
+the completed item carries `aggregatedOutput`. A command's first output delta is
+deleted too when the item also has an `item/started` row, because the started and
+completed rows then carry everything a reader needs. Completed items and `fileChange`
 events remain available to timeline readers.
 
 ## When pruning runs
@@ -77,7 +79,8 @@ before the thread's latest one. The next pass starts from that bound instead of
 the first event. It reaches back below the bound only for items that gained a
 completion (deltas) or newer progress or completion (background tasks) since the
 last pass, starting at that item's earliest candidate. Everything else below the
-bound was either pruned or is kept for good: the first delta of an item, a delta
+bound was either pruned or is kept for good: the first delta of an item (except a
+command output delta whose item has a started row), a delta
 without a turn or item, or a candidate whose deciding row has not arrived yet,
 which the reach-back covers once it does. Deleting a thread's event suffix, or
 inserting an event at or below the thread's latest sequence, moves the bound back

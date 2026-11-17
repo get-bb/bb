@@ -42,7 +42,7 @@ export function emptyResolvedItemPruningProbe(): ResolvedItemPruningProbe {
 
 const RESOLVED_ITEM_PRUNING_DELETE_CHUNK = 16;
 const RESOLVED_ITEM_PRUNING_PAGE_SIZE = 64;
-const RESTING_CURSOR_VERSION = 2;
+const RESTING_CURSOR_VERSION = 3;
 
 const deltaKinds: Partial<Record<ThreadEventType, string>> = {
   "item/agentMessage/delta": "agentMessage",
@@ -94,6 +94,12 @@ const prepareEarlier = (db: DbQueryConnection) =>
     db,
     "events_thread_turn_type_item_sequence_idx",
     sql`turn_id = ${sql.placeholder("turnId")} AND type = ${sql.placeholder("type")} AND item_id = ${sql.placeholder("itemId")} AND sequence < ${sql.placeholder("beforeSequence")}`,
+  );
+const prepareEarlierOrStarted = (db: DbQueryConnection) =>
+  prepareSupport(
+    db,
+    "events_thread_turn_type_item_sequence_idx",
+    sql`turn_id = ${sql.placeholder("turnId")} AND type IN (${sql.placeholder("type")}, 'item/started') AND item_id = ${sql.placeholder("itemId")} AND sequence < ${sql.placeholder("beforeSequence")}`,
   );
 const prepareOutput = (db: DbQueryConnection) =>
   prepareSupport(
@@ -150,7 +156,9 @@ function pruneResolvedItemCandidates(
           ? prepareLifecycle
           : prepareProgress
         : probe.probePhase === 1
-          ? prepareEarlier
+          ? candidate.type === "item/commandExecution/outputDelta"
+            ? prepareEarlierOrStarted
+            : prepareEarlier
           : candidate.type === "item/commandExecution/outputDelta"
             ? prepareOutput
             : prepareCompletion;
@@ -211,10 +219,11 @@ function pruneResolvedItemCandidates(
             ? row.type === "item/backgroundTask/completed"
             : row.itemId === candidate.itemId
           : row.parentToolCallId === candidate.parentToolCallId &&
-            (probe.probePhase === 1 ||
-              (row.itemKind === kind &&
+            (probe.probePhase === 1
+              ? row.type === candidate.type || row.itemKind === kind
+              : row.itemKind === kind &&
                 (candidate.type !== "item/commandExecution/outputDelta" ||
-                  row.hasOutput !== 0))),
+                  row.hasOutput !== 0)),
       );
       if (match) {
         if (args.kind === "background" || probe.probePhase === 1) {
