@@ -149,7 +149,6 @@ function screenElement(presentation: ThreadScreenPresentation) {
       timelineEnabled
       timelineHost={{
         environmentHostName: null,
-        includePluginMessageActions: false,
         unreadDividerAutoScroll: false,
         unreadDividerPlacement: null,
       }}

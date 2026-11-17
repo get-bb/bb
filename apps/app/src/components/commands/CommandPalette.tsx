@@ -28,7 +28,7 @@ import {
   buildPluginPaletteActions,
 } from "@/lib/command-palette/palette-plugin-actions";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
-import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import type { PluginSettingsCandidate } from "@/components/settings/plugin-settings-entries";
 import { appQueryClient } from "@/lib/app-query-client";

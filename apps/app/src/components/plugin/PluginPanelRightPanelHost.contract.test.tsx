@@ -18,7 +18,7 @@ import {
   collectPluginAppRegistrations,
   definePluginApp,
 } from "@/lib/plugin-app-definition";
-import { resetFocusedAppPanelControllersForTest } from "@/lib/app-fixed-tab-navigation";
+import { resetFocusedAppNavigationSurfacesForTest } from "@/lib/app-navigation-host";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import {
   CONTRACT_PLUGIN_ID,
@@ -29,12 +29,14 @@ import {
   contractActionPanelTabId,
   contractTarget,
   describePanelControllerContract,
+  readContractNavigate,
   readContractPanel,
   readContractTabs,
   snapshotFromState,
   type ContractPanelRef,
   type ContractStateSink,
 } from "@/test/panel-controller-contract";
+import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import { PluginContext } from "./plugin-context";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
@@ -64,9 +66,10 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({ data: { primaryHostId: null } }),
 }));
-vi.mock("@/lib/bb-desktop", () => ({
+vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bb-desktop")>()),
   getDesktopBrowserApi: () => null,
-  isDesktopBrowserAvailable: () => false,
+  isDesktopBrowserAvailable: () => true,
 }));
 vi.mock("react-resizable-panels", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-resizable-panels")>()),
@@ -169,7 +172,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   removePluginSlotRegistrations(CONTRACT_PLUGIN_ID);
-  resetFocusedAppPanelControllersForTest();
+  resetFocusedAppNavigationSurfacesForTest();
 });
 
 describePanelControllerContract(
@@ -217,6 +220,20 @@ describePanelControllerContract(
     );
     return {
       panel: () => readContractPanel(probe),
+      navigate: () => readContractNavigate(probe),
+      open: {
+        terminal: makeTerminalSession({
+          id: "term_contract",
+          threadId: null,
+          environmentId: null,
+          hostId: "host_contract",
+        }),
+        file: {
+          target: { kind: "host", hostId: "host_contract", path: "/a.md" },
+          location: null,
+        },
+        url: "https://example.com/contract",
+      },
       snapshot: () => snapshotFromState(sink),
       tabs: () => readContractTabs(probe),
       renderedTabVisible: () =>

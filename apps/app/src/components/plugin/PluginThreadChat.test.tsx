@@ -349,7 +349,6 @@ describe("PluginThreadChat", () => {
       unknown
     >;
     expect(timelineHost.leadingContent).toBeTruthy();
-    expect(timelineHost.includePluginMessageActions).toBe(false);
     const actions = timelineHost.consumerMessageActions as Array<
       Record<string, unknown>
     >;

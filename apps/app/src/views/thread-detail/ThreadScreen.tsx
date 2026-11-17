@@ -101,7 +101,6 @@ export type ThreadScreenPresentation =
 export interface ThreadScreenTimelineHost {
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
   environmentHostName: string | null;
-  includePluginMessageActions: boolean;
   leadingContent?: ReactNode;
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onTitleAction?: TimelineTitleActionResolver;
@@ -604,7 +603,6 @@ export function ThreadScreen({
         }
         leadingContent={timelineHost.leadingContent}
         consumerMessageActions={timelineHost.consumerMessageActions}
-        includePluginMessageActions={timelineHost.includePluginMessageActions}
         onForkMessage={timelineHost.onForkMessage}
         onEditMessage={handleEditSentMessage}
         inlineMessageEditor={inlineMessageEditor}

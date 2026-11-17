@@ -23,7 +23,10 @@ import type {
   PluginThreadActionsOptions,
 } from "@get-bb/plugin-sdk";
 import { PluginContext } from "@/components/plugin/plugin-context";
-import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import {
+  FocusedAppNavigationSurfaceProvider,
+  getFocusedAppPanelController,
+} from "@/lib/app-navigation-host";
 import {
   createPluginPanelController,
   createRetiredOpenPanel,
@@ -408,13 +411,20 @@ export function ThreadActionCollectors({
       setSnapshot({ ...snapshot, requestRename: requestRenameUnavailable });
     };
   }, []);
-  return records.map((record) => (
-    <PluginContext.Provider key={record.instanceKey} value={record.pluginId}>
-      <ThreadActionCollectorBoundary registrationKey={record.key}>
-        <ThreadActionCollector record={record} />
-      </ThreadActionCollectorBoundary>
-    </PluginContext.Provider>
-  ));
+  return (
+    <FocusedAppNavigationSurfaceProvider>
+      {records.map((record) => (
+        <PluginContext.Provider
+          key={record.instanceKey}
+          value={record.pluginId}
+        >
+          <ThreadActionCollectorBoundary registrationKey={record.key}>
+            <ThreadActionCollector record={record} />
+          </ThreadActionCollectorBoundary>
+        </PluginContext.Provider>
+      ))}
+    </FocusedAppNavigationSurfaceProvider>
+  );
 }
 
 function containRun(

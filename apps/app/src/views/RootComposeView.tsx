@@ -116,7 +116,7 @@ import {
 } from "@/lib/fixed-panel-tabs";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import { useAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
@@ -957,7 +957,6 @@ function RootComposeSurface({
     activeTabId: isSecondaryPanelOpen ? activeFixedSecondaryTabId : null,
     close: closeWorkspacePanel,
     destinations: panelDestinations,
-    isFocused: isFocusedPane,
   });
   const rootPluginPanelActions = usePluginNewThreadPanelActions({
     panel,
@@ -1422,7 +1421,10 @@ function RootComposeSurface({
       <PluginComposerHostProvider value={pluginComposerHost}>
         <AttachmentOpenerContext.Provider value={openAttachment}>
           <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-            <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+            <AppNavigationSurfaceProvider
+              capabilities={appNavigationCapabilities}
+              isFocused={isFocusedPane}
+            >
               <AppPanelTabsPublisher
                 publish={panel.publishTabs}
                 activeTabId={activeFixedSecondaryTabId}
@@ -1473,7 +1475,7 @@ function RootComposeSurface({
               >
                 {promptBox}
               </RootComposeSecondaryContent>
-            </AppNavigationHostProvider>
+            </AppNavigationSurfaceProvider>
           </UrlOpenRoutingProvider>
         </AttachmentOpenerContext.Provider>
       </PluginComposerHostProvider>

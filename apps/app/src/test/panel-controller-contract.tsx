@@ -1,17 +1,23 @@
 import { useLayoutEffect, type ReactNode } from "react";
 import { act } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
+  BbNavigate,
+  ExperimentalFilePreviewOptions,
   ExperimentalOpenTabOptions,
   ExperimentalPanelController,
   ExperimentalPanelTabs,
   ExperimentalTabReference,
   JsonValue,
 } from "@get-bb/plugin-sdk";
+import type { TerminalSession } from "@bb/server-contract";
+import { createTerminalFixedPanelTab } from "@bb/client-core";
+import { sdk } from "@/lib/sdk";
+import { useBbNavigate } from "@/lib/plugin-navigation-hooks";
 import {
-  experimental_useAppPanel,
-  experimental_useFixedTabTarget,
-  experimental_usePanelTabs,
+  experimental_useAppPanel as useAppPanel,
+  experimental_useFixedTabTarget as useFixedTabTarget,
+  experimental_usePanelTabs as usePanelTabs,
 } from "@/lib/plugin-sdk-hooks";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import {
@@ -37,8 +43,16 @@ interface ContractTab {
   panelTabId: string;
 }
 
+export interface PanelContractOpenTargets {
+  terminal: TerminalSession;
+  file: ExperimentalFilePreviewOptions;
+  url: string;
+}
+
 export interface PanelContractSurface {
   panel: () => ExperimentalPanelController;
+  navigate: () => BbNavigate;
+  open: PanelContractOpenTargets;
   tabs: () => ExperimentalPanelTabs;
   snapshot: () => PanelContractSnapshot;
   renderedTarget: () => string | null;
@@ -73,7 +87,7 @@ export function ContractTargetedFixedTab({
 }: {
   tab: ExperimentalTabReference & { availability: "fixed" };
 }) {
-  const target = experimental_useFixedTabTarget({
+  const target = useFixedTabTarget({
     ...tab,
     experimental_target: contractTarget,
   });
@@ -97,6 +111,7 @@ export function ContractActionTab({ params }: { params: JsonValue | null }) {
 export interface ContractPanelRef {
   current: ExperimentalPanelController | null;
   tabs?: ExperimentalPanelTabs;
+  navigate?: BbNavigate;
 }
 
 export function readContractPanel(ref: ContractPanelRef) {
@@ -109,9 +124,30 @@ export function readContractTabs(ref: ContractPanelRef) {
   return ref.tabs;
 }
 
+export function readContractNavigate(ref: ContractPanelRef) {
+  if (ref.navigate === undefined)
+    throw new Error("panel probe has not rendered");
+  return ref.navigate;
+}
+
+function recordProbe(
+  probe: ContractPanelRef,
+  current: ExperimentalPanelController,
+  tabs: ExperimentalPanelTabs,
+  navigate: BbNavigate,
+): void {
+  probe.current = current;
+  probe.tabs = tabs;
+  probe.navigate = navigate;
+}
+
 export function ContractPanelProbe({ probe }: { probe: ContractPanelRef }) {
-  probe.current = experimental_useAppPanel();
-  probe.tabs = experimental_usePanelTabs();
+  const current = useAppPanel();
+  const tabs = usePanelTabs();
+  const navigate = useBbNavigate();
+  useLayoutEffect(() => {
+    recordProbe(probe, current, tabs, navigate);
+  });
   return null;
 }
 
@@ -119,6 +155,14 @@ function call<T>(run: () => T): T {
   let result!: T;
   act(() => {
     result = run();
+  });
+  return result;
+}
+
+async function callAsync<T>(run: () => Promise<T>): Promise<T> {
+  let result!: T;
+  await act(async () => {
+    result = await run();
   });
   return result;
 }
@@ -401,6 +445,60 @@ export function describePanelControllerContract(
         });
       },
     );
+
+    it("opens a terminal, selects its tab and reveals the closed side panel", async () => {
+      const surface = await mount();
+      const session = surface.open.terminal;
+      vi.spyOn(sdk.terminals, "get").mockResolvedValue(session);
+      call(() => surface.panel().close());
+      expect(surface.snapshot().isOpen).toBe(false);
+      expect(
+        await callAsync(() =>
+          surface
+            .navigate()
+            .experimental_openTerminal({ terminalId: session.id }),
+        ),
+      ).toBe(true);
+      expect(surface.snapshot()).toMatchObject({
+        isOpen: true,
+        activeTabId: createTerminalFixedPanelTab({ terminalId: session.id }).id,
+      });
+    });
+
+    it("opens a file preview, selects its tab and reveals the closed side panel, reusing the tab for the same file", async () => {
+      const surface = await mount();
+      call(() => surface.panel().close());
+      const before = surface.snapshot();
+      expect(
+        call(() =>
+          surface.navigate().experimental_openFilePreview(surface.open.file),
+        ),
+      ).toBe(true);
+      const opened = surface.snapshot();
+      expect(opened.isOpen).toBe(true);
+      expect(opened.activeTabId).not.toBeNull();
+      expect(before.tabIds).not.toContain(opened.activeTabId);
+      call(() => surface.panel().close());
+      expect(
+        call(() =>
+          surface.navigate().experimental_openFilePreview(surface.open.file),
+        ),
+      ).toBe(true);
+      expect(surface.snapshot()).toEqual(opened);
+    });
+
+    it("opens a URL in the panel browser and reveals the closed side panel when the in-app browser is available", async () => {
+      const surface = await mount();
+      call(() => surface.panel().close());
+      const before = surface.snapshot();
+      expect(call(() => surface.navigate().openUrl(surface.open.url))).toBe(
+        true,
+      );
+      const opened = surface.snapshot();
+      expect(opened.isOpen).toBe(true);
+      expect(opened.activeTabId).not.toBeNull();
+      expect(before.tabIds).not.toContain(opened.activeTabId);
+    });
 
     it("routes the panel.toggle command through the controller", async () => {
       const surface = await mount();

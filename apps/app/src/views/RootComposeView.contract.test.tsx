@@ -19,8 +19,8 @@ import {
 } from "@/lib/plugin-app-definition";
 import {
   getFocusedAppPanelController,
-  resetFocusedAppPanelControllersForTest,
-} from "@/lib/app-fixed-tab-navigation";
+  resetFocusedAppNavigationSurfacesForTest,
+} from "@/lib/app-navigation-host";
 import { createPluginPanelController } from "@/lib/plugin-panel-controller";
 import { DefaultPaneContextProvider } from "@/views/thread-detail/PaneContext";
 import { ROOT_COMPOSE_FIXED_PANEL_STATE_ID } from "@/views/RootComposePanelTabContent";
@@ -30,11 +30,18 @@ import {
   ContractStateProbe,
   contractActionPanelTabId,
   describePanelControllerContract,
+  readContractNavigate,
   snapshotFromState,
   type ContractStateSink,
 } from "@/test/panel-controller-contract";
+import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import { RootComposeView } from "./RootComposeView";
 
+const probe = vi.hoisted(
+  (): import("@/test/panel-controller-contract").ContractPanelRef => ({
+    current: null,
+  }),
+);
 const appCommandHandlers = vi.hoisted(
   () => new Map<string, () => boolean | void>(),
 );
@@ -73,9 +80,20 @@ vi.mock("@/views/RootComposeSecondaryContent", async () => {
     ),
   };
 });
-vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
-  NewThreadPromptBox: () => <div data-testid="new-thread-prompt-box" />,
-}));
+vi.mock("@/components/promptbox/NewThreadPromptBox", async () => {
+  const { PluginContext } = await import("@/components/plugin/plugin-context");
+  const { ContractPanelProbe, CONTRACT_PLUGIN_ID } =
+    await import("@/test/panel-controller-contract");
+  return {
+    NewThreadPromptBox: () => (
+      <div data-testid="new-thread-prompt-box">
+        <PluginContext.Provider value={CONTRACT_PLUGIN_ID}>
+          <ContractPanelProbe probe={probe} />
+        </PluginContext.Provider>
+      </div>
+    ),
+  };
+});
 vi.mock("@/hooks/queries/thread-terminal-queries", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/hooks/queries/thread-terminal-queries")
@@ -93,12 +111,18 @@ vi.mock("@/hooks/queries/machine-provider-queries", () => ({
 vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
   usePluginList: () => ({ data: { plugins: [] } }),
 }));
-vi.mock("@/lib/sdk", () => ({
+vi.mock("@/lib/sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/sdk")>()),
   sdk: {
     system: {
       experimental_recordTelemetryEvent: vi.fn().mockResolvedValue(undefined),
     },
+    terminals: { get: vi.fn() },
   },
+}));
+vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bb-desktop")>()),
+  isDesktopBrowserAvailable: () => true,
 }));
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
@@ -123,7 +147,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({ data: [] }),
   selectHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
-  selectPrimaryHost: () => null,
+  selectPrimaryHost: () => ({ id: "host_contract" }),
 }));
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemProviders: () => ({ data: undefined }),
@@ -132,7 +156,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useKnownProviderModelCatalogScope: () => undefined,
   useHostProviderCliStatus: () => ({ data: undefined }),
   useSystemConfig: () => ({
-    data: { primaryHostId: null, generalSettings: defaultAppSettings },
+    data: {
+      primaryHostId: "host_contract",
+      generalSettings: defaultAppSettings,
+    },
   }),
   useSystemExecutionOptions: () => ({
     data: undefined,
@@ -141,7 +168,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     isPlaceholderData: false,
   }),
 }));
-vi.mock("@/hooks/queries/thread-panel-queries", () => ({
+vi.mock("@/hooks/queries/thread-panel-queries", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/hooks/queries/thread-panel-queries")
+  >()),
   useThreadStorageFiles: () => ({
     data: undefined,
     error: null,
@@ -188,6 +218,7 @@ vi.mock("@/components/dialogs/ProjectMachineSetupDialog", () => ({
 }));
 
 const NO_TABS = { open: false, selectedKey: null, tabs: [] };
+const CONTRACT_HOST_ID = "host_contract";
 
 const actionTab = {
   id: "chat",
@@ -217,7 +248,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
-  resetFocusedAppPanelControllersForTest();
+  resetFocusedAppNavigationSurfacesForTest();
 });
 
 describePanelControllerContract(
@@ -266,6 +297,20 @@ describePanelControllerContract(
     );
     return {
       panel: () => panel,
+      navigate: () => readContractNavigate(probe),
+      open: {
+        terminal: makeTerminalSession({
+          id: "term_contract",
+          threadId: null,
+          environmentId: null,
+          hostId: CONTRACT_HOST_ID,
+        }),
+        file: {
+          target: { kind: "host", hostId: CONTRACT_HOST_ID, path: "/a.md" },
+          location: null,
+        },
+        url: "https://example.com/contract",
+      },
       snapshot: () => snapshotFromState(sink),
       tabs: () => getFocusedAppPanelController()?.getTabs() ?? NO_TABS,
       renderedTarget: () => null,

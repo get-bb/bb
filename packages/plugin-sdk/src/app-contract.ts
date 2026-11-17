@@ -3641,10 +3641,10 @@ export interface PluginMessageActionContext {
 }
 
 /**
- * An action on chat messages in the main thread timeline: an icon button in
- * the per-message action bar (user and assistant messages) and an entry in
- * the assistant-message text-selection menu. Embedded `ThreadChat` timelines
- * do not show slot-registered actions. Host-rendered chrome — the plugin
+ * An action on chat messages in every thread timeline, including embedded
+ * `ThreadChat` timelines: an icon button in the per-message action bar (user
+ * and assistant messages) and an entry in the assistant-message
+ * text-selection menu. Host-rendered chrome — the plugin
  * supplies title, icon, and `run` behavior only. Resolved icon names take precedence over
  * plugin branding; omitted or unknown names fall back to branding.
  */
@@ -4334,6 +4334,12 @@ export interface ComposerCustomization {
   id: string;
   /** Composer kinds where this customization is active; omit for all kinds. */
   scopes?: readonly PluginComposerScope["kind"][];
+  /**
+   * Controls rendered in the composer's action row, before the voice, stop
+   * and submit controls, in both the expanded and the compact layout. bb
+   * shows the first three plugins' actions inline and the rest behind a
+   * "More plugin actions" button.
+   */
   actions?: readonly { id: string; component: ComponentType }[];
   banners?: readonly {
     id: string;
@@ -4868,8 +4874,8 @@ export type ExperimentalComposerSubmitOptions = ComposerSubmitOptions;
 /**
  * A consumer-supplied action on the messages of one `ThreadChat` instance,
  * rendered in the embedded timeline's per-message action bar alongside the
- * native actions. Slot-registered `messageAction`s do not appear there. Unlike
- * the `messageAction` slot this is scoped to the rendering component, not
+ * native and slot-registered `messageAction` actions. Unlike the
+ * `messageAction` slot this is scoped to the rendering component, not
  * registered globally.
  */
 export interface ThreadChatMessageAction {
@@ -5128,9 +5134,10 @@ export interface NewThreadRequest {
  */
 export interface NewThreadComposerProps {
   /**
-   * Seeds the project picker. The user can change it, including choosing
-   * "Don't work in a project"; see {@link NewThreadRequest.projectId} for the
-   * submitted projectless shape.
+   * Seeds the project picker. Omitted, the picker starts on the project the
+   * user last picked in bb's New thread view. The user can change it,
+   * including choosing "Don't work in a project"; see
+   * {@link NewThreadRequest.projectId} for the submitted projectless shape.
    */
   defaultProjectId?: string;
   /**

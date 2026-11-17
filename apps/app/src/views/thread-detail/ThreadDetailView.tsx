@@ -154,7 +154,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import {
-  AppNavigationHostProvider,
+  AppNavigationSurfaceProvider,
   useAppNavigationHost,
 } from "@/lib/app-navigation-host";
 import { getFileBasename } from "@/lib/live-file-navigation";
@@ -753,7 +753,6 @@ function ThreadDetailViewInternal(
     activeTabId: isSecondaryPanelOpen ? activeFixedSecondaryTabId : null,
     close: closeWorkspacePanel,
     destinations: panelDestinations,
-    isFocused,
   });
   const toggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) panel.close();
@@ -1564,7 +1563,6 @@ function ThreadDetailViewInternal(
       timelineEnabled={timelineEnabled}
       timelineHost={{
         environmentHostName: threadEnvironmentHost?.name ?? null,
-        includePluginMessageActions: true,
         onForkMessage: isForkAvailable ? handleForkMessage : undefined,
         onTitleAction: handleTimelineTitleAction,
         unreadDividerAutoScroll: unreadDividerState.autoScroll,
@@ -1735,7 +1733,10 @@ function ThreadDetailViewInternal(
         workspaceRootPath={environment?.path ?? undefined}
       >
         <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-          <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+          <AppNavigationSurfaceProvider
+            capabilities={appNavigationCapabilities}
+            isFocused={isFocused}
+          >
             <AppPanelTabsPublisher
               publish={panel.publishTabs}
               activeTabId={activeFixedSecondaryTabId}
@@ -1811,7 +1812,7 @@ function ThreadDetailViewInternal(
                 onPanelFocus: touchFixedPanelTabsState,
               }}
             />
-          </AppNavigationHostProvider>
+          </AppNavigationSurfaceProvider>
         </UrlOpenRoutingProvider>
       </ThreadTimelineNavigationProvider>
     </MarkdownLocalFileContextMenuContext.Provider>

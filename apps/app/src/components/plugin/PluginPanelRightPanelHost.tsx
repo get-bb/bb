@@ -78,7 +78,7 @@ import {
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
   FixedTabTargetScope,
   getPluginFixedTabOwnerId,
@@ -471,7 +471,6 @@ export function PluginPanelRightPanelHost({
     activeTabId: isOpen ? (activeTab?.id ?? null) : null,
     close: hidePanel,
     destinations: panelDestinations,
-    isFocused: isFocused && panel !== null,
   });
   const pluginActions = useMemo(
     () =>
@@ -948,7 +947,10 @@ export function PluginPanelRightPanelHost({
 
   return (
     <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-      <AppNavigationHostProvider capabilities={navigationCapabilities}>
+      <AppNavigationSurfaceProvider
+        capabilities={navigationCapabilities}
+        isFocused={isFocused && panel !== null}
+      >
         <AppPanelTabsPublisher
           publish={panelController.publishTabs}
           activeTabId={activeTab?.id ?? null}
@@ -963,7 +965,7 @@ export function PluginPanelRightPanelHost({
           {registeredTabs.observers}
           {routedPage}
         </PluginDetailRouteNavigationProvider>
-      </AppNavigationHostProvider>
+      </AppNavigationSurfaceProvider>
     </UrlOpenRoutingProvider>
   );
 }

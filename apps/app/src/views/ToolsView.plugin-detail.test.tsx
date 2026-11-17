@@ -59,7 +59,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { getFixedPanelTabsStateStorageKey } from "@bb/client-core";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
-import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
 

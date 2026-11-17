@@ -3591,6 +3591,7 @@ export function PromptBoxInternal({
                 data-promptbox-standard-actions=""
                 className={cn(
                   "flex min-w-0 max-w-full shrink-0 flex-row flex-wrap items-center justify-end gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                  showCompactLayout && "flex-nowrap",
                   showVoiceActionGroup
                     ? "pointer-events-none translate-y-1 opacity-0"
                     : "translate-y-0 opacity-100",
@@ -3598,7 +3599,7 @@ export function PromptBoxInternal({
                 inert={showVoiceActionGroup ? true : undefined}
               >
                 <>
-                  {!showCompactLayout ? <contributions.Actions /> : null}
+                  <contributions.Actions />
                   {compactBeforeSend}
                   {!showCompactLayout || showCompactVoiceAction ? (
                     <>

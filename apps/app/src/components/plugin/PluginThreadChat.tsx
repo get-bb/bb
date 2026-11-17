@@ -336,7 +336,6 @@ function PluginThreadChatBody({
                 isHostAmbiguous(hasMultipleMachines, environmentHost.type)
                   ? environmentHost.name
                   : null,
-              includePluginMessageActions: false,
               leadingContent,
               onForkMessage: isForkAvailable ? handleForkMessage : undefined,
               unreadDividerAutoScroll: false,
