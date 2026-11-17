@@ -225,6 +225,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("input.provider"),
     text: z.string().min(1),
+    providerTurnId: providerTurnIdSchema.optional(),
     parentRef: deltaKeyPartSchema.optional(),
   }),
 
