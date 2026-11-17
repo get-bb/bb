@@ -23,7 +23,10 @@ const FIXTURE_SOURCE = `
   export default function plugin(bb: any) {
     const g = globalThis as any;
     g.__rfLoads = (g.__rfLoads ?? 0) + 1;
-    bb.onDispose(() => { g.__rfDisposals = (g.__rfDisposals ?? 0) + 1; });
+    bb.onDispose(() => {
+      g.__rfDisposals = (g.__rfDisposals ?? 0) + 1;
+      g.__rfStartDisposing?.();
+    });
     bb.cli.register({
       name: "rf",
       summary: "review fixes fixture",
@@ -32,7 +35,9 @@ const FIXTURE_SOURCE = `
     });
     bb.rpc.register(rpcContract, {
       slowKv: async (input: any) => {
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        g.__rfRpcEntered();
+        await g.__rfDisposing;
+        await new Promise((resolve) => setImmediate(resolve));
         await bb.storage.kv.set("drained", input);
         return "done";
       },
@@ -73,6 +78,9 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
     await harness.pluginService.stop();
     await rm(workDir, { recursive: true, force: true });
     await harness.cleanup();
+    delete globals.__rfRpcEntered;
+    delete globals.__rfDisposing;
+    delete globals.__rfStartDisposing;
   });
 
   it("enabling an already-running plugin disposes the previous instance instead of orphaning it", async () => {
@@ -107,6 +115,12 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
   });
 
   it("dispose drains in-flight rpc invocations before invalidating", async () => {
+    const entered = new Promise<void>((resolve) => {
+      globals.__rfRpcEntered = resolve;
+    });
+    globals.__rfDisposing = new Promise<void>((resolve) => {
+      globals.__rfStartDisposing = resolve;
+    });
     const inFlight = harness.app.request(
       `${BASE}/api/v1/plugins/${PLUGIN_ID}/rpc/slowKv`,
       {
@@ -115,7 +129,7 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
         body: JSON.stringify({ value: 42 }),
       },
     );
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await entered;
     await harness.pluginService.reload(PLUGIN_ID);
     const response = await inFlight;
     expect(response.status).toBe(200);
