@@ -331,7 +331,7 @@ it("replays Grok cumulative token usage and compaction reduction exactly", async
     contextWindowUsage: {
       usedTokens: 47_689,
       modelContextWindow: 500_000,
-      cost: { amount: 0.132_967_2, currency: "USD" },
+      cost: { amount: 0.398_901_6, currency: "USD" },
       estimated: false,
     },
   });

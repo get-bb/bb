@@ -58,6 +58,35 @@ it("redacts every documented GitHub token prefix", () => {
   }
 });
 
+it("preserves existing recordings when the input directory is empty", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-empty-"));
+  const inputDir = join(root, "input");
+  const outputDir = join(root, "output");
+  const kept = join(outputDir, "kept.ndjson");
+  try {
+    mkdirSync(inputDir);
+    mkdirSync(outputDir);
+    writeFileSync(kept, "keep-me\n");
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          fileURLToPath(REDACT_SCRIPT),
+          inputDir,
+          outputDir,
+          "--home",
+          "/home/tester",
+        ],
+        { encoding: "utf8" },
+      ),
+    ).toThrow(/input recordings are empty/);
+    expect(readFileSync(kept, "utf8")).toBe("keep-me\n");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("refuses an output directory that contains the input recordings", () => {
   const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-parent-"));
   const inputDir = join(root, "raw");
