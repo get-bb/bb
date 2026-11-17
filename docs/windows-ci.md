@@ -37,10 +37,10 @@ product; Turbo runs the required generators and native-module preparation.
 
 The `Windows tests (<shard>, Node 22.x)` jobs run the test suite of every
 package outside the nine above, on the same runner image. A failure fails the
-job. The thirteen shards cover each
+job. The sixteen shards cover each
 suite exactly once:
 
-- `server-1` to `server-3`: `@bb/server`, split by file into three Vitest
+- `server-1` to `server-6`: `@bb/server`, split by file into six Vitest
   shards.
 - `app-1` to `app-4`: `@bb/app`, split the same way into four, with four
   Vitest workers per runner.
@@ -99,7 +99,7 @@ The test step differs from the Linux one in three ways:
   runs in `packages-other`.
 
 App and server shards, on Linux and Windows, select their Vitest shard with
-the internal `BB_CI_TEST_SHARD` variable (for example `1/3`). Vitest validates
+the internal `BB_CI_TEST_SHARD` variable (for example `1/6`). Vitest validates
 and applies it, and Turbo hashes it only for those test tasks. Do not pass
 shard selection after Turbo's `--`: those arguments also reach prerequisite
 builds and give identical SDK type builds different cache keys. Linux caps
@@ -109,7 +109,7 @@ full install:
 
 ```powershell
 pnpm install --frozen-lockfile --ignore-scripts
-$env:BB_CI_TEST_SHARD = "1/3"
+$env:BB_CI_TEST_SHARD = "1/6"
 pnpm exec turbo run test --filter=@bb/server --continue --output-logs=new-only
 ```
 

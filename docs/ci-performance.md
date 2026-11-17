@@ -4,7 +4,7 @@ The main CI workflow keeps build, lint/typecheck, two server test shards, eight 
 shards, integration tests, three package test groups, two plugin test groups, two fork
 check shards, and package smokes independent. Node 24/26 compatibility smokes run on
 main and manual runs. Windows runs the nine host packages, an app smoke, a desktop
-smoke, and thirteen test shards that cover the remaining suites; see
+smoke, and sixteen test shards that cover the remaining suites; see
 [windows-ci.md](windows-ci.md).
 
 ## PR selection
@@ -937,3 +937,34 @@ squash-check assertion. That worker change was discarded; package concurrency,
 worker counts, shard counts, and selected tests remain unchanged. Increasing pnpm
 network concurrency also failed to improve a separate eight-install comparison
 and was discarded.
+
+## November 16 critical-path sample
+
+Eighteen recent successful CI runs (ending at
+[44026922004](https://github.com/get-bb/bb/actions/runs/44026922004)) had a
+median creation-to-last-job completion of 246.5 seconds, ranging from 170 to
+467 seconds. This mixes main and PR runs with different affected selections;
+it is a snapshot, not a controlled performance comparison.
+
+Windows server shards finished last in seven runs. Their test-step medians were
+93.5 seconds for server-1 and 96.5 seconds for server-3; job medians were
+138 and 144 seconds. Dependency installation medians were only 2.5 and 5.5
+seconds, although cold installs reached 49 and 60 seconds. Six file shards
+replace three to reduce each runner's test workload. All server files still
+run; runner size, package concurrency, worker defaults, and test timeouts stay
+unchanged. This adds three Windows jobs to a full run and repeats their setup
+and build prerequisites. It does not promise a twofold end-to-end improvement.
+
+Render invariants had a 154-second job median and a 111-second test/build step
+median. In [main run 44022670766](https://github.com/get-bb/bb/actions/runs/44022670766),
+the six serial scenarios took 78.68 seconds, with another 4.59 seconds of
+Vitest startup/import work. This is the other consistent execution target.
+The macOS Node compatibility tail in the sample had a different cause:
+checkout reached 176 seconds despite a 2-second median. More test parallelism
+cannot remove that checkout delay.
+
+The workflow graph is plan → independent checks/test/package jobs, with a
+small query-function job after the Linux test matrix on PRs. Windows server
+sharding addresses one frequent final branch; render, integration, provider
+plugins, or runner/checkout delays can become the next critical path. Measure
+post-change runs before claiming a workflow-wide saving.
