@@ -28,6 +28,7 @@ interface LifecycleControl {
   threadIds: string[];
   formResults: Array<{ generation: number; result: unknown }>;
   rpcSignals: Array<{ generation: number; aborted: boolean }>;
+  keptSignals: AbortSignal[];
   cliSignals: Array<{ generation: number; aborted: boolean }>;
   closed: Array<{ generation: number; code: number }>;
   availabilityCalls: number[];
@@ -60,6 +61,7 @@ const fixture = `
       defineRpcContract({
         wait: { input: z.null(), output: z.number() },
         ping: { input: z.null(), output: z.number() },
+        keep: { input: z.null(), output: z.number() },
       }),
       {
         async wait(_input: null, context: any) {
@@ -71,6 +73,10 @@ const fixture = `
           return generation;
         },
         ping: () => generation,
+        keep(_input: null, context: any) {
+          control.keptSignals.push(context.experimental_signal);
+          return generation;
+        },
       },
     );
     bb.cli.register({
@@ -127,6 +133,7 @@ function newControl(): { control: LifecycleControl; release: () => void } {
     threadIds: [],
     formResults: [],
     rpcSignals: [],
+    keptSignals: [],
     cliSignals: [],
     closed: [],
     availabilityCalls: [],
@@ -331,6 +338,25 @@ describe("plugin instance lifecycle on a running server", () => {
       generation: 2,
       aborted: false,
     });
+  });
+
+  it("unlinks a finished rpc call's signal from the plugin instance", async () => {
+    await install();
+    for (let call = 0; call < 3; call += 1) {
+      const caller = new AbortController();
+      expect(await (await callRpc("keep", caller.signal)).json()).toEqual({
+        ok: true,
+        result: 1,
+      });
+    }
+
+    await server.pluginService.setEnabled("lifecycle", false);
+
+    expect(control().keptSignals.map((signal) => signal.aborted)).toEqual([
+      false,
+      false,
+      false,
+    ]);
   });
 
   it("keeps serving rpc calls from the old instance while a reload disposes it", async () => {
