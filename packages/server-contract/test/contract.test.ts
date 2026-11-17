@@ -393,6 +393,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "createThreadRequestSchema.sessionOptions",
       "createThreadRequestSchema.sourceSeqEnd",
       "createThreadRequestSchema.sourceThreadId",
+      "createThreadRequestSchema.start",
       "createThreadRequestSchema.title",
     ],
   },
@@ -1608,8 +1609,27 @@ describe("server-contract canonical schemas", () => {
     ).toBe("sec_work");
   });
 
+  it("rejects empty input for a normal thread start", () => {
+    for (const start of [undefined, "run"] as const) {
+      expect(() =>
+        createThreadRequestSchema.parse({
+          projectId: "proj_123",
+          providerId: "codex",
+          origin: "app",
+          input: [],
+          ...(start === undefined ? {} : { start }),
+          environment: {
+            type: "host",
+            hostId: "host_abc",
+            workspace: { type: "unmanaged", path: null },
+          },
+        }),
+      ).toThrow("input must contain at least one entry");
+    }
+  });
+
   it.each(["app", "sdk", "plugin"] as const)(
-    "accepts input-free session initialization from %s",
+    "accepts explicit session initialization from %s and rejects unsupported combinations",
     (origin) => {
       const request = {
         projectId: "proj_123",
@@ -1617,6 +1637,7 @@ describe("server-contract canonical schemas", () => {
         origin,
         ...(origin === "plugin" ? { originPluginId: "live-voice" } : {}),
         input: [],
+        start: "initialize",
         environment: {
           type: "host",
           hostId: "host_abc",
@@ -1625,11 +1646,28 @@ describe("server-contract canonical schemas", () => {
       };
       expect(createThreadRequestSchema.parse(request)).toMatchObject({
         input: [],
+        start: "initialize",
         originKind: null,
       });
+      for (const [extra, message] of [
+        [{ input: [{ type: "text", text: "hello" }] }, "requires empty input"],
+        [{ sendAt: 1900000000000 }, "cannot be combined with sendAt"],
+        [
+          { originKind: "fork", sourceThreadId: "thr_source" },
+          "cannot be combined with originKind",
+        ],
+        [
+          { pluginSubmission: { pluginId: "live-voice", data: {} } },
+          "cannot be combined with pluginSubmission",
+        ],
+      ] as const) {
+        expect(() =>
+          createThreadRequestSchema.parse({ ...request, ...extra }),
+        ).toThrow(message);
+      }
       expect(() =>
-        createThreadRequestSchema.parse({ ...request, sendAt: 1900000000000 }),
-      ).toThrow("sendAt requires an initial message");
+        createThreadRequestSchema.parse({ ...request, start: "pending" }),
+      ).toThrow();
     },
   );
 
@@ -1650,6 +1688,22 @@ describe("server-contract canonical schemas", () => {
       startedOnBehalfOf: null,
     });
     expect(parsed.input).toEqual([]);
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+        originKind: "fork",
+        sourceThreadId: "thr_source",
+        sendAt: 1900000000000,
+      }),
+    ).toThrow("sendAt requires an initial message");
   });
 
   it("rejects sourceSeqEnd on normal thread starts", () => {

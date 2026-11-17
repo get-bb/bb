@@ -31,6 +31,7 @@ describe("bb thread spawn command output", () => {
     const post = vi.fn(async ({ json }: { json: unknown }) => {
       const parsed = createThreadRequestSchema.parse(json);
       expect(parsed.input).toEqual([]);
+      expect(parsed.start).toBe("initialize");
       expect(parsed.originKind).toBeNull();
       return fixtures.makeThread({
         id: "thread-empty-session",

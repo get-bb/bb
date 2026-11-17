@@ -78,6 +78,7 @@ describe("thread creation initiator telemetry", () => {
           workspace: { type: "unmanaged", path: "/tmp/empty-voice" },
         },
         input: [],
+        start: "initialize",
         origin: "plugin",
         originPluginId: "live-voice",
         projectId: project.id,
@@ -107,6 +108,46 @@ describe("thread creation initiator telemetry", () => {
       );
     });
   });
+  it("keeps default creation task-required and rejects initialization with a fork origin", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, { id: "host-start-mode" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/start-mode",
+      });
+      const source = seedThread(harness.deps, { projectId: project.id });
+      const base = {
+        environment: {
+          type: "host" as const,
+          hostId: host.id,
+          workspace: { type: "unmanaged" as const, path: "/tmp/start-mode" },
+        },
+        input: [],
+        origin: "sdk" as const,
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      };
+      for (const request of [base, { ...base, start: "run" as const }]) {
+        await expect(
+          createThreadFromRequest(harness.deps, request),
+        ).rejects.toMatchObject({
+          message: "input must contain at least one entry",
+        });
+      }
+      await expect(
+        createThreadFromRequest(harness.deps, {
+          ...base,
+          start: "initialize",
+          originKind: "fork",
+          sourceThreadId: source.id,
+        }),
+      ).rejects.toMatchObject({
+        message: 'start "initialize" cannot be combined with originKind',
+      });
+    });
+  });
+
   it("adds initiator to thread and message events only when the flag is on", async () => {
     await withTestHarness(async (harness) => {
       const capture = installTelemetryCaptureSpy(harness);
@@ -924,7 +965,7 @@ describe("thread creation child-thread boundary validation", () => {
             origin: "app",
             ...(kind === "fork"
               ? { originKind: "fork" as const, sourceThreadId }
-              : {}),
+              : { start: "initialize" as const }),
             projectId,
             providerId: "codex",
             startedOnBehalfOf: null,

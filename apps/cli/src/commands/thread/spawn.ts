@@ -628,6 +628,7 @@ export function registerSpawnCommand(
             ...(providerId ? { providerId } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             input,
+            ...(opts.initializeOnly ? { start: "initialize" as const } : {}),
             ...(reasoningLevel ? { reasoningLevel } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),

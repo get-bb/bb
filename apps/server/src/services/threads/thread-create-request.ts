@@ -12,6 +12,7 @@ import type {
   CreateThreadRequest,
   EnvironmentArgs,
   ProviderEnvironmentArgs,
+  ThreadCreateStart,
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {
@@ -24,6 +25,7 @@ export interface ThreadCreateServiceRequestInput {
    */
   sendAt?: CreateThreadRequest["sendAt"];
   input: PromptInput[];
+  start?: ThreadCreateStart;
   pluginMetadata?: CreateThreadRequest["pluginMetadata"];
   pluginSubmission?: CreateThreadRequest["pluginSubmission"];
   sectionId?: CreateThreadRequest["sectionId"];
@@ -51,8 +53,9 @@ export interface ThreadCreateServiceRequestInput {
 
 export interface ThreadCreateServiceRequest extends Omit<
   ThreadCreateServiceRequestInput,
-  "environment" | "pluginMetadata" | "providerId"
+  "environment" | "pluginMetadata" | "providerId" | "start"
 > {
+  start: ThreadCreateStart;
   environment: EnvironmentArgs | ProviderEnvironmentArgs;
   pluginMetadata: { pluginId: string; metadata: JsonObject } | null;
   providerId: string;

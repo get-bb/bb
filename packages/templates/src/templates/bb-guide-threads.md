@@ -28,9 +28,10 @@ Spawning:
 
     --initialize-only             Initialize an idle provider session without submitting a task.
                                    Cannot combine with prompts, attachments, --plan or --send-at.
-                                   SDK: threads.spawn({ projectId, environment, input: [], ... }).
-                                   Empty input starts the provider session without a coding turn;
-                                   no source thread or fork is needed. Empty input cannot be scheduled.
+                                   SDK: threads.spawn({ projectId, environment, input: [],
+                                   start: "initialize", ... }). start defaults to "run", which
+                                   requires a first message as before. "initialize" requires empty
+                                   input and rejects sendAt, fork origins and plugin submissions.
     --prompt <prompt>              Initial prompt (required unless --prompt-file or --initialize-only is given)
     --prompt-file <path>           Read the prompt from a file; `-` reads stdin. Use this for
                                    multi-line or Markdown prompts: inside double quotes the shell
