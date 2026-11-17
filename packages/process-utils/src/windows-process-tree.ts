@@ -44,6 +44,46 @@ export function terminateWindowsProcessTrees(
   });
 }
 
+interface HeldProcessHandle {
+  close: (...args: unknown[]) => unknown;
+  holders: number;
+  deferredArgs: unknown[] | null;
+}
+
+const heldProcessHandles = new WeakMap<object, HeldProcessHandle>();
+
+function holdProcessHandle(child: ChildProcess): () => void {
+  const handle: unknown = Reflect.get(child, "_handle");
+  if (typeof handle !== "object" || handle === null) return () => {};
+  let hold = heldProcessHandles.get(handle);
+  if (hold === undefined) {
+    const close: unknown = Reflect.get(handle, "close");
+    if (typeof close !== "function") return () => {};
+    const created: HeldProcessHandle = {
+      close: (...args) => Reflect.apply(close, handle, args),
+      holders: 0,
+      deferredArgs: null,
+    };
+    Reflect.set(handle, "close", (...args: unknown[]) => {
+      created.deferredArgs = args;
+    });
+    heldProcessHandles.set(handle, created);
+    hold = created;
+  }
+  const held = hold;
+  held.holders += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    held.holders -= 1;
+    if (held.holders > 0) return;
+    heldProcessHandles.delete(handle);
+    Reflect.deleteProperty(handle, "close");
+    if (held.deferredArgs !== null) held.close(...held.deferredArgs);
+  };
+}
+
 function waitForRootExit(child: ChildProcess): Promise<void> {
   if (hasExited(child)) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -65,7 +105,13 @@ export async function stopWindowsProcessTree(
   if (child.pid === undefined || hasExited(child)) {
     return { treeTermination: "unverified" };
   }
-  const terminated = await terminateWindowsProcessTrees([child.pid]);
+  const releaseHandle = holdProcessHandle(child);
+  let terminated: boolean;
+  try {
+    terminated = await terminateWindowsProcessTrees([child.pid]);
+  } finally {
+    releaseHandle();
+  }
   if (!hasExited(child)) child.kill("SIGKILL");
   await waitForRootExit(child);
   return { treeTermination: terminated ? "confirmed" : "unverified" };

@@ -2232,7 +2232,7 @@ it("keeps a shared workspace ready when its preparing owner cancels before attac
     });
     expect(getThread(harness.db, fixture.thread.id)?.environmentId).toBeNull();
     saveProviderStartup(harness, fixture);
-    requestThreadStopForCurrentState(harness.deps, fixture.thread, null);
+    requestThreadStopForCurrentState(harness.deps, fixture.thread);
     await expect
       .poll(() => getEnvironment(harness.db, shared.id)?.ownerThreadId)
       .toBeNull();

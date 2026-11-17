@@ -3551,7 +3551,7 @@ describe("public thread data routes", () => {
           [{ type: "text", text: "First grouped queued message" }],
           [{ type: "text", text: "Second grouped queued message" }],
         ],
-        target: { mode: "start" },
+        target: { mode: "auto", expectedTurnId: null },
       });
 
       expect(

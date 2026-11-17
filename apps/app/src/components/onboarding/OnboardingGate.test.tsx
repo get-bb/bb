@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   useSetupGuideAssignment: vi.fn(),
   useHostProviderCliStatus: vi.fn(),
   usePrimaryHost: vi.fn(),
+  markScreenPainted: vi.fn(),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -22,6 +23,9 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 }));
 vi.mock("@/hooks/mutations/settings-mutations", () => ({
   useUpdateGeneralSettings: () => ({ mutate: mocks.mutate }),
+}));
+vi.mock("@/lib/screen-paint", () => ({
+  markScreenPainted: mocks.markScreenPainted,
 }));
 vi.mock("./OnboardingFlow", () => ({
   OnboardingFlow: ({
@@ -79,6 +83,17 @@ describe("OnboardingGate", () => {
 
     expect(await screen.findByText(/Setup guide at agent/u)).toBeTruthy();
     expect(screen.queryByText("App shell")).toBeNull();
+  });
+
+  it("signals that the screen painted once the setup guide shows, though the app behind it never renders", async () => {
+    configWith({ onboardingCompletedAt: null });
+
+    renderGate();
+
+    expect(await screen.findByText(/Setup guide at agent/u)).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(mocks.markScreenPainted).toHaveBeenCalled();
+    });
   });
 
   it("renders the app untouched once setup has been finished", () => {

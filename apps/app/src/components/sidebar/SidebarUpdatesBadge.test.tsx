@@ -407,6 +407,37 @@ describe("SidebarUpdatesBadge", () => {
     ).toBe("/settings/updates");
   });
 
+  it("lists a source update that is not badge-worthy yet once other updates open the card", async () => {
+    appUpdateState.status = appUpdateStatus({
+      available: {
+        behindSince: new Date().toISOString(),
+        channel: "main",
+        commit: "5c1cf4ef2d605962df3d60a35a4d01b5212d59cc",
+        commitCount: 9,
+        subjects: [],
+        version: "0.49.0",
+      },
+      current: {
+        commit: "1320c88e8abdd3f145bc9a5c305eace269fb2f28",
+        version: "0.49.0",
+      },
+      support: { kind: "supported", mode: "source" },
+    });
+    const view = renderBadge({ appUpdateAvailable: false });
+    expect(screen.queryByTestId("sidebar-update-button")).toBeNull();
+    view.unmount();
+
+    renderBadge({
+      appUpdateAvailable: false,
+      machines: [machine({ issues: [providerIssue("codex", "Codex")] })],
+    });
+    const card = await openCard();
+    const bb = within(card).getByRole("region", { name: "bb update" });
+    expect(bb.textContent).toContain("bb 5c1cf4e");
+    expect(bb.textContent).toContain("from 1320c88");
+    expect(rowStates(card)).toEqual([["Codex1.0.0 → 1.1.0", "available"]]);
+  });
+
   it("says bb waits for a restart when it does not update itself", async () => {
     appUpdateState.status = appUpdateStatus({ autoUpdate: false });
     renderBadge({ appUpdateAvailable: true });

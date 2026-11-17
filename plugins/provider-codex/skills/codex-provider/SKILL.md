@@ -5,6 +5,11 @@ description: "Diagnose BB-specific Codex session controls, MCP elicitation and C
 
 # Codex provider
 
+The provider requires Codex CLI 0.136.0 or newer. On Codex 0.145.0 and newer,
+`Disable provider subagents` disables native subagent tools through
+`agents.enabled` and overrides `features.multi_agent_v2` to false for BB
+sessions. Older versions retain the legacy subagent settings.
+
 Codex supports structured plan requests, editing and rerunning eligible messages,
 and compaction through the corresponding core `bb thread` commands.
 Stopping a running Codex thread pauses its active Goal, as Codex's own client

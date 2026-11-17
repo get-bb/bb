@@ -14,7 +14,15 @@ import type { ProviderInfo } from "@bb/domain";
 import { createMemoryStorage } from "@bb/test-helpers";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -646,6 +654,8 @@ describe("useSystemExecutionOptions", () => {
   ] as const)(
     "handles reconnect refresh: %s (retain catalog: %s)",
     async (code, retainCatalog, hasCatalog, providerId, refreshProviderId) => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+      onTestFinished(() => now.mockRestore());
       const { queryClient } = createQueryClientTestHarness();
       const initialCatalog = {
         ...CODEX_CATALOG,
@@ -663,6 +673,7 @@ describe("useSystemExecutionOptions", () => {
         expect(observer.getCurrentResult().data).toEqual(initialCatalog),
       );
       const loadedAt = observer.getCurrentResult().dataUpdatedAt;
+      now.mockReturnValue(2_000);
       const modelLoadError = {
         providerId: refreshProviderId,
         code,

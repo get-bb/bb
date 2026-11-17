@@ -141,7 +141,7 @@ describe("parent system message dispatch", () => {
             input,
             target:
               status === "active"
-                ? { mode: "start" }
+                ? { mode: "auto", expectedTurnId: null }
                 : { mode: "auto", expectedTurnId: "turn-race" },
           }),
         ]);

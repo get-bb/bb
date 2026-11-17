@@ -8,15 +8,24 @@ const {
   writeFile,
 } = require("node:fs/promises");
 const { join } = require("node:path");
-const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  safeStorage,
+  shell,
+} = require("electron");
 
 app.setName("bb-dev");
+safeStorage.isEncryptionAvailable = () => false;
 
 const desktopRoot = process.env.BB_STARTUP_SMOKE_APP_PATH;
 app.setVersion(require(join(desktopRoot, "package.json")).version);
 const scenario = process.env.BB_STARTUP_SMOKE_SCENARIO ?? "custom";
 const channel = "bb-desktop:startup-action";
 const loads = [];
+const completedLoads = [];
 let contents;
 let recovered = false;
 let mintCount = 0;
@@ -119,7 +128,9 @@ async function run() {
     const loadURL = window.webContents.loadURL.bind(window.webContents);
     window.webContents.loadURL = (url, options) => {
       loads.push(url);
-      return loadURL(url, options);
+      return loadURL(url, options).then(() => {
+        completedLoads.push(url);
+      });
     };
   });
   require(join(desktopRoot, "dist/main.js"));
@@ -263,9 +274,9 @@ async function run() {
     "An unrelated data URL cannot retry startup",
   );
   await contents.loadURL(errorUrl);
-  const failedRetry = loads.length;
+  const failedRetry = completedLoads.length;
   await contents.executeJavaScript('document.querySelector("button").click()');
-  await until(() => loads.length > failedRetry);
+  await until(() => completedLoads.slice(failedRetry).includes(errorUrl));
   await until(hasError);
   if (scenario === "custom") {
     await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));

@@ -2,24 +2,30 @@
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { DndContext, useDraggable } from "@dnd-kit/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useReorderDnd } from "@bb/shared-ui/use-reorder-dnd";
 
 function DraggableRow({ onClick }: { onClick: () => void }) {
   const { attributes, listeners, setNodeRef } = useDraggable({ id: "row" });
   return (
-    <button
-      ref={setNodeRef}
-      onClick={onClick}
-      {...attributes}
-      {...listeners}
-    >
+    <button ref={setNodeRef} onClick={onClick} {...attributes} {...listeners}>
       Open row
     </button>
   );
 }
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(async () => {
+  cleanup();
+  try {
+    await act(() => vi.runOnlyPendingTimersAsync());
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 function dispatchOutsideAct(dispatch: () => void) {
   const actGlobal = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
@@ -110,7 +116,11 @@ describe("useReorderDnd", () => {
         }),
       );
       document.dispatchEvent(
-        new MouseEvent("mouseup", { bubbles: true, clientX: 100, clientY: 130 }),
+        new MouseEvent("mouseup", {
+          bubbles: true,
+          clientX: 100,
+          clientY: 130,
+        }),
       );
     });
     await act(async () => {});

@@ -52,6 +52,7 @@ interface HandleHostSessionOpenedArgs {
   hostId: string;
   openedSession: HostDaemonSessionRow;
   previousSession: HostDaemonSessionRow | null;
+  turnCommandThreadIds: string[];
   undeliveredEventThreadIds: string[];
 }
 
@@ -149,6 +150,7 @@ export async function handleHostSessionOpened(
     activeThreadIds: args.activeThreads.map((thread) => thread.threadId),
     hostId: args.hostId,
     sameDaemonInstance,
+    turnCommandThreadIds: args.turnCommandThreadIds,
     undeliveredEventThreadIds: args.undeliveredEventThreadIds,
   });
 

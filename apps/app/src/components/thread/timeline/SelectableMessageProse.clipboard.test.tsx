@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import {
@@ -333,6 +339,9 @@ it("copies rendered math as TeX text and MathML without KaTeX's duplicate layout
       />
     </SelectableMessageProse>,
   );
+  await act(async () => {
+    await import("@/components/ui/markdown-katex.js");
+  });
   await waitFor(() => {
     expect(container.querySelector(".katex-display")).not.toBeNull();
   });
@@ -357,6 +366,9 @@ it("copies math inside emphasis as TeX rather than KaTeX's duplicated layout tex
       <MarkdownPreview content={"**Energy $$E = mc^2$$ is big**"} />
     </SelectableMessageProse>,
   );
+  await act(async () => {
+    await import("@/components/ui/markdown-katex.js");
+  });
   await waitFor(() => {
     expect(container.querySelector(".katex")).not.toBeNull();
   });

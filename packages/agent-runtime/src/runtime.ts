@@ -281,7 +281,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   const pendingTurnStarts = new Map<
     string,
-    { sinceMs: number; watchdogFired: boolean }
+    { clientRequestId: string; sinceMs: number; watchdogFired: boolean }
   >();
   const turnStartWatchdogThresholdMs =
     options.turnStartWatchdog?.thresholdMs ?? 120_000;
@@ -876,6 +876,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function observeProviderSessionIdleState(event: ThreadEvent): void {
     if (event.type === "turn/started") {
+      const pendingTurnStart = pendingTurnStarts.get(event.threadId);
+      if (pendingTurnStart !== undefined) {
+        turnState.noteActiveTurnRequest(
+          event.threadId,
+          pendingTurnStart.clientRequestId,
+        );
+      }
       pendingTurnStarts.delete(event.threadId);
       markProviderSessionNotIdle(event.threadId);
       return;
@@ -2070,6 +2077,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           });
           assertThreadCanStartTurn(threadId);
           const pendingTurnStart = {
+            clientRequestId,
             sinceMs: Date.now(),
             watchdogFired: false,
           };
@@ -2223,6 +2231,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 threadId,
               },
             });
+            if (turnState.getActiveTurnId(threadId) === expectedTurnId) {
+              turnState.noteActiveTurnRequest(threadId, clientRequestId);
+            }
             setThreadRuntimeConfig(threadId, {
               ...currentConfig,
               contributedEnv: resolvedContributedEnv,
@@ -2583,6 +2594,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
     getActiveTurnId(threadId) {
       return turnState.getActiveTurnId(threadId);
+    },
+
+    getActiveTurnRequestIds(threadId) {
+      return turnState.getActiveTurnRequestIds(threadId);
     },
 
     waitForActiveTurn(threadId, args) {

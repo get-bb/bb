@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { ScreenPaintSignal } from "@/components/ScreenPaintSignal";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import {
@@ -125,6 +126,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
                   );
                 }}
               />
+              <ScreenPaintSignal />
             </Suspense>
           </OnboardingErrorTelemetry>
         </div>

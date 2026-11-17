@@ -12,13 +12,21 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ModelReasoningPicker } from "./ModelReasoningPicker";
 
-const menu = vi.hoisted(() => ({ imports: 0, release: () => {} }));
+const menu = vi.hoisted(() => {
+  let loaded = () => {};
+  const ready = new Promise<void>((resolve) => {
+    loaded = resolve;
+  });
+  return { imports: 0, release: () => {}, ready, loaded };
+});
 vi.mock("./ModelReasoningMenu", async (importOriginal) => {
   menu.imports += 1;
   await new Promise<void>((resolve) => {
     menu.release = resolve;
   });
-  return importOriginal();
+  const module = await importOriginal();
+  menu.loaded();
+  return module;
 });
 
 afterEach(cleanup);
@@ -73,7 +81,10 @@ it("keeps search typing and keyboard selection across the first menu download", 
   fireEvent.change(search, { target: { value: "o4m" } });
   fireEvent.keyDown(search, { key: "ArrowDown" });
   expect(menu.imports).toBe(1);
-  await act(async () => menu.release());
+  await act(async () => {
+    menu.release();
+    await menu.ready;
+  });
   expect(await screen.findByText("o4-mini")).toBeTruthy();
   expect(screen.queryByText("Sonnet")).toBeNull();
   expect(search).toHaveProperty("value", "o4m");

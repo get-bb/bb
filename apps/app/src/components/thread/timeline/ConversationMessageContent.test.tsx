@@ -3,7 +3,7 @@
 import { LazyMarkdownHtml } from "@/components/ui/lazy-markdown-html";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
-import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -18,7 +18,7 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-helpers/domain-fixtures";
 import { stubResizeObserverDeliveries } from "@/test/resize-observer-deliveries";
 
-beforeAll(() => LazyMarkdownHtml.preload());
+await LazyMarkdownHtml.preload();
 
 afterEach(() => {
   cleanup();

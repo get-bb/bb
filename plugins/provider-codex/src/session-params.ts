@@ -72,6 +72,7 @@ interface ToCodexPermissionSettingsArgs {
 }
 
 interface BuildCodexConfigArgs {
+  supportsAgentsEnabled: boolean;
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options?: CodexSessionOptions;
@@ -648,8 +649,13 @@ export function buildCodexConfig(
     );
   }
   if (args.options?.providerSubagentsEnabled === false) {
-    config["features.multi_agent"] = false;
-    config["features.multi_agent_v2.max_concurrent_threads_per_session"] = 1;
+    if (args.supportsAgentsEnabled) {
+      config["agents.enabled"] = false;
+      config["features.multi_agent_v2"] = false;
+    } else {
+      config["features.multi_agent"] = false;
+      config["features.multi_agent_v2.max_concurrent_threads_per_session"] = 1;
+    }
   }
   config["memories.use_memories"] = args.options?.memoryEnabled ?? true;
   config["memories.generate_memories"] = args.options?.memoryEnabled ?? true;

@@ -211,6 +211,7 @@ function createFakeRuntime() {
     }),
     listRunningProviders: vi.fn((): string[] => []),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
+    getActiveTurnRequestIds: () => [],
     waitForActiveTurn: async (threadId) =>
       activeTurnsByThreadId.get(threadId) ?? null,
     getProviderSession: () => null,

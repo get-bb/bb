@@ -11,6 +11,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   restoreDiffViewedFilesTable,
   dropQueuedMessageEditHeldUntilColumn,
@@ -757,6 +758,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropThreadParentNotificationsColumn(db);
   dropQueuedMessageDeliveryColumns(db);
   dropThreadStatusChangedAtColumn(db);
+  dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
@@ -807,6 +809,7 @@ function dropQueuedMessageAttemptColumns(db: DbConnection): void {
   dropThreadParentNotificationsColumn(db);
   dropQueuedMessageDeliveryColumns(db);
   dropThreadStatusChangedAtColumn(db);
+  dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -889,6 +892,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   dropThreadParentNotificationsColumn(db);
   dropQueuedMessageDeliveryColumns(db);
   dropThreadStatusChangedAtColumn(db);
+  dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
@@ -2633,6 +2637,7 @@ describe("migrate", () => {
         providerId: "codex",
       });
       dropThreadStatusChangedAtColumn(db);
+      dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
       restoreDiffViewedFilesTable(db);
       db.$client
@@ -3469,6 +3474,7 @@ describe("migrate", () => {
       dropThreadParentNotificationsColumn(db);
       dropQueuedMessageDeliveryColumns(db);
       dropThreadStatusChangedAtColumn(db);
+      dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
@@ -3886,6 +3892,7 @@ describe("migrate", () => {
           `,
         )
         .run(projectSourcesDefaultIndexMigrationWhen);
+      dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
 
       expect(() => migrate(db)).not.toThrow();

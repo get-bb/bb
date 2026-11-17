@@ -53,6 +53,12 @@ export class ApiError extends HTTPException {
   }
 }
 
+export class HostConnectionLostApiError extends ApiError {
+  constructor() {
+    super(502, "host_unavailable", "Host is not connected", false);
+  }
+}
+
 function normalizeApiErrorOptions(
   options: boolean | ApiErrorOptions | undefined,
 ): ApiErrorOptions {

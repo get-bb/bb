@@ -7,6 +7,7 @@ import type { BridgeJsonRpcOutputMessage } from "@get-bb/plugin-sdk/provider-bri
 import { handleLine } from "./bridge.js";
 import {
   cleanupBridgeProcessTest,
+  trackAppServerChildren,
   spawnedAppServerPids,
 } from "./bridge-process.test-support.js";
 import {
@@ -34,6 +35,7 @@ let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir = "";
 let archiveStatePath = "";
 let processLogPath = "";
+let children: ReturnType<typeof trackAppServerChildren> | undefined;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-archived-rebuild-"));
@@ -44,6 +46,7 @@ beforeEach(() => {
     scriptPath,
     JSON.stringify({ archiveStatePath, processLogPath }),
   );
+  children = trackAppServerChildren(scriptPath);
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -54,7 +57,7 @@ afterEach(async () => {
     cleanupId: 993_001,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
-    processLogPath,
+    children,
     workspaceDir,
     unstubEnvs: vi.unstubAllEnvs,
   });

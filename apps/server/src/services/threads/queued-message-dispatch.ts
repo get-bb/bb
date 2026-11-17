@@ -25,7 +25,10 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-import { isDispatchRequeuedRecently } from "./dispatch-hooks.js";
+import {
+  isDispatchRequeuedRecently,
+  isPluginDispatchRequeuedRecently,
+} from "./dispatch-hooks.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import { clearQueuedMessageWait } from "./queue-waits.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
@@ -508,9 +511,13 @@ async function runPluginRecheckDispatch(
 ): Promise<void> {
   const now = Date.now();
   for (const row of listQueuedThreadMessagePluginWaitRefs(deps.db)) {
+    const pluginId = row.waitHolder.slice(
+      QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX.length,
+    );
+    if (isPluginDispatchRequeuedRecently(row.threadId, pluginId)) continue;
     await attemptAutomaticQueuedMessage(deps, row, {
       now,
-      respectRequeuePacing: true,
+      respectRequeuePacing: false,
       retryingFailure: false,
     });
   }
