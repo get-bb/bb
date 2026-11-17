@@ -73,6 +73,7 @@ import {
   applyGeneratedThreadTitle,
   sanitizeGeneratedTitle,
 } from "../services/threads/title-generation.js";
+import { titleUntitledThreadFromProviderInput } from "../services/threads/provider-input-title.js";
 import {
   getInactiveSessionLogFields,
   requireAuthenticatedDaemonSession,
@@ -455,6 +456,13 @@ async function applyEventEffects(
           threadId: entry.threadId,
         });
         continue;
+      }
+
+      if (event.type === "item/completed") {
+        titleUntitledThreadFromProviderInput(deps, {
+          threadId: entry.threadId,
+          event,
+        });
       }
 
       if (event.type === "thread/name/updated") {
