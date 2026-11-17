@@ -463,8 +463,18 @@ describe("WatchManager", () => {
     change();
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2);
-    workspace.getDefaultBranch.mockResolvedValue("trunk");
-    change();
+    expect(workspace.getDefaultBranch).not.toHaveBeenCalled();
+    workspace.getSharedGitRefsSnapshot.mockResolvedValue({
+      defaultBranch: "trunk",
+      branchNamesFingerprint: "names:initial",
+      fingerprintFor: () => "refs:/tmp/env-branch:trunk",
+    });
+    watch?.onChange({
+      kind: "workspace-status-changed",
+      environmentId: "env-branch",
+      changeKinds: ["shared-git-refs-changed"],
+      changedPaths: [workspace.path + "/.git/refs/remotes/origin/HEAD"],
+    });
     await vi.waitFor(() =>
       expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(3),
     );
