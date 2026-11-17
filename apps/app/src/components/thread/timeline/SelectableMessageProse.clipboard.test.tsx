@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import {
@@ -14,6 +8,7 @@ import {
   createMarkdownLocalFileHostTestWrapper,
 } from "@/test/fixtures/markdown-local-file-host";
 import { SelectableMessageProse } from "./SelectableMessageProse";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 afterEach(() => {
   window.getSelection()?.removeAllRanges();
@@ -339,12 +334,8 @@ it("copies rendered math as TeX text and MathML without KaTeX's duplicate layout
       />
     </SelectableMessageProse>,
   );
-  await act(async () => {
-    await import("@/components/ui/markdown-katex.js");
-  });
-  await waitFor(() => {
-    expect(container.querySelector(".katex-display")).not.toBeNull();
-  });
+  await settleLazyModules();
+  expect(container.querySelector(".katex-display")).not.toBeNull();
   const text = container.querySelector(".katex-html")!.firstChild!;
   const range = document.createRange();
   range.setStart(text, 0);
@@ -366,12 +357,8 @@ it("copies math inside emphasis as TeX rather than KaTeX's duplicated layout tex
       <MarkdownPreview content={"**Energy $$E = mc^2$$ is big**"} />
     </SelectableMessageProse>,
   );
-  await act(async () => {
-    await import("@/components/ui/markdown-katex.js");
-  });
-  await waitFor(() => {
-    expect(container.querySelector(".katex")).not.toBeNull();
-  });
+  await settleLazyModules();
+  expect(container.querySelector(".katex")).not.toBeNull();
   const range = document.createRange();
   range.selectNodeContents(container.querySelector("strong")!);
   expect(copyRange(range).data.get("text/plain")).toBe(

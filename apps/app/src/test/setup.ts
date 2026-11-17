@@ -1,6 +1,31 @@
 /// <reference types="vitest/jsdom" />
 
 import "@bb/shared-ui/icon-extended";
+import { afterEach, beforeEach } from "vitest";
+import {
+  holdLazyImports,
+  installLazyImportTracking,
+  releaseLazyImports,
+  settleLazyModulesBeforeWaiting,
+  unsettledLazyImports,
+} from "./lazy-modules";
+
+installLazyImportTracking();
+
+beforeEach(async (context) => {
+  await settleLazyModulesBeforeWaiting();
+  holdLazyImports();
+  context.onTestFailed(({ task }) => {
+    const unsettled = unsettledLazyImports();
+    const [error] = task.result?.errors ?? [];
+    if (unsettled.length === 0 || error === undefined) return;
+    error.message += `\n\nLazy imports had not settled when this test failed: ${unsettled.join(", ")}. In app tests a lazy import resolves when the test awaits settleLazyModules() from @/test/lazy-modules or a Testing Library findBy/waitFor; synchronous assertions after the render or interaction that starts it see the loading state.`;
+  });
+});
+
+afterEach(() => {
+  releaseLazyImports();
+});
 
 if (typeof globalThis.navigator === "undefined") {
   Object.defineProperty(globalThis, "navigator", {

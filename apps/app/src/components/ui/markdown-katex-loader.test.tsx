@@ -1,22 +1,15 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { settleLazyModules } from "@/test/lazy-modules";
 import { MarkdownPreview } from "./markdown-preview";
 
-const katexChunkLoads = await vi.hoisted(async () => {
-  const { createDeferredPromise } = await import("@bb/test-helpers");
-  return {
-    count: 0,
-    imported: createDeferredPromise<typeof import("./markdown-katex.js")>(),
-  };
-});
+const katexChunkLoads = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock("./markdown-katex.js", async (importOriginal) => {
+vi.mock("./markdown-katex.js", (importOriginal) => {
   katexChunkLoads.count += 1;
-  const module = importOriginal<typeof import("./markdown-katex.js")>();
-  katexChunkLoads.imported.resolve(module);
-  return module;
+  return importOriginal();
 });
 
 afterEach(() => {
@@ -50,16 +43,12 @@ describe("MarkdownPreview lazy KaTeX", () => {
     );
     expect(incremental.container.querySelector(".katex-display")).toBeNull();
 
-    await act(async () => {
-      await katexChunkLoads.imported.promise;
-    });
-    await waitFor(() => {
-      expect(first.container.querySelector(".katex")).not.toBeNull();
-      expect(second.container.querySelector(".katex")).not.toBeNull();
-      expect(
-        incremental.container.querySelector(".katex-display"),
-      ).not.toBeNull();
-    });
+    await settleLazyModules();
+    expect(first.container.querySelector(".katex")).not.toBeNull();
+    expect(second.container.querySelector(".katex")).not.toBeNull();
+    expect(
+      incremental.container.querySelector(".katex-display"),
+    ).not.toBeNull();
     expect(katexChunkLoads.count).toBe(1);
     expect(incremental.container.innerHTML).toBe(
       render(<MarkdownPreview content={mathPieces} />).container.innerHTML,

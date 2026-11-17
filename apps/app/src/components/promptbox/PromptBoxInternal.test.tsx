@@ -41,7 +41,6 @@ import {
 } from "@testing-library/react";
 import {
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -6452,9 +6451,6 @@ describe("voice recording escape", () => {
 });
 
 describe("thread URL clipboard paste", () => {
-  beforeAll(async () => {
-    await import("../../../../../plugins/composer/src/mentions/pasted-thread-links");
-  });
   const threadId = "thr_86mb5jjzi9";
   const projectId = "proj_khiw2za95v";
   const url = `${window.location.origin}/projects/${projectId}/threads/${threadId}`;

@@ -14,6 +14,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 const renderRecorder = await vi.hoisted(async () => {
   const { installRenderRecorder } = await import("@/test/render-recorder");
@@ -233,7 +234,7 @@ describe("ThreadTimelineRows row isolation", () => {
     ]);
   });
 
-  it("re-renders only the streaming row when its text grows", () => {
+  it("re-renders only the streaming row when its text grows", async () => {
     const queryClient = new QueryClient();
     const rows = Array.from({ length: 12 }, (_, index) => assistantRow(index));
     const renderTimeline = (timelineRows: typeof rows) => (
@@ -248,6 +249,7 @@ describe("ThreadTimelineRows row isolation", () => {
       </MemoryRouter>
     );
     const view = render(renderTimeline(rows));
+    await settleLazyModules();
     renderRecorder.reset();
 
     view.rerender(
@@ -266,7 +268,7 @@ describe("ThreadTimelineRows row isolation", () => {
     expect(renderedRowIds("ConversationRow")).toEqual(["assistant_message_11"]);
   });
 
-  it("re-renders only the appended row and the rows whose state it moves", () => {
+  it("re-renders only the appended row and the rows whose state it moves", async () => {
     const queryClient = new QueryClient();
     const rows = Array.from({ length: 12 }, (_, index) => assistantRow(index));
     const renderTimeline = (timelineRows: typeof rows) => (
@@ -281,6 +283,7 @@ describe("ThreadTimelineRows row isolation", () => {
       </MemoryRouter>
     );
     const view = render(renderTimeline(rows));
+    await settleLazyModules();
     renderRecorder.reset();
 
     view.rerender(renderTimeline([...rows, assistantRow(12)]));
