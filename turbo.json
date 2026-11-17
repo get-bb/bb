@@ -1016,7 +1016,7 @@
       ]
     },
     "@bb/render-invariants#test:render-invariants": {
-      "env": ["BB_RENDER_INVARIANTS_PENDING"],
+      "env": ["BB_RENDER_INVARIANTS_PENDING", "BB_CI_TEST_SHARD"],
       "passThroughEnv": ["PLAYWRIGHT_BROWSERS_PATH"],
       "dependsOn": [
         "//#ensure-native-modules",

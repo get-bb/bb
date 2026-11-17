@@ -44,14 +44,14 @@ work happens that should not happen at all.
 
 ## Invariants
 
-| Test                                                                         | Region that must stay quiet                                            | CI      |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------- |
-| renders nothing while the app sits idle for 10 s                             | every component, mounts included                                       | on      |
-| typing an Ask User Question answer renders nothing outside the question form | everything outside `[data-question-form]` (keystrokes after the first) | on      |
-| typing in the composer renders nothing outside the composer box              | everything outside `[data-composer-box]` (keystrokes after the first)  | on      |
-| renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | on      |
-| a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | on      |
-| a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | on      |
+| Test                                                                         | Region that must stay quiet                                            | CI  |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --- |
+| renders nothing while the app sits idle for 10 s                             | every component, mounts included                                       | on  |
+| typing an Ask User Question answer renders nothing outside the question form | everything outside `[data-question-form]` (keystrokes after the first) | on  |
+| typing in the composer renders nothing outside the composer box              | everything outside `[data-composer-box]` (keystrokes after the first)  | on  |
+| renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | on  |
+| a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | on  |
+| a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | on  |
 
 Re-render invariants ignore mounts: windowed lists mount rows as they scroll,
 and a mounted child is always accompanied by its re-rendered parent. Typing
@@ -135,11 +135,21 @@ the invariant, add it as a pending invariant and record the cause above.
 
 ## CI
 
-The `Render invariants` job runs on main pushes, manual runs and pull requests
+The three `Render invariants` shards run on main pushes, manual runs and pull requests
 that change `apps/app`, `packages/client-core`, `packages/core-ui`,
 `packages/plugin-sdk`, `packages/shared-ui`, `packages/thread-view`, a plugin
 whose `package.json` declares `bb.app`, the suite itself, the scripted echo
 provider, or the integration harness helpers. Selection lives in
-`scripts/plan-ci.mjs`. The job installs the Chromium headless shell pinned by
-`playwright-core` and runs the Turbo task above; the invariant run itself takes
-about a minute.
+`scripts/plan-ci.mjs`. Each shard installs the Chromium headless shell pinned by
+`playwright-core` and runs the Turbo task above with `BB_CI_TEST_SHARD=N/3`.
+Idle, typing, and push invariants live in separate files, each with its own
+server, database, provider, browser, and cleanup. The existing Vitest file
+sharding partitions those files across runners. Within each file, scenarios
+still run sequentially with fresh browser contexts and the original settling
+and observation windows. Running without the shard variable executes all six
+scenarios locally.
+
+The shard variable is part of the render task's Turbo cache key. Each runner
+has its own cache prefix, so a cached passing group cannot replace another
+group. Three jobs repeat fixture/build/setup work in exchange for overlapping
+the scenario groups; this targets latency rather than total runner minutes.

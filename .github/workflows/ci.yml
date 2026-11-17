@@ -743,13 +743,18 @@ jobs:
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
 
   render-invariants:
-    name: Render invariants (ubuntu-latest, Node 22.x)
+    name: Render invariants (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection).renderInvariants }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     steps:
       - name: Checkout repository
@@ -773,7 +778,7 @@ jobs:
         uses: ./.github/actions/cache-workspace
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          cache-prefix: render-invariants
+          cache-prefix: render-invariants-${{ matrix.shard }}
           turbo-cache: "true"
 
       - name: Restore pnpm cache
@@ -803,6 +808,8 @@ jobs:
         run: pnpm --filter @bb/render-invariants exec playwright-core install --with-deps --only-shell chromium
 
       - name: Check render invariants
+        env:
+          BB_CI_TEST_SHARD: ${{ matrix.shard }}/3
         run: pnpm exec turbo run test:render-invariants --filter=@bb/render-invariants --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       - name: Bound saved Turbo cache
