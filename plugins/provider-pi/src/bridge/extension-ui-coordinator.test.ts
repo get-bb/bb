@@ -1,9 +1,13 @@
-import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  type ThreadDelta,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { afterEach, expect, it, vi } from "vitest";
 import type {
   InteractionUiRequest,
   PiExtensionUiResponseFields,
 } from "../extension-ui-contract.js";
+import { PI_EXTENSION_UI_MAX_MESSAGE_LENGTH } from "../extension-ui-contract.js";
 import { createExtensionUiCoordinator } from "./extension-ui.js";
 
 function forward(title: string, extra: { timeout?: number } = {}) {
@@ -104,3 +108,50 @@ it("withdraws the card when the Pi session closes", () => {
   expect(cancelled).toEqual([sent[0]!.id]);
   expect(responses).toEqual([{ cancelled: true }]);
 });
+
+it.each([8192, 8193, 32768])(
+  "asks the user about a confirm with a %i-character message instead of declining it (#7647)",
+  (length) => {
+    const sent: InteractionUiRequest[] = [];
+    const responses: PiExtensionUiResponseFields[] = [];
+    const deltas: ThreadDelta[] = [];
+    const cancelled: string[] = [];
+    const coordinator = createExtensionUiCoordinator({
+      sendInteractionRequest: (request) => sent.push(request),
+      sendThreadDeltas: (_threadId, threadDeltas) =>
+        deltas.push(...threadDeltas),
+      sendRequestCancelled: (requestId) => cancelled.push(requestId),
+    });
+    const message = "x".repeat(length);
+    coordinator.handle({
+      scope: {},
+      request: {
+        id: "ui-1",
+        method: "confirm",
+        title: "Bridge limit probe",
+        message,
+      },
+      threadId: "thr_ui",
+      providerThreadId: "pi_ui",
+      respond: (_id, fields) => responses.push(fields),
+    });
+
+    expect(responses).toEqual([]);
+    expect(deltas).toEqual([]);
+    expect(cancelled).toEqual([]);
+    expect(sent).toHaveLength(1);
+    const shown = sent[0]!.params.payload.data.message ?? "";
+    expect(shown.length).toBeLessThanOrEqual(
+      PI_EXTENSION_UI_MAX_MESSAGE_LENGTH,
+    );
+    if (length <= PI_EXTENSION_UI_MAX_MESSAGE_LENGTH) {
+      expect(shown).toBe(message);
+    } else {
+      const visible = shown.indexOf("\n\n[");
+      expect(shown).toMatch(/\[\d+ more characters not shown\]$/);
+      expect(shown).toContain(
+        `[${length - visible} more characters not shown]`,
+      );
+    }
+  },
+);
