@@ -33,6 +33,16 @@ const trackShimChild = (message: unknown): void => {
 };
 
 afterEach(async () => {
+  console.error(
+    "PI_CLEANUP_BEGIN",
+    JSON.stringify(
+      shimChildren.map(({ child }) => ({
+        pid: child.pid,
+        exitCode: child.exitCode,
+        signalCode: child.signalCode,
+      })),
+    ),
+  );
   childProcessChannel.unsubscribe(trackShimChild);
   await Promise.all(
     shimChildren.splice(0).map(async ({ child, closed }) => {
@@ -49,6 +59,7 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
+  console.error("PI_CLEANUP_COMPLETE");
 });
 
 function configureNodeProbe(script: string): void {
@@ -108,47 +119,55 @@ describe("Pi version probe", () => {
     });
   });
 
-  it.skipIf(process.platform !== "win32")(
-    "probes a Pi .cmd shim on PATH and passes the install gate",
-    async ({ signal }) => {
-      const root = await mkdtemp(path.join(os.tmpdir(), "bb pi version-"));
-      temporaryDirectories.push(root);
-      const pkg = path.join(
-        root,
-        "node_modules",
-        "@earendil-works",
-        "pi-coding-agent",
-      );
-      await mkdir(pkg, { recursive: true });
-      await writeFile(
-        path.join(pkg, "package.json"),
-        JSON.stringify({ bin: { pi: "cli.cjs" } }),
-      );
-      await copyFile(process.execPath, path.join(root, "node.exe"));
-      const cli = path.join(pkg, "cli.cjs");
-      await writeFile(
-        cli,
-        'if (process.argv[2] !== "--version") process.exit(2); process.stdout.write("0.85.1\\n");',
-      );
-      await writeFile(
-        path.join(root, "pi.cmd"),
-        npmNodeShim("node_modules\\@earendil-works\\pi-coding-agent\\cli.cjs"),
-      );
-      await writeFile(path.join(root, "pi"), "#!/bin/sh\nexit 1\n");
-      vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);
-      vi.stubEnv(PI_BRIDGE_COMMAND_ENV, "pi");
-      vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
-      signal.throwIfAborted();
-      childProcessChannel.subscribe(trackShimChild);
-      expect(await getPiInstallGate()).toEqual({
-        ok: true,
-        installedVersion: "0.85.1",
-      });
-      signal.throwIfAborted();
-      expect(await getPiProviderInstallationStatus(false)).toMatchObject({
-        executablePath: path.join(root, "pi.cmd"),
-        currentVersion: "0.85.1",
-      });
-    },
-  );
+  for (const diagnostic of [
+    { name: "two slow probes", deadline: 5000 },
+    { name: "forced timeout cleanup", deadline: 1000 },
+  ]) {
+    it.skipIf(process.platform !== "win32")(
+      `probes a Pi .cmd shim on PATH: ${diagnostic.name}`,
+      async ({ signal }) => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "bb pi version-"));
+        temporaryDirectories.push(root);
+        const pkg = path.join(
+          root,
+          "node_modules",
+          "@earendil-works",
+          "pi-coding-agent",
+        );
+        await mkdir(pkg, { recursive: true });
+        await writeFile(
+          path.join(pkg, "package.json"),
+          JSON.stringify({ bin: { pi: "cli.cjs" } }),
+        );
+        await copyFile(process.execPath, path.join(root, "node.exe"));
+        const cli = path.join(pkg, "cli.cjs");
+        await writeFile(
+          cli,
+          'if (process.argv[2] !== "--version") process.exit(2); setTimeout(() => process.stdout.write("0.85.1\\n"), 2000);',
+        );
+        await writeFile(
+          path.join(root, "pi.cmd"),
+          npmNodeShim(
+            "node_modules\\@earendil-works\\pi-coding-agent\\cli.cjs",
+          ),
+        );
+        await writeFile(path.join(root, "pi"), "#!/bin/sh\nexit 1\n");
+        vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);
+        vi.stubEnv(PI_BRIDGE_COMMAND_ENV, "pi");
+        vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
+        signal.throwIfAborted();
+        childProcessChannel.subscribe(trackShimChild);
+        expect(await getPiInstallGate()).toEqual({
+          ok: true,
+          installedVersion: "0.85.1",
+        });
+        signal.throwIfAborted();
+        expect(await getPiProviderInstallationStatus(false)).toMatchObject({
+          executablePath: path.join(root, "pi.cmd"),
+          currentVersion: "0.85.1",
+        });
+      },
+      diagnostic.deadline,
+    );
+  }
 });
