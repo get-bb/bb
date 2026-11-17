@@ -295,6 +295,8 @@ function renderPicker({
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  document.body.replaceChildren();
   commandHandlers.clear();
   vi.clearAllMocks();
 });
