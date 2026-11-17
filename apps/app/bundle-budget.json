@@ -154,8 +154,8 @@
     "On 2026-11-15 the boot brotli limit rose 3 KiB (425,055 to 428,127 bytes)",
     "when the React Compiler became authoritative: about 100 functions it used",
     "to skip, AppLayout and the sidebar navigation model among them, now carry",
-    "memo caches. The boot payload measured 426,069 brotli bytes. The raw limit",
-    "did not change."
+    "memo caches. The boot payload measured 417.2 KB brotli. The raw limit did",
+    "not change."
   ],
   "maxBootBytes": 1722436,
   "maxBootBrotliBytes": 428127,
