@@ -24,6 +24,7 @@ import {
   createMarkdownPieceCache,
   findMarkdownPieceCandidates,
   resolveMarkdownPieces,
+  resolveMarkdownPiecesUnlessHtml,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces";
 import { normalizeMathFences } from "./markdown-math-fences";
@@ -437,5 +438,30 @@ describe("resolveMarkdownPieces html detection", () => {
     expect(
       resolveMarkdownPieces(cache, config, `${first}Paragraph two.`).hasHtml,
     ).toBe(true);
+  });
+
+  it("stops parsing pieces while a message with html keeps growing", () => {
+    const recorded: string[] = [];
+    const recordingConfig = createRecordingConfig(recorded);
+    const cache = createMarkdownPieceCache();
+    const first = "<sub>note</sub>\n\nParagraph one.";
+    expect(
+      resolveMarkdownPiecesUnlessHtml(cache, recordingConfig, first),
+    ).toBeNull();
+    recorded.length = 0;
+    expect(
+      resolveMarkdownPiecesUnlessHtml(
+        cache,
+        recordingConfig,
+        `${first}\n\nParagraph two.`,
+      ),
+    ).toBeNull();
+    expect(recorded).toEqual([]);
+    const replaced = "Use `Array<T>` instead.";
+    expect(
+      resolveMarkdownPiecesUnlessHtml(cache, recordingConfig, replaced)
+        ?.hasHtml,
+    ).toBe(false);
+    expect(recorded).toEqual([replaced]);
   });
 });

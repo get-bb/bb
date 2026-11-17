@@ -74,6 +74,7 @@ interface MarkdownPieceEntry {
 export interface MarkdownPieceCache {
   config: MarkdownPieceRenderConfig | null;
   entries: readonly MarkdownPieceEntry[];
+  htmlPrefix: string | null;
   latchedWholeDocumentPrefix: string | null;
   resolved: { body: string; result: ResolvedMarkdownPieces } | null;
 }
@@ -543,6 +544,7 @@ export function createMarkdownPieceCache(): MarkdownPieceCache {
   return {
     config: null,
     entries: [],
+    htmlPrefix: null,
     latchedWholeDocumentPrefix: null,
     resolved: null,
   };
@@ -556,6 +558,7 @@ export function resolveMarkdownPieces(
   if (cache.config !== config) {
     cache.config = config;
     cache.entries = [];
+    cache.htmlPrefix = null;
     cache.latchedWholeDocumentPrefix = null;
     cache.resolved = null;
   }
@@ -591,4 +594,25 @@ export function resolveMarkdownPieces(
   cache.entries = entries;
   cache.resolved = { body, result };
   return result;
+}
+
+export function resolveMarkdownPiecesUnlessHtml(
+  cache: MarkdownPieceCache,
+  config: MarkdownPieceRenderConfig,
+  body: string,
+): ResolvedMarkdownPieces | null {
+  if (
+    cache.config === config &&
+    cache.htmlPrefix !== null &&
+    body.startsWith(cache.htmlPrefix)
+  ) {
+    return null;
+  }
+  const resolved = resolveMarkdownPieces(cache, config, body);
+  if (!resolved.hasHtml) {
+    cache.htmlPrefix = null;
+    return resolved;
+  }
+  cache.htmlPrefix = body;
+  return null;
 }

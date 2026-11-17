@@ -123,6 +123,7 @@ import {
 import {
   createMarkdownPieceCache,
   resolveMarkdownPieces,
+  resolveMarkdownPiecesUnlessHtml,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces.js";
 import { PAGE_CONTAINER_INSET_END_VARIABLE } from "./page-shell-content-style.js";
@@ -1957,13 +1958,20 @@ function MarkdownPreviewComponent({
       resolvedUrlTransform,
     ],
   );
-  const resolvedMarkdownPieces = usesIncrementalBlocks
-    ? resolveMarkdownPieces(markdownPieceCache, markdownPieceRenderConfig, body)
-    : null;
-  const rendersHtml =
-    mayRenderHtml &&
-    (resolvedMarkdownPieces === null || resolvedMarkdownPieces.hasHtml);
-  const markdownPieces = rendersHtml ? null : resolvedMarkdownPieces;
+  const markdownPieces = !usesIncrementalBlocks
+    ? null
+    : mayRenderHtml
+      ? resolveMarkdownPiecesUnlessHtml(
+          markdownPieceCache,
+          markdownPieceRenderConfig,
+          body,
+        )
+      : resolveMarkdownPieces(
+          markdownPieceCache,
+          markdownPieceRenderConfig,
+          body,
+        );
+  const rendersHtml = mayRenderHtml && markdownPieces === null;
 
   const Markdown = rendersHtml ? LazyMarkdownHtml : ReactMarkdown;
   const renderedMarkdown =
