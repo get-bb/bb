@@ -2269,3 +2269,52 @@ describe("pi delta translation equivalence", () => {
     ]);
   });
 });
+
+describe("Pi tool update deltas", () => {
+  it("leaves the no-turn fallback off streamed tool updates but keeps it on the tool start", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: () => null,
+    });
+    const context = { threadId: "pi-thread-1" };
+    const start = translator.translate(
+      {
+        type: "tool_execution_start",
+        toolCallId: "tool-bash-1",
+        toolName: "bash",
+        args: { command: "seq 3", cwd: "/repo" },
+      },
+      context,
+    );
+    const bashUpdate = translator.translate(
+      createPiBashUpdateEvent({
+        threadId: "pi-thread-1",
+        toolCallId: "tool-bash-1",
+        text: "1\n2\n",
+      }),
+      context,
+    );
+    const readUpdate = translator.translate(
+      {
+        type: "tool_execution_update",
+        toolCallId: "tool-read-1",
+        toolName: "read",
+        partialResult: { content: [{ type: "text", text: "partial" }] },
+      },
+      context,
+    );
+
+    expect(start.some((delta) => "noTurnFallback" in delta)).toBe(true);
+    expect(bashUpdate).toEqual([
+      expect.objectContaining({
+        kind: "command.outputSnapshot",
+        text: "1\n2\n",
+      }),
+    ]);
+    expect(readUpdate).toEqual([
+      expect.objectContaining({ kind: "item.progress", message: "partial" }),
+    ]);
+    for (const delta of [...bashUpdate, ...readUpdate]) {
+      expect(delta).not.toHaveProperty("noTurnFallback");
+    }
+  });
+});
