@@ -10,18 +10,92 @@ import {
 import { createElement } from "react";
 import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
+import { compile } from "tailwindcss";
+import { Features, transform } from "lightningcss";
+import { MACOS_TITLE_BAR_CONTROL_SIZE_CLASS } from "@/lib/bb-desktop";
 import {
   SecondaryPanelTabStrip,
   secondaryPanelTabsToClose,
   type SecondaryPanelTabStripProps,
 } from "./SecondaryPanelTabStrip";
 
+const compiledStyles: HTMLStyleElement[] = [];
+
+async function applyCompiledStyles(container: HTMLElement) {
+  const compiler = await compile(
+    "@theme { --spacing: 4px; --color-sidebar: rgb(230, 232, 235); } @tailwind utilities;",
+  );
+  const candidates = [...container.querySelectorAll("[class]")].flatMap(
+    (element) => [...element.classList],
+  );
+  const css = compiler
+    .build(candidates)
+    .replaceAll("var(--spacing)", "4px")
+    .replaceAll("var(--bb-title-bar-control-size)", "28px");
+  const style = document.createElement("style");
+  let flattened = transform({
+    filename: "tab-strip.css",
+    code: Buffer.from(css),
+    include: Features.Nesting,
+    targets: { safari: 15 << 16 },
+  }).code.toString();
+  const utilities = [...new Set(candidates)].sort(
+    (first, second) => second.length - first.length,
+  );
+  for (const [index, candidate] of utilities.entries()) {
+    if (/^[a-zA-Z_-][a-zA-Z0-9_-]*$/.test(candidate)) continue;
+    const escaped = candidate.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
+    const alias = `test-utility-${index}`;
+    flattened = flattened.replaceAll(`.${escaped}`, `.${alias}`);
+    for (const element of container.querySelectorAll("[class]")) {
+      if (element.classList.contains(candidate)) element.classList.add(alias);
+    }
+  }
+  style.textContent = flattened;
+  document.head.append(style);
+  compiledStyles.push(style);
+}
+
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  for (const style of compiledStyles.splice(0)) style.remove();
 });
 
 describe("secondary panel tab-strip edge fades", () => {
+  it("keeps close affordances square inside desktop title-bar sizing", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const { container, getByRole } = render(
+      createElement(
+        "div",
+        { className: MACOS_TITLE_BAR_CONTROL_SIZE_CLASS },
+        createElement(SecondaryPanelTabStrip, {
+          activeTabId: "tab-0",
+          tabs: makeCloseMenuTabs(),
+          onReorderTab: vi.fn(),
+          usesDesktopChrome: true,
+          isPanelOpen: true,
+        }),
+      ),
+    );
+    await applyCompiledStyles(container);
+    const close = getComputedStyle(
+      getByRole("button", { name: "Close file-0.ts" }),
+    );
+    expect(close.width).toBe("16px");
+    expect(close.height).toBe(close.width);
+    expect(
+      getComputedStyle(getByRole("button", { name: "file-0.ts" })).height,
+    ).toBe("28px");
+  });
+
   it("keeps the desktop tab viewport outside the window drag region", () => {
     vi.stubGlobal(
       "ResizeObserver",
@@ -108,7 +182,7 @@ describe("secondary panel tab-strip edge fades", () => {
     ).toBe(false);
   });
 
-  it("observes the intrinsic tab row so async title changes refresh overflow", () => {
+  it("keeps overflow capacity stable as edge controls change and refreshes async titles", async () => {
     const observed: Element[] = [];
     let resizeCallback: ResizeObserverCallback | undefined;
     let animationFrameCallback: FrameRequestCallback | undefined;
@@ -163,7 +237,6 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(observed).toContain(viewport);
     expect(observed).toContain(content);
     expect(resizeCallback).toBeDefined();
-    expect(container.querySelectorAll("[data-overflow-fade]")).toHaveLength(2);
     const leftButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="Scroll tabs left"]',
     );
@@ -173,8 +246,6 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-0")).toBe(true);
 
-    const rightFade = container.querySelector("[data-overflow-fade='right']");
-    expect(rightFade?.classList.contains("opacity-0")).toBe(true);
     Object.defineProperties(viewport!, {
       clientWidth: { configurable: true, value: 120 },
       scrollWidth: { configurable: true, value: 240 },
@@ -191,7 +262,15 @@ describe("secondary panel tab-strip edge fades", () => {
     act(() => {
       resizeCallback?.([], {} as ResizeObserver);
     });
-    expect(rightFade?.classList.contains("opacity-100")).toBe(true);
+    await applyCompiledStyles(container);
+    const leftWidth = getComputedStyle(leftButton!).width;
+    const rightWidth = getComputedStyle(rightButton!).width;
+    expect(leftWidth).toBe("20px");
+    expect(rightWidth).toBe(leftWidth);
+    expect(getComputedStyle(rightButton!).backgroundColor).toBe(
+      "rgba(0, 0, 0, 0)",
+    );
+    expect(getComputedStyle(viewport!).maskImage).toContain("transparent");
 
     const scrollRegion = container.querySelector(
       "[data-secondary-panel-tab-scroll-region]",
@@ -201,7 +280,6 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(strip?.children[2]).toBe(rightButton);
     expect(leftButton?.classList.contains("absolute")).toBe(false);
     expect(rightButton?.classList.contains("absolute")).toBe(false);
-    expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-5")).toBe(true);
     expect(leftButton?.classList.contains("opacity-0")).toBe(true);
     expect(leftButton?.tabIndex).toBe(-1);
@@ -221,7 +299,8 @@ describe("secondary panel tab-strip edge fades", () => {
     viewport!.scrollLeft = 120;
     fireEvent.scroll(viewport!);
     act(() => animationFrameCallback?.(0));
-    expect(rightButton?.classList.contains("w-0")).toBe(true);
+    expect(getComputedStyle(rightButton!).width).toBe(rightWidth);
+    expect(getComputedStyle(leftButton!).width).toBe(leftWidth);
     expect(leftButton?.classList.contains("w-5")).toBe(true);
     expect(rightButton?.getAttribute("aria-hidden")).toBe("true");
     expect(leftButton?.getAttribute("aria-hidden")).toBe("false");
