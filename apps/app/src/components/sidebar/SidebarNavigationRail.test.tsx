@@ -13,15 +13,7 @@ import type { ExperimentalBadge } from "@get-bb/plugin-sdk";
 import { experimental_useSidebarNavigation } from "@get-bb/plugin-sdk/app";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
@@ -341,9 +333,7 @@ function pathname(): string | null {
   return screen.getByTestId("pathname").textContent;
 }
 
-beforeAll(async () => {
-  await SidebarVisibilityCustomize.preload();
-});
+await SidebarVisibilityCustomize.preload();
 
 beforeEach(async () => {
   vi.clearAllMocks();
