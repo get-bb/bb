@@ -74,3 +74,5 @@ export function listEvents(
     .orderBy(events.sequence)
     .all();
 }
+
+export { forgetThreadEventRewriteGenerations } from "./data/event-rewrite-generation.js";

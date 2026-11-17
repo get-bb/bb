@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { DbConnection } from "../connection.js";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { threadConversationOutlines } from "../schema.js";
 
 export interface ThreadConversationOutlineRecord {
@@ -36,5 +36,14 @@ export function upsertThreadConversationOutlineRecord(
         projectionKey: args.projectionKey,
       },
     })
+    .run();
+}
+
+export function deleteThreadConversationOutlineRecord(
+  db: DbQueryConnection,
+  threadId: string,
+): void {
+  db.delete(threadConversationOutlines)
+    .where(eq(threadConversationOutlines.threadId, threadId))
     .run();
 }
