@@ -612,6 +612,16 @@ function main() {
             ? String(step.classified.id) === String(live.classified.id)
             : step.classified.key === live.classified.key);
         if (!same) continue;
+        const cursor = readCursor(args.state);
+        const gated = script.slice(position, index).some((between) =>
+          between.dir === "provider→bridge" &&
+          between.classified.kind !== "response" &&
+          !cursorAllows(cursor, between),
+        );
+        if (gated) {
+          lookaheadTimer = setTimeout(lookAhead, CURSOR_POLL_MS);
+          return;
+        }
         const skipped = [];
         for (let cursor = position; cursor < index; cursor += 1) {
           const between = script[cursor];
