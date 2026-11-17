@@ -41,7 +41,7 @@ export interface ChildProcessTracker {
 
 export function trackChildProcesses(): ChildProcessTracker {
   const children: ChildProcess[] = [];
-  const closed = new WeakMap<ChildProcess, Promise<void>>();
+  const closures: Promise<void>[] = [];
   const childProcessChannel = channel("child_process");
   const onChildProcess = (message: unknown): void => {
     if (
@@ -52,8 +52,7 @@ export function trackChildProcesses(): ChildProcessTracker {
     ) {
       const child = message.process;
       children.push(child);
-      closed.set(
-        child,
+      closures.push(
         new Promise((resolveClose) =>
           child.once("close", () => resolveClose()),
         ),
@@ -77,10 +76,10 @@ export function trackChildProcesses(): ChildProcessTracker {
     },
     async waitForClose() {
       let waited = 0;
-      while (waited < children.length) {
-        const pending = children.slice(waited);
-        waited = children.length;
-        await Promise.all(pending.map((child) => closed.get(child)));
+      while (waited < closures.length) {
+        const pending = closures.slice(waited);
+        waited = closures.length;
+        await Promise.all(pending);
       }
     },
     killRunning(signal = "SIGKILL") {
