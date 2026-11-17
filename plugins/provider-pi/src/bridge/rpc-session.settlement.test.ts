@@ -35,7 +35,9 @@ function harness(settlement = true) {
   const aDelivered = deferred();
   const requestOk = vi.fn<
     (command: Record<string, unknown>) => Promise<unknown>
-  >(async () => undefined);
+  >(async (command) =>
+    command.type === "prompt" ? { disposition: "started" } : undefined,
+  );
   const onDone = vi.fn();
   const kill = vi.fn();
   const session = new PiRpcSession(
@@ -171,15 +173,20 @@ function stateRequests(requestOk: ReturnType<typeof harness>["requestOk"]) {
   );
 }
 
-it.each([true, false])(
-  "settles a prompt Pi handled without a run (settlement %s)",
-  async (settlement) => {
+it.each([
+  [true, { disposition: "handled" }],
+  [false, { disposition: "handled" }],
+  [true, undefined],
+  [false, undefined],
+])(
+  "settles a prompt Pi handled without a run (settlement %s, reply %j)",
+  async (settlement, handledReply) => {
     const h = harness(settlement);
     h.requestOk.mockImplementation(async (command) => {
       if (command.type === "get_state") return { isStreaming: false };
       if (command.message !== "/return-now") return { disposition: "started" };
       h.event({ type: "entry_appended", customType: "command-handled" });
-      return { disposition: "handled" };
+      return handledReply;
     });
     const handled = h.session.prompt("/return-now");
     await handled.consumed;
@@ -250,7 +257,7 @@ it.each([
   expect(h.control.isProcessing).toBe(false);
   expect(h.control.pendingRunSettlements).toHaveLength(0);
   expect(stateRequests(h.requestOk)).toHaveLength(
-    order === "run-first" || order === "no-disposition" ? 0 : 1,
+    order === "run-first" ? 0 : 1,
   );
 });
 

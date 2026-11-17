@@ -128,13 +128,10 @@ function isPiCompactionPromptRejection(error: unknown): boolean {
   );
 }
 
-function isHandledPromptReply(reply: unknown): boolean {
-  return (
-    typeof reply === "object" &&
-    reply !== null &&
-    "disposition" in reply &&
-    reply.disposition === "handled"
-  );
+function promptReplyMayBeHandled(reply: unknown): boolean {
+  if (typeof reply !== "object" || reply === null || !("disposition" in reply))
+    return true;
+  return reply.disposition === "handled";
 }
 
 function readinessTimeoutMs(): number {
@@ -438,7 +435,7 @@ export class PiRpcSession {
         }
         this.resolvePendingInputConsumption(tracked.pending);
         if (
-          isHandledPromptReply(reply) &&
+          promptReplyMayBeHandled(reply) &&
           (await this.handledWithoutRun(runsStartedBeforeDispatch))
         ) {
           return this.settleHandledPrompt(pendingSettlement);
