@@ -34,7 +34,6 @@ import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getSettingsRoutePath } from "@/lib/route-paths";
 import {
   buildSidebarUpdateModel,
-  sidebarUpdateModelIsEmpty,
   type SidebarBbUpdate,
   type SidebarUpdateModel,
   type SidebarUpdateRow,
@@ -68,8 +67,10 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
       appUpdate.desktopUpdateSupported === true);
   const desktopCanRelaunch =
     inventory.desktopUpdateReady && desktopApi !== null;
+  const bbNeedsAttention =
+    inventory.appUpdateAvailable || inventory.desktopUpdateReady;
   const bb: SidebarBbUpdate | null =
-    inventory.appUpdateAvailable || inventory.desktopUpdateReady
+    bbNeedsAttention || serverCanApply
       ? {
           version:
             appUpdate?.available != null
@@ -122,7 +123,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     }
   }
 
-  const showUpdates = !sidebarUpdateModelIsEmpty(model);
+  const showUpdates = bbNeedsAttention || model.rows.length > 0;
   return (
     <>
       {machineAttention.label !== null ? (
