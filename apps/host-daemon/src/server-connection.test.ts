@@ -1,5 +1,8 @@
 import { Buffer } from "node:buffer";
-import type { HostDaemonSessionOpenResponse } from "@bb/host-daemon-contract";
+import {
+  hostDaemonDaemonWsMessageSchema,
+  type HostDaemonSessionOpenResponse,
+} from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
 import { ServerResponseError, type ServerClient } from "./server-client.js";
@@ -706,6 +709,44 @@ describe("ServerConnection", () => {
         "Server heartbeat acknowledgements stopped; reconnecting",
       );
     } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("sends router-validated RPC successes without a second parse and still parses failures", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    const parse = vi.spyOn(hostDaemonDaemonWsMessageSchema, "parse");
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+      const success = {
+        type: "host-rpc.response" as const,
+        requestId: "rpc-ok",
+        commandType: "plugin.host.call" as const,
+        ok: true as const,
+        result: { output: { files: [{ path: "a.ts", status: "modified" }] } },
+      };
+      const failure = {
+        type: "host-rpc.response" as const,
+        requestId: "rpc-failed",
+        commandType: "plugin.host.call" as const,
+        ok: false as const,
+        errorCode: "invalid_command" as const,
+        errorMessage: "Invalid host RPC command",
+      };
+      parse.mockClear();
+
+      expect(connection.sendMessage(success)).toBe(true);
+      expect(parse).not.toHaveBeenCalled();
+      expect(connection.sendMessage(failure)).toBe(true);
+      expect(parse).toHaveBeenCalledTimes(1);
+      expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify(success));
+      expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify(failure));
+    } finally {
+      parse.mockRestore();
       await connection.shutdown();
     }
   });
