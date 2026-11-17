@@ -5130,6 +5130,7 @@ export function listStoredTaskTurnRequestEvents(
         )
       )
       AND json_extract(${events.data}, '$.systemMessageKind') IS NULL
+      AND json_array_length(${events.data}, '$.input') > 0
       AND (
         json_extract(${events.data}, '$.initiator') = 'user'
         OR json_extract(${events.data}, '$.target.kind') = 'thread-start'

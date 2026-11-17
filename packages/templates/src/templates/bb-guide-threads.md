@@ -32,6 +32,8 @@ Spawning:
                                    start: "initialize", ... }). start defaults to "run", which
                                    requires a first message as before. "initialize" requires empty
                                    input and rejects sendAt, fork origins and plugin submissions.
+                                   An untitled initialized thread gets its fallback and generated
+                                   title from its first real message, as a normal spawn does.
     --prompt <prompt>              Initial prompt (required unless --prompt-file or --initialize-only is given)
     --prompt-file <path>           Read the prompt from a file; `-` reads stdin. Use this for
                                    multi-line or Markdown prompts: inside double quotes the shell
