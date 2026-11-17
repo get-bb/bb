@@ -1191,39 +1191,39 @@ describe("token endpoint: refresh_token", () => {
     });
     onTestFinished(() => {
       vi.restoreAllMocks();
-      console.log(
+      process.stderr.write(
         JSON.stringify({
           probe: "oauth-operations",
           cryptoTiming,
           elapsed: performance.now() - dbStart,
-        }),
+        }) + "\n",
       );
     });
     const phaseStart = performance.now();
     let current = await exchange();
-    console.log(
+    process.stderr.write(
       JSON.stringify({
         probe: "oauth-exchange",
         elapsed: performance.now() - phaseStart,
-      }),
+      }) + "\n",
     );
     for (let hour = 0; hour < 72; hour += 1) {
       now += 60 * 60 * 1000;
       const iterationStart = performance.now();
       current = await tokens(await refresh(current.refresh_token));
-      console.log(
+      process.stderr.write(
         JSON.stringify({
           probe: "oauth-refresh",
           hour,
           elapsed: performance.now() - iterationStart,
-        }),
+        }) + "\n",
       );
     }
-    console.log(
+    process.stderr.write(
       JSON.stringify({
         probe: "oauth-body",
         elapsed: performance.now() - phaseStart,
-      }),
+      }) + "\n",
     );
     expect(await db.$count(oauthRefreshToken)).toBeLessThanOrEqual(26);
     expect((await grantRows())[0]?.revokedAt).toBeNull();
