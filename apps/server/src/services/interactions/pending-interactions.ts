@@ -34,6 +34,7 @@ import {
   type ThreadEventItemPresentation,
   type PendingInteractionCreate,
   type PendingInteractionResolution,
+  type Thread,
   type ThreadChangeMetadata,
 } from "@bb/domain";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
@@ -68,6 +69,7 @@ import {
   validatePendingInteractionResolution,
 } from "./pending-interaction-validation.js";
 import { emitPluginInteractionPending } from "../plugins/plugin-thread-events.js";
+import { requestPendingInteractionParentNotice } from "./pending-interaction-parent-notice.js";
 import { requireConnectedHostSession } from "../lib/entity-lookup.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -510,12 +512,7 @@ export class PendingInteractionLifecycle {
     const pendingInteraction = toPendingInteraction(registered.row);
 
     if (registered.outcome === "created") {
-      appendPendingInteractionTimelineEvent(this.deps, pendingInteraction);
-      notifyInteractionChanged({
-        deps: this.deps,
-        threadId: pendingInteraction.threadId,
-      });
-      emitPluginInteractionPending(thread, pendingInteraction);
+      this.announceCreatedInteraction(thread, pendingInteraction);
     }
 
     return {
@@ -596,12 +593,7 @@ export class PendingInteractionLifecycle {
       return pending;
     }
     try {
-      appendPendingInteractionTimelineEvent(this.deps, interaction);
-      notifyInteractionChanged({
-        deps: this.deps,
-        threadId: interaction.threadId,
-      });
-      emitPluginInteractionPending(thread, interaction);
+      this.announceCreatedInteraction(thread, interaction);
     } catch (error) {
       try {
         setPendingInteractionInterrupted(this.deps.db, {
@@ -624,6 +616,23 @@ export class PendingInteractionLifecycle {
       throw error;
     }
     return pending;
+  }
+
+  private announceCreatedInteraction(
+    thread: Thread,
+    interaction: PendingInteraction,
+  ): void {
+    appendPendingInteractionTimelineEvent(this.deps, interaction);
+    notifyInteractionChanged({
+      deps: this.deps,
+      threadId: interaction.threadId,
+    });
+    emitPluginInteractionPending(thread, interaction);
+    requestPendingInteractionParentNotice(
+      { ...this.deps, pendingInteractions: this },
+      thread,
+      interaction,
+    );
   }
 
   async respondToInteraction(args: {

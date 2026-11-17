@@ -1,6 +1,6 @@
 import type { PendingInteraction } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { buildChildThreadBlockerSummary } from "../../src/internal/interactive-requests.js";
+import { buildChildThreadBlockerSummary } from "../../src/services/interactions/pending-interaction-parent-notice.js";
 
 function interaction(
   payload: PendingInteraction["payload"],
