@@ -564,7 +564,13 @@ export function createGitQueries(run: GitQueryRunner) {
       { cwd, ...options, allowFailure: true },
     );
     if (result.exitCode !== 0) {
-      return null;
+      if (result.exitCode === 128) return null;
+      const stderr = trimOutput(result.stderr).slice(0, 1_024);
+      throw createGitCommandFailedError(
+        ["rev-parse"],
+        `exit code ${result.exitCode}${stderr ? `: ${stderr}` : ""}`,
+        { exitCode: result.exitCode },
+      );
     }
     const [insideWorkTree, bare, gitDir, absoluteGitDir, commonDir] =
       trimOutput(result.stdout).split("\n");
