@@ -1959,6 +1959,71 @@ describe("timeline window hints", () => {
     expect(walked.pages).toBeGreaterThan(1);
     expect(walked.rows).toEqual(walkAllPages(db, thread, LARGE_BUDGET).rows);
   });
+
+  it("builds a page holding a rejected steer whose target turn started before it", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [40] });
+    const steerRequestId = requestId(99);
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1_000,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: steerRequestId,
+          senderThreadId: null,
+          input: [{ type: "text", text: "Late steer", mentions: [] }],
+          target: { kind: "steer", expectedTurnId: "turn-1" },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 1_001,
+        type: "client/turn/rejected",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          requestId: steerRequestId,
+          reason: "steer_unconfirmed",
+          message: "The turn ended before the agent confirmed this steer",
+        }),
+      },
+      ...Array.from({ length: 5 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: 1_002 + index,
+        type: "system/operation" as const,
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          operation: "fixture_output",
+          status: "completed",
+          operationId: `op-${index}`,
+          message: `Output ${index}`,
+        }),
+      })),
+    ]);
+
+    const latest = buildPage(db, thread, 20, null).response;
+    expect(
+      latest.rows.some(
+        (row) => row.kind === "conversation" && row.role === "user",
+      ),
+    ).toBe(true);
+    expect(latest.timelinePage.olderCursor).not.toBeNull();
+  });
 });
 
 describe("timeline window event exclusions", () => {

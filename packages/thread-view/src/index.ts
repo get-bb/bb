@@ -63,6 +63,7 @@ export {
   extractThreadSessionOptions,
 } from "./provider-state-extraction.js";
 export { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
+export { threadEventJoinsRunningTurn } from "./running-turn-thread-events.js";
 export { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 export type { AcceptedClientRequestContext } from "./accepted-client-request-context.js";
 export {

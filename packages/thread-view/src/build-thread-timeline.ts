@@ -1233,17 +1233,23 @@ export function projectThreadTimelineEvents(
   args: Pick<
     BuildThreadTimelineFromEventsArgs,
     "acceptedClientRequestContext" | "events" | "fold" | "options"
-  >,
+  > & {
+    externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>;
+  },
 ): EventProjection {
   return args.fold === undefined
-    ? buildEventProjection(
-        args.events,
-        threadTimelineProjectionOptions(
+    ? buildEventProjection(args.events, {
+        ...threadTimelineProjectionOptions(
           args.acceptedClientRequestContext,
           args.options,
         ),
-      )
-    : finishEventProjectionFold(args.fold, args.events);
+        externalUserBoundarySeqsByTurnId: args.externalUserBoundarySeqsByTurnId,
+      })
+    : finishEventProjectionFold(
+        args.fold,
+        args.events,
+        args.externalUserBoundarySeqsByTurnId,
+      );
 }
 
 export function buildThreadTimelineFromEvents(

@@ -850,6 +850,30 @@ size is within 15%. Compare mode refuses a baseline written with different gate
 settings. Run the gate on a machine whose load average is below its core count;
 the table header warns when the machine is oversubscribed.
 
+## Timeline History Walk
+
+`apps/server/test/timeline-history/paged-walk.test.ts` checks the paging
+contract in `docs/timeline-pagination.md` against a whole real database. It
+copies the database named by `BB_TIMELINE_HISTORY_DB` with `VACUUM INTO`
+(opening the source read-only, so a running server is unaffected), migrates the
+copy, and for every thread compares a paged walk at the default window budget
+and at 120 events with one full build. It fails with the threads and budgets
+that differ and deletes the copy afterwards. It starts no server, so it cannot
+take over the bb Connect tunnel. Without the variable the suite skips.
+
+```bash
+BB_TIMELINE_HISTORY_DB=~/.bb/bb.db pnpm exec turbo run test:timeline-history --filter=@bb/server
+BB_TIMELINE_HISTORY_DB=~/.bb/bb.db BB_TIMELINE_HISTORY_THREADS=thr_a,thr_b \
+  pnpm exec turbo run test:timeline-history --filter=@bb/server
+```
+
+Run it on changes to timeline selection, ownership, or projection. A full run
+over about 4,500 threads takes about ten minutes, most of it the copy and the
+full builds. The synthetic equivalence tests in
+`apps/server/test/services/threads/timeline-read-equivalence-*.test.ts` cover
+only the event kinds the generator produces;
+`timeline-guard-coverage.test.ts` lists the kinds it does not.
+
 ## Desktop Browser Smoke Tests
 
 ```bash
