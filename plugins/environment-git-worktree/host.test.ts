@@ -1057,8 +1057,19 @@ describe.concurrent("worktree host entry", () => {
   it("leaves a dirty earlier attempt alone when it holds the branch", async ({
     onTestFinished,
   }) => {
+    const started = performance.now();
+    const phase = (phase: string) =>
+      process.stderr.write(
+        JSON.stringify({
+          probe: "dirty-worktree-phase",
+          phase,
+          elapsed: performance.now() - started,
+        }) + "\n",
+      );
+    phase("setup-start");
     const { sourcePath, dataDir } =
       await createSourceRepository(onTestFinished);
+    phase("setup-finished");
     const harness = createHarness(dataDir);
     const first = await harness.experimental_call(
       "create",
@@ -1069,6 +1080,7 @@ describe.concurrent("worktree host entry", () => {
         branchName: "bb/dirty-thr_7",
       }),
     );
+    phase("first-create-finished");
     if (first.status !== "created") throw new Error(first.message);
     await writeFile(join(first.path, "notes.txt"), "work in progress\n");
     const retry = await harness.experimental_call(
@@ -1080,6 +1092,7 @@ describe.concurrent("worktree host entry", () => {
         branchName: "bb/dirty-thr_7",
       }),
     );
+    phase("retry-finished");
     expect(retry).toMatchObject({
       status: "failed",
       message: expect.stringContaining("uncommitted changes"),

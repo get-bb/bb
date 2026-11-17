@@ -129,7 +129,19 @@ describe("background Git authentication", () => {
 
 describe("remote branch refresh", () => {
   async function repoWithRemotes(names: string[]) {
+    const started = performance.now();
+    const phase = (phase: string) =>
+      process.stderr.write(
+        JSON.stringify({
+          probe: "fetch-fixture",
+          names,
+          phase,
+          elapsed: performance.now() - started,
+        }) + "\n",
+      );
+    phase("setup-start");
     const repo = await initRepo(await makeTempDir("bb-git-fetch-remotes-"));
+    phase("local-repo-ready");
     for (const name of names) {
       const remote = await makeTempDir(`bb-git-fetch-${name}-`);
       await runGit(["init", "--bare", "-q"], { cwd: remote });
@@ -140,6 +152,7 @@ describe("remote branch refresh", () => {
         cwd: repo,
       });
     }
+    phase("setup-finished");
     return repo;
   }
 
@@ -158,8 +171,16 @@ describe("remote branch refresh", () => {
     "fetches and prunes only origin when other remotes exist (interactive: %s)",
     async (interactive) => {
       const repo = await repoWithRemotes(["alpha", "origin", "zeta"]);
-
+      const started = performance.now();
       const result = await fetchRemoteBranches(repo, { interactive });
+      process.stderr.write(
+        JSON.stringify({
+          probe: "fetch-owner",
+          interactive,
+          elapsed: performance.now() - started,
+          result,
+        }) + "\n",
+      );
 
       expect(result.status).toBe("fetched");
       expect(await remoteBranches(repo)).toEqual([

@@ -327,16 +327,60 @@ export async function runGit(
   if (options.signal?.aborted) {
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
+  const trace = /bb-(read-git-blob|git-fetch|worktree-plugin)/u.test(
+    options.cwd,
+  );
+  const started = performance.now();
+  if (trace)
+    process.stderr.write(
+      JSON.stringify({
+        probe: "git-phase",
+        phase: "queued",
+        cwd: options.cwd,
+        args,
+        at: Date.now(),
+      }) + "\n",
+    );
   for (let attempt = 1; ; attempt += 1) {
-    const run = await runVcsProcess("git", args, () => spawnGit(args, options), {
-      priority: options.priority,
-      signal: options.signal,
-    }).catch((error: unknown) => {
+    const run = await runVcsProcess(
+      "git",
+      args,
+      () => {
+        if (trace)
+          process.stderr.write(
+            JSON.stringify({
+              probe: "git-phase",
+              phase: "admitted",
+              cwd: options.cwd,
+              args,
+              attempt,
+              elapsed: performance.now() - started,
+            }) + "\n",
+          );
+        return spawnGit(args, options);
+      },
+      {
+        priority: options.priority,
+        signal: options.signal,
+      },
+    ).catch((error: unknown) => {
       if (options.signal?.aborted) {
         throw createGitCommandCancelledError(args, error);
       }
       throw error;
     });
+    if (trace)
+      process.stderr.write(
+        JSON.stringify({
+          probe: "git-phase",
+          phase: "finished",
+          cwd: options.cwd,
+          args,
+          attempt,
+          elapsed: performance.now() - started,
+          ...run,
+        }) + "\n",
+      );
     if (run.stopped) {
       return { stdout: run.stdout, stderr: run.stderr, exitCode: 0 };
     }

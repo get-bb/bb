@@ -134,22 +134,36 @@ describe("host GraphQL batching", () => {
   });
 
   it("separates credentials and pauses only the credential that hit a rate limit", async () => {
+    const started = performance.now();
+    const phase = (phase: string) =>
+      process.stderr.write(
+        JSON.stringify({
+          probe: "gh-test-phase",
+          phase,
+          elapsed: performance.now() - started,
+        }) + "\n",
+      );
+    phase("setup-start");
     const gh = await installFakeGh({
       "api graphql": { stderr: "API rate limit exceeded", exit: 1 },
     });
     const cwd = await makeTempDir("bb-pr-rate-");
+    phase("setup-finished");
     vi.stubEnv("GH_TOKEN", "credential-one");
     await expect(getPullRequestByUrl(raw(1).url, cwd)).resolves.toMatchObject({
       outcome: "unavailable",
     });
+    phase("first-credential-finished");
     await expect(getPullRequestByUrl(raw(2).url, cwd)).resolves.toMatchObject({
       outcome: "unavailable",
       message: expect.stringContaining("rate limit"),
     });
     expect(await gh.readCalls()).toHaveLength(1);
+    phase("paused-lookup-finished");
     vi.stubEnv("GH_TOKEN", "credential-two");
     await getPullRequestByUrl(raw(1).url, cwd);
     expect(await gh.readCalls()).toHaveLength(2);
+    phase("second-credential-finished");
   });
 
   it("releases a gh profile's rate-limit pause after its active account changes", async () => {

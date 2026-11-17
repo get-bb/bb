@@ -374,6 +374,18 @@ function runGhAdmitted(
   },
 ): Promise<{ stdout: string }> {
   return new Promise((resolve, reject) => {
+    const trace = options.cwd.includes("bb-pr-rate-");
+    const started = performance.now();
+    if (trace)
+      process.stderr.write(
+        JSON.stringify({
+          probe: "gh-phase",
+          phase: "admitted",
+          cwd: options.cwd,
+          args,
+          at: Date.now(),
+        }) + "\n",
+      );
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let size = 0;
@@ -402,6 +414,18 @@ function runGhAdmitted(
     const finish = (run: () => void) => {
       if (settled) return;
       settled = true;
+      if (trace)
+        process.stderr.write(
+          JSON.stringify({
+            probe: "gh-phase",
+            phase: "finished",
+            cwd: options.cwd,
+            args,
+            elapsed: performance.now() - started,
+            timedOut,
+            overflowed,
+          }) + "\n",
+        );
       clearTimeout(timer);
       run();
     };
@@ -458,6 +482,16 @@ function runGh(
 ): Promise<{ stdout: string }> {
   const env =
     options.env ?? sanitizeInheritedChildProcessEnv({ env: process.env });
+  if (options.cwd.includes("bb-pr-rate-"))
+    process.stderr.write(
+      JSON.stringify({
+        probe: "gh-phase",
+        phase: "queued",
+        cwd: options.cwd,
+        args,
+        at: Date.now(),
+      }) + "\n",
+    );
   return runVcsProcess(
     "gh",
     args,
