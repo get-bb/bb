@@ -1,3 +1,4 @@
+import { EventEmitter, once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import {
@@ -10,11 +11,45 @@ import {
   type Request as MiniflareRequest,
   Response as MiniflareResponse,
 } from "miniflare";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { sha256Hex } from "@bb/connect-db";
+
+vi.mock("miniflare", async (importOriginal) => {
+  const miniflare = await importOriginal<typeof import("miniflare")>();
+  const getServices = miniflare.RATELIMIT_PLUGIN.getServices;
+  vi.spyOn(miniflare.RATELIMIT_PLUGIN, "getServices").mockImplementation(
+    async (options) => {
+      const result = await getServices(options);
+      const services = Array.isArray(result) ? result : result?.services;
+      for (const service of services ?? []) {
+        if (!("worker" in service)) continue;
+        const worker = service.worker;
+        if (worker === undefined || !("modules" in worker)) continue;
+        for (const module of worker.modules ?? []) {
+          if ("esModule" in module && module.esModule !== undefined) {
+            module.esModule = `${CLOCK_SCRIPT}\n${module.esModule}`;
+          }
+        }
+      }
+      return result;
+    },
+  );
+  return miniflare;
+});
+
+afterAll(() => vi.restoreAllMocks());
 
 const CREDENTIAL = "bbcred_miniflare_server";
 const NOW = Date.now();
+const CLOCK_SCRIPT = `Date.now = () => ${NOW};`;
 const upstreamBodies: unknown[] = [];
 
 async function bundleWorker(): Promise<string> {
@@ -25,7 +60,7 @@ async function bundleWorker(): Promise<string> {
     target: "esnext",
     conditions: ["workerd", "worker", "browser"],
     plugins: [workerNodeBuiltinsPlugin],
-    banner: { js: `Date.now = () => ${NOW};` },
+    banner: { js: CLOCK_SCRIPT },
     write: false,
   });
   return result.outputFiles[0].text;
@@ -38,7 +73,7 @@ const VARS = {
   AI_UPSTREAM_BASE_URL: "https://openrouter.test/api/v1",
 };
 
-let upstreamGate: Promise<void> = Promise.resolve();
+let upstreamGate = () => Promise.resolve();
 
 function gateway(
   script: string,
@@ -69,7 +104,7 @@ function gateway(
           { headers: { "content-type": "application/json" } },
         );
       }
-      await upstreamGate;
+      await upstreamGate();
       return new MiniflareResponse(
         JSON.stringify({
           model: "nvidia/nemotron-3.5-lightning",
@@ -148,7 +183,7 @@ afterEach(async () => {
   );
   databases.clear();
   upstreamBodies.length = 0;
-  upstreamGate = Promise.resolve();
+  upstreamGate = () => Promise.resolve();
 });
 
 function complete(instance: Miniflare, prompt = "title please") {
@@ -257,29 +292,47 @@ describe("bb-ai-gateway worker on Postgres", { timeout: 30_000 }, () => {
     });
   });
 
-  it("holds concurrent reservations to the daily limit", async () => {
+  it("holds concurrent reservations to the daily limit", async ({
+    signal,
+    onTestFinished,
+  }) => {
     const tight = await seededGateway({
       ...VARS,
       AI_DAILY_BUDGET_MICROS: "25000",
       OPENROUTER_API_KEY: "sk-or-test",
     });
     let release: () => void = () => {};
-    upstreamGate = new Promise<void>((resolve) => {
+    const held = new Promise<void>((resolve) => {
       release = resolve;
     });
     const before = upstreamBodies.length;
     const statuses: number[] = [];
+    const progress = new EventEmitter();
+    const ready = once(progress, "ready", { signal });
+    const notify = () => {
+      if (upstreamBodies.length - before === 5 && statuses.length === 3) {
+        progress.emit("ready");
+      }
+    };
+    upstreamGate = () => {
+      notify();
+      return held;
+    };
     const pending = Array.from({ length: 8 }, () =>
       complete(tight).then((response) => {
         statuses.push(response.status);
+        notify();
         return response.arrayBuffer();
       }),
     );
+    onTestFinished(async () => {
+      release();
+      await Promise.allSettled(pending);
+    });
     try {
-      await vi.waitFor(() => {
-        expect(upstreamBodies.length - before).toBe(5);
-        expect(statuses).toHaveLength(3);
-      });
+      await ready;
+      expect(upstreamBodies.length - before).toBe(5);
+      expect(statuses).toHaveLength(3);
       expect(statuses).toEqual([402, 402, 402]);
     } finally {
       release();

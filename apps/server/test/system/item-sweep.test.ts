@@ -142,12 +142,34 @@ describe("item sweeps", () => {
     expect(startedWhileOverlapping).toEqual(["a", "b"]);
   });
 
-  it("stops waiting for items that run longer than a minute, skips them while they run, and records their later failure", async () => {
+  it("stops waiting for items that run longer than a minute, skips them while they run, and records their later failure", async ({
+    signal,
+    onTestFinished,
+  }) => {
+    const deps = setup();
+    const finishHung = new Map<string, () => void>();
+    let first: Promise<void> | undefined;
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    let cleanupPromise: Promise<void> | undefined;
+    const cleanup = () =>
+      (cleanupPromise ??= (async () => {
+        for (const finish of finishHung.values()) finish();
+        try {
+          await first;
+        } finally {
+          deps.db.$client.close();
+          vi.useRealTimers();
+        }
+      })());
+    onTestFinished(cleanup);
     try {
-      const deps = setup();
       const rejectHung = new Map<string, (error: Error) => void>();
       const processed: string[] = [];
+      const admitted = new Set<string>();
+      let allItemsStarted!: () => void;
+      const itemsStarted = new Promise<void>((resolve) => {
+        allItemsStarted = resolve;
+      });
       const listed: Array<ReadonlySet<string>> = [];
       const sweep = defineItemSweep({
         name: "test-detach",
@@ -158,25 +180,31 @@ describe("item sweeps", () => {
         },
         key: (item) => item,
         process: (item) => {
+          admitted.add(item);
+          if (admitted.size === 3) allItemsStarted();
           if (item === "quick") {
             processed.push(item);
             return;
           }
-          return new Promise<void>((_resolve, reject) => {
+          return new Promise<void>((resolve, reject) => {
+            finishHung.set(item, resolve);
             rejectHung.set(item, reject);
           });
         },
       });
 
       let finished = false;
-      const first = sweep.run(deps, NOW).then(() => {
+      first = sweep.run(deps, NOW).then(() => {
         finished = true;
       });
+      await itemsStarted;
+      signal.throwIfAborted();
       await vi.advanceTimersByTimeAsync(59_999);
       expect(processed).toEqual(["quick"]);
       expect(finished).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       await first;
+      signal.throwIfAborted();
 
       await sweep.run(deps, NOW + 1);
       expect(listed.at(-1)).toEqual(new Set(["hung-1", "hung-2"]));
@@ -195,7 +223,7 @@ describe("item sweeps", () => {
         },
       ]);
     } finally {
-      vi.useRealTimers();
+      await cleanup();
     }
   });
 });
