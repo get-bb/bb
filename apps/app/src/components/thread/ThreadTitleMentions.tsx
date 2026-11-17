@@ -874,7 +874,7 @@ function useCachedThreads(threadIds: readonly string[]): CachedThreads {
   const queryClient = useContext(QueryClientContext);
   const store = useMemo(
     () =>
-      queryClient === undefined
+      queryClient === undefined || threadIds.length === 0
         ? null
         : createCachedThreadsStore(queryClient, threadIds),
     [queryClient, threadIds],
