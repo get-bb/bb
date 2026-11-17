@@ -30,7 +30,6 @@ import type {
   PromptInput,
   ThreadEvent,
   StoredThreadEventDataForType,
-  SystemThreadInterruptedReason,
   ThreadEventItemType,
   ThreadEventScope,
   ThreadEventScopeKind,
@@ -45,7 +44,6 @@ import {
   clientTurnRequestIdSchema,
   getThreadEventScopeTurnId,
   parseStoredThreadEvent,
-  systemThreadInterruptedReasonSchema,
   threadEventTypeValues,
 } from "@bb/domain";
 import {
@@ -98,6 +96,7 @@ import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
+const turnRequestIdSql = sql<string>`json_extract(${events.data}, '$.requestId')`;
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
 );
@@ -430,20 +429,6 @@ export function listThreadEventSuffixBackgroundSettlementRows(
 
 export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
   threadIds: readonly string[];
-}
-
-export interface ListThreadIdsStoppedSinceLastTurnStartArgs {
-  threadIds: readonly string[];
-}
-
-export interface ListThreadTurnInterruptionEventStatesArgs {
-  threadIds: readonly string[];
-}
-
-export interface ThreadTurnInterruptionEventState {
-  activeTurnId: string | null;
-  latestProviderThreadId: string | null;
-  threadId: string;
 }
 
 interface InsertStoredEventRowArgs {
@@ -1321,12 +1306,6 @@ export function getHighWaterMarks(
   return result;
 }
 
-export interface ListEventsOptions {
-  threadId: string;
-  afterSequence?: number;
-  limit?: number;
-}
-
 const storedEventRowFields = {
   createdAt: events.createdAt,
   data: events.data,
@@ -1512,10 +1491,6 @@ export interface CompletedRootStoredTurn {
   turnId: string;
 }
 
-export interface GetLatestThreadInterruptedReasonArgs {
-  threadId: string;
-}
-
 export interface ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs {
   sequenceCutoff: number;
   threadId: string;
@@ -1653,30 +1628,6 @@ export interface OpenBackgroundTaskItemRow {
   providerThreadId: string | null;
   threadId: string;
   type: ThreadEventType;
-}
-
-export function listEvents(db: DbConnection, options: ListEventsOptions) {
-  const { threadId, afterSequence, limit } = options;
-
-  if (afterSequence != null) {
-    const q = db
-      .select()
-      .from(events)
-      .where(
-        sql`${events.threadId} = ${threadId} AND ${events.sequence} > ${afterSequence}`,
-      )
-      .orderBy(events.sequence);
-    if (limit) return q.limit(limit).all();
-    return q.all();
-  }
-
-  const q = db
-    .select()
-    .from(events)
-    .where(eq(events.threadId, threadId))
-    .orderBy(events.sequence);
-  if (limit) return q.limit(limit).all();
-  return q.all();
 }
 
 export function listStoredEventRowMetadata(
@@ -2086,10 +2037,7 @@ export function listStoredClientTurnRequestRowsByKeys(
         ([threadId, requestIds]) =>
           and(
             eq(events.threadId, threadId),
-            inArray(
-              sql<string>`json_extract(${events.data}, '$.requestId')`,
-              requestIds,
-            ),
+            inArray(turnRequestIdSql, requestIds),
           ),
       );
       return db
@@ -2462,6 +2410,7 @@ export function getStoredTurnRequestEventForTurn(
         clientRequestId: sql<
           string | null
         >`json_extract(${events.data}, '$.clientRequestId')`,
+        sequence: events.sequence,
       })
       .from(events)
       .where(
@@ -2477,7 +2426,7 @@ export function getStoredTurnRequestEventForTurn(
   const requestIdResult = clientTurnRequestIdSchema.safeParse(
     acceptedInput?.clientRequestId,
   );
-  if (!requestIdResult.success) {
+  if (acceptedInput === null || !requestIdResult.success) {
     return null;
   }
 
@@ -2494,9 +2443,11 @@ export function getStoredTurnRequestEventForTurn(
         and(
           eq(events.threadId, args.threadId),
           eq(events.type, "client/turn/requested"),
-          sql`json_extract(${events.data}, '$.requestId') = ${requestIdResult.data}`,
+          lt(events.sequence, acceptedInput.sequence),
+          eq(turnRequestIdSql, requestIdResult.data),
         ),
       )
+      .orderBy(desc(events.sequence))
       .limit(1)
       .get() ?? null
   );
@@ -2568,17 +2519,12 @@ export function getLatestStoredRateLimitsEvent(
 }
 
 export function listStoredTurnInputAcceptedRowsByClientRequestIds(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs,
 ): StoredEventRow[] {
   if (args.clientRequestIds.length === 0) {
     return [];
   }
-
-  const clientRequestIdConditions = args.clientRequestIds.map(
-    (clientRequestId) =>
-      sql`json_extract(${events.data}, '$.clientRequestId') = ${clientRequestId}`,
-  );
 
   return db
     .select(storedEventRowFields)
@@ -2587,8 +2533,11 @@ export function listStoredTurnInputAcceptedRowsByClientRequestIds(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, "turn/input/accepted"),
+        inArray(
+          sql<string>`json_extract(${events.data}, '$.clientRequestId')`,
+          [...args.clientRequestIds],
+        ),
         gt(events.sequence, args.afterSequence),
-        or(...clientRequestIdConditions),
       ),
     )
     .orderBy(events.sequence)
@@ -2623,29 +2572,6 @@ export function listStoredTurnRejectedRowsByClientRequestIds(
     .all();
 }
 
-export function getLatestThreadInterruptedReason(
-  db: DbQueryConnection,
-  args: GetLatestThreadInterruptedReasonArgs,
-): SystemThreadInterruptedReason | null {
-  const row = db
-    .select({
-      reason: sql<string>`json_extract(${events.data}, '$.reason')`,
-    })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.type, "system/thread/interrupted"),
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-  if (!row) {
-    return null;
-  }
-  return systemThreadInterruptedReasonSchema.parse(row.reason);
-}
 
 export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
   db: DbConnection,
@@ -2671,7 +2597,7 @@ export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
 }
 
 export function listStoredTurnCompletedRowsByTurnIds(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: ListStoredTurnCompletedRowsByTurnIdsArgs,
 ): StoredEventRow[] {
   if (args.turnIds.length === 0) {
@@ -3077,39 +3003,6 @@ export function hasStoredTurnCompleted(
   return row !== undefined;
 }
 
-export interface HasStoredTerminalClientTurnRequestEventArgs {
-  requestId: ClientTurnRequestId;
-  threadId: string;
-}
-
-export function hasStoredTerminalClientTurnRequestEvent(
-  db: DbQueryConnection,
-  args: HasStoredTerminalClientTurnRequestEventArgs,
-): boolean {
-  return (
-    db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          inArray(events.type, ["turn/input/accepted", "client/turn/rejected"]),
-          or(
-            and(
-              eq(events.type, "turn/input/accepted"),
-              sql`json_extract(${events.data}, '$.clientRequestId') = ${args.requestId}`,
-            ),
-            and(
-              eq(events.type, "client/turn/rejected"),
-              sql`json_extract(${events.data}, '$.requestId') = ${args.requestId}`,
-            ),
-          ),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
-}
 
 export function findLatestUnresolvedClientTurnRequestIdAfterSequence(
   db: DbQueryConnection,
@@ -3131,14 +3024,16 @@ export function findLatestUnresolvedClientTurnRequestIdAfterSequence(
           SELECT 1
           FROM events AS terminal
           WHERE terminal.thread_id = ${events.threadId}
+            AND terminal.type IN ('turn/input/accepted', 'client/turn/rejected')
+            AND terminal.sequence > ${events.sequence}
             AND (
               (
                 terminal.type = 'turn/input/accepted'
-                AND json_extract(terminal.data, '$.clientRequestId') = json_extract(${events.data}, '$.requestId')
+                AND json_extract(terminal.data, '$.clientRequestId') = ${turnRequestIdSql}
               )
               OR (
                 terminal.type = 'client/turn/rejected'
-                AND json_extract(terminal.data, '$.requestId') = json_extract(${events.data}, '$.requestId')
+                AND json_extract(terminal.data, '$.requestId') = ${turnRequestIdSql}
               )
             )
         )`,
@@ -3541,18 +3436,25 @@ export interface ListTimelineWindowHintsDescendingArgs {
   sequenceStart: number;
 }
 
-const visibleTimelineRequestInputSql = sql`EXISTS (
-  SELECT 1
-  FROM json_each(events.data, '$.input') AS input_part
-  WHERE COALESCE(json_extract(input_part.value, '$.visibility'), '') <> 'agent-only'
-    AND (
-      (
-        json_extract(input_part.value, '$.type') = 'text'
-        AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
+const visibleTimelineRequestInputSql = sql`(
+  (
+    json_extract(events.data, '$.input[0].type') = 'text'
+    AND COALESCE(json_extract(events.data, '$.input[0].text'), '') <> ''
+    AND COALESCE(json_extract(events.data, '$.input[0].visibility'), '') <> 'agent-only'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM json_each(events.data, '$.input') AS input_part
+    WHERE COALESCE(json_extract(input_part.value, '$.visibility'), '') <> 'agent-only'
+      AND (
+        (
+          json_extract(input_part.value, '$.type') = 'text'
+          AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
+        )
+        OR json_extract(input_part.value, '$.type')
+          IN ('image', 'localImage', 'localFile')
       )
-      OR json_extract(input_part.value, '$.type')
-        IN ('image', 'localImage', 'localFile')
-    )
+  )
 )`;
 
 export interface FindTimelineWindowBudgetFloorSequenceArgs {
@@ -3671,43 +3573,55 @@ const TIMELINE_ORDERING_CONTEXT_EVENT_TYPES = [
   "turn/completed",
 ] as const satisfies readonly ThreadEventType[];
 
+interface TimelineOrderingContextRow {
+  sequence: number;
+  turnId: string | null;
+  type: StoredEventRow["type"];
+  parentToolCallId: string | null;
+  requestId: string | null;
+  clientRequestId: string | null;
+  expectedTurnId: string | null;
+  hasVisibleUserInput: number;
+}
+
 export function listTimelineOrderingContext(
   db: DbConnection,
   args: { threadId: string; sequenceStart: number; maxSeq: number },
-) {
-  return db
-    .select({
-      sequence: sql<number>`${events.sequence}`,
-      turnId: sql<string | null>`${events.turnId}`,
-      type: sql<StoredEventRow["type"]>`${events.type}`,
-      parentToolCallId: sql<string | null>`${events.parentToolCallId}`,
-      requestId: sql<
-        string | null
-      >`json_extract(${events.data}, '$.requestId')`,
-      clientRequestId: sql<
-        string | null
-      >`json_extract(${events.data}, '$.clientRequestId')`,
-      expectedTurnId: sql<
-        string | null
-      >`json_extract(${events.data}, '$.target.expectedTurnId')`,
-      hasVisibleUserInput: sql<number>`CASE
-        WHEN ${events.type} = 'client/turn/requested'
-          AND json_extract(${events.data}, '$.initiator') = 'user'
+): TimelineOrderingContextRow[] {
+  return db.all<TimelineOrderingContextRow>(sql`
+    SELECT
+      events.sequence AS sequence,
+      events.turn_id AS turnId,
+      events.type AS type,
+      events.parent_tool_call_id AS parentToolCallId,
+      CASE
+        WHEN events.type = 'client/turn/requested'
+        THEN json_extract(events.data, '$.requestId')
+      END AS requestId,
+      CASE
+        WHEN events.type = 'turn/input/accepted'
+        THEN json_extract(events.data, '$.clientRequestId')
+      END AS clientRequestId,
+      CASE
+        WHEN events.type = 'client/turn/requested'
+        THEN json_extract(events.data, '$.target.expectedTurnId')
+      END AS expectedTurnId,
+      CASE
+        WHEN events.type = 'client/turn/requested'
+          AND json_extract(events.data, '$.initiator') = 'user'
         THEN CASE WHEN ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END
         ELSE 0
-      END`,
-    })
-    .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gte(events.sequence, args.sequenceStart),
-        lte(events.sequence, args.maxSeq),
-        inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES]),
-      ),
-    )
-    .orderBy(events.sequence)
-    .all();
+      END AS hasVisibleUserInput
+    FROM ${events} INDEXED BY events_thread_type_sequence_idx
+    WHERE events.thread_id = ${args.threadId}
+      AND events.sequence >= ${args.sequenceStart}
+      AND events.sequence <= ${args.maxSeq}
+      AND events.type IN (${sql.join(
+        TIMELINE_ORDERING_CONTEXT_EVENT_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      )})
+    ORDER BY events.sequence
+  `);
 }
 
 export function getTimelineGroupingContextChangesInRange(
@@ -3871,21 +3785,27 @@ export function getFirstParentedTimelineBoundarySequence(
           AND child.sequence <= ${args.maxSeq}
       ) AS end FROM parents
     )
-    SELECT min(${events.sequence}) AS sequence
-    FROM events INNER JOIN spans
-      ON ${events.sequence} > spans.start AND ${events.sequence} < spans.end
-    WHERE ${events.type} = 'client/turn/requested'
-      AND ${events.threadId} = ${args.threadId}
-      AND ${visibleTimelineRequestInputSql}
-      AND (
-        COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
-          IN ('thread-start', 'new-turn')
-        OR (
-          json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
-          AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
+    SELECT min((
+      SELECT ${events.sequence}
+      FROM events INDEXED BY events_thread_type_sequence_idx
+      WHERE ${events.threadId} = ${args.threadId}
+        AND ${events.type} = 'client/turn/requested'
+        AND ${events.sequence} > spans.start
+        AND ${events.sequence} < spans.end
+        AND ${visibleTimelineRequestInputSql}
+        AND (
+          COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
+            IN ('thread-start', 'new-turn')
+          OR (
+            json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
+            AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
+          )
         )
-      )
-      AND json_extract(${events.data}, '$.initiator') = 'user'
+        AND json_extract(${events.data}, '$.initiator') = 'user'
+      ORDER BY ${events.sequence}
+      LIMIT 1
+    )) AS sequence
+    FROM spans
   `);
   return result?.sequence ?? null;
 }
@@ -4928,108 +4848,170 @@ export function classifyStoredProviderThreadClaim(
   );
 }
 
-export function listThreadTurnInterruptionEventStates(
+
+export function isTurnAimedAtByEarlierStop(
   db: DbQueryConnection,
-  args: ListThreadTurnInterruptionEventStatesArgs,
-): ThreadTurnInterruptionEventState[] {
-  const threadIds = [...new Set(args.threadIds)];
-  if (threadIds.length === 0) {
-    return [];
+  args: { threadId: string; turnId: string },
+): boolean {
+  const turnStarted = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.turnId, args.turnId),
+        eq(events.type, "turn/started"),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!turnStarted) {
+    return false;
   }
-
-  const statesByThreadId = new Map<string, ThreadTurnInterruptionEventState>(
-    threadIds.map((threadId) => [
-      threadId,
-      {
-        activeTurnId: null,
-        latestProviderThreadId: null,
-        threadId,
-      },
-    ]),
-  );
-
-  const latestStartedTurnRows = db
+  const request = db
     .select({
-      threadId: events.threadId,
-      turnId: events.turnId,
+      requestId: sql<string | null>`json_extract(${events.data}, '$.requestId')`,
+      sequence: events.sequence,
     })
     .from(events)
     .where(
       and(
-        inArray(events.threadId, threadIds),
-        eq(events.type, "turn/started"),
-        isNotNull(events.turnId),
-        isRootTurnStartedEventData,
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events AS latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.type = 'turn/started'
-            AND latest.turn_id IS NOT NULL
-            AND latest.parent_tool_call_id IS NULL
-        )`,
-        sql`NOT EXISTS (
-          SELECT 1
-          FROM events AS completed
-          WHERE completed.thread_id = ${events.threadId}
-            AND completed.turn_id = ${events.turnId}
-            AND completed.type = 'turn/completed'
-        )`,
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+        lt(events.sequence, turnStarted.sequence),
       ),
     )
-    .all();
-  for (const row of latestStartedTurnRows) {
-    if (row.turnId === null) {
-      continue;
-    }
-    const state = statesByThreadId.get(row.threadId);
-    if (state) {
-      state.activeTurnId = row.turnId;
-    }
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!request || request.requestId === null) {
+    return false;
   }
-
-  for (const [threadId, session] of resolveStoredProviderSessions(db, {
-    threadIds,
-  })) {
-    const state = statesByThreadId.get(threadId);
-    if (state) {
-      state.latestProviderThreadId =
-        session.kind === "owned" ? session.providerThreadId : null;
-    }
+  const window = and(
+    eq(events.threadId, args.threadId),
+    gt(events.sequence, request.sequence),
+    lt(events.sequence, turnStarted.sequence),
+  );
+  const stopped =
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(window, eq(events.type, "system/thread/interrupted")))
+      .limit(1)
+      .get() !== undefined;
+  if (!stopped) {
+    return false;
   }
-
-  return threadIds.flatMap((threadId) => {
-    const state = statesByThreadId.get(threadId);
-    return state ? [state] : [];
-  });
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          window,
+          inArray(events.type, ["turn/input/accepted", "client/turn/rejected"]),
+          or(
+            and(
+              eq(events.type, "turn/input/accepted"),
+              sql`json_extract(${events.data}, '$.clientRequestId') = ${request.requestId}`,
+            ),
+            and(
+              eq(events.type, "client/turn/rejected"),
+              sql`json_extract(${events.data}, '$.requestId') = ${request.requestId}`,
+            ),
+          ),
+        ),
+      )
+      .limit(1)
+      .get() === undefined
+  );
 }
 
-export function listThreadIdsStoppedSinceLastTurnStart(
-  db: DbConnection,
-  args: ListThreadIdsStoppedSinceLastTurnStartArgs,
-): string[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
 
-  return db
-    .select({ threadId: events.threadId })
+export function getLatestThreadStopAim(
+  db: DbQueryConnection,
+  args: { threadId: string },
+): { turnId: string | null; requestIds: string[] } | null {
+  const stop = db
+    .select({ sequence: events.sequence })
     .from(events)
     .where(
       and(
-        inArray(events.threadId, [...args.threadIds]),
+        eq(events.threadId, args.threadId),
         eq(events.type, "system/thread/interrupted"),
-        sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events AS latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.type IN ('turn/started', 'system/thread/interrupted')
-        )`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!stop) {
+    return null;
+  }
+  const lastCompletionBeforeStop = db
+    .select({ sequence: events.sequence, turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/completed"),
+        isNull(events.parentToolCallId),
+        lt(events.sequence, stop.sequence),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  const lastCompletedTurnStartedAt =
+    lastCompletionBeforeStop?.turnId == null
+      ? 0
+      : (db
+          .select({ sequence: events.sequence })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, args.threadId),
+              eq(events.turnId, lastCompletionBeforeStop.turnId),
+              eq(events.type, "turn/started"),
+            ),
+          )
+          .limit(1)
+          .get()?.sequence ?? 0);
+  const latestTurnStartBeforeStop = db
+    .select({ sequence: events.sequence, turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/started"),
+        isNull(events.parentToolCallId),
+        lt(events.sequence, stop.sequence),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  const runningTurnId =
+    latestTurnStartBeforeStop !== undefined &&
+    latestTurnStartBeforeStop.sequence >
+      (lastCompletionBeforeStop?.sequence ?? 0)
+      ? latestTurnStartBeforeStop.turnId
+      : null;
+  const requestIds = db
+    .select({
+      requestId: sql<string | null>`json_extract(${events.data}, '$.requestId')`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+        gt(events.sequence, lastCompletedTurnStartedAt),
+        lt(events.sequence, stop.sequence),
       ),
     )
     .all()
-    .map((row) => row.threadId);
+    .flatMap((row) => (row.requestId === null ? [] : [row.requestId]));
+  return { turnId: runningTurnId, requestIds };
 }
 
 export function listThreadIdsWithLatestHostDaemonRestartInterruption(
@@ -5088,23 +5070,6 @@ export function getLastStoredTurnRequestEvent(
   );
 }
 
-export function hasStoredTurnRequestEventSince(
-  db: DbQueryConnection,
-  args: { since: number; threadId: string },
-): boolean {
-  return (
-    db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        sql`${events.threadId} = ${args.threadId}
-        AND ${events.type} = 'client/turn/requested'
-        AND ${events.createdAt} >= ${args.since}`,
-      )
-      .limit(1)
-      .get() !== undefined
-  );
-}
 
 interface ListStoredTaskTurnRequestEventsArgs {
   limit: number;
@@ -5170,7 +5135,7 @@ function pruneUsageSnapshots(
     )
       return 0;
   }
-  return db.run(sql`DELETE FROM events
+  return db.run(sql`DELETE FROM events INDEXED BY sqlite_autoindex_events_1
     WHERE id IN (${pruningCandidates(args)}) AND thread_id = ${args.threadId}
       AND type = ${args.eventType}
       AND ${isBeforeLatestThreadEvent(args.threadId)}
@@ -5253,6 +5218,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
           SELECT MAX(latest.sequence)
           FROM events latest
           WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_kind = 'backgroundTask'
             AND latest.item_id = ${events.itemId}
             AND latest.type IN (${startedType}, ${progressType})
         )`,
@@ -5349,6 +5315,7 @@ export function listOpenBackgroundTaskItemRowsForThread(
           SELECT MAX(latest.sequence)
           FROM events latest
           WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_kind = 'backgroundTask'
             AND latest.item_id = ${events.itemId}
             AND latest.type IN (${startedType}, ${progressType})
         )`,
@@ -5407,17 +5374,138 @@ export function listCommandItemDataByItemIds(
   if (args.itemIds.length === 0) {
     return [];
   }
-  return db
-    .select({ data: events.data, itemId: sql<string>`${events.itemId}` })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        inArray(events.itemId, [...args.itemIds]),
-        inArray(events.type, ["item/started", "item/completed"]),
-        sql`${events.itemKind} = 'commandExecution'`,
-      ),
-    )
-    .orderBy(events.sequence)
-    .all();
+  return db.all<{ data: string; itemId: string }>(sql`
+    SELECT lifecycle.data AS data, lifecycle.item_id AS itemId
+    FROM ${events} AS lifecycle
+      INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+    WHERE lifecycle.thread_id = ${args.threadId}
+      AND lifecycle.item_id IN (${sql.join(
+        args.itemIds.map((itemId) => sql`${itemId}`),
+        sql`, `,
+      )})
+      AND lifecycle.type IN (
+        'item/started',
+        'item/completed',
+        'item/backgroundTask/completed'
+      )
+      AND lifecycle.type IN ('item/started', 'item/completed')
+      AND lifecycle.item_kind = 'commandExecution'
+    ORDER BY lifecycle.sequence
+  `);
+}
+
+export function findStoredEditMessageOperationRow(
+  db: DbQueryConnection,
+  args: { operationId: string; threadId: string },
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/operation"),
+          sql`json_extract(${events.data}, '$.operation') = 'edit_message'`,
+          sql`json_extract(${events.data}, '$.operationId') = ${args.operationId}`,
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function findLatestEditableUserTurnRequestRow(
+  db: DbQueryConnection,
+  args: { beforeSequence: number | null; threadId: string },
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          args.beforeSequence === null
+            ? undefined
+            : lt(events.sequence, args.beforeSequence),
+          sql`json_extract(${events.data}, '$.initiator') = 'user'`,
+          sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
+          sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function hasStoredThreadInterruptedSince(
+  db: DbQueryConnection,
+  args: { createdAt: number; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread/interrupted"),
+          gte(events.createdAt, args.createdAt),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function hasStoredProviderTurnCompletedSince(
+  db: DbQueryConnection,
+  args: { createdAt: number; providerThreadId: string; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.providerThreadId, args.providerThreadId),
+          eq(events.type, "turn/completed"),
+          gte(events.createdAt, args.createdAt),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function hasStoredCancelledThreadProvisioning(
+  db: DbQueryConnection,
+  args: {
+    environmentId: string | null;
+    provisioningId: string;
+    threadId: string;
+  },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread-provisioning"),
+          sql`json_extract(${events.data}, '$.status') = 'cancelled'`,
+          or(
+            sql`json_extract(${events.data}, '$.provisioningId') = ${args.provisioningId}`,
+            sql`${events.sequence} = (select max(last.sequence) from events last where last.thread_id = ${args.threadId} and last.environment_id = ${args.environmentId} and last.type = 'system/thread-provisioning')`,
+          ),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }

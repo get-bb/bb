@@ -1618,6 +1618,7 @@ function refreshProviderCommands(threadSession: ThreadSession): void {
 function createOnSdkMessage(
   args: CreateSdkCallbackArgs,
 ): (message: SDKMessage) => void {
+  let sessionAnnounced = false;
   return (message: SDKMessage) => {
     const threadSession = getCurrentThreadSession({
       sessionSerial: args.sessionSerial,
@@ -1631,7 +1632,12 @@ function createOnSdkMessage(
     ) {
       threadSession.contextUsageCollector.invalidate();
     }
-    const providerThreadId = message.session_id?.trim() ?? "";
+    if (message.type === "system" && message.subtype === "init") {
+      sessionAnnounced = true;
+    }
+    const providerThreadId = sessionAnnounced
+      ? (message.session_id?.trim() ?? "")
+      : "";
     if (
       providerThreadId.length > 0 &&
       threadSession.attachment.providerThreadId !== providerThreadId
@@ -2261,7 +2267,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
           : buildReadonlyDenialMessage();
       return {
         behavior: "deny",
-        message: options.decisionReason ?? policyMessage,
+        message: options.decisionReason?.trim() || policyMessage,
         toolUseID: options.toolUseID,
       };
     }
@@ -2811,8 +2817,11 @@ function buildPromptText(input: unknown): string | undefined {
   const [skill] = skills;
   if (skills.length === 1 && skill) {
     const chunk = chunks[skill.chunkIndex]!;
+    const leading =
+      skill.chunkIndex === 0 && chunk.slice(0, skill.start).trim() === "";
+    const reference = leading ? "" : chunk.slice(skill.start + 1, skill.end);
     chunks[skill.chunkIndex] =
-      `${chunk.slice(0, skill.start)}${chunk.slice(skill.end)}`;
+      `${chunk.slice(0, skill.start)}${reference}${chunk.slice(skill.end)}`;
     const argumentsText = chunks.join("\n");
     const separator = argumentsText.startsWith(" ") ? "" : " ";
     return `/${skill.name}${argumentsText ? `${separator}${argumentsText}` : ""}`;

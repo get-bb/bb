@@ -92,6 +92,7 @@ export interface ServerConnectionOptions {
     | HostDaemonActiveThread[]
     | Promise<HostDaemonActiveThread[]>;
   getUndeliveredEventThreadIds?: () => string[];
+  getTurnCommandThreadIds?: () => string[];
   getOpenThreadWork?: () => HostDaemonOpenThreadWork[];
   getLoadedEnvironments?: () =>
     | HostDaemonLoadedEnvironment[]

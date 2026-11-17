@@ -1,9 +1,4 @@
-import {
-  getThread,
-  listEvents,
-  listQueuedThreadMessages,
-  updateThread,
-} from "@bb/db";
+import { getThread, listQueuedThreadMessages, updateThread } from "@bb/db";
 import {
   turnRequestEventDataSchema,
   type ThreadParentNotifications,
@@ -19,6 +14,7 @@ import {
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const WORKSPACE_PATH = "/tmp/thread-ownership-notices";
 

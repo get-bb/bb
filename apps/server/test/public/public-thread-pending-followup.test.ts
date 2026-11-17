@@ -1,7 +1,6 @@
 import {
   getThread,
   getThreadExecutionOverride,
-  listEvents,
   listQueuedThreadMessages,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
@@ -17,6 +16,7 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 describe("scheduled pending thread follow-ups", () => {
   it.each(["defaults", "explicit"] as const)(

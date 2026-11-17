@@ -12,6 +12,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   or,
   placeholder,
   sql,
@@ -21,23 +22,19 @@ import type {
   JsonObject,
   ReasoningLevel,
   ThreadChangeKind,
-  ThreadLifecycleEvent,
-  ThreadLifecycleNoopReason,
   ThreadOriginKind,
   ThreadParentNotifications,
   ThreadSearchSourceKind,
   ThreadStatus,
   ThreadVisibility,
 } from "@bb/domain";
-import {
-  evaluateThreadLifecycleEvent,
-  threadSearchSourceKindSchema,
-} from "@bb/domain";
+import { threadSearchSourceKindSchema } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
+  events,
   pendingInteractions,
   projects,
   terminalSessions,
@@ -732,24 +729,6 @@ export interface ListActiveHostThreadsArgs {
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
-}
-
-interface StatusTransition {
-  currentStatus: ThreadStatus;
-  newStatus: ThreadStatus;
-  parentThreadId: string | null;
-}
-
-function statusTransitionNeedsAttention(args: StatusTransition): boolean {
-  if (args.currentStatus === "active" && args.newStatus === "idle") {
-    return args.parentThreadId === null;
-  }
-
-  if (args.newStatus !== "error") {
-    return false;
-  }
-
-  return args.currentStatus === "active" || args.currentStatus === "starting";
 }
 
 function buildListThreadsFilters(options: ListThreadsOptions) {
@@ -1626,7 +1605,7 @@ export function listThreadEnvironmentAssignmentsOnHost(
     .where(
       and(
         inArray(threads.id, [...args.threadIds]),
-        eq(environments.hostId, args.hostId),
+        sql`+${environments.hostId} = ${args.hostId}`,
       ),
     )
     .all();
@@ -2309,124 +2288,56 @@ export function unarchiveThread(
   return updated ?? null;
 }
 
-export type ApplyThreadLifecycleEventNoopReason =
-  | ThreadLifecycleNoopReason
-  | "not-found"
-  | "cas-conflict";
-
-export type ApplyThreadLifecycleEventOutcome =
-  | { applied: true; thread: ThreadRow }
-  | {
-      applied: false;
-      detail: string;
-      reason: ApplyThreadLifecycleEventNoopReason;
-    };
-
-export interface ApplyThreadLifecycleEventArgs {
-  event: ThreadLifecycleEvent;
+export interface TurnStartDeadlineCandidate {
+  environmentId: string;
+  hostId: string;
   threadId: string;
 }
 
-interface ThreadLifecycleEventNotAppliedErrorArgs {
-  detail: string;
-  reason: ApplyThreadLifecycleEventNoopReason;
+function awaitingTurnStartPastDeadline(deadline: number) {
+  return and(
+    eq(threads.status, "active"),
+    isNull(threads.deletedAt),
+    lte(threads.statusChangedAt, deadline),
+    sql`NOT EXISTS (
+      SELECT 1 FROM ${events}
+      WHERE ${events.threadId} = ${threads.id}
+        AND ${events.type} = 'turn/completed'
+        AND ${events.createdAt} > ${deadline}
+    )`,
+  );
 }
 
-export class ThreadLifecycleEventNotAppliedError extends Error {
-  readonly detail: string;
-  readonly reason: ApplyThreadLifecycleEventNoopReason;
-
-  constructor(args: ThreadLifecycleEventNotAppliedErrorArgs) {
-    super(
-      `Thread lifecycle event not applied (${args.reason}): ${args.detail}`,
-    );
-    this.name = "ThreadLifecycleEventNotAppliedError";
-    this.detail = args.detail;
-    this.reason = args.reason;
-  }
-}
-
-export function requireThreadLifecycleEventApplied(
-  outcome: ApplyThreadLifecycleEventOutcome,
-) {
-  if (!outcome.applied) {
-    throw new ThreadLifecycleEventNotAppliedError(outcome);
-  }
-  return outcome.thread;
-}
-
-export function applyThreadLifecycleEventInTransaction(
-  db: DbTransaction,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  const thread = db
-    .select()
-    .from(threads)
-    .where(eq(threads.id, args.threadId))
-    .get();
-  if (!thread) {
-    return {
-      applied: false,
-      detail: `thread not found: ${args.threadId}`,
-      reason: "not-found",
-    };
-  }
-
-  const evaluation = evaluateThreadLifecycleEvent({
-    event: args.event,
-    thread,
-  });
-  if ("noop" in evaluation) {
-    return {
-      applied: false,
-      detail: evaluation.detail,
-      reason: evaluation.noop,
-    };
-  }
-
-  const now = Date.now();
-  const set: Partial<typeof threads.$inferInsert> = {
-    status: evaluation.to,
-    statusChangedAt: now,
-    updatedAt: now,
-  };
-  if (evaluation.to === "idle" && thread.environmentId !== null) {
-    set.startupContext = null;
-  }
-  if (
-    statusTransitionNeedsAttention({
-      currentStatus: thread.status,
-      newStatus: evaluation.to,
-      parentThreadId: thread.parentThreadId,
+export function listTurnStartDeadlineCandidates(
+  db: DbQueryConnection,
+  args: { deadline: number },
+): TurnStartDeadlineCandidate[] {
+  return db
+    .select({
+      environmentId: environments.id,
+      hostId: environments.hostId,
+      threadId: threads.id,
     })
-  ) {
-    set.latestAttentionAt = now;
-  }
-
-  const updated = db
-    .update(threads)
-    .set(set)
-    .where(
-      and(eq(threads.id, args.threadId), eq(threads.status, thread.status)),
-    )
-    .returning()
-    .get();
-  if (!updated) {
-    return {
-      applied: false,
-      detail: `status changed from ${thread.status} while applying ${args.event.type}`,
-      reason: "cas-conflict",
-    };
-  }
-  return { applied: true, thread: updated };
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(awaitingTurnStartPastDeadline(args.deadline))
+    .all();
 }
 
-export function applyThreadLifecycleEvent(
-  db: DbConnection,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  return db.transaction(
-    (tx) => applyThreadLifecycleEventInTransaction(tx, args),
-    { behavior: "immediate" },
+export function isThreadAwaitingTurnStartPastDeadline(
+  db: DbQueryConnection,
+  args: { deadline: number; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .where(
+        and(
+          eq(threads.id, args.threadId),
+          awaitingTurnStartPastDeadline(args.deadline),
+        ),
+      )
+      .get() !== undefined
   );
 }

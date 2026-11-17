@@ -33,7 +33,6 @@ import { join } from "node:path";
 import { setPathPluginPreserver } from "../../../src/services/plugins/path-plugin-preservation.js";
 import { eq } from "drizzle-orm";
 import {
-  listEvents,
   claimEnvironmentPath,
   createEnvironment,
   environments,
@@ -82,6 +81,7 @@ import {
   type TestAppHarness,
 } from "../../helpers/test-app.js";
 import { runThreadPurges } from "../../helpers/thread-purges.js";
+import { listEvents } from "@bb/db/testing";
 
 function setup(
   harness: TestAppHarness,
@@ -2232,7 +2232,7 @@ it("keeps a shared workspace ready when its preparing owner cancels before attac
     });
     expect(getThread(harness.db, fixture.thread.id)?.environmentId).toBeNull();
     saveProviderStartup(harness, fixture);
-    requestThreadStopForCurrentState(harness.deps, fixture.thread, null);
+    requestThreadStopForCurrentState(harness.deps, fixture.thread);
     await expect
       .poll(() => getEnvironment(harness.db, shared.id)?.ownerThreadId)
       .toBeNull();
@@ -3020,6 +3020,40 @@ it.each([false, true])(
     });
   },
 );
+
+it("withdraws a requested removal once its thread is unarchived", async () => {
+  await withTestHarness(async (harness) => {
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    const fixture = setup(harness, { remove });
+    fixture.ask();
+    await fixture.settled();
+    const environmentId = fixture.attach();
+    harness.db
+      .update(threads)
+      .set({ environmentId, status: "idle" })
+      .where(eq(threads.id, fixture.thread.id))
+      .run();
+    for (const [method, path] of [
+      ["POST", `/api/v1/threads/${fixture.thread.id}/archive-all`],
+      ["DELETE", `/api/v1/environments/${environmentId}`],
+      ["POST", `/api/v1/threads/${fixture.thread.id}/unarchive`],
+    ] as const)
+      expect((await harness.app.request(path, { method })).status).toBe(200);
+    expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
+      "running",
+    );
+
+    await sweepProviderEnvironment(harness.deps, environmentId);
+
+    expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+      status: "ready",
+      teardownStatus: null,
+      retireAt: null,
+      path: `/tmp/${fixture.thread.id}`,
+    });
+    expect(remove).not.toHaveBeenCalled();
+  });
+});
 
 it("records the removed workspace when its thread is unarchived during removal", async () => {
   await withTestHarness(async (harness) => {

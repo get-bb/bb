@@ -2,7 +2,15 @@ import { nanoid } from "nanoid";
 import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
@@ -180,6 +188,97 @@ interface ManualMachineEnrollment {
   regenerate: () => void;
 }
 
+interface ManualMachineCreationRefs {
+  createController: RefObject<AbortController | null>;
+  createKey: RefObject<string | null>;
+  pendingHostIds: RefObject<Set<string>>;
+  lifecycleGeneration: RefObject<number>;
+}
+
+async function createManualMachine(
+  replaceLaunch: boolean,
+  refs: ManualMachineCreationRefs,
+  setCommand: Dispatch<SetStateAction<EnrollmentCommand | null>>,
+): Promise<Host> {
+  const generation = refs.lifecycleGeneration.current;
+  if (replaceLaunch) {
+    refs.createController.current?.abort();
+    refs.createController.current = null;
+    const ids = [...refs.pendingHostIds.current];
+    refs.pendingHostIds.current.clear();
+    await Promise.all(ids.map((hostId) => sdk.hosts.delete({ hostId })));
+    refs.createKey.current = null;
+  }
+  setCommand(null);
+  const controller = new AbortController();
+  refs.createController.current = controller;
+  refs.createKey.current ??= nanoid();
+  try {
+    let host = await sdk.hosts.experimental_create({
+      key: refs.createKey.current,
+      machineProviderId: MANUAL_MACHINE_PROVIDER_ID,
+      inputs: null,
+      wait: false,
+      signal: controller.signal,
+    });
+    refs.pendingHostIds.current.add(host.id);
+    if (generation !== refs.lifecycleGeneration.current) {
+      refs.pendingHostIds.current.delete(host.id);
+      await sdk.hosts.delete({ hostId: host.id });
+      throw new Error("Machine setup closed");
+    }
+    let enrollment: Awaited<
+      ReturnType<typeof sdk.hosts.experimental_getEnrollmentCommand>
+    > = null;
+    while (host.lifecycle.phase === "creating") {
+      controller.signal.throwIfAborted();
+      const currentEnrollment =
+        await sdk.hosts.experimental_getEnrollmentCommand({
+          hostId: host.id,
+          signal: controller.signal,
+        });
+      if (currentEnrollment !== null) {
+        enrollment = currentEnrollment;
+        setCommand({
+          value: currentEnrollment.command,
+          windowsValue: currentEnrollment.windowsCommand,
+          expiresAt: currentEnrollment.expiresAt,
+          unavailable: false,
+        });
+      } else if (enrollment !== null) {
+        const usedEnrollment = enrollment;
+        setCommand((previous) =>
+          previous?.unavailable
+            ? previous
+            : {
+                value: usedEnrollment.command,
+                windowsValue: usedEnrollment.windowsCommand,
+                expiresAt: usedEnrollment.expiresAt,
+                unavailable: true,
+              },
+        );
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+      controller.signal.throwIfAborted();
+      host = await sdk.hosts.get({
+        hostId: host.id,
+        signal: controller.signal,
+      });
+    }
+    refs.createKey.current = null;
+    refs.pendingHostIds.current.delete(host.id);
+    if (host.lifecycle.phase !== "active") {
+      throw new MachineEnrollmentEndedError(
+        host.lifecycle.message ?? "Machine setup cancelled",
+      );
+    }
+    return host;
+  } finally {
+    if (refs.createController.current === controller)
+      refs.createController.current = null;
+  }
+}
+
 function useManualMachineEnrollment(
   onFailed: EnrollmentFailureHandler | undefined,
 ): ManualMachineEnrollment {
@@ -214,85 +313,12 @@ function useManualMachineEnrollment(
   );
   const createMachine = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: async (options: { replaceLaunch: boolean }) => {
-      const generation = lifecycleGeneration.current;
-      if (options.replaceLaunch) {
-        createController.current?.abort();
-        createController.current = null;
-        const ids = [...pendingHostIds.current];
-        pendingHostIds.current.clear();
-        await Promise.all(ids.map((hostId) => sdk.hosts.delete({ hostId })));
-        createKey.current = null;
-      }
-      setCommand(null);
-      const controller = new AbortController();
-      createController.current = controller;
-      createKey.current ??= nanoid();
-      try {
-        let host = await sdk.hosts.experimental_create({
-          key: createKey.current,
-          machineProviderId: MANUAL_MACHINE_PROVIDER_ID,
-          inputs: null,
-          wait: false,
-          signal: controller.signal,
-        });
-        pendingHostIds.current.add(host.id);
-        if (generation !== lifecycleGeneration.current) {
-          pendingHostIds.current.delete(host.id);
-          await sdk.hosts.delete({ hostId: host.id });
-          throw new Error("Machine setup closed");
-        }
-        let enrollment: Awaited<
-          ReturnType<typeof sdk.hosts.experimental_getEnrollmentCommand>
-        > = null;
-        while (host.lifecycle.phase === "creating") {
-          controller.signal.throwIfAborted();
-          const currentEnrollment =
-            await sdk.hosts.experimental_getEnrollmentCommand({
-              hostId: host.id,
-              signal: controller.signal,
-            });
-          if (currentEnrollment !== null) {
-            enrollment = currentEnrollment;
-            setCommand({
-              value: currentEnrollment.command,
-              windowsValue: currentEnrollment.windowsCommand,
-              expiresAt: currentEnrollment.expiresAt,
-              unavailable: false,
-            });
-          } else if (enrollment !== null) {
-            const usedEnrollment = enrollment;
-            setCommand((previous) =>
-              previous?.unavailable
-                ? previous
-                : {
-                    value: usedEnrollment.command,
-                    windowsValue: usedEnrollment.windowsCommand,
-                    expiresAt: usedEnrollment.expiresAt,
-                    unavailable: true,
-                  },
-            );
-          }
-          await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
-          controller.signal.throwIfAborted();
-          host = await sdk.hosts.get({
-            hostId: host.id,
-            signal: controller.signal,
-          });
-        }
-        createKey.current = null;
-        pendingHostIds.current.delete(host.id);
-        if (host.lifecycle.phase !== "active") {
-          throw new MachineEnrollmentEndedError(
-            host.lifecycle.message ?? "Machine setup cancelled",
-          );
-        }
-        return host;
-      } finally {
-        if (createController.current === controller)
-          createController.current = null;
-      }
-    },
+    mutationFn: (options: { replaceLaunch: boolean }) =>
+      createManualMachine(
+        options.replaceLaunch,
+        { createController, createKey, pendingHostIds, lifecycleGeneration },
+        setCommand,
+      ),
     onSuccess: (host: Host) => {
       createKey.current = null;
       setConnectedHost(host);

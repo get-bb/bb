@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
@@ -13,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent } from "./dropdown-menu";
 
 const LONG_PRESS_MS = 700;
 const LONG_PRESS_MOVE_SLOP_PX = 10;
+const FLING_STOP_WINDOW_MS = 100;
 
 const LONG_PRESS_TARGET_STYLE: CSSProperties = {
   WebkitTouchCallout: "none",
@@ -28,6 +30,35 @@ function isClaimedPressEvent(event: Event): boolean {
 
 function claimPressEvent(event: Event) {
   Reflect.set(event, CLAIMED_PRESS_EVENT_KEY, true);
+}
+
+const lastScrollTimeStamps = new WeakMap<EventTarget, number>();
+const scrollTrackedDocuments = new WeakSet<Document>();
+
+function trackScrolls(ownerDocument: Document) {
+  if (scrollTrackedDocuments.has(ownerDocument)) return;
+  scrollTrackedDocuments.add(ownerDocument);
+  ownerDocument.addEventListener(
+    "scroll",
+    (event) => {
+      if (event.target !== null) {
+        lastScrollTimeStamps.set(event.target, event.timeStamp);
+      }
+    },
+    { capture: true, passive: true },
+  );
+}
+
+function lastScrollUnder(element: Element): number {
+  let latest = lastScrollTimeStamps.get(element.ownerDocument) ?? -Infinity;
+  for (
+    let scroller: Element | null = element;
+    scroller !== null;
+    scroller = scroller.parentElement
+  ) {
+    latest = Math.max(latest, lastScrollTimeStamps.get(scroller) ?? -Infinity);
+  }
+  return latest;
 }
 
 interface CompactLongPressMenuProps {
@@ -50,9 +81,13 @@ export function CompactLongPressMenu({
   const [open, setOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const timerRef = useRef<number | null>(null);
-  const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(
-    null,
-  );
+  const pressRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    target: Element;
+    timeStamp: number;
+  } | null>(null);
   const suppressClickRef = useRef(false);
 
   const clearPress = useCallback(() => {
@@ -64,6 +99,10 @@ export function CompactLongPressMenu({
   }, []);
 
   useEffect(() => clearPress, [clearPress]);
+
+  useEffect(() => {
+    trackScrolls(document);
+  }, []);
 
   useEffect(() => {
     if (disabled || dragging) {
@@ -81,11 +120,20 @@ export function CompactLongPressMenu({
     [dragging, onOpenChange],
   );
 
+  const [closedForDrag, setClosedForDrag] = useState(false);
+  if (dragging && open) {
+    setOpen(false);
+    setClosedForDrag(true);
+  }
+  if (!dragging && closedForDrag) {
+    setClosedForDrag(false);
+  }
+  const notifyClosedForDrag = useEffectEvent(() => {
+    onOpenChange?.(false);
+  });
   useEffect(() => {
-    if (!dragging) return;
-    clearPress();
-    if (open) handleOpenChange(false);
-  }, [clearPress, dragging, handleOpenChange, open]);
+    if (closedForDrag) notifyClosedForDrag();
+  }, [closedForDrag]);
 
   const openMenu = useCallback(() => {
     clearPress();
@@ -110,17 +158,27 @@ export function CompactLongPressMenu({
       }
       claimPressEvent(event.nativeEvent);
       clearPress();
+      const target = event.currentTarget;
+      if (event.timeStamp - lastScrollUnder(target) < FLING_STOP_WINDOW_MS) {
+        return;
+      }
       pressRef.current = {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
+        target,
+        timeStamp: event.timeStamp,
       };
       timerRef.current = window.setTimeout(() => {
         timerRef.current = null;
-        if (pressRef.current === null) {
+        const press = pressRef.current;
+        if (press === null) {
           return;
         }
         pressRef.current = null;
+        if (lastScrollUnder(press.target) >= press.timeStamp) {
+          return;
+        }
         suppressClickRef.current = true;
         openMenu();
       }, LONG_PRESS_MS);

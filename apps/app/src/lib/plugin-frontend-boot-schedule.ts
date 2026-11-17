@@ -1,5 +1,5 @@
 interface PluginFrontendBootScheduleDeps {
-  whenRoutePainted: () => Promise<void>;
+  whenScreenPainted: () => Promise<void>;
   requestIdle: (callback: () => void) => () => void;
   setTimeout: (callback: () => void, ms: number) => number;
   clearTimeout: (id: number) => void;
@@ -23,7 +23,7 @@ export function scheduleDeferredPluginFrontendBoot(
     boot();
   };
   const timeoutId = deps.setTimeout(fire, deps.timeoutMs);
-  void deps.whenRoutePainted().then(() => {
+  void deps.whenScreenPainted().then(() => {
     if (settled) return;
     cancelIdle = deps.requestIdle(fire);
   });

@@ -1,5 +1,5 @@
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginHomepageSectionSlot,
 } from "@/lib/plugin-slots";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -7,7 +7,7 @@ import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 export function PluginHomepageSections() {
-  const { homepageSections } = usePluginSlots();
+  const homepageSections = usePluginSlotKind("homepageSections");
   if (homepageSections.length === 0) return null;
   return <PluginHomepageSectionList sections={homepageSections} />;
 }

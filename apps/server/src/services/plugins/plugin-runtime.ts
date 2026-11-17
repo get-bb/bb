@@ -381,6 +381,34 @@ export interface PluginLoadHold {
   isActive(): Promise<boolean>;
 }
 
+function linkCallSignal(
+  caller: AbortSignal,
+  lifetime: AbortSignal,
+): { signal: AbortSignal; unlink(): void } {
+  const controller = new AbortController();
+  const links = [caller, lifetime].map((source) => ({
+    source,
+    onAbort: () => {
+      unlink();
+      controller.abort(source.reason);
+    },
+  }));
+  function unlink(): void {
+    for (const { source, onAbort } of links) {
+      source.removeEventListener("abort", onAbort);
+    }
+  }
+  const aborted = links.find(({ source }) => source.aborted);
+  if (aborted !== undefined) {
+    controller.abort(aborted.source.reason);
+  } else {
+    for (const { source, onAbort } of links) {
+      source.addEventListener("abort", onAbort, { once: true });
+    }
+  }
+  return { signal: controller.signal, unlink };
+}
+
 export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
@@ -908,10 +936,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const lifetime = instance.stopping.signal.aborted
       ? released
       : instance.stopping.signal;
-    const signal =
+    const call =
       callerSignal === undefined
-        ? lifetime
-        : AbortSignal.any([callerSignal, lifetime]);
+        ? { signal: lifetime, unlink: () => {} }
+        : linkCallSignal(callerSignal, lifetime);
+    const signal = call.signal;
     const stats = statsFor(id);
     const startedAt = performance.now();
     const execution = runEventLoopWork(`plugin:${id} ${label}`, () =>
@@ -923,6 +952,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
     instance.invocations.add(settled);
     void settled.then(() => {
+      call.unlink();
       instance.invocations.delete(settled);
       const elapsedMs = performance.now() - startedAt;
       stats.count += 1;

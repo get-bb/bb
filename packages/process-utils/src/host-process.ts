@@ -71,11 +71,7 @@ export function spawnHostProcess(
     env: launch.env,
     windowsHide: options.windowsHide ?? true,
   };
-  if (
-    process.platform === "win32" &&
-    !options.shell &&
-    /[\\/]/u.test(command)
-  ) {
+  if (process.platform === "win32" && !options.shell) {
     const parsed = parse(launch.command, launch.args, spawnOptions);
     return observe(
       parsed.file

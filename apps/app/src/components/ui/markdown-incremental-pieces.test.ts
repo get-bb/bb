@@ -312,7 +312,7 @@ describe("resolveMarkdownPieces", () => {
     }
   }, 60_000);
 
-  it("returns fresh elements, hast node props, and directive attributes for reused pieces on every new body", () => {
+  it("keeps settled pieces' elements and directive mounts by identity when the body grows", () => {
     const linkConfig: MarkdownPieceRenderConfig = {
       ...config,
       components: { a: MarkdownLinkComponent },
@@ -335,13 +335,14 @@ describe("resolveMarkdownPieces", () => {
     if (firstLink === null || secondLink === null) {
       throw new Error("Expected a rendered link component");
     }
-    expect(second.children[0]).not.toBe(first.children[0]);
-    expect(secondLink).not.toBe(firstLink);
-    expect(secondLink.props.node).not.toBe(firstLink.props.node);
-    expect(secondLink.props.node).toEqual(firstLink.props.node);
-    expect(second.mounts[0]).not.toBe(first.mounts[0]);
-    expect(second.mounts[0]?.attributes).not.toBe(first.mounts[0]?.attributes);
-    expect(second.mounts[0]).toEqual(first.mounts[0]);
+    expect(second.children.slice(0, first.children.length)).toEqual(
+      first.children,
+    );
+    first.children.forEach((child, index) => {
+      expect(second.children[index]).toBe(child);
+    });
+    expect(secondLink).toBe(firstLink);
+    expect(second.mounts[0]).toBe(first.mounts[0]);
     expect(describeMarkdownChildren(second.children, second.mounts)).toEqual(
       renderWholeDocument(`${settled}More.`, linkConfig),
     );

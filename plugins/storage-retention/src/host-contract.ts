@@ -110,6 +110,26 @@ export const hostStorageContract = defineRpcContract({
       ),
     }),
   },
+  inspectCheckouts: {
+    input: z
+      .object({ paths: z.array(absolutePathSchema).min(1).max(100) })
+      .strict(),
+    output: z.object({
+      checkouts: z.array(
+        z.discriminatedUnion("state", [
+          z.object({
+            path: z.string(),
+            state: z.enum(["missing", "notGit", "clean"]),
+          }),
+          z.object({
+            path: z.string(),
+            state: z.literal("changed"),
+            changedFileCount: z.number().int().positive(),
+          }),
+        ]),
+      ),
+    }),
+  },
   inspectGitWorktree: {
     input: z
       .object({ repositoryPath: absolutePathSchema, path: absolutePathSchema })

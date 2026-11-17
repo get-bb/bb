@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
@@ -64,7 +65,7 @@ export function BrowserNewTabScreen({
   recent,
   onClearRecent,
 }: BrowserNewTabScreenProps) {
-  const now = Date.now();
+  const [now] = useState(Date.now);
 
   if (recent.length === 0) {
     return null;

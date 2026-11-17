@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { observeSharedResize } from "../../lib/shared-resize-observer";
 import { cn } from "../../lib/utils";
 
 export function ExpandableText({
@@ -24,12 +25,12 @@ export function ExpandableText({
   useLayoutEffect(() => {
     const element = textRef.current;
     if (!element || expanded) return;
-    const measure = () =>
-      setOverflowing(element.scrollHeight > element.clientHeight + 1);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
+    const measure = () => element.scrollHeight > element.clientHeight + 1;
+    setOverflowing(measure());
+    return observeSharedResize(element, {
+      read: measure,
+      write: setOverflowing,
+    });
   }, [children, expanded]);
 
   return (

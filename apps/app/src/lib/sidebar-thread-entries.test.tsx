@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import type { ThreadListEntry } from "@bb/domain";
@@ -8,16 +14,21 @@ import {
   archivedThreadsListQueryKey,
   sidebarNavigationQueryKey,
 } from "@/hooks/queries/query-keys";
-import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   makeSidebarBootstrapResponse,
   makeProjectWithThreadsResponse,
 } from "@/test/fixtures/projects";
-import { useSidebarThreadEntry } from "./plugin-sidebar-hooks";
-import { SidebarThreadEntriesProvider } from "./sidebar-thread-entries";
+import {
+  resetSidebarBootstrapCacheForTest,
+  writeCachedSidebarBootstrap,
+} from "./sidebar-bootstrap-cache";
+import { useSidebarThreadEntry } from "./sidebar-thread-entries";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetSidebarBootstrapCacheForTest();
+});
 
 function navigation(threads: ThreadListEntry[]) {
   return makeSidebarBootstrapResponse({
@@ -25,20 +36,16 @@ function navigation(threads: ThreadListEntry[]) {
   });
 }
 
-function Entry({ threadId }: { threadId: string }) {
+function Entry({
+  threadId,
+  rendered,
+}: {
+  threadId: string;
+  rendered?: string[];
+}) {
   const entry = useSidebarThreadEntry(threadId);
+  rendered?.push(threadId);
   return <span data-testid={threadId}>{entry?.title ?? "missing"}</span>;
-}
-
-function Entries({ threadIds }: { threadIds: string[] }) {
-  const { data } = useSidebarNavigation({ enabled: false });
-  return (
-    <SidebarThreadEntriesProvider navigation={data}>
-      {threadIds.map((threadId) => (
-        <Entry key={threadId} threadId={threadId} />
-      ))}
-    </SidebarThreadEntriesProvider>
-  );
 }
 
 describe("sidebar thread entries", () => {
@@ -65,9 +72,14 @@ describe("sidebar thread entries", () => {
         ],
       ],
     });
-    render(<Entries threadIds={[active.id, archived.id, "thr_missing"]} />, {
-      wrapper,
-    });
+    render(
+      <>
+        <Entry threadId={active.id} />
+        <Entry threadId={archived.id} />
+        <Entry threadId="thr_missing" />
+      </>,
+      { wrapper },
+    );
     expect(screen.getByTestId(active.id).textContent).toBe("Active");
     expect(screen.getByTestId(archived.id).textContent).toBe("Archived");
     expect(screen.getByTestId("thr_missing").textContent).toBe("missing");
@@ -115,38 +127,45 @@ describe("sidebar thread entries", () => {
     expect(screen.getByTestId(archived.id).textContent).toBe("missing");
   });
 
-  it("keeps two query observers as rows grow and receives data after an empty mount", async () => {
+  it("re-renders only the consumers of the thread that changed", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
-    const { rerender, unmount } = render(<Entries threadIds={["thr_0"]} />, {
-      wrapper,
-    });
-    expect(screen.getByTestId("thr_0").textContent).toBe("missing");
-    const observerCount = () =>
-      queryClient
-        .getQueryCache()
-        .getAll()
-        .reduce((total, query) => total + query.getObserversCount(), 0);
-    expect(observerCount()).toBe(2);
-    const threads = Array.from({ length: 200 }, (_, index) =>
-      makeThreadListEntry({
-        id: `thr_${index}`,
-        title: `Thread ${index}`,
-      }),
+    const threads = Array.from({ length: 50 }, (_, index) =>
+      makeThreadListEntry({ id: `thr_${index}`, title: `Thread ${index}` }),
     );
+    queryClient.setQueryData(sidebarNavigationQueryKey(), navigation(threads));
+    const rendered: string[] = [];
+    render(
+      <>
+        {threads.map((thread) => (
+          <Entry key={thread.id} threadId={thread.id} rendered={rendered} />
+        ))}
+      </>,
+      { wrapper },
+    );
+
+    rendered.length = 0;
     await act(async () => {
       queryClient.setQueryData(
         sidebarNavigationQueryKey(),
-        navigation(threads),
+        navigation(
+          threads.map((thread) =>
+            thread.id === "thr_7" ? { ...thread, title: "Renamed" } : thread,
+          ),
+        ),
       );
     });
-    rerender(<Entries threadIds={threads.map((thread) => thread.id)} />);
-    expect(screen.getByTestId("thr_0").textContent).toBe("Thread 0");
-    expect(screen.getByTestId("thr_199").textContent).toBe("Thread 199");
-    expect(observerCount()).toBe(2);
-    expect(
-      queryClient.getQueryState(archivedThreadsListQueryKey({}))?.fetchStatus,
-    ).toBe("idle");
-    unmount();
-    expect(observerCount()).toBe(0);
+    await waitFor(() =>
+      expect(screen.getByTestId("thr_7").textContent).toBe("Renamed"),
+    );
+    expect(rendered).toEqual(["thr_7"]);
+  });
+
+  it("reads the cached bootstrap before the sidebar query has data", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    writeCachedSidebarBootstrap(
+      navigation([makeThreadListEntry({ id: "thr_cached", title: "Cached" })]),
+    );
+    render(<Entry threadId="thr_cached" />, { wrapper });
+    expect(screen.getByTestId("thr_cached").textContent).toBe("Cached");
   });
 });

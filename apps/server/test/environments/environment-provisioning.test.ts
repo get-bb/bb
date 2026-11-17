@@ -3,7 +3,6 @@ import {
   environmentHookOperations,
   getEnvironment,
   getThread,
-  listEvents,
   threads,
 } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
@@ -22,6 +21,7 @@ import {
 } from "../helpers/seed.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 describe("environment reprovisioning", () => {
   it("fails host-backed thread creation before creating provisioning state when the host is disconnected", async () => {

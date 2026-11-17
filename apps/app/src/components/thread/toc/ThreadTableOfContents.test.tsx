@@ -10,6 +10,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useSyncExternalStore } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ThreadConversationOutlineItem,
@@ -490,11 +491,21 @@ describe("ThreadTableOfContents", () => {
       ],
     });
     let agentPreviewsReady = false;
+    const agentPreviewListeners = new Set<() => void>();
+    const subscribeToAgentPreviews = (listener: () => void) => {
+      agentPreviewListeners.add(listener);
+      return () => agentPreviewListeners.delete(listener);
+    };
+    const readAgentPreviewsReady = () => agentPreviewsReady;
     vi.mocked(useThreadConversationOutline).mockImplementation(
-      (_threadId, role) =>
-        ({
+      function useAgentPreviewOutline(_threadId, role) {
+        const previewsReady = useSyncExternalStore(
+          subscribeToAgentPreviews,
+          readAgentPreviewsReady,
+        );
+        return {
           data:
-            role === "assistant" && !agentPreviewsReady
+            role === "assistant" && !previewsReady
               ? undefined
               : outlineResponse(
                   role === "assistant"
@@ -506,11 +517,12 @@ describe("ThreadTableOfContents", () => {
                       }))
                     : [],
                 ),
-        }) as ReturnType<typeof useThreadConversationOutline>,
+        } as ReturnType<typeof useThreadConversationOutline>;
+      },
     );
 
     try {
-      const view = render(<TocHost timelineRows={rows} />);
+      render(<TocHost timelineRows={rows} />);
       openTocPanel();
       fireEvent.click(screen.getByText("Agent messages"));
       await waitFor(() => {
@@ -518,8 +530,10 @@ describe("ThreadTableOfContents", () => {
       });
       const callsBeforePreviews = scrollTo.mock.calls.length;
 
-      agentPreviewsReady = true;
-      view.rerender(<TocHost timelineRows={rows} />);
+      act(() => {
+        agentPreviewsReady = true;
+        for (const listener of agentPreviewListeners) listener();
+      });
 
       expect(await screen.findByText("Earlier agent answer 1")).not.toBeNull();
       await waitFor(() => {

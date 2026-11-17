@@ -440,7 +440,7 @@ async function handleRequest(message) {
   }
   switch (method) {
     case "initialize":
-      respond(id, {});
+      respond(id, script?.initializeResult ?? {});
       return;
     case "account/rateLimits/read":
       if (script?.rateLimitRead) {

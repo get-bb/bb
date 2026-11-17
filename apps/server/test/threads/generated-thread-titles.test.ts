@@ -1,9 +1,4 @@
-import {
-  createThread,
-  getThread,
-  listEvents,
-  setAiServiceSelection,
-} from "@bb/db";
+import { createThread, getThread, setAiServiceSelection } from "@bb/db";
 import {
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
@@ -44,6 +39,7 @@ import {
   requestThreadProvision,
 } from "../../src/services/threads/thread-provisioning.js";
 import { generateThreadMetadataWithOutcome } from "../../src/services/threads/title-generation.js";
+import { listEvents } from "@bb/db/testing";
 
 interface MockThreadMetadata {
   title?: string;
@@ -275,7 +271,7 @@ describe("generated thread titles", () => {
         throw new Error("Expected the starting thread");
       }
       expect(startingThread.environmentId).toBeNull();
-      requestThreadStopForCurrentState(harness.deps, startingThread, null);
+      requestThreadStopForCurrentState(harness.deps, startingThread);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
       });

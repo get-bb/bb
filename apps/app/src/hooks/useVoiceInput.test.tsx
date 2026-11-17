@@ -325,6 +325,55 @@ it("discards the recording when the user cancels its first transcription", async
   expect(appToast.error).not.toHaveBeenCalled();
 });
 
+it.each(["", "  \n "])(
+  "ends quietly and keeps nothing when the transcript is empty: %j",
+  async (transcript) => {
+    const onTranscript = vi.fn();
+    const playCompletionTransition = vi.fn();
+    const { result } = renderHook(() =>
+      useVoiceInput({
+        recordingKey: "thread/empty",
+        onTranscribe: vi.fn().mockResolvedValue(transcript),
+        onTranscript,
+        playCompletionTransition,
+      }),
+    );
+    await act(() => result.current.start());
+    vi.advanceTimersByTime(1500);
+    await act(async () => result.current.stop("send"));
+    expect(result.current.state).toBe("idle");
+    expect(result.current.failedRecordings).toEqual([]);
+    expect(onTranscript).not.toHaveBeenCalled();
+    expect(playCompletionTransition).not.toHaveBeenCalled();
+    expect(appToast.error).not.toHaveBeenCalled();
+  },
+);
+
+it("clears a failed recording whose retry transcribes to nothing", async () => {
+  const transcribe = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Upload failed"))
+    .mockResolvedValueOnce("");
+  const onTranscript = vi.fn();
+  const { result } = renderHook(() =>
+    useVoiceInput({
+      recordingKey: "thread/empty-retry",
+      onTranscribe: transcribe,
+      onTranscript,
+    }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop("insert"));
+  const [failed] = result.current.failedRecordings;
+  if (!failed) throw new Error("Missing failed recording");
+
+  await act(async () => result.current.retry(failed));
+  expect(transcribe).toHaveBeenCalledTimes(2);
+  expect(result.current.failedRecordings).toEqual([]);
+  expect(onTranscript).not.toHaveBeenCalled();
+});
+
 it("tells the user where a recording went when it fails after its composer unmounts", async () => {
   let failTranscription: ((error: Error) => void) | undefined;
   const onTranscribe = vi.fn(

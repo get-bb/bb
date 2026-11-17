@@ -37,7 +37,6 @@ import {
   getLatestThreadSequence,
   insertEvents,
   listContextWindowUsageRows,
-  listEvents,
   listLatestThreadStateEventRowsByThreadIds,
   deleteThreadEventSuffixInTransaction,
   listStoredConversationOutlineEventRows,
@@ -56,7 +55,6 @@ import {
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listOpenBackgroundTaskItemRowsForHost,
-  listThreadTurnInterruptionEventStates,
   listLatestOpenBackgroundTaskStateRowsForThread,
 } from "../../src/data/events.js";
 import type { ListStoredEventRowsArgs } from "../../src/data/events.js";
@@ -76,11 +74,23 @@ import type {
 } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import type { DbConnection } from "../../src/connection.js";
-import { createMigratedConnection } from "../../src/testing.js";
+import { createMigratedConnection, listEvents } from "../../src/testing.js";
 import {
   getThreadConversationOutlineRecord,
   upsertThreadConversationOutlineRecord,
 } from "../../src/data/thread-conversation-outlines.js";
+
+function turnInterruptionState(
+  db: Parameters<typeof getActiveStoredTurnId>[0],
+  threadId: string,
+) {
+  return {
+    activeTurnId: getActiveStoredTurnId(db, threadId),
+    latestProviderThreadId: getLastStoredProviderThreadId(db, threadId),
+    threadId,
+  };
+}
+
 
 function setup() {
   const db = createMigratedConnection();
@@ -3230,7 +3240,7 @@ describe("events", () => {
     });
 
     expect(
-      listThreadTurnInterruptionEventStates(db, { threadIds: [thread.id] }),
+      [turnInterruptionState(db, thread.id)],
     ).toEqual([
       {
         activeTurnId: null,
@@ -3604,14 +3614,7 @@ describe("events", () => {
     ]);
 
     expect(
-      listThreadTurnInterruptionEventStates(db, {
-        threadIds: [
-          thread.id,
-          completedThread.id,
-          noProviderThread.id,
-          noEventThread.id,
-        ],
-      }),
+      [turnInterruptionState(db, thread.id), turnInterruptionState(db, completedThread.id), turnInterruptionState(db, noProviderThread.id), turnInterruptionState(db, noEventThread.id)],
     ).toEqual([
       {
         activeTurnId: "turn_active",
@@ -3683,9 +3686,7 @@ describe("events", () => {
     ]);
 
     expect(
-      listThreadTurnInterruptionEventStates(db, {
-        threadIds: [thread.id],
-      }),
+      [turnInterruptionState(db, thread.id)],
     ).toEqual([
       {
         activeTurnId: "root_turn",
@@ -5529,9 +5530,7 @@ describe("stored provider thread identity ownership", () => {
       }),
     ).toBe("owned");
     expect(
-      listThreadTurnInterruptionEventStates(db, {
-        threadIds: [early, late],
-      }).map((state) => state.latestProviderThreadId),
+      [turnInterruptionState(db, early), turnInterruptionState(db, late)].map((state) => state.latestProviderThreadId),
     ).toEqual([null, null]);
     db.$client.close();
   });
@@ -5881,9 +5880,7 @@ describe("stored provider thread identity ownership", () => {
       ]),
     );
     expect(
-      listThreadTurnInterruptionEventStates(db, {
-        threadIds: [first, second],
-      }).map((state) => state.latestProviderThreadId),
+      [turnInterruptionState(db, first), turnInterruptionState(db, second)].map((state) => state.latestProviderThreadId),
     ).toEqual(["session-alpha", "session-beta"]);
     expect(resolveStoredProviderSessions(db, { threadIds: [] })).toEqual(
       new Map(),

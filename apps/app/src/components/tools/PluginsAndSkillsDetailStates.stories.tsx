@@ -543,7 +543,7 @@ function FailedReleaseLifecycle() {
 
   useEffect(() => {
     const originalFetch = globalThis.fetch;
-    let cancelled = false;
+    const lifecycle = new AbortController();
     globalThis.fetch = async (input, init) => {
       const url =
         typeof input === "string"
@@ -556,7 +556,7 @@ function FailedReleaseLifecycle() {
       }
 
       await new Promise((resolve) => window.setTimeout(resolve, 8_000));
-      if (!cancelled) {
+      if (!lifecycle.signal.aborted) {
         setPlugin((current) => ({
           ...current,
           version: "1.5.0",
@@ -578,7 +578,7 @@ function FailedReleaseLifecycle() {
       );
     };
     return () => {
-      cancelled = true;
+      lifecycle.abort();
       globalThis.fetch = originalFetch;
     };
   }, []);

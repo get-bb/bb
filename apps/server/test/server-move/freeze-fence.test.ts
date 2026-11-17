@@ -3,7 +3,6 @@ import {
   getEnvironment,
   getStoredThreadTabs,
   getTerminalSession,
-  listEvents,
   listPendingInteractionsByThread,
   updateTerminalSession,
   type DbConnection,
@@ -48,6 +47,7 @@ import {
   type FakeDaemonReply,
 } from "../helpers/server-move.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const MOVE_SOURCE_HOST_ID = "host-fence-source";
 const MOVE_TARGET_HOST_ID = "host-fence-target";

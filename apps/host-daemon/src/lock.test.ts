@@ -103,6 +103,37 @@ describe("acquireDaemonLock compromise handling", () => {
     });
   }, 30_000);
 
+  it("reclaims an orphaned lock whose heartbeat is ahead of a clock that was set back", async () => {
+    const lockDirPath = path.join(dataDir, `${DAEMON_LOCK_FILE_NAME}.lock`);
+    await fs.mkdir(lockDirPath);
+    const heartbeatFromBeforeClockReset = new Date(
+      Date.now() + 19 * 24 * 60 * 60 * 1_000,
+    );
+    fsSync.utimesSync(
+      lockDirPath,
+      heartbeatFromBeforeClockReset,
+      heartbeatFromBeforeClockReset,
+    );
+    const { logger, warnings } = createRecordingLogger();
+
+    const release = await acquireDaemonLock(dataDir, {
+      staleMs: 2_000,
+      retryIntervalMs: 100,
+      retries: 40,
+      logger,
+      onLockLost: vi.fn(),
+    });
+
+    expect(warnings).toContain(
+      "Daemon lock heartbeat stopped; reclaiming the orphaned lock",
+    );
+    const reclaimed = await fs.stat(lockDirPath);
+    expect(reclaimed.mtimeMs).toBeLessThan(
+      heartbeatFromBeforeClockReset.getTime(),
+    );
+    await release();
+  }, 20_000);
+
   it("yields the data dir when another live process holds the lock", async () => {
     const { logger } = createRecordingLogger();
     const lockLostErrors: unknown[] = [];

@@ -533,30 +533,52 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   };
 }
 
+interface CommittedSelection<Selection> {
+  current: Selection | undefined;
+}
+
+function createSelectionGetter<Snapshot, Selection>(
+  getSnapshot: () => Snapshot,
+  select: (snapshot: Snapshot) => Selection,
+  committed: CommittedSelection<Selection>,
+): () => Selection {
+  let cached: { snapshot: Snapshot; value: Selection } | undefined;
+  return () => {
+    const snapshot = getSnapshot();
+    if (cached && Object.is(cached.snapshot, snapshot)) return cached.value;
+    cached = {
+      snapshot,
+      value: replaceEqualDeep(
+        cached?.value ?? committed.current,
+        select(snapshot),
+      ),
+    };
+    return cached.value;
+  };
+}
+
+function commitSelection<Selection>(
+  committed: CommittedSelection<Selection>,
+  value: Selection,
+): void {
+  committed.current = value;
+}
+
 export function useQuerySelection<Snapshot, Selection>(
   subscribe: (listener: () => void) => () => void,
   getSnapshot: () => Snapshot,
   select: (snapshot: Snapshot) => Selection,
 ): Selection {
-  const committed = useRef<{ value: Selection } | null>(null);
-  const getSelection = useMemo(() => {
-    let cached: { snapshot: Snapshot; value: Selection } | undefined;
-    return () => {
-      const snapshot = getSnapshot();
-      if (cached && Object.is(cached.snapshot, snapshot)) return cached.value;
-      cached = {
-        snapshot,
-        value: replaceEqualDeep(
-          cached?.value ?? committed.current?.value,
-          select(snapshot),
-        ),
-      };
-      return cached.value;
-    };
-  }, [getSnapshot, select]);
+  const [committed] = useState<CommittedSelection<Selection>>(() => ({
+    current: undefined,
+  }));
+  const getSelection = useMemo(
+    () => createSelectionGetter(getSnapshot, select, committed),
+    [committed, getSnapshot, select],
+  );
   const value = useSyncExternalStore(subscribe, getSelection, getSelection);
   useEffect(() => {
-    committed.current = { value };
-  }, [value]);
+    commitSelection(committed, value);
+  }, [committed, value]);
   return value;
 }

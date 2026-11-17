@@ -281,6 +281,85 @@ function createImportFile(kind: ServerImportFile["kind"]): ServerImportFile {
   };
 }
 
+describe("bb-app start readiness", () => {
+  it("reports the runtime ready only after this computer's daemon connects", async () => {
+    const processes: ManagedFullStackProcesses = {
+      daemonRun: null,
+      serverRun: null,
+    };
+    const events: string[] = [];
+    let connectDaemon: () => void = () => undefined;
+    let shutdownRequested = false;
+
+    await captureOutput(process.stdout, async () => {
+      const supervision = superviseBbAppStart({
+        context: createTestStartContext(),
+        delayMilliseconds: async () => undefined,
+        findMachineService: async () => null,
+        isShutdownRequested: () => shutdownRequested,
+        onRuntimeReady: () => {
+          events.push("runtime ready");
+        },
+        prepareFullStack: async () => ({
+          prepareDaemon: async () => async () => {
+            events.push("daemon spawned");
+            await new Promise<void>((resolvePromise) => {
+              connectDaemon = resolvePromise;
+            });
+            events.push("daemon connected");
+            const run = new FakeManagedProcessRun("daemon");
+            processes.daemonRun = run;
+            return run;
+          },
+          startServer: async () => {
+            events.push("server healthy");
+            const run = new FakeManagedProcessRun("server");
+            processes.serverRun = run;
+            return run;
+          },
+        }),
+        processes,
+        readServerMoveMarkers: async () => ({
+          movedFile: null,
+          pendingMoveImport: false,
+        }),
+        readServerMovedFile: async () => null,
+        serverBindHost: "127.0.0.1",
+        serverListenerUrl: "http://127.0.0.1:39886",
+        shutdown: async () => {
+          throw new Error("Unexpected startup failure");
+        },
+        startMovedDaemon: async () => unexpectedStart(),
+        startMovedResponder: async () => {
+          throw new Error("Unexpected moved responder");
+        },
+        waitForMarkerPoll: () => new Promise<void>(() => undefined),
+      });
+
+      await waitFor(
+        () => events.includes("daemon spawned"),
+        "the daemon spawn",
+      );
+      expect(events).toEqual(["server healthy", "daemon spawned"]);
+      connectDaemon();
+      await waitFor(() => events.includes("runtime ready"), "runtime ready");
+      shutdownRequested = true;
+      await terminateManagedFullStackProcesses({
+        processes,
+        signal: "SIGTERM",
+      });
+      await supervision;
+    });
+
+    expect(events).toEqual([
+      "server healthy",
+      "daemon spawned",
+      "daemon connected",
+      "runtime ready",
+    ]);
+  });
+});
+
 describe("bb-app start after the server moved", () => {
   it("runs only the managed daemon and the moved responder when the lock exists at start", async () => {
     const movedFile = createMovedFile({});
@@ -301,6 +380,7 @@ describe("bb-app start after the server moved", () => {
         delayMilliseconds: async () => undefined,
         findMachineService: async () => null,
         isShutdownRequested: () => shutdownRequested,
+        onRuntimeReady: () => undefined,
         prepareFullStack: async (entry) => {
           fullStackEntries.push(entry);
           return {
@@ -556,6 +636,7 @@ describe("bb-app start after the server moved", () => {
         delayMilliseconds: async () => undefined,
         findMachineService: async () => null,
         isShutdownRequested: () => shutdownRequested,
+        onRuntimeReady: () => undefined,
         prepareFullStack: async (entry) => {
           fullStackEntries.push(entry);
           return {

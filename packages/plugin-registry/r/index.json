@@ -314,6 +314,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "shared-resize-observer",
+      "type": "registry:lib"
+    },
+    {
       "name": "sheet",
       "type": "registry:ui"
     },

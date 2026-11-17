@@ -33,9 +33,11 @@ export function AppLayoutSidebar({
     routeSidebar,
     backToAppRoutePath,
   });
+  const lastVisibleRouteSidebarId = lastVisible.routeSidebar?.id;
+  const routeSidebarId = routeSidebar?.id;
   if (
     !holdCurrentSidebar &&
-    (lastVisible.routeSidebar?.id !== routeSidebar?.id ||
+    (lastVisibleRouteSidebarId !== routeSidebarId ||
       lastVisible.backToAppRoutePath !== backToAppRoutePath)
   ) {
     setLastVisible({ routeSidebar, backToAppRoutePath });

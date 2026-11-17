@@ -1,13 +1,20 @@
-import { getThread, listEvents, updateThread } from "@bb/db";
+import { getThread, updateThread } from "@bb/db";
 import {
+  threadSchema,
+  threadScope,
   turnRequestEventDataSchema,
   turnScope,
   type ThreadParentNotifications,
 } from "@bb/domain";
+import {
+  groupHostDaemonEvents,
+  HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonSessionOpenResponseSchema,
+} from "@bb/host-daemon-contract";
 import { retryTurnRequestSchema } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runPeriodicSweeps } from "../../src/services/system/periodic-sweeps.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import {
   TURN_START_DEADLINE_MS,
   TURN_START_DEADLINE_RECONNECT_GRACE_MS,
@@ -16,11 +23,17 @@ import {
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
 import {
+  onDaemonSocketClose,
+  onDaemonSocketOpen,
+} from "../../src/ws/daemon-protocol.js";
+import {
+  internalAuthHeaders,
   listQueuedThreadCommands,
   registerTestHostRpcCapture,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -32,6 +45,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -375,8 +389,8 @@ describe("turn start deadline", () => {
               },
             });
             if (settlesThread) {
-              applyLoggedThreadLifecycleEvent(harness.deps, {
-                event: { type: "run.succeeded" },
+              moveThreadStatus(harness.deps, {
+                move: "run.succeeded",
                 threadId: fixture.thread.id,
               });
             }
@@ -439,4 +453,177 @@ describe("turn start deadline", () => {
       });
     },
   );
+});
+
+describe("a thread start whose reply is lost with the daemon connection", () => {
+  async function createThreadAwaitingStart(harness: TestAppHarness) {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "host-lost-start-reply",
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+      path: "/tmp/lost-start-reply",
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      path: "/tmp/lost-start-reply",
+      status: "ready",
+    });
+    const response = await harness.app.request("/api/v1/threads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        input: [{ type: "text", text: "First message" }],
+        environment: { type: "reuse", environmentId: environment.id },
+      }),
+    });
+    expect(response.status).toBe(201);
+    const thread = threadSchema.parse(await readJson(response));
+    const start = await waitForQueuedCommand(
+      harness,
+      ({ command }) =>
+        command.type === "thread.start" && command.threadId === thread.id,
+    );
+    if (start.command.type !== "thread.start") {
+      throw new Error("Expected a thread.start command");
+    }
+    onDaemonSocketClose(harness.deps, session.id);
+    await vi.waitFor(() =>
+      expect(getThread(harness.db, thread.id)?.status).toBe("active"),
+    );
+    expect(threadErrorCodes(harness, thread.id)).toEqual([]);
+    return {
+      hostId: host.id,
+      instanceId: session.instanceId,
+      requestId: start.command.requestId,
+      threadId: thread.id,
+    };
+  }
+
+  async function reconnectDaemon(
+    harness: TestAppHarness,
+    fixture: Awaited<ReturnType<typeof createThreadAwaitingStart>>,
+    daemon: "running" | "starting" | "never-received",
+  ): Promise<string> {
+    const response = await harness.app.request("/internal/session/open", {
+      method: "POST",
+      headers: internalAuthHeaders(harness, { hostId: fixture.hostId }),
+      body: JSON.stringify({
+        hostId: fixture.hostId,
+        instanceId: fixture.instanceId,
+        hostName: "Test Host",
+        hasMachineCredential: false,
+        platform: "darwin",
+        dataDir: "/tmp/host-daemon-lost-start-reply",
+        localApiPort: null,
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        turnCommandThreadIds: daemon === "starting" ? [fixture.threadId] : [],
+        activeThreads:
+          daemon === "running" ? [{ threadId: fixture.threadId }] : [],
+        openThreadWork: [],
+      }),
+    });
+    expect(response.status).toBe(201);
+    const { sessionId } = hostDaemonSessionOpenResponseSchema.parse(
+      await response.json(),
+    );
+    onDaemonSocketOpen(harness.deps, {
+      hostId: fixture.hostId,
+      sessionId,
+      socket: registerTestHostRpcCapture(harness, {
+        hostId: fixture.hostId,
+        sessionId,
+      }),
+    });
+    return sessionId;
+  }
+
+  function threadErrorCodes(harness: TestAppHarness, threadId: string) {
+    return listEvents(harness.db, { threadId })
+      .filter((event) => event.type === "system/error")
+      .map((event) => JSON.parse(event.data).code);
+  }
+
+  it("keeps the thread running when the daemon started it, and settles it when the turn ends", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = await createThreadAwaitingStart(harness);
+      const sessionId = await reconnectDaemon(harness, fixture, "running");
+      const turn = {
+        threadId: fixture.threadId,
+        providerThreadId: "provider-lost-start-reply",
+        scope: turnScope("turn-lost-start-reply"),
+      };
+
+      const posted = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: fixture.hostId }),
+        body: JSON.stringify({
+          sessionId,
+          eventGroups: groupHostDaemonEvents(
+            [
+              {
+                type: "thread/identity" as const,
+                threadId: fixture.threadId,
+                providerThreadId: turn.providerThreadId,
+                scope: threadScope(),
+              },
+              { type: "turn/started" as const, ...turn },
+              {
+                type: "turn/input/accepted" as const,
+                ...turn,
+                clientRequestId: fixture.requestId,
+              },
+              {
+                type: "turn/completed" as const,
+                ...turn,
+                status: "completed" as const,
+              },
+            ].map((event) => ({ threadId: fixture.threadId, event })),
+          ),
+        }),
+      });
+      expect(posted.status).toBe(200);
+
+      expect(getThread(harness.db, fixture.threadId)?.status).toBe("idle");
+      expect(threadErrorCodes(harness, fixture.threadId)).toEqual([]);
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", fixture.threadId),
+      ).toEqual([]);
+    });
+  });
+
+  it("fails the thread on reconnect when the daemon never received it", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = await createThreadAwaitingStart(harness);
+      await reconnectDaemon(harness, fixture, "never-received");
+
+      expect(getThread(harness.db, fixture.threadId)?.status).toBe("error");
+      expect(threadErrorCodes(harness, fixture.threadId)).toEqual([
+        "thread_command_failed",
+      ]);
+    });
+  });
+
+  it("keeps the thread running while the daemon is still starting it, up to the turn-start deadline", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await withTestHarness(async (harness) => {
+      const requestedAt = Date.now();
+      const fixture = await createThreadAwaitingStart(harness);
+      await reconnectDaemon(harness, fixture, "starting");
+      expect(getThread(harness.db, fixture.threadId)?.status).toBe("active");
+
+      await sweepAt(harness, requestedAt + TURN_START_DEADLINE_MS + 1_000);
+      await settleDeadlineStop(harness, fixture.threadId);
+
+      expect(getThread(harness.db, fixture.threadId)?.status).toBe("error");
+      expect(threadErrorCodes(harness, fixture.threadId)).toEqual([
+        "provider_turn_start_deadline",
+      ]);
+    });
+  });
 });

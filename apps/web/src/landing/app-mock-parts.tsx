@@ -44,6 +44,7 @@ import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 
 import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon } from "./icons";
@@ -324,9 +325,7 @@ export function useFitMock(
       mock.style.setProperty("--mock-slice-ratio", String(slice / width));
     };
     fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(wrap);
-    return () => observer.disconnect();
+    return observeSharedResize(wrap, { read: () => undefined, write: fit });
   }, [ref, shrinkOnly]);
 }
 

@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "steer-race",
+  "threadId": "thr_3c8130a6cc",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.169.0",
+  "recordedAt": "2026-11-14",
+  "description": "A steer sent as its turn ends, then a follow-up turn.",
+  "note": "config/read responses trimmed to config.model; the rest was the recording machine's Codex config.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 5,
+    "bridge\u2192runtime": 36,
+    "provider\u2192bridge": 82,
+    "bridge\u2192provider": 8
+  }
+}

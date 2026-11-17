@@ -261,7 +261,6 @@ export async function createSetupGuideExperiment(
           entry,
           setup_guide_variant: guide.variant,
           setup_guide_source: guide.source,
-          $set: { setup_guide_variant: guide.variant },
         },
       });
     },

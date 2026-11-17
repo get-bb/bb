@@ -1,7 +1,6 @@
 import {
   claimQueuedThreadMessageGroup,
   getQueuedThreadMessage,
-  listEvents,
   setQueuedThreadMessageFailureReason,
 } from "@bb/db";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
@@ -30,6 +29,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const WORKSPACE_PATH = "/tmp/queue-drain-failure-project";
 
@@ -228,7 +228,7 @@ describe("recordQueuedMessageDrainFailure", () => {
           threadId: thread.id,
           waitingOn: { kind: "turn-starting" },
         });
-        noteDispatchRequeued(thread.id);
+        noteDispatchRequeued(thread.id, "rejector");
 
         await runQueuedMessageDispatch(harness.deps, {
           kind: "turn-started",

@@ -537,6 +537,63 @@ it("keeps a keyed hook's refetch stable while its keys change", async () => {
   }
 });
 
+it("keeps plain and keyed results identical across renders that change nothing", async () => {
+  const client = new QueryClient();
+  const call = vi.fn(async (_plugin: string, method: string) =>
+    method === "rows" ? { a: 1 } : { ready: true },
+  );
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call,
+  };
+  const contract = defineRpcContract({
+    read: {
+      input: z.object({ v: z.number() }),
+      output: z.object({ ready: z.boolean() }),
+    },
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(
+    ({ tick }: { tick: number }) => ({
+      tick,
+      plain: hooks.experimental_useRpcQuery({
+        contract,
+        method: "read",
+        input: { v: 1 },
+      }),
+      keyed: hooks.experimental_useRpcKeyedQuery({
+        contract,
+        method: "rows",
+        keys: ["a"],
+      }),
+    }),
+    { initialProps: { tick: 0 } },
+  );
+  try {
+    await waitFor(() => {
+      expect(probe.result.current.plain.data).toEqual({ ready: true });
+      expect(probe.result.current.keyed.data).toEqual({ a: 1 });
+    });
+    const { plain, keyed } = probe.result.current;
+    const reads = call.mock.calls.length;
+
+    probe.rerender({ tick: 1 });
+
+    expect(probe.result.current.plain).toBe(plain);
+    expect(probe.result.current.keyed).toBe(keyed);
+    expect(call.mock.calls.length).toBe(reads);
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});
+
 it("keeps cached rows on screen while a keyed hook is disabled and re-enables without a re-read", async () => {
   const client = new QueryClient();
   const reads: string[][] = [];

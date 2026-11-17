@@ -8,6 +8,7 @@ import {
 import type { Action, ExternalToast } from "sonner";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   openNotificationCenter,
@@ -147,16 +148,11 @@ function AppToastOverflowText({
     if (body === null) {
       return;
     }
-    const measure = () => {
-      setTruncated(
-        body.scrollHeight - body.clientHeight > 1 ||
-          body.scrollWidth - body.clientWidth > 1,
-      );
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(body);
-    return () => observer.disconnect();
+    const measure = () =>
+      body.scrollHeight - body.clientHeight > 1 ||
+      body.scrollWidth - body.clientWidth > 1;
+    setTruncated(measure());
+    return observeSharedResize(body, { read: measure, write: setTruncated });
   }, [content]);
 
   return (

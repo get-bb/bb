@@ -30,7 +30,7 @@ import {
 } from "@/lib/plugin-panel-controller";
 import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 
 export const CORE_THREAD_ACTION_OWNER = "bb--core";
 
@@ -266,6 +266,30 @@ function useLatestNavigate(
   return stable;
 }
 
+type ThreadActionUseData = PluginThreadActionRegistration<unknown>["useData"];
+
+interface ThreadActionDataHostProps {
+  record: ThreadActionRegistrationRecord;
+  threadIds: readonly string[];
+}
+
+function createThreadActionDataHost(useData: ThreadActionUseData) {
+  if (useData === undefined) {
+    return function ThreadActionDataHost({
+      record,
+    }: ThreadActionDataHostProps) {
+      return <ThreadActionPublisher record={record} data={undefined} />;
+    };
+  }
+  return function ThreadActionDataHost({
+    record,
+    threadIds,
+  }: ThreadActionDataHostProps) {
+    const data = useData({ threadIds });
+    return <ThreadActionPublisher record={record} data={data} />;
+  };
+}
+
 function ThreadActionCollector({
   record,
 }: {
@@ -275,7 +299,25 @@ function ThreadActionCollector({
     subscribeThreadIds,
     getSubscribedThreadIds,
   )[record.placement];
-  const data = record.registration.useData?.({ threadIds });
+  const useData = record.registration.useData;
+  const [dataHost, setDataHost] = useState(() => ({
+    useData,
+    Component: createThreadActionDataHost(useData),
+  }));
+  if (dataHost.useData !== useData) {
+    setDataHost({ useData, Component: createThreadActionDataHost(useData) });
+  }
+  const { Component } = dataHost;
+  return <Component record={record} threadIds={threadIds} />;
+}
+
+function ThreadActionPublisher({
+  record,
+  data,
+}: {
+  record: ThreadActionRegistrationRecord;
+  data: unknown;
+}) {
   const sdk = useSdk();
   const [panel] = useState(() =>
     createPluginPanelController(record.pluginId, getFocusedAppPanelController),
@@ -311,7 +353,7 @@ class ThreadActionCollectorBoundary extends Component<
 function useThreadActionRecords(
   coreRegistrations: readonly PluginThreadActionRegistration<unknown>[],
 ): readonly ThreadActionRegistrationRecord[] {
-  const slots = usePluginSlots().threadActions;
+  const slots = usePluginSlotKind("threadActions");
   const records = [
     ...coreRegistrations.map((registration) => ({
       key: `${CORE_THREAD_ACTION_OWNER}/${registration.id}`,

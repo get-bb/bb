@@ -4,11 +4,19 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "./markdown-preview";
 
-const katexChunkLoads = vi.hoisted(() => ({ count: 0 }));
+const katexChunkLoads = await vi.hoisted(async () => {
+  const { createDeferredPromise } = await import("@bb/test-helpers");
+  return {
+    count: 0,
+    imported: createDeferredPromise<typeof import("./markdown-katex.js")>(),
+  };
+});
 
 vi.mock("./markdown-katex.js", async (importOriginal) => {
   katexChunkLoads.count += 1;
-  return importOriginal();
+  const module = importOriginal<typeof import("./markdown-katex.js")>();
+  katexChunkLoads.imported.resolve(module);
+  return module;
 });
 
 afterEach(() => {
@@ -42,6 +50,9 @@ describe("MarkdownPreview lazy KaTeX", () => {
     );
     expect(incremental.container.querySelector(".katex-display")).toBeNull();
 
+    await act(async () => {
+      await katexChunkLoads.imported.promise;
+    });
     await waitFor(() => {
       expect(first.container.querySelector(".katex")).not.toBeNull();
       expect(second.container.querySelector(".katex")).not.toBeNull();

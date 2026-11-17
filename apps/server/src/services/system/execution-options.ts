@@ -12,9 +12,9 @@ import {
   type ProviderInfo,
 } from "@bb/domain";
 import { getAppSettings } from "@bb/db";
+import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import {
   requireConnectedHostSession,
@@ -35,11 +35,16 @@ import {
 } from "../providers/provider-model-catalog-store.js";
 import type {
   ProviderHealthCacheKey,
+  ProviderRegistration,
   ProviderRegistryService,
 } from "../providers/provider-registry.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
+import {
+  requestProviderHealth,
+  type ProviderHealthResult,
+} from "./provider-health-requests.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 
 type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
@@ -117,7 +122,7 @@ function providerMatchesFilter(
   }
 }
 
-function listConfiguredSystemProviderInfos(
+export function listConfiguredSystemProviderInfos(
   deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
   filter: ProviderFilter = {},
 ): ProviderInfo[] {
@@ -157,13 +162,12 @@ function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
   );
 }
 
-async function listInstalledPluginProviderInfos(
-  deps: LoggedWorkSessionDeps,
-  hostId: string,
-  filter: ProviderFilter,
-): Promise<ProviderInfo[]> {
+export function listInstalledOnlyProviderRegistrations(
+  deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
+  filter: ProviderFilter = {},
+): ProviderRegistration[] {
   const disabled = deps.providerRegistry.disabledProviderIds();
-  const registrations = deps.providerRegistry
+  return deps.providerRegistry
     .list()
     .filter(
       (registration) =>
@@ -171,6 +175,58 @@ async function listInstalledPluginProviderInfos(
         registration.visibility === "installed" &&
         providerMatchesFilter(registration.info, filter),
     );
+}
+
+export function isInstalledProviderHealth(
+  result: ProviderHealthResult,
+): boolean {
+  return result.supported && result.health.status !== "not_installed";
+}
+
+export function probeInstalledProvider(
+  deps: LoggedWorkSessionDeps,
+  args: {
+    hostId: string;
+    providerId: string;
+    bridgeLaunch: HostDaemonBridgeLaunch;
+    budget: ProviderListingBudget;
+  },
+): Promise<boolean> {
+  return requestProviderHealth(deps, {
+    hostId: args.hostId,
+    providerId: args.providerId,
+    bridgeLaunch: args.bridgeLaunch,
+    timeoutMs: args.budget.remainingMs(),
+  }).then(isInstalledProviderHealth);
+}
+
+export function omitInstalledProviderAfterError(
+  deps: LoggedWorkSessionDeps,
+  key: ProviderHealthCacheKey,
+  error: unknown,
+): void {
+  deps.providerRegistry.forgetInstalledKey(key);
+  if (!canOmitProviderDiscoveryForError(error)) {
+    throw error;
+  }
+  if (!isSuspendedHostUnavailableError(error)) {
+    deps.logger.warn(
+      {
+        ...expectedFallbackErrorLogFields(error),
+        hostId: key.hostId,
+        providerId: key.providerId,
+      },
+      "Failed to resolve installed-only provider status",
+    );
+  }
+}
+
+async function listInstalledPluginProviderInfos(
+  deps: LoggedWorkSessionDeps,
+  hostId: string,
+  filter: ProviderFilter,
+): Promise<ProviderInfo[]> {
+  const registrations = listInstalledOnlyProviderRegistrations(deps, filter);
   const budget = createProviderListingBudget();
   const results = await mapProviderMaintenanceRequests(
     registrations,
@@ -184,18 +240,13 @@ async function listInstalledPluginProviderInfos(
         hostId,
         providerId: registration.info.id,
       };
-      const probe = async (probeBudget: ProviderListingBudget) => {
-        const result = await callHostRetryableOnlineRpc(deps, {
+      const probe = (probeBudget: ProviderListingBudget) =>
+        probeInstalledProvider(deps, {
           hostId,
-          timeoutMs: probeBudget.remainingMs(),
-          command: {
-            type: "provider.health",
-            providerId: registration.info.id,
-            bridgeLaunch,
-          },
+          providerId: registration.info.id,
+          bridgeLaunch,
+          budget: probeBudget,
         });
-        return result.supported && result.health.status !== "not_installed";
-      };
       const cached = deps.providerRegistry.lookupInstalled(cacheKey);
       try {
         const installed = cached ?? probe(budget);
@@ -208,20 +259,7 @@ async function listInstalledPluginProviderInfos(
         }
         return (await installed) ? registration.info : null;
       } catch (error) {
-        deps.providerRegistry.forgetInstalledKey(cacheKey);
-        if (!canOmitProviderDiscoveryForError(error)) {
-          throw error;
-        }
-        if (!isSuspendedHostUnavailableError(error)) {
-          deps.logger.warn(
-            {
-              ...expectedFallbackErrorLogFields(error),
-              hostId,
-              providerId: registration.info.id,
-            },
-            "Failed to resolve installed-only provider status",
-          );
-        }
+        omitInstalledProviderAfterError(deps, cacheKey, error);
         return null;
       }
     },

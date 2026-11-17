@@ -23,6 +23,9 @@ lint/typecheck run separately for the selected packages.
 
 Frontend-only changes under app/web source or public files and the listed UI
 packages retain affected Linux checks; their Windows matrix runs on main.
+Changes to client code (the app, client and UI packages, the plugin SDK, and
+plugins with a frontend) also select the real-browser render invariant job;
+see [render-invariants.md](render-invariants.md).
 Frontend build configuration retains Windows checks. Changes to desktop,
 packaged-app, SDK, template, or plugin-bundling code retain package smokes on
 PRs. Provider changes retain the live provider listing check. App/web-only

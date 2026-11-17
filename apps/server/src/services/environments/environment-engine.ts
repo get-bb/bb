@@ -20,7 +20,7 @@ import {
   runEnvironmentHook,
   ENVIRONMENT_HOOK_TIMEOUT_MS,
 } from "./environment-hooks.js";
-import { eq, and, isNull, ne, or, sql } from "drizzle-orm";
+import { eq, and, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import {
   releaseFinishedEnvironmentPreparationOwners,
@@ -40,7 +40,7 @@ import {
   type DbConnection,
   type DbTransaction,
   type EnvironmentRow,
-  events,
+  hasStoredCancelledThreadProvisioning,
   type DbNotifier,
   type DbQueryConnection,
   threads,
@@ -100,7 +100,11 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../hosts/live-command.js";
-import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
+import { runThreadLifecycleInTransaction } from "../threads/lifecycle/run.js";
+import {
+  finishThreadLifecycle,
+  finishThreadLifecycleInBackground,
+} from "../threads/lifecycle/finish.js";
 import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
@@ -108,8 +112,10 @@ import {
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   finalizeStoppedThreadInTransaction,
+  finalizeStoppedThreadPostCommit,
   requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
+import type { ThreadLifecycleOutcome } from "../threads/lifecycle/run.js";
 import {
   emptyCommandResultSideEffects,
   type CommandResultPostCommitAction,
@@ -911,7 +917,12 @@ async function sweepProviderEnvironmentInSlot(
   if (record === undefined) return;
   const now = Date.now();
   if (shared) {
-    if (row.retireAt !== null && row.teardownStatus === null)
+    if (row.teardownStatus === "running" && row.status === "ready")
+      writeEnvironment(deps, environmentId, {
+        teardownStatus: null,
+        retireAt: null,
+      });
+    else if (row.retireAt !== null && row.teardownStatus === null)
       writeEnvironment(deps, environmentId, { retireAt: null });
     return;
   }
@@ -1087,7 +1098,7 @@ export async function recoverEnvironmentCleanup(
             throw new ApiError(
               409,
               "invalid_request",
-              `Recovery refused: ${!inspection.supported ? "process inspection requires Linux" : inspection.active ? "setup or a hook is still running" : inspection.pids.length > 0 ? `workspace processes remain (${inspection.pids.join(", ")})` : `cannot inspect same-user processes (${inspection.unreadablePids.join(", ")})`}`,
+              `Recovery refused: ${!inspection.supported ? "process inspection is unavailable on this host (supported on Linux and macOS)" : inspection.active ? "setup or a hook is still running" : inspection.pids.length > 0 ? `workspace processes remain (${inspection.pids.join(", ")})` : `cannot inspect same-user processes (${inspection.unreadablePids.join(", ")})`}`,
             );
         }
         const current = getEnvironment(deps.db, environmentId);
@@ -1258,6 +1269,7 @@ interface AdvanceEnvironmentProvisioningArgs {
   };
   environmentId: string | null | undefined;
   request?: EnvironmentProvisionRequest | null;
+  setupRunsOnConnectedDaemon?: boolean;
 }
 
 interface SettleEnvironmentProvisionCommandResultArgs {
@@ -1284,6 +1296,7 @@ interface FailEnvironmentProvisioningDurablyArgs {
 interface StartTrackedEnvironmentProvisionCommandArgs {
   environment: EnvironmentRow;
   request: EnvironmentProvisionRequest;
+  setupRunsOnConnectedDaemon: boolean;
 }
 
 interface SettleEnvironmentProvisionOutcomeArgs extends SettleEnvironmentProvisionCommandResultArgs {
@@ -1412,30 +1425,17 @@ function shouldPreserveThreadProvisionCancellationOutcome(
   args: { provisioningId: string; thread: LiveEnvironmentThread },
 ): boolean {
   if (args.thread.status === "stopping") return true;
-  return (
-    deps.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.thread.id),
-          eq(events.type, "system/thread-provisioning"),
-          sql`json_extract(${events.data}, '$.status') = 'cancelled'`,
-          or(
-            sql`json_extract(${events.data}, '$.provisioningId') = ${args.provisioningId}`,
-            sql`${events.sequence} = (select max(last.sequence) from events last where last.thread_id = ${args.thread.id} and last.environment_id = ${args.thread.environmentId} and last.type = 'system/thread-provisioning')`,
-          ),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
+  return hasStoredCancelledThreadProvisioning(deps.db, {
+    environmentId: args.thread.environmentId,
+    provisioningId: args.provisioningId,
+    threadId: args.thread.id,
+  });
 }
 
 function recordEnvironmentProvisioningFailureInTransaction(
   deps: EnvironmentProvisionTransactionDeps,
   args: FailEnvironmentProvisioningDurablyArgs,
-): string[] {
+): ThreadLifecycleOutcome[] {
   const environment = getEnvironment(deps.db, args.environmentId);
   if (!environment) {
     return [];
@@ -1478,7 +1478,7 @@ function recordEnvironmentProvisioningFailureInTransaction(
     entries: [args.failureEntry],
   });
 
-  const failedThreadIds: string[] = [];
+  const failed: ThreadLifecycleOutcome[] = [];
   for (const thread of failureThreads) {
     clearThreadProvisionSchedule(thread.id);
     appendSystemErrorEventInTransaction(deps, {
@@ -1489,17 +1489,15 @@ function recordEnvironmentProvisioningFailureInTransaction(
       detail: args.failureReason,
       scope: threadScope(),
     });
-    const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
-      event: { type: "run.failed" },
-      threadId: thread.id,
+    const outcome = runThreadLifecycleInTransaction(deps, thread.id, {
+      type: "provisioning.failed",
     });
-    if (outcome.applied) {
-      deps.hub.notifyThread(thread.id, ["status-changed"]);
-      failedThreadIds.push(thread.id);
+    if (outcome.statusChanged) {
+      failed.push(outcome);
     }
   }
 
-  return failedThreadIds;
+  return failed;
 }
 
 export function settleEnvironmentProvisionCommandResult(
@@ -1609,9 +1607,14 @@ function settleEnvironmentProvisionOutcome(
 
     for (const thread of boundThreads) {
       if (thread.deletedAt !== null) {
-        finalizeStoppedThreadInTransaction(args.deps, {
-          threadId: thread.id,
-        });
+        postCommitActions.push(
+          finalizeStoppedThreadPostCommit(
+            finalizeStoppedThreadInTransaction(args.deps, {
+              fence: false,
+              threadId: thread.id,
+            }),
+          ),
+        );
         continue;
       }
       if (
@@ -1663,26 +1666,24 @@ function settleEnvironmentProvisionOutcome(
     return emptyCommandResultSideEffects();
   }
   const environmentProvisioningId = initiator.provisioningId;
-  const failedThreadIds = recordEnvironmentProvisioningFailureInTransaction(
-    args.deps,
-    {
-      environmentId: args.command.environmentId,
-      failureReason: args.report.errorMessage,
-      provisioningId: environmentProvisioningId,
-      failureEntry: {
-        type: "step",
-        key: "workspace-failed",
-        text: "Workspace setup failed",
-        status: "failed",
-        startedAt: args.execution.createdAt,
-        metadata: { durationMs: Date.now() - args.execution.createdAt },
-      },
+  const failed = recordEnvironmentProvisioningFailureInTransaction(args.deps, {
+    environmentId: args.command.environmentId,
+    failureReason: args.report.errorMessage,
+    provisioningId: environmentProvisioningId,
+    failureEntry: {
+      type: "step",
+      key: "workspace-failed",
+      text: "Workspace setup failed",
+      status: "failed",
+      startedAt: args.execution.createdAt,
+      metadata: { durationMs: Date.now() - args.execution.createdAt },
     },
-  );
-  for (const threadId of failedThreadIds) {
+  });
+  for (const outcome of failed) {
     postCommitActions.push({
-      run: (deps) => {
-        const thread = getThread(deps.db, threadId);
+      run: async (deps) => {
+        await finishThreadLifecycle(deps, outcome);
+        const thread = getThread(deps.db, outcome.threadId);
         if (thread && thread.deletedAt === null)
           queueChildSetupFailureNotification(deps, thread);
       },
@@ -1726,18 +1727,7 @@ export function settleEnvironmentProvisionCancelCommandResult(
         {
           run: (deps) => {
             for (const thread of stoppedThreads) {
-              requestThreadStopForCurrentState(
-                deps,
-                {
-                  environmentId: args.command.environmentId,
-                  id: thread.id,
-                  status: thread.status,
-                },
-                {
-                  hostId: environment.hostId,
-                  id: environment.id,
-                },
-              );
+              requestThreadStopForCurrentState(deps, thread);
             }
           },
         },
@@ -1761,9 +1751,14 @@ export function settleEnvironmentProvisionCancelCommandResult(
   }
 
   for (const thread of stoppedThreads) {
-    finalizeStoppedThreadInTransaction(args.deps, {
-      threadId: thread.id,
-    });
+    postCommitActions.push(
+      finalizeStoppedThreadPostCommit(
+        finalizeStoppedThreadInTransaction(args.deps, {
+          fence: true,
+          threadId: thread.id,
+        }),
+      ),
+    );
   }
 
   return { postCommitActions };
@@ -1779,7 +1774,7 @@ function interruptUnrecoverableEnvironmentProvisioning(
   }
 
   const now = Date.now();
-  const failedThreadIds = deps.db.transaction(
+  const failed = deps.db.transaction(
     (tx) => {
       return recordEnvironmentProvisioningFailureInTransaction(
         {
@@ -1803,8 +1798,9 @@ function interruptUnrecoverableEnvironmentProvisioning(
     },
     { behavior: "immediate" },
   );
-  for (const threadId of failedThreadIds) {
-    const thread = getThread(deps.db, threadId);
+  for (const outcome of failed) {
+    finishThreadLifecycleInBackground(deps, outcome);
+    const thread = getThread(deps.db, outcome.threadId);
     if (thread && thread.deletedAt === null)
       queueChildSetupFailureNotification(deps, thread);
   }
@@ -1836,6 +1832,26 @@ export async function resumeEnvironmentProvisioningForHost(
   deps: CommandResultSideEffectsDeps,
   args: { hostId: string },
 ): Promise<void> {
+  await resumeHostEnvironmentProvisioning(deps, {
+    hostId: args.hostId,
+    setupRunsOnConnectedDaemon: false,
+  });
+}
+
+export async function resumeEnvironmentProvisioningForReconnectedDaemon(
+  deps: CommandResultSideEffectsDeps,
+  args: { hostId: string },
+): Promise<void> {
+  await resumeHostEnvironmentProvisioning(deps, {
+    hostId: args.hostId,
+    setupRunsOnConnectedDaemon: true,
+  });
+}
+
+async function resumeHostEnvironmentProvisioning(
+  deps: CommandResultSideEffectsDeps,
+  args: { hostId: string; setupRunsOnConnectedDaemon: boolean },
+): Promise<void> {
   const environmentIds = deps.db
     .select({ id: environments.id })
     .from(environments)
@@ -1849,6 +1865,7 @@ export async function resumeEnvironmentProvisioningForHost(
   for (const environment of environmentIds) {
     await advanceEnvironmentProvisioning(deps, {
       environmentId: environment.id,
+      setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon,
     });
   }
 }
@@ -1884,7 +1901,11 @@ async function runEnvironmentProvisionCommand(
       .from(environmentHookOperations)
       .where(eq(environmentHookOperations.id, id))
       .get();
-    if (existing !== undefined && existing.finishedAt === null) {
+    if (
+      existing !== undefined &&
+      existing.finishedAt === null &&
+      !args.setupRunsOnConnectedDaemon
+    ) {
       interruptUnrecoverableEnvironmentProvisioning(deps, {
         environmentId: environment.id,
         reason: `An earlier setup has an unknown outcome. Archive its threads, inspect the workspace, then run bb environment cleanup ${environment.id} --recover.`,
@@ -2217,7 +2238,11 @@ export async function advanceEnvironmentProvisioning(
     map,
     key: row.id,
     run: () =>
-      runEnvironmentProvisionCommand(deps, { environment: row, request }),
+      runEnvironmentProvisionCommand(deps, {
+        environment: row,
+        request,
+        setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon === true,
+      }),
   });
 }
 

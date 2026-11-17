@@ -1,4 +1,9 @@
-import { useLayoutEffect, useState, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import type {
   ExperimentalThreadContextSegmentInput,
   ExperimentalThreadContextSegmentProps,
@@ -6,7 +11,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadContextSegmentSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -53,25 +58,79 @@ type VisibilityReport = (
   visible: boolean | null,
 ) => void;
 
+type VisibilityHostProps = {
+  input: ExperimentalThreadContextSegmentInput;
+  onVisible: VisibilityReport;
+};
+
+const visibilityHosts = new WeakMap<
+  ExperimentalThreadContextSegmentRegistration,
+  { Visibility: ComponentType<VisibilityHostProps> }
+>();
+
+function useReportVisibility(
+  slot: ExperimentalThreadContextSegmentRegistration,
+  threadId: string,
+  visible: unknown,
+  onVisible: VisibilityReport,
+) {
+  if (typeof visible !== "boolean") {
+    throw new Error("useVisible must return a boolean");
+  }
+  useLayoutEffect(() => {
+    onVisible(slot, threadId, visible);
+    return () => onVisible(slot, threadId, null);
+  }, [slot, threadId, visible, onVisible]);
+}
+
+function visibilityHostFor(
+  slot: ExperimentalThreadContextSegmentRegistration & {
+    useVisible: NonNullable<
+      ExperimentalThreadContextSegmentRegistration["useVisible"]
+    >;
+  },
+) {
+  const existing = visibilityHosts.get(slot);
+  if (existing !== undefined) return existing;
+  function SegmentVisibility({ input, onVisible }: VisibilityHostProps) {
+    const visible = slot.useVisible(input);
+    useReportVisibility(slot, input.threadId, visible, onVisible);
+    return null;
+  }
+  const host = { Visibility: SegmentVisibility };
+  visibilityHosts.set(slot, host);
+  return host;
+}
+
+function hasUseVisible(
+  slot: ExperimentalThreadContextSegmentRegistration,
+): slot is Parameters<typeof visibilityHostFor>[0] {
+  return slot.useVisible !== undefined;
+}
+
+function AlwaysVisible({
+  slot,
+  input,
+  onVisible,
+}: {
+  slot: ExperimentalThreadContextSegmentRegistration;
+} & VisibilityHostProps) {
+  useReportVisibility(slot, input.threadId, true, onVisible);
+  return null;
+}
+
 function Visibility({
   slot,
   input,
   onVisible,
 }: {
   slot: ExperimentalThreadContextSegmentRegistration;
-  input: ExperimentalThreadContextSegmentInput;
-  onVisible: VisibilityReport;
-}) {
-  const visible = slot.useVisible ? slot.useVisible(input) : true;
-  if (typeof visible !== "boolean") {
-    throw new Error("useVisible must return a boolean");
+} & VisibilityHostProps) {
+  if (!hasUseVisible(slot)) {
+    return <AlwaysVisible slot={slot} input={input} onVisible={onVisible} />;
   }
-  const { threadId } = input;
-  useLayoutEffect(() => {
-    onVisible(slot, threadId, visible);
-    return () => onVisible(slot, threadId, null);
-  }, [slot, threadId, visible, onVisible]);
-  return null;
+  const host = visibilityHostFor(slot);
+  return <host.Visibility input={input} onVisible={onVisible} />;
 }
 
 function entryKey(entry: ThreadContextSegmentEntry, threadId: string): string {
@@ -115,7 +174,7 @@ export function useThreadContextSegments(
   entries: readonly ThreadContextSegmentEntry[];
   observers: ReactNode;
 } {
-  const { threadContextSegments } = usePluginSlots();
+  const threadContextSegments = usePluginSlotKind("threadContextSegments");
   const entries = sortThreadContextSegments([
     ...core.map((slot) => ({ owner: "core" as const, slot })),
     ...threadContextSegments.map((slot) => ({

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, expect, it, vi } from "vitest";
 import { VoiceInputButton } from "./VoiceInputButton";
@@ -42,6 +48,9 @@ it.each(["warning", "context menu", "keyboard"])(
     expect(
       await screen.findByRole("dialog", { name: "Voice preferences" }),
     ).toBeTruthy();
+    await act(async () => {
+      await import("./MicrophonePreferences");
+    });
     expect(
       await screen.findByRole("button", { name: "System default" }),
     ).toBeTruthy();

@@ -17,7 +17,7 @@ import {
   requestThreadTargetReprovision,
   scheduleThreadProvisioningAdvance,
 } from "./thread-provisioning.js";
-import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import { runThreadLifecycleInTransaction } from "./lifecycle/run.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 
@@ -58,9 +58,9 @@ export function requireReadyThreadEnvironment(
 
 export async function dispatchTurnDuringReprovision(
   args: DispatchTurnDuringReprovisionArgs,
-): Promise<boolean> {
+): Promise<{ messageSequence: number } | null> {
   if (args.environment.status === "ready" && args.environment.path) {
-    return false;
+    return null;
   }
 
   const environmentProviderId = args.environment.environmentProviderId;
@@ -72,14 +72,15 @@ export async function dispatchTurnDuringReprovision(
     args.environment.status !== "provisioning" &&
     args.environment.status !== "destroyed"
   ) {
-    requestThreadTargetReprovision(args.deps, {
+    const { messageSequence } = requestThreadTargetReprovision(args.deps, {
       beforeRequestAppendInTransaction: ({ tx }) => {
         args.beforeRequestAppendInTransaction?.({ tx });
-        const prepared = applyLoggedThreadLifecycleEventInTransaction(
-          { db: tx, logger: args.deps.logger },
-          { event: { type: "run.preparing" }, threadId: args.thread.id },
+        const prepared = runThreadLifecycleInTransaction(
+          { db: tx, hub: args.deps.hub, logger: args.deps.logger },
+          args.thread.id,
+          { type: "provisioning.started" },
         );
-        if (!prepared.applied) {
+        if (prepared.refusal !== null) {
           throwEnvironmentNotReady(args.environment);
         }
       },
@@ -108,7 +109,7 @@ export async function dispatchTurnDuringReprovision(
       );
     }
     scheduleThreadProvisioningAdvance(args.deps, args.thread.id);
-    return true;
+    return { messageSequence };
   }
 
   const goneDetails = goneThreadEnvironmentDetails(args.environment);

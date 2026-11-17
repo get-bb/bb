@@ -209,6 +209,52 @@ describe("CompactLongPressMenu", () => {
     expect(onRowClick).toHaveBeenCalledTimes(1);
   });
 
+  it("does not open from a resting touch that stopped a fling, but does once the list has settled", () => {
+    vi.useFakeTimers();
+    const { row, onOpenChange } = renderRow();
+    const list = document.getElementById("root")!;
+
+    fireEvent.scroll(list);
+    act(() => {
+      vi.advanceTimersByTime(16);
+    });
+    touchPointerDown(row);
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    fireEvent.pointerUp(row, { pointerId: 1, pointerType: "touch" });
+
+    touchPointerDown(row);
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it("cancels the press when the list scrolls under the finger, but not for unrelated scrollers", () => {
+    vi.useFakeTimers();
+    const { row, onOpenChange } = renderRow();
+    const list = document.getElementById("root")!;
+    const unrelated = document.createElement("div");
+    document.body.appendChild(unrelated);
+
+    touchPointerDown(row);
+    fireEvent.scroll(list);
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    touchPointerDown(row);
+    fireEvent.scroll(unrelated);
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    unrelated.remove();
+  });
+
   it("lets only the innermost menu open when menus nest (thread row inside a project section)", () => {
     vi.useFakeTimers();
     const onProjectOpenChange = vi.fn();

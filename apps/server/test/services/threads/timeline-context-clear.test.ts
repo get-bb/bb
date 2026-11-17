@@ -10,12 +10,11 @@ import {
   createProject,
   createThread,
   insertEvents,
-  listEvents,
   noopNotifier,
   upsertHost,
   type DbConnection,
 } from "@bb/db";
-import { createMigratedConnection } from "@bb/db/testing";
+import { createMigratedConnection, listEvents } from "@bb/db/testing";
 import {
   buildThreadConversationOutline,
   buildThreadTimelineWithProfile,

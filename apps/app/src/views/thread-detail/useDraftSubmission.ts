@@ -27,6 +27,25 @@ function notify(submission: Submission) {
   for (const listener of submission.listeners) listener();
 }
 
+async function submitDraftForKey(
+  storageKey: string,
+  action: () => Promise<void>,
+): Promise<void> {
+  const submission = getSubmission(storageKey);
+  if (submission.pending) {
+    throw new Error("A message is already being submitted.");
+  }
+  submission.pending = true;
+  try {
+    notify(submission);
+    await action();
+  } finally {
+    submission.pending = false;
+    notify(submission);
+    discardUnusedSubmission(storageKey, submission);
+  }
+}
+
 export function useDraftSubmission(storageKey: string) {
   const store = useMemo(
     () => ({
@@ -39,21 +58,8 @@ export function useDraftSubmission(storageKey: string) {
           discardUnusedSubmission(storageKey, submission);
         };
       },
-      submitDraft: async (action: () => Promise<void>) => {
-        const submission = getSubmission(storageKey);
-        if (submission.pending) {
-          throw new Error("A message is already being submitted.");
-        }
-        submission.pending = true;
-        try {
-          notify(submission);
-          await action();
-        } finally {
-          submission.pending = false;
-          notify(submission);
-          discardUnusedSubmission(storageKey, submission);
-        }
-      },
+      submitDraft: (action: () => Promise<void>) =>
+        submitDraftForKey(storageKey, action),
     }),
     [storageKey],
   );

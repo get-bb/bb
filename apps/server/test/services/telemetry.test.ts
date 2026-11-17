@@ -86,6 +86,7 @@ describe("telemetry service", () => {
       expect(payload).toMatchObject({
         api_key: "phc_test",
         distinct_id: persistedId,
+        properties: { $process_person_profile: false },
       });
     }
     expect(calls[0]?.payload).toMatchObject({
@@ -134,14 +135,8 @@ describe("telemetry service", () => {
     telemetry.capture({ name: "app_started" });
     telemetry.setSharedProperty("$feature/setup-guide-redesign", "new");
     telemetry.capture({
-      name: "turn_finished",
-      properties: {
-        outcome: "succeeded",
-        error_category: "none",
-        provider: "codex",
-        install_turn_number: 1,
-        execution_location: "server_machine",
-      },
+      name: "thread_created",
+      properties: { is_child_thread: false, provider: "codex" },
     });
 
     const payloads = fetchMock.mock.calls.map((call) => {
@@ -153,8 +148,7 @@ describe("telemetry service", () => {
     );
     expect(payloads[1]?.properties).toMatchObject({
       "$feature/setup-guide-redesign": "new",
-      install_turn_number: 1,
-      outcome: "succeeded",
+      provider: "codex",
     });
     expect(telemetry.featureFlagIdentity()).toEqual({
       apiKey: "phc_test",

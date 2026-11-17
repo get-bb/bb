@@ -12,12 +12,14 @@ import {
 import { randomUUID } from "node:crypto";
 import { hostStorageContract } from "./host-contract.js";
 import {
+  inspectCheckouts,
   inspectGitWorktree,
   listGitWorktrees,
   removeGitWorktrees,
 } from "./git-worktrees.js";
 import { measureDiskUsage } from "./disk-usage.js";
 import { isFsErrorWithCode } from "./fs-errors.js";
+import { removeTree } from "./remove-tree.js";
 
 const STORAGE_ENTRY = /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/;
 
@@ -45,6 +47,8 @@ export default experimental_defineHostEntry({
     homeDirectory: () => os.homedir(),
     listGitWorktrees: (input, context) =>
       listGitWorktrees(input, context.signal),
+    inspectCheckouts: (input, context) =>
+      inspectCheckouts(input, context.signal),
     inspectGitWorktree: (input, context) =>
       inspectGitWorktree(input, context.signal),
     removeGitWorktrees: (input, context) =>
@@ -186,11 +190,9 @@ export default experimental_defineHostEntry({
           void (async () => {
             try {
               for (const trash of trashes)
-                await fs
-                  .rm(trash, { recursive: true, force: true })
-                  .catch((error) => {
-                    console.error("Storage trash cleanup failed", error);
-                  });
+                await removeTree(trash).catch((error) => {
+                  console.error("Storage trash cleanup failed", error);
+                });
             } finally {
               await lease.dispose();
             }

@@ -112,23 +112,25 @@
       transparent;
   }
 
-  *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
+  @media (hover: hover) and (pointer: fine) {
+    *::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
 
-  *::-webkit-scrollbar-track,
-  *::-webkit-scrollbar-corner {
-    background: transparent;
-  }
+    *::-webkit-scrollbar-track,
+    *::-webkit-scrollbar-corner {
+      background: transparent;
+    }
 
-  *::-webkit-scrollbar-thumb {
-    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
-    border-radius: 9999px;
-  }
+    *::-webkit-scrollbar-thumb {
+      background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+      border-radius: 9999px;
+    }
 
-  *::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    }
   }
 
   /*
@@ -472,27 +474,29 @@
     scrollbar-color: transparent transparent;
   }
 
-  .thread-scrollbar::-webkit-scrollbar-thumb,
-  .thread-scrollbar::-webkit-scrollbar-thumb:hover,
-  .transient-scrollbar::-webkit-scrollbar-thumb,
-  .transient-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: transparent;
-  }
-
   .thread-scrollbar[data-scrollbar-scrolling="true"],
   .transient-scrollbar[data-scrollbar-scrolling="true"] {
     scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
       transparent;
   }
 
-  .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb,
-  .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb {
-    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
-  }
+  @media (hover: hover) and (pointer: fine) {
+    .thread-scrollbar::-webkit-scrollbar-thumb,
+    .thread-scrollbar::-webkit-scrollbar-thumb:hover,
+    .transient-scrollbar::-webkit-scrollbar-thumb,
+    .transient-scrollbar::-webkit-scrollbar-thumb:hover {
+      background-color: transparent;
+    }
 
-  .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover,
-  .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb,
+    .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb {
+      background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+    }
+
+    .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover,
+    .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover {
+      background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    }
   }
 
   @media (hover: none) and (pointer: coarse) {
@@ -511,14 +515,14 @@
     scrollbar-color: transparent transparent;
   }
 
-  [data-vaul-drawer-direction]
-    [data-sidebar="content"]::-webkit-scrollbar-thumb,
-  [data-vaul-drawer-direction]
-    [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
-    background-color: transparent;
-  }
-
   @media (hover: hover) and (pointer: fine) {
+    [data-vaul-drawer-direction]
+      [data-sidebar="content"]::-webkit-scrollbar-thumb,
+    [data-vaul-drawer-direction]
+      [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
+      background-color: transparent;
+    }
+
     [data-vaul-drawer-direction] [data-sidebar="content"]:hover {
       scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
         transparent;
@@ -549,25 +553,27 @@
     scrollbar-color: auto;
   }
 
-  .persistent-scrollbar::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
+  @media (hover: hover) and (pointer: fine) {
+    .persistent-scrollbar::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
 
-  .persistent-scrollbar::-webkit-scrollbar-track,
-  .persistent-scrollbar::-webkit-scrollbar-corner {
-    background: transparent;
-  }
+    .persistent-scrollbar::-webkit-scrollbar-track,
+    .persistent-scrollbar::-webkit-scrollbar-corner {
+      background: transparent;
+    }
 
-  .persistent-scrollbar::-webkit-scrollbar-thumb {
-    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
-    border-radius: 9999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-  }
+    .persistent-scrollbar::-webkit-scrollbar-thumb {
+      background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+      border-radius: 9999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
 
-  .persistent-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    .persistent-scrollbar::-webkit-scrollbar-thumb:hover {
+      background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    }
   }
 }
 

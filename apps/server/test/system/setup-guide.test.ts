@@ -83,7 +83,6 @@ describe("setup guide route", () => {
             entry: "first_run",
             setup_guide_variant: "new",
             setup_guide_source: "flag",
-            $set: { setup_guide_variant: "new" },
           },
         },
       ]);

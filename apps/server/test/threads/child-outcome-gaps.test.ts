@@ -1,12 +1,11 @@
-import {
-  getQueuedThreadMessage,
-  listEvents,
-  listQueuedThreadMessages,
-} from "@bb/db";
+import { getQueuedThreadMessage, listQueuedThreadMessages } from "@bb/db";
 import { threadScope, turnScope, turnRequestEventDataSchema } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { finalizeStoppedThread } from "../../src/services/threads/thread-lifecycle.js";
+import {
+  finalizeStoppedThread,
+  requestThreadStopForCurrentState,
+} from "../../src/services/threads/thread-lifecycle.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../../src/services/threads/child-thread-notifications.js";
 import { interruptEnvironmentProvisioningForHost } from "../../src/services/environments/environment-engine.js";
 import { failThreadProvisioning } from "../../src/services/threads/thread-provisioning-environment.js";
@@ -22,8 +21,13 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { textInput } from "../helpers/prompt-input.js";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import {
+  internalAuthHeaders,
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 function seedParentAndChild(
   harness: TestAppHarness,
@@ -59,6 +63,58 @@ function parentSystemRequests(harness: TestAppHarness, parentThreadId: string) {
 
 afterEach(() => vi.useRealTimers());
 
+async function postChildTurnEvent(
+  harness: TestAppHarness,
+  args: {
+    sessionId: string;
+    threadId: string;
+    turnId: string;
+    status: "completed" | "interrupted" | null;
+  },
+): Promise<void> {
+  const scope = turnScope(args.turnId);
+  const response = await harness.app.request("/internal/session/events", {
+    method: "POST",
+    headers: internalAuthHeaders(harness),
+    body: JSON.stringify({
+      sessionId: args.sessionId,
+      eventGroups: groupHostDaemonEvents([
+        {
+          threadId: args.threadId,
+          event:
+            args.status === null
+              ? {
+                  type: "turn/started",
+                  threadId: args.threadId,
+                  providerThreadId: "provider-child-turn",
+                  scope,
+                }
+              : {
+                  type: "turn/completed",
+                  threadId: args.threadId,
+                  providerThreadId: "provider-child-turn",
+                  scope,
+                  status: args.status,
+                },
+        },
+      ]),
+    }),
+  });
+  expect(response.status).toBe(200);
+}
+
+async function stopChildAndAwaitCommand(
+  harness: TestAppHarness,
+  child: Parameters<typeof requestThreadStopForCurrentState>[1],
+) {
+  requestThreadStopForCurrentState(harness.deps, child);
+  return waitForQueuedCommand(
+    harness,
+    ({ command }) =>
+      command.type === "thread.stop" && command.threadId === child.id,
+  );
+}
+
 describe("child outcomes without provider completion", () => {
   it("keeps a manual Stop silent when it synthesizes an open turn interruption", async () => {
     await withTestHarness(async (harness) => {
@@ -73,8 +129,8 @@ describe("child outcomes without provider completion", () => {
       });
 
       vi.useFakeTimers();
-      finalizeStoppedThread(harness.deps, { threadId: child.id });
-      finalizeStoppedThread(harness.deps, { threadId: child.id });
+      finalizeStoppedThread(harness.deps, { fence: true, threadId: child.id });
+      finalizeStoppedThread(harness.deps, { fence: true, threadId: child.id });
       await vi.advanceTimersByTimeAsync(2_000);
 
       expect(parentSystemRequests(harness, parent.id)).toHaveLength(0);
@@ -408,4 +464,90 @@ describe("child parent-notification policy", () => {
       });
     },
   );
+});
+
+describe("child turns that end around a stop", () => {
+  it("tells the parent about a turn that completes before its stop lands", async () => {
+    await withTestHarness(async (harness) => {
+      const { parent, child, environment, session } = seedParentAndChild(
+        harness,
+        "active",
+      );
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        threadId: child.id,
+        turnId: "child-turn",
+      });
+      await stopChildAndAwaitCommand(harness, child);
+
+      vi.useFakeTimers();
+      await postChildTurnEvent(harness, {
+        sessionId: session.id,
+        threadId: child.id,
+        turnId: "child-turn",
+        status: "completed",
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      await vi.waitFor(() =>
+        expect(parentSystemRequests(harness, parent.id)).toHaveLength(1),
+      );
+      expect(
+        parentSystemRequests(harness, parent.id)[0]?.systemMessageSubject,
+      ).toMatchObject({
+        outcomes: [{ threadId: child.id, status: "completed" }],
+      });
+    });
+  });
+
+  it("keeps the parent silent about a turn the stop was aimed at that starts after it", async () => {
+    await withTestHarness(async (harness) => {
+      const { parent, child, environment, session } = seedParentAndChild(
+        harness,
+        "active",
+      );
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-child-aimed",
+        threadId: child.id,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        threadId: child.id,
+        turnId: "child-turn",
+      });
+      const stop = await stopChildAndAwaitCommand(harness, child);
+      await postChildTurnEvent(harness, {
+        sessionId: session.id,
+        threadId: child.id,
+        turnId: "child-turn",
+        status: "interrupted",
+      });
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+      await postChildTurnEvent(harness, {
+        sessionId: session.id,
+        threadId: child.id,
+        turnId: "late-turn",
+        status: null,
+      });
+      await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === child.id,
+      );
+
+      vi.useFakeTimers();
+      await postChildTurnEvent(harness, {
+        sessionId: session.id,
+        threadId: child.id,
+        turnId: "late-turn",
+        status: "interrupted",
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(parentSystemRequests(harness, parent.id)).toHaveLength(0);
+    });
+  });
 });

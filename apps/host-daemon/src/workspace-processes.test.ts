@@ -83,7 +83,7 @@ it.skipIf(process.platform !== "linux")(
   },
 );
 
-it.skipIf(process.platform === "linux")(
+it.skipIf(process.platform === "linux" || process.platform === "darwin")(
   "refuses recovery where process inspection is unsupported",
   async () => {
     expect(await inspectWorkspaceProcesses("/workspace")).toEqual({

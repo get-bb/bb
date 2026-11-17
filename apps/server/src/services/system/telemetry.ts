@@ -28,34 +28,7 @@ export type TelemetryInitiator =
   | "plugin"
   | "system";
 
-export type TurnFinishedOutcome = "succeeded" | "failed" | "stopped";
-export type TurnExecutionLocation =
-  | "server_machine"
-  | "additional_machine"
-  | "unknown";
-export type TurnErrorCategory =
-  | "none"
-  | "auth"
-  | "billing"
-  | "rate_limit"
-  | "limit_reached"
-  | "provider_unavailable"
-  | "start_failed"
-  | "process_exited"
-  | "host_lost"
-  | "other";
-
 export type TelemetryEvent =
-  | {
-      name: "turn_finished";
-      properties: {
-        outcome: TurnFinishedOutcome;
-        error_category: TurnErrorCategory;
-        provider: string;
-        install_turn_number: number;
-        execution_location: TurnExecutionLocation;
-      };
-    }
   | { name: "app_started" }
   | { name: "telemetry_disabled" }
   | {
@@ -102,7 +75,6 @@ export type TelemetryEvent =
         entry: "first_run" | "replay";
         setup_guide_variant: SetupGuideVariant;
         setup_guide_source: "override" | "flag" | "default";
-        $set: { setup_guide_variant: SetupGuideVariant };
       };
     }
   | {
@@ -258,6 +230,7 @@ export async function createTelemetryService(
           ...(request?.accessRoute
             ? { access_route: request.accessRoute }
             : {}),
+          $process_person_profile: false,
         },
         timestamp: new Date().toISOString(),
       });

@@ -17,6 +17,7 @@ import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { TimelineImageGallery } from "./TimelineImageGallery";
+import { stubResizeObserverDeliveries } from "@/test/resize-observer-deliveries";
 
 const clients: QueryClient[] = [];
 
@@ -352,7 +353,7 @@ it("enables navigation when a second image arrives without reopening", async () 
 });
 
 it("excludes clipped user-message images until expanded", () => {
-  vi.stubGlobal("ResizeObserver", undefined);
+  const deliverResizes = stubResizeObserverDeliveries();
   vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(500);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -383,6 +384,7 @@ it("excludes clipped user-message images until expanded", () => {
       ]}
     />,
   );
+  deliverResizes();
   fireEvent.click(screen.getByRole("img", { name: "Visible" }));
   expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));

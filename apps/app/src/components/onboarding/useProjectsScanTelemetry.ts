@@ -24,8 +24,12 @@ export function useProjectsScanTelemetry({
   noHost: boolean;
 }): void {
   const { data, dataUpdatedAt, error, errorUpdatedAt } = scan;
+  const succeededRef = useRef(false);
   useEffect(() => {
-    if (dataUpdatedAt === 0 || data === undefined) return;
+    if (succeededRef.current || dataUpdatedAt === 0 || data === undefined) {
+      return;
+    }
+    succeededRef.current = true;
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
@@ -42,7 +46,9 @@ export function useProjectsScanTelemetry({
   const reportedErrorAtRef = useRef(0);
   useEffect(() => {
     if (errorUpdatedAt === reportedErrorAtRef.current) return;
-    if (error === null || isCancelledError(error)) return;
+    if (succeededRef.current || error === null || isCancelledError(error)) {
+      return;
+    }
     reportedErrorAtRef.current = errorUpdatedAt;
     recordTelemetryEvent({
       name: "onboarding_operation",

@@ -1,9 +1,14 @@
-import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useSyncExternalStore,
+  type ComponentType,
+} from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { useSidebarThreads } from "@/lib/plugin-sidebar-hooks";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadRowMetadataSlot,
 } from "@/lib/plugin-slots";
 import {
@@ -13,18 +18,62 @@ import {
   slotKey,
 } from "@/lib/thread-row-metadata-store";
 
+type CollectorProps = { threads: readonly PluginSidebarThread[] };
+
+const collectorHosts = new WeakMap<
+  PluginThreadRowMetadataSlot,
+  { Collector: ComponentType<CollectorProps> }
+>();
+
+type SlotWithUseData = PluginThreadRowMetadataSlot & {
+  useData: NonNullable<PluginThreadRowMetadataSlot["useData"]>;
+};
+
+function hasUseData(
+  slot: PluginThreadRowMetadataSlot,
+): slot is SlotWithUseData {
+  return slot.useData !== undefined;
+}
+
+function createDataCollector(slot: SlotWithUseData) {
+  const key = slotKey(slot);
+  return function DataCollector({ threads }: CollectorProps) {
+    const data = slot.useData({ threads });
+    useLayoutEffect(() => publishCollected(key, data), [data]);
+    useLayoutEffect(() => () => dropCollected(key), []);
+    return null;
+  };
+}
+
+function createNoDataCollector(slot: PluginThreadRowMetadataSlot) {
+  const key = slotKey(slot);
+  return function NoDataCollector() {
+    useLayoutEffect(() => publishCollected(key, undefined), []);
+    useLayoutEffect(() => () => dropCollected(key), []);
+    return null;
+  };
+}
+
+function collectorHostFor(slot: PluginThreadRowMetadataSlot) {
+  const existing = collectorHosts.get(slot);
+  if (existing !== undefined) return existing;
+  const host = {
+    Collector: hasUseData(slot)
+      ? createDataCollector(slot)
+      : createNoDataCollector(slot),
+  };
+  collectorHosts.set(slot, host);
+  return host;
+}
+
 function ThreadRowMetadataCollector({
   slot,
   threads,
 }: {
   slot: PluginThreadRowMetadataSlot;
-  threads: readonly PluginSidebarThread[];
-}) {
-  const data = slot.useData?.({ threads });
-  const key = slotKey(slot);
-  useLayoutEffect(() => publishCollected(key, data), [key, data]);
-  useLayoutEffect(() => () => dropCollected(key), [key]);
-  return null;
+} & CollectorProps) {
+  const host = collectorHostFor(slot);
+  return <host.Collector threads={threads} />;
 }
 
 function ListableThreads({
@@ -59,7 +108,7 @@ export function ThreadRowMetadataCollectorsView() {
     lineThreadsStore.subscribe,
     lineThreadsStore.getSnapshot,
   );
-  const slots = usePluginSlots().threadRowMetadata.filter(
+  const slots = usePluginSlotKind("threadRowMetadata").filter(
     (slot) => slot.useData !== undefined,
   );
   if (mounted.length === 0 || slots.length === 0) return null;

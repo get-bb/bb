@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { useLayoutEffect } from "react";
+import { lazy, Suspense, useLayoutEffect } from "react";
+import { createRoot } from "react-dom/client";
 import {
   act,
   cleanup,
@@ -427,4 +428,60 @@ it("holds preload-tier work until every hold is released, without delaying criti
   releaseSecond();
   await act(async () => vi.runAllTimersAsync());
   expect(preloadLoad).toHaveBeenCalledOnce();
+});
+
+async function waitForText(container: HTMLElement, text: string) {
+  const startedAt = performance.now();
+  while (!container.textContent?.includes(text)) {
+    if (performance.now() - startedAt > 2_000) throw new Error(`no ${text}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+it("reveals a background split without a Suspense toggle, so the page's own reveal is not throttled behind it", async () => {
+  const actEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    let showRoute!: () => void;
+    const Route = lazy(
+      () =>
+        new Promise<{ default: () => React.JSX.Element }>((resolve) => {
+          showRoute = () => resolve({ default: () => <p>Route content</p> });
+        }),
+    );
+    let showBackground!: () => void;
+    const Background = defineSplit({
+      id: "background-without-suspense",
+      load: () =>
+        new Promise<() => React.JSX.Element>((resolve) => {
+          showBackground = () => resolve(() => <p>Background</p>);
+        }),
+      loading: () => null,
+      tier: "intent",
+      suspends: false,
+    });
+    root.render(
+      <>
+        <Background />
+        <Suspense fallback={null}>
+          <Route />
+        </Suspense>
+      </>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    showBackground();
+    await waitForText(container, "Background");
+
+    const startedAt = performance.now();
+    showRoute();
+    await waitForText(container, "Route content");
+    expect(performance.now() - startedAt).toBeLessThan(150);
+  } finally {
+    root.unmount();
+    container.remove();
+    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
+  }
 });

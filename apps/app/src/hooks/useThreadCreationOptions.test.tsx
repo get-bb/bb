@@ -337,7 +337,7 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
-  it("keeps an unprobed selection without reasoning choices until its actual ladder arrives", async () => {
+  it("reports reasoning as loading for an unprobed selection until its actual ladder arrives", async () => {
     const discovery = createDeferredPromise<SystemExecutionOptionsResponse>();
     const catalog = executionOptionsResponse();
     const unknown = {
@@ -373,10 +373,12 @@ describe("useThreadCreationOptions", () => {
     );
     expect(result.current.selectedModel).toBe("global-model");
     expect(result.current.reasoningOptions).toEqual([]);
+    expect(result.current.isLoadingReasoning).toBe(true);
     await act(async () => discovery.resolve(catalog));
     await waitFor(() =>
       expect(result.current.reasoningOptions.length).toBeGreaterThan(0),
     );
+    expect(result.current.isLoadingReasoning).toBe(false);
     expect(result.current.selectedModel).toBe("global-model");
   });
 
@@ -420,6 +422,7 @@ describe("useThreadCreationOptions", () => {
       ).toBe("success"),
     );
     expect(result.current.reasoningOptions).toEqual([]);
+    expect(result.current.isLoadingReasoning).toBe(false);
     await act(async () => {
       queryClient.setQueryData(
         systemExecutionOptionsQueryKey(routing),

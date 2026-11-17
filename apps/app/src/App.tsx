@@ -30,7 +30,7 @@ import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useCodeRendererPreloads } from "./hooks/useCodeRendererPreloads";
-import { markRouteContentPainted } from "./lib/route-content-paint";
+import { ScreenPaintSignal } from "./components/ScreenPaintSignal";
 import { useRememberPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
@@ -85,11 +85,7 @@ import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
 import { PluginInstallJobsHost } from "./components/plugin/PluginInstallJobsHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 import { ThreadTimelineLoadingSkeleton } from "./components/thread/timeline/ThreadTimelineLoadingSkeleton";
-import {
-  startSplitPreloading,
-  trackCriticalLoad,
-  whenCriticalLoadsSettled,
-} from "./lib/split-prefetch";
+import { trackCriticalLoad } from "./lib/split-prefetch";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -442,18 +438,10 @@ export function AppRoutes() {
             }
           />
         </Routes>
-        <RouteContentPaintSignal />
+        <ScreenPaintSignal />
       </Suspense>
     </AppLayout>
   );
-}
-
-function RouteContentPaintSignal() {
-  useEffect(() => {
-    void whenCriticalLoadsSettled().then(markRouteContentPainted);
-    startSplitPreloading();
-  }, []);
-  return null;
 }
 
 function PluginsRoute() {

@@ -13,7 +13,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { isThreadForkable } from "@bb/client-core";
 import {
-  useThreadTimelineController,
   type ThreadTimelineConsumerMessageAction,
   type ThreadTimelineForkMessageHandler,
 } from "@/components/thread/timeline";
@@ -30,6 +29,7 @@ import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useEnvironmentCheckoutDisplay } from "@/hooks/queries/git-plugin-queries";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
+import { useThreadTimelineSubscription } from "@/hooks/queries/thread-panel-queries";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -106,10 +106,7 @@ function PluginThreadChatBody({
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
   const hasComposer = variant !== "timeline";
-  const timeline = useThreadTimelineController({
-    enabled: threadId.length > 0,
-    threadId,
-  });
+  useThreadTimelineSubscription(threadId, { enabled: threadId.length > 0 });
   const markThreadRead = useMarkThreadRead();
   useThreadReadTracking({
     markThreadRead,
@@ -331,7 +328,7 @@ function PluginThreadChatBody({
             projectId={thread.projectId}
             resolveMentionLink={resolveMentionLink}
             thread={thread}
-            timeline={timeline}
+            timelineEnabled
             timelineHost={{
               consumerMessageActions,
               environmentHostName:

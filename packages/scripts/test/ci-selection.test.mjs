@@ -35,10 +35,13 @@ function fixture() {
       packageManager: "pnpm@9.15.0",
     }),
   );
-  put("pnpm-workspace.yaml", "packages:\n  - apps/*\n  - packages/*\n");
+  put(
+    "pnpm-workspace.yaml",
+    "packages:\n  - apps/*\n  - packages/*\n  - plugins/*\n",
+  );
   put(
     "pnpm-lock.yaml",
-    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n  apps/mobile: {}\n",
+    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n  apps/mobile: {}\n  plugins/with-app: {}\n  plugins/server-only: {}\n",
   );
   put(
     "turbo.json",
@@ -52,17 +55,25 @@ function fixture() {
       },
     }),
   );
-  for (const [path, name, dependencies] of [
+  for (const [path, name, dependencies, bb] of [
     ["apps/app", "@bb/app", { "@bb/config": "workspace:*" }],
     ["packages/config", "@bb/config", {}],
     ["packages/text-utils", "@bb/text-utils", {}],
     ["apps/mobile", "@bb/mobile", {}],
+    ["plugins/with-app", "bb-plugin-with-app", {}, { app: "./app.tsx" }],
+    [
+      "plugins/server-only",
+      "bb-plugin-server-only",
+      {},
+      { server: "./server.ts" },
+    ],
   ]) {
     put(
       `${path}/package.json`,
       JSON.stringify({
         name,
         version: "1.0.0",
+        bb,
         scripts: {
           test: "echo test",
           build: "echo build",
@@ -216,6 +227,20 @@ it("retains Windows and package smokes for frontend build configuration", () => 
   ).toBe(true);
 }, 30_000);
 
+it.each([
+  ["apps/app/src/index.ts", true],
+  ["plugins/with-app/src/index.ts", true],
+  ["plugins/server-only/src/index.ts", false],
+  ["packages/text-utils/src/index.ts", false],
+  ["packages/config/src/index.ts", false],
+])(
+  "selects render invariants for client code only (%s)",
+  (path, expected) => {
+    expect(fixture().plan(path).renderInvariants).toBe(expected);
+  },
+  30_000,
+);
+
 it("falls back to full coverage for unknown paths", () => {
   const plan = fixture().plan("new-tooling/settings.json");
   expect(plan.packaging).toBe(true);
@@ -232,6 +257,7 @@ it("skips the matrix for CI documentation", () => {
   expect(plan.buildNeeded).toBe(false);
   expect(plan.staticNeeded).toBe(false);
   expect(plan.packaging).toBe(false);
+  expect(plan.renderInvariants).toBe(false);
 }, 30_000);
 
 it.each([

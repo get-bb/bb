@@ -5,6 +5,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 
 interface ScrollOverflowSentinelRefs<TElement extends HTMLElement> {
   scrollRef: RefObject<TElement | null>;
@@ -48,9 +49,12 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     );
   }, []);
 
+  if (options.enabled === false && (flags.above || flags.below)) {
+    setFlags({ above: false, below: false });
+  }
+
   useEffect(() => {
     if (options.enabled === false) {
-      applyFlags({ above: false, below: false });
       return;
     }
     if (!options.measureOverflow || typeof window === "undefined") {
@@ -62,17 +66,18 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
       return;
     }
 
-    let frame: number | null = null;
+    const pending: { frame: number | null } = { frame: null };
+    const readFlags = (): OverflowFlags => ({
+      above: scroll.scrollTop > 1,
+      below: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 1,
+    });
     const measure = () => {
-      frame = null;
-      applyFlags({
-        above: scroll.scrollTop > 1,
-        below: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 1,
-      });
+      pending.frame = null;
+      applyFlags(readFlags());
     };
     const scheduleMeasure = () => {
-      if (frame !== null) return;
-      frame =
+      if (pending.frame !== null) return;
+      pending.frame =
         typeof window.requestAnimationFrame === "function"
           ? window.requestAnimationFrame(measure)
           : window.setTimeout(measure, 0);
@@ -81,11 +86,10 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     scheduleMeasure();
     scroll.addEventListener("scroll", scheduleMeasure, { passive: true });
 
-    const resizeObserver =
+    const unobserveResize =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(scheduleMeasure);
-    resizeObserver?.observe(scroll);
+        : observeSharedResize(scroll, { read: readFlags, write: applyFlags });
 
     const mutationObserver =
       typeof MutationObserver === "undefined"
@@ -98,15 +102,15 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     });
 
     return () => {
-      if (frame !== null) {
+      if (pending.frame !== null) {
         if (typeof window.cancelAnimationFrame === "function") {
-          window.cancelAnimationFrame(frame);
+          window.cancelAnimationFrame(pending.frame);
         } else {
-          window.clearTimeout(frame);
+          window.clearTimeout(pending.frame);
         }
       }
       scroll.removeEventListener("scroll", scheduleMeasure);
-      resizeObserver?.disconnect();
+      unobserveResize?.();
       mutationObserver?.disconnect();
     };
   }, [applyFlags, options.enabled, options.measureOverflow]);
@@ -125,22 +129,21 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
       return;
     }
 
-    let aboveVisible = true;
-    let belowVisible = true;
+    const visible = { above: true, below: true };
 
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.target === topSentinel) {
-            aboveVisible = entry.isIntersecting;
+            visible.above = entry.isIntersecting;
           } else if (entry.target === bottomSentinel) {
-            belowVisible = entry.isIntersecting;
+            visible.below = entry.isIntersecting;
           }
         }
         const hasOverflow = scroll.scrollHeight - scroll.clientHeight > 1;
         applyFlags({
-          above: hasOverflow && !aboveVisible,
-          below: hasOverflow && !belowVisible,
+          above: hasOverflow && !visible.above,
+          below: hasOverflow && !visible.below,
         });
       },
       { root: scroll, threshold: 0 },

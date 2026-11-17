@@ -1,10 +1,11 @@
 import {
   archiveThread,
   getAppSettings,
+  getHost,
+  getSessionById,
   updateHost,
   getQueuedThreadMessage,
   getThread,
-  listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
   setAppSettings,
@@ -16,12 +17,17 @@ import {
   changedMessageSchema,
   threadScope,
   turnScope,
+  type PromptInput,
   type ServiceTier,
   type Thread,
   type ThreadChangedMessage,
   type ThreadEvent,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
+import {
+  retryTurnRequestSchema,
+  type SendMessageRequest,
+} from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
@@ -38,10 +44,13 @@ import {
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { buildExecutionOptions } from "../../src/services/threads/thread-commands.js";
 import { applyThreadSessionOptionPatch } from "../../src/services/threads/thread-session-options.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
+import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
+import { compactThreadContext } from "../../src/services/threads/dispatch-attempt.js";
+import { recoverThreadLifecyclesAfterRestart } from "../../src/services/threads/thread-lifecycle.js";
 import {
   internalAuthHeaders,
   listQueuedThreadCommands,
@@ -62,6 +71,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 interface IdleThreadFixture {
   environment: EnvironmentRow;
@@ -150,6 +160,19 @@ function parseThreadMessages(
     const message = changedMessageSchema.parse(JSON.parse(raw));
     return message.entity === "thread" ? [message] : [];
   });
+}
+
+function latestClientTurnRequestSequence(
+  harness: TestAppHarness,
+  threadId: string,
+): number {
+  const request = listEvents(harness.db, { threadId })
+    .filter((event) => event.type === "client/turn/requested")
+    .at(-1);
+  if (request === undefined) {
+    throw new Error("No client/turn/requested event was recorded");
+  }
+  return request.sequence;
 }
 
 describe("queued message dispatch hook", () => {
@@ -410,8 +433,8 @@ describe("active thread admission before host readiness", () => {
           phase: "suspended",
           suspendedAt: Date.now(),
         });
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.started" },
+        moveThreadStatus(harness.deps, {
+          move: "run.started",
           threadId: thread.id,
         });
         const current = getThread(harness.db, thread.id);
@@ -449,8 +472,8 @@ describe("active thread admission before host readiness", () => {
         phase: "suspended",
         suspendedAt: Date.now(),
       });
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
+      moveThreadStatus(harness.deps, {
+        move: "run.started",
         threadId: thread.id,
       });
       const readiness = vi
@@ -510,8 +533,8 @@ describe("startup queue waits", () => {
         { waitingOn: JSON.stringify({ kind: "provisioning" }) },
       ]);
 
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
+      moveThreadStatus(harness.deps, {
+        move: "run.started",
         threadId: thread.id,
       });
       seedTurnStarted(harness.deps, {
@@ -606,7 +629,7 @@ describe("startup queue waits", () => {
       ).toEqual([
         expect.objectContaining({
           input: textInput("follow-up after startup settled"),
-          target: { mode: "start" },
+          target: { mode: "auto", expectedTurnId: null },
         }),
       ]);
     });
@@ -664,8 +687,8 @@ describe("startup queue waits", () => {
         value: 67,
       });
       vi.spyOn(threadEvents, "getActiveTurnId").mockImplementationOnce(() => {
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.failed" },
+        moveThreadStatus(harness.deps, {
+          move: "run.failed",
           threadId: thread.id,
         });
         return null;
@@ -703,30 +726,36 @@ describe("startup queue waits", () => {
       });
       const input = textInput("recover this send as a new turn");
       vi.spyOn(threadEvents, "getActiveTurnId").mockImplementationOnce(() => {
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.failed" },
+        moveThreadStatus(harness.deps, {
+          move: "run.failed",
           threadId: thread.id,
         });
         return null;
       });
 
-      await expect(
-        acceptThreadSendRequest(harness.deps, {
-          payload: {
-            input,
-            mode: "steer-if-active",
-            model: "gpt-5",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-        }),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input,
+          mode: "steer-if-active",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread,
+      });
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toEqual([
-        expect.objectContaining({ input, target: { mode: "start" } }),
+        expect.objectContaining({
+          input,
+          target: { mode: "auto", expectedTurnId: null },
+        }),
       ]);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
@@ -940,19 +969,22 @@ describe("startup queue waits", () => {
       ).toEqual({ kind: "thread-busy" });
 
       vi.spyOn(threadEvents, "getActiveTurnId").mockReturnValueOnce(null);
-      await expect(
-        acceptThreadSendRequest(harness.deps, {
-          payload: {
-            input: textInput("send after the wake scan"),
-            mode: "steer",
-            model: "gpt-5",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-        }),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("send after the wake scan"),
+          mode: "steer",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread,
+      });
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
     });
   });
 
@@ -1087,19 +1119,22 @@ describe("startup queue waits", () => {
         );
       expect(interaction).toMatchObject({ turnId: null, status: "pending" });
 
-      await expect(
-        acceptThreadSendRequest(harness.deps, {
-          payload: {
-            input: textInput("carry on without waiting for the card"),
-            mode: "auto",
-            model: "gpt-5",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-        }),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("carry on without waiting for the card"),
+          mode: "auto",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread,
+      });
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(
         harness.deps.pendingInteractions.getThreadInteraction({
@@ -1264,7 +1299,7 @@ describe("turn submit failure settlement", () => {
 
   it("does not reject an accepted client request", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, thread } = seedProviderThreadFixture({
+      const { environment, sessionId, thread } = seedProviderThreadFixture({
         harness,
         status: "active",
         value: 9,
@@ -1302,15 +1337,15 @@ describe("turn submit failure settlement", () => {
       if (queued.command.type !== "turn.submit") {
         throw new Error("Expected a turn.submit command");
       }
-      seedStoredEvent(harness.deps, {
-        data: { clientRequestId: queued.command.requestId },
-        environmentId: environment.id,
-        providerThreadId: "provider-send-dispatch-9",
-        scope: turnScope("turn-active"),
-        sequence: 100,
-        threadId: thread.id,
-        type: "turn/input/accepted",
-      });
+      await postProviderEvents(harness, sessionId, [
+        {
+          type: "turn/input/accepted",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-9",
+          clientRequestId: queued.command.requestId,
+          scope: turnScope("turn-active"),
+        },
+      ]);
 
       await reportQueuedCommandError(harness, queued, {
         errorCode: "provider_rpc_error",
@@ -1920,8 +1955,8 @@ describe("service tier execution lifecycle", () => {
         await expect(
           buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
         ).resolves.toMatchObject({ serviceTier: "fast" });
-        const idle = applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.succeeded" },
+        const idle = moveThreadStatus(harness.deps, {
+          move: "run.succeeded",
           threadId: thread.id,
         });
         if (!idle.applied)
@@ -2187,6 +2222,241 @@ describe("competing turn refusals", () => {
     });
   });
 
+  function commandInput(
+    name: string,
+    source: "command" | "skill",
+    origin: "builtin" | "project" | "user",
+  ): PromptInput[] {
+    const text = `/${name} the change`;
+    return [
+      {
+        type: "text",
+        text,
+        mentions: [
+          {
+            start: 0,
+            end: name.length + 1,
+            resource: {
+              kind: "command",
+              trigger: "/",
+              name,
+              source,
+              origin,
+              label: name,
+              argumentHint: null,
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  async function sendFromIdle(
+    harness: TestAppHarness,
+    fixture: IdleThreadFixture,
+    args: { input: PromptInput[]; mode: SendMessageRequest["mode"] },
+  ): Promise<void> {
+    await sendThreadMessage(harness.deps, {
+      originPluginId: null,
+      environment: fixture.environment,
+      payload: {
+        input: args.input,
+        mode: args.mode,
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread: fixture.thread,
+      trigger: "user",
+    });
+  }
+
+  const sendsFromIdle: {
+    name: string;
+    joins: boolean;
+    start: (
+      harness: TestAppHarness,
+      fixture: IdleThreadFixture,
+    ) => Promise<void>;
+  }[] = [
+    {
+      name: "an auto send",
+      joins: true,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: textInput("auto"),
+          mode: "auto",
+        }),
+    },
+    {
+      name: "a steer",
+      joins: true,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: textInput("steer"),
+          mode: "steer",
+        }),
+    },
+    {
+      name: "a steer-if-active send",
+      joins: true,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: textInput("steer if active"),
+          mode: "steer-if-active",
+        }),
+    },
+    {
+      name: "an explicit start",
+      joins: false,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: textInput("start"),
+          mode: "start",
+        }),
+    },
+    {
+      name: "a queue-if-active send",
+      joins: true,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: textInput("queue if active"),
+          mode: "queue-if-active",
+        }),
+    },
+    {
+      name: "a plan request",
+      joins: false,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: commandInput("plan", "command", "builtin"),
+          mode: "auto",
+        }),
+    },
+    {
+      name: "a goal command",
+      joins: false,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: commandInput("goal", "command", "builtin"),
+          mode: "auto",
+        }),
+    },
+    {
+      name: "a project command",
+      joins: false,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: commandInput("review", "command", "project"),
+          mode: "steer",
+        }),
+    },
+    {
+      name: "a skill invocation",
+      joins: false,
+      start: (harness, fixture) =>
+        sendFromIdle(harness, fixture, {
+          input: commandInput("deslop", "skill", "user"),
+          mode: "auto",
+        }),
+    },
+    {
+      name: "manual compaction",
+      joins: false,
+      start: (harness, fixture) =>
+        compactThreadContext(harness.deps, fixture.thread),
+    },
+    {
+      name: "a retry of a failed turn",
+      joins: false,
+      start: async (harness, fixture) => {
+        for (const type of ["run.started", "run.failed"] as const) {
+          moveThreadStatus(harness.deps, {
+            move: type,
+            threadId: fixture.thread.id,
+          });
+        }
+        await retryFailedTurn(harness.deps, {
+          thread: getThread(harness.db, fixture.thread.id)!,
+          request: retryTurnRequestSchema.parse({}),
+        });
+      },
+    },
+    {
+      name: "a queued message the queue drains",
+      joins: true,
+      start: async (harness, fixture) => {
+        seedQueuedMessage(harness.deps, {
+          threadId: fixture.thread.id,
+          content: textInput("queued"),
+        });
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: fixture.thread.id,
+        });
+      },
+    },
+  ];
+
+  it.each(
+    sendsFromIdle.map((entry, index) => [entry.name, entry, index] as const),
+  )(
+    "sends %s from an idle thread so that it joins a turn the agent started only when it is a plain message",
+    async (_name, entry, index) => {
+      await withTestHarness(async (harness) => {
+        const value = 70 + index;
+        const fixture = seedProviderThreadFixture({
+          harness,
+          status: "idle",
+          value,
+        });
+        await entry.start(harness, fixture);
+        const queued = await waitForQueuedCommand(
+          harness,
+          (candidate) =>
+            candidate.command.type === "turn.submit" &&
+            candidate.command.threadId === fixture.thread.id,
+        );
+        if (queued.command.type !== "turn.submit") {
+          throw new Error("Expected a turn.submit command");
+        }
+        if (entry.joins) {
+          expect(queued.command.target).toEqual({
+            mode: "auto",
+            expectedTurnId: null,
+          });
+          return;
+        }
+        expect(queued.command.target).toEqual({ mode: "start" });
+        const { requestId } = queued.command;
+        seedTurnStarted(harness.deps, {
+          environmentId: fixture.environment.id,
+          providerThreadId: `provider-send-dispatch-${value}`,
+          threadId: fixture.thread.id,
+          turnId: "turn-the-agent-started",
+        });
+
+        await reportQueuedCommandError(harness, queued, {
+          errorCode: "competing_turn",
+          errorMessage: competingTurnMessage(fixture.thread.id),
+        });
+
+        expect(
+          listEvents(harness.db, { threadId: fixture.thread.id })
+            .filter((event) => event.type === "client/turn/rejected")
+            .map((event) => JSON.parse(event.data)),
+        ).toEqual([
+          expect.objectContaining({ requestId, reason: "competing_turn" }),
+        ]);
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", fixture.thread.id),
+        ).toEqual([]);
+        expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+      });
+    },
+  );
+
   it("fails the run when a competing-turn refusal arrives without a running root turn", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
@@ -2336,9 +2606,16 @@ describe("turn held open for background work", () => {
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(getThread(harness.db, thread.id)?.status).toBe("active");
 
-      await expect(
-        queueIfActive(harness, thread, "while only agents run"),
-      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      const sent = await queueIfActive(
+        harness,
+        thread,
+        "while only agents run",
+      );
+      expect(sent).toEqual({
+        ok: true,
+        delivery: "sent",
+        messageSequence: latestClientTurnRequestSequence(harness, thread.id),
+      });
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id).at(-1),
       ).toMatchObject({
@@ -2661,6 +2938,84 @@ describe("a turn request in flight when a turn ends", () => {
     },
   );
 
+  async function reopenDaemonSession(
+    harness: TestAppHarness,
+    daemon: FakeDaemon,
+    activeThreadIds: readonly string[],
+  ) {
+    const session = getSessionById(harness.db, { sessionId: daemon.sessionId });
+    if (session === null) throw new Error("Expected the daemon session");
+    const host = getHost(harness.db, session.hostId);
+    if (host === null) throw new Error("Expected the daemon host");
+    const response = await harness.app.request("/internal/session/open", {
+      method: "POST",
+      headers: internalAuthHeaders(harness, { hostId: host.id }),
+      body: JSON.stringify({
+        hostId: host.id,
+        instanceId: session.instanceId,
+        hostName: host.name,
+        hasMachineCredential: false,
+        platform: "darwin",
+        dataDir: session.dataDir,
+        localApiPort: null,
+        protocolVersion: session.protocolVersion,
+        activeThreads: activeThreadIds.map((threadId) => ({ threadId })),
+        openThreadWork: [],
+      }),
+    });
+    expect(response.status).toBe(201);
+    const { sessionId } = (await response.json()) as { sessionId: string };
+    daemon.sessionId = sessionId;
+  }
+
+  it("settles a turn whose completion was held when the server restarted", async () => {
+    await withTestHarness(async (harness) => {
+      const { daemon, threadId } = activeThreadWithTurn(harness, 120);
+      await send(harness, threadId, "steer A", "steer");
+      await heldSubmit(harness, threadId, "steer A");
+      await completeTurn(harness, daemon);
+      expect(getThread(harness.db, threadId)?.status).toBe("active");
+
+      await expect(
+        recoverThreadLifecyclesAfterRestart(harness.deps),
+      ).resolves.toBe(1);
+      expect(getThread(harness.db, threadId)?.status).toBe("idle");
+
+      await reopenDaemonSession(harness, daemon, []);
+      expect(getThread(harness.db, threadId)?.status).toBe("idle");
+      expect(deliveryOutcomes(harness, threadId)).toEqual([
+        {
+          input: textInput("steer A"),
+          outcomes: ["rejected:steer_unconfirmed"],
+        },
+      ]);
+      expect(
+        listEvents(harness.db, { threadId }).filter(
+          (event) => event.type === "system/error",
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  it("keeps the turn and the steer a restart cut off when the daemon still runs them", async () => {
+    await withTestHarness(async (harness) => {
+      const { daemon, threadId } = activeThreadWithTurn(harness, 121);
+      await send(harness, threadId, "steer A", "steer");
+      const steer = await heldSubmit(harness, threadId, "steer A");
+
+      await recoverThreadLifecyclesAfterRestart(harness.deps);
+      await reopenDaemonSession(harness, daemon, [threadId]);
+      expect(getThread(harness.db, threadId)?.status).toBe("active");
+
+      await acceptInto(harness, daemon, steer.command.requestId);
+      await completeTurn(harness, daemon);
+      await settleIdle(harness, threadId);
+      expect(deliveryOutcomes(harness, threadId)).toEqual([
+        { input: textInput("steer A"), outcomes: ["accepted"] },
+      ]);
+    });
+  });
+
   it("finishes the idle transition once a steer acknowledged into the ending turn settles", async () => {
     await withTestHarness(async (harness) => {
       const { daemon, threadId } = activeThreadWithTurn(harness, 103);
@@ -2675,7 +3030,10 @@ describe("a turn request in flight when a turn ends", () => {
         trace: { spans: [] },
       });
       const next = await heldSubmit(harness, threadId, "send B");
-      expect(next.command.target).toEqual({ mode: "start" });
+      expect(next.command.target).toEqual({
+        mode: "auto",
+        expectedTurnId: null,
+      });
       await deliverLikeDaemon(harness, daemon, next);
       await completeTurn(harness, daemon);
 
@@ -2737,7 +3095,10 @@ describe("a turn request in flight when a turn ends", () => {
         errorMessage: "The provider refused the steer",
       });
       const next = await heldSubmit(harness, threadId, "send B");
-      expect(next.command.target).toEqual({ mode: "start" });
+      expect(next.command.target).toEqual({
+        mode: "auto",
+        expectedTurnId: null,
+      });
       await deliverLikeDaemon(harness, daemon, next);
       await completeTurn(harness, daemon);
 
@@ -2757,7 +3118,10 @@ describe("a turn request in flight when a turn ends", () => {
       const { daemon, threadId } = idleThread(harness, 107);
       await send(harness, threadId, "start A", "auto");
       const start = await heldSubmit(harness, threadId, "start A");
-      expect(start.command.target).toEqual({ mode: "start" });
+      expect(start.command.target).toEqual({
+        mode: "auto",
+        expectedTurnId: null,
+      });
 
       await runProviderInitiatedTurn(harness, daemon);
       await expectHeldUntilRequestSettles(harness, threadId, "send B");

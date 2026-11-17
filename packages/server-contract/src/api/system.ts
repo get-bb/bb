@@ -104,6 +104,18 @@ export const systemProvidersQuerySchema = z
   .superRefine(rejectMultipleWorkspaceSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
 
+export const systemProviderStatesQuerySchema = z
+  .object({
+    ...systemProviderHostQueryFields,
+    capability: z.enum(["usage"]),
+    providerId: z.string().min(1),
+  })
+  .partial()
+  .superRefine(rejectMultipleWorkspaceSelectors);
+export type SystemProviderStatesQuery = z.infer<
+  typeof systemProviderStatesQuerySchema
+>;
+
 export const systemExecutionOptionsQuerySchema = z
   .object({
     ...systemProviderHostQueryFields,
@@ -320,6 +332,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           succeeded_count: z.number().int().nonnegative().optional(),
           timed_out: z.boolean().optional(),
           unreadable_count: z.number().int().nonnegative().optional(),
+          duration_ms: z.number().int().nonnegative().optional(),
           failure_reason: onboardingFailureReasonTelemetrySchema.optional(),
           failure_stage: z.enum(["sign_in", "pairing", "turn_on"]).optional(),
           failure_detail: onboardingFailureDetailTelemetrySchema.optional(),

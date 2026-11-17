@@ -197,7 +197,14 @@ still holds the window it served under that tag, it answers with a delta,
 answers with the full window. `delta` holds:
 
 - `afterTag`: the tag of the window the delta applies to;
-- `upsertRows`: rows that are new or whose content changed;
+- `upsertRows`: rows new to the window, in full;
+- `patchRows`, only when a row the base window holds changed: `{ id, ops }`
+  per changed row, where each op addresses a JSON path inside the row.
+  `["append", path, text]` appends to a string that grew at its end, which is
+  how streamed message text, reasoning and command output travel, so a push
+  carries only the new text, not the whole row. `["set", path, value]`
+  replaces a value or adds a key or array element, and `["delete", path]`
+  removes a key;
 - `rowOrder`, only when membership or order changed: the new order as a list
   of row ids new to the window and `[start, length]` ranges of the base
   window's rows, by position;
@@ -214,7 +221,9 @@ only costs a full window.
 
 `applyThreadTimelineDelta` from `@bb/server-contract` rebuilds the full window,
 or returns `null` when the held window's tag differs from `afterTag` or the
-delta does not fit its rows; the client then reads again with its own tag. The
+delta does not fit its rows, including a patch op whose path or value type
+does not match the held row, or one that changes a row's `id` or `kind`; the
+client then reads again with its own tag. The
 client keeps optimistic rows after the server's rows, so ranges still address
 the base window. `sdk.threads.timeline` returns a full window unless it is
 given `afterTag`.
@@ -405,9 +414,14 @@ the reading row never moves without the reader unless the content cannot hold
 it, and a reader's scroll is never moved. It runs 200 sequences by default; set
 `KEEPER_MODEL_SEEDS` for a deeper local run.
 
-Every layout change is reconciled before paint. Triggers are ResizeObservers on
-the root, its content, and every mounted row, plus each windowed list's layout
-effect after a commit. Within one reconciliation:
+Every layout change is reconciled before paint, after the browser has laid it
+out. Triggers are ResizeObservers on the root, its content, and every mounted
+row. Rows, the message overflow toggles, and markdown table geometry share one
+read-then-write observer (`observeSharedResize`): it reads every changed
+element first, applies all writes together (React state included), and then
+reconciles each affected owner once. Nothing reads layout while rows mount: no
+ref callback or layout effect under the timeline measures, so mounting never
+forces a layout ahead of the browser's own. Within one reconciliation:
 
 1. A scroll the owner did not make is folded into the position before the
    layout is read, even when its scroll event has not arrived yet. During an
@@ -427,7 +441,11 @@ effect after a commit. Within one reconciliation:
 4. It writes the target, clamped to the scroll extent. Attached means the
    maximum.
 5. Lists check that the visible range is mounted. If the viewport would show a
-   spacer, they render the rows synchronously before paint. The check uses the
+   spacer, they render the rows in the next animation frame callback, before
+   that frame's layout, never inside the scroll event; a scroll event fires just
+   before animation frame callbacks, so the rows still mount in the frame the
+   scroll lands in. Keys inserted inside the mounted range, or appended after a
+   range that reaches the end, mount in the same render. The check uses the
    heights the spacers were rendered with and the measured heights of mounted
    rows, so it describes what is on screen, not newer measurements the spacers
    have not used yet.

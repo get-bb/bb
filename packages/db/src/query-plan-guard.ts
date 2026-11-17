@@ -78,10 +78,15 @@ const LARGE_TABLES: ReadonlySet<string> = new Set([
   "prompt_history_entries",
   "terminal_sessions",
 ]);
+const BOUNDED_KEY_COLUMNS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["events", new Set(["turn_id", "item_id", "parent_tool_call_id"])],
+]);
 const GUARDED_RULES: ReadonlySet<QueryPlanRule> = new Set([
   "full-scan",
   "weaker-index",
   "automatic-index",
+  "correlated-subquery",
+  "nested-loop",
 ]);
 const PASS_THROUGH_FILES: ReadonlySet<string> = new Set([
   "packages/db/src/connection.ts",
@@ -182,10 +187,22 @@ function locateFrame(
 ): FrameLocation | null {
   const match = STACK_FRAME.exec(line.trim());
   if (match === null) return null;
-  const framePath = match[2].startsWith("file://")
-    ? fileURLToPath(match[2])
-    : match[2];
-  const path = originalPath(framePath, Number(match[3]), bundle);
+  return locateSourceFrame(match[2], Number(match[3]), match[1], bundle);
+}
+
+function locateSourceFrame(
+  scriptName: string,
+  lineNumber: number,
+  functionName: string | undefined,
+  bundle: QueryPlanBundle | null,
+): FrameLocation | null {
+  if (!scriptName.startsWith("/") && !scriptName.startsWith("file:///")) {
+    return null;
+  }
+  const framePath = scriptName.startsWith("file://")
+    ? fileURLToPath(scriptName)
+    : scriptName;
+  const path = originalPath(framePath, lineNumber, bundle);
   if (path === null || path.includes("/node_modules/")) {
     return { kind: "dependency" };
   }
@@ -193,7 +210,11 @@ function locateFrame(
   if (source === null || TEST_FILE.test(source[1])) return { kind: "other" };
   return {
     kind: "source",
-    frame: { path, file: source[1], functionName: functionNameOf(match[1]) },
+    frame: {
+      path,
+      file: source[1],
+      functionName: functionNameOf(functionName),
+    },
   };
 }
 
@@ -207,15 +228,17 @@ function captureStack(stackDepth: number): string {
   }
 }
 
-function captureTestStack(stackDepth: number): string {
-  return (
-    "Error\n" +
-    getCallSites(stackDepth, { sourceMap: false })
-      .map(
-        (frame) =>
-          `at ${frame.functionName || "<anonymous>"} (${frame.scriptName}:${frame.lineNumber}:${frame.columnNumber})`,
-      )
-      .join("\n")
+function captureTestFrames(
+  stackDepth: number,
+  bundle: QueryPlanBundle | null,
+): (FrameLocation | null)[] {
+  return getCallSites(stackDepth, { sourceMap: false }).map((frame) =>
+    locateSourceFrame(
+      frame.scriptName,
+      frame.lineNumber,
+      frame.functionName || "<anonymous>",
+      bundle,
+    ),
   );
 }
 
@@ -223,14 +246,29 @@ export function captureQueryCallSite(
   stackDepth: number,
   scope: QueryCallSiteScope,
 ): QueryCallSite {
-  return sourceFrames(captureTestStack(stackDepth), scope);
+  return collectSourceFrames(
+    captureTestFrames(stackDepth, scope.bundle),
+    scope,
+  );
 }
 
 function sourceFrames(stack: string, scope: QueryCallSiteScope): QueryCallSite {
+  return collectSourceFrames(
+    stack
+      .split("\n")
+      .slice(1)
+      .map((line) => locateFrame(line, scope.bundle)),
+    scope,
+  );
+}
+
+function collectSourceFrames(
+  locations: readonly (FrameLocation | null)[],
+  scope: QueryCallSiteScope,
+): QueryCallSite {
   const frames: SourceFrame[] = [];
   let caller: string | null | undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const location = locateFrame(line, scope.bundle);
+  for (const location of locations) {
     if (location === null || location.kind === "dependency") continue;
     if (
       location.kind === "other" ||
@@ -315,6 +353,7 @@ export function createQueryPlanAuditor(
   function audit(sql: string, caller: string, params: readonly unknown[]) {
     const result = auditQueryPlan(options.auditDatabase, sql, {
       largeTables: LARGE_TABLES,
+      boundedKeyColumns: BOUNDED_KEY_COLUMNS,
       ...(isParameterList(params) ? { params } : {}),
     });
     if (result.status !== "audited") return;

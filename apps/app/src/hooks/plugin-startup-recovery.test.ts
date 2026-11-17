@@ -60,7 +60,8 @@ it.each(["initial connect", "reconnect", "reload notification"])(
     const state = createPluginFrontendReconcileState();
     const register = vi.fn();
     const deps: PluginFrontendReconcileDeps = {
-      fetchCandidates: () => fetchFrontendCandidates(queryClient),
+      fetchCandidates: () =>
+        fetchFrontendCandidates(queryClient, "await-refresh"),
       importModule: async () => ({ default: definePluginApp(() => {}) }),
       importRetryDelaysMs: [],
       applyCss: () => {},
@@ -74,6 +75,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
       flushSlotBatch: () => {},
       warn: () => {},
       priorityPluginIds: () => [],
+      whenScreenPainted: () => Promise.resolve(),
     };
     const effects = createRealtimeCacheEffects({ queryClient });
     let reconcile = Promise.resolve();

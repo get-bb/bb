@@ -21,6 +21,19 @@ interface ThreadWorkspaceOpenButtonProps {
   targets: WorkspaceOpenTarget[];
 }
 
+async function runWorkspaceOpen(
+  targetId: WorkspaceOpenTargetId,
+  action: () => Promise<void>,
+  setPendingTargetId: (targetId: WorkspaceOpenTargetId | null) => void,
+): Promise<void> {
+  setPendingTargetId(targetId);
+  try {
+    await action();
+  } finally {
+    setPendingTargetId(null);
+  }
+}
+
 export function ThreadWorkspaceOpenButton({
   onOpenPreferredTarget,
   onOpenTarget,
@@ -38,12 +51,7 @@ export function ThreadWorkspaceOpenButton({
         return;
       }
 
-      setPendingTargetId(target.id);
-      try {
-        await action();
-      } finally {
-        setPendingTargetId(null);
-      }
+      await runWorkspaceOpen(target.id, action, setPendingTargetId);
     },
     [pendingTargetId],
   );

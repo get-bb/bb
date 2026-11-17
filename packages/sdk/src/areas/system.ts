@@ -32,7 +32,7 @@ import type {
   SystemInstallCliSkillsRequest,
   SystemInstallCliSkillsResponse,
   SystemProviderStatesResponse,
-  SystemProvidersQuery,
+  SystemProviderStatesQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -133,7 +133,7 @@ export type SystemUpdateGeneralSettingsResult = AppSettings & {
 };
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
-export interface SystemProviderStatesArgs extends SystemProvidersQuery {
+export interface SystemProviderStatesArgs extends SystemProviderStatesQuery {
   signal?: AbortSignal;
 }
 export type SystemProviderStatesResult = SystemProviderStatesResponse;
@@ -424,6 +424,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
             query: {
               environmentId: input.environmentId,
               hostId: input.hostId,
+              providerId: input.providerId,
             },
           },
           ...signalRequestArgs(input.signal),

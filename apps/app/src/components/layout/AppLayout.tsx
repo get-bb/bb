@@ -38,14 +38,13 @@ import {
 import { AppBreadcrumbs } from "./AppBreadcrumbs";
 import { PageTitleHeader } from "./PageTitleHeader";
 import {
-  PageTitleHookHost,
+  PageTitleProvider,
   usePageTitleValue,
   focusedPageTitleAtom,
 } from "./page-title";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { SidebarThreadEntriesProvider } from "@/lib/sidebar-thread-entries";
 import {
   didThreadDetailBootstrapRefreshAfterMount,
   useThread,
@@ -457,13 +456,13 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
+  const pageTitle = useCorePageTitle({
+    subPath: location.pathname + location.search,
+  });
   return (
-    <PageTitleHookHost
-      usePageTitle={useCorePageTitle}
-      subPath={location.pathname + location.search}
-    >
+    <PageTitleProvider value={pageTitle}>
       <AppLayoutContent>{children}</AppLayoutContent>
-    </PageTitleHookHost>
+    </PageTitleProvider>
   );
 }
 
@@ -823,93 +822,91 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   }, [documentTitle]);
 
   return (
-    <SidebarThreadEntriesProvider navigation={sidebarNavigationQuery.data}>
-      <TooltipProvider delayDuration={300} disableHoverableContent>
-        <ProjectActionsProvider>
-          <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
-            <ThreadActionsProvider>
-              <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
-                {canonicalThreadRoutePath !== null ? (
-                  <Navigate
-                    to={{
-                      pathname: canonicalThreadRoutePath,
-                      search: location.search,
-                      hash: location.hash,
-                    }}
-                    replace
-                  />
-                ) : null}
-                {backToAppRoutePath !== null && !isSidebarResizing ? (
-                  <BackToAppCommandHandler routePath={backToAppRoutePath} />
-                ) : null}
-                <HistoryCommandHandlers />
-                <AppLayoutSidebar
-                  routeSidebar={routeSidebar}
-                  isSettingsActive={isGlobalSettingsView}
-                  onResizeMouseDown={handleResizeMouseDown}
-                  isResizing={isSidebarResizing}
-                  settingsRoutePath={settingsRoutePath}
-                  backToAppRoutePath={backToAppRoutePath}
+    <TooltipProvider delayDuration={300} disableHoverableContent>
+      <ProjectActionsProvider>
+        <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
+          <ThreadActionsProvider>
+            <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
+              {canonicalThreadRoutePath !== null ? (
+                <Navigate
+                  to={{
+                    pathname: canonicalThreadRoutePath,
+                    search: location.search,
+                    hash: location.hash,
+                  }}
+                  replace
                 />
-                <SidebarInset>
-                  <div
-                    ref={setContentShell}
-                    data-testid="app-layout-content-shell"
-                    data-app-content-shell=""
-                    className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-(--bb-content-bottom-inset) pl-[env(safe-area-inset-left)] [--bb-content-bottom-inset:var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]"
-                  >
-                    {showHeader ? (
-                      <AppHeader
-                        resourceSection={
-                          resourceWorkspaceHeaderMeta
-                            ? resolveToolsSection(location.pathname)
-                            : null
-                        }
-                        usesDesktopChrome={usesDesktopChrome}
-                        usesProjectChromeStyle={isRootView || isArchivedView}
-                        projectId={projectId}
-                        project={project}
-                        pluginPanel={pluginPanel}
-                        pluginPanelChrome={pluginPanelChrome}
-                        pluginPanelSubPath={pluginPanelSubPath}
-                        meta={meta}
-                      />
-                    ) : null}
-                    <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
-                      {children}
-                    </main>
-                  </div>
-                </SidebarInset>
-                <SidebarTriggerOverlay
-                  reserveMacosTrafficLights={reserveMacosTrafficLights}
-                  usesDesktopChrome={usesDesktopChrome}
-                />
-              </SidebarStateBridge>
-              <PluginAppOverlays />
-              <ThreadRowMetadataCollectors />
-              <IframeDragGuardOverlay
-                active={isSidebarResizing}
-                cursor="col-resize"
+              ) : null}
+              {backToAppRoutePath !== null && !isSidebarResizing ? (
+                <BackToAppCommandHandler routePath={backToAppRoutePath} />
+              ) : null}
+              <HistoryCommandHandlers />
+              <AppLayoutSidebar
+                routeSidebar={routeSidebar}
+                isSettingsActive={isGlobalSettingsView}
+                onResizeMouseDown={handleResizeMouseDown}
+                isResizing={isSidebarResizing}
+                settingsRoutePath={settingsRoutePath}
+                backToAppRoutePath={backToAppRoutePath}
               />
-              <CommandPalette
-                threadId={threadId ?? null}
-                projectId={projectId ?? null}
+              <SidebarInset>
+                <div
+                  ref={setContentShell}
+                  data-testid="app-layout-content-shell"
+                  data-app-content-shell=""
+                  className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-(--bb-content-bottom-inset) pl-[env(safe-area-inset-left)] [--bb-content-bottom-inset:var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]"
+                >
+                  {showHeader ? (
+                    <AppHeader
+                      resourceSection={
+                        resourceWorkspaceHeaderMeta
+                          ? resolveToolsSection(location.pathname)
+                          : null
+                      }
+                      usesDesktopChrome={usesDesktopChrome}
+                      usesProjectChromeStyle={isRootView || isArchivedView}
+                      projectId={projectId}
+                      project={project}
+                      pluginPanel={pluginPanel}
+                      pluginPanelChrome={pluginPanelChrome}
+                      pluginPanelSubPath={pluginPanelSubPath}
+                      meta={meta}
+                    />
+                  ) : null}
+                  <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+                    {children}
+                  </main>
+                </div>
+              </SidebarInset>
+              <SidebarTriggerOverlay
+                reserveMacosTrafficLights={reserveMacosTrafficLights}
+                usesDesktopChrome={usesDesktopChrome}
               />
-              <NotificationCenter />
-              <ProjectPathDialog
-                target={quickCreateProject.projectPathDialog.target}
-                pending={quickCreateProject.isCreating}
-                platform={quickCreateProject.platform}
-                hostId={quickCreateProject.hostId}
-                hostName={quickCreateProject.hostName}
-                hosts={quickCreateProject.hosts}
-                onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
-                onSubmit={quickCreateProject.submitProjectPath}
-              />
-            </ThreadActionsProvider>
-          </ThreadTitleMentionResourcesProvider>
-        </ProjectActionsProvider>
-      </TooltipProvider>
-    </SidebarThreadEntriesProvider>
+            </SidebarStateBridge>
+            <PluginAppOverlays />
+            <ThreadRowMetadataCollectors />
+            <IframeDragGuardOverlay
+              active={isSidebarResizing}
+              cursor="col-resize"
+            />
+            <CommandPalette
+              threadId={threadId ?? null}
+              projectId={projectId ?? null}
+            />
+            <NotificationCenter />
+            <ProjectPathDialog
+              target={quickCreateProject.projectPathDialog.target}
+              pending={quickCreateProject.isCreating}
+              platform={quickCreateProject.platform}
+              hostId={quickCreateProject.hostId}
+              hostName={quickCreateProject.hostName}
+              hosts={quickCreateProject.hosts}
+              onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
+              onSubmit={quickCreateProject.submitProjectPath}
+            />
+          </ThreadActionsProvider>
+        </ThreadTitleMentionResourcesProvider>
+      </ProjectActionsProvider>
+    </TooltipProvider>
   );
 }

@@ -288,6 +288,37 @@ export function projectsPrimaryAction({
   return added ? "completed" : "skipped";
 }
 
+export interface AgentCheckSoFar {
+  providerId: string;
+  state: SystemProviderState | null | undefined;
+}
+
+export type AgentRowSoFar =
+  | { kind: "agent"; state: SystemProviderState }
+  | { kind: "loading"; key: string };
+
+export function agentRowsSoFar(
+  checks: readonly AgentCheckSoFar[],
+): AgentRowSoFar[] | undefined {
+  let lastShown = -1;
+  checks.forEach((check, index) => {
+    if (check.state != null) lastShown = index;
+  });
+  if (lastShown === -1) return undefined;
+  const rows: AgentRowSoFar[] = [];
+  checks.slice(0, lastShown + 1).forEach((check) => {
+    if (check.state === undefined) {
+      rows.push({ kind: "loading", key: check.providerId });
+    } else if (check.state !== null) {
+      rows.push({ kind: "agent", state: check.state });
+    }
+  });
+  if (checks.slice(lastShown + 1).some((check) => check.state === undefined)) {
+    rows.push({ kind: "loading", key: "more" });
+  }
+  return rows;
+}
+
 export function hasReadyAgent(
   providers: readonly SystemProviderState[] | undefined,
 ): boolean {

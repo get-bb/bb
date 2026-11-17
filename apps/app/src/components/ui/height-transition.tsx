@@ -8,7 +8,7 @@ import {
 import {
   observedBorderBoxBlockSize,
   observeSharedResize,
-} from "@/lib/shared-resize-observer";
+} from "@bb/shared-ui/lib/shared-resize-observer";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 const HEIGHT_TRANSITION_DURATION_MS = 180;
@@ -94,21 +94,27 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
     if (!wrapper || !inner) return;
     wrapper.style.height = visible ? `${inner.offsetHeight}px` : "0px";
     if (typeof ResizeObserver === "undefined") return;
-    let lastWidth: number | null = null;
-    let pendingVisibilitySnap = false;
+    const observed: {
+      lastWidth: number | null;
+      pendingVisibilitySnap: boolean;
+    } = { lastWidth: null, pendingVisibilitySnap: false };
     const snapState: SnapState = { savedDuration: null, restoreFrame: null };
     const unobserveInner = observeSharedResize(inner, {
       read: (entry) => {
         const width = entry?.contentRect?.width;
         const widthChanged =
-          lastWidth !== null && width !== undefined && width !== lastWidth;
+          observed.lastWidth !== null &&
+          width !== undefined &&
+          width !== observed.lastWidth;
         const layoutAnimationActive =
           store.get(layoutAnimationInFlightCountAtom) > 0;
         const snap =
-          widthChanged || pendingVisibilitySnap || layoutAnimationActive;
-        pendingVisibilitySnap = false;
+          widthChanged ||
+          observed.pendingVisibilitySnap ||
+          layoutAnimationActive;
+        observed.pendingVisibilitySnap = false;
         if (width !== undefined) {
-          lastWidth = width;
+          observed.lastWidth = width;
         }
         return {
           nextHeight: visible
@@ -123,7 +129,7 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
     });
     const onVisibility = () => {
       if (!isDocumentVisible()) return;
-      pendingVisibilitySnap = true;
+      observed.pendingVisibilitySnap = true;
       const nextHeight = visible ? `${inner.offsetHeight}px` : "0px";
       applyHeight(wrapper, nextHeight, true, snapState);
     };

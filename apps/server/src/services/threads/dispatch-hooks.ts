@@ -133,15 +133,26 @@ const DISPATCH_REQUEUE_MIN_INTERVAL_MS = 1_000;
  * server does not accumulate one per thread ever drained.
  */
 const lastRequeuedAtByThreadId = new Map<string, number>();
+const lastRequeuedAtByThreadPlugin = new Map<string, number>();
 
-export function noteDispatchRequeued(threadId: string): void {
-  const now = Date.now();
-  for (const [id, at] of lastRequeuedAtByThreadId) {
+function threadPluginKey(threadId: string, pluginId: string): string {
+  return `${threadId}\0${pluginId}`;
+}
+
+function forgetExpired(entries: Map<string, number>, now: number): void {
+  for (const [key, at] of entries) {
     if (now - at >= DISPATCH_REQUEUE_MIN_INTERVAL_MS) {
-      lastRequeuedAtByThreadId.delete(id);
+      entries.delete(key);
     }
   }
+}
+
+export function noteDispatchRequeued(threadId: string, pluginId: string): void {
+  const now = Date.now();
+  forgetExpired(lastRequeuedAtByThreadId, now);
+  forgetExpired(lastRequeuedAtByThreadPlugin, now);
   lastRequeuedAtByThreadId.set(threadId, now);
+  lastRequeuedAtByThreadPlugin.set(threadPluginKey(threadId, pluginId), now);
 }
 
 /**
@@ -151,6 +162,16 @@ export function noteDispatchRequeued(threadId: string): void {
  */
 export function isDispatchRequeuedRecently(threadId: string): boolean {
   const at = lastRequeuedAtByThreadId.get(threadId);
+  return at !== undefined && Date.now() - at < DISPATCH_REQUEUE_MIN_INTERVAL_MS;
+}
+
+export function isPluginDispatchRequeuedRecently(
+  threadId: string,
+  pluginId: string,
+): boolean {
+  const at = lastRequeuedAtByThreadPlugin.get(
+    threadPluginKey(threadId, pluginId),
+  );
   return at !== undefined && Date.now() - at < DISPATCH_REQUEUE_MIN_INTERVAL_MS;
 }
 

@@ -1,13 +1,11 @@
-import { getThread, listEvents, threadPruningCursors } from "@bb/db";
+import { getThread, threadPruningCursors } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { performance } from "node:perf_hooks";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  applyTurnCompletedEvent,
-  readTurnCompletion,
-} from "../../src/internal/turn-completed-events.js";
+import { hasRootStoredTurnStarted } from "@bb/db";
+import { runThreadLifecycleTransaction } from "../../src/services/threads/lifecycle/run.js";
 import { pruneThreadEventHistoryBestEffort } from "../../src/services/system/event-pruning.js";
 import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
 import {
@@ -23,6 +21,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 interface SeedNoiseRowsArgs {
   endingSequence: number;
@@ -297,15 +296,10 @@ describe("thread event pruning", () => {
         },
       });
 
-      applyTurnCompletedEvent(harness.deps, {
-        afterIdle: null,
-        payload: {
-          type: "turn/completed",
-          threadId: thread.id,
-          providerThreadId: "provider-thread-1",
-          scope: turnScope("turn-1"),
-          status: "completed",
-        },
+      runThreadLifecycleTransaction(harness.deps, thread.id, {
+        type: "turn.completed",
+        turnId: "turn-1",
+        status: "completed",
       });
 
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
@@ -372,11 +366,18 @@ describe("thread event pruning", () => {
       };
 
       expect(
-        readTurnCompletion(harness.deps, payload).isRootTurnCompletion,
+        hasRootStoredTurnStarted(harness.db, {
+          threadId: payload.threadId,
+          turnId: "turn-1",
+        }),
       ).toBe(true);
       expect(
-        applyTurnCompletedEvent(harness.deps, { afterIdle: null, payload }),
-      ).toEqual({ kind: "settled", nextStatus: null });
+        runThreadLifecycleTransaction(harness.deps, payload.threadId, {
+          type: "turn.completed",
+          turnId: "turn-1",
+          status: payload.status,
+        }).statusChanged,
+      ).toBe(false);
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
   });

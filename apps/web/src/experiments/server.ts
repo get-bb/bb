@@ -8,6 +8,11 @@ import {
   type ExperimentBootstrap,
   type ExperimentKey,
 } from "./flags";
+import type {
+  DefinitionsLogEntry,
+  FlagDefinitionsSource,
+} from "./flag-definitions";
+import { evaluateLocalFlag } from "./local-flags";
 
 const FLAGS_TIMEOUT_MS = 400;
 export const EXPERIMENT_CACHE_CONTROL = "private, no-cache";
@@ -49,12 +54,29 @@ export type FlagsLogEntry = {
   assigned: number;
 };
 
+export type LocalFlagsLogEntry = {
+  event: "posthog_local_flags";
+  assigned: number;
+  inconclusive: number;
+};
+
+export type ExperimentLogEntry =
+  | FlagsLogEntry
+  | LocalFlagsLogEntry
+  | DefinitionsLogEntry;
+
+export type LocalFlagsConfig = {
+  definitions: FlagDefinitionsSource;
+  waitUntil: (promise: Promise<unknown>) => void;
+};
+
 export type ExperimentServerConfig = {
   postHogKey: string | undefined;
   postHogHost: string;
   baseDomain: string;
   fetch: typeof fetch;
-  log: (entry: FlagsLogEntry) => void;
+  log: (entry: ExperimentLogEntry) => void;
+  localFlags: LocalFlagsConfig | null;
   now?: () => number;
   randomBytes?: (length: number) => Uint8Array;
   timeoutMs?: number;
@@ -131,10 +153,7 @@ export function uuidv7(now: number, random: Uint8Array): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function cookieDomain(
-  hostname: string,
-  baseDomain: string,
-): string | null {
+function cookieDomain(hostname: string, baseDomain: string): string | null {
   return hostname === baseDomain || hostname.endsWith(`.${baseDomain}`)
     ? baseDomain
     : null;
@@ -327,8 +346,7 @@ export function readAssignmentCookie(
   } catch {
     return {};
   }
-  const stored: Record<string, { variant: string | null; value: string }> =
-    {};
+  const stored: Record<string, { variant: string | null; value: string }> = {};
   for (const [key, value] of params) {
     const stamp = value.indexOf(STAMP);
     if (!isExperimentKey(key) || !keys.includes(key) || stamp < 0) {
@@ -416,36 +434,52 @@ export async function resolveExperiments(
   }
   const stored = readAssignmentCookie(cookieHeader, EXPERIMENT_KEYS, now());
   const missing = keys.filter((key) => !Object.hasOwn(stored, key));
+  const local =
+    missing.length === 0 || config.localFlags === null
+      ? new Map<ExperimentKey, string | null>()
+      : await evaluateLocally(
+          config.localFlags,
+          distinctId,
+          missing,
+          config.log,
+        );
+  const remoteKeys = missing.filter((key) => !local.has(key));
   const evaluation =
-    missing.length === 0
+    remoteKeys.length === 0
       ? null
       : await evaluateFlags({
           host: config.postHogHost,
           apiKey: config.postHogKey,
           distinctId,
-          keys: missing,
+          keys: remoteKeys,
           fetch: config.fetch,
           log: config.log,
           now,
           timeoutMs: config.timeoutMs ?? FLAGS_TIMEOUT_MS,
         });
+  const resolved = new Map(local);
+  if (evaluation?.outcome === "ok") {
+    for (const key of remoteKeys) {
+      resolved.set(key, evaluation.flags[key] ?? null);
+    }
+  }
   const featureFlags: Record<string, string> = {};
   for (const key of keys) {
     const variant = Object.hasOwn(stored, key)
       ? stored[key]?.variant
-      : evaluation?.flags[key];
+      : resolved.get(key);
     if (variant) {
       featureFlags[key] = variant;
     }
   }
-  if (evaluation?.outcome === "ok") {
+  if (resolved.size > 0) {
     const checkedAt = now();
     const values: Record<string, string> = {};
     for (const [key, entry] of Object.entries(stored)) {
       values[key] = entry.value;
     }
-    for (const key of missing) {
-      values[key] = `${evaluation.flags[key] ?? ""}${STAMP}${checkedAt}`;
+    for (const [key, variant] of resolved) {
+      values[key] = `${variant ?? ""}${STAMP}${checkedAt}`;
     }
     setCookies.push(assignmentCookie(values, checkedAt));
   }
@@ -453,6 +487,36 @@ export async function resolveExperiments(
     bootstrap: { distinctID: distinctId, featureFlags, preview },
     setCookies,
   };
+}
+
+async function evaluateLocally(
+  localFlags: LocalFlagsConfig,
+  distinctId: string,
+  keys: readonly ExperimentKey[],
+  log: (entry: ExperimentLogEntry) => void,
+): Promise<Map<ExperimentKey, string | null>> {
+  const assigned = new Map<ExperimentKey, string | null>();
+  const definitions = await localFlags.definitions.read(localFlags.waitUntil);
+  if (definitions === null) {
+    return assigned;
+  }
+  for (const key of keys) {
+    const result = await evaluateLocalFlag(definitions, key, distinctId);
+    if (result.kind === "assigned") {
+      assigned.set(
+        key,
+        result.variant !== null && isKnownVariant(key, result.variant)
+          ? result.variant
+          : null,
+      );
+    }
+  }
+  log({
+    event: "posthog_local_flags",
+    assigned: assigned.size,
+    inconclusive: keys.length - assigned.size,
+  });
+  return assigned;
 }
 
 function defaultRandomBytes(length: number): Uint8Array {

@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { once } from "node:events";
-import { setTimeout as sleep } from "node:timers/promises";
 import { gunzipSync } from "node:zlib";
 import { eq } from "drizzle-orm";
 import {
@@ -13,7 +12,12 @@ import {
   listQueuedThreadMessages,
   threads,
 } from "@bb/db";
-import { threadScope, turnScope, type ToolCallResponse } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+  type ToolCallResponse,
+} from "@bb/domain";
 import {
   groupHostDaemonEvents,
   hostDaemonEventBatchResponseSchema,
@@ -42,6 +46,7 @@ import {
   seedThread,
   seedThreadFixture,
   seedThreadRuntimeState,
+  seedThreadStop,
 } from "../helpers/seed.js";
 import { startTestServer, withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
@@ -221,8 +226,11 @@ async function runDirectorySwitchTurn(
 }
 
 describe("internal event and tool-call routes", () => {
-  it("returns the response head before a plugin tool completes", async () => {
-    await withTestHarness(async (harness) => {
+  it("returns the response head before a plugin tool completes", async ({
+    signal,
+    onTestFinished,
+  }) => {
+    const running = withTestHarness(async (harness) => {
       const record = {
         name: "wait_for_user",
       } as PluginAgentToolRecord;
@@ -262,15 +270,16 @@ describe("internal event and tool-call routes", () => {
           port: 0,
         });
         try {
-          if (!server.listening) await once(server, "listening");
+          if (!server.listening) await once(server, "listening", { signal });
           const address = server.address();
           if (address === null || typeof address === "string") {
             throw new Error("Expected a TCP server address");
           }
-          const responsePromise = fetch(
+          const response = await fetch(
             `http://127.0.0.1:${address.port}/internal/session/tool-call`,
             {
               method: "POST",
+              signal,
               headers: internalAuthHeaders(harness),
               body: JSON.stringify({
                 sessionId: session.id,
@@ -282,32 +291,28 @@ describe("internal event and tool-call routes", () => {
               }),
             },
           );
-          const earlyResponse = await Promise.race([
-            responsePromise,
-            sleep(1_000).then(() => null),
-          ]);
-
           completeTool({
             success: true,
             contentItems: [{ type: "inputText", text: "answered" }],
           });
-          const response = earlyResponse ?? (await responsePromise);
-
-          expect(earlyResponse).not.toBeNull();
           expect(response.status).toBe(200);
           await expect(readJson(response)).resolves.toEqual({
             success: true,
             contentItems: [{ type: "inputText", text: "answered" }],
           });
         } finally {
+          completeTool({ success: false, contentItems: [] });
           await new Promise<void>((resolve, reject) => {
             server.close((error) => (error ? reject(error) : resolve()));
+            if ("closeAllConnections" in server) server.closeAllConnections();
           });
         }
       } finally {
         setPluginAgentContributions(undefined);
       }
     });
+    onTestFinished(() => running.catch(() => undefined));
+    await running;
   });
 
   it("serves a small event batch response over HTTP with an exact Content-Length", async () => {
@@ -938,6 +943,7 @@ describe("internal event and tool-call routes", () => {
           reason: "manual-stop",
         },
       });
+      seedThreadStop(harness.deps, { acked: true, threadId: thread.id });
 
       const response = await postEventBatch({
         harness,
@@ -960,6 +966,93 @@ describe("internal event and tool-call routes", () => {
         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
           ?.status,
       ).toBe("idle");
+    });
+  });
+
+  it("reactivates and finishes a turn the agent starts after a stop", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-agent-turn",
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-agent-turn",
+        sequence: 3,
+        type: "turn/started",
+        scope: turnScope("turn-requested"),
+        data: { providerThreadId: "provider-agent-turn" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-agent-turn",
+        sequence: 4,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-requested"),
+        data: {
+          providerThreadId: "provider-agent-turn",
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: null,
+        sequence: 5,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        data: { reason: "manual-stop" },
+      });
+      const agentTurn = {
+        threadId: thread.id,
+        providerThreadId: "provider-agent-turn",
+        scope: turnScope("turn-agent"),
+      };
+
+      await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: { type: "turn/started", ...agentTurn },
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+
+      await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              ...agentTurn,
+              status: "completed",
+            },
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
   });
 

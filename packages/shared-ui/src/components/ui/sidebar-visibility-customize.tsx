@@ -144,7 +144,11 @@ function SidebarCustomizeItem({
   testIdPrefix: string;
 }) {
   const checkboxId = useId();
-  const { dragBindings, setNodeRef, style } = useSidebarSortable({
+  const {
+    dragBindings: { setActivatorNodeRef, attributes, listeners },
+    setNodeRef,
+    style,
+  } = useSidebarSortable({
     id: item.id,
     disabled: reorderDisabled,
   });
@@ -165,9 +169,9 @@ function SidebarCustomizeItem({
     >
       <button
         type="button"
-        ref={dragBindings.setActivatorNodeRef}
-        {...dragBindings.attributes}
-        {...dragBindings.listeners}
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
         aria-label={`Reorder ${item.title}`}
         className={cn(
           "relative z-10 flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing",

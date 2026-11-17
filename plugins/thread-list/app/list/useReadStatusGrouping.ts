@@ -69,13 +69,19 @@ export function useReadStatusGrouping({
         : comparator,
     [comparator, groupByReadStatus, heldReadStatus],
   );
-  const collapsedThreadIds = useMemo(
+  const preferredCollapsedThreadIds = useMemo(
+    () => new Set(collapsedThreadIdList),
+    [collapsedThreadIdList],
+  );
+  const groupedCollapsedThreadIds = useMemo(
     () =>
       groupByReadStatus
         ? collapseParentThreads(threads, expandedWhileGrouped)
-        : new Set(collapsedThreadIdList),
-    [collapsedThreadIdList, expandedWhileGrouped, groupByReadStatus, threads],
+        : null,
+    [expandedWhileGrouped, groupByReadStatus, threads],
   );
+  const collapsedThreadIds =
+    groupedCollapsedThreadIds ?? preferredCollapsedThreadIds;
   const toggleThreadCollapsed = useCallback(
     (threadId: string) => {
       if (groupByReadStatus) {

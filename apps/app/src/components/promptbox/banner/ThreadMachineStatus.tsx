@@ -80,9 +80,10 @@ export function ThreadMachineStatusBanner({
   const status = `Machine is ${phaseWord}`;
   const detail = error && phase !== "resuming" ? error : null;
   const [isExpanded, setIsExpanded] = useState(false);
-  const focus = useDisclosureFocusHandoff(isExpanded, () =>
-    setIsExpanded((current) => !current),
-  );
+  const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
+    useDisclosureFocusHandoff(isExpanded, () =>
+      setIsExpanded((current) => !current),
+    );
   const expandable = detail !== null;
   return (
     <PromptStackCard
@@ -103,8 +104,8 @@ export function ThreadMachineStatusBanner({
             aria-expanded={isExpanded}
             aria-controls={MACHINE_STATUS_BODY_ID}
             aria-label={`${status}. ${detail}`}
-            ref={focus.triggerRef}
-            onClick={focus.onTriggerClick}
+            ref={triggerRef}
+            onClick={onTriggerClick}
             className={cn(
               "flex min-w-0 flex-1 cursor-pointer items-center justify-start gap-1.5 text-left text-xs transition-colors",
               PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
@@ -144,8 +145,8 @@ export function ThreadMachineStatusBanner({
           labelledBy={MACHINE_STATUS_TOGGLE_ID}
           isExpanded={isExpanded}
           collapseLabel="Collapse machine status"
-          collapseRef={focus.collapseRef}
-          onCollapse={focus.onCollapseClick}
+          collapseRef={collapseRef}
+          onCollapse={onCollapseClick}
         >
           <p
             role="alert"

@@ -1,3 +1,4 @@
+import { selectExternalWorktrees } from "./worktree-selection.js";
 import type { Storage } from "./storage.js";
 import {
   cliCommand,
@@ -70,6 +71,16 @@ export function registerCli(
               description:
                 "orphans, development, worktrees, or externalWorktrees",
             },
+            "include-uncommitted": {
+              type: "boolean",
+              description:
+                "worktrees and externalWorktrees: also remove checkouts with uncommitted changes (externalWorktrees also removes locked ones and ones with commits on no branch)",
+            },
+            "unused-for": {
+              type: "string",
+              description:
+                "externalWorktrees: only remove worktrees not used for this many days",
+            },
             yes: YES,
           },
           run: ({ options }) =>
@@ -86,10 +97,52 @@ export function registerCli(
                 throw new Error(
                   "Use --kind orphans, development, worktrees, or externalWorktrees.",
                 );
-              await storage.startCleanup({
-                hostId: required(options.machine, "machine"),
-                kind,
-              });
+              const hostId = required(options.machine, "machine");
+              const includeUncommitted =
+                options["include-uncommitted"] === true;
+              const unusedFor = options["unused-for"];
+              if (unusedFor !== undefined && kind !== "externalWorktrees")
+                throw new Error(
+                  "--unused-for applies to --kind externalWorktrees.",
+                );
+              if (
+                includeUncommitted &&
+                kind !== "worktrees" &&
+                kind !== "externalWorktrees"
+              )
+                throw new Error(
+                  "--include-uncommitted applies to --kind worktrees or externalWorktrees.",
+                );
+              if (kind === "worktrees")
+                await storage.startCleanup({
+                  hostId,
+                  kind,
+                  includeUncommitted,
+                });
+              else if (kind === "externalWorktrees") {
+                const days = unusedFor === undefined ? null : Number(unusedFor);
+                if (days !== null && (!Number.isInteger(days) || days < 0))
+                  throw new Error(
+                    "--unused-for must be a whole number of days.",
+                  );
+                const paths =
+                  days === null && !includeUncommitted
+                    ? null
+                    : selectExternalWorktrees(
+                        (await storage.host({ hostId })).report
+                          ?.externalWorktrees ?? [],
+                        days,
+                        Date.now(),
+                      ).map((worktree) => worktree.path);
+                if (paths !== null && paths.length === 0)
+                  return { started: false, matched: 0 };
+                await storage.startCleanup({
+                  hostId,
+                  kind,
+                  paths,
+                  force: includeUncommitted,
+                });
+              } else await storage.startCleanup({ hostId, kind });
               return { started: true };
             }),
         }),
@@ -217,12 +270,23 @@ export function registerCli(
             }),
         }),
         "retry-worktree-cleanup": cliCommand({
-          summary: "Retry cleanup of leftover worktrees",
-          options: { machine: MACHINE },
+          summary:
+            "Retry cleanup of leftover worktrees, including interrupted ones without uncommitted changes",
+          options: {
+            machine: MACHINE,
+            "include-uncommitted": {
+              type: "boolean",
+              description:
+                "Also remove interrupted checkouts that have uncommitted changes",
+            },
+          },
           run: (input) =>
             output(async () => {
               return storage.retryWorktreeCleanup({
                 hostId: required(input.options.machine, "machine"),
+                includeUncommitted:
+                  input.options["include-uncommitted"] === true,
+                interruptedOnly: false,
               });
             }),
         }),

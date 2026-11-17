@@ -57,6 +57,12 @@ type SavedWindowCheck = {
   status: "live" | "gone" | "unknown";
 };
 
+interface SavedWindowCheckRun {
+  current: boolean;
+  attempt: number;
+  retry: ReturnType<typeof setTimeout> | undefined;
+}
+
 type BrowserTabPlacement =
   | "open"
   | "attach"
@@ -166,15 +172,17 @@ export function BrowserTabDeck({
       savedInstanceId === undefined
     )
       return;
-    let current = true;
-    let attempt = 0;
-    let retry: ReturnType<typeof setTimeout> | undefined;
+    const run: SavedWindowCheckRun = {
+      current: true,
+      attempt: 0,
+      retry: undefined,
+    };
     const check = () => {
       void sdk.experimental_desktopBrowsers
         .listInstances({ hostId: targetHostId })
         .then(
           ({ instances }) => {
-            if (!current) return;
+            if (!run.current) return;
             const live = instances.some(
               (instance) => instance.instanceId === savedInstanceId,
             );
@@ -184,22 +192,22 @@ export function BrowserTabDeck({
             });
           },
           () => {
-            if (!current) return;
-            attempt += 1;
-            if (attempt >= WINDOW_TARGET_PENDING_ATTEMPTS)
+            if (!run.current) return;
+            run.attempt += 1;
+            if (run.attempt >= WINDOW_TARGET_PENDING_ATTEMPTS)
               setSavedWindowCheck({ key: savedWindowKey, status: "unknown" });
-            if (attempt >= WINDOW_CHECK_MAX_ATTEMPTS) {
+            if (run.attempt >= WINDOW_CHECK_MAX_ATTEMPTS) {
               setStoppedCheckKey(checkKey);
               return;
             }
-            retry = setTimeout(check, windowRetryDelay(attempt));
+            run.retry = setTimeout(check, windowRetryDelay(run.attempt));
           },
         );
     };
     check();
     return () => {
-      current = false;
-      clearTimeout(retry);
+      run.current = false;
+      clearTimeout(run.retry);
     };
   }, [savedWindowKey, targetHostId, savedInstanceId, checkKey]);
 

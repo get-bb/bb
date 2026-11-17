@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { experimental_useRpcQuery, useRpc } from "@get-bb/plugin-sdk/app";
 import type {
   PluginRpcResult,
@@ -52,13 +52,10 @@ export function useTasksQuery<Method extends TasksMethod, T>(
     () => (result === undefined ? undefined : select(result)),
     [result, select],
   );
-  const refetch = useRef(query.refetch);
-  useEffect(() => {
-    refetch.current = query.refetch;
-  });
+  const { refetch } = query;
   const refresh = useCallback(() => {
-    void refetch.current();
-  }, []);
+    void refetch();
+  }, [refetch]);
   return {
     data,
     error: query.error?.message ?? null,

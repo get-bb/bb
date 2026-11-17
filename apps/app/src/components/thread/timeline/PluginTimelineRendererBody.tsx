@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo } from "react";
 import type { JsonValue } from "@bb/domain";
 import type {
   PluginTimelineRendererProps,
@@ -7,9 +7,7 @@ import type {
 import type { TimelineViewWorkRow } from "@bb/thread-view";
 import { PluginSlotMount } from "../../plugin/PluginSlotMount.js";
 import {
-  EMPTY_PLUGIN_SLOT_SNAPSHOT,
-  getPluginSlotSnapshot,
-  subscribePluginSlots,
+  usePluginSlotKind,
   type PluginTimelineRendererSlot,
 } from "@/lib/plugin-slots";
 import { resolveTimelineRenderer } from "@/lib/plugin-slot-resolvers";
@@ -30,18 +28,10 @@ export function isPluginRenderableWorkRow(
   );
 }
 
-function useTimelineRendererSlots(): readonly PluginTimelineRendererSlot[] {
-  return useSyncExternalStore(
-    subscribePluginSlots,
-    () => getPluginSlotSnapshot().timelineRenderers,
-    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.timelineRenderers,
-  );
-}
-
 export function usePluginTimelineRenderer(
   row: TimelineViewWorkRow | null,
 ): PluginTimelineRendererSlot | null {
-  const slots = useTimelineRendererSlots();
+  const slots = usePluginSlotKind("timelineRenderers");
   const { pluginId: providerPluginId } = useThreadProvider();
   return useMemo(() => {
     if (row === null || slots.length === 0 || !isPluginRenderableWorkRow(row)) {

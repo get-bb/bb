@@ -45,8 +45,8 @@ it("revalidates pixel minimums on container resize while preserving explicit col
   vi.stubGlobal(
     "ResizeObserver",
     class {
-      constructor(callback: () => void) {
-        notify = callback;
+      constructor(callback: (entries: ResizeObserverEntry[]) => void) {
+        notify = () => callback([]);
       }
       observe() {}
       disconnect() {}

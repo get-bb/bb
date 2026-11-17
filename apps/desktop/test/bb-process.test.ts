@@ -329,6 +329,46 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
     });
   });
 
+  it("reports ready only when the bridge announces the runtime is ready", async () => {
+    const script = await createTempScript({
+      contents: `
+process.on("message", (message) => {
+  if (message === "connect") {
+    process.send({ channel: "bb-desktop-update/status" });
+    process.send({ channel: "bb-desktop-runtime/ready" });
+  }
+});
+process.stdout.write("server healthy\\n");
+setInterval(() => undefined, 1000);
+`,
+    });
+    const processEntry = startBbAppProcess({
+      bridgePath: script.path,
+      cwd: script.root,
+      env: process.env,
+      logLineLimit: 20,
+      runtime: {
+        executablePath: process.execPath,
+        kind: "direct",
+        mode: "node",
+      },
+    });
+    processes.push(processEntry);
+    let ready = false;
+    void processEntry.ready.then(() => {
+      ready = true;
+    });
+    await waitForLog({ process: processEntry, text: "server healthy" });
+    await new Promise<void>((resolvePromise) => {
+      setTimeout(resolvePromise, 50);
+    });
+    expect(ready).toBe(false);
+
+    processEntry.childProcess.send("connect");
+    await processEntry.ready;
+    expect(ready).toBe(true);
+  });
+
   posixIt("escalates to SIGKILL when the bridge ignores SIGTERM", async () => {
     const script = await createTempScript({
       contents: `

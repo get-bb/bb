@@ -252,7 +252,7 @@ function ToolbarHarness({
 
 function mockToolbarWidth(initial: number, publishedWidth = 96) {
   let width = initial;
-  const callbacks = new Set<() => void>();
+  const callbacks = new Set<(entries: ResizeObserverEntry[]) => void>();
   const original = HTMLElement.prototype.getBoundingClientRect;
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
@@ -287,8 +287,8 @@ function mockToolbarWidth(initial: number, publishedWidth = 96) {
   vi.stubGlobal(
     "ResizeObserver",
     class {
-      callback: () => void;
-      constructor(callback: () => void) {
+      callback: (entries: ResizeObserverEntry[]) => void;
+      constructor(callback: (entries: ResizeObserverEntry[]) => void) {
         this.callback = callback;
       }
       observe(target: Element) {
@@ -304,7 +304,7 @@ function mockToolbarWidth(initial: number, publishedWidth = 96) {
   return (next: number) =>
     act(() => {
       width = next;
-      callbacks.forEach((callback) => callback());
+      callbacks.forEach((callback) => callback([]));
     });
 }
 

@@ -1,10 +1,13 @@
 import {
   getThread,
   isThreadQueueAutoSendPaused,
-  listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -28,12 +31,13 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
   requestThreadStopForCurrentState,
   stopThreadForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
+import { listEvents } from "@bb/db/testing";
 
 describe("thread runtime stop", () => {
   it("releases and dismisses a question when the runtime ends during a failed interrupt", async () => {
@@ -68,8 +72,8 @@ describe("thread runtime stop", () => {
           command.type === "thread.stop" && command.threadId === thread.id,
       );
       expect(interrupt.command).toMatchObject({ intent: "interrupt" });
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.succeeded" },
+      moveThreadStatus(harness.deps, {
+        move: "run.succeeded",
         threadId: thread.id,
       });
       await reportQueuedCommandError(harness, interrupt, {
@@ -417,8 +421,8 @@ describe("thread runtime stop", () => {
           command.intent === "release",
       );
 
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
+      moveThreadStatus(harness.deps, {
+        move: "run.started",
         threadId: thread.id,
       });
       seedTurnStarted(harness.deps, {
@@ -477,8 +481,8 @@ describe("thread runtime stop", () => {
           command.threadId === thread.id &&
           command.intent === "release",
       );
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
+      moveThreadStatus(harness.deps, {
+        move: "run.started",
         threadId: thread.id,
       });
       seedTurnStarted(harness.deps, {
@@ -548,8 +552,8 @@ describe("thread runtime stop", () => {
           command.threadId === thread.id &&
           command.intent === "release",
       );
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "run.started" },
+      moveThreadStatus(harness.deps, {
+        move: "run.started",
         threadId: thread.id,
       });
       seedTurnStarted(harness.deps, {
@@ -558,11 +562,7 @@ describe("thread runtime stop", () => {
         threadId: thread.id,
         turnId: "turn-stopped-by-request",
       });
-      requestThreadStopForCurrentState(
-        harness.deps,
-        { ...thread, status: "active" },
-        { hostId: environment.hostId, id: environment.id },
-      );
+      requestThreadStopForCurrentState(harness.deps, thread);
       const dispatched = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -840,8 +840,32 @@ describe("thread runtime stop", () => {
 
   it("keeps a startup-parked message paused after a manual stop until explicitly sent", async () => {
     await withTestHarness(async (harness) => {
-      const { session, thread } = seedThreadFixture(harness, {
+      const { environment, session, thread } = seedThreadFixture(harness, {
         thread: { status: "active", visibility: "hidden" },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+          input: [{ type: "text", text: "Start the thread" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: { method: "thread/start", params: {} },
+          source: "spawn",
+        },
       });
       const queueResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/send`,

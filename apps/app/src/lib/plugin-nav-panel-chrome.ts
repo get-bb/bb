@@ -5,7 +5,7 @@ import {
   usePluginFrontendBootComplete,
   usePluginFrontendsSettled,
 } from "@/lib/plugin-frontend-boot-state";
-import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
+import { usePluginSlotKind, type PluginNavPanelSlot } from "@/lib/plugin-slots";
 
 const pluginNavPanelChromeSchema = z.object({
   pluginId: z.string().min(1),
@@ -95,7 +95,7 @@ export function rememberPluginNavPanelChrome(
 
 export function usePluginNavPanelChrome(): PluginNavPanelChromeEntry[] {
   const settled = usePluginFrontendsSettled();
-  const { navPanels } = usePluginSlots();
+  const navPanels = usePluginSlotKind("navPanels");
   const remembered = useMemo(
     () => readRememberedPluginNavPanelChrome(settled),
     [settled],
@@ -108,7 +108,7 @@ export function usePluginNavPanelChrome(): PluginNavPanelChromeEntry[] {
 
 export function useRememberPluginNavPanelChrome(): void {
   const bootComplete = usePluginFrontendBootComplete();
-  const { navPanels } = usePluginSlots();
+  const navPanels = usePluginSlotKind("navPanels");
   useEffect(() => {
     rememberPluginNavPanelChrome(bootComplete, navPanels);
   }, [navPanels, bootComplete]);

@@ -124,6 +124,25 @@
       ],
       "outputs": ["bundle-stats.json", "dist/**"]
     },
+    "@bb/app#build:profiling": {
+      "env": ["NODE_OPTIONS", "NODE_ENV", "BABEL_*", "VITE_*"],
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.env*",
+        ".env*",
+        "$TURBO_ROOT$/CHANGELOG.md",
+        "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": ["dist-profiling/**"]
+    },
     "build": {
       "dependsOn": ["topo"],
       "inputs": [
@@ -166,7 +185,7 @@
       ]
     },
     "@bb/server#build": {
-      "dependsOn": ["topo"],
+      "dependsOn": ["bb-plugin-bb-guide#generate:api-index", "topo"],
       "outputs": ["dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -417,6 +436,7 @@
         "@bb/server#generate:bb-official-marketplace",
         "@bb/templates#generate:templates",
         "@bb/plugin-build#generate",
+        "bb-plugin-bb-guide#generate:api-index",
         "@get-bb/plugin-sdk#build:runtime"
       ],
       "cache": false,
@@ -456,6 +476,10 @@
         "package.json",
         "pnpm-lock.yaml"
       ]
+    },
+    "@bb/db#check:query-costs": {
+      "cache": false,
+      "dependsOn": ["//#ensure-native-modules"]
     },
     "//#ensure-native-modules": {
       "cache": false,
@@ -498,6 +522,7 @@
       "dependsOn": [],
       "inputs": [
         "src/profile-worker.ts",
+        "src/profile-clock.ts",
         "src/stall-attribution.ts",
         "src/stall-windows.ts",
         "src/event-loop-delay.ts",
@@ -568,6 +593,22 @@
         "$TURBO_ROOT$/pnpm-lock.yaml"
       ],
       "outputs": ["src/generated/**"]
+    },
+    // The bb-plugin-authoring skill's API symbol indexes, read from the SDK's
+    // entry-point sources. The server ships bb-guide's skills as its built-in
+    // skills, so its build, dev, and test tasks depend on this as well.
+    "bb-plugin-bb-guide#topo": {
+      "dependsOn": ["^topo", "bb-plugin-bb-guide#generate:api-index"]
+    },
+    "bb-plugin-bb-guide#generate:api-index": {
+      "dependsOn": [],
+      "inputs": [
+        "$TURBO_ROOT$/packages/plugin-sdk/package.json",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/api-index.mjs",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/generate-api-index.mjs",
+        "$TURBO_ROOT$/packages/plugin-sdk/src/**"
+      ],
+      "outputs": ["skills/bb-plugin-authoring/references/*-api-index.md"]
     },
     "typecheck": {
       "dependsOn": ["topo"]
@@ -756,6 +797,7 @@
       "outputs": [".query-plan/**"],
       "dependsOn": [
         "@bb/agent-runtime#generate:test-bridges",
+        "bb-plugin-bb-guide#generate:api-index",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "@get-bb/plugin-sdk#build:types",
@@ -959,6 +1001,53 @@
       "passThroughEnv": ["*"],
       "dependsOn": [
         "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
+    "@bb/render-invariants#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/server/package.json",
+        "$TURBO_ROOT$/apps/server/tsconfig.json",
+        "$TURBO_ROOT$/apps/server/src/**",
+        "$TURBO_ROOT$/tests/integration/helpers/**",
+        "$TURBO_ROOT$/vitest*.ts"
+      ]
+    },
+    "@bb/render-invariants#test:render-invariants": {
+      "env": ["BB_RENDER_INVARIANTS_PENDING"],
+      "passThroughEnv": ["PLAYWRIGHT_BROWSERS_PATH"],
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/app#build:profiling",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/server/package.json",
+        "$TURBO_ROOT$/apps/server/src/**",
+        "$TURBO_ROOT$/plugins/*/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
+        "$TURBO_ROOT$/tests/integration/global-setup.ts",
+        "$TURBO_ROOT$/tests/integration/helpers/**",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
+        "$TURBO_ROOT$/vitest*.ts"
+      ],
+      "outputs": []
+    },
+    "@bb/render-invariants#serve": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["*"],
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/app#build:profiling",
         "@get-bb/plugin-sdk#build",
         "topo"
       ]

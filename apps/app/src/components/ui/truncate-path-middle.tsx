@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 
 const KEPT_TAIL_SEGMENTS = 2;
 const ELLIPSIS = "…";
@@ -89,26 +90,28 @@ export function useFittedPathMiddle<T extends HTMLElement>(
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    let disposed = false;
-    const fit = () => {
-      if (disposed) return;
-      setFitted(
-        fitPathMiddle(
-          path,
-          container.getBoundingClientRect().width -
-            measureReservedWidth(container) -
-            0.5,
-          (text) => measureTextWidth(text, container),
-        ),
+    const lifecycle = { disposed: false };
+    const measure = () =>
+      fitPathMiddle(
+        path,
+        container.getBoundingClientRect().width -
+          measureReservedWidth(container) -
+          0.5,
+        (text) => measureTextWidth(text, container),
       );
+    const fit = () => {
+      if (lifecycle.disposed) return;
+      setFitted(measure());
     };
     fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(container);
+    const unobserve = observeSharedResize(container, {
+      read: measure,
+      write: setFitted,
+    });
     void document.fonts?.ready?.then(fit);
     return () => {
-      disposed = true;
-      observer.disconnect();
+      lifecycle.disposed = true;
+      unobserve();
     };
   }, [path, measureReservedWidth]);
 

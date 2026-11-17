@@ -120,12 +120,13 @@ export function BrowsePluginsTab({
       ),
     [catalog.categories, shelfEntries, selectedCategories],
   );
+  const searchEntries = searchQuery.data?.entries;
   const filteredEntries = useMemo(() => {
     const selected = new Set(selectedCategories);
     const matchingSearch =
       shelfKey !== null && trimmedQuery !== ""
         ? new Set(
-            searchQuery.data?.entries.map(
+            searchEntries?.map(
               (entry) => `${entry.marketplace}/${entry.entryId}`,
             ),
           )
@@ -136,13 +137,7 @@ export function BrowsePluginsTab({
         (matchingSearch === null ||
           matchingSearch.has(`${entry.marketplace}/${entry.entryId}`)),
     );
-  }, [
-    trimmedQuery,
-    searchQuery.data?.entries,
-    selectedCategories,
-    shelfEntries,
-    shelfKey,
-  ]);
+  }, [trimmedQuery, searchEntries, selectedCategories, shelfEntries, shelfKey]);
   const shelvesMode =
     sort === null && shelfKey === null && selectedCategories.length === 0;
   const shelves = useMemo(

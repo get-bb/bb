@@ -487,6 +487,23 @@ function LocalOpenTargetPreferenceControl({
   );
 }
 
+async function requestLocalOpenTargetAccess(
+  onRequestAccess: () => Promise<boolean>,
+  setPending: (pending: boolean) => void,
+): Promise<void> {
+  setPending(true);
+  try {
+    await onRequestAccess();
+  } catch (error) {
+    showMutationErrorToast({
+      error,
+      fallbackMessage: "Failed to connect to bb on this device",
+    });
+  } finally {
+    setPending(false);
+  }
+}
+
 export function LocalOpenTargetSettingsSection({
   accessState,
   directoryTargetId,
@@ -503,19 +520,8 @@ export function LocalOpenTargetSettingsSection({
     return null;
   }
 
-  const handleRequestAccess = async () => {
-    setAccessRequestPending(true);
-    try {
-      await onRequestAccess();
-    } catch (error) {
-      showMutationErrorToast({
-        error,
-        fallbackMessage: "Failed to connect to bb on this device",
-      });
-    } finally {
-      setAccessRequestPending(false);
-    }
-  };
+  const handleRequestAccess = () =>
+    requestLocalOpenTargetAccess(onRequestAccess, setAccessRequestPending);
 
   if (!hasDaemon) {
     const accessDenied = accessState === "denied";
@@ -1139,6 +1145,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     label: "Clear notifications once a thread is read",
     description:
       "When you read a thread on any device, remove its notifications from your phones and tablets and from open bb windows and tabs. Phones need an app version that supports it.",
+  },
+  keyedPluginCss: {
+    label: "Faster styles inside plugins",
+    description:
+      "Load each plugin's stylesheet so the browser can skip it inside other plugins' UI, such as the sidebar and composer, which makes style updates there cheaper. bb marks plugin UI that a plugin labeled the old way so its styles still apply. Applies after a reload.",
   },
   performanceDiagnostics: {
     label: "Server performance diagnostics",

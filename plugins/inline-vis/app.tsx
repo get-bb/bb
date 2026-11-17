@@ -6,6 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -211,11 +212,10 @@ function MarkdownDocument({
   useLayoutEffect(() => {
     const element = contentRef.current;
     if (element === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      setContentHeight(element.getBoundingClientRect().height);
+    return observeSharedResize(element, {
+      read: () => element.getBoundingClientRect().height,
+      write: setContentHeight,
     });
-    observer.observe(element);
-    return () => observer.disconnect();
   }, []);
 
   const collapsible =
@@ -764,7 +764,11 @@ function pageTarget(
   return null;
 }
 
-function InlineVisPageOpener({ path, source, Original }: PluginFileOpenerProps) {
+function InlineVisPageOpener({
+  path,
+  source,
+  Original,
+}: PluginFileOpenerProps) {
   const target = pageTarget(path, source);
   if (target === null) return <Original />;
   return (

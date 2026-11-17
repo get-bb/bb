@@ -111,7 +111,13 @@
 
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { appendFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
@@ -183,6 +189,33 @@ if (process.argv.includes("--list-models")) {
   process.exit(0);
 }
 
+const apiIndex = process.argv.indexOf("api");
+if (apiIndex !== -1) {
+  const statePath = process.env.FAKE_ACP_OPENCODE_PERMISSIONS_FILE;
+  const [method, , flag, body] = process.argv.slice(apiIndex + 1);
+  appendFileSync(
+    process.env.FAKE_ACP_OPENCODE_API_LOG,
+    `${process.argv.slice(apiIndex + 1, apiIndex + 3).join(" ")}\n`,
+  );
+  if (process.env.FAKE_ACP_KILL_AGENT_DURING_API === "1" && method === "GET") {
+    process.kill(
+      Number(readFileSync(process.env.FAKE_ACP_READY_FILE, "utf8")),
+      "SIGKILL",
+    );
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  }
+  if (method === "PATCH" && flag === "-d") {
+    writeFileSync(statePath, JSON.stringify(JSON.parse(body).permissions));
+  } else {
+    process.stdout.write(
+      JSON.stringify({
+        data: { permissions: JSON.parse(readFileSync(statePath, "utf8")) },
+      }),
+    );
+  }
+  process.exit(0);
+}
+
 if (process.argv.slice(-3, -1).join(" ") === "session delete") {
   if (process.env.FAKE_ACP_SESSION_DELETE_LOG) {
     appendFileSync(
@@ -200,6 +233,7 @@ const fakeModels = [
 ];
 
 let activePromptId = null;
+let permissionRequestCount = 0;
 let stuckAfterCancel = false;
 let nextAgentRequestId = 1000;
 let selectedModel = process.env.FAKE_ACP_INITIAL_MODEL ?? "fake/default";
@@ -625,23 +659,27 @@ async function handlePrompt(message) {
     }
     notifyUpdate(messageChunk(`permission:${outcome}`));
   } else if (text.includes("request-permission")) {
+    permissionRequestCount += 1;
+    const toolCallId = `perm-tool-${permissionRequestCount}`;
+    const command =
+      /request-permission:(\S+)/.exec(text)?.[1] ?? "rm -rf /tmp/scratch";
     notifyUpdate({
       sessionUpdate: "tool_call",
-      toolCallId: "perm-tool-1",
+      toolCallId,
       title: "Run rm",
       kind: "execute",
       status: "pending",
-      rawInput: { command: "rm -rf /tmp/scratch" },
+      rawInput: { command },
     });
     let outcome = "cancelled";
     try {
       const result = await requestClient("session/request_permission", {
         sessionId: activeSessionId,
         toolCall: {
-          toolCallId: "perm-tool-1",
+          toolCallId,
           title: "Run rm",
           kind: "execute",
-          rawInput: { command: "rm -rf /tmp/scratch" },
+          rawInput: { command },
         },
         options: [
           { optionId: "yes", name: "Allow", kind: "allow_once" },
@@ -928,6 +966,14 @@ async function handleMessage(message) {
                 }
               : {}),
           },
+          ...(process.env.FAKE_ACP_AGENT_VERSION
+            ? {
+                agentInfo: {
+                  name: "Fake ACP",
+                  version: process.env.FAKE_ACP_AGENT_VERSION,
+                },
+              }
+            : {}),
           ...(authMethods.length > 0
             ? {
                 authMethods: [
@@ -1031,6 +1077,13 @@ async function handleMessage(message) {
       }
       return;
     case "session/load":
+      if (
+        process.env.FAKE_ACP_EXIT_ON_FIRST_LOAD &&
+        !existsSync(process.env.FAKE_ACP_EXIT_ON_FIRST_LOAD)
+      ) {
+        writeFileSync(process.env.FAKE_ACP_EXIT_ON_FIRST_LOAD, "");
+        process.exit(1);
+      }
       if (!requireAuthenticated(message)) {
         return;
       }

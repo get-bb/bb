@@ -376,7 +376,7 @@ function AccountUsage({
         {showProvider ? (
           <ProviderIcon
             providerKind="agent"
-            provider={account}
+            provider={{ ...account, id: account.providerId }}
             fallback="Bot"
             className="size-3 shrink-0"
           />
@@ -726,7 +726,7 @@ export function ProviderUsageStatusContent({
   };
 
   return (
-    <div className="flex max-h-80 flex-col">
+    <div className="flex min-h-0 flex-col">
       <div
         data-provider-usage-header=""
         className="flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-sidebar-border px-1.5"

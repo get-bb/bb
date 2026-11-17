@@ -14,7 +14,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { outputSchema, type RunOutput } from "./contracts.js";
 import { createPreview, type PreviewSource } from "./preview.js";
-import { execute, supervise } from "./process.js";
+import { execute, OutputLimitError, supervise } from "./process.js";
 import type { ResolvedRuntime } from "./runtime-pin.js";
 
 const frameSchema = z.discriminatedUnion("type", [
@@ -313,6 +313,12 @@ export async function createRuntime(args: {
           if (output.exitCode === 124) await close();
           return output;
         } catch (error) {
+          if (error instanceof OutputLimitError)
+            return {
+              text: `${error.message}, so the run was stopped. The session is still open; return or print less output.`,
+              images: [],
+              exitCode: 1,
+            };
           await close();
           throw error;
         }

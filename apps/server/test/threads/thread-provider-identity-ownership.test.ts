@@ -1,4 +1,4 @@
-import { listEvents, listQueuedThreadMessages } from "@bb/db";
+import { listQueuedThreadMessages } from "@bb/db";
 import { threadScope, turnScope, type PromptInput } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
@@ -25,6 +25,7 @@ import {
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { listEvents } from "@bb/db/testing";
 
 const OWN_SESSION = "session-alpha";
 const FOREIGN_SESSION = "session-beta";

@@ -46,9 +46,7 @@ import {
   type WorkspaceCheckoutDisplay,
 } from "@bb/shared-ui/lib/workspace-checkout-display";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import {
-  selectWorkspaceChangedFilesSection,
-} from "../../../../../plugins/git/ui/workspace-change-summary";
+import { selectWorkspaceChangedFilesSection } from "../../../../../plugins/git/ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   GitSegmentFixtureProvider,
@@ -69,11 +67,12 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { promptDraftToInput, queuedInputToDraft } from "@bb/client-core";
 import {
-  promptDraftToInput,
-  type PromptDraftState,
-  queuedInputToDraft,
-} from "@bb/client-core";
+  createComposerDraftStore,
+  type ComposerDraftStore,
+} from "@/components/plugin/plugin-composer-host";
+import { useComposerDraftFixture } from "@/test/fixtures/composer-draft";
 import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 export default {
@@ -294,7 +293,6 @@ const usage: ThreadContextWindowUsage = {
 const typeaheadBase = makeTypeaheadConfig();
 
 const attachmentsBase: AttachmentsConfig = {
-  items: [],
   projectId: "proj_demo",
   isAttaching: false,
   error: null,
@@ -439,20 +437,20 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
       mergeBase: gitSegmentFixtureMergeBase(),
     }}
   >
-  <ThreadPromptContextBanner
-    input={{
-      threadId: "thr_story",
-      projectId: "proj_story",
-      environment: null,
-    }}
-    core={{
-      parentThread: null,
-    }}
-    archivedSection={null}
-    environmentGoneSection={null}
-    expandedSegment={null}
-    onToggleSegment={noop}
-  />
+    <ThreadPromptContextBanner
+      input={{
+        threadId: "thr_story",
+        projectId: "proj_story",
+        environment: null,
+      }}
+      core={{
+        parentThread: null,
+      }}
+      archivedSection={null}
+      environmentGoneSection={null}
+      expandedSegment={null}
+      onToggleSegment={noop}
+    />
   </GitSegmentFixtureProvider>
 ) : null;
 
@@ -605,15 +603,13 @@ function Row({
   activePromptMode = null,
   readOnly = false,
 }: RowConfig) {
-  const [message, setMessage] = useState(initialMessage);
+  const draft = useComposerDraftFixture(initialMessage, initialMentions);
   const [queueExpanded, setQueueExpanded] = useState(true);
-  const [mentionRanges, setMentionRanges] =
-    useState<PromptTextMention[]>(initialMentions);
   const [storyQueuedMessages, setStoryQueuedMessages] = useState(
     initialQueuedMessages ?? [],
   );
   const [inlineEditingQueuedMessage, setInlineEditingQueuedMessage] = useState<{
-    draft: PromptDraftState;
+    draft: ComposerDraftStore;
     queuedMessageId: string;
     queuedMessageIndex: number;
   } | null>(null);
@@ -623,30 +619,6 @@ function Row({
   const resolvedCompactPlaceholder =
     promptPlaceholder ??
     getCompactFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
-  const handleChangeMessage = (
-    nextMessage: string,
-    nextMentions: PromptTextMention[],
-  ) => {
-    setMessage(nextMessage);
-    setMentionRanges(nextMentions);
-  };
-  const handleChangeInlineMessage = useCallback(
-    (nextMessage: string, nextMentions: PromptTextMention[]) => {
-      setInlineEditingQueuedMessage((current) =>
-        current
-          ? {
-              ...current,
-              draft: {
-                ...current.draft,
-                mentions: nextMentions,
-                text: nextMessage,
-              },
-            }
-          : current,
-      );
-    },
-    [],
-  );
   const dismissInlineEditor = useCallback(() => {
     setInlineEditingQueuedMessage(null);
   }, []);
@@ -657,7 +629,9 @@ function Row({
       );
       if (!queuedMessage) return;
       setInlineEditingQueuedMessage({
-        draft: queuedInputToDraft(queuedMessage.content),
+        draft: createComposerDraftStore(
+          queuedInputToDraft(queuedMessage.content),
+        ),
         queuedMessageId,
         queuedMessageIndex,
       });
@@ -666,7 +640,9 @@ function Row({
   );
   const handleSubmit = useCallback(() => {
     if (!inlineEditingQueuedMessage) return;
-    const input = promptDraftToInput(inlineEditingQueuedMessage.draft);
+    const input = promptDraftToInput(
+      inlineEditingQueuedMessage.draft.getCurrent(),
+    );
     if (input.length === 0) return;
     setStoryQueuedMessages((current) =>
       current.map((queuedMessage) =>
@@ -689,14 +665,11 @@ function Row({
                 stack={null}
                 composer={{
                   history: {
-                    currentDraft: inlineEditingQueuedMessage.draft,
                     entries: [],
                     onSelectEntry: noop,
                   },
                   isFollowUpSubmitting: false,
-                  message: inlineEditingQueuedMessage.draft.text,
-                  mentionRanges: inlineEditingQueuedMessage.draft.mentions,
-                  onChangeMessage: handleChangeInlineMessage,
+                  draft: inlineEditingQueuedMessage.draft,
                   onModifierSubmit: handleSubmit,
                   onSubmit: handleSubmit,
                   compactPromptPlaceholder: resolvedCompactPlaceholder,
@@ -725,7 +698,6 @@ function Row({
     [
       dismissInlineEditor,
       execution,
-      handleChangeInlineMessage,
       handleSubmit,
       inlineEditingQueuedMessage,
       permission,
@@ -783,18 +755,11 @@ function Row({
             ? null
             : {
                 history: {
-                  currentDraft: {
-                    text: message,
-                    mentions: mentionRanges,
-                    attachments: [],
-                  },
                   entries: historyEntries,
                   onSelectEntry: noop,
                 },
                 isFollowUpSubmitting,
-                message,
-                mentionRanges,
-                onChangeMessage: handleChangeMessage,
+                draft,
                 onModifierSubmit: noop,
                 onSubmit: noop,
                 compactPromptPlaceholder: resolvedCompactPlaceholder,

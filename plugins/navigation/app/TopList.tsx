@@ -5,6 +5,7 @@ import {
   useState,
   type ComponentProps,
 } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import {
   experimental_SidebarNavigationIcon as SidebarNavigationIcon,
   experimental_useSidebarNavigation,
@@ -200,27 +201,31 @@ function useScrollOverflow(itemCount: number) {
   useLayoutEffect(() => {
     const element = ref.current;
     if (element === null) return;
-    const update = () => {
-      const above = element.scrollTop > 1;
-      const below =
-        element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+    const read = () => ({
+      above: element.scrollTop > 1,
+      below:
+        element.scrollTop + element.clientHeight < element.scrollHeight - 1,
+    });
+    const apply = (next: { above: boolean; below: boolean }) => {
       setOverflow((current) =>
-        current.above === above && current.below === below
+        current.above === next.above && current.below === next.below
           ? current
-          : { above, below },
+          : next,
       );
     };
+    const update = () => apply(read());
     update();
     element.addEventListener("scroll", update, { passive: true });
     if (typeof ResizeObserver === "undefined") {
       return () => element.removeEventListener("scroll", update);
     }
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    for (const child of Array.from(element.children)) observer.observe(child);
+    const unobserve = observeSharedResize(
+      [element, ...Array.from(element.children)],
+      { read, write: apply },
+    );
     return () => {
       element.removeEventListener("scroll", update);
-      observer.disconnect();
+      unobserve();
     };
   }, [itemCount]);
   return [ref, overflow] as const;

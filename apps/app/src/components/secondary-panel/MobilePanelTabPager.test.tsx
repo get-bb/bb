@@ -112,8 +112,8 @@ describe("MobilePanelTabPager", () => {
     vi.stubGlobal(
       "ResizeObserver",
       class {
-        constructor(callback: () => void) {
-          measure = callback;
+        constructor(callback: (entries: ResizeObserverEntry[]) => void) {
+          measure = () => callback([]);
         }
         observe() {}
         disconnect = disconnect;

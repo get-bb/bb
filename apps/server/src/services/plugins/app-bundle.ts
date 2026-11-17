@@ -10,6 +10,7 @@ import {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
   findUnnamedPluginRoots,
+  keyPluginScopeOnAttribute,
 } from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
@@ -55,12 +56,18 @@ interface PluginAppAssets {
   jsPath: string;
   css: PluginCssBytes | null;
   ownedRootCss: PluginCssBytes | null;
+  pluginAttributeCss: PluginCssBytes | null;
   hash: string;
 }
 
+export type PluginCssScope = "legacy" | "owned-root" | "plugin-attribute";
+
 export interface PluginAppAsset {
   hash: string;
-  read(options: { hostTailwind: boolean; ownedRoot: boolean }): Promise<Buffer>;
+  read(options: {
+    hostTailwind: boolean;
+    scope: PluginCssScope;
+  }): Promise<Buffer>;
 }
 
 export function pluginAppAsset(
@@ -74,8 +81,14 @@ export function pluginAppAsset(
     ? undefined
     : {
         hash: assets.hash,
-        read: async ({ hostTailwind, ownedRoot }) => {
-          const selected = ownedRoot ? (assets.ownedRootCss ?? css) : css;
+        read: async ({ hostTailwind, scope }) => {
+          const ownedRoot = assets.ownedRootCss ?? css;
+          const selected =
+            scope === "plugin-attribute"
+              ? (assets.pluginAttributeCss ?? ownedRoot)
+              : scope === "owned-root"
+                ? ownedRoot
+                : css;
           return hostTailwind
             ? selected.withoutHostTailwind
             : selected.original;
@@ -344,6 +357,18 @@ export async function readPluginAppBundleMeta(
   return parsePluginAppBundleMeta(raw);
 }
 
+function transformCss(
+  css: PluginCssBytes,
+  transform: (css: string) => string,
+): PluginCssBytes {
+  return {
+    original: Buffer.from(transform(css.original.toString("utf8"))),
+    withoutHostTailwind: Buffer.from(
+      transform(css.withoutHostTailwind.toString("utf8")),
+    ),
+  };
+}
+
 export async function loadPluginAppBundle(
   pluginId: string,
   rootDir: string,
@@ -379,27 +404,21 @@ export async function loadPluginAppBundle(
   } catch {
     css = null;
   }
-  const ownedRootCss: PluginCssBytes | null =
-    css !== null && findUnnamedPluginRoots(js.toString("utf8")).length === 0
-      ? {
-          original: Buffer.from(
-            dropAnonymousPluginRootScope(css.original.toString("utf8")),
-          ),
-          withoutHostTailwind: Buffer.from(
-            dropAnonymousPluginRootScope(
-              css.withoutHostTailwind.toString("utf8"),
-            ),
-          ),
-        }
+  const ownsEveryRoot =
+    findUnnamedPluginRoots(js.toString("utf8")).length === 0;
+  const ownedRootCss =
+    css !== null && ownsEveryRoot
+      ? transformCss(css, dropAnonymousPluginRootScope)
+      : null;
+  const pluginAttributeCss =
+    css !== null && ownsEveryRoot
+      ? transformCss(css, keyPluginScopeOnAttribute)
       : null;
   const hasher = createHash("sha256").update(js);
-  if (css !== null) {
-    hasher.update(css.original);
-    hasher.update(css.withoutHostTailwind);
-  }
-  if (ownedRootCss !== null) {
-    hasher.update(ownedRootCss.original);
-    hasher.update(ownedRootCss.withoutHostTailwind);
+  for (const variant of [css, ownedRootCss, pluginAttributeCss]) {
+    if (variant === null) continue;
+    hasher.update(variant.original);
+    hasher.update(variant.withoutHostTailwind);
   }
   hasher.update(metaRaw);
   hasher.update(pluginId);
@@ -420,6 +439,6 @@ export async function loadPluginAppBundle(
         runtimeSlots: meta.runtimeSlots ?? ALL_RUNTIME_SLOTS,
       },
     },
-    assets: { jsPath, css, ownedRootCss, hash },
+    assets: { jsPath, css, ownedRootCss, pluginAttributeCss, hash },
   };
 }

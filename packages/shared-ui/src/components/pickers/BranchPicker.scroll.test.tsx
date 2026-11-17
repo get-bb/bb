@@ -1,10 +1,46 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BranchPicker } from "./BranchPicker";
 
 afterEach(cleanup);
+
+describe("BranchPicker modality", () => {
+  it("keeps the page interactive and closes when focus leaves", async () => {
+    render(
+      <>
+        <BranchPicker value="main" options={["main"]} onChange={vi.fn()} />
+        <button type="button">Outside control</button>
+      </>,
+    );
+    const trigger = screen.getByRole("combobox", { name: "Branch" });
+    const search = () => screen.queryByPlaceholderText("Search branches");
+
+    fireEvent.click(trigger);
+    expect(search()).not.toBeNull();
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
+    expect(getComputedStyle(document.body).pointerEvents).not.toBe("none");
+
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    await waitFor(() => expect(search()).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    const outside = screen.getByRole("button", { name: "Outside control" });
+    outside.focus();
+    await waitFor(() => expect(search()).toBeNull());
+    expect(document.activeElement).toBe(outside);
+  });
+});
 
 describe("BranchPicker search", () => {
   it("uses fuzzy matching and returns the results viewport to the top", () => {

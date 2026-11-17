@@ -285,6 +285,8 @@ export const pluginListResponseSchema = z.object({
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
+export const APP_SHELL_PLUGIN_LIST_ELEMENT_ID = "bb-plugin-list";
+
 export const pluginSourceSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("root") }).strict(),
   z

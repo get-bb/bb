@@ -8,6 +8,7 @@ import {
 } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@/components/ui/hover-reveal";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import {
   definePluginApp,
@@ -303,12 +304,10 @@ function PromptLibraryPopup() {
   useEffect(() => {
     const root = rootRef.current;
     if (root === null) return;
-    const measure = () =>
-      setTwoPane(root.getBoundingClientRect().width >= TWO_PANE_MIN_WIDTH);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(root);
-    return () => observer.disconnect();
+    const readTwoPane = () =>
+      root.getBoundingClientRect().width >= TWO_PANE_MIN_WIDTH;
+    setTwoPane(readTwoPane());
+    return observeSharedResize(root, { read: readTwoPane, write: setTwoPane });
   }, []);
 
   useEffect(() => {

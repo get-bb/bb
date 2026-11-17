@@ -1,5 +1,9 @@
 import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
+import type { SystemConfigResponse } from "@bb/server-contract";
 import { useInsertionEffect } from "react";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { appQueryClient } from "./app-query-client";
+import { keepPluginScopeAttributes } from "./plugin-scope-attributes";
 
 const CSS_MARKER = "data-bb-plugin-css";
 const CSS_PRELOAD_MARKER = "data-bb-plugin-css-preload";
@@ -182,7 +186,11 @@ function deactivateAfterFinalRelease(
 }
 
 function hostTailwindUrl(url: string): string {
-  return `${url}${url.includes("?") ? "&" : "?"}host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+  const keyed =
+    appQueryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey())
+      ?.experiments.keyedPluginCss === true;
+  if (keyed) keepPluginScopeAttributes();
+  return `${url}${url.includes("?") ? "&" : "?"}host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=${keyed ? "plugin-attribute-v1" : "owned-root-v1"}`;
 }
 
 export function prefetchPluginCss(url: string): void {

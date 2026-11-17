@@ -197,14 +197,13 @@ export function SidebarNavigationRegion({
   children: ReactNode;
 }) {
   const isRail = placement === "rail";
+  const { isCustomizing, setCustomizing, containerRef, focusReturnRef } =
+    customize;
   return (
-    <Popover
-      open={customize.isCustomizing}
-      onOpenChange={customize.setCustomizing}
-    >
+    <Popover open={isCustomizing} onOpenChange={setCustomizing}>
       <PopoverAnchor asChild>
         <nav
-          ref={customize.containerRef}
+          ref={containerRef}
           aria-label="Sidebar navigation"
           data-testid={
             isRail ? "sidebar-navigation-rail" : "sidebar-navigation-region"
@@ -218,8 +217,8 @@ export function SidebarNavigationRegion({
       <SidebarNavigationCustomizePopoverContent
         testId={isRail ? "nav-rail-customize" : "sidebar-navigation-customize"}
         placement={placement}
-        focusReturnRef={customize.focusReturnRef}
-        onClose={() => customize.setCustomizing(false)}
+        focusReturnRef={focusReturnRef}
+        onClose={() => setCustomizing(false)}
       />
     </Popover>
   );

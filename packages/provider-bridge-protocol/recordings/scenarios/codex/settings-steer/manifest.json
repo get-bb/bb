@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "settings-steer",
+  "threadId": "thr_b11c1b02b2",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.169.0",
+  "recordedAt": "2026-11-14",
+  "description": "Long turns, each steered with one changed setting: model, env var, permission mode, reasoning level.",
+  "note": "config/read responses trimmed to config.model; the rest was the recording machine's Codex config.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 9,
+    "bridge\u2192runtime": 169,
+    "provider\u2192bridge": 276,
+    "bridge\u2192provider": 17
+  }
+}

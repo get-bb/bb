@@ -642,6 +642,35 @@ describe("server session cleanup", () => {
     }
   });
 
+  it("gives the host call a deadline longer than the script timeout", async () => {
+    const h = await setup();
+    try {
+      const session = await openLocal(h);
+      await h.harness.behavior.callRpc("run", {
+        ...ownedBy(session.id),
+        script: "1",
+        timeoutMs: 120_000,
+      });
+      await h.harness.behavior.callRpc("run", {
+        ...ownedBy(session.id),
+        script: "1",
+      });
+      await h.harness.behavior.callRpc("pages", ownedBy(session.id));
+      await h.harness.behavior.callRpc("screenshot", {
+        ...ownedBy(session.id),
+        page: "main",
+      });
+      expect(hostCalls(h, "run").map(([call]) => call)).toMatchObject([
+        { input: { timeoutMs: 120_000 }, timeoutMs: 130_000 },
+        { input: { timeoutMs: 30_000 }, timeoutMs: 40_000 },
+        { input: { timeoutMs: 30_000 }, timeoutMs: 40_000 },
+        { input: { timeoutMs: 30_000 }, timeoutMs: 40_000 },
+      ]);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
   it("caps renewal at eight hours and closes work still running at the cap", async () => {
     vi.useFakeTimers();
     const h = await setup();

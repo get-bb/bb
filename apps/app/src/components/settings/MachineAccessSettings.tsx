@@ -1,6 +1,6 @@
 import type { ServerAccessStatus } from "@bb/server-contract";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
@@ -50,9 +50,9 @@ function useMachineAccess(): MachineAccessState {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
   );
-  useEffect(() => {
-    if (selectedProviderId === savedProviderId) setSelectedProviderId(null);
-  }, [savedProviderId, selectedProviderId]);
+  if (selectedProviderId !== null && selectedProviderId === savedProviderId) {
+    setSelectedProviderId(null);
+  }
   const selected = selectedProviderId ?? savedProviderId;
   const effective = access?.providers.find(
     (provider) => provider.id === selected,
@@ -100,8 +100,9 @@ function useMachineAccess(): MachineAccessState {
           return;
         }
       }
+      const machineServerUrl = url || null;
       try {
-        await update.mutateAsync({ machineServerUrl: url || null });
+        await update.mutateAsync({ machineServerUrl });
       } catch (saveError) {
         setError(
           getMutationErrorMessage({

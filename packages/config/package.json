@@ -152,6 +152,11 @@
       "source": "./src/desktop-app-update.ts",
       "types": "./src/desktop-app-update.ts",
       "default": "./src/desktop-app-update.ts"
+    },
+    "./desktop-runtime-ready": {
+      "source": "./src/desktop-runtime-ready.ts",
+      "types": "./src/desktop-runtime-ready.ts",
+      "default": "./src/desktop-runtime-ready.ts"
     }
   },
   "scripts": {
