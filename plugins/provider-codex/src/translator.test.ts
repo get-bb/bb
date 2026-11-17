@@ -160,6 +160,7 @@ describe("codex workspace-write git-root staging", () => {
     const translator = createTranslator();
     try {
       const prepared = translator.prepareWorkspaceWriteGitRoots({
+        supportsAgentsEnabled: true,
         command: {
           threadId: "bb-thread-1",
           cwd: fixture.workspacePath,
@@ -197,6 +198,7 @@ describe("codex workspace-write git-root staging", () => {
     });
     try {
       const prepared = translator.prepareWorkspaceWriteGitRoots({
+        supportsAgentsEnabled: true,
         command: {
           threadId: "bb-thread-1",
           cwd: fixture.workspacePath,
@@ -233,6 +235,7 @@ describe("codex workspace-write git-root staging", () => {
         ["bb-thread-2", secondFixture],
       ] as const) {
         translator.prepareWorkspaceWriteGitRoots({
+          supportsAgentsEnabled: true,
           command: {
             threadId,
             cwd: fixture.workspacePath,

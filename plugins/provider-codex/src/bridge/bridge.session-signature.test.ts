@@ -442,3 +442,75 @@ it("applies follow-up permission changes in both directions without replacing th
     recordedRequests().filter((request) => request.method === "initialize"),
   ).toHaveLength(1);
 }, 30_000);
+
+const subagentConfigCases = [
+  { userAgent: "bb/0.136.0 (Linux; x86_64)", modern: false },
+  { userAgent: "bb/0.144.0 (Linux; x86_64)", modern: false },
+  { userAgent: "bb/0.145.0-alpha.1 (Linux; x86_64)", modern: false },
+  { userAgent: "bb/0.145.0 (Linux; x86_64)", modern: true },
+  { userAgent: "bb/0.169.0 (Mac OS 27.2.1; arm64)", modern: true },
+  { userAgent: "unrecognized", modern: false },
+  { userAgent: "bb/0.145.00 (Linux; x86_64)", modern: false },
+  { userAgent: "unrecognized (OS 99.99.99)", modern: false },
+  { userAgent: undefined, modern: false },
+];
+
+for (const method of [
+  "thread/start",
+  "thread/resume",
+  "thread/fork",
+] as const) {
+  it.each(subagentConfigCases)(
+    `${method} selects compatible subagent configuration for $userAgent`,
+    async ({ userAgent, modern }) => {
+      writeFileSync(
+        scriptPath,
+        JSON.stringify({
+          requestLogPath,
+          initializeResult: { userAgent },
+        }),
+      );
+      harness.sendRequest(1, method, {
+        threadId: THREAD_ID,
+        cwd: workspaceDir,
+        instructionMode: "append",
+        ...(method === "thread/resume"
+          ? { providerThreadId: "existing-thread" }
+          : {}),
+        ...(method === "thread/fork"
+          ? { sourceProviderThreadId: "existing-thread" }
+          : {}),
+        options: {
+          ...FULL_ACCESS_SESSION_OPTIONS,
+          providerOptions: { providerSubagentsEnabled: false },
+        },
+      });
+      expect((await harness.waitForResponse(1)).error).toBeUndefined();
+      const request = recordedRequests().find(
+        (entry) => entry.method === method,
+      );
+      const { config } = z
+        .object({ config: z.record(z.string(), z.unknown()) })
+        .parse(request?.params);
+      expect(
+        Object.fromEntries(
+          Object.entries(config).filter(
+            ([key]) =>
+              key.startsWith("features.multi_agent") ||
+              key === "agents.enabled",
+          ),
+        ),
+      ).toEqual(
+        modern
+          ? {
+              "agents.enabled": false,
+              "features.multi_agent_v2": false,
+            }
+          : {
+              "features.multi_agent": false,
+              "features.multi_agent_v2.max_concurrent_threads_per_session": 1,
+            },
+      );
+    },
+  );
+}
