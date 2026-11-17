@@ -7,9 +7,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
-it.each(["", "1"])(
-  "keeps provider notifications gated while the cursor contains %j during an update",
-  async (incompleteCursor) => {
+it.each([
+  { cursor: "", lookahead: false },
+  { cursor: "1", lookahead: false },
+  { cursor: "1 5", lookahead: true },
+])(
+  "keeps provider notifications gated with cursor '$cursor' and lookahead=$lookahead",
+  async ({ cursor, lookahead }) => {
     const dir = mkdtempSync(join(tmpdir(), "bb-replay-cursor-"));
     const cursorPath = join(dir, "cursor");
     const notification = {
@@ -20,13 +24,22 @@ it.each(["", "1"])(
     for (const [direction, entries] of [
       [
         "bridge→provider",
-        [{ seq: 1, message: { jsonrpc: "2.0", id: 1, method: "initialize" } }],
+        [
+          { seq: 1, message: { jsonrpc: "2.0", id: 1, method: "initialize" } },
+          { seq: 11, message: { jsonrpc: "2.0", id: 2, method: "omitted" } },
+          { seq: 20, message: { jsonrpc: "2.0", id: 3, method: "future" } },
+        ],
       ],
       [
         "provider→bridge",
         [
           { seq: 2, message: { jsonrpc: "2.0", id: 1, result: {} } },
           { seq: 10, message: notification },
+          { seq: 12, message: { jsonrpc: "2.0", id: 2, result: {} } },
+          {
+            seq: 21,
+            message: { jsonrpc: "2.0", id: 3, result: { recorded: true } },
+          },
         ],
       ],
     ] as const) {
@@ -72,11 +85,22 @@ it.each(["", "1"])(
         .poll(() => output, { timeout: 10_000 })
         .toContain('"id":"ready"');
       expect(output).not.toContain('"method":"session/update"');
-      writeFileSync(cursorPath, incompleteCursor);
-      await delay(100);
+      writeFileSync(cursorPath, cursor);
+      if (lookahead) {
+        child.stdin.write(
+          `${JSON.stringify({ jsonrpc: "2.0", id: "future-live", method: "future" })}\n`,
+        );
+      }
+      await delay(lookahead ? 1500 : 100);
       expect(output).not.toContain('"method":"session/update"');
       writeFileSync(cursorPath, "end");
       await expect.poll(() => output).toContain(JSON.stringify(notification));
+      if (lookahead) {
+        await expect
+          .poll(() => output, { timeout: 10_000 })
+          .toContain('"recorded":true');
+        expect(output).toContain('"id":"future-live"');
+      }
     } finally {
       child.kill();
       await closed;
