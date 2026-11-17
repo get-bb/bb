@@ -76,18 +76,24 @@ const SDK = {
 function renderTab(
   rpc: Partial<PluginRpcTestHandlers<typeof gitRpcContract>> = {},
   options: {
+    environmentId?: string;
     canOpenFileExternally?: (target: ExperimentalLiveFileTarget) => boolean;
     experimental_fixedTabTarget?: { tabId: string; target: JsonValue };
     tabVisible?: boolean;
   } = {},
 ) {
-  return renderSlot({ component: DiffTab }, PROPS, {
-    rpc: { ...RPC, ...rpc } as PluginRpcTestHandlers<typeof gitRpcContract>,
-    experimental_rpcContract: gitRpcContract,
-    pluginId: "bb--git",
-    sdk: SDK as never,
-    ...options,
-  });
+  const { environmentId = "env-1", ...slotOptions } = options;
+  return renderSlot(
+    { component: DiffTab },
+    { ...PROPS, environment: { id: environmentId } },
+    {
+      rpc: { ...RPC, ...rpc } as PluginRpcTestHandlers<typeof gitRpcContract>,
+      experimental_rpcContract: gitRpcContract,
+      pluginId: "bb--git",
+      sdk: SDK as never,
+      ...slotOptions,
+    },
+  );
 }
 
 function VisibilityProbe(props: ExperimentalThreadTabProps) {
@@ -144,9 +150,12 @@ describe("useDiffTabVisible", () => {
 
 describe("DiffTab", () => {
   it("shows the status failure and retries the status read", async () => {
-    const rendered = renderTab({
-      status: statusRows({ outcome: "failed", message: "Host is offline." }),
-    });
+    const rendered = renderTab(
+      {
+        status: statusRows({ outcome: "failed", message: "Host is offline." }),
+      },
+      { environmentId: "env-initial-status-failure" },
+    );
     expect(await screen.findByText("Host is offline.")).toBeTruthy();
     const reads = () =>
       rendered.rpcCalls.filter((call) => call.method === "status").length;
