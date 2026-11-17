@@ -2275,18 +2275,21 @@ Docs: `testing.md`.
 carries the unresolved `icon` / `logoUrl` pair and `maintenance`. Stabilizing
 the hook freezes that shape.
 
-Returns `{ status, providers }`, the host's `ProviderInfo[]` roster in picker
-order with shared cache and realtime invalidation.
+Returns `{ status, providers }`: every registered provider's `ProviderInfo`
+in picker order, whichever machine has it installed, read from the provider
+catalog with shared cache, last-known replay and realtime invalidation. Core's
+home Recents list reads the same directory (`useProviderDirectory`).
 
 Docs: `frontend-registration.md`,
 [provider-plugin-api.md](provider-plugin-api.md) §5.
 
 **Audit before stabilizing.**
 
-1. **Routing.** The hook reads the primary-host roster (no `environmentId` /
-   `hostId` argument), so installed-only providers of another machine are not
-   listed. Decide whether plugins need host-scoped listing before freezing the
-   signature.
+1. **Routing.** The hook lists every registered provider, including
+   installed-only providers no connected machine has installed and providers
+   the user disabled; `available` is the registry's flag, not a per-machine
+   check. Decide whether plugins also need a host-scoped roster before
+   freezing the signature.
 2. **Icons.** A provider's SVG asset arrives as `logoUrl` (drawn as a
    `currentColor` mask) and a named glyph as `icon: { glyph }`; at most one is
    set. Decide whether `icon` and `logoUrl` fold into one `{ glyph } | { url }`

@@ -285,8 +285,9 @@ registered agent provider in picker order, as the same `ProviderInfo` the
 host's composer reads (`id`, `pluginId`, `displayName`, `family`, `icon`,
 `logoUrl`, `available`, `capabilities`, `maintenance`, `extensionKinds`,
 `composerActions`, and the declared `strings`, `reasoningLevels`,
-`serviceTiers`). It reads the host's own cached roster, so
-it costs no extra request. Use it whenever a surface shows a thread's or
+`serviceTiers`). It lists a provider whichever machine has it
+installed, so a remote thread's provider resolves too, and it reads bb's own
+cached provider catalog. Use it whenever a surface shows a thread's or
 automation's provider: never vendor provider names or copy in a plugin.
 
 ```tsx
