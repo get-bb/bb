@@ -415,6 +415,10 @@ const REQUEST_PATHS: readonly RequestPath[] = [
   },
   {
     name: "conversation outline",
+    linearStatements: {
+      "thread history":
+        "Builds and stores a summary for each finished turn that has none, up to 2,000 sequences of turns per load",
+    },
     linearResponse: {
       "thread history": "Lists every message in the thread",
       "turn size":
