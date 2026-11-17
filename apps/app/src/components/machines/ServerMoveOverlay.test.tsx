@@ -378,7 +378,7 @@ describe("ServerMoveOverlay", () => {
       })
       .mockResolvedValue({
         ok: true,
-        serverMove: { moveId: "move_1", state: "activating" },
+        serverMove: { moveId: "move_1", state: "pending" },
       });
     const { navigateTo } = renderOverlay(
       "/projects/proj_1/threads/thr_1?panel=diff#turn-3",
@@ -391,11 +391,13 @@ describe("ServerMoveOverlay", () => {
     expect(
       within(waiting).queryByRole("link", { name: "Open the new address" }),
     ).toBeNull();
-    await waitFor(() => {
-      expect(
-        vi.mocked(fetchServerHealth).mock.calls.length,
-      ).toBeGreaterThanOrEqual(3);
+    vi.mocked(fetchServerHealth).mockResolvedValue({
+      ok: true,
+      serverMove: { moveId: "move_1", state: "activating" },
     });
+    await screen.findByText(
+      "desk is switching over to the new server. This page opens it as soon as it's ready.",
+    );
     expect(navigateTo).not.toHaveBeenCalled();
     vi.mocked(fetchServerHealth).mockResolvedValue({
       ok: true,
@@ -429,21 +431,15 @@ describe("ServerMoveOverlay", () => {
   });
 
   it("waits for a bb connect move to answer on the same address, then dismisses with a toast", async () => {
-    vi.mocked(sdk.experimental_server.moveStatus)
-      .mockResolvedValueOnce({
-        move: move({
-          state: "completed",
-          cancellable: false,
-          finishedAt: 2_000,
-          steps: ALL_DONE,
-        }),
-        lastMove: null,
-      })
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValue({
-        move: null,
-        lastMove: lastMove({ moveId: "move_0", toHostName: "old-desk" }),
-      });
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: move({
+        state: "completed",
+        cancellable: false,
+        finishedAt: 2_000,
+        steps: ALL_DONE,
+      }),
+      lastMove: null,
+    });
     realtime.state = "reconnecting";
     const { navigateTo, queryClient } = renderOverlay();
 
@@ -451,6 +447,12 @@ describe("ServerMoveOverlay", () => {
       await screen.findByRole("dialog", { name: "Reconnecting to desk…" }),
     ).toBeDefined();
 
+    vi.mocked(sdk.experimental_server.moveStatus)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue({
+        move: null,
+        lastMove: lastMove({ moveId: "move_0", toHostName: "old-desk" }),
+      });
     await waitFor(() => {
       expect(
         queryClient.getQueryData<ServerMoveStatusResponse>(
