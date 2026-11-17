@@ -18,10 +18,13 @@ import {
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import { CommandPalette } from "./CommandPalette";
 
-const body = vi.hoisted(() => ({
-  imports: 0,
-  release: () => {},
-}));
+const body = vi.hoisted(() => {
+  let loaded = () => {};
+  const ready = new Promise<void>((resolve) => {
+    loaded = resolve;
+  });
+  return { imports: 0, release: () => {}, ready, loaded };
+});
 const calls = vi.hoisted(() => [] as AppCommandId[]);
 
 vi.mock("./CommandPaletteBody", async (importOriginal) => {
@@ -29,7 +32,9 @@ vi.mock("./CommandPaletteBody", async (importOriginal) => {
   await new Promise<void>((resolve) => {
     body.release = resolve;
   });
-  return importOriginal();
+  const module = await importOriginal();
+  body.loaded();
+  return module;
 });
 
 function binding(
@@ -139,7 +144,10 @@ it("stays usable before its body downloads on first open and keeps typed text", 
   fireEvent.change(input, { target: { value: "new thr" } });
   expect(body.imports).toBe(1);
 
-  await act(async () => body.release());
+  await act(async () => {
+    body.release();
+    await body.ready;
+  });
   const combobox = await screen.findByRole("combobox", {
     name: "Search commands",
   });

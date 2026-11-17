@@ -29,7 +29,8 @@ import {
 } from "./markdown-message-directives";
 import { MarkdownPreview } from "./markdown-preview";
 
-beforeAll(() => LazyMarkdownHtml.preload());
+await LazyMarkdownHtml.preload();
+await import("./markdown-katex.js");
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();

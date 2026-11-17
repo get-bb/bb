@@ -30,6 +30,8 @@ type PluginCall = Extract<
 >;
 
 const artifactSource = Buffer.from(`
+import { randomUUID } from "node:crypto";
+const bootId = randomUUID();
 const anySchema = { "~standard": { validate(value) { return { value }; } } };
 const stringSchema = { "~standard": { validate(value) { return typeof value === "string" ? { value } : { issues: [{ message: "expected string" }] }; } } };
 let lastPaths;
@@ -92,7 +94,7 @@ export default {
       finish();
       return { released: true };
     },
-    echo(input) { return { input, pid: process.pid }; },
+    echo(input) { return { input, pid: process.pid, bootId }; },
     wait(_input, context) {
       return new Promise((resolve) => {
         context.signal.addEventListener("abort", () => resolve({ aborted: true }), { once: true });
@@ -131,7 +133,7 @@ export default {
         await retainedLease?.dispose();
         retainedLease = undefined;
       }
-      return { retained: retainedLease !== undefined, pid: process.pid };
+      return { retained: retainedLease !== undefined, pid: process.pid, bootId };
     },
     hangDispose() {
       hangOnDispose = true;
@@ -783,7 +785,7 @@ describe("PluginHostManager", () => {
       workerIdleTimeoutMs: 20,
     });
     const first = await manager.call(callCommand());
-    const firstPid = Reflect.get(Object(first.output), "pid");
+    const firstBootId = Reflect.get(Object(first.output), "bootId");
 
     await vi.waitFor(
       () =>
@@ -799,7 +801,9 @@ describe("PluginHostManager", () => {
     );
     const restarted = await manager.call(callCommand());
 
-    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
+    expect(Reflect.get(Object(restarted.output), "bootId")).not.toBe(
+      firstBootId,
+    );
     expect(onWorkerExit).not.toHaveBeenCalled();
     expect(logger.debug).toHaveBeenCalledWith(
       expect.objectContaining({ digest: expect.any(String) }),
@@ -817,11 +821,13 @@ describe("PluginHostManager", () => {
     const retained = await manager.call(
       callCommand({ method: "retain", input: { enabled: true } }),
     );
-    const retainedPid = Reflect.get(Object(retained.output), "pid");
+    const retainedBootId = Reflect.get(Object(retained.output), "bootId");
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     const whileRetained = await manager.call(callCommand());
-    expect(Reflect.get(Object(whileRetained.output), "pid")).toBe(retainedPid);
+    expect(Reflect.get(Object(whileRetained.output), "bootId")).toBe(
+      retainedBootId,
+    );
 
     await manager.call(
       callCommand({ method: "retain", input: { enabled: false } }),
@@ -839,7 +845,9 @@ describe("PluginHostManager", () => {
       { timeout: 5_000 },
     );
     const restarted = await manager.call(callCommand());
-    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(retainedPid);
+    expect(Reflect.get(Object(restarted.output), "bootId")).not.toBe(
+      retainedBootId,
+    );
   });
 
   it("rejects unverified or invalid artifacts", async () => {
@@ -1089,7 +1097,7 @@ describe("PluginHostManager", () => {
     };
     const manager = await createManager({ logger, onWorkerExit });
     const first = await manager.call(callCommand());
-    const firstPid = Reflect.get(Object(first.output), "pid");
+    const firstBootId = Reflect.get(Object(first.output), "bootId");
 
     await expect(
       manager.call(callCommand({ method: "crash" })),
@@ -1109,7 +1117,9 @@ describe("PluginHostManager", () => {
       "Host plugin worker exited unexpectedly",
     );
     const restarted = await manager.call(callCommand());
-    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
+    expect(Reflect.get(Object(restarted.output), "bootId")).not.toBe(
+      firstBootId,
+    );
 
     await manager.reconcileGenerations([]);
     await expect(manager.call(callCommand())).rejects.toThrow(/is retired/u);

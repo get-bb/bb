@@ -82,8 +82,12 @@ describe("bb.onInstall", () => {
   });
 
   afterEach(async () => {
-    await service.stop();
-    await rm(workDir, { recursive: true, force: true });
+    try {
+      await service.stop();
+    } finally {
+      db.$client.close();
+      await rm(workDir, { recursive: true, force: true });
+    }
   });
 
   it("runs once on a fresh install and again only after removal", async () => {
@@ -122,15 +126,17 @@ describe("bb.onInstall", () => {
 
   it("stops waiting for a handler that never settles", async () => {
     const rootDir = join(workDir, "hanging");
+    const startedPath = join(workDir, "hook-started.txt");
     await writeHookPlugin(rootDir, {
       name: "bb-plugin-hanging",
-      handlerBody: `await new Promise(() => {});`,
+      handlerBody: `appendFileSync(${JSON.stringify(startedPath)}, String(performance.now())); await new Promise(() => {});`,
     });
 
-    const startedAt = Date.now();
     const entry = await service.install(rootDir, { kind: "root" });
+    const finishedAt = performance.now();
+    const startedAt = Number(await readFile(startedPath, "utf8"));
 
     expect(entry).toMatchObject({ id: "hanging", status: "running" });
-    expect(Date.now() - startedAt).toBeLessThan(4000);
+    expect(finishedAt - startedAt).toBeLessThan(4000);
   });
 });

@@ -155,6 +155,12 @@ async function seed(target: ServedTestConnectDb): Promise<void> {
     NOW,
   );
   await exec(
+    "INSERT INTO machine (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('mch-unseen', $1, 'unseen', 'unseen', $2, $3)",
+    OWNER,
+    await sha256Hex("bbcm_machine_unseen"),
+    NOW,
+  );
+  await exec(
     "INSERT INTO machine (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('mch-box', $1, 'box', 'box', $2, $3)",
     OWNER,
     await sha256Hex(MACHINE_CREDENTIAL),
@@ -369,19 +375,19 @@ describe("POST /api/gate/resolve", () => {
       revoked: false,
       lastSeenAt: expect.any(Number),
     });
-    const machine = (await resolve({ label: "box" })).label as Record<
+    const machine = (await resolve({ label: "unseen" })).label as Record<
       string,
       unknown
     >;
     expect(machine).toMatchObject({
       kind: "machine",
-      machineId: "mch-box",
+      machineId: "mch-unseen",
       userId: OWNER,
       accountHandle: "owner",
       revoked: false,
       lastSeenAt: null,
     });
-    expect(machine.routingKey).toMatch(/^box:/u);
+    expect(machine.routingKey).toMatch(/^unseen:/u);
     expect((await resolve({ label: "gone" })).label).toMatchObject({
       kind: "server",
       revoked: true,

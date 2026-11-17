@@ -1,3 +1,5 @@
+import { ChildProcess } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import type { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
@@ -29,28 +31,46 @@ export function spawnedAppServerPids(processLogPath: string): number[] {
     .filter((pid) => Number.isSafeInteger(pid) && pid > 0);
 }
 
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && Reflect.get(error, "code") === "ESRCH") {
-      return false;
+export function trackAppServerChildren(scriptPath: string) {
+  const children: ChildProcess[] = [];
+  const childProcessChannel = channel("child_process");
+  const onChildProcess = (message: unknown): void => {
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      "process" in message &&
+      message.process instanceof ChildProcess
+    ) {
+      children.push(message.process);
     }
-    throw error;
-  }
+  };
+  childProcessChannel.subscribe(onChildProcess);
+  return {
+    runningPids(): number[] {
+      return children.flatMap((child) =>
+        child.spawnargs.includes(scriptPath) &&
+        child.pid !== undefined &&
+        child.exitCode === null &&
+        child.signalCode === null
+          ? [child.pid]
+          : [],
+      );
+    },
+    restore(): void {
+      childProcessChannel.unsubscribe(onChildProcess);
+    },
+  };
 }
 
-export async function waitForAppServerChildrenToExit(
-  processLogPath: string,
+async function waitForAppServerChildrenToExit(
+  children: ReturnType<typeof trackAppServerChildren>,
   timeoutMs = 8_000,
 ): Promise<void> {
-  const childPids = spawnedAppServerPids(processLogPath);
   const deadline = Date.now() + timeoutMs;
-  while (childPids.some(processIsAlive)) {
+  while (children.runningPids().length > 0) {
     if (Date.now() > deadline) {
       throw new Error(
-        `Timed out waiting for app-server children to exit: ${JSON.stringify(childPids.filter(processIsAlive))}`,
+        `Timed out waiting for app-server children to exit: ${JSON.stringify(children.runningPids())}`,
       );
     }
     await new Promise((resolveTick) =>
@@ -81,7 +101,7 @@ export async function cleanupBridgeProcessTest(args: {
   cleanupId: number;
   threadId: string;
   providerThreadId: string;
-  processLogPath: string;
+  children: ReturnType<typeof trackAppServerChildren> | undefined;
   workspaceDir: string;
   unstubEnvs: () => void;
 }): Promise<void> {
@@ -100,10 +120,13 @@ export async function cleanupBridgeProcessTest(args: {
     }
   }
   try {
-    await waitForAppServerChildrenToExit(args.processLogPath);
+    if (args.children !== undefined) {
+      await waitForAppServerChildrenToExit(args.children);
+    }
   } catch (error) {
     errors.push(error);
   }
+  args.children?.restore();
   try {
     args.harness?.restore();
   } catch (error) {
