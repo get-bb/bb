@@ -1,3 +1,4 @@
+import { EventEmitter, once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import {
@@ -38,7 +39,7 @@ const VARS = {
   AI_UPSTREAM_BASE_URL: "https://openrouter.test/api/v1",
 };
 
-let upstreamGate: Promise<void> = Promise.resolve();
+let upstreamGate = () => Promise.resolve();
 
 function gateway(
   script: string,
@@ -69,7 +70,7 @@ function gateway(
           { headers: { "content-type": "application/json" } },
         );
       }
-      await upstreamGate;
+      await upstreamGate();
       return new MiniflareResponse(
         JSON.stringify({
           model: "nvidia/nemotron-3.5-lightning",
@@ -148,7 +149,7 @@ afterEach(async () => {
   );
   databases.clear();
   upstreamBodies.length = 0;
-  upstreamGate = Promise.resolve();
+  upstreamGate = () => Promise.resolve();
 });
 
 function complete(instance: Miniflare, prompt = "title please") {
@@ -257,29 +258,47 @@ describe("bb-ai-gateway worker on Postgres", { timeout: 30_000 }, () => {
     });
   });
 
-  it("holds concurrent reservations to the daily limit", async () => {
+  it("holds concurrent reservations to the daily limit", async ({
+    signal,
+    onTestFinished,
+  }) => {
     const tight = await seededGateway({
       ...VARS,
       AI_DAILY_BUDGET_MICROS: "25000",
       OPENROUTER_API_KEY: "sk-or-test",
     });
     let release: () => void = () => {};
-    upstreamGate = new Promise<void>((resolve) => {
+    const held = new Promise<void>((resolve) => {
       release = resolve;
     });
     const before = upstreamBodies.length;
     const statuses: number[] = [];
+    const progress = new EventEmitter();
+    const ready = once(progress, "ready", { signal });
+    const notify = () => {
+      if (upstreamBodies.length - before === 5 && statuses.length === 3) {
+        progress.emit("ready");
+      }
+    };
+    upstreamGate = () => {
+      notify();
+      return held;
+    };
     const pending = Array.from({ length: 8 }, () =>
       complete(tight).then((response) => {
         statuses.push(response.status);
+        notify();
         return response.arrayBuffer();
       }),
     );
+    onTestFinished(async () => {
+      release();
+      await Promise.allSettled(pending);
+    });
     try {
-      await vi.waitFor(() => {
-        expect(upstreamBodies.length - before).toBe(5);
-        expect(statuses).toHaveLength(3);
-      });
+      await ready;
+      expect(upstreamBodies.length - before).toBe(5);
+      expect(statuses).toHaveLength(3);
       expect(statuses).toEqual([402, 402, 402]);
     } finally {
       release();
