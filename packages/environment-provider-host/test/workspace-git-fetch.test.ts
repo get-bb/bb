@@ -1,8 +1,17 @@
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { initRepo, makeTempDir } from "@bb/test-helpers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { fetchRemoteBranches } from "../src/branch-options.js";
 import { runGit } from "../src/workspace-git.js";
 
@@ -128,20 +137,8 @@ describe("background Git authentication", () => {
 });
 
 describe("remote branch refresh", () => {
-  async function repoWithRemotes(names: string[]) {
-    const started = performance.now();
-    const phase = (phase: string) =>
-      process.stderr.write(
-        JSON.stringify({
-          probe: "fetch-fixture",
-          names,
-          phase,
-          elapsed: performance.now() - started,
-        }) + "\n",
-      );
-    phase("setup-start");
+  async function beforeRepoWithRemotes(names: string[]) {
     const repo = await initRepo(await makeTempDir("bb-git-fetch-remotes-"));
-    phase("local-repo-ready");
     for (const name of names) {
       const remote = await makeTempDir(`bb-git-fetch-${name}-`);
       await runGit(["init", "--bare", "-q"], { cwd: remote });
@@ -152,7 +149,56 @@ describe("remote branch refresh", () => {
         cwd: repo,
       });
     }
-    phase("setup-finished");
+    return repo;
+  }
+
+  let templateRoot: string;
+
+  beforeAll(async () => {
+    const started = performance.now();
+    templateRoot = await fs.mkdtemp(
+      path.join(tmpdir(), "bb-git-fetch-template-"),
+    );
+    const repo = path.join(templateRoot, "repo");
+    const remote = path.join(templateRoot, "remote");
+    await fs.mkdir(repo);
+    await fs.mkdir(remote);
+    await initRepo(repo);
+    await runGit(["init", "--bare", "-q"], { cwd: remote });
+    await runGit(["push", "-q", remote, "main", "main:stale"], { cwd: repo });
+    process.stderr.write(
+      JSON.stringify({
+        probe: "git-template-build",
+        elapsed: performance.now() - started,
+      }) + "\n",
+    );
+  });
+
+  afterAll(async () => {
+    if (templateRoot)
+      await fs.rm(templateRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 20,
+        retryDelay: 100,
+      });
+  });
+
+  async function repoWithRemotes(names: string[]) {
+    const root = await makeTempDir("bb-git-fetch-remotes-");
+    const repo = path.join(root, "repo");
+    await fs.cp(path.join(templateRoot, "repo"), repo, { recursive: true });
+    for (const name of names) {
+      const remote = path.join(root, name);
+      await fs.cp(path.join(templateRoot, "remote"), remote, {
+        recursive: true,
+      });
+      await runGit(["remote", "add", name, `../${name}`], { cwd: repo });
+      await runGit(["fetch", "-q", name], { cwd: repo });
+      await runGit(["push", "-q", remote, "main:fresh", ":stale"], {
+        cwd: repo,
+      });
+    }
     return repo;
   }
 
@@ -170,27 +216,34 @@ describe("remote branch refresh", () => {
   it.each([true, false])(
     "fetches and prunes only origin when other remotes exist (interactive: %s)",
     async (interactive) => {
-      const repo = await repoWithRemotes(["alpha", "origin", "zeta"]);
-      const started = performance.now();
-      const result = await fetchRemoteBranches(repo, { interactive });
-      process.stderr.write(
-        JSON.stringify({
-          probe: "fetch-owner",
-          interactive,
-          elapsed: performance.now() - started,
-          result,
-        }) + "\n",
-      );
-
-      expect(result.status).toBe("fetched");
-      expect(await remoteBranches(repo)).toEqual([
-        "alpha/main",
-        "alpha/stale",
-        "origin/fresh",
-        "origin/main",
-        "zeta/main",
-        "zeta/stale",
-      ]);
+      for (const mode of ["before", "after", "after", "before"]) {
+        const started = performance.now();
+        const repo = await (
+          mode === "before" ? beforeRepoWithRemotes : repoWithRemotes
+        )(["alpha", "origin", "zeta"]);
+        const ready = performance.now();
+        const result = await fetchRemoteBranches(repo, { interactive });
+        const completed = performance.now();
+        expect(result.status).toBe("fetched");
+        expect(await remoteBranches(repo)).toEqual([
+          "alpha/main",
+          "alpha/stale",
+          "origin/fresh",
+          "origin/main",
+          "zeta/main",
+          "zeta/stale",
+        ]);
+        process.stderr.write(
+          JSON.stringify({
+            probe: "git-fixture-pair",
+            mode,
+            interactive,
+            setupMs: ready - started,
+            ownerMs: completed - ready,
+            totalMs: performance.now() - started,
+          }) + "\n",
+        );
+      }
     },
   );
 
