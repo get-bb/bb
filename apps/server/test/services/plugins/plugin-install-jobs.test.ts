@@ -186,7 +186,15 @@ describe("install cancellation", () => {
       if (!(socket instanceof Socket)) {
         throw new Error("Expected a descendant connection");
       }
-      const closed = once(socket, "close", { signal });
+      signal.throwIfAborted();
+      const closed = new Promise<void>((resolve, reject) => {
+        const onAbort = () => reject(signal.reason);
+        signal.addEventListener("abort", onAbort, { once: true });
+        socket.once("close", () => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        });
+      });
       void closed.catch(() => {});
       const started = performance.now();
       controller.abort();
