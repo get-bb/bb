@@ -8,12 +8,13 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
 it.each([
-  { cursor: "", lookahead: false },
-  { cursor: "1", lookahead: false },
-  { cursor: "1 5", lookahead: true },
+  { cursor: "", lookahead: false, queued: false },
+  { cursor: "1", lookahead: false, queued: false },
+  { cursor: "1 5", lookahead: true, queued: false },
+  { cursor: "1 5", lookahead: true, queued: true },
 ])(
-  "keeps provider notifications gated with cursor '$cursor' and lookahead=$lookahead",
-  async ({ cursor, lookahead }) => {
+  "keeps provider notifications gated with cursor '$cursor' and lookahead=$lookahead (queued: $queued)",
+  async ({ cursor, lookahead, queued }) => {
     const dir = mkdtempSync(join(tmpdir(), "bb-replay-cursor-"));
     const cursorPath = join(dir, "cursor");
     const notification = {
@@ -26,6 +27,14 @@ it.each([
         "bridge→provider",
         [
           { seq: 1, message: { jsonrpc: "2.0", id: 1, method: "initialize" } },
+          ...(queued
+            ? [
+                {
+                  seq: 10.1,
+                  message: { jsonrpc: "2.0", id: 4, method: "preceding" },
+                },
+              ]
+            : []),
           { seq: 11, message: { jsonrpc: "2.0", id: 2, method: "omitted" } },
           { seq: 20, message: { jsonrpc: "2.0", id: 3, method: "future" } },
         ],
@@ -35,6 +44,9 @@ it.each([
         [
           { seq: 2, message: { jsonrpc: "2.0", id: 1, result: {} } },
           { seq: 10, message: notification },
+          ...(queued
+            ? [{ seq: 10.2, message: { jsonrpc: "2.0", id: 4, result: {} } }]
+            : []),
           { seq: 12, message: { jsonrpc: "2.0", id: 2, result: {} } },
           {
             seq: 21,
@@ -87,6 +99,13 @@ it.each([
       expect(output).not.toContain('"method":"session/update"');
       writeFileSync(cursorPath, cursor);
       if (lookahead) {
+        if (queued) {
+          for (const method of ["preceding", "omitted"]) {
+            child.stdin.write(
+              `${JSON.stringify({ jsonrpc: "2.0", id: `${method}-live`, method })}\n`,
+            );
+          }
+        }
         child.stdin.write(
           `${JSON.stringify({ jsonrpc: "2.0", id: "future-live", method: "future" })}\n`,
         );
@@ -100,6 +119,10 @@ it.each([
           .poll(() => output, { timeout: 10_000 })
           .toContain('"recorded":true');
         expect(output).toContain('"id":"future-live"');
+        if (queued) {
+          expect(output).toContain('"id":"preceding-live"');
+          expect(output).toContain('"id":"omitted-live"');
+        }
       }
     } finally {
       child.kill();

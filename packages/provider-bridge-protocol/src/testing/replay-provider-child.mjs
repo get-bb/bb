@@ -642,6 +642,10 @@ function main() {
    */
   function lookAhead() {
     lookaheadTimer = null;
+    if (emitTimer !== null) {
+      lookaheadTimer = setTimeout(lookAhead, CURSOR_POLL_MS);
+      return;
+    }
     for (const live of pendingLive) {
       for (let index = position + 1; index < script.length; index += 1) {
         const step = script[index];
