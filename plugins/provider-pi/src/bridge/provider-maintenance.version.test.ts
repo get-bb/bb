@@ -83,6 +83,14 @@ describe("Pi version probe", () => {
   it.skipIf(process.platform !== "win32")(
     "probes a Pi .cmd shim on PATH and passes the install gate",
     async () => {
+      const phases: Array<{ phase: string; elapsedMs: number }> = [];
+      let previous = performance.now();
+      const mark = (phase: string): void => {
+        const now = performance.now();
+        phases.push({ phase, elapsedMs: Math.round(now - previous) });
+        previous = now;
+        console.error("PI_VERSION_TIMING", JSON.stringify(phases.at(-1)));
+      };
       const root = await mkdtemp(path.join(os.tmpdir(), "bb pi version-"));
       temporaryDirectories.push(root);
       const pkg = path.join(
@@ -96,7 +104,9 @@ describe("Pi version probe", () => {
         path.join(pkg, "package.json"),
         JSON.stringify({ bin: { pi: "cli.cjs" } }),
       );
+      mark("prepare package");
       await copyFile(process.execPath, path.join(root, "node.exe"));
+      mark("copy node.exe");
       const cli = path.join(pkg, "cli.cjs");
       await writeFile(
         cli,
@@ -110,18 +120,24 @@ describe("Pi version probe", () => {
       vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);
       vi.stubEnv(PI_BRIDGE_COMMAND_ENV, "pi");
       vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
+      mark("prepare shim and env");
       expect(await probePiVersion()).toEqual({
         version: "0.85.1",
         failure: null,
       });
+      mark("direct probe");
       expect(await getPiInstallGate()).toEqual({
         ok: true,
         installedVersion: "0.85.1",
       });
+      mark("install gate");
       expect(await getPiProviderInstallationStatus(false)).toMatchObject({
         executablePath: path.join(root, "pi.cmd"),
         currentVersion: "0.85.1",
       });
+      mark("installation status");
+      throw new Error(`PI_VERSION_TIMING_COMPLETE ${JSON.stringify(phases)}`);
     },
+    60_000,
   );
 });
