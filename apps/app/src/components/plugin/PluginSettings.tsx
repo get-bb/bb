@@ -353,7 +353,11 @@ function AutosavingPluginSetting({
   ) {
     setSyncedInputs(syncInputs);
     if (!draftState.hasNewerDraft && !save.isPending && !save.isError) {
-      setDraftState({ value: initialDraft, hasNewerDraft: false });
+      const value =
+        save.isSuccess && syncedInputs.initialDraft === initialDraft
+          ? initialSettingDraft(descriptor, save.data.values[settingKey])
+          : initialDraft;
+      setDraftState({ value, hasNewerDraft: false });
     }
   }
 
