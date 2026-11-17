@@ -2,16 +2,19 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  lstatSync,
   readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CLAUDE_SKILL_PLUGIN_NAME,
   createClaudeSkillPluginsRoot,
+  directoryLinkType,
   ensureClaudeSkillPlugin,
   filterClaudeSkillRoots,
 } from "../skill-plugins.js";
@@ -60,6 +63,30 @@ describe("claude skill plugins", () => {
       "---\nname: demo\ndescription: Different instructions\n---\n",
     );
     expect(await filterClaudeSkillRoots(args)).toEqual(args.roots);
+  });
+
+  it("links skill directories with junctions on Windows, which need no symlink privilege (#7212)", () => {
+    expect(directoryLinkType("win32")).toBe("junction");
+    expect(directoryLinkType("linux")).toBe("dir");
+    expect(directoryLinkType("darwin")).toBe("dir");
+  });
+
+  it("keeps an existing link whose target is stored with a trailing separator, as Windows junctions are", () => {
+    const pluginsRoot = createClaudeSkillPluginsRoot(baseDir);
+    const root = stageSkills("a");
+    const pluginPath = ensureClaudeSkillPlugin({
+      pluginsRoot,
+      root: { id: "r", path: root },
+    });
+    const skillsLink = join(pluginPath, "skills");
+    rmSync(skillsLink, { force: true });
+    symlinkSync(`${root}${sep}`, skillsLink, "dir");
+    const before = lstatSync(skillsLink).ino;
+
+    ensureClaudeSkillPlugin({ pluginsRoot, root: { id: "r", path: root } });
+
+    expect(lstatSync(skillsLink).ino).toBe(before);
+    expect(readlinkSync(skillsLink)).toBe(`${root}${sep}`);
   });
 
   it("is idempotent for a root and re-points the link when the root moves", () => {
