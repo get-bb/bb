@@ -295,8 +295,11 @@ describe("useProviderDirectory", () => {
     await vi.waitFor(() => {
       expect(warm.getCurrentResult().data).toEqual([remoteOnly, local]);
     });
+    expect(findKnownProviderModelCatalogScope(warmClient, "remote-only")).toBe(
+      "workspace",
+    );
     expect(
-      findKnownProviderModelCatalogScope(warmClient, "remote-only"),
+      findKnownProviderModelCatalogScope(warmClient, "declared-only"),
     ).toBeUndefined();
     stopObserving();
 

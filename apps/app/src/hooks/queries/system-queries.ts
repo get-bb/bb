@@ -242,7 +242,12 @@ export function findKnownProviderModelCatalogScope(
       return scope;
     }
   }
-  return undefined;
+  const catalog = queryClient.getQueryData<SystemProviderCatalogEntry[]>(
+    systemProviderCatalogQueryKey(),
+  );
+  return scopeIn(
+    catalog === undefined ? undefined : selectProviderDirectory(catalog),
+  );
 }
 
 export function systemProvidersQueryOptions(args: UseSystemProvidersArgs = {}) {
@@ -739,12 +744,16 @@ async function fetchSystemProviderCatalog(): Promise<
   return catalog;
 }
 
-export function useSystemProviderCatalog() {
-  useSystemRealtimeSubscription({ enabled: true });
-  return useQuery({
+function systemProviderCatalogQueryOptions() {
+  return queryOptions({
     queryKey: systemProviderCatalogQueryKey(),
     queryFn: fetchSystemProviderCatalog,
   });
+}
+
+export function useSystemProviderCatalog() {
+  useSystemRealtimeSubscription({ enabled: true });
+  return useQuery(systemProviderCatalogQueryOptions());
 }
 
 function selectProviderDirectory(
@@ -755,8 +764,7 @@ function selectProviderDirectory(
 
 export function providerDirectoryQueryOptions() {
   return queryOptions({
-    queryKey: systemProviderCatalogQueryKey(),
-    queryFn: fetchSystemProviderCatalog,
+    ...systemProviderCatalogQueryOptions(),
     placeholderData: () => readCachedProviderCatalog() ?? undefined,
     select: selectProviderDirectory,
   });
