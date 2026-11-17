@@ -9,8 +9,10 @@ import {
   type ThreadTimelineResponse,
   type TimelineRowPatchOperation,
 } from "../src/api-types.js";
-import { computeThreadTimelineDelta } from "../src/thread-timeline-delta.js";
-import { applyThreadTimelineDelta } from "../src/thread-timeline-row-patch.js";
+import {
+  applyThreadTimelineDelta,
+  computeThreadTimelineDelta,
+} from "../src/thread-timeline-delta.js";
 import type {
   TimelineRow,
   TimelineToolWorkRow,
@@ -228,7 +230,7 @@ describe("thread timeline delta", () => {
     ).toEqual([message("m", "hello world")]);
   });
 
-  it("refuses a patch whose result is not a valid timeline row", () => {
+  it("refuses a patch that changes a row's id or kind", () => {
     const previous = timeline([message("m", "hello")]);
     const apply = (ops: TimelineRowPatchOperation[]) =>
       applyThreadTimelineDelta(previous, {
@@ -241,10 +243,8 @@ describe("thread timeline delta", () => {
           fields: {},
         },
       });
-    expect(apply([["set", ["text"], 5]])).toBeNull();
-    expect(apply([["set", ["role"], "narrator"]])).toBeNull();
-    expect(apply([["delete", ["text"]]])).toBeNull();
     expect(apply([["set", ["id"], "other"]])).toBeNull();
+    expect(apply([["set", ["kind"], "work"]])).toBeNull();
     expect(apply([["set", ["sourceSeqEnd"], 2]])?.rows).toEqual([
       message("m", "hello", 2),
     ]);

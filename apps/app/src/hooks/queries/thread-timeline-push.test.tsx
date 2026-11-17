@@ -1,21 +1,12 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  onTestFinished,
-  vi,
-} from "vitest";
-import {
-  patchTimelineRow,
-  type ReceivedThreadTimelineSignal,
-  type ThreadTimelineReadResponse,
-  type ThreadTimelineResponse,
-  type TimelineRowPatchOperation,
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  ReceivedThreadTimelineSignal,
+  ThreadTimelineReadResponse,
+  ThreadTimelineResponse,
+  TimelineRowPatchOperation,
 } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadTimelineRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
@@ -28,7 +19,6 @@ import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
 } from "../cache-owners/thread-timeline-push-owner";
 import { threadTimelineQueryKey } from "./query-keys";
-import { registerTimelineRowPatcher } from "../cache-owners/timeline-row-patcher";
 import { useThreadTimeline } from "./thread-panel-queries";
 
 vi.mock("@/lib/sdk", () => ({
@@ -180,8 +170,7 @@ describe("pushed thread timeline", () => {
     expect(sdk.threads.timeline).not.toHaveBeenCalled();
   });
 
-  it("applies a row patch, and refetches instead of rendering a patch that yields an invalid row", async () => {
-    onTestFinished(registerTimelineRowPatcher(patchTimelineRow));
+  it("applies a row patch, and refetches instead of rendering a patch that does not fit the held row", async () => {
     const { queryClient, wrapper } = seedTimeline(7);
     renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
       wrapper,
@@ -195,7 +184,7 @@ describe("pushed thread timeline", () => {
     ]);
     applyThreadTimelineSignal(
       queryClient,
-      patchSignal([["set", ["systemKind"], 42]], "timeline-8", 9),
+      patchSignal([["append", ["missing"], " grew"]], "timeline-8", 9),
     );
     expect(cachedTimeline(queryClient)).toMatchObject({
       maxSeq: 8,
@@ -204,26 +193,6 @@ describe("pushed thread timeline", () => {
     await waitFor(() => {
       expect(sdk.threads.timeline).toHaveBeenCalledWith(
         expect.objectContaining({ afterTag: "timeline-8" }),
-      );
-    });
-  });
-
-  it("refetches a row patch that arrives before the timeline UI registers its patcher", async () => {
-    const { queryClient, wrapper } = seedTimeline(7);
-    renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
-      wrapper,
-    });
-    applyThreadTimelineSignal(
-      queryClient,
-      patchSignal([["append", ["title"], " grew"]], "timeline-7", 8),
-    );
-    expect(cachedTimeline(queryClient)).toMatchObject({
-      maxSeq: 7,
-      rows: [firstRow],
-    });
-    await waitFor(() => {
-      expect(sdk.threads.timeline).toHaveBeenCalledWith(
-        expect.objectContaining({ afterTag: "timeline-7" }),
       );
     });
   });

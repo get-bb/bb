@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import {
-  applyThreadTimelineDeltaWithRowPatcher,
+  applyThreadTimelineDelta,
   isThreadTimelineDelta,
   type ReceivedThreadTimelineSignal,
   type ThreadTimelineReadResponse,
@@ -12,7 +12,6 @@ import { markStreamTrace } from "@/lib/stream-trace";
 import { wsManager } from "@/lib/ws";
 import { threadTimelineQueryKey } from "../queries/query-keys";
 import { clearThreadTimelineUnseenEvents } from "./thread-timeline-unseen-events";
-import { patchCachedTimelineRow } from "./timeline-row-patcher";
 
 export const COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT = 8;
 
@@ -66,11 +65,7 @@ function resolvePushedThreadTimeline(
       ? { kind: "apply", timeline }
       : { kind: "ignore" };
   }
-  const applied = applyThreadTimelineDeltaWithRowPatcher(
-    previous,
-    timeline,
-    patchCachedTimelineRow,
-  );
+  const applied = applyThreadTimelineDelta(previous, timeline);
   if (applied !== null) {
     return { kind: "apply", timeline: applied };
   }

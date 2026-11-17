@@ -221,7 +221,9 @@ only costs a full window.
 
 `applyThreadTimelineDelta` from `@bb/server-contract` rebuilds the full window,
 or returns `null` when the held window's tag differs from `afterTag` or the
-delta does not fit its rows; the client then reads again with its own tag. The
+delta does not fit its rows, including a patch op whose path or value type
+does not match the held row, or one that changes a row's `id` or `kind`; the
+client then reads again with its own tag. The
 client keeps optimistic rows after the server's rows, so ranges still address
 the base window. `sdk.threads.timeline` returns a full window unless it is
 given `afterTag`.
