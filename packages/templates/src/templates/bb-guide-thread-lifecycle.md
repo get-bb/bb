@@ -54,6 +54,14 @@ Lifecycle:
   the last turn Codex accepted. A queued request, or one whose turn failed to
   start, may not have been applied; unsent composer selections never apply.
 
+  Native handoff requests appear as provider input on the existing coding turn.
+  The request is the voice model's interpretation of the task, not a verbatim
+  transcript. BB keeps the current request and excludes the surrounding spoken
+  transcript. An untitled thread uses that request for its normal title service
+  and a bounded text fallback; supplied and manually edited titles are preserved.
+  Explicit title regeneration still needs a stored task request, which native
+  handoffs do not create.
+
   A thread allows one voice session at a time. Codex account/model access still
   determines whether native realtime is available.
 
