@@ -81,6 +81,7 @@ export interface ScriptedEchoLaunchScript {
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
   reconfiguresSkills?: boolean;
+  swallowMethods?: string[];
 }
 
 export interface CreateScriptedEchoLaunchOptions {

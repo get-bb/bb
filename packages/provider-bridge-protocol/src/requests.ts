@@ -80,6 +80,7 @@ export const threadForkParamsSchema = z
     ...sessionConstructionFields,
     sourceProviderThreadId: z.string().min(1),
     sourceProviderCheckpointId: z.string().min(1).optional(),
+    sourceCwd: z.string().min(1).optional(),
   })
   .passthrough();
 

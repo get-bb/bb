@@ -354,6 +354,9 @@ export function createBridgeProtocolAdapter(
                       command.sourceProviderCheckpointId,
                   }
                 : {}),
+              ...(command.sourceCwd !== undefined
+                ? { sourceCwd: command.sourceCwd }
+                : {}),
               ...sessionConstructionParams(command),
             },
           };

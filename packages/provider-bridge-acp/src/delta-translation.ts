@@ -256,10 +256,17 @@ export function createAcpDeltaTranslator(
     };
   }
 
+  function keepsOpenAcrossTurnBoundary(open: AcpOpenToolCall): boolean {
+    return dialect.deferToolCallCompletion?.(open.event) === true;
+  }
+
   function clearThreadCalls(
     context: AcpDeltaTranslationContext | undefined,
   ): void {
-    for (const [key] of threadCallEntries(context)) {
+    for (const [key, open] of threadCallEntries(context)) {
+      if (keepsOpenAcrossTurnBoundary(open)) {
+        continue;
+      }
       mergedToolCalls.delete(key);
       injectedToolBindings.delete(key);
     }
@@ -618,6 +625,9 @@ export function createAcpDeltaTranslator(
   ): ThreadDelta[] {
     const deltas: ThreadDelta[] = [];
     for (const [key, open] of threadCallEntries(context)) {
+      if (keepsOpenAcrossTurnBoundary(open)) {
+        continue;
+      }
       mergedToolCalls.delete(key);
       deltas.push(
         toolCallClose({
@@ -1367,6 +1377,7 @@ export function createAcpDeltaTranslator(
       return [];
     }
     completedDelegations.add(report.childRef);
+    mergedToolCalls.delete(key);
     const event = {
       ...open.event,
       status: status === "interrupted" ? ("cancelled" as const) : status,

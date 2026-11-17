@@ -186,6 +186,9 @@ export function buildPluginProviderRegistration(args: {
       supportsThreadRename,
       supportsServiceTier,
       supportsNativeUserQuestion,
+      ...(capabilities.supportsSubagentMessaging === true
+        ? { supportsSubagentMessaging: true }
+        : {}),
       permissionModes: [...permissionModes],
       supportsFork: capabilities.fork !== "none",
       supportsSessionRewind: capabilities.fork === "checkpoint",

@@ -106,6 +106,7 @@ export const scriptedEchoOptionsSchema = z
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
     reconfiguresSkills: z.boolean().optional(),
+    swallowMethods: z.array(z.string()).optional(),
   })
   .strict();
 export type ScriptedEchoOptions = z.infer<typeof scriptedEchoOptionsSchema>;
@@ -1576,10 +1577,14 @@ export function handleLine(line: string): void {
     return;
   }
   if (typeof id !== "string" && typeof id !== "number") {
+    recordRequest(method, params);
     return;
   }
   recordRequest(method, params);
   const options = optionsForRequest(params);
+  if (options.swallowMethods?.includes(method) === true) {
+    return;
+  }
   if (applyScriptedMethodPolicy(id, method, options) === "handled") {
     return;
   }

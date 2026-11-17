@@ -792,6 +792,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
   "hostDaemonCommandSchema.fork.sourceProviderCheckpointId":
     "thread.start.fork names a checkpoint only when the clone should stop at an earlier source turn; absent means clone the session tip.",
+  "hostDaemonCommandSchema.fork.sourceCwd":
+    "thread.start.fork carries the source environment path when the clone runs on another bridge; absent means the destination bridge should use a live source session's directory.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonOnlineRpcCommandSchema.selectedModel":

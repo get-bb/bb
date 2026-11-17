@@ -255,6 +255,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       expect(queuedStart.command.input).toEqual(input);
       expect(queuedStart.command.fork).toEqual({
         sourceProviderThreadId: "provider-seed-without-run-source",
+        sourceCwd: "/tmp/seed-without-run-project",
       });
       const persistedFork = getThread(harness.db, fork.id);
       expect(persistedFork?.originKind).toBe("fork");
@@ -619,6 +620,7 @@ describe("thread creation child-thread boundary validation", () => {
           }
           expect(queuedStart.command.fork).toEqual({
             sourceProviderThreadId: "provider-parent-session",
+            sourceCwd: path,
           });
           expect(queuedStart.command.options).toMatchObject({
             permissionMode,
@@ -696,6 +698,7 @@ describe("thread creation child-thread boundary validation", () => {
         expect(queuedStart.command.input).toEqual([]);
         expect(queuedStart.command.fork).toEqual({
           sourceProviderThreadId: "provider-parent-session",
+          sourceCwd: path,
         });
         expect(capture).not.toHaveBeenCalledWith(
           expect.objectContaining({ name: "user_message_sent" }),
@@ -785,6 +788,7 @@ describe("thread creation child-thread boundary validation", () => {
       expect(queuedStart.command.input).toEqual([]);
       expect(queuedStart.command.fork).toEqual({
         sourceProviderThreadId: "provider-personal-side-chat-source",
+        sourceCwd: "/tmp/personal-side-chat",
       });
     });
   });
@@ -843,6 +847,7 @@ describe("thread creation child-thread boundary validation", () => {
       }
       expect(queued.command.fork).toEqual({
         sourceProviderThreadId: "provider-personal-fork-source",
+        sourceCwd: "/tmp/personal-fork-source",
       });
     });
   });

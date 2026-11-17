@@ -129,6 +129,81 @@ describe("createAgentRuntime lifecycle", () => {
       },
     );
 
+    it("gives a subagent tell the construction deadline and cancels it", async () => {
+      const realSetTimeout = setTimeout;
+      const sleepReal = (ms: number): Promise<void> =>
+        new Promise((resolve) => {
+          realSetTimeout(resolve, ms);
+        });
+      const record = createScriptedEchoRequestRecord();
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: () => undefined,
+          threadCreation: { requestTimeoutMs: 60_000 },
+        },
+        launch: { scripted: { swallowMethods: ["subagent/tell"] } },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        vi.useFakeTimers();
+        let settled = false;
+        const tell = runtime.tellSubagent({
+          threadId: "t1",
+          childRef: "child-1",
+          clientRequestId: "creq_23456789ab",
+          options: fullRuntimeOptions,
+          text: "hello",
+        });
+        const outcome = tell.then(
+          (result) => ({ status: "resolved" as const, result }),
+          (error: unknown) => ({ status: "rejected" as const, error }),
+        );
+        void outcome.then(() => {
+          settled = true;
+        });
+        for (
+          let attempt = 0;
+          record.last("subagent/tell") === undefined;
+          attempt += 1
+        ) {
+          if (attempt >= 1_000) {
+            throw new Error("The bridge never received subagent/tell");
+          }
+          await sleepReal(10);
+        }
+        await vi.advanceTimersByTimeAsync(30_001);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(await outcome).toEqual({
+          status: "rejected",
+          error: new JsonRpcRequestTimeoutError("subagent/tell"),
+        });
+      } finally {
+        vi.useRealTimers();
+        await runtime.shutdown();
+      }
+
+      const requests = record.read();
+      const tellIndex = requests.findIndex(
+        (request) => request.method === "subagent/tell",
+      );
+      expect(requests.slice(tellIndex + 1)).toContainEqual(
+        expect.objectContaining({
+          method: "notifications/cancelled",
+          params: expect.objectContaining({ requestId: expect.any(Number) }),
+        }),
+      );
+    });
+
     it("fails session construction when the thread/start result carries no providerThreadId", async () => {
       const record = createScriptedEchoRequestRecord();
       const runtime = createScriptedEchoRuntime({

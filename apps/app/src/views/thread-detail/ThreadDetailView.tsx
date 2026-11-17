@@ -567,8 +567,14 @@ function ThreadDetailViewInternal(
     () => ({
       providerId: thread?.providerId ?? null,
       pluginId: threadProviderPluginId,
+      supportsSubagentMessaging:
+        threadProviderInfo?.capabilities.supportsSubagentMessaging === true,
     }),
-    [thread?.providerId, threadProviderPluginId],
+    [
+      thread?.providerId,
+      threadProviderInfo?.capabilities.supportsSubagentMessaging,
+      threadProviderPluginId,
+    ],
   );
   const isForkAvailable = isThreadForkable(
     thread ?? null,

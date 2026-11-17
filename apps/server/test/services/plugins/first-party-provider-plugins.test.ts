@@ -321,7 +321,10 @@ describe("first-party provider plugins", () => {
           composerActions: [skills, explicitSkills],
         });
         expect(clientFields("acp-grok")).toMatchObject({
-          capabilities: { supportsNativeUserQuestion: true },
+          capabilities: {
+            supportsNativeUserQuestion: true,
+            supportsSubagentMessaging: true,
+          },
         });
 
         const claude = harness.deps.providerRegistry.get("claude-code");

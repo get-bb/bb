@@ -5691,6 +5691,41 @@ describe("acp bridge", () => {
     ).toEqual([]);
   });
 
+  it("sends the carried source directory when the source session is on another bridge", async () => {
+    const requestLog = join(workspaceDir, "grok-cross-env-fork.jsonl");
+    const sourceCwd = join(workspaceDir, "source-workspace");
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-cross-env-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpDialect: "grok",
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_LOAD_SESSION: "1",
+              FAKE_ACP_GROK_FORK: "1",
+              FAKE_ACP_REQUEST_LOG: requestLog,
+            },
+          }),
+        },
+      }),
+      sourceProviderThreadId: "source-session-on-another-bridge",
+      sourceCwd,
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error).toBeUndefined();
+    const forkRequest = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "_x.ai/session/fork",
+    );
+    expect(forkRequest?.params).toMatchObject({
+      sourceSessionId: "source-session-on-another-bridge",
+      sourceCwd,
+      newCwd: workspaceDir,
+    });
+  });
+
   it("rejects a Grok fork child that reuses the source identity", async () => {
     const source = await startThread({
       dialectId: "grok",
@@ -7687,6 +7722,81 @@ describe("acp bridge: questions the agent asks", () => {
       }),
     );
     expect(response.error).toBeDefined();
+  });
+
+  it("fails a pending subagent action when the parent prompt errors", async () => {
+    const { providerThreadId } = await startGrokSubagentThread();
+    const failed = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "FAIL_PARENT_PROMPT",
+      }),
+    );
+    expect(failed.error?.message).toContain(
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+
+    const recovered = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "delivered after the failure",
+      }),
+    );
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.result).toMatchObject({ childRef: "child-alpha" });
+  });
+
+  it("fails a pending subagent action when the runtime cancels the request", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_ACTION_DELAY_MS: "2000",
+    });
+    const startedBefore = threadEventsOfType("turn/started").length;
+    const completedBefore = threadEventsOfType("turn/completed").length;
+    const tellId = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "slow message",
+    });
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/started").length > startedBefore
+          ? true
+          : undefined,
+      "subagent action turn started",
+    );
+    const startedAt = Date.now();
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/cancelled",
+        params: { requestId: tellId },
+      }),
+    );
+    const failed = await waitForResponse(tellId);
+    expect(Date.now() - startedAt).toBeLessThan(1500);
+    expect(failed.error?.message).toContain(
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length > completedBefore
+          ? threadEventsOfType("turn/completed").at(-1)
+          : undefined,
+      "delayed subagent turn completed",
+    );
+    const lateSuccess = output.messages.find(
+      (message) => message.id === tellId && message.error === undefined,
+    );
+    expect(lateSuccess).toBeUndefined();
+
+    const recovered = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "delivered after cancel",
+      }),
+    );
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.result).toMatchObject({ childRef: "child-alpha" });
   });
 
   it("grok_subagent_stale_response_does_not_resolve_replacement", async () => {

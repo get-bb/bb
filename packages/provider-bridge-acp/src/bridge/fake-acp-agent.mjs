@@ -1214,6 +1214,14 @@ async function handlePrompt(message) {
       availableCommands,
     });
     notifyUpdate(messageChunk("commands advertised"));
+  } else if (text.includes("FAIL_PARENT_PROMPT")) {
+    activePromptId = null;
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32000, message: "Fake parent prompt failure" },
+    });
+    return;
   } else if (text.includes("grok-subagent-spawn")) {
     activePromptId = null;
     spawnGrokSubagentPair();

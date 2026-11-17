@@ -335,13 +335,18 @@ export function buildClaudeInteractiveResponse(
   }
 
   if (args.resolution.decision === "deny") {
+    const planFeedback =
+      args.payload.subject.kind === "plan" &&
+      args.resolution.comments !== undefined
+        ? `\n\nThe user asked for these changes:\n${args.resolution.comments}`
+        : "";
     return {
       kind: "permission_request",
       behavior: "deny",
       message:
-        args.payload.subject.kind === "plan"
+        (args.payload.subject.kind === "plan"
           ? buildClaudePlanRejectionMessage()
-          : "Permission request denied",
+          : "Permission request denied") + planFeedback,
       decisionClassification: "user_reject",
     };
   }

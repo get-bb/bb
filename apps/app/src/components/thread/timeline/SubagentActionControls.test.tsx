@@ -10,7 +10,9 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { delegationRow } from "@/test/fixtures/thread-timeline-rows";
 import { sdk } from "@/lib/sdk";
+import { ThreadProviderContext } from "../thread-provider-context.js";
 import { SubagentActionControls } from "./SubagentActionControls.js";
+import type { TimelineViewDelegationWorkRow } from "@bb/thread-view";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -32,6 +34,23 @@ afterEach(() => {
   cancel.mockReset();
 });
 
+function renderControls(
+  row: TimelineViewDelegationWorkRow,
+  supportsSubagentMessaging = true,
+) {
+  return render(
+    <ThreadProviderContext.Provider
+      value={{
+        providerId: "acp-grok",
+        pluginId: "provider-acp",
+        supportsSubagentMessaging,
+      }}
+    >
+      <SubagentActionControls row={row} />
+    </ThreadProviderContext.Provider>,
+  );
+}
+
 describe("SubagentActionControls", () => {
   it("sends exact text and cancellation to the stable childRef", async () => {
     tell.mockResolvedValue({ childRef: "child-1", messageId: "message-1" });
@@ -42,7 +61,7 @@ describe("SubagentActionControls", () => {
       threadId: "thr_1",
     });
     const text = "Hello 😀 مراجعة";
-    render(<SubagentActionControls row={row} />);
+    renderControls(row);
 
     fireEvent.change(
       screen.getByRole("textbox", { name: "Message subagent child-1" }),
@@ -73,10 +92,17 @@ describe("SubagentActionControls", () => {
   });
 
   it("hides actions without a stable child identity", () => {
-    render(
-      <SubagentActionControls
-        row={delegationRow({ childRef: null, status: "pending" })}
-      />,
+    renderControls(delegationRow({ childRef: null, status: "pending" }));
+    expect(screen.queryByRole("button", { name: "Message" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Cancel subagent" }),
+    ).toBeNull();
+  });
+
+  it("hides actions when the provider does not accept subagent messages", () => {
+    renderControls(
+      delegationRow({ childRef: "child-1", status: "pending" }),
+      false,
     );
     expect(screen.queryByRole("button", { name: "Message" })).toBeNull();
     expect(
@@ -85,11 +111,7 @@ describe("SubagentActionControls", () => {
   });
 
   it("disables message and cancellation for a settled child", () => {
-    render(
-      <SubagentActionControls
-        row={delegationRow({ childRef: "child-1", status: "completed" })}
-      />,
-    );
+    renderControls(delegationRow({ childRef: "child-1", status: "completed" }));
     fireEvent.change(
       screen.getByRole("textbox", { name: "Message subagent child-1" }),
       { target: { value: "Do not send" } },

@@ -142,6 +142,7 @@ export interface StartThreadArgs {
   fork?: {
     sourceProviderThreadId: string;
     sourceProviderCheckpointId?: string;
+    sourceCwd?: string;
   };
 }
 

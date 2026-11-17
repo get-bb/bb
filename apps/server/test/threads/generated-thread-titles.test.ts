@@ -479,6 +479,7 @@ describe("generated thread titles", () => {
       expect(start.command.input).toEqual(input);
       expect(start.command.fork).toEqual({
         sourceProviderThreadId: "provider-generated-fork-title-source",
+        sourceCwd: "/tmp/generated-fork-title-project",
       });
 
       await reportQueuedCommandSuccess(
