@@ -116,11 +116,13 @@ import {
   type ScopedItemRef,
   type StoredEventRowMetadata,
 } from "../../src/data/events.js";
+import { applySettledEventStorageRules } from "../../src/data/event-storage-rules.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { QueryCostCase } from "./case.js";
 import type { HistoryFixture, HistoryTurn } from "../../src/history-fixture.js";
 
 const EVENTS = "packages/db/src/data/events.ts";
+const EVENT_STORAGE_RULES = "packages/db/src/data/event-storage-rules.ts";
 const TIMELINE_EXCLUDED_EVENT_TYPES = [
   "thread/started",
   "thread/identity",
@@ -232,6 +234,9 @@ type UsageEventType =
   | "thread/tokenUsage/updated";
 
 let forkCopyRows: StoredEventRowMetadata[] = [];
+let settledFileChangeRow:
+  | Parameters<typeof applySettledEventStorageRules>[1]
+  | null = null;
 let pruningWindow: PruneTokenUsageEventsArgs | null = null;
 
 function daemonEvent(
@@ -341,6 +346,27 @@ function daemonBacklog(fixture: HistoryFixture): AppendDaemonEventInput[] {
     );
   }
   return [...head, ...commands, ...tail];
+}
+
+function selectSettledFileChangeRow(
+  db: DbConnection,
+  fixture: HistoryFixture,
+): void {
+  const row = db.$client
+    .prepare(
+      `SELECT thread_id AS threadId, item_id AS itemId, sequence, data FROM events
+      WHERE thread_id = ? AND type = 'item/completed' AND item_kind = 'fileChange'
+      ORDER BY sequence DESC LIMIT 1`,
+    )
+    .get(fixture.threadId) as
+    | { threadId: string; itemId: string; sequence: number; data: string }
+    | undefined;
+  if (row === undefined) throw new Error("Expected a completed file change");
+  settledFileChangeRow = {
+    ...row,
+    itemKind: "fileChange",
+    type: "item/completed",
+  };
 }
 
 function selectForkCopyRows(db: DbConnection, fixture: HistoryFixture): void {
@@ -720,6 +746,17 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
 ];
 
 export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
+  {
+    name: `${EVENT_STORAGE_RULES}#applySettledEventStorageRules`,
+    prepare: selectSettledFileChangeRow,
+    run: (db) => {
+      if (settledFileChangeRow === null) {
+        throw new Error("Expected a selected file change completion");
+      }
+      const row = settledFileChangeRow;
+      return db.transaction((tx) => applySettledEventStorageRules(tx, row));
+    },
+  },
   {
     name: `${EVENTS}#deleteThreadEventSuffixInTransaction`,
     run: (db, fixture) =>

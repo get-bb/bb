@@ -9,6 +9,7 @@ import type { ClientTurnRequestId, Thread } from "@bb/domain";
 import {
   createProject,
   createThread,
+  events,
   getLatestThreadSequence,
   insertEvents,
   migrateNextLegacyImageGenerationOutput,
@@ -1313,13 +1314,15 @@ describe("in-turn timeline windows", () => {
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [0] });
     const migratedAt = Date.now() + 1_000;
     const result = "encoded-image-" + "i".repeat(4 * 1024 * 1024);
-    insertEvents(db, noopNotifier, [
-      {
+    db.insert(events)
+      .values({
+        id: "evt_legacy_generated_image",
         createdAt: migratedAt - 1,
         threadId: thread.id,
         sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
         type: "provider/unhandled",
-        scope: turnScope("turn-1"),
+        scopeKind: "turn",
+        turnId: "turn-1",
         providerThreadId,
         itemId: null,
         itemKind: null,
@@ -1346,8 +1349,8 @@ describe("in-turn timeline windows", () => {
             },
           },
         }),
-      },
-    ]);
+      })
+      .run();
 
     expect(
       migrateNextLegacyImageGenerationOutput(db, {
