@@ -55,7 +55,7 @@ import {
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { pluginRuntimeGroupsFor } from "./plugin-runtime-groups";
-import { whenRouteContentPainted } from "./route-content-paint";
+import { whenScreenPainted } from "./screen-paint";
 import {
   pluginSdkAppImplementation,
   retiredPluginSdkAppMembers,
@@ -418,7 +418,7 @@ export interface PluginFrontendReconcileDeps {
   flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
-  whenRoutePainted: () => Promise<void>;
+  whenScreenPainted: () => Promise<void>;
   mountTimeoutMs?: number;
   cssReadyTimeoutMs?: number;
   diagnosticsChanged?: () => void;
@@ -781,7 +781,7 @@ async function reconcileCandidates(
     PLUGIN_FRONTEND_LOAD_CONCURRENCY,
     async (candidate, index) => {
       if (!priorityPluginIds.includes(candidate.pluginId)) {
-        await deps.whenRoutePainted();
+        await deps.whenScreenPainted();
       }
       untaken = index + 1;
       prefetchAhead();
@@ -1068,7 +1068,7 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   prefetchModule: prefetchPluginModule,
   retainCss: retainPluginCss,
   priorityPluginIds: () => frontendPriorityPluginIds(window.location.pathname),
-  whenRoutePainted: whenRouteContentPainted,
+  whenScreenPainted: whenScreenPainted,
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,

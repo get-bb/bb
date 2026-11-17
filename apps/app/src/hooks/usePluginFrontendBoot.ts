@@ -11,7 +11,7 @@ import {
 } from "../lib/plugin-frontend-lazy";
 import { frontendPriorityPluginIds } from "../lib/plugin-surface-providers";
 import { holdSplitPreloads } from "../lib/split-prefetch";
-import { whenRouteContentPainted } from "../lib/route-content-paint";
+import { whenScreenPainted } from "../lib/screen-paint";
 import { getPluginPanelRoutePluginId } from "../lib/route-paths";
 import { useSystemConfig } from "./queries/system-queries";
 import { pluginListQueryOptions } from "./queries/plugin-settings-queries";
@@ -88,7 +88,7 @@ export function usePluginFrontendBoot(): void {
       return cleanup;
     }
     const cancelBoot = scheduleDeferredPluginFrontendBoot(boot, {
-      whenRoutePainted: whenRouteContentPainted,
+      whenScreenPainted: whenScreenPainted,
       requestIdle: requestBrowserIdle,
       setTimeout: (callback, ms) => window.setTimeout(callback, ms),
       clearTimeout: (id) => window.clearTimeout(id),

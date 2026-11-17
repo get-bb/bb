@@ -75,7 +75,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
       flushSlotBatch: () => {},
       warn: () => {},
       priorityPluginIds: () => [],
-      whenRoutePainted: () => Promise.resolve(),
+      whenScreenPainted: () => Promise.resolve(),
     };
     const effects = createRealtimeCacheEffects({ queryClient });
     let reconcile = Promise.resolve();

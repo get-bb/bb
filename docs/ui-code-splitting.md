@@ -10,7 +10,7 @@ app-local contract, not a Plugin SDK API. App code sorts into three tiers:
 | `intent`  | Rare UI, such as customization, setup dialogs and context-menu contents | `defineSplit({ tier: "intent" })`  |
 
 The router's page components in `App.tsx` stay plain `React.lazy`: they suspend
-into the shared route boundary that marks route content painted, and a
+into the shared route boundary that marks the screen painted, and a
 per-component boundary would mark it before the page loads.
 
 ## Declare a boundary
@@ -94,14 +94,19 @@ Use it from an explicit owner for data demand or related features, such as
 warming panel tab code when the right panel opens.
 
 A preload-tier split needs no registration: defining it queues it, and
-`RouteContentPaintSignal` in `App.tsx` starts the queue with
-`startSplitPreloading()`, and marks route content painted only after critical
-loads settle. On pages with expected surface providers (including the plugin
+`ScreenPaintSignal` starts the queue with `startSplitPreloading()`, and marks
+the screen painted only after critical loads settle. Every top-level screen
+renders it: the main app routes and the first-run onboarding screen. A screen
+that renders neither, such as the auth callback, falls back to a deadline:
+`whenScreenPainted()` resolves at the signal or 3 seconds after the page
+started, whichever comes first, so work waiting on it is delayed, never
+stranded. On pages with expected surface providers (including the plugin
 that owned the open thread panel tab last session) or a plugin panel, the plugin runtime download and shared plugin-list query start alongside system
 config. Priority plugin bundles and styles preload as soon as the list resolves.
 Activation still waits for system config. Pages without expected providers or a plugin panel
-retain deferred boot after route paint and browser idle, with a 1.5-second
-fallback. Plugin activation does not wait for the toaster to mount; startup
+retain deferred boot after the screen paints and browser idle, with a 1.5-second
+fallback. Once booted, plugins the page does not need wait for the screen paint
+before downloading. Plugin activation does not wait for the toaster to mount; startup
 notifications queue until it attaches, including custom plugin toasts.
 SDK Markdown, source-code, and diff wrappers use preload-tier splits. After
 plugin registration settles, the app also queues the selected built-in source

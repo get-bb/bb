@@ -67,7 +67,7 @@ function makeDeps(
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
-    whenRoutePainted: () => Promise.resolve(),
+    whenScreenPainted: () => Promise.resolve(),
     beginSlotBatch: () => () => {},
     flushSlotBatch: () => {},
     ...overrides,
@@ -193,11 +193,11 @@ describe("reconcilePluginFrontends load scheduling", () => {
     ]);
   });
 
-  it("holds the other plugins' downloads until the route paints, so they never compete with it", async () => {
+  it("holds the other plugins' downloads until the screen paints, so they never compete with it", async () => {
     const imports = makeDeferredImports();
     const prefetchModule = vi.fn();
     let paint = () => {};
-    const routePainted = new Promise<void>((resolve) => {
+    const screenPainted = new Promise<void>((resolve) => {
       paint = resolve;
     });
     const done = reconcilePluginFrontends(
@@ -208,7 +208,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list"],
           prefetchModule,
-          whenRoutePainted: () => routePainted,
+          whenScreenPainted: () => screenPainted,
         },
       ),
     );
