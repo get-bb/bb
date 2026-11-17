@@ -112,7 +112,7 @@
   [data-promptbox][data-promptbox-collapsed]:not([data-promptbox-voice-active])
     [data-promptbox-input-region] {
     flex: 1 1 0%;
-    min-width: 0;
+    min-width: 6rem;
   }
 
   [data-promptbox][data-promptbox-collapsed]:not([data-promptbox-voice-active])
