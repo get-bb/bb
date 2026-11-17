@@ -328,10 +328,15 @@ export async function runGit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
   for (let attempt = 1; ; attempt += 1) {
-    const run = await runVcsProcess("git", args, () => spawnGit(args, options), {
-      priority: options.priority,
-      signal: options.signal,
-    }).catch((error: unknown) => {
+    const run = await runVcsProcess(
+      "git",
+      args,
+      () => spawnGit(args, options),
+      {
+        priority: options.priority,
+        signal: options.signal,
+      },
+    ).catch((error: unknown) => {
       if (options.signal?.aborted) {
         throw createGitCommandCancelledError(args, error);
       }
@@ -565,6 +570,17 @@ export function createGitQueries(run: GitQueryRunner) {
     );
     if (result.exitCode !== 0) {
       if (result.exitCode === 128) return null;
+      const cwdStat = await fs.stat(cwd).catch((error: unknown) => {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          (error.code === "ENOENT" || error.code === "ENOTDIR")
+        ) {
+          return null;
+        }
+        throw error;
+      });
+      if (!cwdStat?.isDirectory()) return null;
       const stderr = trimOutput(result.stderr).slice(0, 1_024);
       throw createGitCommandFailedError(
         ["rev-parse"],
