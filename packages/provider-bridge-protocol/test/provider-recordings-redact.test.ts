@@ -57,3 +57,37 @@ it("redacts every documented GitHub token prefix", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it("refuses an output directory that contains the input recordings", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-parent-"));
+  const inputDir = join(root, "raw");
+  const sibling = join(root, "sibling.txt");
+  try {
+    mkdirSync(inputDir);
+    writeFileSync(
+      join(inputDir, "session.ndjson"),
+      `${JSON.stringify({ line: JSON.stringify({ ok: true }) })}\n`,
+    );
+    writeFileSync(sibling, "keep-me");
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          fileURLToPath(REDACT_SCRIPT),
+          inputDir,
+          root,
+          "--home",
+          "/home/tester",
+        ],
+        { encoding: "utf8" },
+      ),
+    ).toThrow(/contains the input recordings/);
+    expect(readFileSync(sibling, "utf8")).toBe("keep-me");
+    expect(readFileSync(join(inputDir, "session.ndjson"), "utf8")).toContain(
+      "ok",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
