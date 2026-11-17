@@ -1,7 +1,15 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   detectGitRepo,
   detectGitRepoKind,
@@ -20,6 +28,10 @@ async function initReadGitBlobRepo() {
     path.join(os.tmpdir(), "bb-read-git-blob-"),
   );
   tempDirs.push(repoPath);
+  return populateReadGitBlobRepo(repoPath);
+}
+
+async function populateReadGitBlobRepo(repoPath: string) {
   await runGit(["init", "-b", "main"], { cwd: repoPath });
   await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
   await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
@@ -57,7 +69,7 @@ async function initConflictRepo() {
   return repoPath;
 }
 
-async function initDefaultBranchRemoteRepo() {
+async function beforeDefaultBranchRemoteRepo() {
   const repoPath = await initReadGitBlobRepo();
   const remotePath = await fs.mkdtemp(path.join(os.tmpdir(), "bb-git-remote-"));
   tempDirs.push(remotePath);
@@ -66,6 +78,50 @@ async function initDefaultBranchRemoteRepo() {
   await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
   await runGit(["fetch", "origin"], { cwd: repoPath });
   return { remotePath, repoPath };
+}
+
+let defaultBranchTemplate: string;
+
+beforeAll(async () => {
+  const started = performance.now();
+  defaultBranchTemplate = await fs.mkdtemp(
+    path.join(os.tmpdir(), "bb-default-branch-template-"),
+  );
+  const repoPath = path.join(defaultBranchTemplate, "repo");
+  const remotePath = path.join(defaultBranchTemplate, "remote");
+  await fs.mkdir(repoPath);
+  await fs.mkdir(remotePath);
+  await populateReadGitBlobRepo(repoPath);
+  await runGit(["init", "--bare"], { cwd: remotePath });
+  await runGit(["remote", "add", "origin", "../remote"], { cwd: repoPath });
+  await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
+  await runGit(["fetch", "origin"], { cwd: repoPath });
+  process.stderr.write(
+    JSON.stringify({
+      probe: "default-branch-template",
+      elapsed: performance.now() - started,
+    }) + "\n",
+  );
+});
+
+afterAll(async () => {
+  if (defaultBranchTemplate)
+    await fs.rm(defaultBranchTemplate, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+});
+
+async function initDefaultBranchRemoteRepo() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-default-branch-"));
+  tempDirs.push(root);
+  await fs.cp(defaultBranchTemplate, root, { recursive: true });
+  return {
+    repoPath: path.join(root, "repo"),
+    remotePath: path.join(root, "remote"),
+  };
 }
 
 async function pushRemoteMainCommit(remotePath: string) {
@@ -288,20 +344,36 @@ describe("readDefaultBranchRefs", () => {
   });
 
   it("reports diverged local and origin defaults", async () => {
-    const { remotePath, repoPath } = await initDefaultBranchRemoteRepo();
-    await fs.writeFile(path.join(repoPath, "local.txt"), "local\n", "utf8");
-    await runGit(["add", "."], { cwd: repoPath });
-    await runGit(["commit", "-m", "Local edit"], { cwd: repoPath });
-    await pushRemoteMainCommit(remotePath);
-    await runGit(["fetch", "origin"], { cwd: repoPath });
+    for (const mode of ["before", "after", "after", "before"]) {
+      const started = performance.now();
+      const { remotePath, repoPath } = await (
+        mode === "before"
+          ? beforeDefaultBranchRemoteRepo
+          : initDefaultBranchRemoteRepo
+      )();
+      const ready = performance.now();
+      await fs.writeFile(path.join(repoPath, "local.txt"), "local\n", "utf8");
+      await runGit(["add", "."], { cwd: repoPath });
+      await runGit(["commit", "-m", "Local edit"], { cwd: repoPath });
+      await pushRemoteMainCommit(remotePath);
+      await runGit(["fetch", "origin"], { cwd: repoPath });
 
-    await expect(
-      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
-    ).resolves.toMatchObject({
-      defaultBranch: "main",
-      defaultBranchRelation: "diverged",
-      originDefaultBranch: "origin/main",
-    });
+      await expect(
+        readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+      ).resolves.toMatchObject({
+        defaultBranch: "main",
+        defaultBranchRelation: "diverged",
+        originDefaultBranch: "origin/main",
+      });
+      process.stderr.write(
+        JSON.stringify({
+          probe: "default-branch-pair",
+          mode,
+          setupMs: ready - started,
+          totalMs: performance.now() - started,
+        }) + "\n",
+      );
+    }
   });
 
   it("prefers origin's default branch over main when both exist locally", async () => {

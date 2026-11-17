@@ -151,50 +151,54 @@ describe("host GraphQL batching", () => {
     expect(await gh.readCalls()).toHaveLength(1);
   });
 
-  it("separates credentials and pauses only the credential that hit a rate limit", async () => {
-    for (const [index, mode] of [
-      "before",
-      "after",
-      "after",
-      "before",
-    ].entries()) {
-      const started = performance.now();
-      const gh =
-        mode === "before"
-          ? await installFakeGh({
-              "api graphql": { stderr: "API rate limit exceeded", exit: 1 },
-            })
-          : null;
-      const readCallCount = gh
-        ? async () => (await gh.readCalls()).length
-        : await installRateLimitedGh();
-      const cwd = await makeTempDir("bb-pr-rate-");
-      vi.stubEnv("GH_TOKEN", `credential-one-${index}`);
-      await expect(getPullRequestByUrl(raw(1).url, cwd)).resolves.toMatchObject(
-        {
+  it.each([0, 1, 2, 3])(
+    "separates credentials and pauses only the credential that hit a rate limit, paired round %i",
+    async (round) => {
+      for (const [index, mode] of [
+        "before",
+        "after",
+        "after",
+        "before",
+      ].entries()) {
+        const started = performance.now();
+        const gh =
+          mode === "before"
+            ? await installFakeGh({
+                "api graphql": { stderr: "API rate limit exceeded", exit: 1 },
+              })
+            : null;
+        const readCallCount = gh
+          ? async () => (await gh.readCalls()).length
+          : await installRateLimitedGh();
+        const cwd = await makeTempDir("bb-pr-rate-");
+        vi.stubEnv("GH_TOKEN", `credential-one-${round}-${index}`);
+        await expect(
+          getPullRequestByUrl(raw(1).url, cwd),
+        ).resolves.toMatchObject({
           outcome: "unavailable",
-        },
-      );
-      await expect(getPullRequestByUrl(raw(2).url, cwd)).resolves.toMatchObject(
-        {
+        });
+        await expect(
+          getPullRequestByUrl(raw(2).url, cwd),
+        ).resolves.toMatchObject({
           outcome: "unavailable",
           message: expect.stringContaining("rate limit"),
-        },
-      );
-      expect(await readCallCount()).toBe(1);
-      vi.stubEnv("GH_TOKEN", `credential-two-${index}`);
-      await getPullRequestByUrl(raw(1).url, cwd);
-      expect(await readCallCount()).toBe(2);
-      process.stderr.write(
-        JSON.stringify({
-          probe: "gh-fixture-pair",
-          mode,
-          index,
-          elapsed: performance.now() - started,
-        }) + "\n",
-      );
-    }
-  });
+        });
+        expect(await readCallCount()).toBe(1);
+        vi.stubEnv("GH_TOKEN", `credential-two-${round}-${index}`);
+        await getPullRequestByUrl(raw(1).url, cwd);
+        expect(await readCallCount()).toBe(2);
+        process.stderr.write(
+          JSON.stringify({
+            probe: "gh-fixture-pair",
+            round,
+            mode,
+            index,
+            elapsed: performance.now() - started,
+          }) + "\n",
+        );
+      }
+    },
+  );
 
   it("releases a gh profile's rate-limit pause after its active account changes", async () => {
     const readCallCount = await installRateLimitedGh();
