@@ -141,7 +141,9 @@ describe("runGit", () => {
     const repoPath = await initEmptyRepo();
 
     await expect(
-      runGit(["config", "--local", "--get", "bb.missing-setting"], { cwd: repoPath }),
+      runGit(["config", "--local", "--get", "bb.missing-setting"], {
+        cwd: repoPath,
+      }),
     ).rejects.toMatchObject({
       name: "WorkspaceError",
       code: "git_command_failed",
@@ -180,7 +182,42 @@ describe("detectGitRepoKind", () => {
     );
     await expect(detectGitRepoKind(worktreePath)).resolves.toBe("work-tree");
     await expect(detectGitRepoKind(plainDir)).resolves.toBe("none");
+    await expect(ensureGitRepo(plainDir)).rejects.toMatchObject({
+      code: "not_git_repo",
+    });
   });
+
+  it.each([
+    { label: "silent", stderr: "" },
+    {
+      label: "bounded stderr",
+      stderr: `controlled Git failure: ${"x".repeat(1_100)}discarded-tail`,
+    },
+  ])(
+    "preserves $label diagnostics for unexpected repository probe exits",
+    async ({ stderr }) => {
+      const workspacePath = await fs.mkdtemp(
+        path.join(os.tmpdir(), "bb-git-probe-failure-"),
+      );
+      const binPath = path.join(workspacePath, "bin");
+      tempDirs.push(workspacePath);
+      await fs.mkdir(binPath);
+      await fs.writeFile(
+        path.join(binPath, process.platform === "win32" ? "git.cmd" : "git"),
+        process.platform === "win32"
+          ? `@echo off\r\n${stderr ? `>&2 echo ${stderr}\r\n` : ""}exit /b 47\r\n`
+          : `#!/bin/sh\n${stderr ? `printf '%s\\n' '${stderr}' >&2\n` : ""}exit 47\n`,
+        { mode: 0o755 },
+      );
+      await expect(
+        ensureGitRepo(workspacePath, { shellPath: binPath }),
+      ).rejects.toMatchObject({
+        code: "git_command_failed",
+        message: `git rev-parse failed: exit code 47${stderr ? `: ${stderr.slice(0, 1_024)}` : ""}`,
+        cause: { exitCode: 47 },
+      });
+    },
+  );
 
   it("keeps detectGitRepo scoped to work trees so bare roots get no checkout UI", async () => {
     const { root, worktreePath } = await initBareWorktreeLayout();
