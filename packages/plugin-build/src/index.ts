@@ -36,6 +36,5 @@ export {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
   findUnnamedPluginRoots,
-  findUnscopedPluginNames,
   keyPluginScopeOnAttribute,
 } from "./scope-plugin-utilities.js";

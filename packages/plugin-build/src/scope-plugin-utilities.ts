@@ -35,43 +35,25 @@ export function scopePluginUtilities(css: string, scopeRoots: string): string {
 
 const PLUGIN_ROOT_MARKER = /data-bb-plugin-root/g;
 const PLUGIN_NAME_MARKER = /data-bb-plugin(?![-\w])/g;
-const PLUGIN_NAME_WRITE_MARKER =
-  /(?<!\[|(?:get|has|remove)Attribute\(["'`])data-bb-plugin(?![-\w])/g;
-const PLUGIN_SCOPE_ATTRIBUTE_PREFIX = "data-bb-plugin-scope-";
-const PLUGIN_SCOPE_MARKER = new RegExp(PLUGIN_SCOPE_ATTRIBUTE_PREFIX, "g");
 const PLUGIN_NAME_SEARCH_RADIUS = 120;
 
-export function pluginScopeAttribute(pluginId: string): string {
-  return `${PLUGIN_SCOPE_ATTRIBUTE_PREFIX}${pluginId}`;
-}
-
 export function findUnnamedPluginRoots(js: string): number[] {
-  return findUnpairedMarkers(js, PLUGIN_ROOT_MARKER, PLUGIN_NAME_MARKER);
-}
-
-export function findUnscopedPluginNames(js: string): number[] {
-  return findUnpairedMarkers(js, PLUGIN_NAME_WRITE_MARKER, PLUGIN_SCOPE_MARKER);
-}
-
-function findUnpairedMarkers(
-  js: string,
-  marker: RegExp,
-  partner: RegExp,
-): number[] {
-  const partners = [...js.matchAll(partner)].map((match) => match.index);
+  const names = [...js.matchAll(PLUGIN_NAME_MARKER)].map(
+    (match) => match.index,
+  );
   const claimed = new Set<number>();
-  return [...js.matchAll(marker)]
+  return [...js.matchAll(PLUGIN_ROOT_MARKER)]
     .map((match) => match.index)
-    .filter((position) => {
+    .filter((root) => {
       let nearest: number | undefined;
-      for (const candidate of partners) {
-        const distance = Math.abs(candidate - position);
+      for (const name of names) {
+        const distance = Math.abs(name - root);
         if (
           distance <= PLUGIN_NAME_SEARCH_RADIUS &&
-          !claimed.has(candidate) &&
-          (nearest === undefined || distance < Math.abs(nearest - position))
+          !claimed.has(name) &&
+          (nearest === undefined || distance < Math.abs(nearest - root))
         ) {
-          nearest = candidate;
+          nearest = name;
         }
       }
       if (nearest === undefined) return true;
@@ -97,7 +79,7 @@ export function keyPluginScopeOnAttribute(css: string): string {
       .replace(
         NAMED_PLUGIN_ROOT,
         (_match, _quote, pluginId: string) =>
-          `[${pluginScopeAttribute(pluginId)}]`,
+          `[data-bb-plugin-scope-${pluginId}]`,
       ),
   );
 }

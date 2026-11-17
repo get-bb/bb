@@ -376,14 +376,9 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     const scenarios = [
       { js: "export default {};", owned, keyed },
       {
-        js: 'export const p={"data-bb-plugin-root":"","data-bb-plugin":"scope","data-bb-plugin-scope-scope":""};',
-        owned,
-        keyed,
-      },
-      {
         js: 'export const p={"data-bb-plugin-root":"","data-bb-plugin":"scope"};',
         owned,
-        keyed: owned,
+        keyed,
       },
       {
         js: 'export const p={"data-bb-plugin-root":""};',

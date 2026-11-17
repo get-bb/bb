@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
@@ -28,8 +28,6 @@ import {
   dropHostProvidedTailwind,
 } from "./scope-plugin-utilities.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
-
-const repositoryRoot = resolve(import.meta.dirname, "../../..");
 
 function testToolchain() {
   return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
@@ -421,17 +419,12 @@ describe("plugin app runtime shim", () => {
       return (await buildPluginApp(dir, "0.9.0-test", await testToolchain()))
         .migrationWarnings;
     };
-    const portalScope = (idProps: string) =>
+    const current =
       "declare const __BB_PLUGIN_ID__: string | undefined;\n" +
       "export function usePortalScopeProps() {\n" +
       '  const pluginId = typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined;\n' +
-      `  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", ...(pluginId !== undefined ? { ${idProps} } : {}) };\n` +
+      '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", ...(pluginId !== undefined ? { "data-bb-plugin": pluginId } : {}) };\n' +
       "}\n";
-    const current = await readFile(
-      join(repositoryRoot, "packages/shared-ui/src/lib/portal-scope.ts"),
-      "utf8",
-    );
-    const preScope = portalScope('"data-bb-plugin": pluginId');
     const preStamp =
       "export function usePortalScopeProps() {\n" +
       '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "" };\n' +
@@ -444,11 +437,6 @@ describe("plugin app runtime shim", () => {
       "sets data-bb-plugin-root without data-bb-plugin 1 time(s)",
     );
     expect(warnings[0]).toContain('data-bb-plugin="roots"');
-    const unscoped = await build(preScope);
-    expect(unscoped).toHaveLength(1);
-    expect(unscoped[0]).toContain(
-      "sets data-bb-plugin without data-bb-plugin-scope-roots 1 time(s)",
-    );
   });
 
   it("builds retired tab registrations alongside retired hooks and returns migration warnings", async () => {

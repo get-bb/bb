@@ -8,12 +8,16 @@ export type PluginRootProps = {
   "data-bb-plugin": string;
 } & { [attribute in PluginScopeAttribute]: "" };
 
+export function pluginScopeAttribute(pluginId: string): PluginScopeAttribute {
+  return `data-bb-plugin-scope-${pluginId}`;
+}
+
 export function pluginRootProps(pluginId: string): PluginRootProps {
   const props: PluginRootProps = {
     "data-bb-plugin-root": "",
     "data-bb-plugin": pluginId,
   };
-  props[`data-bb-plugin-scope-${pluginId}`] = "";
+  props[pluginScopeAttribute(pluginId)] = "";
   return props;
 }
 

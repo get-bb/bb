@@ -200,6 +200,9 @@ thread-lifecycle`.
 `dismissReadNotifications` removes a thread's push, web, and desktop
 notifications once the thread is read on any client. It defaults on for early
 adopters.
+`keyedPluginCss` loads plugin stylesheets so that style updates inside other
+plugins' UI, such as the sidebar and composer, skip them; it applies after a
+reload and defaults on for early adopters.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
 `skipFocusedThreadNotifications` skips the web and desktop system notification
@@ -220,8 +223,9 @@ background thread instead of during a commit, so heavy writing does not stall
 the server. It applies live.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`compactExpiredCache`, `dismissReadNotifications`, `pluginUpdates`,
-`skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`; an
+`compactExpiredCache`, `dismissReadNotifications`, `keyedPluginCss`,
+`pluginUpdates`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
+`updateWhenIdle`; an
 experiment you set yourself keeps your value.
 
 Launcher settings

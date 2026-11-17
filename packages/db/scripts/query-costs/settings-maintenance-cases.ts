@@ -436,6 +436,7 @@ const SETTINGS_CASES: readonly Case[] = [
         agentCpuPriority: false,
         compactExpiredCache: true,
         dismissReadNotifications: true,
+        keyedPluginCss: true,
         serverMove: false,
         performanceDiagnostics: true,
         pluginUpdates: true,

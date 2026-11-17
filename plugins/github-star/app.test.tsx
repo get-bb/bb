@@ -71,7 +71,6 @@ describe("GitHub Star prompt", () => {
 
     const toast = screen.getByText("Enjoying bb?").closest("[data-bb-plugin]");
     expect(toast?.getAttribute("data-bb-plugin")).toBe("test-plugin");
-    expect(toast?.hasAttribute("data-bb-plugin-scope-test-plugin")).toBe(true);
     expect(toast?.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe(
       "GithubLogo",
     );

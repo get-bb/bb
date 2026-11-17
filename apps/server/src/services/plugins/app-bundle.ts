@@ -10,7 +10,6 @@ import {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
   findUnnamedPluginRoots,
-  findUnscopedPluginNames,
   keyPluginScopeOnAttribute,
 } from "@bb/plugin-build";
 
@@ -405,16 +404,14 @@ export async function loadPluginAppBundle(
   } catch {
     css = null;
   }
-  const jsText = js.toString("utf8");
-  const ownsEveryRoot = findUnnamedPluginRoots(jsText).length === 0;
+  const ownsEveryRoot =
+    findUnnamedPluginRoots(js.toString("utf8")).length === 0;
   const ownedRootCss =
     css !== null && ownsEveryRoot
       ? transformCss(css, dropAnonymousPluginRootScope)
       : null;
   const pluginAttributeCss =
-    css !== null &&
-    ownsEveryRoot &&
-    findUnscopedPluginNames(jsText).length === 0
+    css !== null && ownsEveryRoot
       ? transformCss(css, keyPluginScopeOnAttribute)
       : null;
   const hasher = createHash("sha256").update(js);
