@@ -13,7 +13,8 @@
     "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "validate:marketplace": "tsx scripts/validate-live-marketplace.ts",
     "test": "vitest run --config vitest.config.ts",
-    "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus"
+    "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus",
+    "test:timeline-history": "vitest run --config vitest.config.ts test/timeline-history"
   },
   "dependencies": {
     "@bb/async-cache": "workspace:*",

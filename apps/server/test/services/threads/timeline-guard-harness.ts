@@ -160,7 +160,7 @@ export interface EventLogShape {
   largeOutputChance: number;
   messageWeight: number;
   pluginInteractionWeight: number;
-  providerWarningWeight: number;
+  providerNoticeWeight: number;
   requestFreeRunsInsideTurns: boolean;
   requestFreeRunWeight: number;
   steerWeight: number;
@@ -182,7 +182,7 @@ export const MIXED_EVENT_LOG: EventLogShape = {
   largeOutputChance: 0.04,
   messageWeight: 4,
   pluginInteractionWeight: 0.4,
-  providerWarningWeight: 0.3,
+  providerNoticeWeight: 0.3,
   requestFreeRunsInsideTurns: true,
   requestFreeRunWeight: 0,
   steerWeight: 1.5,
@@ -788,14 +788,49 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     );
   }
 
-  function providerWarning(): EventInput[] {
-    const category = pick(rng, ["general", "config", "deprecation"] as const);
+  function providerNotice(turnId: string | null): EventInput[] {
+    const scope =
+      turnId !== null && chance(rng, 0.3) ? turnScope(turnId) : threadScope();
+    const kind = pick(rng, ["warning", "fallback", "sdkFallback"] as const);
+    if (kind === "warning") {
+      return [
+        event("provider/warning", scope, {
+          providerThreadId: PROVIDER_THREAD_ID,
+          category: pick(rng, ["general", "config", "deprecation"] as const),
+          summary: `Warning ${sequence + 1}`,
+          details: `Details for warning ${sequence + 1}`,
+        }),
+      ];
+    }
+    if (kind === "fallback") {
+      return [
+        event("provider/modelFallback", scope, {
+          providerThreadId: PROVIDER_THREAD_ID,
+          originalModel: "gpt-5",
+          fallbackModel: "gpt-5-mini",
+          reason: pick(rng, ["provider", "refusal"] as const),
+          message: `Fallback ${sequence + 1}`,
+        }),
+      ];
+    }
     return [
-      event("provider/warning", threadScope(), {
+      event("provider/unhandled", scope, {
         providerThreadId: PROVIDER_THREAD_ID,
-        category,
-        summary: `Warning ${sequence + 1}`,
-        details: `Details for warning ${sequence + 1}`,
+        providerId: "claude-code",
+        rawType: "sdk/system",
+        rawEvent: {
+          jsonrpc: "2.0",
+          method: "sdk/message",
+          params: {
+            message: {
+              type: "system",
+              subtype: "model_fallback",
+              original_model: "opus",
+              fallback_model: "sonnet",
+              content: `SDK fallback ${sequence + 1}`,
+            },
+          },
+        },
       }),
     ];
   }
@@ -1040,7 +1075,7 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
       ],
       [shape.extensionStateWeight, extensionState],
       [shape.pluginInteractionWeight, requestPluginInteraction],
-      [shape.providerWarningWeight, providerWarning],
+      [shape.providerNoticeWeight, () => providerNotice(turn.turnId)],
       [shape.userQuestionWeight, () => askUserQuestion(turn)],
     ];
     if (openPluginInteractions.length > 0) {
@@ -1096,7 +1131,7 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     const options: [number, () => EventInput[]][] = [
       [3, () => startTurn(`User message ${turnCount + 1}`)],
       [shape.requestFreeRunWeight, requestFreeRun],
-      [shape.providerWarningWeight, providerWarning],
+      [shape.providerNoticeWeight, () => providerNotice(null)],
     ];
     if (openPluginInteractions.length > 0) {
       options.push([

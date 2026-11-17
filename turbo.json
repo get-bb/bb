@@ -862,6 +862,17 @@
         "BB_PROVIDER_CORPUS_ROW_CLASSES"
       ]
     },
+    // The timeline-history gate copies the database named by
+    // BB_TIMELINE_HISTORY_DB and walks every thread, so it is uncacheable and
+    // must see those variables. Without the variable the suite skips.
+    "@bb/server#test:timeline-history": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "cache": false,
+      "passThroughEnv": [
+        "BB_TIMELINE_HISTORY_DB",
+        "BB_TIMELINE_HISTORY_THREADS"
+      ]
+    },
     // Builds real plugin host artifacts (the builtin artifacts suite, plus the
     // fixture that pins the published bridge surface as bundled-not-stubbed),
     // so it needs the SDK dist for the same reason as @bb/server#test.

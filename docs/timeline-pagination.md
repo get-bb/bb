@@ -113,6 +113,14 @@ walk. The Ladle story `thread/timeline/Scrollback` with
 the open story) checks that the scrolled-back row stays put while the latest
 window changes and that a full walk shows every row once, in order.
 
+`apps/server/test/services/threads/timeline-read-equivalence-*.test.ts` checks
+on generated event logs that every served latest window equals an uncached
+build and that a fresh paged walk equals one full build;
+`timeline-guard-coverage.test.ts` fails when the generator stops producing an
+event kind a full build can display that is not listed with a reason. The
+`test:timeline-history` gate runs the same walk over every thread of a copied
+real database; see "Timeline History Walk" in `docs/debugging-and-qa.md`.
+
 A latest page sends omitted rows whose `sourceSeqEnd` reaches its window start
 in `timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as
 a running background delegation that started on an older page. Each update
