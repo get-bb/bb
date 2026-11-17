@@ -3079,11 +3079,6 @@ export interface ExperimentalComposerAttachments {
 
 /** Up-arrow prompt history for the composer. */
 export interface ExperimentalComposerHistory {
-  /**
-   * The draft at the moment you read it. The history object keeps its
-   * identity while the user types, so re-render on draft changes with
-   * `useComposer().draft`, not on this object.
-   */
   currentDraft: ComposerDraftSnapshot;
   entries: readonly ComposerDraftSnapshot[];
   onSelectEntry(draft: ComposerDraftSnapshot): void;

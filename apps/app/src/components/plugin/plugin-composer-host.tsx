@@ -237,12 +237,6 @@ export function useOptionalPluginComposerStaticView():
   return useContext(PluginComposerViewContext)?.view;
 }
 
-export function useOptionalPluginComposerDraftSource():
-  | ComposerDraftSource
-  | undefined {
-  return useContext(PluginComposerViewContext)?.draft;
-}
-
 const EMPTY_VIEW_DRAFT: PromptDraftState = {
   text: "",
   mentions: [],

@@ -469,13 +469,13 @@ afterAll(() => {
 });
 
 describe.each(SURFACES)("typing in the $name", (surface) => {
-  it("keeps the renderer API and renders nothing outside the composer", async () => {
+  it("renders nothing outside the composer box and gives plugins the typed draft", async () => {
     registerMinimalComposer();
     renderSurface(surface);
     const box = await composerBox();
     const textarea = box.querySelector("textarea");
     if (textarea === null) throw new Error("The composer has no textarea");
-    const renderer = minimalComposerLastRender.renderer;
+    const historyBefore = minimalComposerLastRender.renderer?.input.history;
     renderRecorder.reset();
 
     for (const text of ["Draft text!", "Draft text!!", "Draft text!!!"]) {
@@ -483,10 +483,13 @@ describe.each(SURFACES)("typing in the $name", (surface) => {
     }
 
     expect(textarea.value).toBe("Draft text!!!");
-    expect(minimalComposerLastRender.renderer).toBe(renderer);
+    const historyAfter = minimalComposerLastRender.renderer?.input.history;
+    expect(historyAfter).not.toBe(historyBefore);
+    expect(historyAfter?.currentDraft.text).toBe("Draft text!!!");
+    expect(renderRecorder.propsOf("MinimalComposer")).toHaveLength(3);
     expect(
       renderRecorder
-        .renderedOutside("MinimalComposer")
+        .renderedOutside("ComposerRendererHostProvider")
         .filter((name) => name !== "ComposersProbe"),
     ).toEqual([]);
   });

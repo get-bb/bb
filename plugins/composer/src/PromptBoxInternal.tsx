@@ -2228,13 +2228,7 @@ export function PromptBoxInternal({
       return;
     }
     resetHistorySession();
-  }, [
-    activeHistoryIndex,
-    composerDraft,
-    history,
-    recalledHistoryDraft,
-    resetHistorySession,
-  ]);
+  }, [activeHistoryIndex, history, recalledHistoryDraft, resetHistorySession]);
 
   useLayoutEffect(() => {
     const fromHeight = lastObservedHeightRef.current;

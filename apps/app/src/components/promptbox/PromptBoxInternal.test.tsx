@@ -307,27 +307,24 @@ function PromptBoxHistoryNavigationHarness({
 }: {
   entries: PromptDraftState[];
 }) {
-  const [draft, setDraft] = useState(emptyPromptDraftState);
+  const [draft] = useState(() => composerDraftStore());
   return (
-    <ControlledComposerBox
-      {...createPromptBoxProps({
-        value: draft.text,
-        mentionRanges: draft.mentions,
-        onChange: (text, mentions) =>
-          setDraft((current) => ({ ...current, text, mentions })),
-        attachments: { items: draft.attachments },
-        history: {
-          currentDraft: draft,
-          entries,
-          onSelectEntry: (entry) =>
-            createCoreComposerActions({
-              getCurrent: () => draft,
-              setDraft,
-              focus: () => {},
-            }).restoreDraft(entry),
-          resetKey: "history",
-        },
-      })}
+    <ComposerBox
+      surface="thread"
+      draft={draft}
+      onSubmit={vi.fn()}
+      mentionMenuPlacement="bottom"
+      typeahead={testTypeaheadConfig()}
+      attachments={{}}
+      history={{
+        entries,
+        onSelectEntry: (entry) =>
+          createCoreComposerActions({
+            ...draft,
+            focus: () => {},
+          }).restoreDraft(entry),
+        resetKey: "history",
+      }}
     />
   );
 }

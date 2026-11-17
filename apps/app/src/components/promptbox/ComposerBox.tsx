@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useSyncExternalStore,
   useMemo,
   useRef,
   useState,
@@ -14,7 +15,6 @@ import {
 import { QueryClientContext } from "@tanstack/react-query";
 import type {
   ComposerAttachment,
-  ComposerDraftSnapshot,
   ComposerView,
   ExperimentalComposerAction,
   ExperimentalComposerContributions,
@@ -49,11 +49,9 @@ import {
   composerViewDraft,
   PluginComposerHostProvider,
   PluginComposerViewProvider,
-  useComposerDraftSelector,
   useOptionalPluginComposerStaticView,
   usePluginComposerHost,
   usePluginComposerStaticViewModel,
-  type ComposerDraftSource,
   type ComposerDraftStore,
   type PluginComposerHost,
   type PluginComposerStaticView,
@@ -215,8 +213,6 @@ export type ComposerBoxProps = Omit<
   focusEndKey?: string | number;
 };
 
-const selectDraftAttachments = (draft: PromptDraftState) => draft.attachments;
-
 const COMPOSER_SLOT_KIND = "composer";
 
 const ignoreReportedSubmitError = () => {};
@@ -306,14 +302,14 @@ const DEFAULT_MENTION_TRIGGERS: readonly PluginMentionTrigger[] = [
 
 interface MentionLinkSources {
   resolveLink: PromptMentionLinkResolver | undefined;
-  draft: ComposerDraftSource;
+  attachments: readonly PromptDraftAttachment[];
   attachmentProjectId: string | undefined;
   openAttachment: ReturnType<typeof useAttachmentOpener>;
 }
 
 function mentionLinkResolver({
   resolveLink,
-  draft,
+  attachments,
   attachmentProjectId,
   openAttachment,
 }: MentionLinkSources): ExperimentalComposerInput["resolveMentionLink"] {
@@ -321,9 +317,7 @@ function mentionLinkResolver({
     if (mention.kind !== "attachment") {
       return resolveLink?.(composerMentionResource(mention)) ?? null;
     }
-    const attachment = draft
-      .getCurrent()
-      .attachments.find((item) => item.path === mention.path);
+    const attachment = attachments.find((item) => item.path === mention.path);
     const projectId = attachment?.sourceProjectId ?? attachmentProjectId;
     if (
       !attachment ||
@@ -368,40 +362,15 @@ function promptDraftAttachmentFromComposer(
 
 function composerHistory(
   history: HistoryConfig | undefined,
-  draft: ComposerDraftSource,
+  currentDraft: PromptDraftState,
 ): ExperimentalComposerHistory | undefined {
   if (history === undefined) return undefined;
-  let converted: {
-    source: PromptDraftState;
-    snapshot: ComposerDraftSnapshot;
-  } | null = null;
   return {
-    get currentDraft() {
-      const source = draft.getCurrent();
-      if (converted?.source !== source) {
-        converted = { source, snapshot: composerDraftFromPromptDraft(source) };
-      }
-      return converted.snapshot;
-    },
+    currentDraft: composerDraftFromPromptDraft(currentDraft),
     entries: history.entries.map(composerDraftFromPromptDraft),
     onSelectEntry: (draft) =>
       history.onSelectEntry(promptDraftFromComposerDraft(draft)),
     resetKey: history.resetKey,
-  };
-}
-
-function composerRendererApi(
-  api: ExperimentalComposerRendererApi,
-  view: PluginComposerStaticView,
-  draft: ComposerDraftSource,
-  key: string,
-): ExperimentalComposerRendererApi & RetiredComposerRendererMembers {
-  return {
-    ...api,
-    key,
-    get view() {
-      return { ...view, draft: composerViewDraft(draft.getCurrent()) };
-    },
   };
 }
 
@@ -436,10 +405,13 @@ function useComposerRendererHostApi({
   const host = usePluginComposerHost();
   const syntheticKey = useId();
   const [layout, setLayout] = useState<ComposerView["layout"]>("expanded");
-  const handleLayoutChange = (next: ComposerView["layout"]) => {
-    setLayout(next);
-    onComposerLayoutChange?.(next);
-  };
+  const handleLayoutChange = useCallback(
+    (next: ComposerView["layout"]) => {
+      setLayout(next);
+      onComposerLayoutChange?.(next);
+    },
+    [onComposerLayoutChange],
+  );
   const localView = usePluginComposerStaticViewModel({
     scope: host?.scope ?? DEFAULT_COMPOSER_SCOPE,
     layout,
@@ -452,9 +424,15 @@ function useComposerRendererHostApi({
   const popups = useResolvedComposerPopups(pluginScopeKind);
   const plusMenuItems = useResolvedComposerPlusMenuItems(view.scope.kind);
   const sendMenuItems = useResolvedComposerSendMenuItems(pluginScopeKind);
-  const draftAttachments = useComposerDraftSelector(
-    draftStore,
-    selectDraftAttachments,
+  const draft = useSyncExternalStore(
+    draftStore.subscribeDraft,
+    draftStore.getCurrent,
+    draftStore.getCurrent,
+  );
+  const draftAttachments = draft.attachments;
+  const liveView = useMemo<ComposerView>(
+    () => ({ ...view, draft: composerViewDraft(draft) }),
+    [draft, view],
   );
   const previousAttachmentPathsRef = useRef<ReadonlySet<string>>(new Set());
   useEffect(() => {
@@ -528,32 +506,37 @@ function useComposerRendererHostApi({
     textEffects ?? [],
   );
   const [draftObserverRunner] = useState(createDraftObserverRunner);
-  const draftObservers = resolvedEditor.observers;
   useEffect(() => {
-    const updateObservers = () => {
-      const current = draftStore.getCurrent();
-      draftObserverRunner.update({
-        text: current.text,
-        mentions: current.mentions,
-        view: { ...view, draft: composerViewDraft(current) },
-        observers: draftObservers,
-      });
-    };
-    updateObservers();
-    return draftStore.subscribeDraft(updateObservers);
-  }, [draftObserverRunner, draftObservers, draftStore, view]);
+    draftObserverRunner.update({
+      text: draft.text,
+      mentions: draft.mentions,
+      view: liveView,
+      observers: resolvedEditor.observers,
+    });
+  });
   useEffect(() => () => draftObserverRunner.dispose(), [draftObserverRunner]);
-  const registerEditor: ComposerRootHost["registerEditor"] = (editor) => {
-    if (editor.state.layout !== layout) handleLayoutChange(editor.state.layout);
-    const bridge = {
-      host: host ?? boxHost,
-      pluginCustomizable: host !== null && !suppress,
-      ...editor,
-      submit: submitForPlugin(editor.state),
-    };
-    publishComposerEditorBridge(key, bridge);
-    return () => clearComposerEditorBridge(key, bridge);
-  };
+  const submitForPluginRef = useRef(submitForPlugin);
+  useLayoutEffect(() => {
+    submitForPluginRef.current = submitForPlugin;
+  });
+  const pluginCustomizable = host !== null && !suppress;
+  const registerEditor = useCallback<ComposerRootHost["registerEditor"]>(
+    (editor) => {
+      if (editor.state.layout !== layout) {
+        handleLayoutChange(editor.state.layout);
+      }
+      const bridge = {
+        host: host ?? boxHost,
+        pluginCustomizable,
+        ...editor,
+        submit: (submission: ComposerEditorSubmission) =>
+          submitForPluginRef.current(editor.state)(submission),
+      };
+      publishComposerEditorBridge(key, bridge);
+      return () => clearComposerEditorBridge(key, bridge);
+    },
+    [boxHost, handleLayoutChange, host, key, layout, pluginCustomizable],
+  );
   const getCachedThreadLink = (threadId: string) => {
     const thread =
       threadTitleResources.threadById.get(threadId) ??
@@ -569,7 +552,7 @@ function useComposerRendererHostApi({
 
   const mentionTriggers =
     typeahead.mention.triggers ?? DEFAULT_MENTION_TRIGGERS;
-  const api = composerRendererApi(
+  const api: ExperimentalComposerRendererApi & RetiredComposerRendererMembers =
     {
       input: {
         ...input,
@@ -582,13 +565,15 @@ function useComposerRendererHostApi({
         ),
         resolveMentionLink: mentionLinkResolver({
           resolveLink: typeahead.mention.resolveLink,
-          draft: draftStore,
+          attachments: draftAttachments,
           attachmentProjectId: attachments?.projectId,
           openAttachment,
         }),
         attachments: composerAttachments(attachments, draftAttachments),
-        history: composerHistory(history, draftStore),
+        history: composerHistory(history, draft),
       },
+      view: liveView,
+      key,
       inputLocked,
       focusComposerShortcut,
       decorationSources,
@@ -616,11 +601,7 @@ function useComposerRendererHostApi({
       attachmentSrc: (path, projectId) =>
         getLocalAttachmentPreviewSrc(path) ??
         toUserAttachmentImageSrc(path, projectId),
-    },
-    view,
-    draftStore,
-    key,
-  );
+    };
   const getEditorRef = useRef<(() => ExperimentalComposerEditor) | null>(null);
   const lastFocusEndKeyRef = useRef(focusEndKey);
   useLayoutEffect(() => {
@@ -629,26 +610,29 @@ function useComposerRendererHostApi({
     lastFocusEndKeyRef.current = focusEndKey;
     getEditorRef.current?.().focusEnd();
   }, [focusEndKey]);
-  const attachEditor: ComposerRootHost["attachEditor"] = (getEditor) => {
-    getEditorRef.current = getEditor;
-    assignRef(promptBoxRef, {
-      focusEnd: () => getEditor().focusEnd(),
-      get voice() {
-        return getEditor().voice ?? null;
-      },
-    });
-    return () => {
-      getEditorRef.current = null;
-      assignRef(promptBoxRef, null);
-    };
-  };
+  const attachEditor = useCallback<ComposerRootHost["attachEditor"]>(
+    (getEditor) => {
+      getEditorRef.current = getEditor;
+      assignRef(promptBoxRef, {
+        focusEnd: () => getEditor().focusEnd(),
+        get voice() {
+          return getEditor().voice ?? null;
+        },
+      });
+      return () => {
+        getEditorRef.current = null;
+        assignRef(promptBoxRef, null);
+      };
+    },
+    [promptBoxRef],
+  );
   const rootHost: ComposerRootHost = {
     key,
     registerEditor,
     attachEditor,
     onFocusCommand,
     reportMenuLayout: reportTypeaheadLayout,
-    runsPluginCommands: host !== null && !suppress,
+    runsPluginCommands: pluginCustomizable,
     isFocusedPane,
   };
   const contributions: ExperimentalComposerContributions = {

@@ -16,7 +16,7 @@ import { makePluginRegistrationSet } from "./plugins";
 export const MINIMAL_COMPOSER_PLUGIN_ID = "minimal-composer";
 
 export const minimalComposerLastRender: {
-  renderer: object | null;
+  renderer: ReturnType<typeof useComposerRenderer> | null;
   composer: { scope: unknown; key: string } | null;
 } = { renderer: null, composer: null };
 
