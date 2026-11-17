@@ -674,7 +674,7 @@ DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
 `turn.failed` carries ids and failure facts after a thread lands in `error`,
 including `originPluginId`, the plugin that sent the failed message. Provider
 retry uses it to ask only that plugin whether to re-run the turn
-(`provider-retry.v1.consent`); Automations is the one sender that answers.
+(`provider-retry.v1.consent`); Workflows is the one sender that answers.
 
 Docs: `backend-events.md`.
 

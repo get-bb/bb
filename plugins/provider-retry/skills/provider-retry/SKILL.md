@@ -28,9 +28,10 @@ authentication failures, and unavailable pool sources do not schedule retries.
 Before scheduling a retry, the plugin asks the plugin that sent the failed
 message, when that plugin answers the `provider-retry.v1.consent` RPC. A
 decline skips the retry, and `explain` reports `declined-by-sender` with the
-plugin's reason. A failing or slow answer counts as consent. Automations
-declines retries of turns that scheduled runs of recurring automations
-started, because those run again on their own schedule.
+plugin's reason. A failing or slow answer counts as consent. Workflows
+declines retries of its worker threads, which it retries itself. Automations
+does not answer: provider retry re-runs a failed automation turn, and the
+automation skips its own retry of that run.
 
 A turn gets at most four automatic retries. The `maximumWait` setting
 (`6 hours` by default, or `24 hours` or `No limit`) skips a subscription-limit

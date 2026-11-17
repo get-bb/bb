@@ -10,6 +10,10 @@ import {
   type AutomationRunRow,
   type Db,
 } from "./data.js";
+import {
+  providerRetrySkipReason,
+  type ProviderRetryReadApi,
+} from "./provider-retry-handoff.js";
 import { publishAutomationChange } from "./realtime.js";
 import type { ScriptRunScope } from "./script-runner.js";
 import { computeNextScheduledTime } from "./schedule-helpers.js";
@@ -32,7 +36,8 @@ const hostListSchema = z.array(
   z.object({ status: z.enum(["connected", "disconnected"]) }).passthrough(),
 );
 type SweepApi = AgentRunApi &
-  ScriptRunApi & {
+  ScriptRunApi &
+  ProviderRetryReadApi & {
     sdk: { hosts: { list(): Promise<unknown> } };
   };
 
@@ -90,17 +95,23 @@ async function processDueAutomation(
     return;
   }
 
+  const skipReason =
+    execution.mode === "agent"
+      ? await providerRetrySkipReason(bb, db, args.automation)
+      : null;
   const claim = claimAutomationScheduledRun(db, {
     automationId: args.automation.id,
     expectedNextRunAt,
     newNextRunAt,
     now: args.now,
+    skipReason,
   });
   if (!claim.advanced) return;
   publishAutomationChange(bb, args.automation.projectId, [
     "automations-changed",
     "automation-runs-changed",
   ]);
+  if (claim.run.status === "skipped") return;
   const onFailure = buildScheduleFailureHandler(db, {
     run: claim.run,
   });
