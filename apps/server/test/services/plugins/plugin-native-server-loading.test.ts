@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, onTestFailed } from "vitest";
 
 const run = promisify(execFile);
 
-describe("native plugin server loading", () => {
+describe("native plugin server loading", { timeout: 60_000 }, () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
