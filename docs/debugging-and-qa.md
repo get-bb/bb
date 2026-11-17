@@ -172,9 +172,14 @@ DESC`.
 
 ## Reproducing Test Order Failures
 
-CI's test shards shuffle test files and tests within each file. Vitest prints the seed for
-runs that execute; unchanged Turbo tasks can still reuse cached results.
-Reproduce a failing package with its logged seed:
+Blocking CI runs tests in a stable order. The nightly `Shuffled test order`
+workflow (`.github/workflows/test-order.yml`) reruns every Linux test shard on
+main with test files and the tests within each file shuffled, so an order
+dependency fails that run instead of an unrelated PR. Its seed is the run number
+unless a `seed` input is given to a manual run; the job title, the step summary,
+and Vitest's `Running tests with seed` line all print it, and a failing shard's
+summary gives the exact reproduction command. Batch the failures it finds into
+fix PRs. Reproduce a failing package with its logged seed:
 
 ```bash
 pnpm exec turbo run test --filter=@bb/app -- --sequence.shuffle --sequence.seed=4721 --maxWorkers=2
