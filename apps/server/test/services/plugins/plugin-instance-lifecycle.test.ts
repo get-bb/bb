@@ -28,6 +28,7 @@ interface LifecycleControl {
   threadIds: string[];
   formResults: Array<{ generation: number; result: unknown }>;
   rpcSignals: Array<{ generation: number; aborted: boolean }>;
+  rpcEntered: (generation: number) => void;
   keptSignals: AbortSignal[];
   cliSignals: Array<{ generation: number; aborted: boolean }>;
   closed: Array<{ generation: number; code: number }>;
@@ -68,6 +69,7 @@ const fixture = `
           await new Promise<void>((resolve) => {
             context.experimental_signal.addEventListener("abort", () => resolve(), { once: true });
             void control.release.then(resolve);
+            control.rpcEntered(generation);
           });
           control.rpcSignals.push({ generation, aborted: context.experimental_signal.aborted });
           return generation;
@@ -133,6 +135,7 @@ function newControl(): { control: LifecycleControl; release: () => void } {
     threadIds: [],
     formResults: [],
     rpcSignals: [],
+    rpcEntered: () => {},
     keptSignals: [],
     cliSignals: [],
     closed: [],
@@ -309,8 +312,11 @@ describe("plugin instance lifecycle on a running server", () => {
   it("aborts an rpc handler's signal when its caller disconnects", async () => {
     await install();
     const caller = new AbortController();
+    const entered = new Promise<number>((resolve) => {
+      control().rpcEntered = resolve;
+    });
     const pending = callRpc("wait", caller.signal).catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await entered).toBe(1);
 
     caller.abort();
 
@@ -322,8 +328,11 @@ describe("plugin instance lifecycle on a running server", () => {
 
   it("aborts an in-flight rpc handler's signal at reload and delivers its answer", async () => {
     await install();
+    const entered = new Promise<number>((resolve) => {
+      control().rpcEntered = resolve;
+    });
     const pending = callRpc("wait");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await entered).toBe(1);
 
     await server.pluginService.reload("lifecycle");
 
