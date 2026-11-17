@@ -21,7 +21,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -295,13 +295,15 @@ function renderPicker({
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  document.body.replaceChildren();
   commandHandlers.clear();
   vi.clearAllMocks();
 });
 
-describe("ModelReasoningPicker", () => {
-  beforeAll(() => ModelReasoningMenu.preload());
+await ModelReasoningMenu.preload();
 
+describe("ModelReasoningPicker", () => {
   it.each([
     ["ArrowRight", "medium", "high"],
     ["ArrowLeft", "high", "medium"],
@@ -1569,7 +1571,6 @@ describe("buildModelNavRows", () => {
 });
 
 describe("ModelReasoningPicker service tiers", () => {
-  beforeAll(() => ModelReasoningMenu.preload());
   afterEach(() => setPluginAssetIcons(new Map()));
 
   const fast = { id: "fast", label: "Fast", description: "1.5x speed" };

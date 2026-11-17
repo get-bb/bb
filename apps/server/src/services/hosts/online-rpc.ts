@@ -17,10 +17,11 @@ import {
   type HostDaemonRpcCommand,
   type HostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import { ApiError } from "../../errors.js";
+import { ApiError, HostConnectionLostApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
 import {
   HostOnlineRpcCancelledError,
+  HostOnlineRpcConnectionLostError,
   HostOnlineRpcTimeoutError,
   HostOnlineRpcUnavailableError,
 } from "../../ws/hub.js";
@@ -420,6 +421,10 @@ function throwOnlineRpcError(error: unknown): never {
       "Request was cancelled by the client",
       false,
     );
+  }
+
+  if (error instanceof HostOnlineRpcConnectionLostError) {
+    throw new HostConnectionLostApiError();
   }
 
   if (error instanceof HostOnlineRpcUnavailableError) {

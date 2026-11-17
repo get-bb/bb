@@ -354,5 +354,11 @@ describe("AppToaster", () => {
     expect(onDismissC).toHaveBeenCalledOnce();
     expect(onDismissB).toHaveBeenCalledOnce();
     expect(onDismissA).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(1);
+    });
+    expect(document.querySelector("[data-sonner-toast]")?.textContent).toBe(
+      "Stack A",
+    );
   });
 });

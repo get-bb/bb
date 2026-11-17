@@ -22,6 +22,7 @@ import type {
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
 import type { LoadedPlugin } from "../services/plugins/plugin-service-internal.js";
+import type { PluginCssScope } from "../services/plugins/app-bundle.js";
 import type {
   PluginMentionTrigger,
   PluginWebSocketRouteRecord,
@@ -119,6 +120,12 @@ export async function pluginCliResponse(
       "x-accel-buffering": "no",
     },
   });
+}
+
+function pluginCssScope(requested: string | undefined): PluginCssScope {
+  if (requested === "plugin-attribute-v1") return "plugin-attribute";
+  if (requested === "owned-root-v1") return "owned-root";
+  return "legacy";
 }
 
 const compressBrotli = promisify(brotliCompress);
@@ -571,16 +578,18 @@ export function registerPluginRoutes(
     const hostTailwind =
       spec.kind === "css" &&
       context.req.query("host-tailwind") === HOST_TAILWIND_VERSION;
-    const ownedRoot =
-      spec.kind === "css" && context.req.query("css-scope") === "owned-root-v1";
+    const scope =
+      spec.kind === "css"
+        ? pluginCssScope(context.req.query("css-scope"))
+        : "legacy";
     let bytes: Buffer;
     try {
-      bytes = await asset.read({ hostTailwind, ownedRoot });
+      bytes = await asset.read({ hostTailwind, scope });
     } catch {
       return context.json({ ok: false, error: "bundle file missing" }, 404);
     }
     return appAssetResponse(context, bytes, {
-      assetKey: `${hash}:${spec.kind}:${hostTailwind}:${ownedRoot}`,
+      assetKey: `${hash}:${spec.kind}:${hostTailwind}:${scope}`,
       cache: appAssetCompressionCache,
       contentType: spec.contentType,
       cacheControl: "public, max-age=31536000, immutable",
@@ -638,11 +647,13 @@ export function registerPluginRoutes(
     const hostTailwind =
       spec.kind === "css" &&
       context.req.query("host-tailwind") === HOST_TAILWIND_VERSION;
-    const ownedRoot =
-      spec.kind === "css" && context.req.query("css-scope") === "owned-root-v1";
+    const scope =
+      spec.kind === "css"
+        ? pluginCssScope(context.req.query("css-scope"))
+        : "legacy";
     let bytes: Buffer;
     try {
-      bytes = await asset.read({ hostTailwind, ownedRoot });
+      bytes = await asset.read({ hostTailwind, scope });
     } catch {
       return context.json({ ok: false, error: "bundle file missing" }, 404);
     }
@@ -651,7 +662,7 @@ export function registerPluginRoutes(
       asset.hash,
     );
     return appAssetResponse(context, bytes, {
-      assetKey: `${context.req.param("id")}:${spec.kind}:${hostTailwind}:${ownedRoot}`,
+      assetKey: `${context.req.param("id")}:${spec.kind}:${hostTailwind}:${scope}`,
       cache: appAssetCompressionCache,
       contentType: spec.contentType,
       cacheControl,

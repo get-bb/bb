@@ -33,7 +33,8 @@ import {
   getThread,
   hasStoredTerminalClientTurnRequestEvent,
   hasStoredTurnRequestEventSince,
-  listThreadIdsStoppedSinceLastTurnStart,
+  getLatestThreadStopAim,
+  listThreadIdsStoppedSinceLastTurnRequest,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   liveThread,
@@ -50,6 +51,7 @@ import {
   STALE_TURN_ERROR_CODE,
   STEER_UNCONFIRMED_ERROR_CODE,
   TURN_START_UNCONFIRMED_ERROR_CODE,
+  type ThreadStopAim,
 } from "@bb/host-daemon-contract";
 import {
   type ProvisioningTranscriptEntry,
@@ -59,6 +61,7 @@ import {
   type ThreadEventType,
   type ThreadLifecycleEvent,
   type ThreadStatus,
+  clientTurnRequestIdSchema,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -109,6 +112,8 @@ import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { ApiError } from "../../errors.js";
 import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
+  HOST_CONNECTION_LOST_ERROR_CODE,
+  isHostUnavailableReportCode,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
   startLiveHostCommand,
@@ -302,7 +307,10 @@ interface ThreadStartSuccessActivationArgs {
   threadId: string;
 }
 
-interface RequestThreadStopArgs extends Omit<ThreadStopCommandArgs, "intent"> {
+interface RequestThreadStopArgs extends Omit<
+  ThreadStopCommandArgs,
+  "aimedAt" | "intent"
+> {
   interruptionReason: SystemThreadInterruptedReason;
 }
 
@@ -380,6 +388,7 @@ interface ReconcileDaemonReportedThreadsArgs {
   activeThreadIds: readonly string[];
   hostId: string;
   sameDaemonInstance: boolean;
+  turnCommandThreadIds: readonly string[];
   undeliveredEventThreadIds: readonly string[];
 }
 
@@ -803,6 +812,20 @@ function recordEmptyThreadStartProviderSessionInTransaction(
   });
 }
 
+function mayHaveStartedATurn(
+  deps: ThreadCommandResultSettlementDeps,
+  command: TurnSubmitCommand,
+): boolean {
+  if (command.target.mode === "start") {
+    return true;
+  }
+  return (
+    command.target.mode === "auto" &&
+    command.target.expectedTurnId === null &&
+    getActiveTurnId(deps, command.threadId) === null
+  );
+}
+
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
@@ -818,6 +841,39 @@ function settleThreadCommandFailure(
     return emptyCommandResultSideEffects();
   }
   if (hasTerminalClientTurnRequestEvent(args.deps, args.command)) {
+    return emptyCommandResultSideEffects();
+  }
+  if (
+    args.command.type === "turn.submit" &&
+    args.report.errorCode === HOST_CONNECTION_LOST_ERROR_CODE
+  ) {
+    if (mayHaveStartedATurn(args.deps, args.command)) {
+      settleUnconfirmedTurnStartInTransaction(args.deps.db, {
+        requestId: args.command.requestId,
+        threadId: thread.id,
+      });
+    } else {
+      settleUnconfirmedSteerInTransaction(args.deps.db, {
+        requestId: args.command.requestId,
+        threadId: thread.id,
+      });
+    }
+    return emptyCommandResultSideEffects();
+  }
+  if (
+    args.command.type === "thread.start" &&
+    args.command.input.length > 0 &&
+    args.report.errorCode === HOST_CONNECTION_LOST_ERROR_CODE
+  ) {
+    if (isPreStartThreadStatus(thread.status)) {
+      const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
+        event: { type: "run.started" },
+        threadId: thread.id,
+      });
+      if (outcome.applied) {
+        args.deps.hub.notifyThread(thread.id, ["status-changed"]);
+      }
+    }
     return emptyCommandResultSideEffects();
   }
   if (
@@ -1045,7 +1101,7 @@ export function ensureThreadCanStartRequest(thread: Thread): void {
 
 export async function prepareReadyThreadTurnCommand(
   deps: LoggedWorkSessionDeps,
-  args: Omit<ThreadStartCommandArgs, "fork">,
+  args: Omit<ThreadStartCommandArgs, "fork"> & { mayJoinRunningTurn: boolean },
 ): Promise<PreparedReadyThreadTurnCommand> {
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
@@ -1064,7 +1120,9 @@ export async function prepareReadyThreadTurnCommand(
         : {}),
       permissionEscalation: args.permissionEscalation,
       providerThreadId,
-      target: { mode: "start" },
+      target: args.mayJoinRunningTurn
+        ? { mode: "auto", expectedTurnId: null }
+        : { mode: "start" },
       thread: args.thread,
     });
     return {
@@ -1118,7 +1176,7 @@ export function settleThreadStopCommandResult(
   if (!args.report.ok) {
     if (
       args.report.errorCode !== "unknown_environment" &&
-      args.report.errorCode !== "host_unavailable" &&
+      !isHostUnavailableReportCode(args.report.errorCode) &&
       args.report.errorCode !== "command_timeout"
     ) {
       return emptyCommandResultSideEffects();
@@ -1135,6 +1193,20 @@ export function settleThreadStopCommandResult(
         drainQueuedMessagesAfterStopAction(args.command.threadId),
       ],
     };
+  }
+
+  if (args.report.result.activeTurnRetained === true) {
+    const thread = getThread(args.deps.db, args.command.threadId);
+    if (thread?.status === "idle" || thread?.status === "error") {
+      const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
+        event: { type: "run.started" },
+        threadId: thread.id,
+      });
+      if (outcome.applied) {
+        args.deps.hub.notifyThread(thread.id, ["status-changed"]);
+      }
+    }
+    return emptyCommandResultSideEffects();
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
@@ -1561,13 +1633,39 @@ function markThreadStopRequested(
   return currentThread?.status === "stopping";
 }
 
+function stopAimFor(
+  db: DbQueryConnection,
+  threadId: string,
+): ThreadStopAim | null {
+  const thread = getThread(db, threadId);
+  if (
+    thread === null ||
+    thread.archivedAt !== null ||
+    thread.deletedAt !== null
+  ) {
+    return null;
+  }
+  const aim = getLatestThreadStopAim(db, { threadId });
+  if (aim === null) {
+    return null;
+  }
+  return {
+    turnId: aim.turnId,
+    requestIds: clientTurnRequestIdSchema.array().parse(aim.requestIds),
+  };
+}
+
 function dispatchThreadStopCommand(
   deps: CommandResultSideEffectsDeps,
   args: RequestThreadStopArgs,
 ): void {
   if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) return;
   void runLiveHostCommand(deps, {
-    command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
+    command: buildThreadStopCommand({
+      ...args,
+      aimedAt: stopAimFor(deps.db, args.threadId),
+      intent: "interrupt",
+    }),
     hostId: args.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   })
@@ -1588,8 +1686,9 @@ function rememberStopAwaitingDaemon(
   const { hostId } = args.execution;
   if (
     !args.report.ok &&
-    args.report.errorCode === "host_unavailable" &&
-    getLatestSessionForHost(args.deps.db, { hostId })?.status === "active"
+    (args.report.errorCode === HOST_CONNECTION_LOST_ERROR_CODE ||
+      (args.report.errorCode === "host_unavailable" &&
+        getLatestSessionForHost(args.deps.db, { hostId })?.status === "active"))
   ) {
     stopsAwaitingDaemon.set(args.command.threadId, {
       hostId,
@@ -1838,7 +1937,11 @@ async function stopThreadUntilSettled(
       const args = manualThreadStopArgs(threadId, environment);
       if (markThreadStopRequested(deps, args)) {
         const interrupted = await runAwaitedThreadStopCommand(deps, {
-          command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
+          command: buildThreadStopCommand({
+            ...args,
+            aimedAt: stopAimFor(deps.db, threadId),
+            intent: "interrupt",
+          }),
           hostId: args.hostId,
         });
         if (interrupted.failure !== null) {
@@ -1875,7 +1978,11 @@ async function stopThreadUntilSettled(
     }
     const args = manualThreadStopArgs(threadId, environment);
     const released = await runAwaitedThreadStopCommand(deps, {
-      command: buildThreadStopCommand({ ...args, intent: "release" }),
+      command: buildThreadStopCommand({
+        ...args,
+        aimedAt: null,
+        intent: "release",
+      }),
       hostId: args.hostId,
     });
     if (released.failure !== null) {
@@ -1888,7 +1995,11 @@ async function stopThreadUntilSettled(
       );
       if (!reviveThreadFromRetainedTurn(deps, threadId)) {
         const interrupted = await runAwaitedThreadStopCommand(deps, {
-          command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
+          command: buildThreadStopCommand({
+            ...args,
+            aimedAt: null,
+            intent: "interrupt",
+          }),
           hostId: args.hostId,
         });
         return interrupted.failure;
@@ -2395,6 +2506,7 @@ export async function reconcileDaemonReportedThreads(
 
   const threadIdsStillReporting = [
     ...args.activeThreadIds,
+    ...args.turnCommandThreadIds,
     ...args.undeliveredEventThreadIds,
   ];
   const activeButMissing = deps.db
@@ -2448,7 +2560,7 @@ export async function reconcileDaemonReportedThreads(
   );
 
   const stoppedWhileAwayThreadIds = new Set(
-    listThreadIdsStoppedSinceLastTurnStart(deps.db, {
+    listThreadIdsStoppedSinceLastTurnRequest(deps.db, {
       threadIds: inactiveButActive.map((thread) => thread.id),
     }),
   );

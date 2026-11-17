@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { act } from "react";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
@@ -59,10 +60,18 @@ it("keeps Done, Escape and compact Back usable through a held import, failure an
   fireEvent.click(back);
   expect(onDone).toHaveBeenCalledTimes(3);
 
-  vi.doMock("./SidebarVisibilityCustomize", (importOriginal) =>
-    importOriginal(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  const retried =
+    createDeferredPromise<typeof import("./SidebarVisibilityCustomize")>();
+  vi.doMock("./SidebarVisibilityCustomize", async (importOriginal) => {
+    const module =
+      importOriginal<typeof import("./SidebarVisibilityCustomize")>();
+    retried.resolve(module);
+    return module;
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await retried.promise;
+  });
   fireEvent.click(
     await screen.findByRole("checkbox", { name: "Show Review in sidebar" }),
   );

@@ -63,6 +63,7 @@ it.each(["idle", "error", "active", "starting", "stopping"] as const)(
       await reconcileDaemonReportedThreads(harness.deps, {
         hostId: host.id,
         activeThreadIds: [],
+        turnCommandThreadIds: [],
         undeliveredEventThreadIds: [],
         sameDaemonInstance: false,
       });
@@ -107,6 +108,7 @@ it("sends at most four storage deletions to a host at once", async () => {
     await reconcileDaemonReportedThreads(harness.deps, {
       hostId: host.id,
       activeThreadIds: [],
+      turnCommandThreadIds: [],
       undeliveredEventThreadIds: [],
       sameDaemonInstance: false,
     });

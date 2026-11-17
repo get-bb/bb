@@ -18,6 +18,10 @@ import {
 } from "@/test/fixtures/sidebar-thread-list";
 import { PluginThreadList } from "./PluginThreadList";
 
+const replacement = await loadPluginThreadListReplacement({
+  withNotifications: false,
+});
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -40,9 +44,6 @@ it("a hidden plugin thread list mounts no rows and subscribes no thread ids", as
   }));
   vi.stubGlobal("IntersectionObserver", InertObserver);
   vi.stubGlobal("ResizeObserver", InertObserver);
-  const replacement = await loadPluginThreadListReplacement({
-    withNotifications: false,
-  });
   const seen: (readonly string[])[] = [];
   setPluginSlotRegistrations(
     "recorder",

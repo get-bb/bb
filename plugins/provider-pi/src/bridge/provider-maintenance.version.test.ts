@@ -1,3 +1,6 @@
+import { ChildProcess } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
+import { experimental_killPortableProcess } from "@get-bb/plugin-sdk/provider-bridge";
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,8 +15,33 @@ import {
 } from "./provider-maintenance.js";
 
 const temporaryDirectories: string[] = [];
+const shimChildren: Array<{ child: ChildProcess; closed: Promise<void> }> = [];
+const childProcessChannel = channel("child_process");
+const trackShimChild = (message: unknown): void => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "process" in message &&
+    message.process instanceof ChildProcess
+  ) {
+    const child = message.process;
+    const closed = new Promise<void>((resolve) =>
+      child.once("close", () => resolve()),
+    );
+    shimChildren.push({ child, closed });
+  }
+};
 
 afterEach(async () => {
+  childProcessChannel.unsubscribe(trackShimChild);
+  await Promise.all(
+    shimChildren.splice(0).map(async ({ child, closed }) => {
+      if (child.exitCode === null && child.signalCode === null) {
+        experimental_killPortableProcess(child, "SIGKILL");
+      }
+      await closed;
+    }),
+  );
   vi.unstubAllEnvs();
   resetPiInstallGateForTests();
   await Promise.all(
@@ -82,7 +110,7 @@ describe("Pi version probe", () => {
 
   it.skipIf(process.platform !== "win32")(
     "probes a Pi .cmd shim on PATH and passes the install gate",
-    async () => {
+    async ({ signal }) => {
       const root = await mkdtemp(path.join(os.tmpdir(), "bb pi version-"));
       temporaryDirectories.push(root);
       const pkg = path.join(
@@ -110,14 +138,13 @@ describe("Pi version probe", () => {
       vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);
       vi.stubEnv(PI_BRIDGE_COMMAND_ENV, "pi");
       vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
-      expect(await probePiVersion()).toEqual({
-        version: "0.85.1",
-        failure: null,
-      });
+      signal.throwIfAborted();
+      childProcessChannel.subscribe(trackShimChild);
       expect(await getPiInstallGate()).toEqual({
         ok: true,
         installedVersion: "0.85.1",
       });
+      signal.throwIfAborted();
       expect(await getPiProviderInstallationStatus(false)).toMatchObject({
         executablePath: path.join(root, "pi.cmd"),
         currentVersion: "0.85.1",

@@ -216,7 +216,7 @@ describe("offline host follow-ups", () => {
       expect(dispatched.command).toMatchObject({
         threadId: thread.id,
         input,
-        target: { mode: "start" },
+        target: { mode: "auto", expectedTurnId: null },
       });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(
