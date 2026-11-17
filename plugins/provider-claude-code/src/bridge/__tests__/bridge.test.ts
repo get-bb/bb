@@ -121,6 +121,7 @@ interface ClaudeQueryCallOptions {
   disallowedTools?: string[];
   settingSources?: string[];
   stderr?: (data: string) => void;
+  systemPrompt?: BridgeSessionOptions["systemPrompt"];
 }
 
 interface ClaudeQueryCall {
@@ -1387,7 +1388,7 @@ describe("bridge", () => {
     }
   });
 
-  it("keeps manager sessions on a plain string system prompt", () => {
+  it("keeps manager sessions on their own custom system prompt", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
@@ -1406,7 +1407,11 @@ describe("bridge", () => {
     );
 
     expect(options.cwd).toBe("/tmp/worktree");
-    expect(options.systemPrompt).toBe("You are a manager.");
+    expect(options.systemPrompt).toEqual({
+      type: "custom",
+      prompt: "You are a manager.",
+      snapshot: false,
+    });
   });
 
   it.each([
@@ -1595,6 +1600,7 @@ describe("bridge", () => {
       type: "preset",
       preset: "claude_code",
       append: "You are a coder.",
+      snapshot: false,
     });
     expect(options.effort).toBe("xhigh");
     expect(options.thinking).toEqual({
@@ -4129,6 +4135,108 @@ describe("bridge", () => {
       bridge.restore();
     }
   });
+
+  it.each([
+    {
+      instructionMode: "append",
+      expectedSystemPrompt: (instructions: string) => ({
+        type: "preset",
+        preset: "claude_code",
+        append: instructions,
+        snapshot: false,
+      }),
+    },
+    {
+      instructionMode: "replace",
+      expectedSystemPrompt: (instructions: string) => ({
+        type: "custom",
+        prompt: instructions,
+        snapshot: false,
+      }),
+    },
+  ])(
+    "sends each resume's current $instructionMode instructions instead of the session's recorded system prompt",
+    async ({ instructionMode, expectedSystemPrompt }) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+      const threadId = `thread-resume-instructions-${instructionMode}`;
+      let requestId = 0;
+      const sessionOptions = (instructions: string) => ({
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
+        permissionEscalation: "ask",
+        instructions,
+        providerOptions: { workflowsEnabled: false },
+      });
+      const stopThread = async () => {
+        requestId += 1;
+        bridge.sendRequest(requestId, "thread/stop", {
+          threadId,
+          providerThreadId: threadId,
+          intent: "interrupt",
+          activeTurnId: null,
+        });
+        await bridge.flushWork();
+        queries.at(-1)?.finish();
+        await bridge.waitForResponse(requestId);
+      };
+      const resumeThread = async (
+        providerThreadId: string,
+        instructions: string,
+      ) => {
+        requestId += 1;
+        bridge.sendRequest(requestId, "thread/resume", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode,
+          providerThreadId,
+          options: sessionOptions(instructions),
+        });
+        await bridge.waitForResponse(requestId);
+      };
+
+      try {
+        requestId += 1;
+        bridge.sendRequest(requestId, "thread/start", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode,
+          options: sessionOptions("Plugin instructions v1"),
+        });
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(requestId),
+        );
+        expect(getLatestQueryOptions().systemPrompt).toEqual(
+          expectedSystemPrompt("Plugin instructions v1"),
+        );
+        await stopThread();
+
+        await resumeThread(providerThreadId, "Plugin instructions v2");
+        expect(getLatestQueryOptions()).toMatchObject({
+          resume: providerThreadId,
+          systemPrompt: expectedSystemPrompt("Plugin instructions v2"),
+        });
+        await stopThread();
+
+        await resumeThread(providerThreadId, "Plugin instructions v2");
+        expect(queries).toHaveLength(3);
+        expect(getLatestQueryOptions()).toMatchObject({
+          resume: providerThreadId,
+          systemPrompt: expectedSystemPrompt("Plugin instructions v2"),
+        });
+        await stopThread();
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
 
   it("returns an existing live same-provider thread/resume session", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
