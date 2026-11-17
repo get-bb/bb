@@ -3,9 +3,9 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -344,7 +344,13 @@ const cases: ProviderCliEnvCase[] = [
         },
       },
     }),
-    cleanup: async () => {},
+    cleanup: (send) =>
+      send("thread/stop", {
+        threadId: "thr_cli_env_contract",
+        providerThreadId: "cleanup",
+        intent: "release",
+        activeTurnId: null,
+      }),
   },
 ];
 
@@ -423,7 +429,12 @@ describe.each(cases)("provider CLI env contract: $provider", (testCase) => {
     });
     harness.restore();
     vi.unstubAllEnvs();
-    rmSync(ctx.dir, { recursive: true, force: true });
+    await rm(ctx.dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   });
 
   it("thread CLI receives every thread env var", async () => {
