@@ -316,6 +316,9 @@ function createFakeRuntime(): AgentRuntime {
     getActiveTurnId() {
       return null;
     },
+    getActiveTurnRequestIds() {
+      return [];
+    },
     async waitForActiveTurn() {
       return null;
     },

@@ -355,10 +355,20 @@ const threadStopIntentSchema = z.enum(["interrupt", "release"]);
 
 export type ThreadStopIntent = z.infer<typeof threadStopIntentSchema>;
 
+const threadStopAimSchema = z
+  .object({
+    turnId: z.string().min(1).nullable(),
+    requestIds: z.array(clientTurnRequestIdSchema),
+  })
+  .strict();
+
+export type ThreadStopAim = z.infer<typeof threadStopAimSchema>;
+
 export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.stop"),
     intent: threadStopIntentSchema,
+    aimedAt: threadStopAimSchema.nullable(),
   })
   .strict();
 
