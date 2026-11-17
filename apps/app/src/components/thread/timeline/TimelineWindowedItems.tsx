@@ -87,18 +87,14 @@ export interface TimelineWindowedItemsProps {
   pinnedToEnd: boolean;
 }
 
-function TimelineWindowedItem({
-  index,
-  observeItemElement,
-  renderItem,
-  windowingEnabled,
-}: {
-  index: number;
-  observeItemElement: TimelineWindowedItemRenderState["itemRef"];
-  renderItem: TimelineWindowedItemsProps["renderItem"];
-  windowingEnabled: boolean;
-}) {
-  return renderItem(index, { itemRef: observeItemElement, windowingEnabled });
+const measurementRevisions = new WeakMap<ReadonlyMap<string, number>, number>();
+
+function measurementRevision(measurements: ReadonlyMap<string, number>) {
+  return measurementRevisions.get(measurements) ?? 0;
+}
+
+function bumpMeasurementRevision(measurements: ReadonlyMap<string, number>) {
+  measurementRevisions.set(measurements, measurementRevision(measurements) + 1);
 }
 
 interface LayoutModel {
@@ -413,7 +409,6 @@ export function TimelineWindowedItems({
     revision: number;
     model: LayoutModel;
   } | null>(null);
-  const measurementRevisionRef = useRef(0);
   const renderedModel = useCallback((): LayoutModel => {
     const live = liveRef.current;
     const cached = modelCacheRef.current;
@@ -422,7 +417,7 @@ export function TimelineWindowedItems({
       cached.itemKeys === live.itemKeys &&
       cached.mountedIndexes === live.mountedIndexes &&
       cached.renderedHeights === live.renderedHeights &&
-      cached.revision === measurementRevisionRef.current
+      cached.revision === measurementRevision(measurements)
     ) {
       return cached.model;
     }
@@ -442,7 +437,7 @@ export function TimelineWindowedItems({
       itemKeys: live.itemKeys,
       mountedIndexes: live.mountedIndexes,
       renderedHeights: live.renderedHeights,
-      revision: measurementRevisionRef.current,
+      revision: measurementRevision(measurements),
       model,
     };
     return model;
@@ -452,7 +447,7 @@ export function TimelineWindowedItems({
     (key: string, height: number): boolean => {
       if (height <= 0 || measurements.get(key) === height) return false;
       recordTimelineMeasurement(measurements, key, height);
-      measurementRevisionRef.current += 1;
+      bumpMeasurementRevision(measurements);
       return true;
     },
     [measurements],
@@ -677,13 +672,7 @@ export function TimelineWindowedItems({
       );
     }
     children.push(
-      <TimelineWindowedItem
-        key={itemKeys[index] ?? index}
-        index={index}
-        observeItemElement={observeItemElement}
-        renderItem={renderItem}
-        windowingEnabled={windowingEnabled}
-      />,
+      renderItem(index, { itemRef: observeItemElement, windowingEnabled }),
     );
     previous = index;
   }
