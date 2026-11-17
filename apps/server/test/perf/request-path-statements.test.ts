@@ -648,47 +648,53 @@ const REQUEST_PATHS: readonly RequestPath[] = [
   },
 ];
 
-describe.each(GROWTH_AXES)("request path costs as $name grows", (axis) => {
-  let small: SizedServer;
-  let large: SizedServer;
+describe("request paths in fixture order", { shuffle: false }, () => {
+  describe.each(GROWTH_AXES)("request path costs as $name grows", (axis) => {
+    let small: SizedServer;
+    let large: SizedServer;
 
-  beforeAll(async () => {
-    small = await startSizedServer(axis.small);
-    large = await startSizedServer(axis.large);
-  }, FIXTURE_BUILD_TIMEOUT_MS);
+    beforeAll(async () => {
+      small = await startSizedServer(axis.small);
+      large = await startSizedServer(axis.large);
+    }, FIXTURE_BUILD_TIMEOUT_MS);
 
-  afterAll(async () => {
-    await small.harness.cleanup();
-    await large.harness.cleanup();
+    afterAll(async () => {
+      await small.harness.cleanup();
+      await large.harness.cleanup();
+    });
+
+    it.each(REQUEST_PATHS)(
+      "$name runs a statement count and returns a response that do not grow",
+      async (path) => {
+        small.received.bytes = 0;
+        const smallStatements = await small.counter.record(() =>
+          path.run(small),
+        );
+        large.received.bytes = 0;
+        const largeStatements = await large.counter.record(() =>
+          path.run(large),
+        );
+        const summary = `${path.name}: ${smallStatements.length} statements and ${small.received.bytes} response bytes with ${describeWorld(axis.small)}, ${largeStatements.length} and ${large.received.bytes} with ${describeWorld(axis.large)}`;
+        expect(largeStatements.length).toBeGreaterThan(0);
+        if (path.linearResponse?.[axis.name] === undefined) {
+          expect(large.received.bytes, summary).toBeLessThanOrEqual(
+            small.received.bytes * RESPONSE_BYTES_GROWTH_LIMIT +
+              RESPONSE_BYTES_SLACK,
+          );
+        }
+        if (path.linearStatements?.[axis.name] === undefined) {
+          expect(
+            grownStatements(smallStatements, largeStatements),
+            summary,
+          ).toEqual([]);
+        } else {
+          expect(largeStatements.length, summary).toBeLessThanOrEqual(
+            smallStatements.length * LINEAR_GROWTH_LIMIT,
+          );
+        }
+      },
+    );
   });
-
-  it.each(REQUEST_PATHS)(
-    "$name runs a statement count and returns a response that do not grow",
-    async (path) => {
-      small.received.bytes = 0;
-      const smallStatements = await small.counter.record(() => path.run(small));
-      large.received.bytes = 0;
-      const largeStatements = await large.counter.record(() => path.run(large));
-      const summary = `${path.name}: ${smallStatements.length} statements and ${small.received.bytes} response bytes with ${describeWorld(axis.small)}, ${largeStatements.length} and ${large.received.bytes} with ${describeWorld(axis.large)}`;
-      expect(largeStatements.length).toBeGreaterThan(0);
-      if (path.linearResponse?.[axis.name] === undefined) {
-        expect(large.received.bytes, summary).toBeLessThanOrEqual(
-          small.received.bytes * RESPONSE_BYTES_GROWTH_LIMIT +
-            RESPONSE_BYTES_SLACK,
-        );
-      }
-      if (path.linearStatements?.[axis.name] === undefined) {
-        expect(
-          grownStatements(smallStatements, largeStatements),
-          summary,
-        ).toEqual([]);
-      } else {
-        expect(largeStatements.length, summary).toBeLessThanOrEqual(
-          smallStatements.length * LINEAR_GROWTH_LIMIT,
-        );
-      }
-    },
-  );
 });
 
 afterAll(() => {

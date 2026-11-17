@@ -8,6 +8,8 @@ import {
   schedulePluginFrontendReconcile,
 } from "./plugin-frontend-lazy";
 
+await import("./plugin-frontend");
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
