@@ -1,7 +1,10 @@
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  ftruncateSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -3307,7 +3310,13 @@ describe("acp bridge", () => {
     const bigPath = join(workspaceDir, "big.txt");
     const binaryPath = join(workspaceDir, "blob.bin");
     const badUtf8Path = join(workspaceDir, "bad.txt");
-    writeFileSync(bigPath, "x".repeat(64 * 1024 + 1));
+    const directoryPath = mkdtempSync(join(workspaceDir, "not-a-file-"));
+    const huge = openSync(bigPath, "w");
+    try {
+      ftruncateSync(huge, 8 * 1024 * 1024);
+    } finally {
+      closeSync(huge);
+    }
     writeFileSync(binaryPath, Buffer.from([0, 1, 2, 255]));
     writeFileSync(badUtf8Path, Buffer.from([0xc3, 0x28]));
     const requestLog = join(workspaceDir, "grok-skip-inline.jsonl");
@@ -3323,13 +3332,14 @@ describe("acp bridge", () => {
         { type: "localFile", path: bigPath, name: "big.txt" },
         { type: "localFile", path: binaryPath, name: "blob.bin" },
         { type: "localFile", path: badUtf8Path, name: "bad.txt" },
+        { type: "localFile", path: directoryPath, name: "not-a-file" },
       ],
     });
     expect((await waitForResponse(turnId)).error).toBeUndefined();
     await waitForTurnCompleted();
     const serialized = JSON.stringify(sessionPromptBlocks(requestLog));
     expect(serialized).not.toContain('resource":');
-    expect(serialized.match(/resource_link/gu)).toHaveLength(3);
+    expect(serialized.match(/resource_link/gu)).toHaveLength(4);
     expect(serialized).not.toContain("xxx");
     expect(serialized).not.toContain("\uFFFD");
   });
@@ -4291,6 +4301,51 @@ describe("acp bridge", () => {
     });
     expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
     await stopThread(providerThreadId);
+  });
+
+  it("kills the previous agent when a permission change rebuilds the session", async () => {
+    const launchLog = join(workspaceDir, "permission-rebuild-launches.txt");
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_LAUNCH_LOG: launchLog },
+      permissionCli: {
+        full: ["--full"],
+        workspaceWrite: ["--workspace"],
+        insertAfterArgs: 1,
+      },
+    });
+    const firstPid = Number(
+      readFileSync(launchLog, "utf8").match(/launch (\d+)/u)?.[1],
+    );
+    expect(firstPid).toBeGreaterThan(0);
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const steer = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+      options: executionOptions({ permissionMode: "accept-edits" }),
+    });
+    expect((await waitForResponse(steer)).error).toBeUndefined();
+    await waitFor(
+      () => (notifications("session/replaced").length === 1 ? true : undefined),
+      "permission rebuild",
+    );
+    await waitFor(() => {
+      try {
+        process.kill(firstPid, 0);
+        return undefined;
+      } catch {
+        return true;
+      }
+    }, "previous agent exit");
+    expect(
+      readFileSync(launchLog, "utf8")
+        .trim()
+        .split("\n")
+        .filter((line) => line.startsWith("launch ")),
+    ).toHaveLength(2);
   });
 
   it("preserves stacked steers across permission CLI rebuilds", async () => {

@@ -34,7 +34,15 @@ import {
   rmSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { randomUUID } from "node:crypto";
 
 const MAX_STRING_CHARS = 2_000;
@@ -505,6 +513,16 @@ function redactNdjson(text, redactText) {
   return `${out.join("\n")}\n`;
 }
 
+function outputContains(parent, child) {
+  const fromParent = relative(parent, child);
+  return (
+    fromParent !== "" &&
+    fromParent !== ".." &&
+    !fromParent.startsWith(`..${sep}`) &&
+    !isAbsolute(fromParent)
+  );
+}
+
 function main() {
   const { inDir, outDir, home } = parseArgs(process.argv.slice(2));
   if (home === "/" || home === "") {
@@ -514,6 +532,11 @@ function main() {
   const outputRoot = resolve(outDir);
   if (inputRoot === outputRoot) {
     throw new Error("input and output directories must differ");
+  }
+  if (outputContains(outputRoot, inputRoot)) {
+    throw new Error(
+      `refusing to replace ${outDir}: it contains the input recordings`,
+    );
   }
   const staging = join(
     dirname(outputRoot),

@@ -330,6 +330,17 @@ export function validatePendingInteractionResolution(
       "Only an approval decision can resolve an approval interaction",
     );
   }
+  if (
+    "comments" in resolution &&
+    resolution.comments !== undefined &&
+    interaction.payload.subject.kind !== "plan"
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Approval comments are only supported when denying a plan",
+    );
+  }
   validateAvailableDecision(interaction, resolution.decision);
   if (resolution.decision !== "deny") {
     if (resolution.grantedPermissions !== null) {

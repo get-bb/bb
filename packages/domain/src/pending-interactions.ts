@@ -435,18 +435,20 @@ const approvalResolutionCommentFields = {
 export const approvalPendingInteractionResolutionSchema = z.discriminatedUnion(
   "decision",
   [
-    z.object({
-      decision: z.literal("allow_once"),
-      grantedPermissions:
-        pendingInteractionGrantedPermissionProfileSchema.nullable(),
-      ...approvalResolutionCommentFields,
-    }),
-    z.object({
-      decision: z.literal("allow_for_session"),
-      grantedPermissions:
-        pendingInteractionGrantedPermissionProfileSchema.nullable(),
-      ...approvalResolutionCommentFields,
-    }),
+    z
+      .object({
+        decision: z.literal("allow_once"),
+        grantedPermissions:
+          pendingInteractionGrantedPermissionProfileSchema.nullable(),
+      })
+      .strict(),
+    z
+      .object({
+        decision: z.literal("allow_for_session"),
+        grantedPermissions:
+          pendingInteractionGrantedPermissionProfileSchema.nullable(),
+      })
+      .strict(),
     z.object({
       decision: z.literal("deny"),
       ...approvalResolutionCommentFields,

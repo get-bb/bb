@@ -136,7 +136,11 @@ function grokClassifyToolCall(
 }
 
 function deferGrokToolCallCompletion(event: AcpToolCallUpdateEvent): boolean {
-  if (grokToolIdentity(event)?.name !== GROK_SPAWN_SUBAGENT_TOOL) {
+  if (
+    event.status === "failed" ||
+    event.status === "cancelled" ||
+    grokToolIdentity(event)?.name !== GROK_SPAWN_SUBAGENT_TOOL
+  ) {
     return false;
   }
   const input = grokSpawnSubagentInputSchema.safeParse(event.rawInput);

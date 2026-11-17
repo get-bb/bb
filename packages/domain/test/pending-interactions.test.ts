@@ -673,4 +673,21 @@ describe("approval resolution comments", () => {
       }),
     ).toThrow(/4096|comment/i);
   });
+
+  it("rejects comments on an approval", () => {
+    expect(() =>
+      approvalPendingInteractionResolutionSchema.parse({
+        decision: "allow_once",
+        grantedPermissions: null,
+        comments: "Ship it, but keep the flag.",
+      }),
+    ).toThrow(/comment/i);
+    expect(() =>
+      approvalPendingInteractionResolutionSchema.parse({
+        decision: "allow_for_session",
+        grantedPermissions: null,
+        comments: "Ship it, but keep the flag.",
+      }),
+    ).toThrow(/comment/i);
+  });
 });

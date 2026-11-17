@@ -60,7 +60,15 @@ import type {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
-import { promises as fs, readFileSync, statSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  openSync,
+  promises as fs,
+  readFileSync,
+  readSync,
+  statSync,
+} from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -1999,27 +2007,46 @@ function embeddedTextResource(
   path: string,
   mimeType: string | undefined,
 ): AcpContentBlock | undefined {
-  let bytes: Buffer;
+  let fd: number | undefined;
   try {
-    bytes = readFileSync(path);
+    fd = openSync(path, "r");
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.size > EMBEDDED_TEXT_BYTE_LIMIT) {
+      return undefined;
+    }
+    const bytes = Buffer.alloc(info.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, offset);
+      if (count === 0) {
+        return undefined;
+      }
+      offset += count;
+    }
+    if (bytes.includes(0)) {
+      return undefined;
+    }
+    const text = bytes.toString("utf8");
+    if (!bytes.equals(Buffer.from(text, "utf8"))) {
+      return undefined;
+    }
+    return {
+      type: "resource",
+      resource: {
+        uri: pathToFileURL(path).href,
+        mimeType: mimeType && mimeType.length > 0 ? mimeType : "text/plain",
+        text,
+      },
+    };
   } catch {
     return undefined;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {}
+    }
   }
-  if (bytes.byteLength > EMBEDDED_TEXT_BYTE_LIMIT || bytes.includes(0)) {
-    return undefined;
-  }
-  const text = bytes.toString("utf8");
-  if (!bytes.equals(Buffer.from(text, "utf8"))) {
-    return undefined;
-  }
-  return {
-    type: "resource",
-    resource: {
-      uri: pathToFileURL(path).href,
-      mimeType: mimeType && mimeType.length > 0 ? mimeType : "text/plain",
-      text,
-    },
-  };
 }
 
 function buildPromptContentBlocks(
@@ -4059,7 +4086,6 @@ async function rebuildAgentSession(
   session: AcpThreadSession,
   construction: AcpSessionParams,
 ): Promise<AcpThreadSession> {
-  session.stopping = true;
   const previousProviderThreadId = session.providerThreadId;
   const reason = session.connection.exited
     ? "The ACP agent exited unexpectedly; its session was rebuilt before continuing."

@@ -2213,6 +2213,57 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("rejects approval comments unless the decision denies a plan", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-comments",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-comments-on-command",
+          providerId: "codex",
+          providerThreadId: "provider-thread-comments-on-command",
+          providerRequestId: "request-comments-on-command",
+          payload: createCommandApprovalPayload({
+            itemId: "item-comments-on-command",
+            reason: "Needs approval",
+            command: "git push",
+          }),
+        },
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(
+          `Expected interaction registration to succeed: ${created.reason}`,
+        );
+      }
+
+      expect(() =>
+        harness.deps.pendingInteractions.resolvePendingInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          resolution: {
+            decision: "deny",
+            comments: "Do not run this.",
+          },
+        }),
+      ).toThrow("Approval comments are only supported when denying a plan");
+    });
+  });
+
   it("rejects session command approvals without granted permissions", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
