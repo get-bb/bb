@@ -183,7 +183,7 @@ export function buildPluginProviderRegistration(args: {
       supportsThreadRename,
       supportsServiceTier,
       supportsNativeUserQuestion,
-      ...(capabilities.supportsSubagentMessaging === true
+      ...(capabilities.experimental_supportsSubagentMessaging === true
         ? { supportsSubagentMessaging: true }
         : {}),
       permissionModes: [...permissionModes],

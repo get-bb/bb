@@ -69,7 +69,7 @@ bb.providers.register({
     supportsThreadArchive: true,
     supportsThreadRename: true,
     supportsServiceTier: false,
-    supportsSubagentMessaging: false, // messages and cancellation for a running subagent
+    experimental_supportsSubagentMessaging: false, // messages and cancellation for a running subagent
     reasoningLevels: ["low", "high"], // the coarse ladder; `reasoningLevels` below is precise
   },
   reasoningLevels: [
