@@ -314,6 +314,7 @@ function createFollowUpPromptBoxProps(
       reasoning: {
         value: "medium",
         options: [],
+        isLoading: false,
         onChange: vi.fn(),
       },
     },

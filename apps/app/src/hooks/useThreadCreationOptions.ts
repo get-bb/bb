@@ -144,6 +144,7 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   modelCatalogIsVerified: boolean;
   modelCatalogIsSettled: boolean;
   reasoningOptions: PickerOption<ReasoningLevel>[];
+  isLoadingReasoning: boolean;
   resolveReasoningForModel: (
     model: string,
     preferredReasoningLevel: ReasoningLevel,
@@ -577,10 +578,7 @@ export function useThreadCreationOptions(
   );
 
   const resolveReasoningForModel = useCallback(
-    (
-      model: string,
-      preferred: ReasoningLevel,
-    ): ModelReasoningOptions => {
+    (model: string, preferred: ReasoningLevel): ModelReasoningOptions => {
       const selection = resolveModelCatalogSelection({
         models: executionOptionsQuery.data?.models ?? [],
         selectedOnlyModels:
@@ -616,6 +614,11 @@ export function useThreadCreationOptions(
     projectId: executionOptionsProjectId,
     selectedModel: baseCatalogSelection.selectedModel || undefined,
   });
+  const isLoadingReasoning =
+    executionOptionsQueryEnabled &&
+    needsSelectedModelDiscovery &&
+    !selectedModelQuery.isError &&
+    (selectedModelQuery.isPending || selectedModelQuery.isPlaceholderData);
   const selectedCatalog =
     needsSelectedModelDiscovery &&
     !selectedModelQuery.isPlaceholderData &&
@@ -1161,6 +1164,7 @@ export function useThreadCreationOptions(
     modelCatalogIsVerified,
     modelCatalogIsSettled,
     reasoningOptions,
+    isLoadingReasoning,
     resolveReasoningForModel,
     declaredSessionOptions,
     sessionOptionSelections,

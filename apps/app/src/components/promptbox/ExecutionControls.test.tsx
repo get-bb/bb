@@ -35,6 +35,7 @@ function makeExecutionControlsProps(
     reasoning: {
       value: "medium",
       options: [{ value: "medium", label: "Medium" }],
+      isLoading: false,
       onChange: vi.fn(),
     },
   };

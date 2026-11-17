@@ -596,6 +596,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         providers: [],
         hasMultipleProviders: true,
         isLoadingModels: false,
+        isLoadingReasoning: false,
         modelCatalogIsSettled: true,
         modelLoadError: null,
         modelLoadFailed: false,

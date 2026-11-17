@@ -173,7 +173,12 @@ const execution = {
     loadFailed: false,
     onChange: () => {},
   },
-  reasoning: { value: "medium", options: [], onChange: () => {} },
+  reasoning: {
+    value: "medium",
+    options: [],
+    isLoading: false,
+    onChange: () => {},
+  },
 } as const;
 
 const permission = {

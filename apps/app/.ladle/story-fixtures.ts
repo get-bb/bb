@@ -417,6 +417,7 @@ export function makeExecutionControlsProps(
     reasoning: {
       value: "medium",
       options: STORY_CODEX_REASONING,
+      isLoading: false,
       onChange: noop,
     },
   };
@@ -500,6 +501,7 @@ export function useInteractiveExecutionControls(
     reasoning: {
       value: reasoning,
       options: catalog.reasoning,
+      isLoading: false,
       onChange: setReasoning,
     },
     ...(base.serviceTier

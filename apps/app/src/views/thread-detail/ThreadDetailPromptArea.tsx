@@ -696,6 +696,7 @@ export function ThreadDetailPromptArea({
     modelLoadFailed,
     modelLoadError,
     reasoningOptions,
+    isLoadingReasoning,
     resolveReasoningForModel,
     permissionModeOptions,
     supportsPermissionModeSelection,
@@ -1652,6 +1653,7 @@ export function ThreadDetailPromptArea({
       reasoning: {
         value: reasoningLevel,
         options: reasoningOptions,
+        isLoading: isLoadingReasoning,
         onChange: setReasoningLevel,
       },
       handoff: {
@@ -1690,6 +1692,7 @@ export function ThreadDetailPromptArea({
       providerOptions,
       reasoningLevel,
       reasoningOptions,
+      isLoadingReasoning,
       selectedModel,
       selectedProviderId,
       serviceTier,
@@ -1752,6 +1755,7 @@ export function ThreadDetailPromptArea({
           inlineEditingQueuedMessage.model,
           inlineEditingQueuedMessage.reasoningLevel,
         ).reasoningOptions,
+        isLoading: false,
         onChange: (reasoningLevel: ReasoningLevel) =>
           updateInlineQueuedMessage((current) =>
             current ? { ...current, reasoningLevel } : current,
