@@ -1,21 +1,24 @@
 import { useCallback, useMemo, type ReactNode } from "react";
-import type { ComposerView } from "@get-bb/plugin-sdk";
 import { useAppCommandContext } from "@/components/commands/AppCommandProvider";
 import {
   PluginComposerHostProvider,
   PluginComposerViewProvider,
+  type ComposerDraftSource,
   type PluginComposerHost,
+  type PluginComposerStaticView,
 } from "./plugin-composer-host";
 
 interface ComposerExtensionController {
   host: PluginComposerHost | null;
-  view: ComposerView;
+  view: PluginComposerStaticView;
+  draft: ComposerDraftSource;
   focus(): void;
 }
 
 interface UseComposerExtensionControllerOptions {
   host: PluginComposerHost | null;
-  view: ComposerView;
+  view: PluginComposerStaticView;
+  draft: ComposerDraftSource;
   collapseIfFocused?(): boolean;
   focusDefault(): void;
 }
@@ -23,6 +26,7 @@ interface UseComposerExtensionControllerOptions {
 export function useComposerExtensionController({
   host,
   view,
+  draft,
   collapseIfFocused,
   focusDefault,
 }: UseComposerExtensionControllerOptions): ComposerExtensionController {
@@ -36,7 +40,10 @@ export function useComposerExtensionController({
   }, [collapseIfFocused, focusDefault, host]);
   useAppCommandContext("promptAvailable", true);
 
-  return useMemo(() => ({ host, view, focus }), [focus, host, view]);
+  return useMemo(
+    () => ({ host, view, draft, focus }),
+    [draft, focus, host, view],
+  );
 }
 
 export function ComposerExtensionHost({
@@ -47,7 +54,7 @@ export function ComposerExtensionHost({
   defaultRenderer: ReactNode;
 }) {
   return (
-    <PluginComposerViewProvider value={controller.view}>
+    <PluginComposerViewProvider view={controller.view} draft={controller.draft}>
       <PluginComposerHostProvider value={controller.host}>
         {defaultRenderer}
       </PluginComposerHostProvider>

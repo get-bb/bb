@@ -13,6 +13,7 @@ import {
   useNavigate,
   type NavigateFunction,
 } from "react-router-dom";
+import { useLayoutEffect } from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { toast } from "sonner";
@@ -56,7 +57,10 @@ vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 const router: { navigate: NavigateFunction | null } = { navigate: null };
 
 function NavigateProbe() {
-  router.navigate = useNavigate();
+  const navigate = useNavigate();
+  useLayoutEffect(() => {
+    router.navigate = navigate;
+  });
   return null;
 }
 

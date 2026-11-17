@@ -86,6 +86,28 @@ export function stripProjectThreads(
   return rest;
 }
 
+interface ProjectSourceBranchesRemoteRefresh {
+  blockingSignal: AbortSignal | null;
+  inFlight: Promise<void> | null;
+  requested: boolean;
+}
+
+async function runProjectSourceBranchesRemoteRefresh(
+  remoteRefresh: ProjectSourceBranchesRemoteRefresh,
+  refetch: () => Promise<unknown>,
+): Promise<void> {
+  remoteRefresh.requested = true;
+  remoteRefresh.blockingSignal = null;
+  try {
+    await refetch();
+    if (remoteRefresh.requested) await refetch();
+  } finally {
+    remoteRefresh.requested = false;
+    remoteRefresh.blockingSignal = null;
+    remoteRefresh.inFlight = null;
+  }
+}
+
 export function useProjectSourceBranches(
   projectId: string | undefined,
   hostId: string | null,
@@ -97,11 +119,11 @@ export function useProjectSourceBranches(
   const query = useDebouncedBranchSearchQuery(options?.query?.trim() ?? "");
   const limit = options?.limit ?? PROJECT_SOURCE_BRANCHES_LIMIT;
   const selectedBranch = options?.selectedBranch?.trim() ?? "";
-  const remoteRefreshRef = useRef<{
-    blockingSignal: AbortSignal | null;
-    inFlight: Promise<void> | null;
-    requested: boolean;
-  }>({ blockingSignal: null, inFlight: null, requested: false });
+  const remoteRefreshRef = useRef<ProjectSourceBranchesRemoteRefresh>({
+    blockingSignal: null,
+    inFlight: null,
+    requested: false,
+  });
   const result = useQuery<ProjectBranchesResponse>({
     queryKey: projectSourceBranchesQueryKey(
       projectId ?? "",
@@ -152,19 +174,10 @@ export function useProjectSourceBranches(
     const remoteRefresh = remoteRefreshRef.current;
     if (remoteRefresh.inFlight) return remoteRefresh.inFlight;
 
-    const run = async (): Promise<void> => {
-      remoteRefresh.requested = true;
-      remoteRefresh.blockingSignal = null;
-      try {
-        await refetch();
-        if (remoteRefresh.requested) await refetch();
-      } finally {
-        remoteRefresh.requested = false;
-        remoteRefresh.blockingSignal = null;
-        remoteRefresh.inFlight = null;
-      }
-    };
-    remoteRefresh.inFlight = run();
+    remoteRefresh.inFlight = runProjectSourceBranchesRemoteRefresh(
+      remoteRefresh,
+      refetch,
+    );
     return remoteRefresh.inFlight;
   }, [refetch]);
   return { ...result, refreshFromRemote };

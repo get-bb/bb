@@ -66,6 +66,7 @@ function EmptyCatalogPicker({
           onModelChange={() => {}}
           reasoningValue="medium"
           reasoningOptions={reasoningOptions}
+          reasoningIsLoading={false}
           onReasoningChange={() => {}}
           serviceTierValue={undefined}
           serviceTierOptions={[]}

@@ -1,4 +1,5 @@
 import { useLayoutEffect, type RefObject } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 
 const TYPEAHEAD_MENU_MAX_HEIGHT_PROPERTY = "--promptbox-typeahead-max-height";
 const APP_CONTENT_SHELL_SELECTOR = "[data-app-content-shell]";
@@ -61,25 +62,25 @@ export function useTypeaheadMenuMaxHeight(
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!enabled || menu === null) return;
-    const update = () => {
-      const maxHeight = measureMaxHeight(menu);
+    const applyMaxHeight = (maxHeight: string | null) => {
       if (maxHeight === null) {
         menu.style.removeProperty(TYPEAHEAD_MENU_MAX_HEIGHT_PROPERTY);
       } else {
         menu.style.setProperty(TYPEAHEAD_MENU_MAX_HEIGHT_PROPERTY, maxHeight);
       }
     };
+    const update = () => applyMaxHeight(measureMaxHeight(menu));
     update();
     const container = menu.parentElement;
     const shell = menu.closest(APP_CONTENT_SHELL_SELECTOR);
-    const resizeObserver =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
-    if (container !== null) resizeObserver?.observe(container);
-    if (shell !== null) resizeObserver?.observe(shell);
+    const unobserve = observeSharedResize(
+      [container, shell].filter((target) => target !== null),
+      { read: () => measureMaxHeight(menu), write: applyMaxHeight },
+    );
     window.addEventListener("resize", update);
     window.visualViewport?.addEventListener("resize", update);
     return () => {
-      resizeObserver?.disconnect();
+      unobserve();
       window.removeEventListener("resize", update);
       window.visualViewport?.removeEventListener("resize", update);
       menu.style.removeProperty(TYPEAHEAD_MENU_MAX_HEIGHT_PROPERTY);

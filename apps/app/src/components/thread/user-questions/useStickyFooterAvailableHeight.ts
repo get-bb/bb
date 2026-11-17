@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 
 export const SCROLL_FOOTER_ATTRIBUTE = "data-scroll-footer";
@@ -23,7 +24,7 @@ export function useStickyFooterAvailableHeight(
       return;
     }
     element.setAttribute(STICKY_FOOTER_FLEX_ATTRIBUTE, "");
-    const measure = () => {
+    const read = () => {
       const flexElements = footer.querySelectorAll<HTMLElement>(
         `[${STICKY_FOOTER_FLEX_ATTRIBUTE}]`,
       );
@@ -33,16 +34,17 @@ export function useStickyFooterAvailableHeight(
       }
       const fixedHeight = footer.offsetHeight - flexHeight;
       const shared = Math.max(0, scrollElement.clientHeight - fixedHeight);
-      const next = Math.floor(shared / Math.max(1, flexElements.length));
-      setAvailableHeight((current) => (current === next ? current : next));
+      return Math.floor(shared / Math.max(1, flexElements.length));
     };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(scrollElement);
-    observer.observe(footer);
+    const write = (next: number) =>
+      setAvailableHeight((current) => (current === next ? current : next));
+    write(read());
+    const unobserve = observeSharedResize([scrollElement, footer], {
+      read,
+      write,
+    });
     return () => {
-      observer.disconnect();
+      unobserve();
       element.removeAttribute(STICKY_FOOTER_FLEX_ATTRIBUTE);
     };
   }, [enabled, getScrollElement, ref]);

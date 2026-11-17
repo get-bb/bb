@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -27,8 +27,6 @@ import {
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { SidebarThreadEntriesProvider } from "@/lib/sidebar-thread-entries";
 
 installTestPluginRuntime();
 const threadListApp = await loadPluginAppDefinition(
@@ -114,40 +112,68 @@ function createThreadListQueryClient() {
   return queryClient;
 }
 
+function installThreadListPreferenceRpc(
+  initial: Record<string, unknown>,
+): () => void {
+  const preferences = { ...initial };
+  const prefix = `/api/v1/plugins/${THREAD_LIST_PLUGIN_ID}/rpc/`;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    const method = url.includes(prefix) ? url.split(prefix)[1] : null;
+    const reply = (result: unknown) =>
+      new Response(JSON.stringify({ ok: true, result }), {
+        headers: { "content-type": "application/json" },
+      });
+    if (method === "listPreferences") return reply({ preferences });
+    if (method === "setPreference" && typeof init?.body === "string") {
+      const { key, value } = JSON.parse(init.body) as {
+        key: string;
+        value: unknown;
+      };
+      preferences[key] = value;
+      return reply({ key, value });
+    }
+    return originalFetch(input, init);
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
+function createThreadListPreferenceRpc(initial: Record<string, unknown>) {
+  const listeners = new Set<() => void>();
+  let installed = false;
+  const setInstalled = (next: boolean) => {
+    installed = next;
+    for (const listener of listeners) listener();
+  };
+  return {
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    isInstalled: () => installed,
+    install() {
+      const restore = installThreadListPreferenceRpc(initial);
+      setInstalled(true);
+      return () => {
+        restore();
+        setInstalled(false);
+      };
+    },
+  };
+}
+
 function useThreadListPreferenceRpc(initial: Record<string, unknown>) {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const preferences = { ...initial };
-    const prefix = `/api/v1/plugins/${THREAD_LIST_PLUGIN_ID}/rpc/`;
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input, init) => {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
-      const method = url.includes(prefix) ? url.split(prefix)[1] : null;
-      const reply = (result: unknown) =>
-        new Response(JSON.stringify({ ok: true, result }), {
-          headers: { "content-type": "application/json" },
-        });
-      if (method === "listPreferences") return reply({ preferences });
-      if (method === "setPreference" && typeof init?.body === "string") {
-        const { key, value } = JSON.parse(init.body) as {
-          key: string;
-          value: unknown;
-        };
-        preferences[key] = value;
-        return reply({ key, value });
-      }
-      return originalFetch(input, init);
-    };
-    setReady(true);
-    return () => {
-      globalThis.fetch = originalFetch;
-    };
-  }, [initial]);
+  const [rpc] = useState(() => createThreadListPreferenceRpc(initial));
+  const ready = useSyncExternalStore(rpc.subscribe, rpc.isInstalled);
+  useEffect(() => rpc.install(), [rpc]);
   return ready;
 }
 
@@ -165,17 +191,14 @@ function useThreadListPlugin() {
 
 function ThreadListSidebar() {
   const replacement = useThreadListReplacement();
-  const { data } = useSidebarNavigation();
   return (
-    <SidebarThreadEntriesProvider navigation={data}>
-      <SidebarProvider defaultOpen className="min-h-0 w-auto">
-        <div className="flex h-[560px] w-72 shrink-0 flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground">
-          <SidebarContent>
-            <PluginThreadList replacement={replacement} onNavigate={() => {}} />
-          </SidebarContent>
-        </div>
-      </SidebarProvider>
-    </SidebarThreadEntriesProvider>
+    <SidebarProvider defaultOpen className="min-h-0 w-auto">
+      <div className="flex h-[560px] w-72 shrink-0 flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground">
+        <SidebarContent>
+          <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+        </SidebarContent>
+      </div>
+    </SidebarProvider>
   );
 }
 
@@ -298,21 +321,18 @@ const ACTION_PREFERENCES = {
 
 function ActionSidebar() {
   const replacement = useThreadListReplacement();
-  const { data } = useSidebarNavigation();
   return (
-    <SidebarThreadEntriesProvider navigation={data}>
-      <SidebarProvider defaultOpen className="min-h-0 w-auto">
-        <main
-          data-thread-row-fixture
-          className="bg-sidebar text-sidebar-foreground"
-          style={{ width: 288 }}
-        >
-          <SidebarContent>
-            <PluginThreadList replacement={replacement} onNavigate={() => {}} />
-          </SidebarContent>
-        </main>
-      </SidebarProvider>
-    </SidebarThreadEntriesProvider>
+    <SidebarProvider defaultOpen className="min-h-0 w-auto">
+      <main
+        data-thread-row-fixture
+        className="bg-sidebar text-sidebar-foreground"
+        style={{ width: 288 }}
+      >
+        <SidebarContent>
+          <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+        </SidebarContent>
+      </main>
+    </SidebarProvider>
   );
 }
 

@@ -18,14 +18,17 @@ export function providerManagementCatalog(
   );
   const disabled = deps.providerRegistry.disabledProviderIds();
   const declared = new Map(
-    plugins.providerCatalog().map((provider) => [provider.id, provider]),
+    deps.providerRegistry.list().map((entry) => [
+      entry.info.id,
+      {
+        id: entry.info.id,
+        displayName: entry.info.displayName,
+        pluginId: entry.pluginId,
+      },
+    ]),
   );
-  for (const entry of deps.providerRegistry.list()) {
-    declared.set(entry.info.id, {
-      id: entry.info.id,
-      displayName: entry.info.displayName,
-      pluginId: entry.pluginId,
-    });
+  for (const provider of plugins.providerCatalog()) {
+    if (!declared.has(provider.id)) declared.set(provider.id, provider);
   }
   return [...declared.values()].flatMap((entry) => {
     const plugin = installed.get(entry.pluginId);

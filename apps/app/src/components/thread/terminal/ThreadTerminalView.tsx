@@ -1,11 +1,13 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
   type TouchEvent as ReactTouchEvent,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
@@ -38,6 +40,7 @@ import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   anchorPointFromMouseEvent,
@@ -672,6 +675,398 @@ function handleTerminalServerMessage({
   }
 }
 
+interface MountThreadTerminalOptions {
+  container: HTMLDivElement;
+  appNavigationRef: RefObject<ReturnType<typeof useAppNavigationHost>>;
+  autoFocusRef: RefObject<boolean>;
+  controlActiveRef: RefObject<boolean>;
+  copyTerminalContextValue: (text: string, successMessage: string) => void;
+  isPanelOpenRef: RefObject<boolean>;
+  lastPointerReleaseAnchorRef: RefObject<SelectionAnchor | null>;
+  lastStatusNoticeRef: RefObject<TerminalSessionStatusNotice | null>;
+  onAutoFocusHandledRef: RefObject<(() => void) | undefined>;
+  onSessionChangeRef: RefObject<
+    ((session: TerminalSession) => void) | undefined
+  >;
+  onTitleChangeRef: RefObject<TerminalTitleChangeHandler | undefined>;
+  pasteFromClipboard: () => void;
+  pointerIsDownRef: RefObject<boolean>;
+  reportTerminalSelection: (anchor: SelectionAnchor | null) => void;
+  requestOpenTerminalLink: (target: TerminalLinkTarget) => void;
+  scheduleFitRef: RefObject<TerminalFitScheduler | null>;
+  sessionId: string;
+  sessionRef: RefObject<TerminalSession>;
+  sessionStatusRef: RefObject<TerminalSession["status"]>;
+  setConnectionNotice: (notice: TerminalConnectionNotice | null) => void;
+  setControlActive: (active: boolean) => void;
+  setSearchAddon: (addon: SearchAddon | null) => void;
+  setTerminalReady: (ready: boolean) => void;
+  terminalRef: RefObject<XTermTerminal | null>;
+  updateHoveredTerminalLink: (target: TerminalLinkTarget | null) => void;
+}
+
+function mountThreadTerminal({
+  container,
+  appNavigationRef,
+  autoFocusRef,
+  controlActiveRef,
+  copyTerminalContextValue,
+  isPanelOpenRef,
+  lastPointerReleaseAnchorRef,
+  lastStatusNoticeRef,
+  onAutoFocusHandledRef,
+  onSessionChangeRef,
+  onTitleChangeRef,
+  pasteFromClipboard,
+  pointerIsDownRef,
+  reportTerminalSelection,
+  requestOpenTerminalLink,
+  scheduleFitRef,
+  sessionId,
+  sessionRef,
+  sessionStatusRef,
+  setConnectionNotice,
+  setControlActive,
+  setSearchAddon,
+  setTerminalReady,
+  terminalRef,
+  updateHoveredTerminalLink,
+}: MountThreadTerminalOptions): () => void {
+  const activeElementAtMount = document.activeElement;
+
+  let disposed = false;
+  let transport: TerminalWebSocketTransport | null = null;
+  let terminal: XTermTerminal | null = null;
+  let fitAddon: FitAddon | null = null;
+  let replayNextSeq: number | null = null;
+  const replayWriteState: TerminalReplayWriteState = {
+    suppressedWriteCount: 0,
+  };
+  let resizeAnimationFrame: number | null = null;
+  let connectionNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
+  let selectionAnimationFrame: number | null = null;
+  let unobserveResize: (() => void) | null = null;
+  let selectionChangeDisposable: { dispose: () => void } | null = null;
+  let lateImeInputDisposable: { dispose: () => void } | null = null;
+  let stopObservingFonts: (() => void) | null = null;
+  const reportDocumentVisibility = () => {
+    transport?.setVisible(document.visibilityState === "visible");
+  };
+
+  async function mountTerminal(
+    containerElement: HTMLDivElement,
+  ): Promise<void> {
+    const requiredModulesPromise = importTerminalModules();
+    const webglAddonModulePromise = loadOptionalTerminalWebglAddon(
+      importTerminalWebglAddon,
+    );
+    const [
+      { Terminal },
+      { FitAddon: LoadedFitAddon },
+      { WebLinksAddon },
+      { Unicode11Addon },
+      { SearchAddon: LoadedSearchAddon },
+    ] = await requiredModulesPromise;
+    const webglAddonModule = await webglAddonModulePromise;
+    if (disposed) {
+      return;
+    }
+
+    const osc8LinkHandler = createTerminalOsc8LinkHandler({
+      onActivate: requestOpenTerminalLink,
+      onHover: (target) => {
+        if (!disposed) {
+          updateHoveredTerminalLink(target);
+        }
+      },
+    });
+
+    terminal = new Terminal({
+      allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
+      convertEol: true,
+      cursorBlink: true,
+      fontFamily: readTerminalFontFamily(),
+      fontSize: 12,
+      linkHandler: osc8LinkHandler,
+      scrollback: 10_000,
+      theme: buildTerminalTheme(),
+    });
+    terminalRef.current = terminal;
+    terminal.attachCustomKeyEventHandler(
+      createTerminalClipboardKeyHandler({
+        terminal,
+        copy: (text) => copyTerminalContextValue(text, "Selection copied"),
+        paste: pasteFromClipboard,
+      }),
+    );
+    const loadedSearchAddon = new LoadedSearchAddon();
+    terminal.loadAddon(loadedSearchAddon);
+    setSearchAddon(loadedSearchAddon);
+    let reportedCwd: string | null = null;
+    terminal.parser.registerOscHandler(7, (data) => {
+      reportedCwd = parseTerminalReportedCwd(data) ?? reportedCwd;
+      return false;
+    });
+    terminal.registerLinkProvider(
+      createTerminalFileLinkProvider({
+        terminal,
+        getCwd: () => reportedCwd ?? sessionRef.current.initialCwd,
+        hostId: sessionRef.current.hostId,
+        openFile: (intent) => {
+          appNavigationRef.current.openFilePreview(intent);
+        },
+      }),
+    );
+    fitAddon = new LoadedFitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.loadAddon(new Unicode11Addon());
+    terminal.unicode.activeVersion = TERMINAL_UNICODE_VERSION;
+    terminal.loadAddon(
+      new WebLinksAddon(
+        (event, uri) => {
+          if (!isTerminalLinkActivation(event)) {
+            return;
+          }
+          requestOpenTerminalLink({ source: "detected-url", uri });
+        },
+        {
+          hover: (_event, uri) => {
+            updateHoveredTerminalLink({ source: "detected-url", uri });
+          },
+          leave: () => {
+            updateHoveredTerminalLink(null);
+          },
+        },
+      ),
+    );
+    if (webglAddonModule !== null) {
+      loadTerminalWebglRenderer(
+        terminal,
+        () => new webglAddonModule.WebglAddon(),
+      );
+    }
+    terminal.open(containerElement);
+    lateImeInputDisposable = forwardLateImeInput(terminal);
+    writeTerminalSessionStatusNotice({
+      lastNotice: lastStatusNoticeRef,
+      session: sessionRef.current,
+      terminal,
+    });
+    const fitTerminal = () => {
+      if (!fitAddon || !terminal) {
+        return;
+      }
+      if (!hasVisibleTerminalSize({ containerElement })) {
+        return;
+      }
+      fitAddon.fit();
+      transport?.sendResize(terminal.cols, terminal.rows);
+    };
+    const scheduleFit: TerminalFitScheduler = () => {
+      if (resizeAnimationFrame !== null) {
+        return;
+      }
+      resizeAnimationFrame = window.requestAnimationFrame(() => {
+        resizeAnimationFrame = null;
+        fitTerminal();
+      });
+    };
+    fitTerminal();
+    const fontSet = document.fonts;
+    if (fontSet !== undefined) {
+      stopObservingFonts = observeTerminalFontLoading(fontSet, () => {
+        if (terminal === null) {
+          return;
+        }
+        forceTerminalFontMeasurement(terminal);
+        scheduleFit();
+      });
+    }
+    scheduleFitRef.current = scheduleFit;
+    const currentActiveElement = document.activeElement;
+    if (
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable:
+          currentActiveElement !== null &&
+          currentActiveElement !== document.body &&
+          currentActiveElement.isConnected,
+        hasExplicitFocusRequest: autoFocusRef.current,
+        focusMovedDuringMount: currentActiveElement !== activeElementAtMount,
+        isPanelOpen: isPanelOpenRef.current,
+      })
+    ) {
+      terminal.focus();
+      onAutoFocusHandledRef.current?.();
+    }
+
+    const activeTerminal = terminal;
+    let reconnecting = false;
+    let reconnectingNoticeVisible = false;
+    const clearConnectionNoticeTimeout = () => {
+      if (connectionNoticeTimeout !== null) {
+        clearTimeout(connectionNoticeTimeout);
+        connectionNoticeTimeout = null;
+      }
+    };
+    const activeTransport = new TerminalWebSocketTransport({
+      onConnectionState: (state) => {
+        if (disposed) {
+          return;
+        }
+        if (state === "reconnecting") {
+          if (reconnecting) {
+            return;
+          }
+          reconnecting = true;
+          clearConnectionNoticeTimeout();
+          setConnectionNotice(null);
+          connectionNoticeTimeout = setTimeout(() => {
+            connectionNoticeTimeout = null;
+            reconnectingNoticeVisible = true;
+            setConnectionNotice("reconnecting");
+          }, TERMINAL_RECONNECTING_NOTICE_DELAY_MS);
+          return;
+        }
+        reconnecting = false;
+        clearConnectionNoticeTimeout();
+        if (state === "attached" && reconnectingNoticeVisible) {
+          setConnectionNotice("reconnected");
+          connectionNoticeTimeout = setTimeout(() => {
+            connectionNoticeTimeout = null;
+            setConnectionNotice(null);
+          }, TERMINAL_RECONNECTED_NOTICE_DURATION_MS);
+        } else {
+          setConnectionNotice(null);
+        }
+        reconnectingNoticeVisible = false;
+      },
+      onInputOverflow: (maxBytes) => {
+        writeTerminalStatus({
+          terminal: activeTerminal,
+          text: `Terminal input queue is full (${maxBytes} bytes); input was not sent`,
+        });
+      },
+      onInvalidMessage: () => {
+        writeTerminalStatus({
+          terminal: activeTerminal,
+          text: "Terminal received an invalid server message",
+        });
+      },
+      onMessage: (message) => {
+        handleTerminalServerMessage({
+          acknowledgeOutput: (nextSeq) =>
+            activeTransport.acknowledgeOutput(nextSeq),
+          message,
+          onSessionChange: onSessionChangeRef.current,
+          replayNextSeq,
+          replayWriteState,
+          setReplayNextSeq: (nextSeq) => {
+            replayNextSeq = nextSeq;
+          },
+          terminal: activeTerminal,
+        });
+      },
+      onSequenceGap: () => {
+        activeTerminal.reset();
+        writeTerminalStatus({
+          terminal: activeTerminal,
+          text: "Some terminal output was unavailable after reconnect",
+        });
+      },
+      shouldReconnect: () =>
+        !disposed && sessionStatusRef.current === "running",
+      url: buildTerminalWebSocketUrl({ terminalId: sessionId }),
+    });
+    transport = activeTransport;
+    activeTransport.sendResize(activeTerminal.cols, activeTerminal.rows);
+    reportDocumentVisibility();
+    document.addEventListener("visibilitychange", reportDocumentVisibility);
+    activeTransport.start();
+    const sendTerminalInput = (dataBase64: string) =>
+      activeTransport.sendInput(dataBase64);
+    activeTerminal.onData((data) => {
+      if (controlActiveRef.current) {
+        data = applyTerminalControl(data);
+        controlActiveRef.current = false;
+        setControlActive(false);
+      }
+      forwardTerminalData({
+        data,
+        onInput: sendTerminalInput,
+        replayWriteState,
+        sessionStatus: sessionStatusRef.current,
+      });
+    });
+    setTerminalReady(true);
+    activeTerminal.onTitleChange((title) => {
+      if (replayWriteState.suppressedWriteCount > 0) {
+        return;
+      }
+      if (sessionStatusRef.current !== "running") {
+        return;
+      }
+      onTitleChangeRef.current?.(title);
+    });
+    const scheduleSelectionReport = () => {
+      if (pointerIsDownRef.current || selectionAnimationFrame !== null) {
+        return;
+      }
+      selectionAnimationFrame = window.requestAnimationFrame(() => {
+        selectionAnimationFrame = null;
+        reportTerminalSelection(lastPointerReleaseAnchorRef.current);
+      });
+    };
+    selectionChangeDisposable = activeTerminal.onSelectionChange(
+      scheduleSelectionReport,
+    );
+
+    unobserveResize = observeSharedResize(containerElement, {
+      read: (entry) =>
+        hasVisibleTerminalSize({
+          containerElement,
+          entries: entry === undefined ? undefined : [entry],
+        }),
+      write: (visible) => {
+        if (visible) scheduleFit();
+      },
+    });
+  }
+
+  void mountTerminal(container).catch((error) => {
+    if (!disposed) {
+      container.textContent =
+        error instanceof Error ? error.message : String(error);
+    }
+  });
+
+  return () => {
+    disposed = true;
+    controlActiveRef.current = false;
+    setControlActive(false);
+    setTerminalReady(false);
+    stopObservingFonts?.();
+    if (resizeAnimationFrame !== null) {
+      window.cancelAnimationFrame(resizeAnimationFrame);
+    }
+    if (selectionAnimationFrame !== null) {
+      window.cancelAnimationFrame(selectionAnimationFrame);
+    }
+    if (connectionNoticeTimeout !== null) {
+      clearTimeout(connectionNoticeTimeout);
+    }
+    setConnectionNotice(null);
+    unobserveResize?.();
+    selectionChangeDisposable?.dispose();
+    lateImeInputDisposable?.dispose();
+    document.removeEventListener("visibilitychange", reportDocumentVisibility);
+    transport?.dispose();
+    terminal?.dispose();
+    terminalRef.current = null;
+    setSearchAddon(null);
+    scheduleFitRef.current = null;
+  };
+}
+
 export function ThreadTerminalView({
   autoFocus,
   isPanelOpen,
@@ -729,7 +1124,7 @@ export function ThreadTerminalView({
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
   const systemConfig = useSystemConfig();
   const copyOnSelectRef = useRef(false);
-  copyOnSelectRef.current =
+  const copyOnSelect =
     systemConfig.data?.generalSettings.terminalCopyOnSelect === true;
   const preferredTheme = usePreferredTheme();
   const appThemeEpoch = useAppThemeEpoch();
@@ -746,14 +1141,17 @@ export function ThreadTerminalView({
   const effectiveOnOpenLink = onOpenLink ?? handleOpenLinkByPreference;
   const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);
 
-  autoFocusRef.current = autoFocus;
-  isPanelOpenRef.current = isPanelOpen;
-  sessionStatusRef.current = session.status;
-  sessionRef.current = session;
-  onAutoFocusHandledRef.current = onAutoFocusHandled;
-  onOpenLinkRef.current = effectiveOnOpenLink;
-  onSessionChangeRef.current = onSessionChange;
-  onTitleChangeRef.current = onTitleChange;
+  useLayoutEffect(() => {
+    copyOnSelectRef.current = copyOnSelect;
+    autoFocusRef.current = autoFocus;
+    isPanelOpenRef.current = isPanelOpen;
+    sessionStatusRef.current = session.status;
+    sessionRef.current = session;
+    onAutoFocusHandledRef.current = onAutoFocusHandled;
+    onOpenLinkRef.current = effectiveOnOpenLink;
+    onSessionChangeRef.current = onSessionChange;
+    onTitleChangeRef.current = onTitleChange;
+  });
 
   const copySelectedText = useMemo(
     () =>
@@ -1012,15 +1410,20 @@ export function ThreadTerminalView({
     touchFocusGestureRef.current = null;
   }, []);
 
+  const [stateSessionId, setStateSessionId] = useState(session.id);
+  if (stateSessionId !== session.id) {
+    setStateSessionId(session.id);
+    setActiveSelection(null);
+    setPendingTerminalLink(null);
+    setFindFocusRequest(null);
+    setContextMenuState({ link: null, selectionText: "" });
+  }
+
   useEffect(() => {
     copySelectedText("");
     touchFocusGestureRef.current = null;
-    setActiveSelection(null);
     updateHoveredTerminalLink(null);
-    setPendingTerminalLink(null);
     findOpenRef.current = false;
-    setFindFocusRequest(null);
-    setContextMenuState({ link: null, selectionText: "" });
   }, [copySelectedText, session.id, updateHoveredTerminalLink]);
 
   useEffect(() => {
@@ -1029,339 +1432,33 @@ export function ThreadTerminalView({
       return;
     }
 
-    const activeElementAtMount = document.activeElement;
-
-    let disposed = false;
-    let transport: TerminalWebSocketTransport | null = null;
-    let terminal: XTermTerminal | null = null;
-    let fitAddon: FitAddon | null = null;
-    let replayNextSeq: number | null = null;
-    const replayWriteState: TerminalReplayWriteState = {
-      suppressedWriteCount: 0,
-    };
-    let resizeAnimationFrame: number | null = null;
-    let connectionNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
-    let selectionAnimationFrame: number | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-    let selectionChangeDisposable: { dispose: () => void } | null = null;
-    let lateImeInputDisposable: { dispose: () => void } | null = null;
-    let stopObservingFonts: (() => void) | null = null;
-    const reportDocumentVisibility = () => {
-      transport?.setVisible(document.visibilityState === "visible");
-    };
-
-    async function mountTerminal(
-      containerElement: HTMLDivElement,
-    ): Promise<void> {
-      const requiredModulesPromise = importTerminalModules();
-      const webglAddonModulePromise = loadOptionalTerminalWebglAddon(
-        importTerminalWebglAddon,
-      );
-      const [
-        { Terminal },
-        { FitAddon: LoadedFitAddon },
-        { WebLinksAddon },
-        { Unicode11Addon },
-        { SearchAddon: LoadedSearchAddon },
-      ] = await requiredModulesPromise;
-      const webglAddonModule = await webglAddonModulePromise;
-      if (disposed) {
-        return;
-      }
-
-      const osc8LinkHandler = createTerminalOsc8LinkHandler({
-        onActivate: requestOpenTerminalLink,
-        onHover: (target) => {
-          if (!disposed) {
-            updateHoveredTerminalLink(target);
-          }
-        },
-      });
-
-      terminal = new Terminal({
-        allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
-        convertEol: true,
-        cursorBlink: true,
-        fontFamily: readTerminalFontFamily(),
-        fontSize: 12,
-        linkHandler: osc8LinkHandler,
-        scrollback: 10_000,
-        theme: buildTerminalTheme(),
-      });
-      terminalRef.current = terminal;
-      terminal.attachCustomKeyEventHandler(
-        createTerminalClipboardKeyHandler({
-          terminal,
-          copy: (text) => copyTerminalContextValue(text, "Selection copied"),
-          paste: pasteFromClipboard,
-        }),
-      );
-      const loadedSearchAddon = new LoadedSearchAddon();
-      terminal.loadAddon(loadedSearchAddon);
-      setSearchAddon(loadedSearchAddon);
-      let reportedCwd: string | null = null;
-      terminal.parser.registerOscHandler(7, (data) => {
-        reportedCwd = parseTerminalReportedCwd(data) ?? reportedCwd;
-        return false;
-      });
-      terminal.registerLinkProvider(
-        createTerminalFileLinkProvider({
-          terminal,
-          getCwd: () => reportedCwd ?? sessionRef.current.initialCwd,
-          hostId: sessionRef.current.hostId,
-          openFile: (intent) => {
-            appNavigationRef.current.openFilePreview(intent);
-          },
-        }),
-      );
-      fitAddon = new LoadedFitAddon();
-      terminal.loadAddon(fitAddon);
-      terminal.loadAddon(new Unicode11Addon());
-      terminal.unicode.activeVersion = TERMINAL_UNICODE_VERSION;
-      terminal.loadAddon(
-        new WebLinksAddon(
-          (event, uri) => {
-            if (!isTerminalLinkActivation(event)) {
-              return;
-            }
-            requestOpenTerminalLink({ source: "detected-url", uri });
-          },
-          {
-            hover: (_event, uri) => {
-              updateHoveredTerminalLink({ source: "detected-url", uri });
-            },
-            leave: () => {
-              updateHoveredTerminalLink(null);
-            },
-          },
-        ),
-      );
-      if (webglAddonModule !== null) {
-        loadTerminalWebglRenderer(
-          terminal,
-          () => new webglAddonModule.WebglAddon(),
-        );
-      }
-      terminal.open(containerElement);
-      lateImeInputDisposable = forwardLateImeInput(terminal);
-      writeTerminalSessionStatusNotice({
-        lastNotice: lastStatusNoticeRef,
-        session: sessionRef.current,
-        terminal,
-      });
-      const fitTerminal = () => {
-        if (!fitAddon || !terminal) {
-          return;
-        }
-        if (!hasVisibleTerminalSize({ containerElement })) {
-          return;
-        }
-        fitAddon.fit();
-        transport?.sendResize(terminal.cols, terminal.rows);
-      };
-      const scheduleFit: TerminalFitScheduler = () => {
-        if (resizeAnimationFrame !== null) {
-          return;
-        }
-        resizeAnimationFrame = window.requestAnimationFrame(() => {
-          resizeAnimationFrame = null;
-          fitTerminal();
-        });
-      };
-      fitTerminal();
-      const fontSet = document.fonts;
-      if (fontSet !== undefined) {
-        stopObservingFonts = observeTerminalFontLoading(fontSet, () => {
-          if (terminal === null) {
-            return;
-          }
-          forceTerminalFontMeasurement(terminal);
-          scheduleFit();
-        });
-      }
-      scheduleFitRef.current = scheduleFit;
-      const currentActiveElement = document.activeElement;
-      if (
-        shouldFocusTerminalAfterAsyncMount({
-          currentFocusIsAvailable:
-            currentActiveElement !== null &&
-            currentActiveElement !== document.body &&
-            currentActiveElement.isConnected,
-          hasExplicitFocusRequest: autoFocusRef.current,
-          focusMovedDuringMount: currentActiveElement !== activeElementAtMount,
-          isPanelOpen: isPanelOpenRef.current,
-        })
-      ) {
-        terminal.focus();
-        onAutoFocusHandledRef.current?.();
-      }
-
-      const activeTerminal = terminal;
-      let reconnecting = false;
-      let reconnectingNoticeVisible = false;
-      const clearConnectionNoticeTimeout = () => {
-        if (connectionNoticeTimeout !== null) {
-          clearTimeout(connectionNoticeTimeout);
-          connectionNoticeTimeout = null;
-        }
-      };
-      const activeTransport = new TerminalWebSocketTransport({
-        onConnectionState: (state) => {
-          if (disposed) {
-            return;
-          }
-          if (state === "reconnecting") {
-            if (reconnecting) {
-              return;
-            }
-            reconnecting = true;
-            clearConnectionNoticeTimeout();
-            setConnectionNotice(null);
-            connectionNoticeTimeout = setTimeout(() => {
-              connectionNoticeTimeout = null;
-              reconnectingNoticeVisible = true;
-              setConnectionNotice("reconnecting");
-            }, TERMINAL_RECONNECTING_NOTICE_DELAY_MS);
-            return;
-          }
-          reconnecting = false;
-          clearConnectionNoticeTimeout();
-          if (state === "attached" && reconnectingNoticeVisible) {
-            setConnectionNotice("reconnected");
-            connectionNoticeTimeout = setTimeout(() => {
-              connectionNoticeTimeout = null;
-              setConnectionNotice(null);
-            }, TERMINAL_RECONNECTED_NOTICE_DURATION_MS);
-          } else {
-            setConnectionNotice(null);
-          }
-          reconnectingNoticeVisible = false;
-        },
-        onInputOverflow: (maxBytes) => {
-          writeTerminalStatus({
-            terminal: activeTerminal,
-            text: `Terminal input queue is full (${maxBytes} bytes); input was not sent`,
-          });
-        },
-        onInvalidMessage: () => {
-          writeTerminalStatus({
-            terminal: activeTerminal,
-            text: "Terminal received an invalid server message",
-          });
-        },
-        onMessage: (message) => {
-          handleTerminalServerMessage({
-            acknowledgeOutput: (nextSeq) =>
-              activeTransport.acknowledgeOutput(nextSeq),
-            message,
-            onSessionChange: onSessionChangeRef.current,
-            replayNextSeq,
-            replayWriteState,
-            setReplayNextSeq: (nextSeq) => {
-              replayNextSeq = nextSeq;
-            },
-            terminal: activeTerminal,
-          });
-        },
-        onSequenceGap: () => {
-          activeTerminal.reset();
-          writeTerminalStatus({
-            terminal: activeTerminal,
-            text: "Some terminal output was unavailable after reconnect",
-          });
-        },
-        shouldReconnect: () =>
-          !disposed && sessionStatusRef.current === "running",
-        url: buildTerminalWebSocketUrl({ terminalId: session.id }),
-      });
-      transport = activeTransport;
-      activeTransport.sendResize(activeTerminal.cols, activeTerminal.rows);
-      reportDocumentVisibility();
-      document.addEventListener("visibilitychange", reportDocumentVisibility);
-      activeTransport.start();
-      const sendTerminalInput = (dataBase64: string) =>
-        activeTransport.sendInput(dataBase64);
-      activeTerminal.onData((data) => {
-        if (controlActiveRef.current) {
-          data = applyTerminalControl(data);
-          controlActiveRef.current = false;
-          setControlActive(false);
-        }
-        forwardTerminalData({
-          data,
-          onInput: sendTerminalInput,
-          replayWriteState,
-          sessionStatus: sessionStatusRef.current,
-        });
-      });
-      setTerminalReady(true);
-      activeTerminal.onTitleChange((title) => {
-        if (replayWriteState.suppressedWriteCount > 0) {
-          return;
-        }
-        if (sessionStatusRef.current !== "running") {
-          return;
-        }
-        onTitleChangeRef.current?.(title);
-      });
-      const scheduleSelectionReport = () => {
-        if (pointerIsDownRef.current || selectionAnimationFrame !== null) {
-          return;
-        }
-        selectionAnimationFrame = window.requestAnimationFrame(() => {
-          selectionAnimationFrame = null;
-          reportTerminalSelection(lastPointerReleaseAnchorRef.current);
-        });
-      };
-      selectionChangeDisposable = activeTerminal.onSelectionChange(
-        scheduleSelectionReport,
-      );
-
-      resizeObserver = new ResizeObserver((entries) => {
-        if (!hasVisibleTerminalSize({ containerElement, entries })) {
-          return;
-        }
-        scheduleFit();
-      });
-      resizeObserver.observe(containerElement);
-    }
-
-    void mountTerminal(container).catch((error) => {
-      if (!disposed) {
-        container.textContent =
-          error instanceof Error ? error.message : String(error);
-      }
+    return mountThreadTerminal({
+      container,
+      appNavigationRef,
+      autoFocusRef,
+      controlActiveRef,
+      copyTerminalContextValue,
+      isPanelOpenRef,
+      lastPointerReleaseAnchorRef,
+      lastStatusNoticeRef,
+      onAutoFocusHandledRef,
+      onSessionChangeRef,
+      onTitleChangeRef,
+      pasteFromClipboard,
+      pointerIsDownRef,
+      reportTerminalSelection,
+      requestOpenTerminalLink,
+      scheduleFitRef,
+      sessionId: session.id,
+      sessionRef,
+      sessionStatusRef,
+      setConnectionNotice,
+      setControlActive,
+      setSearchAddon,
+      setTerminalReady,
+      terminalRef,
+      updateHoveredTerminalLink,
     });
-
-    return () => {
-      disposed = true;
-      controlActiveRef.current = false;
-      setControlActive(false);
-      setTerminalReady(false);
-      stopObservingFonts?.();
-      if (resizeAnimationFrame !== null) {
-        window.cancelAnimationFrame(resizeAnimationFrame);
-      }
-      if (selectionAnimationFrame !== null) {
-        window.cancelAnimationFrame(selectionAnimationFrame);
-      }
-      if (connectionNoticeTimeout !== null) {
-        clearTimeout(connectionNoticeTimeout);
-      }
-      setConnectionNotice(null);
-      resizeObserver?.disconnect();
-      selectionChangeDisposable?.dispose();
-      lateImeInputDisposable?.dispose();
-      document.removeEventListener(
-        "visibilitychange",
-        reportDocumentVisibility,
-      );
-      transport?.dispose();
-      terminal?.dispose();
-      terminalRef.current = null;
-      setSearchAddon(null);
-      scheduleFitRef.current = null;
-    };
   }, [
     copyTerminalContextValue,
     pasteFromClipboard,

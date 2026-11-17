@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from "react";
-import type { PromptTextMention } from "@bb/domain";
 import {
-  usePromptDraftStorage,
+  usePromptDraftController,
+  usePromptDraftInputEmpty,
+  type PromptDraftController,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
 import { promptDraftToInput } from "@bb/client-core";
@@ -20,54 +21,30 @@ interface UseActiveComposerDraftArgs {
 }
 
 interface UseActiveComposerDraftResult {
-  promptDraft: ReturnType<typeof usePromptDraftStorage>;
-  currentPromptDraft: PromptDraftState;
-  currentPromptDraftInput: PromptInput[];
-  activeComposerDraft: PromptDraftState;
-  activeComposerDraftInput: PromptInput[];
-  handleChangeMessage: (text: string, mentions: PromptTextMention[]) => void;
+  promptDraft: PromptDraftController;
+  hasPromptDraftInput: boolean;
+  inlineComposerDraftInput: PromptInput[];
   updateActiveComposerAttachments: (
     update: (attachments: PromptDraftAttachment[]) => PromptDraftAttachment[],
   ) => void;
 }
+
+const NO_INLINE_DRAFT_INPUT: PromptInput[] = [];
 
 export function useActiveComposerDraft({
   draftScope,
   inlineDraft,
   inlineSessionRef,
 }: UseActiveComposerDraftArgs): UseActiveComposerDraftResult {
-  const promptDraft = usePromptDraftStorage(draftScope);
-  const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
+  const promptDraft = usePromptDraftController(draftScope);
+  const hasPromptDraftInput = !usePromptDraftInputEmpty(promptDraft);
   const updateStoredPromptAttachments = promptDraft.updateAttachments;
-
-  const currentPromptDraft = useMemo(
-    () => ({
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
-  const currentPromptDraftInput = useMemo(
-    () => promptDraftToInput(currentPromptDraft),
-    [currentPromptDraft],
-  );
-  const activeComposerDraft = inlineDraft ?? currentPromptDraft;
-  const activeComposerDraftInput = useMemo(
-    () => promptDraftToInput(activeComposerDraft),
-    [activeComposerDraft],
-  );
-
-  const handleChangeMessage = useCallback(
-    (text: string, mentions: PromptTextMention[]) => {
-      const current = inlineSessionRef.current;
-      if (current) {
-        current.setDraft((draft) => ({ ...draft, mentions, text }));
-        return;
-      }
-      setStoredPromptTextAndMentions(text, mentions);
-    },
-    [inlineSessionRef, setStoredPromptTextAndMentions],
+  const inlineComposerDraftInput = useMemo(
+    () =>
+      inlineDraft === null
+        ? NO_INLINE_DRAFT_INPUT
+        : promptDraftToInput(inlineDraft),
+    [inlineDraft],
   );
   const updateActiveComposerAttachments = useCallback(
     (
@@ -88,11 +65,8 @@ export function useActiveComposerDraft({
 
   return {
     promptDraft,
-    currentPromptDraft,
-    currentPromptDraftInput,
-    activeComposerDraft,
-    activeComposerDraftInput,
-    handleChangeMessage,
+    hasPromptDraftInput,
+    inlineComposerDraftInput,
     updateActiveComposerAttachments,
   };
 }

@@ -2,7 +2,7 @@ import type {
   InternalDoNotUseSetupFailureDetail,
   InternalDoNotUseSetupFailureStage,
 } from "@get-bb/plugin-sdk/app";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 export function PluginSetupGuideSections({
@@ -19,7 +19,7 @@ export function PluginSetupGuideSections({
     detail?: InternalDoNotUseSetupFailureDetail,
   ) => void;
 }) {
-  const { setupGuideSections } = usePluginSlots();
+  const setupGuideSections = usePluginSlotKind("setupGuideSections");
   const sections = setupGuideSections.filter(
     (section) => section.pluginId === pluginId,
   );

@@ -1,10 +1,13 @@
-import type { PromptTextMention } from "@bb/domain";
 import { useCallback, useMemo, useState } from "react";
 import {
   ComposerBox,
   type HistoryConfig,
 } from "@/components/promptbox/ComposerBox";
-import { appendQuoteToDraftText } from "@bb/client-core";
+import {
+  createComposerDraftStore,
+  type ComposerDraftStore,
+} from "@/components/plugin/plugin-composer-host";
+import { appendQuoteToDraftText, emptyPromptDraftState } from "@bb/client-core";
 import {
   makeAttachmentsConfig,
   makeTypeaheadConfig,
@@ -12,55 +15,29 @@ import {
 
 const noop = () => {};
 
-interface StoryPromptDraft {
-  text: string;
-  mentionRanges: PromptTextMention[];
-}
+const STORY_HISTORY: HistoryConfig = { entries: [], onSelectEntry: noop };
 
-interface StoryPromptDraftController extends StoryPromptDraft {
+interface StoryPromptDraftController {
+  store: ComposerDraftStore;
   focusEndKey: number;
   addQuote: (text: string) => void;
-  onChange: (text: string, mentionRanges: PromptTextMention[]) => void;
 }
 
 export function useStoryPromptDraft(): StoryPromptDraftController {
-  const [draft, setDraft] = useState<StoryPromptDraft>({
-    text: "",
-    mentionRanges: [],
-  });
+  const [store] = useState(() =>
+    createComposerDraftStore(emptyPromptDraftState()),
+  );
   const [focusEndKey, setFocusEndKey] = useState(0);
 
-  const addQuote = useCallback((quotedText: string) => {
-    setDraft((current) => {
-      const next = appendQuoteToDraftText(
-        {
-          text: current.text,
-          mentions: current.mentionRanges,
-          attachments: [],
-        },
-        quotedText,
-      );
-      return {
-        text: next.text,
-        mentionRanges: next.mentions,
-      };
-    });
-    setFocusEndKey((current) => current + 1);
-  }, []);
-
-  const onChange = useCallback(
-    (text: string, mentionRanges: PromptTextMention[]) => {
-      setDraft({ text, mentionRanges });
+  const addQuote = useCallback(
+    (quotedText: string) => {
+      store.setDraft(appendQuoteToDraftText(store.getCurrent(), quotedText));
+      setFocusEndKey((current) => current + 1);
     },
-    [],
+    [store],
   );
 
-  return {
-    ...draft,
-    focusEndKey,
-    addQuote,
-    onChange,
-  };
+  return { store, focusEndKey, addQuote };
 }
 
 export function StoryDraftPromptBox({
@@ -70,31 +47,17 @@ export function StoryDraftPromptBox({
 }) {
   const typeahead = useMemo(() => makeTypeaheadConfig(), []);
   const attachments = useMemo(() => makeAttachmentsConfig(), []);
-  const history = useMemo<HistoryConfig>(
-    () => ({
-      currentDraft: {
-        text: draft.text,
-        mentions: draft.mentionRanges,
-        attachments: [],
-      },
-      entries: [],
-      onSelectEntry: noop,
-    }),
-    [draft.mentionRanges, draft.text],
-  );
 
   return (
     <ComposerBox
-      value={draft.text}
-      mentionRanges={draft.mentionRanges}
-      onChange={draft.onChange}
+      draft={draft.store}
       onSubmit={noop}
       surface="thread"
       placeholder="Add to chat inserts a quote here"
       typeahead={typeahead}
       mentionMenuPlacement="bottom"
       attachments={attachments}
-      history={history}
+      history={STORY_HISTORY}
       focusEndKey={draft.focusEndKey}
     />
   );

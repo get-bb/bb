@@ -5,6 +5,9 @@ import { cn } from "../../lib/utils";
 import { Icon } from "./icon";
 import { Button, buttonVariants } from "../../components/ui/button";
 
+const RTL_NEXT_ICON_CLASS = String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`;
+const RTL_PREVIOUS_ICON_CLASS = String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`;
+
 function Calendar({
   className,
   classNames,
@@ -24,8 +27,8 @@ function Calendar({
       showOutsideDays={showOutsideDays}
       className={cn(
         "bg-background group/calendar p-3 [--cell-size:2rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
-        String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
-        String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
+        RTL_NEXT_ICON_CLASS,
+        RTL_PREVIOUS_ICON_CLASS,
         className,
       )}
       captionLayout={captionLayout}

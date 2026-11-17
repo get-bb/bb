@@ -401,12 +401,10 @@ export function SkillsOverview({
         !providerCounts.has(provider) && !providerFilters.includes(provider),
     }));
   }, [providerCounts, providerRoster, providerFilters]);
-  useEffect(() => {
-    if (sortMode === "provider" && providerBucketCount <= 1) {
-      setSortMode("alpha");
-      setSortDirection("asc");
-    }
-  }, [providerBucketCount, sortMode]);
+  if (sortMode === "provider" && providerBucketCount <= 1) {
+    setSortMode("alpha");
+    setSortDirection("asc");
+  }
   const visibleSkills = useMemo(() => {
     const filtered = skills.filter((skill) => {
       const source = skillSourceFilterId(skill);
@@ -636,10 +634,13 @@ export function SkillDetailDialogView({
   onOpenInEditor,
 }: SkillDetailDialogViewProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  useEffect(() => {
+  const skillId = skill?.id;
+  const [confirmingDeleteSkillId, setConfirmingDeleteSkillId] =
+    useState(skillId);
+  if (confirmingDeleteSkillId !== skillId) {
+    setConfirmingDeleteSkillId(skillId);
     setConfirmingDelete(false);
-  }, [skill?.id]);
+  }
 
   if (skill === null) return null;
   const bundledPluginName =

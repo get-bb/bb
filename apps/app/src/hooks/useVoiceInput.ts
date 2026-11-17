@@ -1,5 +1,11 @@
 import { createMicrophoneRecordingStream } from "@/lib/microphone-recording-stream";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { useMicrophoneSignal } from "./useMicrophoneSignal";
 import { useAudioInputDevices } from "./useAudioInputDevices";
 import { appToast } from "@/components/ui/app-toast";
@@ -28,7 +34,6 @@ import {
   readVoiceSupportEnvironment,
   resolveVoiceSupport,
   voiceUnsupportedMessage,
-  type VoiceUnsupportedReason,
 } from "./voice-input-support";
 
 type VoiceInputState = "idle" | "recording" | "transcribing" | "error";
@@ -50,6 +55,7 @@ interface UseVoiceInputOptions {
 
 type TranscriptionResult =
   | { kind: "transcript"; text: string }
+  | { kind: "empty" }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
 
@@ -139,6 +145,93 @@ function createRecordingFile(audioBlob: Blob, mimeType: string): File {
   });
 }
 
+function createEphemeralRecordingKey(): string {
+  nextEphemeralRecordingKey += 1;
+  return `ephemeral/${nextEphemeralRecordingKey}`;
+}
+
+async function switchRecordingMicrophone({
+  deviceId,
+  recordingStreamRef,
+  deviceRequestRef,
+  streamRef,
+  setStream,
+  setCaptureError,
+  refreshDevices,
+}: {
+  deviceId: string | null;
+  recordingStreamRef: RefObject<ReturnType<
+    typeof createMicrophoneRecordingStream
+  > | null>;
+  deviceRequestRef: RefObject<number>;
+  streamRef: RefObject<MediaStream | null>;
+  setStream: (stream: MediaStream) => void;
+  setCaptureError: (error: string | null) => void;
+  refreshDevices: () => Promise<void>;
+}): Promise<void> {
+  const recordingStream = recordingStreamRef.current;
+  if (!recordingStream) return;
+  const request = ++deviceRequestRef.current;
+  try {
+    const next = await requestAudioInputStream(
+      navigator.mediaDevices,
+      deviceId,
+    );
+    if (
+      deviceRequestRef.current !== request ||
+      recordingStreamRef.current !== recordingStream
+    ) {
+      next.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    try {
+      recordingStream.replace(next);
+    } catch (error) {
+      next.getTracks().forEach((track) => track.stop());
+      throw error;
+    }
+    const previous = streamRef.current;
+    streamRef.current = next;
+    setStream(next);
+    previous?.getTracks().forEach((track) => track.stop());
+    setCaptureError(null);
+    void refreshDevices();
+  } catch (error) {
+    if (
+      deviceRequestRef.current === request &&
+      recordingStreamRef.current === recordingStream
+    ) {
+      setCaptureError(resolveRecordingErrorMessage(error));
+    }
+  }
+}
+
+async function runVoiceTranscription(
+  options: Pick<UseVoiceInputOptions, "onTranscribe">,
+  recording: VoiceRecording,
+  signal: AbortSignal,
+  beforeDelivery: (() => Promise<void> | undefined) | undefined,
+): Promise<TranscriptionResult> {
+  try {
+    const transcript = await options.onTranscribe({
+      file: recording.file,
+      promptContext: recording.promptContext,
+      signal,
+    });
+    const text = normalizeTranscript(transcript);
+    if (!signal.aborted && text.length === 0) return { kind: "empty" };
+    await beforeDelivery?.();
+    return signal.aborted
+      ? { kind: "cancelled" }
+      : { kind: "transcript", text };
+  } catch (error) {
+    return signal.aborted ||
+      (error instanceof DOMException && error.name === "AbortError")
+      ? { kind: "cancelled" }
+      : { kind: "failed", message: resolveRecordingErrorMessage(error) };
+  }
+}
+
 export function useVoiceInput(options: UseVoiceInputOptions) {
   const preferredAudioInputDeviceId = useAudioInputDevicePreferenceValue();
   const {
@@ -170,22 +263,24 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
 
   const [state, setState] = useState<VoiceInputState>("idle");
   const [delivery, setDelivery] = useState<VoiceDelivery>("insert");
-  const [ephemeralRecordingKey] = useState(
-    () => `ephemeral/${(nextEphemeralRecordingKey += 1)}`,
-  );
+  const [ephemeralRecordingKey] = useState(createEphemeralRecordingKey);
   const recordingKey = options.recordingKey ?? ephemeralRecordingKey;
   const persistRecordings = options.recordingKey !== null;
   const failedRecordings = useFailedVoiceRecordings(recordingKey);
-  const [isSupported, setIsSupported] = useState(false);
-  const [unsupportedReason, setUnsupportedReason] =
-    useState<VoiceUnsupportedReason | null>("unsupported-browser");
+  const [{ isSupported, reason: unsupportedReason }] = useState(() =>
+    resolveVoiceSupport(readVoiceSupportEnvironment()),
+  );
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   const { silent } = useMicrophoneSignal(stream, false);
 
-  useEffect(() => {
+  const [captureErrorDeviceId, setCaptureErrorDeviceId] = useState(
+    preferredAudioInputDeviceId,
+  );
+  if (captureErrorDeviceId !== preferredAudioInputDeviceId) {
+    setCaptureErrorDeviceId(preferredAudioInputDeviceId);
     setCaptureError(null);
-  }, [preferredAudioInputDeviceId]);
+  }
 
   useEffect(() => {
     if (!stream) return;
@@ -231,43 +326,16 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   }, []);
 
   const switchMicrophone = useCallback(
-    async (deviceId: string | null) => {
-      const recordingStream = recordingStreamRef.current;
-      if (!recordingStream) return;
-      const request = ++deviceRequestRef.current;
-      try {
-        const next = await requestAudioInputStream(
-          navigator.mediaDevices,
-          deviceId,
-        );
-        if (
-          deviceRequestRef.current !== request ||
-          recordingStreamRef.current !== recordingStream
-        ) {
-          next.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        try {
-          recordingStream.replace(next);
-        } catch (error) {
-          next.getTracks().forEach((track) => track.stop());
-          throw error;
-        }
-        const previous = streamRef.current;
-        streamRef.current = next;
-        setStream(next);
-        previous?.getTracks().forEach((track) => track.stop());
-        setCaptureError(null);
-        void refreshDevices();
-      } catch (error) {
-        if (
-          deviceRequestRef.current === request &&
-          recordingStreamRef.current === recordingStream
-        ) {
-          setCaptureError(resolveRecordingErrorMessage(error));
-        }
-      }
-    },
+    (deviceId: string | null) =>
+      switchRecordingMicrophone({
+        deviceId,
+        recordingStreamRef,
+        deviceRequestRef,
+        streamRef,
+        setStream,
+        setCaptureError,
+        refreshDevices,
+      }),
     [refreshDevices],
   );
 
@@ -358,12 +426,6 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   }, []);
 
   useEffect(() => {
-    const support = resolveVoiceSupport(readVoiceSupportEnvironment());
-    setIsSupported(support.isSupported);
-    setUnsupportedReason(support.reason);
-  }, []);
-
-  useEffect(() => {
     return () => {
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state === "recording") {
@@ -413,32 +475,12 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   }, [requestRecordingWakeLock]);
 
   const runTranscription = useCallback(
-    async (
+    (
       recording: VoiceRecording,
       signal: AbortSignal,
       beforeDelivery: (() => Promise<void> | undefined) | undefined,
-    ): Promise<TranscriptionResult> => {
-      try {
-        const transcript = await options.onTranscribe({
-          file: recording.file,
-          promptContext: recording.promptContext,
-          signal,
-        });
-        const text = normalizeTranscript(transcript);
-        if (!signal.aborted && text.length === 0) {
-          throw new Error("Voice transcription returned an empty result.");
-        }
-        await beforeDelivery?.();
-        return signal.aborted
-          ? { kind: "cancelled" }
-          : { kind: "transcript", text };
-      } catch (error) {
-        return signal.aborted ||
-          (error instanceof DOMException && error.name === "AbortError")
-          ? { kind: "cancelled" }
-          : { kind: "failed", message: resolveRecordingErrorMessage(error) };
-      }
-    },
+    ): Promise<TranscriptionResult> =>
+      runVoiceTranscription(options, recording, signal, beforeDelivery),
     [options],
   );
 
@@ -452,6 +494,10 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         if (onCancel === "discard") {
           void deleteVoiceRecording(recording.id);
         }
+        return;
+      }
+      if (result.kind === "empty") {
+        void deleteVoiceRecording(recording.id);
         return;
       }
       if (result.kind === "failed") {
@@ -514,7 +560,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
 
     startingRef.current = true;
     const request = ++deviceRequestRef.current;
-    try {
+    const beginRecording = async () => {
       const stream = await requestAudioInputStream(
         navigator.mediaDevices,
         preferredAudioInputDeviceId,
@@ -625,7 +671,8 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       };
 
       recorder.start(CHUNK_TIMESLICE_MS);
-    } catch (error) {
+    };
+    const handleStartError = (error: unknown) => {
       stopMediaStream();
       mediaRecorderRef.current = null;
       chunksRef.current = [];
@@ -641,9 +688,12 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
           preferredAudioInputDeviceId !== null,
         ),
       );
-    } finally {
-      startingRef.current = false;
-    }
+    };
+    await beginRecording()
+      .then(undefined, handleStartError)
+      .finally(() => {
+        startingRef.current = false;
+      });
   }, [
     isSupported,
     options,

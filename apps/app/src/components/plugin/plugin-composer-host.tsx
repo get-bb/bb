@@ -43,6 +43,60 @@ export function composerScopeIdentity(scope: PluginComposerScope): string {
   }
 }
 
+export type ComposerDraftStore = Pick<
+  PluginComposerHost,
+  "getCurrent" | "subscribeDraft" | "setDraft"
+>;
+
+export type ComposerDraftSource = Pick<
+  PluginComposerHost,
+  "getCurrent" | "subscribeDraft"
+>;
+
+export function createComposerDraftStore(
+  initial: PromptDraftState,
+): ComposerDraftStore {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  return {
+    getCurrent: () => current,
+    subscribeDraft: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    setDraft: (next) => {
+      if (next === current) return;
+      current = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
+function cachedDraftSelection<T>(
+  source: ComposerDraftSource,
+  select: (draft: PromptDraftState) => T,
+): () => T {
+  let cache: { draft: PromptDraftState; value: T } | null = null;
+  return () => {
+    const draft = source.getCurrent();
+    if (cache?.draft !== draft) cache = { draft, value: select(draft) };
+    return cache.value;
+  };
+}
+
+export function useComposerDraftSelector<T>(
+  source: ComposerDraftSource,
+  select: (draft: PromptDraftState) => T,
+): T {
+  const getSnapshot = useMemo(
+    () => cachedDraftSelection(source, select),
+    [select, source],
+  );
+  return useSyncExternalStore(source.subscribeDraft, getSnapshot, getSnapshot);
+}
+
 const subscribeToNoDraft = () => () => {};
 const getNoDraft = () => null;
 
@@ -119,88 +173,89 @@ export function useComposerHostSelection(
 interface PluginComposerViewModelInput {
   scope: PluginComposerScope;
   layout: ComposerView["layout"];
-  text: string;
-  attachmentCount: number;
   isRunning: boolean;
   isSubmitting: boolean;
 }
 
-export function usePluginComposerViewModel({
+export type PluginComposerStaticView = Omit<ComposerView, "draft">;
+
+export function usePluginComposerStaticViewModel({
   scope,
   layout,
-  text,
-  attachmentCount,
   isRunning,
   isSubmitting,
-}: PluginComposerViewModelInput): ComposerView {
+}: PluginComposerViewModelInput): PluginComposerStaticView {
   return useMemo(
-    () => ({
-      scope,
-      layout,
-      draft: {
-        text,
-        isEmpty: isComposerDraftEmpty(text, attachmentCount),
-        attachmentCount,
-      },
-      run: { isRunning, isSubmitting },
-    }),
-    [attachmentCount, isRunning, isSubmitting, layout, scope, text],
+    () => ({ scope, layout, run: { isRunning, isSubmitting } }),
+    [isRunning, isSubmitting, layout, scope],
   );
+}
+
+export function composerViewDraft(
+  draft: PromptDraftState,
+): ComposerView["draft"] {
+  return {
+    text: draft.text,
+    isEmpty: isComposerDraftEmpty(draft.text, draft.attachments.length),
+    attachmentCount: draft.attachments.length,
+  };
 }
 
 const PluginComposerHostContext = createContext<
   PluginComposerHost | null | undefined
 >(undefined);
 
-export type PluginComposerStaticView = Omit<ComposerView, "draft">;
+interface PluginComposerViewSource {
+  view: PluginComposerStaticView;
+  draft: ComposerDraftSource;
+}
 
-const PluginComposerStaticViewContext = createContext<
-  PluginComposerStaticView | undefined
->(undefined);
-
-const PluginComposerDraftViewContext = createContext<
-  ComposerView["draft"] | undefined
+const PluginComposerViewContext = createContext<
+  PluginComposerViewSource | undefined
 >(undefined);
 
 export function PluginComposerViewProvider({
   children,
-  value,
+  draft,
+  view,
 }: {
   children: ReactNode;
-  value: ComposerView;
+  draft: ComposerDraftSource;
+  view: PluginComposerStaticView;
 }) {
-  const { isRunning, isSubmitting } = value.run;
-  const staticView = useMemo<PluginComposerStaticView>(
-    () => ({
-      scope: value.scope,
-      layout: value.layout,
-      run: { isRunning, isSubmitting },
-    }),
-    [isRunning, isSubmitting, value.layout, value.scope],
-  );
+  const source = useMemo(() => ({ view, draft }), [draft, view]);
   return (
-    <PluginComposerStaticViewContext.Provider value={staticView}>
-      <PluginComposerDraftViewContext.Provider value={value.draft}>
-        {children}
-      </PluginComposerDraftViewContext.Provider>
-    </PluginComposerStaticViewContext.Provider>
+    <PluginComposerViewContext.Provider value={source}>
+      {children}
+    </PluginComposerViewContext.Provider>
   );
 }
 
 export function useOptionalPluginComposerStaticView():
   | PluginComposerStaticView
   | undefined {
-  return useContext(PluginComposerStaticViewContext);
+  return useContext(PluginComposerViewContext)?.view;
 }
 
+const EMPTY_VIEW_DRAFT: PromptDraftState = {
+  text: "",
+  mentions: [],
+  attachments: [],
+};
+const NO_DRAFT_SOURCE: ComposerDraftSource = {
+  getCurrent: () => EMPTY_VIEW_DRAFT,
+  subscribeDraft: () => () => {},
+};
+
 export function useOptionalPluginComposerView(): ComposerView | undefined {
-  const staticView = useContext(PluginComposerStaticViewContext);
-  const draft = useContext(PluginComposerDraftViewContext);
+  const source = useContext(PluginComposerViewContext);
+  const draft = useComposerDraftSelector(
+    source?.draft ?? NO_DRAFT_SOURCE,
+    composerViewDraft,
+  );
+  const staticView = source?.view;
   return useMemo(
-    () =>
-      staticView === undefined || draft === undefined
-        ? undefined
-        : { ...staticView, draft },
+    () => (staticView === undefined ? undefined : { ...staticView, draft }),
     [draft, staticView],
   );
 }

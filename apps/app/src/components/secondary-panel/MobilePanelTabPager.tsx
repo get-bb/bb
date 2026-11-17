@@ -1,12 +1,7 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { TabPill } from "@/components/ui/tab-pill";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PANEL_TAB_CONTROL_CLASS } from "./panelChromeClasses";
@@ -60,9 +55,9 @@ export function MobilePanelTabPager({
   const previousTab = tabs[displayedIndex - 1];
   const nextTab = tabs[displayedIndex + 1];
 
-  useEffect(() => {
-    if (activeContentTabId !== null) setLastContentTabId(activeContentTabId);
-  }, [activeContentTabId]);
+  if (activeContentTabId !== null && activeContentTabId !== lastContentTabId) {
+    setLastContentTabId(activeContentTabId);
+  }
 
   useLayoutEffect(() => {
     const navigation = navigationRef.current;
@@ -129,10 +124,10 @@ export function MobilePanelTabPager({
       });
     };
     measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(navigation);
-    observer.observe(content);
-    return () => observer.disconnect();
+    return observeSharedResize([navigation, content], {
+      read: () => undefined,
+      write: measure,
+    });
   }, [displayedIndex, tabs]);
 
   return (

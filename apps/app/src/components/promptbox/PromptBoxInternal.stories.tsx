@@ -9,12 +9,12 @@ import type {
   ProviderCommandSuggestion,
 } from "@bb/client-core";
 import {
-  ComposerBox,
   type HistoryConfig,
   type PromptBoxAction,
   type PromptBoxSubmissionConfig,
   type PromptVoiceConfig,
 } from "@/components/promptbox/ComposerBox";
+import { ControlledComposerBox } from "@/test/fixtures/controlled-composer-box";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
@@ -120,7 +120,6 @@ const historyEntries = [
 ];
 
 const baseHistory: HistoryConfig = {
-  currentDraft: { text: "", mentions: [], attachments: [] },
   entries: historyEntries,
   onSelectEntry: noop,
 };
@@ -350,7 +349,7 @@ function PromptBoxStoryInstance({
     fixture.mentions,
   );
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -638,7 +637,7 @@ const planGoalCommandPillsFixture = buildPromptPillsFixture(
 function DefaultRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -660,7 +659,7 @@ function WithAttachmentsRow() {
     "Take a look at this screenshot and the diff.",
   );
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -668,7 +667,7 @@ function WithAttachmentsRow() {
       onSubmit={noop}
       typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
-      attachments={makeAttachments({ items: mockAttachments })}
+      attachments={{ ...makeAttachments(), items: mockAttachments }}
       history={baseHistory}
       submission={makeSubmission()}
       voice={idleVoice}
@@ -682,7 +681,7 @@ function WithBlockquoteRow() {
     "> First we backfill the new column with a default value at the server\n> boundary, then flip reads once every row is populated.\nWhich phase is safe to deploy on a Friday?",
   );
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -725,7 +724,7 @@ function WithMentionsRow() {
     }),
   ]);
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -761,7 +760,7 @@ function WithSkillPillRow() {
     }),
   ]);
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -793,7 +792,7 @@ function WithLiveSkillsRow() {
         };
       }}
     >
-      <ComposerBox
+      <ControlledComposerBox
         surface="thread"
         value={value}
         mentionRanges={mentionRanges}
@@ -815,7 +814,7 @@ function WithLiveSkillsRow() {
 function WithPromptActionsRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -852,7 +851,7 @@ function WithLiveMentionsRow() {
               ),
       })}
     >
-      <ComposerBox
+      <ControlledComposerBox
         surface="thread"
         value={value}
         mentionRanges={mentionRanges}
@@ -876,7 +875,7 @@ function SubmittingRow() {
     "Review thread workspace.",
   );
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -900,7 +899,7 @@ function SubmittingRow() {
 function RunningWithStopRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -925,7 +924,7 @@ function RunningWithStopRow() {
 function RecordingActiveRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -947,7 +946,7 @@ function RecordingWithExistingDraftRow() {
     "Keep this existing prompt visible while I dictate the rest of the request.",
   );
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -967,7 +966,7 @@ function RecordingWithExistingDraftRow() {
 function RecordingProcessingRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -1153,7 +1152,7 @@ function CompactVoiceComparisonRow({
   const { value, mentionRanges, onChange } = useControlledValue(initialValue);
   const [state, setState] = useState<PromptVoiceConfig["state"]>("idle");
   return (
-    <ComposerBox
+    <ControlledComposerBox
       surface="thread"
       value={value}
       mentionRanges={mentionRanges}
@@ -1167,7 +1166,7 @@ function CompactVoiceComparisonRow({
       }
       typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
-      attachments={makeAttachments({ items: attachmentItems })}
+      attachments={{ ...makeAttachments(), items: attachmentItems }}
       history={baseHistory}
       submission={makeSubmission({ isRunning: running, onStop: noop })}
       compactBeforeSend={compactBeforeSend}

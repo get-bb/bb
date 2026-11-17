@@ -34,13 +34,14 @@ export function useCodeTheme(): PluginCodeThemeState {
   const [theme, setTheme] = useState<PluginCodeThemeData | null>(
     () => cache.get(name) ?? null,
   );
+  const [themeName, setThemeName] = useState(name);
+  if (themeName !== name) {
+    setThemeName(name);
+    const cached = cache.get(name);
+    if (cached !== undefined) setTheme(cached);
+  }
 
   useEffect(() => {
-    const cached = cache.get(name);
-    if (cached !== undefined) {
-      setTheme(cached);
-      return;
-    }
     let cancelled = false;
     void loadCodeThemeData(name)
       .then((data) => {

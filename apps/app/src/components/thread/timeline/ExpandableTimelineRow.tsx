@@ -147,21 +147,21 @@ function ExpandableTimelineRowComponent({
   const [terminalAutoExpandedLatch, setTerminalAutoExpandedLatch] =
     useState(terminalAutoExpanded);
   const [collapsedPreviewActive, setCollapsedPreviewActive] = useState(false);
-  useEffect(() => {
-    if (terminalAutoExpanded) {
-      setTerminalAutoExpandedLatch(true);
-    }
-  }, [terminalAutoExpanded]);
+  if (terminalAutoExpanded && !terminalAutoExpandedLatch) {
+    setTerminalAutoExpandedLatch(true);
+  }
   const isExpanded =
     expandable &&
     (forceExpanded ||
       (manualExpansionOverride ??
         (autoExpanded || terminalAutoExpanded || terminalAutoExpandedLatch)));
-  useEffect(() => {
+  const [previewResetExpanded, setPreviewResetExpanded] = useState(isExpanded);
+  if (previewResetExpanded !== isExpanded) {
+    setPreviewResetExpanded(isExpanded);
     if (isExpanded) {
       setCollapsedPreviewActive(false);
     }
-  }, [isExpanded]);
+  }
   const intentHandlers = useRowIntentHandlers(onIntent);
   const horizontalPaddingClass =
     timelineRowHorizontalPaddingClassName(horizontalPadding);

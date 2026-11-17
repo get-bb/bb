@@ -1,6 +1,6 @@
 import "../../../.ladle/composer-plugin";
 import { useState } from "react";
-import type { PermissionMode, PromptTextMention } from "@bb/domain";
+import type { PermissionMode } from "@bb/domain";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import {
   NewThreadPromptBoxUI,
@@ -31,6 +31,7 @@ import {
   makeTypeaheadConfig as makeTypeahead,
   makeHost,
 } from "../../../.ladle/story-fixtures";
+import { useComposerDraftFixture } from "@/test/fixtures/composer-draft";
 
 export default {
   title: "promptbox/New Thread Prompt Box",
@@ -84,7 +85,6 @@ const basePermission = {
 };
 
 const baseHistory: HistoryConfig = {
-  currentDraft: { text: "", mentions: [], attachments: [] },
   entries: [
     { text: "review thread workspace", mentions: [], attachments: [] },
     {
@@ -110,16 +110,6 @@ const promptActions: readonly PromptBoxAction[] = [
   },
 ];
 
-function useControlledValue(initial: string) {
-  const [value, setValue] = useState(initial);
-  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
-  const onChange = (nextValue: string, nextMentions: PromptTextMention[]) => {
-    setValue(nextValue);
-    setMentionRanges(nextMentions);
-  };
-  return { value, mentionRanges, onChange };
-}
-
 const baseModeConfig: NewThreadModeConfig = {
   environment: baseEnvironment,
   worktree: baseWorktree,
@@ -135,16 +125,14 @@ function PromptStage({ children }: PromptStageProps) {
 }
 
 function DefaultRow() {
-  const { value, mentionRanges, onChange } = useControlledValue("");
+  const draft = useComposerDraftFixture("");
   const execution = useInteractiveExecutionControls(baseExecution);
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-default"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
@@ -161,7 +149,7 @@ function DefaultRow() {
 }
 
 function SubmittingRow() {
-  const { value, mentionRanges, onChange } = useControlledValue(
+  const draft = useComposerDraftFixture(
     "Investigate the timeline pagination flicker.",
   );
   return (
@@ -169,9 +157,7 @@ function SubmittingRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-submitting"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting
         disabled
@@ -187,7 +173,7 @@ function SubmittingRow() {
 }
 
 function LoadingModelsRow() {
-  const { value, mentionRanges, onChange } = useControlledValue(
+  const draft = useComposerDraftFixture(
     "Investigate the timeline pagination flicker.",
   );
   return (
@@ -195,9 +181,7 @@ function LoadingModelsRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-loading-models"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled
@@ -222,7 +206,7 @@ function LoadingModelsRow() {
 }
 
 function ModelLoadFailedRow() {
-  const { value, mentionRanges, onChange } = useControlledValue(
+  const draft = useComposerDraftFixture(
     "Investigate the timeline pagination flicker.",
   );
   return (
@@ -230,9 +214,7 @@ function ModelLoadFailedRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-model-load-failed"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled
@@ -259,7 +241,7 @@ function ModelLoadFailedRow() {
 }
 
 function UnsupportedCodexCliRow() {
-  const { value, mentionRanges, onChange } = useControlledValue(
+  const draft = useComposerDraftFixture(
     "Create an automation that checks the release until CI passes.",
   );
   return (
@@ -267,9 +249,7 @@ function UnsupportedCodexCliRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-unsupported-codex-cli"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled
@@ -300,7 +280,7 @@ function UnsupportedCodexCliRow() {
 }
 
 function MissingCodexCliRow() {
-  const { value, mentionRanges, onChange } = useControlledValue(
+  const draft = useComposerDraftFixture(
     "Investigate the timeline pagination flicker.",
   );
   return (
@@ -308,9 +288,7 @@ function MissingCodexCliRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-missing-codex-cli"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled
@@ -351,7 +329,7 @@ function MissingCodexCliRow() {
 }
 
 function GenericModelRequestFailedRow() {
-  const { value, mentionRanges, onChange } = useControlledValue(
+  const draft = useComposerDraftFixture(
     "Investigate the timeline pagination flicker.",
   );
   return (
@@ -359,9 +337,7 @@ function GenericModelRequestFailedRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-model-request-failed"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled
@@ -394,7 +370,7 @@ function GenericModelRequestFailedRow() {
 }
 
 function NoModelsAvailableRow() {
-  const { value, mentionRanges, onChange } = useControlledValue(
+  const draft = useComposerDraftFixture(
     "Investigate the timeline pagination flicker.",
   );
   return (
@@ -402,9 +378,7 @@ function NoModelsAvailableRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-no-models"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled
@@ -431,15 +405,13 @@ function NoModelsAvailableRow() {
 }
 
 function CustomModelAfterLoadErrorRow() {
-  const { value, mentionRanges, onChange } = useControlledValue("");
+  const draft = useComposerDraftFixture("");
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-custom-model-after-load-error"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
@@ -471,15 +443,13 @@ function CustomModelAfterLoadErrorRow() {
 }
 
 function ClaudeProviderRow() {
-  const { value, mentionRanges, onChange } = useControlledValue("");
+  const draft = useComposerDraftFixture("");
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-claude"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
@@ -512,15 +482,13 @@ function ClaudeProviderRow() {
 }
 
 function FullAccessRow() {
-  const { value, mentionRanges, onChange } = useControlledValue("");
+  const draft = useComposerDraftFixture("");
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-full-access"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
@@ -547,7 +515,7 @@ const projectlessHosts = [
 ];
 
 function ProjectlessThreadRow() {
-  const { value, mentionRanges, onChange } = useControlledValue("");
+  const draft = useComposerDraftFixture("");
   const execution = useInteractiveExecutionControls(baseExecution);
   const [permission, setPermission] = useState<PermissionMode>("auto");
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -561,9 +529,7 @@ function ProjectlessThreadRow() {
       <NewThreadPromptBoxUI
         mentionMenuPlacement="bottom"
         id="story-new-thread-projectless"
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
+        draft={draft}
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}

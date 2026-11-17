@@ -1226,6 +1226,52 @@ describe("mobile sidebar swipe-open touch listener scoping", () => {
 
 describe("mobile sidebar interrupted swipe sessions", () => {
   it.each(["touch", "pointer"] as const)(
+    "finishes a %s swipe whose touched node remounts mid-drag",
+    (kind) => {
+      vi.useFakeTimers();
+      const harness = (version: number) => (
+        <CompactViewportOverrideProvider isCompactViewport>
+          <SidebarProvider>
+            <Sidebar>Sidebar content</Sidebar>
+            <SidebarInset>
+              <div key={version} data-sidebar-swipe-selectable>
+                Selectable message prose
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
+        </CompactViewportOverrideProvider>
+      );
+      const { rerender } = render(harness(1));
+      const prose = screen.getByText("Selectable message prose");
+      const inset = document.querySelector('[data-sidebar="inset"]');
+      if (!(inset instanceof HTMLElement)) {
+        throw new Error("Expected a page inset");
+      }
+
+      if (kind === "touch") {
+        fireTouch(prose, "touchstart", createTouch(40, 160));
+        fireTouch(window, "touchmove", createTouch(60, 160));
+      } else {
+        firePointer(prose, "pointerdown", 40, 160);
+        firePointer(window, "pointermove", 60, 160);
+      }
+      rerender(harness(2));
+      expect(prose.isConnected).toBe(false);
+      if (kind === "touch") {
+        fireTouch(prose, "touchmove", createTouch(190, 160));
+        fireTouchEnd(prose, createTouch(190, 160));
+      } else {
+        firePointer(prose, "pointermove", 190, 160);
+        firePointer(prose, "pointerup", 190, 160);
+      }
+
+      settleMobileToggle();
+      expect(getMobilePanel()?.dataset.state).toBe("open");
+      expect(inset.style.translate).toBe("");
+    },
+  );
+
+  it.each(["touch", "pointer"] as const)(
     "recovers a %s swipe after an earlier drag loses its end event",
     (kind) => {
       vi.useFakeTimers();

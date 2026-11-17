@@ -55,7 +55,8 @@ export function useThreadSessionOptionChoices(args: {
               ) {
                 return current;
               }
-              const { [optionId]: _failed, ...rest } = current.choices;
+              const rest = { ...current.choices };
+              delete rest[optionId];
               return { ...current, choices: rest };
             });
           },

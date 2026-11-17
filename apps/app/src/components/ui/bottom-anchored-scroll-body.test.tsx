@@ -112,7 +112,8 @@ function setup(threadId: string, keys: string[]) {
   });
   restoreLayout = layout.restore;
   const view = render(<Shell threadId={threadId} keys={keys} />);
-  act(() => layout.flushResizeObservers());
+  act(() => layout.frame());
+  act(() => layout.frame());
   const topOf = (key: string) => {
     const row = document.querySelector(`[data-timeline-row-id="${key}"]`);
     if (row === null) throw new Error(`${key} is not mounted`);
@@ -141,6 +142,7 @@ describe("BottomAnchoredScrollBody", () => {
     const keysA = rowKeys("thread-a", 120);
     const first = setup("thread-a", keysA);
     act(() => first.layout.userScrollTo(first.layout.maxScrollTop() - 2_500));
+    act(() => first.layout.frame());
     const reader = first.firstVisible();
     const before = first.topOf(reader);
 
@@ -169,6 +171,7 @@ describe("BottomAnchoredScrollBody", () => {
     const keysA = rowKeys("thread-a", 120);
     const first = setup("thread-a", keysA);
     act(() => first.layout.userScrollTo(400));
+    act(() => first.layout.frame());
     const reader = first.firstVisible();
     const before = first.topOf(reader);
     first.view.unmount();
@@ -176,6 +179,7 @@ describe("BottomAnchoredScrollBody", () => {
     const second = setup("thread-a", keysA.slice(60));
     expect(second.layout.scrollTop).toBe(second.layout.maxScrollTop());
     act(() => second.view.rerender(<Shell threadId="thread-a" keys={keysA} />));
+    act(() => second.layout.frame());
 
     expect(second.topOf(reader)).toBe(before);
     expect(handles.bottomAnchor?.isAtBottom).toBe(false);
@@ -185,13 +189,14 @@ describe("BottomAnchoredScrollBody", () => {
     const keysA = rowKeys("thread-a", 120);
     const first = setup("thread-a", keysA);
     act(() => first.layout.userScrollTo(400));
+    act(() => first.layout.frame());
     first.view.unmount();
 
     const second = setup("thread-a", keysA.slice(60));
     expect(second.layout.scrollTop).toBe(second.layout.maxScrollTop());
     act(() => handles.bottomAnchor?.scrollToBottom());
     act(() => second.view.rerender(<Shell threadId="thread-a" keys={keysA} />));
-    act(() => second.layout.flushResizeObservers());
+    act(() => second.layout.frame());
 
     expect(second.layout.scrollTop).toBe(second.layout.maxScrollTop());
     expect(handles.bottomAnchor?.isAtBottom).toBe(true);
@@ -210,13 +215,13 @@ describe("BottomAnchoredScrollBody", () => {
     act(() => {
       vi.advanceTimersByTime(1_500);
     });
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
     act(() =>
       view.rerender(
         <Shell threadId="thread-a" keys={rowKeys("thread-a", 64)} />,
       ),
     );
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
 
     expect(layout.scrollTop).toBe(layout.maxScrollTop());
     expect(handles.bottomAnchor?.isAtBottom).toBe(true);
@@ -262,10 +267,13 @@ describe("BottomAnchoredScrollBody", () => {
     const end = layout.maxScrollTop();
 
     act(() => layout.userScrollTo(end - 400));
+    act(() => layout.frame());
     expect(handles.bottomAnchor?.isAtBottom).toBe(false);
     act(() => layout.userScrollTo(end - 100));
+    act(() => layout.frame());
     expect(handles.bottomAnchor?.isAtBottom).toBe(false);
     act(() => layout.userScrollTo(end));
+    act(() => layout.frame());
     expect(handles.bottomAnchor?.isAtBottom).toBe(true);
   });
 
@@ -275,7 +283,9 @@ describe("BottomAnchoredScrollBody", () => {
     const { layout, view, scrollElement } = setup("thread-a", keys);
     const end = layout.maxScrollTop();
     act(() => layout.userScrollTo(end - 500));
+    act(() => layout.frame());
     act(() => layout.userScrollTo(end));
+    act(() => layout.frame());
     expect(handles.bottomAnchor?.isAtBottom).toBe(true);
 
     act(() => {
@@ -286,7 +296,7 @@ describe("BottomAnchoredScrollBody", () => {
     act(() => {
       scrollElement.dispatchEvent(new Event("scroll"));
     });
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
 
     expect(layout.maxScrollTop()).toBe(end + 8 + heightOf(grown.at(-1) ?? ""));
     expect(layout.scrollTop).toBe(layout.maxScrollTop());
@@ -323,7 +333,7 @@ describe("BottomAnchoredScrollBody", () => {
         <Shell threadId="thread-a" keys={rowKeys("thread-a", 62)} />,
       ),
     );
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
     expect(layout.scrollTop).toBe(0);
     expect(topOf(keys[0] ?? "")).toBe(0);
     view.unmount();
@@ -352,6 +362,7 @@ describe("BottomAnchoredScrollBody", () => {
         keys,
       );
       act(() => layout.userScrollTo(layout.maxScrollTop() - 1_500));
+      act(() => layout.frame());
       act(() => {
         vi.advanceTimersByTime(500);
       });
@@ -368,7 +379,7 @@ describe("BottomAnchoredScrollBody", () => {
       act(() => {
         scrollElement.dispatchEvent(new Event("scroll"));
       });
-      act(() => layout.flushResizeObservers());
+      act(() => layout.frame());
 
       expect(layout.maxScrollTop() - layout.scrollTop).toBe(fromEnd);
       expect(topOf(reader)).toBe(before);
@@ -388,15 +399,16 @@ describe("BottomAnchoredScrollBody", () => {
       .querySelector(`[data-timeline-row-id="${last}"]`)
       ?.setAttribute("data-fake-height", "20");
     act(() => layout.layoutScrollTo(layout.maxScrollTop()));
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
     expect(handles.bottomAnchor?.isAtBottom).toBe(true);
     document
       .querySelector(`[data-timeline-row-id="${last}"]`)
       ?.setAttribute("data-fake-height", String(heightOf(last)));
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
     expect(layout.scrollTop).toBe(layout.maxScrollTop());
 
     act(() => layout.userScrollTo(layout.maxScrollTop() - 1_500));
+    act(() => layout.frame());
     act(() => {
       vi.advanceTimersByTime(500);
     });
@@ -426,7 +438,7 @@ describe("BottomAnchoredScrollBody", () => {
         heights.set(toggled, heightOf(toggled) + growth),
       ),
     );
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
 
     expect(topOf(last)).toBe(lastBefore);
     expect(topOf(toggled)).toBe(toggledBefore - growth);
@@ -443,6 +455,7 @@ describe("BottomAnchoredScrollBody", () => {
     const keys = rowKeys("thread-a", 60);
     const { layout, topOf, firstVisible } = setup("thread-a", keys);
     act(() => layout.userScrollTo(layout.maxScrollTop() - 1_200));
+    act(() => layout.frame());
     const key = firstVisible();
     const row = document.querySelector<HTMLElement>(
       `[data-timeline-row-id="${key}"]`,
@@ -459,7 +472,7 @@ describe("BottomAnchoredScrollBody", () => {
         update: () => handles.setHeights((heights) => heights.set(key, 40)),
       }),
     );
-    act(() => layout.flushResizeObservers());
+    act(() => layout.frame());
 
     expect(topOf(key) + 40).toBe(bottomBefore);
   });

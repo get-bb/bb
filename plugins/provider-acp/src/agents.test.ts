@@ -323,7 +323,6 @@ describe("acpProviderDeclaration", () => {
         "claude-fable-5",
         "composer-2.5",
       ],
-      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
       acpLaunchSpec: {
         command: "cursor-agent",
         args: ["acp"],
@@ -335,7 +334,6 @@ describe("acpProviderDeclaration", () => {
     });
     expect(byId.get("acp-grok")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "grok",
-      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
       acpLaunchSpec: {
         command: "grok",
         args: ["agent", "stdio"],

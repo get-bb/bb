@@ -363,7 +363,7 @@ describe("theme.css desktop portal hit testing", () => {
   });
 });
 
-describe("theme.css sidebar width registration", () => {
+describe("theme.css resize width registration", () => {
   it("registers --sidebar-width as a non-inherited length", () => {
     const rule = css.match(/@property --sidebar-width\s*\{([^}]*)\}/)?.[1];
 
@@ -371,6 +371,17 @@ describe("theme.css sidebar width registration", () => {
     expect(rule).toMatch(/syntax:\s*"<length>";/);
     expect(rule).toMatch(/inherits:\s*false;/);
     expect(rule).toMatch(/initial-value:\s*\d+px;/);
+  });
+
+  it("registers --secondary-swipe-width as non-inherited, keeping its var() fallback", () => {
+    const rule = css.match(
+      /@property --secondary-swipe-width\s*\{([^}]*)\}/,
+    )?.[1];
+
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/syntax:\s*"\*";/);
+    expect(rule).toMatch(/inherits:\s*false;/);
+    expect(rule).not.toMatch(/initial-value/);
   });
 });
 

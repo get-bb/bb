@@ -1,9 +1,9 @@
 import { threadListProviderAtom } from "@/components/sidebar/threadListProvider";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { ReplacementProviderSetting } from "./ReplacementProviderSetting";
 
 export function SidebarThreadListSetting() {
-  const { threadLists } = usePluginSlots();
+  const threadLists = usePluginSlotKind("threadLists");
   return (
     <ReplacementProviderSetting
       label="Sidebar thread list"

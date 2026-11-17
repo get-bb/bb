@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useState } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import {
   getRootComposeRoutePath,
@@ -115,16 +115,22 @@ export function useAppSettingsRouteMemory(
   routeOwnsSidebar: boolean,
 ): AppSettingsRouteMemory {
   const route = classifyAppSettingsRoute(useLocation(), routeOwnsSidebar);
-  const memoryRef = useRef(createAppSettingsRouteMemory(route));
-  const { routePath, isSettingsRoute, isSectionRoute } = route;
+  const [tracked, setTracked] = useState(() => ({
+    route,
+    memory: advanceAppSettingsRouteMemory(
+      createAppSettingsRouteMemory(route),
+      route,
+    ),
+  }));
+  let memory = tracked.memory;
+  if (
+    tracked.route.routePath !== route.routePath ||
+    tracked.route.isSettingsRoute !== route.isSettingsRoute ||
+    tracked.route.isSectionRoute !== route.isSectionRoute
+  ) {
+    memory = advanceAppSettingsRouteMemory(tracked.memory, route);
+    setTracked({ route, memory });
+  }
 
-  useEffect(() => {
-    memoryRef.current = advanceAppSettingsRouteMemory(memoryRef.current, {
-      routePath,
-      isSettingsRoute,
-      isSectionRoute,
-    });
-  }, [routePath, isSettingsRoute, isSectionRoute]);
-
-  return resolveAppSettingsRouteMemory(memoryRef.current, route);
+  return resolveAppSettingsRouteMemory(memory, route);
 }

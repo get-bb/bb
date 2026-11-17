@@ -6,6 +6,7 @@ import {
   type SDKControlInitializeResponse,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { strictMcpConfigUnlessManaged } from "./managed-mcp-config.js";
 import { translateMissingClaudeCliCatalogError } from "./missing-cli-error.js";
 import { resolveClaudeCodeExecutable } from "./session-options.js";
 
@@ -35,6 +36,7 @@ async function withInitializedClaude<T>(
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({
     env: args.env,
   });
+  const strictMcpConfig = strictMcpConfigUnlessManaged();
   const promptEnd = new AbortController();
   let session: Query;
   try {
@@ -45,6 +47,7 @@ async function withInitializedClaude<T>(
         env: args.env,
         persistSession: false,
         settingSources: ["user", "project", "local"],
+        ...strictMcpConfig,
         ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
       },
     });

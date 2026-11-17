@@ -7,6 +7,7 @@ import {
 import type { AvailableModel } from "@bb/domain";
 import type {
   SystemExecutionOptionsResponse,
+  SystemProviderCatalogEntry,
   SystemProviderStatesResponse,
 } from "@bb/server-contract";
 import type { ProviderInfo } from "@bb/domain";
@@ -23,7 +24,9 @@ import {
   systemProvidersQueryKey,
 } from "./query-keys";
 import {
+  findKnownProviderModelCatalogScope,
   hostProviderCliStatusQueryOptions,
+  providerDirectoryQueryOptions,
   liveSystemExecutionOptionsQueryOptions,
   prefetchSystemExecutionOptions,
   resolveSystemProviderInfo,
@@ -35,7 +38,7 @@ vi.mock("@/lib/sdk", () => ({
   BbHttpError: class BbHttpError extends Error {},
   sdk: {
     hosts: { providerCliStatus: vi.fn() },
-    providers: { list: vi.fn() },
+    providers: { catalog: vi.fn(), list: vi.fn() },
     system: {
       executionOptions: vi.fn(),
       providerStates: vi.fn(),
@@ -80,10 +83,16 @@ function providerStates(providerId: string): SystemProviderStatesResponse {
 let storage: Storage;
 const unsubscribes: Array<() => void> = [];
 
-function observe<TData, TQueryKey extends QueryKey>(
+function observe<TQueryFnData, TData, TQueryKey extends QueryKey>(
   queryClient: QueryClient,
-  options: QueryObserverOptions<TData, Error, TData, TData, TQueryKey>,
-): QueryObserver<TData, Error, TData, TData, TQueryKey> {
+  options: QueryObserverOptions<
+    TQueryFnData,
+    Error,
+    TData,
+    TQueryFnData,
+    TQueryKey
+  >,
+): QueryObserver<TQueryFnData, Error, TData, TQueryFnData, TQueryKey> {
   const observer = new QueryObserver(queryClient, options);
   const unsubscribe = observer.subscribe(() => {});
   unsubscribes.push(unsubscribe);
@@ -250,6 +259,61 @@ describe("useSystemProviders", () => {
 
     expect(result.isPlaceholderData).toBe(true);
     expect(result.data).toEqual([usageProvider]);
+  });
+});
+
+function catalogEntry(
+  info: ProviderInfo | null,
+  id = info?.id ?? "declared-only",
+): SystemProviderCatalogEntry {
+  return {
+    id,
+    displayName: id,
+    pluginId: "provider-plugin",
+    pluginName: "Provider plugin",
+    pluginEnabled: info !== null,
+    enabled: true,
+    available: info?.available ?? false,
+    logoUrl: null,
+    info,
+  };
+}
+
+describe("useProviderDirectory", () => {
+  it("lists every registered provider and replays the last-known directory on a cold load", async () => {
+    const remoteOnly = makeProviderInfo({
+      id: "remote-only",
+      displayName: "Remote only",
+      capabilities: { modelCatalogScope: "workspace" },
+    });
+    const local = makeProviderInfo({ id: "local", displayName: "Local" });
+    vi.mocked(sdk.providers.catalog).mockResolvedValueOnce([
+      catalogEntry(remoteOnly),
+      catalogEntry(null),
+      catalogEntry(local),
+    ]);
+    const warmClient = createQueryClientTestHarness().queryClient;
+    const warm = observe(warmClient, providerDirectoryQueryOptions());
+    await vi.waitFor(() => {
+      expect(warm.getCurrentResult().data).toEqual([remoteOnly, local]);
+    });
+    expect(findKnownProviderModelCatalogScope(warmClient, "remote-only")).toBe(
+      "workspace",
+    );
+    expect(
+      findKnownProviderModelCatalogScope(warmClient, "declared-only"),
+    ).toBeUndefined();
+    stopObserving();
+
+    vi.mocked(sdk.providers.catalog).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const cold = observe(
+      createQueryClientTestHarness().queryClient,
+      providerDirectoryQueryOptions(),
+    ).getCurrentResult();
+    expect(cold.isPlaceholderData).toBe(true);
+    expect(cold.data).toEqual([remoteOnly, local]);
   });
 });
 

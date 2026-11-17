@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   ExperimentalSidebarNavigationActions,
   ExperimentalSidebarNavigationSplit,
@@ -28,6 +28,19 @@ const EMPTY_STATE: ExperimentalSidebarNavigationState = {
   isShortcutModifierHeld: false,
   actions: NOOP_ACTIONS,
 };
+
+function createMountGuard() {
+  let mounted = false;
+  return {
+    isMounted: () => mounted,
+    mount: () => {
+      mounted = true;
+      return () => {
+        mounted = false;
+      };
+    },
+  };
+}
 
 function guardActions(
   actions: ExperimentalSidebarNavigationActions,
@@ -59,16 +72,11 @@ function guardActions(
 
 export function useSidebarNavigation(): ExperimentalSidebarNavigationState {
   const state = useOptionalSidebarNavigationModel()?.state ?? EMPTY_STATE;
-  const mountedRef = useRef(false);
-  useLayoutEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  const [mountGuard] = useState(createMountGuard);
+  useLayoutEffect(() => mountGuard.mount(), [mountGuard]);
   const actions = useMemo(
-    () => guardActions(state.actions, () => mountedRef.current),
-    [state.actions],
+    () => guardActions(state.actions, mountGuard.isMounted),
+    [mountGuard, state.actions],
   );
   return useMemo(
     () => ({

@@ -1,7 +1,6 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
-import { useResizeObserver } from "usehooks-ts";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
@@ -10,6 +9,7 @@ import {
 import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import {
   activityIconClass,
   activityMetaClass,
@@ -162,26 +162,33 @@ interface ThreadBackgroundCommandsCardProps {
   onToggle: () => void;
 }
 
+function readIsCompactCard(width: number): boolean | null {
+  return width > 0 ? isCompactPromptShellWidth(width) : null;
+}
+
 export function ThreadBackgroundCommandsCard({
   commands,
   isExpanded,
   onToggle,
 }: ThreadBackgroundCommandsCardProps) {
   const isCompactViewport = useIsCompactViewport();
-  const cardRef = useRef<HTMLElement>(null!);
+  const cardRef = useRef<HTMLElement>(null);
   const [isCompactCard, setIsCompactCard] = useState<boolean | null>(null);
-  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
-  useResizeObserver({
-    ref: cardRef,
-    box: "border-box",
-    onResize: ({ width }) => {
-      if (width === undefined) return;
-      const nextIsCompact = isCompactPromptShellWidth(width);
-      setIsCompactCard((previous) =>
-        previous === nextIsCompact ? previous : nextIsCompact,
-      );
-    },
-  });
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (card === null || typeof ResizeObserver === "undefined") return;
+    setIsCompactCard(readIsCompactCard(card.getBoundingClientRect().width));
+    return observeSharedResize(card, {
+      read: (entry) =>
+        readIsCompactCard(
+          entry?.borderBoxSize?.[0]?.inlineSize ??
+            card.getBoundingClientRect().width,
+        ),
+      write: setIsCompactCard,
+    });
+  }, []);
+  const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
+    useDisclosureFocusHandoff(isExpanded, onToggle);
   const primary = commands[0];
   if (!primary) {
     return null;
@@ -214,8 +221,8 @@ export function ThreadBackgroundCommandsCard({
                 ? compactLabel
                 : backgroundActivityAriaLabel(primary, groupLabel)
             }
-            ref={focus.triggerRef}
-            onClick={focus.onTriggerClick}
+            ref={triggerRef}
+            onClick={onTriggerClick}
             className={activityRowClass(
               "active",
               cn(
@@ -267,8 +274,8 @@ export function ThreadBackgroundCommandsCard({
           isExpanded={isExpanded}
           collapsedBorder="none"
           collapseLabel={`Collapse ${groupLabel.toLowerCase()}`}
-          collapseRef={focus.collapseRef}
-          onCollapse={focus.onCollapseClick}
+          collapseRef={collapseRef}
+          onCollapse={onCollapseClick}
         >
           <div className="flex flex-col gap-0.5 py-1">
             {expandedRows.map((row) => {

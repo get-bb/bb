@@ -25,6 +25,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { expectNonmodalPicker } from "@/test/nonmodal-picker";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import {
@@ -180,6 +181,7 @@ function renderPicker({
   providerRouting,
   selectedProviderId = "codex",
   modelIsLoading = false,
+  reasoningIsLoading = false,
   modelLoadError = null,
   compact = false,
   splitPane = false,
@@ -206,6 +208,7 @@ function renderPicker({
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
   modelIsLoading?: boolean;
+  reasoningIsLoading?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   compact?: boolean;
   splitPane?: boolean;
@@ -249,13 +252,13 @@ function renderPicker({
         onModelChange={onModelChange}
         reasoningValue={reasoningValue}
         reasoningOptions={pickerReasoningOptions}
+        reasoningIsLoading={reasoningIsLoading}
         onReasoningChange={onReasoningChange}
         serviceTierValue={serviceTierValue}
         serviceTierOptions={serviceTierOptions}
         onServiceTierChange={onServiceTierChange}
         serviceTierSupportByProvider={serviceTierSupportByProvider}
         muted={muted}
-        modal={false}
         handoff={handoff}
         agentSections={agentSections}
         onAgentOptionChange={onAgentOptionChange}
@@ -328,6 +331,18 @@ describe("ModelReasoningPicker", () => {
       { key },
     );
     expect(onReasoningChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the page interactive and closes when focus leaves", async () => {
+    renderPicker();
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    await expectNonmodalPicker({
+      trigger,
+      open: () => fireEvent.click(trigger),
+      content: () => screen.queryByRole("button", { name: "5.5" }),
+    });
   });
 
   it("adjusts reasoning in an empty search but preserves text navigation", () => {
@@ -1053,7 +1068,7 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Handoff to new thread" }),
+      screen.getByRole("button", { name: "Hand off to new thread" }),
     );
     expect(onStart).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "5.5" }));
@@ -1089,7 +1104,7 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Handoff to new thread" }),
+      screen.getByRole("button", { name: "Hand off to new thread" }),
     );
     fireEvent.click(screen.getByTitle("Claude Code"));
 
@@ -1139,7 +1154,7 @@ describe("ModelReasoningPicker", () => {
         screen.getByRole("button", { name: "Provider, model and reasoning" }),
       );
       fireEvent.click(
-        screen.getByRole("button", { name: "Handoff to new thread" }),
+        screen.getByRole("button", { name: "Hand off to new thread" }),
       );
       fireEvent.click(screen.getByTitle("Claude Code"));
       await screen.findByText("Opus 4.7");
@@ -1188,7 +1203,7 @@ describe("ModelReasoningPicker", () => {
         screen.getByRole("button", { name: "Provider, model and reasoning" }),
       );
       fireEvent.click(
-        screen.getByRole("button", { name: "Handoff to new thread" }),
+        screen.getByRole("button", { name: "Hand off to new thread" }),
       );
       fireEvent.click(screen.getByTitle("Claude Code"));
       await screen.findByText("Opus 4.7");

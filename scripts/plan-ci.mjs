@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 const { values } = parseArgs({
@@ -33,6 +33,7 @@ const full = {
   staticNeeded: true,
   appBuild: true,
   sdkBuild: true,
+  renderInvariants: true,
   reason: "Full cross-platform coverage",
 };
 
@@ -56,6 +57,25 @@ function matchesFilter(name, filter) {
       (pattern) => pattern.startsWith("!") && match(pattern.slice(1)),
     )
   );
+}
+
+function pluginHasApp(name) {
+  const manifest = `plugins/${name}/package.json`;
+  if (!existsSync(manifest)) return true;
+  const parsed = JSON.parse(readFileSync(manifest, "utf8"));
+  return typeof parsed?.bb?.app === "string";
+}
+
+function touchesRenderedClient(path) {
+  if (
+    /^(?:apps\/app\/|packages\/(?:client-core|core-ui|plugin-sdk|shared-ui|thread-view)\/|tests\/(?:render-invariants|scripted-echo-provider)\/|tests\/integration\/helpers\/)/u.test(
+      path,
+    )
+  ) {
+    return true;
+  }
+  const plugin = /^plugins\/([^/]+)\//u.exec(path);
+  return plugin !== null && pluginHasApp(plugin[1]);
 }
 
 function select() {
@@ -89,6 +109,7 @@ function select() {
       staticNeeded: false,
       appBuild: false,
       sdkBuild: false,
+      renderInvariants: false,
       reason: "CI and contributor documentation only",
     };
   }
@@ -184,6 +205,7 @@ function select() {
     sdkBuild: tasks.some(
       (task) => task.package === "@get-bb/plugin-sdk" && task.name === "build",
     ),
+    renderInvariants: paths.some(touchesRenderedClient),
     buildFilters: filtersFor(buildPackages),
     staticFilters: filtersFor(staticPackages),
     reason: `Affected checks for ${paths.length} changed paths`,

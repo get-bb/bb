@@ -524,7 +524,8 @@ export function KeyboardSettingsSection() {
   const [recordingCommand, setRecordingCommand] =
     useState<KeyboardCommandId | null>(null);
   const [search, setSearch] = useState("");
-  const pendingCommandRef = useRef<KeyboardCommandId | null>(null);
+  const [lastAppliedCommand, setLastAppliedCommand] =
+    useState<KeyboardCommandId | null>(null);
 
   const commandRowModels = useMemo(
     () =>
@@ -623,7 +624,7 @@ export function KeyboardSettingsSection() {
       previous: AppKeybindingOverrides,
       sourceKey: string,
     ) => {
-      pendingCommandRef.current = pending;
+      setLastAppliedCommand(pending);
       setDraft({ sourceKey, value: next });
       mutateKeyboardSettings(next, {
         onError: () => setDraft({ sourceKey, value: previous }),
@@ -700,9 +701,7 @@ export function KeyboardSettingsSection() {
     [applyOverrides],
   );
 
-  const pendingCommand = isKeyboardSettingsPending
-    ? pendingCommandRef.current
-    : null;
+  const pendingCommand = isKeyboardSettingsPending ? lastAppliedCommand : null;
   const disabled = systemConfig.data === undefined || isKeyboardSettingsPending;
   const customizedCommands = [...commandRowModels.values()].filter(
     (row) => row.availableOnClient && row.customized,

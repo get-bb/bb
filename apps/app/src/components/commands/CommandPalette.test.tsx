@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { useSyncExternalStore } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { createStore, Provider } from "jotai";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
@@ -123,6 +124,7 @@ const modeState = vi.hoisted(() => ({
   archivedRecentsEnabled: false,
   threadDraftIds: new Set<string>(),
   searchResponse: undefined as ThreadSearchResponse | undefined,
+  searchListeners: new Set<() => void>(),
   recentLoading: false,
   recentError: false,
   searchLoading: false,
@@ -254,13 +256,30 @@ vi.mock("@/hooks/queries/palette-thread-queries", () => ({
   },
 }));
 
+function subscribeToSearchResponse(listener: () => void) {
+  modeState.searchListeners.add(listener);
+  return () => {
+    modeState.searchListeners.delete(listener);
+  };
+}
+
+function setSearchResponse(response: ThreadSearchResponse) {
+  act(() => {
+    modeState.searchResponse = response;
+    for (const listener of modeState.searchListeners) listener();
+  });
+}
+
 vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/hooks/queries/thread-queries")>();
   return {
     ...actual,
     useThreadSearch: ({ query }: { query: string }) => ({
-      data: modeState.searchResponse,
+      data: useSyncExternalStore(
+        subscribeToSearchResponse,
+        () => modeState.searchResponse,
+      ),
       debouncedQuery: query.trim(),
       hasSearchableQuery: query.trim().length >= 2,
       isDebouncing: false,
@@ -342,7 +361,7 @@ function renderPalette({
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   store.set(paletteThreadLifecyclesAtom, lifecycles);
-  const tree = () => (
+  const result = render(
     <Provider store={store}>
       <CompactViewportOverrideProvider isCompactViewport={compact}>
         <MemoryRouter>
@@ -362,11 +381,10 @@ function renderPalette({
           </AppCommandProvider>
         </MemoryRouter>
       </CompactViewportOverrideProvider>
-    </Provider>
+    </Provider>,
   );
-  const result = render(tree());
   screen.getByTestId("origin").focus();
-  return { ...result, store, rerenderPalette: () => result.rerender(tree()) };
+  return { ...result, store };
 }
 
 function openPalette(): KeyboardEvent {
@@ -1386,7 +1404,7 @@ describe("CommandPalette", () => {
         updatedAt: now - index,
       }),
     );
-    const { rerenderPalette } = renderPalette();
+    renderPalette();
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
       name: "Search threads",
@@ -1399,7 +1417,7 @@ describe("CommandPalette", () => {
     fireEvent.change(input, { target: { value: "fix" } });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expectText(selectedOption(), "Fix 1");
-    modeState.searchResponse = {
+    setSearchResponse({
       active: {
         total: 2,
         results: [
@@ -1428,8 +1446,7 @@ describe("CommandPalette", () => {
         ],
       },
       archived: { total: 0, results: [] },
-    };
-    rerenderPalette();
+    });
     expect(optionTitles()).toEqual([
       expect.stringContaining("Fix 0"),
       expect.stringContaining("Fix 1"),
@@ -1459,7 +1476,7 @@ describe("CommandPalette", () => {
         updatedAt: now - index,
       }),
     );
-    const { rerenderPalette } = renderPalette();
+    renderPalette();
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
       name: "Search threads",
@@ -1468,7 +1485,7 @@ describe("CommandPalette", () => {
     for (let index = 0; index < 5; index++)
       fireEvent.keyDown(input, { key: "ArrowDown" });
     expectText(selectedOption(), "Fix 5");
-    modeState.searchResponse = {
+    setSearchResponse({
       active: {
         total: 1,
         results: [
@@ -1486,8 +1503,7 @@ describe("CommandPalette", () => {
         ],
       },
       archived: { total: 0, results: [] },
-    };
-    rerenderPalette();
+    });
     expectText(selectedOption(), "Fix 5");
     fireEvent.keyDown(input, { key: "ArrowUp" });
     expectText(selectedOption(), "Fix 4");

@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, memo, useContext, type ReactNode } from "react";
 import type { Nodes, Paragraph, Parent, RootContent } from "mdast";
 import type {} from "mdast-util-to-hast";
 import type { PluginMessageDirectiveProps } from "@get-bb/plugin-sdk";
@@ -356,6 +356,16 @@ export function MessageDirectiveElement(props: MessageDirectiveElementProps) {
   if (mount === undefined) {
     return null;
   }
+  return <MountedMessageDirectiveView mount={mount} render={render} />;
+}
+
+const MountedMessageDirectiveView = memo(function MountedMessageDirectiveView({
+  mount,
+  render,
+}: {
+  mount: MountedMessageDirective;
+  render: MessageDirectiveRenderContext;
+}) {
   const { message, openWorkspaceFile } = render;
   const { slot, attributes, source } = mount;
   const Component = slot.component;
@@ -375,7 +385,7 @@ export function MessageDirectiveElement(props: MessageDirectiveElementProps) {
       />
     </PluginSlotMount>
   );
-}
+});
 
 const MessageDirectiveRegistryContext =
   createContext<MessageDirectiveRegistry | null>(null);

@@ -315,9 +315,9 @@ export function useAgentSignIns({
   useEffect(() => {
     for (const [providerId, exit] of exits) {
       if (statesSettledAt <= exit.at) continue;
-      resolveExit(providerId, agentReady(states, providerId));
+      resolveExitRef.current(providerId, agentReady(states, providerId));
     }
-  }, [exits, resolveExit, states, statesSettledAt]);
+  }, [exits, states, statesSettledAt]);
 
   const setView = useCallback((providerId: string, view: AgentSignInView) => {
     setViews((previous) =>

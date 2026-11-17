@@ -2,6 +2,7 @@ import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { setTimeout as delay } from "node:timers/promises";
 import type { DynamicTool } from "@get-bb/plugin-sdk/provider-bridge";
 import type { SdkSessionOptions } from "./sdk-session.js";
+import { strictMcpConfigUnlessManaged } from "./managed-mcp-config.js";
 import { buildBridgeMcpServer } from "./tool-proxy-mcp.js";
 import { BB_BRIDGE_MCP_SERVER_NAME } from "../tool-classification.js";
 
@@ -22,6 +23,7 @@ export async function readIsolatedClaudeContextUsage(args: {
 }): Promise<unknown> {
   args.signal.throwIfAborted();
   const options = args.sessionOptions;
+  const strictMcpConfig = strictMcpConfigUnlessManaged();
   const end = new AbortController();
   const session = query({
     prompt: promptWithoutMessages(end.signal),
@@ -47,6 +49,7 @@ export async function readIsolatedClaudeContextUsage(args: {
       resume: args.providerSessionId,
       forkSession: true,
       persistSession: false,
+      ...strictMcpConfig,
       canUseTool: async () => ({
         behavior: "deny",
         message: "Context reporting cannot execute tools.",

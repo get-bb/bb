@@ -6,11 +6,12 @@ import {
   writeFile,
   symlink,
   rm,
+  chmod,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { decodeOutput, runtimeEnvironment } from "./runtime.js";
+import { createRuntime, decodeOutput, runtimeEnvironment } from "./runtime.js";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -176,5 +177,55 @@ describe("runtime output boundary", () => {
         "1.0.0-test",
       ),
     ).rejects.toThrow("escaped");
+  });
+});
+
+const describeOnPosix = process.platform === "win32" ? describe.skip : describe;
+
+describeOnPosix("runtime session", () => {
+  it("keeps the session open after a run passes the output limit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "browser-runtime-test-"));
+    dirs.push(root);
+    const binary = join(root, "dev-browser");
+    await writeFile(
+      binary,
+      `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "daemon") {
+  fs.writeFileSync(process.env.DEV_BROWSER_HOME + "/daemon.pid", String(process.pid));
+  setInterval(() => {}, 1000);
+} else {
+  const script = args[args.indexOf("-e") + 1];
+  if (script === "flood") setInterval(() => fs.writeSync(1, "x".repeat(64000)), 5);
+  else {
+    fs.writeSync(1, JSON.stringify({ type: "result", value: script }) + "\\n");
+    fs.writeSync(1, JSON.stringify({ type: "done", exitCode: 0, durationMs: 1 }) + "\\n");
+  }
+}
+`,
+    );
+    await chmod(binary, 0o755);
+    const session = await createRuntime({
+      runtime: { binary, version: "1.0.0-test", source: "release" },
+      dataDir: root,
+      tempDir: join(root, "sessions"),
+      connectionUrl: "ws://127.0.0.1:9/devtools/browser/test",
+      signal: AbortSignal.timeout(10_000),
+    });
+    try {
+      const flood = await session.run(
+        "flood",
+        10_000,
+        AbortSignal.timeout(10_000),
+      );
+      expect(flood.exitCode).toBe(1);
+      expect(flood.text).toContain("DevBrowser output exceeded 512 KB");
+      expect(
+        await session.run("after", 10_000, AbortSignal.timeout(10_000)),
+      ).toEqual({ text: "after", images: [], exitCode: 0 });
+    } finally {
+      await session.close();
+    }
   });
 });

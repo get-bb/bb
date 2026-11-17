@@ -17,7 +17,7 @@ interface PermissionDisplayOverride {
   title?: string;
 }
 
-function planPermissionDisplay(
+export function planPermissionDisplay(
   planModeCopy: string,
 ): PermissionDisplayOverride {
   return {

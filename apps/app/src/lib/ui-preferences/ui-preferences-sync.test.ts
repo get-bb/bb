@@ -502,6 +502,46 @@ describe("ui preferences sync", () => {
     expect(store.get(modeAtom)).toBe("chronological");
   });
 
+  it("describes a failed UI preference write by the server's reason, not its HTTP status", async () => {
+    const { modeAtom, store } = startSyncedHarness(
+      serverResponse({
+        "sidebar.organizationMode": { revision: 1, value: "project" },
+      }),
+    );
+    mocks.set.mockRejectedValueOnce(
+      new BbHttpError({
+        status: 500,
+        code: "internal_error",
+        message: "Database is locked",
+        body: { code: "internal_error", message: "Database is locked" },
+      }),
+    );
+    store.set(modeAtom, "chronological");
+    await waitForUiPreferenceWrites();
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "Couldn’t sync UI preferences",
+      { description: "Database is locked" },
+    );
+  });
+
+  it("says the server is unreachable when a UI preference write cannot connect", async () => {
+    const { modeAtom, store } = startSyncedHarness(
+      serverResponse({
+        "sidebar.organizationMode": { revision: 1, value: "project" },
+      }),
+    );
+    mocks.set.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    store.set(modeAtom, "chronological");
+    await waitForUiPreferenceWrites();
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "Couldn’t sync UI preferences",
+      {
+        description:
+          "Could not reach the server. Check that it is running and try again.",
+      },
+    );
+  });
+
   it("does not let a delayed write response roll back a newer cached revision", async () => {
     const { modeAtom, queryClient, store } = startSyncedHarness(
       serverResponse({

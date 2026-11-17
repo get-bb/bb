@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { SkillSummary } from "@bb/server-contract";
 import { ResourceInfiniteScrollSentinel } from "@bb/shared-ui/resource-pagination";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -255,7 +255,11 @@ export function RegistrySkillDetailView({
   onEditLocalSkill: (skill: SkillSummary) => void;
 }) {
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
-  useEffect(() => setSelectedPath("SKILL.md"), [skill.id]);
+  const [selectedPathSkillId, setSelectedPathSkillId] = useState(skill.id);
+  if (selectedPathSkillId !== skill.id) {
+    setSelectedPathSkillId(skill.id);
+    setSelectedPath("SKILL.md");
+  }
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
     useLocalOpenTargets({ enabled: localPath !== null });
   const files = detail?.files ?? [];

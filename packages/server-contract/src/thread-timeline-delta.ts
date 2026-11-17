@@ -9,6 +9,8 @@ import {
   type TimelinePageMetadata,
   type TimelinePagePatch,
   type TimelineRowOrder,
+  type TimelineRowPatch,
+  type TimelineRowPatchOperation,
 } from "./api/threads.js";
 import type { TimelineRow } from "./thread-timeline.js";
 
@@ -28,14 +30,21 @@ export function computeThreadTimelineDelta(
     previousIndexes.set(row.id, index);
   });
   const upsertRows: TimelineRow[] = [];
+  const patchRows: TimelineRowPatch[] = [];
   for (const row of current.rows) {
     const index = previousIndexes.get(row.id);
     const before = index === undefined ? undefined : previous.rows[index];
-    if (
-      before !== row &&
-      (before === undefined || rowKey(before) !== rowKey(row))
-    ) {
+    if (before === row) {
+      continue;
+    }
+    if (before === undefined) {
       upsertRows.push(row);
+    } else if (rowKey(before) !== rowKey(row)) {
+      const ops: TimelineRowPatchOperation[] = [];
+      diffJsonValue(before, row, [], ops);
+      if (ops.length > 0) {
+        patchRows.push({ id: row.id, ops });
+      }
     }
   }
   const rowOrder = encodeRowOrder(previous.rows, current.rows, previousIndexes);
@@ -45,6 +54,7 @@ export function computeThreadTimelineDelta(
     delta: {
       afterTag: previous.tag,
       upsertRows,
+      ...(patchRows.length === 0 ? {} : { patchRows }),
       ...(rowOrder === null ? {} : { rowOrder }),
       fields: diffFields(previous, current),
     },
@@ -131,18 +141,37 @@ function applyRowDelta(
   delta: TimelineDelta,
 ): TimelineRow[] | null {
   const upserts = new Map(delta.upsertRows.map((row) => [row.id, row]));
+  const patches = new Map(
+    (delta.patchRows ?? []).map((patch) => [patch.id, patch.ops]),
+  );
   let appliedUpserts = 0;
+  let appliedPatches = 0;
+  let invalidPatch = false;
   const resolve = (row: TimelineRow): TimelineRow => {
     const next = upserts.get(row.id);
-    if (next === undefined) {
+    if (next !== undefined) {
+      appliedUpserts += 1;
+      return next;
+    }
+    const ops = patches.get(row.id);
+    if (ops === undefined) {
       return row;
     }
-    appliedUpserts += 1;
-    return next;
+    appliedPatches += 1;
+    const patched = patchTimelineRow(row, ops);
+    if (patched === null) {
+      invalidPatch = true;
+      return row;
+    }
+    return patched;
   };
+  const fits = () =>
+    !invalidPatch &&
+    appliedUpserts === upserts.size &&
+    appliedPatches === patches.size;
   if (delta.rowOrder === undefined) {
     const rows = previousRows.map(resolve);
-    return appliedUpserts === upserts.size ? rows : null;
+    return fits() ? rows : null;
   }
   const rows: TimelineRow[] = [];
   for (const part of delta.rowOrder) {
@@ -164,7 +193,160 @@ function applyRowDelta(
       rows.push(resolve(row));
     }
   }
-  return appliedUpserts === upserts.size ? rows : null;
+  return fits() ? rows : null;
+}
+
+type JsonPath = (string | number)[];
+
+interface JsonObject {
+  [key: string]: unknown;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const INVALID_PATCH = Symbol("invalid timeline row patch");
+
+function patchTimelineRow(
+  row: TimelineRow,
+  ops: readonly TimelineRowPatchOperation[],
+): TimelineRow | null {
+  let patched: unknown = row;
+  for (const op of ops) {
+    const next = applyPatchOperation(patched, op, 0);
+    if (next === INVALID_PATCH) {
+      return null;
+    }
+    patched = next;
+  }
+  return isPatchOfRow(patched, row) ? patched : null;
+}
+
+function isPatchOfRow(value: unknown, row: TimelineRow): value is TimelineRow {
+  return isJsonObject(value) && value.id === row.id && value.kind === row.kind;
+}
+
+function applyPatchOperation(
+  node: unknown,
+  op: TimelineRowPatchOperation,
+  depth: number,
+): unknown {
+  const path = op[1];
+  const key = path[depth]!;
+  const leaf = depth === path.length - 1;
+  if (Array.isArray(node)) {
+    if (typeof key !== "number" || key > node.length) {
+      return INVALID_PATCH;
+    }
+    const copy = [...node];
+    if (leaf) {
+      if (op[0] === "delete") {
+        return INVALID_PATCH;
+      }
+      const value = patchLeafValue(node[key], op);
+      if (value === INVALID_PATCH) {
+        return INVALID_PATCH;
+      }
+      copy[key] = value;
+      return copy;
+    }
+    const child = applyPatchOperation(node[key], op, depth + 1);
+    if (child === INVALID_PATCH) {
+      return INVALID_PATCH;
+    }
+    copy[key] = child;
+    return copy;
+  }
+  if (!isJsonObject(node) || typeof key !== "string") {
+    return INVALID_PATCH;
+  }
+  const copy: JsonObject = { ...node };
+  if (leaf && op[0] === "delete") {
+    if (node[key] === undefined) {
+      return INVALID_PATCH;
+    }
+    delete copy[key];
+    return copy;
+  }
+  const value = leaf
+    ? patchLeafValue(node[key], op)
+    : applyPatchOperation(node[key], op, depth + 1);
+  if (value === INVALID_PATCH) {
+    return INVALID_PATCH;
+  }
+  Object.defineProperty(copy, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+  return copy;
+}
+
+function patchLeafValue(
+  current: unknown,
+  op: TimelineRowPatchOperation,
+): unknown {
+  if (op[0] === "set") {
+    return op[2];
+  }
+  if (op[0] === "append" && typeof current === "string") {
+    return current + op[2];
+  }
+  return INVALID_PATCH;
+}
+
+function diffJsonValue(
+  before: unknown,
+  after: unknown,
+  path: JsonPath,
+  ops: TimelineRowPatchOperation[],
+): void {
+  if (before === after) {
+    return;
+  }
+  if (typeof before === "string" && typeof after === "string") {
+    ops.push(
+      before.length > 0 && after.startsWith(before)
+        ? ["append", path, after.slice(before.length)]
+        : ["set", path, after],
+    );
+    return;
+  }
+  if (Array.isArray(before) && Array.isArray(after)) {
+    if (after.length < before.length) {
+      ops.push(["set", path, after]);
+      return;
+    }
+    after.forEach((value, index) => {
+      if (index < before.length) {
+        diffJsonValue(before[index], value, [...path, index], ops);
+      } else {
+        ops.push(["set", [...path, index], value]);
+      }
+    });
+    return;
+  }
+  if (isJsonObject(before) && isJsonObject(after)) {
+    for (const [key, value] of Object.entries(before)) {
+      if (value !== undefined && after[key] === undefined) {
+        ops.push(["delete", [...path, key]]);
+      }
+    }
+    for (const [key, value] of Object.entries(after)) {
+      if (value === undefined) {
+        continue;
+      }
+      if (before[key] === undefined) {
+        ops.push(["set", [...path, key], value]);
+      } else {
+        diffJsonValue(before[key], value, [...path, key], ops);
+      }
+    }
+    return;
+  }
+  ops.push(["set", path, after]);
 }
 
 function diffFields(

@@ -35,6 +35,7 @@ import {
 } from "./model-brand-prefix";
 import type { PickerOption } from "./OptionPicker";
 import { PickerLoadingRows } from "./PickerLoadingRows";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { ModelPickerOption } from "./model-picker-option";
 import {
   MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
@@ -44,13 +45,12 @@ import {
   formatModelLoadErrorTitle,
   ModelLoadErrorMessage,
 } from "./model-load-error-message";
-import type {
-  ModelNavRow,
-  MoreModelsOpenedBy,
-} from "./ModelReasoningPicker";
+import type { ModelNavRow, MoreModelsOpenedBy } from "./ModelReasoningPicker";
 
 const MENU_ROW_FOCUS_VISIBLE_CLASS =
   "focus-visible:bg-state-hover focus-visible:text-foreground";
+
+const REASONING_PLACEHOLDER_KEYS = ["low", "medium", "high"] as const;
 
 export interface ModelReasoningMenuProps {
   listRef: RefObject<HTMLDivElement | null>;
@@ -77,6 +77,7 @@ export interface ModelReasoningMenuProps {
   selectionBlocked: boolean;
   onModelSelect: (model: string) => void;
   showReasoningSection: boolean;
+  showReasoningPlaceholder: boolean;
   reasoningValue: ReasoningLevel | "";
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   onReasoningSelect: (level: ReasoningLevel) => void;
@@ -113,6 +114,7 @@ export function ModelReasoningMenu({
   selectionBlocked,
   onModelSelect,
   showReasoningSection,
+  showReasoningPlaceholder,
   reasoningValue,
   reasoningOptions,
   onReasoningSelect,
@@ -298,6 +300,28 @@ export function ModelReasoningMenu({
               </ToggleGroup>
             </div>
           </>
+        ) : showReasoningPlaceholder ? (
+          <>
+            <div className="shrink-0 border-t border-border" />
+            <div
+              role="status"
+              aria-label="Loading reasoning levels"
+              className="shrink-0 px-2 py-2.5"
+            >
+              <MenuSectionLabel className="mb-2 px-1 py-0">
+                Reasoning
+              </MenuSectionLabel>
+              <div aria-hidden className="flex gap-1">
+                {REASONING_PLACEHOLDER_KEYS.map((key) => (
+                  <Skeleton
+                    key={key}
+                    data-reasoning-loading-placeholder="menu"
+                    className="h-6 min-w-0 flex-auto rounded-sm max-md:pointer-coarse:h-9"
+                  />
+                ))}
+              </div>
+            </div>
+          </>
         ) : null}
 
         {singleServiceTier ? (
@@ -451,7 +475,7 @@ export function ModelReasoningMenu({
             <div className="shrink-0 border-t border-border" />
             <div className="shrink-0 p-1">
               <MenuActionButton
-                label="Handoff to new thread"
+                label="Hand off to new thread"
                 iconName="MessageSquarePlus"
                 onClick={onStartHandoff}
               />

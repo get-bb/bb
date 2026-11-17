@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { atom, useAtomValue } from "jotai";
+import { useAtomValue } from "jotai";
+import { selectAtom } from "jotai/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { multiPaneSplitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
@@ -28,24 +29,6 @@ const NO_INDICATOR: PaneContentSplitIndicator = {
   isOpenInSplit: false,
   miniMap: null,
 };
-
-const NULL_LAYOUT_ATOM = atom<SplitLayout | null>(null);
-
-export function indicatorSplitLayoutAtom(
-  enabled: boolean,
-  isCompact: boolean,
-): typeof NULL_LAYOUT_ATOM | typeof multiPaneSplitLayoutAtom {
-  return enabled && !isCompact ? multiPaneSplitLayoutAtom : NULL_LAYOUT_ATOM;
-}
-
-function useSplitLayoutForIndicator(enabled: boolean): {
-  layout: SplitLayout | null;
-  isCompact: boolean;
-} {
-  const isCompact = useIsCompactViewport();
-  const layout = useAtomValue(indicatorSplitLayoutAtom(enabled, isCompact));
-  return { layout, isCompact };
-}
 
 function buildSplitIndicator(
   layout: SplitLayout,
@@ -95,15 +78,58 @@ export function resolvePaneContentSplitIndicator({
   return buildSplitIndicator(layout, new Set([pane.paneId]));
 }
 
+function areRectsEqual(left: PaneRect, right: PaneRect): boolean {
+  return (
+    left.x === right.x &&
+    left.y === right.y &&
+    left.w === right.w &&
+    left.h === right.h
+  );
+}
+
+function areSplitIndicatorsEqual(
+  left: PaneContentSplitIndicator,
+  right: PaneContentSplitIndicator,
+): boolean {
+  if (left === right) return true;
+  if (left.miniMap === null || right.miniMap === null) {
+    return left.miniMap === right.miniMap;
+  }
+  const rightMiniMap = right.miniMap;
+  return (
+    left.miniMap.length === rightMiniMap.length &&
+    left.miniMap.every((slot, index) => {
+      const other = rightMiniMap[index];
+      return (
+        other !== undefined &&
+        slot.paneId === other.paneId &&
+        slot.isMe === other.isMe &&
+        slot.isFocused === other.isFocused &&
+        areRectsEqual(slot.rect, other.rect)
+      );
+    })
+  );
+}
+
 export function usePaneContentSplitIndicator(
   content: PaneContent,
   enabled: boolean,
 ): PaneContentSplitIndicator {
-  const { layout, isCompact } = useSplitLayoutForIndicator(enabled);
-
-  return useMemo<PaneContentSplitIndicator>(
+  const isCompact = useIsCompactViewport();
+  const indicatorAtom = useMemo(
     () =>
-      resolvePaneContentSplitIndicator({ content, enabled, isCompact, layout }),
-    [content, enabled, isCompact, layout],
+      selectAtom(
+        multiPaneSplitLayoutAtom,
+        (layout) =>
+          resolvePaneContentSplitIndicator({
+            content,
+            enabled,
+            isCompact,
+            layout,
+          }),
+        areSplitIndicatorsEqual,
+      ),
+    [content, enabled, isCompact],
   );
+  return useAtomValue(indicatorAtom);
 }

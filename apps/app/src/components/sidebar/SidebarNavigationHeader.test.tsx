@@ -114,10 +114,19 @@ describe("SidebarNavigationHeader", () => {
       },
     );
     renderHeader(navigationSlot(HeaderFixture));
+    const target = screen.getByTestId("sidebar-header-slot");
 
     for (const callback of resizeCallbacks) {
       callback(
-        [{ contentRect: { width: 132 } } as ResizeObserverEntry],
+        [
+          {
+            target,
+            contentRect: new DOMRect(0, 0, 132, 28),
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          },
+        ],
         {} as ResizeObserver,
       );
     }

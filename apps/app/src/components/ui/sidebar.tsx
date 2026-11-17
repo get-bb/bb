@@ -4,6 +4,7 @@ import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Slot } from "@radix-ui/react-slot";
 
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -19,6 +20,7 @@ import {
   findTouchById,
   hasTextSelectionWithin,
   isHorizontallyScrollableElement,
+  listenToGesture,
 } from "./gesture-dom.js";
 import { useHorizontalDismissDrag } from "./use-horizontal-dismiss-drag.js";
 import { MACOS_WINDOW_DRAG_CLASS } from "@/lib/bb-desktop";
@@ -575,13 +577,16 @@ const SidebarProvider = React.forwardRef<
       return scheduleSidebarMobileRealization(realizeMobileSidebar);
     }, [hasRealizedMobileSidebar, isCompactViewport, realizeMobileSidebar]);
 
-    React.useEffect(() => {
+    const [animationOpenMobile, setAnimationOpenMobile] =
+      React.useState(openMobile);
+    if (animationOpenMobile !== openMobile) {
+      setAnimationOpenMobile(openMobile);
       if (openMobile) {
         setSuppressMobileCloseAnimation(false);
       } else {
         setSuppressMobileOpenAnimation(false);
       }
-    }, [openMobile]);
+    }
 
     const [_open, _setOpen] = React.useState(defaultOpen);
     const open = openProp ?? _open;
@@ -1461,10 +1466,7 @@ const SidebarInset = React.forwardRef<
       }
 
       const touch = event.touches.item(0);
-      if (
-        touch == null ||
-        touch.clientX < browserNavigationEdgeGuardPx()
-      ) {
+      if (touch == null || touch.clientX < browserNavigationEdgeGuardPx()) {
         return;
       }
 
@@ -1489,17 +1491,16 @@ const SidebarInset = React.forwardRef<
         canPreventDefault,
       });
 
-      const removeListeners = () => {
-        window.removeEventListener("touchmove", handleTouchMove);
-        window.removeEventListener("touchend", handleTouchEnd);
-        window.removeEventListener("touchcancel", handleTouchEnd);
+      const removers = [
+        listenToGesture(event.target, "touchmove", handleTouchMove, {
+          passive: !canPreventDefault,
+        }),
+        listenToGesture(event.target, "touchend", handleTouchEnd),
+        listenToGesture(event.target, "touchcancel", handleTouchEnd),
+      ];
+      removeSwipeListenersRef.current = () => {
+        for (const remove of removers) remove();
       };
-      window.addEventListener("touchmove", handleTouchMove, {
-        passive: !canPreventDefault,
-      });
-      window.addEventListener("touchend", handleTouchEnd);
-      window.addEventListener("touchcancel", handleTouchEnd);
-      removeSwipeListenersRef.current = removeListeners;
     },
     [
       clearSwipeSession,
@@ -1545,17 +1546,16 @@ const SidebarInset = React.forwardRef<
         canPreventDefault: true,
       });
 
-      const removeListeners = () => {
-        window.removeEventListener("pointermove", handleSwipeMove);
-        window.removeEventListener("pointerup", handleSwipeEnd);
-        window.removeEventListener("pointercancel", handleSwipeEnd);
+      const removers = [
+        listenToGesture(event.target, "pointermove", handleSwipeMove, {
+          passive: false,
+        }),
+        listenToGesture(event.target, "pointerup", handleSwipeEnd),
+        listenToGesture(event.target, "pointercancel", handleSwipeEnd),
+      ];
+      removeSwipeListenersRef.current = () => {
+        for (const remove of removers) remove();
       };
-      window.addEventListener("pointermove", handleSwipeMove, {
-        passive: false,
-      });
-      window.addEventListener("pointerup", handleSwipeEnd);
-      window.addEventListener("pointercancel", handleSwipeEnd);
-      removeSwipeListenersRef.current = removeListeners;
     },
     [
       clearSwipeSession,
@@ -1789,16 +1789,15 @@ const SidebarContent = React.forwardRef<
     if (!element || typeof ResizeObserver === "undefined") {
       return;
     }
-    const publishScrollbarLane = () => {
-      element.style.setProperty(
-        "--bb-sidebar-scrollbar-lane",
-        `${element.offsetWidth - element.clientWidth}px`,
-      );
+    const readScrollbarLane = () => element.offsetWidth - element.clientWidth;
+    const publishScrollbarLane = (lane: number) => {
+      element.style.setProperty("--bb-sidebar-scrollbar-lane", `${lane}px`);
     };
-    publishScrollbarLane();
-    const observer = new ResizeObserver(publishScrollbarLane);
-    observer.observe(element);
-    return () => observer.disconnect();
+    publishScrollbarLane(readScrollbarLane());
+    return observeSharedResize(element, {
+      read: readScrollbarLane,
+      write: publishScrollbarLane,
+    });
   }, []);
   return (
     <div

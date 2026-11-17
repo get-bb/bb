@@ -1318,9 +1318,29 @@ export const timelineDeltaFieldsSchema = z
   .partial();
 export type TimelineDeltaFields = z.infer<typeof timelineDeltaFieldsSchema>;
 
+const timelineRowPatchPathSchema = z
+  .array(z.union([z.string(), z.number().int().nonnegative()]))
+  .min(1);
+
+export const timelineRowPatchOperationSchema = z.union([
+  z.tuple([z.literal("append"), timelineRowPatchPathSchema, z.string()]),
+  z.tuple([z.literal("set"), timelineRowPatchPathSchema, z.unknown()]),
+  z.tuple([z.literal("delete"), timelineRowPatchPathSchema]),
+]);
+export type TimelineRowPatchOperation = z.infer<
+  typeof timelineRowPatchOperationSchema
+>;
+
+export const timelineRowPatchSchema = z.object({
+  id: z.string().min(1),
+  ops: z.array(timelineRowPatchOperationSchema).min(1),
+});
+export type TimelineRowPatch = z.infer<typeof timelineRowPatchSchema>;
+
 export const timelineDeltaSchema = z.object({
   afterTag: threadTimelineTagSchema,
   upsertRows: z.array(timelineRowSchema),
+  patchRows: z.array(timelineRowPatchSchema).optional(),
   rowOrder: timelineRowOrderSchema.optional(),
   fields: timelineDeltaFieldsSchema,
 });

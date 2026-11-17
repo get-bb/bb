@@ -27,8 +27,6 @@ export function MicrophonePreferences({
     if (!open || !isSupported) return;
     let disposed = false;
     let acquired: MediaStream | null = null;
-    setError(null);
-    setTestStream(null);
     void requestAudioInputStream(navigator.mediaDevices, preferred)
       .then((stream) => {
         if (disposed) {
@@ -51,6 +49,7 @@ export function MicrophonePreferences({
       disposed = true;
       acquired?.getTracks().forEach((track) => track.stop());
       setTestStream(null);
+      setError(null);
     };
   }, [open, preferred, refresh, isSupported]);
 

@@ -6,18 +6,18 @@ import {
 import { useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { localhostLinkRewriteDescription } from "@/lib/localhost-link-rewrite-description";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import type { SettingsSearchCondition } from "./settings-search";
 
 export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchCondition> {
-  const {
-    composers,
-    diffRenderers,
-    experimentalSidebarNavigations,
-    fileOpeners,
-    sourceCodeRenderers,
-    threadLists,
-  } = usePluginSlots();
+  const composers = usePluginSlotKind("composers");
+  const diffRenderers = usePluginSlotKind("diffRenderers");
+  const experimentalSidebarNavigations = usePluginSlotKind(
+    "experimentalSidebarNavigations",
+  );
+  const fileOpeners = usePluginSlotKind("fileOpeners");
+  const sourceCodeRenderers = usePluginSlotKind("sourceCodeRenderers");
+  const threadLists = usePluginSlotKind("threadLists");
   const { accessState } = useLocalHostDaemonAccess();
   const cliCommandSupported = useCliCommandStatus().data?.supported ?? false;
   const systemConfig = useSystemConfig().data;
