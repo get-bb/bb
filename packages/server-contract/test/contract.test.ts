@@ -571,8 +571,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Timeline deltas carry rowOrder only when membership or ordering changed.",
-    fields: ["timelineDeltaSchema.rowOrder"],
+      "Timeline deltas carry rowOrder only when membership or ordering changed, and patchRows only when a row the base window holds changed.",
+    fields: ["timelineDeltaSchema.rowOrder", "timelineDeltaSchema.patchRows"],
   },
   {
     reason:

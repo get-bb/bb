@@ -121,21 +121,20 @@ export function PageShell({
         <TitleBarScrollFade tone="background" />
         <div
           data-page-scroll-viewport=""
-          className={cn(
-            "@container/page min-h-0 flex-1 overflow-y-auto",
-            scrollAreaClassName,
-          )}
+          className={cn("min-h-0 flex-1 overflow-y-auto", scrollAreaClassName)}
         >
-          <div
-            className={cn(
-              "mx-auto flex w-full flex-col px-4 pt-2",
-              staticFooter ? "pb-4" : STATIC_CONTENT_BOTTOM_PADDING_CLASS,
-              maxWidthClassName,
-              contentClassName,
-            )}
-            style={PAGE_SHELL_CONTENT_STYLE}
-          >
-            {children}
+          <div className="@container/page">
+            <div
+              className={cn(
+                "mx-auto flex w-full flex-col px-4 pt-2",
+                staticFooter ? "pb-4" : STATIC_CONTENT_BOTTOM_PADDING_CLASS,
+                maxWidthClassName,
+                contentClassName,
+              )}
+              style={PAGE_SHELL_CONTENT_STYLE}
+            >
+              {children}
+            </div>
           </div>
         </div>
         {staticFooter}

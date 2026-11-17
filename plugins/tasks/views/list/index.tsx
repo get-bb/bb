@@ -335,11 +335,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         labelOptions={labelOptions}
         taskCount={displayTasks?.length}
       />
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto @container"
-      >
-        {body}
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="@container flex min-h-full flex-col">{body}</div>
       </div>
       <NewTaskDialog
         open={newTaskOpen}

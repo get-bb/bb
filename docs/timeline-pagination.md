@@ -197,7 +197,14 @@ still holds the window it served under that tag, it answers with a delta,
 answers with the full window. `delta` holds:
 
 - `afterTag`: the tag of the window the delta applies to;
-- `upsertRows`: rows that are new or whose content changed;
+- `upsertRows`: rows new to the window, in full;
+- `patchRows`, only when a row the base window holds changed: `{ id, ops }`
+  per changed row, where each op addresses a JSON path inside the row.
+  `["append", path, text]` appends to a string that grew at its end, which is
+  how streamed message text, reasoning and command output travel, so a push
+  carries only the new text, not the whole row. `["set", path, value]`
+  replaces a value or adds a key or array element, and `["delete", path]`
+  removes a key;
 - `rowOrder`, only when membership or order changed: the new order as a list
   of row ids new to the window and `[start, length]` ranges of the base
   window's rows, by position;
@@ -214,7 +221,9 @@ only costs a full window.
 
 `applyThreadTimelineDelta` from `@bb/server-contract` rebuilds the full window,
 or returns `null` when the held window's tag differs from `afterTag` or the
-delta does not fit its rows; the client then reads again with its own tag. The
+delta does not fit its rows, including a patch op whose path or value type
+does not match the held row, or one that changes a row's `id` or `kind`; the
+client then reads again with its own tag. The
 client keeps optimistic rows after the server's rows, so ranges still address
 the base window. `sdk.threads.timeline` returns a full window unless it is
 given `afterTag`.
