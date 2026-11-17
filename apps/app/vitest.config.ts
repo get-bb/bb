@@ -9,6 +9,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { forkablePluginPaths } from "./vite-forkable-plugin-paths.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
+import { testReactCompiler } from "./vite-react-compiler.js";
 import { pluginZodRuntime } from "./vite-plugin-zod-runtime.js";
 
 class AppTestSequencer extends SharedWorkerSequencer {
@@ -29,6 +30,7 @@ export default defineWorkspaceTestConfig({
     forkablePluginPaths(path.resolve(__dirname, "./src")),
     sharedUiEnvSeam(),
     react(),
+    testReactCompiler(),
     tailwindcss(),
   ],
   resolve: {

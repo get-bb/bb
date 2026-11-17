@@ -254,6 +254,7 @@ export function BranchPicker({
   const updateOpen = (nextOpen: boolean) => {
     if (!nextOpen) {
       blurActiveKeyboardInputWithin(inputRef.current);
+      setQuery("");
     }
     setOpen(nextOpen);
     onOpenChange?.(nextOpen);
@@ -268,7 +269,6 @@ export function BranchPicker({
 
   useEffect(() => {
     if (!open) {
-      setQuery("");
       onSearchQueryChange?.("");
       return;
     }

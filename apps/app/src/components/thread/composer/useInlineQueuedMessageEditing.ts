@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import type { PromptDraftState } from "@bb/client-core";
@@ -41,6 +48,17 @@ interface UseInlineQueuedMessageEditingResult {
   queuedMessageDraftSession: InlineComposerDraftSession | null;
 }
 
+function isLiveInlineQueuedMessageEdit(
+  edit: InlineQueuedMessageEditState,
+  ownerThreadId: string,
+  queuedMessages: readonly ThreadQueuedMessage[],
+): boolean {
+  return (
+    edit.ownerThreadId === ownerThreadId &&
+    queuedMessages.some((message) => message.id === edit.queuedMessageId)
+  );
+}
+
 export function useInlineQueuedMessageEditing({
   ownerThreadId,
   queuedMessages,
@@ -52,16 +70,18 @@ export function useInlineQueuedMessageEditing({
     useRef<InlineQueuedMessageEditState | null>(null);
   const inlineEditSessionIdRef = useRef(0);
 
-  const queuedMessagesByIdRef = useRef<
-    ReadonlyMap<string, ThreadQueuedMessage>
-  >(new Map());
-  queuedMessagesByIdRef.current = useMemo(() => {
+  const queuedMessagesById = useMemo(() => {
     const next = new Map<string, ThreadQueuedMessage>();
     for (const message of queuedMessages) {
       next.set(message.id, message);
     }
     return next;
   }, [queuedMessages]);
+  const queuedMessagesByIdRef =
+    useRef<ReadonlyMap<string, ThreadQueuedMessage>>(queuedMessagesById);
+  useLayoutEffect(() => {
+    queuedMessagesByIdRef.current = queuedMessagesById;
+  });
 
   const commitInlineQueuedMessage = useCallback(
     (next: InlineQueuedMessageEditState | null) => {
@@ -91,27 +111,30 @@ export function useInlineQueuedMessageEditing({
   const inlineEditingQueuedMessage = useMemo(
     () =>
       inlineEditingQueuedMessageState !== null &&
-      inlineEditingQueuedMessageState.ownerThreadId === ownerThreadId &&
-      queuedMessages.some(
-        (message) =>
-          message.id === inlineEditingQueuedMessageState.queuedMessageId,
+      isLiveInlineQueuedMessageEdit(
+        inlineEditingQueuedMessageState,
+        ownerThreadId,
+        queuedMessages,
       )
         ? inlineEditingQueuedMessageState
         : null,
     [inlineEditingQueuedMessageState, ownerThreadId, queuedMessages],
   );
+  if (
+    inlineEditingQueuedMessageState !== null &&
+    inlineEditingQueuedMessage === null
+  ) {
+    setInlineEditingQueuedMessage(null);
+  }
   useEffect(() => {
+    const current = inlineEditingQueuedMessageRef.current;
     if (
-      inlineEditingQueuedMessageState !== null &&
-      inlineEditingQueuedMessage === null
+      current !== null &&
+      !isLiveInlineQueuedMessageEdit(current, ownerThreadId, queuedMessages)
     ) {
-      dismissInlineQueuedMessageEditor();
+      inlineEditingQueuedMessageRef.current = null;
     }
-  }, [
-    dismissInlineQueuedMessageEditor,
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageState,
-  ]);
+  }, [ownerThreadId, queuedMessages]);
   useQueuedMessageEditHold({
     queuedMessageId: inlineEditingQueuedMessage?.queuedMessageId ?? null,
     threadId: inlineEditingQueuedMessage?.ownerThreadId ?? null,

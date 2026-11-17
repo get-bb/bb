@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import { useLocation } from "react-router-dom";
 import {
@@ -565,31 +577,19 @@ function AgentStepContainer({
   const [awaitingInstallInfoIds, setAwaitingInstallInfoIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
-  const loadInstallInfo = async (
-    targetHostId: string,
-    providerId: string,
-  ): Promise<ProviderCliStatusResponse | undefined> => {
-    setAwaitingInstallInfoIds((ids) => new Set(ids).add(providerId));
-    try {
-      return await queryClient.fetchQuery(
-        hostProviderCliStatusQueryOptions({ hostId: targetHostId }),
-      );
-    } catch {
-      return undefined;
-    } finally {
-      setAwaitingInstallInfoIds((ids) => {
-        const next = new Set(ids);
-        next.delete(providerId);
-        return next;
-      });
-    }
-  };
 
   const startInstall = async (providerId: string) => {
     if (hostId === null) return;
     const installInfo =
       cliStatusQuery.data ??
-      (redesign ? await loadInstallInfo(hostId, providerId) : undefined);
+      (redesign
+        ? await loadInstallInfo(
+            queryClient,
+            hostId,
+            providerId,
+            setAwaitingInstallInfoIds,
+          )
+        : undefined);
     const status = installInfo?.[providerId];
     if (status === undefined) return;
     const issue = buildProviderCliIssue({ provider: providerId, status });
@@ -975,6 +975,57 @@ function ProjectsStepContainer({
   );
 }
 
+async function loadInstallInfo(
+  queryClient: QueryClient,
+  targetHostId: string,
+  providerId: string,
+  setAwaitingInstallInfoIds: Dispatch<SetStateAction<ReadonlySet<string>>>,
+): Promise<ProviderCliStatusResponse | undefined> {
+  setAwaitingInstallInfoIds((ids) => new Set(ids).add(providerId));
+  try {
+    return await queryClient.fetchQuery(
+      hostProviderCliStatusQueryOptions({ hostId: targetHostId }),
+    );
+  } catch {
+    return undefined;
+  } finally {
+    setAwaitingInstallInfoIds((ids) => {
+      const next = new Set(ids);
+      next.delete(providerId);
+      return next;
+    });
+  }
+}
+
+async function applyPluginToggle(
+  next: boolean,
+  {
+    changePlugin,
+    onChanged,
+    setTarget,
+    setWorking,
+    showFailure,
+  }: {
+    changePlugin: (enabled: boolean) => Promise<unknown>;
+    onChanged: () => Promise<void>;
+    setTarget: (target: boolean | null) => void;
+    setWorking: (working: boolean) => void;
+    showFailure: (error: unknown) => void;
+  },
+): Promise<void> {
+  setTarget(next);
+  setWorking(true);
+  try {
+    await changePlugin(next);
+    await onChanged();
+  } catch (error) {
+    setTarget(null);
+    showFailure(error);
+  } finally {
+    setWorking(false);
+  }
+}
+
 function PluginCardContainer({
   onboardingEntry,
   trackInstall,
@@ -1038,17 +1089,13 @@ function PluginCardContainer({
       });
       return;
     }
-    setTarget(next);
-    setWorking(true);
-    try {
-      await changePlugin(next);
-      await onChanged();
-    } catch (error) {
-      setTarget(null);
-      showFailure(error);
-    } finally {
-      setWorking(false);
-    }
+    await applyPluginToggle(next, {
+      changePlugin,
+      onChanged,
+      setTarget,
+      setWorking,
+      showFailure,
+    });
   };
 
   return (

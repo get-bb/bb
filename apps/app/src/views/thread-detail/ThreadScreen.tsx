@@ -310,14 +310,20 @@ function useSentMessageEditing({
     sentMessageEditSession?.submitting === false &&
     !timelineLoading &&
     !sentMessageEditTargetStillPresent;
-  useEffect(() => {
-    if (!shouldDiscardMissingSentMessageEdit) {
-      return;
-    }
+  const [discardedSentMessageEditId, setDiscardedSentMessageEditId] = useState<
+    string | null
+  >(null);
+  if (shouldDiscardMissingSentMessageEdit && sentMessageEditSession !== null) {
     setSentMessageEditHostElement(null);
     setSentMessageEditSession(null);
+    setDiscardedSentMessageEditId(sentMessageEditSession.operationId);
+  }
+  useEffect(() => {
+    if (discardedSentMessageEditId === null) {
+      return;
+    }
     appToast.warning("The message being edited is no longer available.");
-  }, [shouldDiscardMissingSentMessageEdit]);
+  }, [discardedSentMessageEditId]);
   const activeSentMessageEditOperationId =
     activeSentMessageEditSession?.operationId ?? null;
   const updateSentMessageEditDraft = useCallback(

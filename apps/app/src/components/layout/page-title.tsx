@@ -3,6 +3,7 @@ import {
   useContext,
   useLayoutEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import { atom, useSetAtom } from "jotai";
@@ -75,6 +76,27 @@ type UsePageTitle = NonNullable<
   PluginNavPanelRegistration["experimental_usePageTitle"]
 >;
 
+interface PageTitleHookHostProps {
+  subPath: string;
+  focused: boolean;
+  children: ReactNode;
+}
+
+function createPageTitleHookHost(usePageTitle: UsePageTitle) {
+  return function PageTitleHookComponent({
+    subPath,
+    focused,
+    children,
+  }: PageTitleHookHostProps) {
+    const value = usePageTitle({ subPath });
+    return (
+      <PageTitleProvider value={value} focused={focused}>
+        {children}
+      </PageTitleProvider>
+    );
+  };
+}
+
 export function PageTitleHookHost({
   usePageTitle,
   subPath,
@@ -86,10 +108,20 @@ export function PageTitleHookHost({
   focused?: boolean;
   children: ReactNode;
 }) {
-  const value = usePageTitle({ subPath });
+  const [host, setHost] = useState(() => ({
+    usePageTitle,
+    Component: createPageTitleHookHost(usePageTitle),
+  }));
+  if (host.usePageTitle !== usePageTitle) {
+    setHost({
+      usePageTitle,
+      Component: createPageTitleHookHost(usePageTitle),
+    });
+  }
+  const { Component } = host;
   return (
-    <PageTitleProvider value={value} focused={focused}>
+    <Component subPath={subPath} focused={focused}>
       {children}
-    </PageTitleProvider>
+    </Component>
   );
 }

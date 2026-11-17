@@ -87,6 +87,16 @@ export interface TimelineWindowedItemsProps {
   pinnedToEnd: boolean;
 }
 
+const measurementRevisions = new WeakMap<ReadonlyMap<string, number>, number>();
+
+function measurementRevision(measurements: ReadonlyMap<string, number>) {
+  return measurementRevisions.get(measurements) ?? 0;
+}
+
+function bumpMeasurementRevision(measurements: ReadonlyMap<string, number>) {
+  measurementRevisions.set(measurements, measurementRevision(measurements) + 1);
+}
+
 interface LayoutModel {
   heights: number[];
   offsets: number[];
@@ -399,7 +409,6 @@ export function TimelineWindowedItems({
     revision: number;
     model: LayoutModel;
   } | null>(null);
-  const measurementRevisionRef = useRef(0);
   const renderedModel = useCallback((): LayoutModel => {
     const live = liveRef.current;
     const cached = modelCacheRef.current;
@@ -408,7 +417,7 @@ export function TimelineWindowedItems({
       cached.itemKeys === live.itemKeys &&
       cached.mountedIndexes === live.mountedIndexes &&
       cached.renderedHeights === live.renderedHeights &&
-      cached.revision === measurementRevisionRef.current
+      cached.revision === measurementRevision(measurements)
     ) {
       return cached.model;
     }
@@ -428,7 +437,7 @@ export function TimelineWindowedItems({
       itemKeys: live.itemKeys,
       mountedIndexes: live.mountedIndexes,
       renderedHeights: live.renderedHeights,
-      revision: measurementRevisionRef.current,
+      revision: measurementRevision(measurements),
       model,
     };
     return model;
@@ -438,13 +447,13 @@ export function TimelineWindowedItems({
     (key: string, height: number): boolean => {
       if (height <= 0 || measurements.get(key) === height) return false;
       recordTimelineMeasurement(measurements, key, height);
-      measurementRevisionRef.current += 1;
+      bumpMeasurementRevision(measurements);
       return true;
     },
     [measurements],
   );
 
-  const itemRef = useCallback(
+  const observeItemElement = useCallback(
     (node: HTMLDivElement | null) => {
       if (node === null) return undefined;
       const key = node.getAttribute(WINDOW_KEY_ATTRIBUTE);
@@ -577,12 +586,14 @@ export function TimelineWindowedItems({
       };
       if ((urgent && uncovered) || pending.frame !== null) {
         pending.state = next;
-        pending.frame ??= requestAnimationFrame(() => {
-          pending.frame = null;
-          const state = pending.state;
-          pending.state = null;
-          if (state !== null) flushSync(() => setWindowState(state));
-        });
+        if (pending.frame === null) {
+          pending.frame = requestAnimationFrame(() => {
+            pending.frame = null;
+            const state = pending.state;
+            pending.state = null;
+            if (state !== null) flushSync(() => setWindowState(state));
+          });
+        }
         return;
       }
       setWindowState(next);
@@ -660,7 +671,9 @@ export function TimelineWindowedItems({
         />,
       );
     }
-    children.push(renderItem(index, { itemRef, windowingEnabled }));
+    children.push(
+      renderItem(index, { itemRef: observeItemElement, windowingEnabled }),
+    );
     previous = index;
   }
   if (mountedIndexes.length > 0 && previous < itemKeys.length - 1) {

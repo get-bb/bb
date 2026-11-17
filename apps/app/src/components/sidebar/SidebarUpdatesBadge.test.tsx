@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   within,
 } from "@testing-library/react";
+import { useSyncExternalStore } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -32,34 +34,60 @@ import { makePluginListItem } from "@/test/fixtures/plugins";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
-const useUpdateInventoryMock = vi.hoisted(() => vi.fn());
-const runner = vi.hoisted(() => ({
-  runningJobKey: null as string | null,
-  queuedJobKeys: new Set<string>(),
-  failuresByJobKey: new Map<string, unknown>(),
-  startInstall: vi.fn(),
+const live = vi.hoisted(() => ({
+  listeners: new Set<() => void>(),
+  inventory: null as UpdateInventory | null,
+  providerJobs: {
+    runningJobKey: null as string | null,
+    queuedJobKeys: new Set<string>(),
+    failuresByJobKey: new Map<string, unknown>(),
+  },
+  pluginJobs: [] as PluginUpdateJob[],
 }));
+const startInstallMock = vi.hoisted(() => vi.fn());
 const appUpdateState = vi.hoisted(() => ({
   status: undefined as SystemAppUpdateStatus | undefined,
   updateWhenIdle: true,
 }));
 const applyAppUpdateMock = vi.hoisted(() => vi.fn());
-const pluginJobsState = vi.hoisted(() => ({ jobs: [] as PluginUpdateJob[] }));
 const startPluginUpdateMock = vi.hoisted(() => vi.fn());
 const desktopState = vi.hoisted(() => ({
   installUpdate: vi.fn(async () => {}),
   isDesktop: false,
 }));
 
+type LiveUpdates = Pick<
+  typeof live,
+  "inventory" | "providerJobs" | "pluginJobs"
+>;
+
+function subscribeToLive(listener: () => void) {
+  live.listeners.add(listener);
+  return () => {
+    live.listeners.delete(listener);
+  };
+}
+
+function setLive(change: Partial<LiveUpdates>) {
+  act(() => {
+    Object.assign(live, change);
+    for (const listener of live.listeners) listener();
+  });
+}
+
 vi.mock("@/hooks/useUpdateInventory", () => ({
-  useUpdateInventory: useUpdateInventoryMock,
+  useUpdateInventory: () =>
+    useSyncExternalStore(subscribeToLive, () => live.inventory),
 }));
 
 vi.mock("@/components/provider-cli/provider-cli-install", async (original) => ({
   ...(await original<
     typeof import("@/components/provider-cli/provider-cli-install")
   >()),
-  useProviderCliInstallRunner: () => runner,
+  useProviderCliInstallRunner: () => ({
+    ...useSyncExternalStore(subscribeToLive, () => live.providerJobs),
+    startInstall: startInstallMock,
+  }),
 }));
 
 vi.mock("@/hooks/queries/app-update-queries", () => ({
@@ -71,7 +99,9 @@ vi.mock("@/hooks/mutations/app-update-mutations", () => ({
 }));
 
 vi.mock("@/hooks/queries/plugin-update-job-queries", () => ({
-  usePluginUpdateJobs: () => ({ data: pluginJobsState.jobs }),
+  usePluginUpdateJobs: () => ({
+    data: useSyncExternalStore(subscribeToLive, () => live.pluginJobs),
+  }),
   startPluginUpdate: startPluginUpdateMock,
 }));
 
@@ -124,18 +154,20 @@ vi.mock("@/lib/ws", () => ({
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
-  runner.runningJobKey = null;
-  runner.queuedJobKeys = new Set();
-  runner.failuresByJobKey = new Map();
-  runner.startInstall.mockReset();
+  live.inventory = null;
+  live.providerJobs = {
+    runningJobKey: null,
+    queuedJobKeys: new Set(),
+    failuresByJobKey: new Map(),
+  };
+  live.pluginJobs = [];
+  startInstallMock.mockReset();
   appUpdateState.status = undefined;
   appUpdateState.updateWhenIdle = true;
   applyAppUpdateMock.mockReset();
-  pluginJobsState.jobs = [];
   startPluginUpdateMock.mockReset();
   desktopState.isDesktop = false;
   desktopState.installUpdate.mockClear();
-  useUpdateInventoryMock.mockReset();
 });
 
 const UPDATE_ACTION: ProviderCliInstallAction = {
@@ -278,7 +310,7 @@ function inventory(overrides: Partial<UpdateInventory>): UpdateInventory {
 }
 
 function renderBadge(overrides: Partial<UpdateInventory>) {
-  useUpdateInventoryMock.mockReturnValue(inventory(overrides));
+  live.inventory = inventory(overrides);
   const { wrapper } = createQueryClientTestHarness();
   return render(<BadgeHarness />, { wrapper });
 }
@@ -439,8 +471,8 @@ describe("SidebarUpdatesBadge", () => {
     const card = await openCard();
     fireEvent.click(within(card).getByRole("button", { name: "Update 2" }));
 
-    expect(runner.startInstall).toHaveBeenCalledTimes(1);
-    expect(runner.startInstall).toHaveBeenCalledWith({
+    expect(startInstallMock).toHaveBeenCalledTimes(1);
+    expect(startInstallMock).toHaveBeenCalledWith({
       hostId: "host-1",
       issue: codex,
     });
@@ -451,12 +483,10 @@ describe("SidebarUpdatesBadge", () => {
   it("opens the card in a drawer on a phone instead of leaving for Settings", async () => {
     appUpdateState.status = appUpdateStatus();
     const codex = providerIssue("codex", "Codex");
-    useUpdateInventoryMock.mockReturnValue(
-      inventory({
-        appUpdateAvailable: true,
-        machines: [machine({ issues: [codex] })],
-      }),
-    );
+    live.inventory = inventory({
+      appUpdateAvailable: true,
+      machines: [machine({ issues: [codex] })],
+    });
     const onNavigate = vi.fn();
     const { wrapper } = createQueryClientTestHarness();
     render(
@@ -480,7 +510,7 @@ describe("SidebarUpdatesBadge", () => {
     expect(within(card).getByText("bb 0.49.0")).toBeTruthy();
 
     fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
-    expect(runner.startInstall).toHaveBeenCalledWith({
+    expect(startInstallMock).toHaveBeenCalledWith({
       hostId: "host-1",
       issue: codex,
     });
@@ -495,8 +525,11 @@ describe("SidebarUpdatesBadge", () => {
   });
 
   it("spins while updates run and shows each row's progress", async () => {
-    runner.runningJobKey = "host-1:claude-code";
-    pluginJobsState.jobs = [
+    live.providerJobs = {
+      ...live.providerJobs,
+      runningJobKey: "host-1:claude-code",
+    };
+    live.pluginJobs = [
       {
         id: "job-1",
         pluginId: "linear",
@@ -505,7 +538,7 @@ describe("SidebarUpdatesBadge", () => {
         phase: "activating",
       },
     ];
-    const result = renderBadge({
+    renderBadge({
       machines: [
         machine({ issues: [providerIssue("claude-code", "Claude Code")] }),
       ],
@@ -527,9 +560,10 @@ describe("SidebarUpdatesBadge", () => {
     const busy = within(card).getByRole("button", { name: "Updating…" });
     expect(busy.hasAttribute("disabled")).toBe(true);
 
-    runner.runningJobKey = null;
-    pluginJobsState.jobs = [];
-    result.rerender(<BadgeHarness />);
+    setLive({
+      providerJobs: { ...live.providerJobs, runningJobKey: null },
+      pluginJobs: [],
+    });
     expect(button.querySelector('[data-icon="Download"]')).toBeTruthy();
     expect(button.getAttribute("aria-label")).toBe("2 updates available");
   });
@@ -546,14 +580,17 @@ describe("SidebarUpdatesBadge", () => {
         log: "",
       },
     };
-    runner.failuresByJobKey = new Map([["host-1:claude-code", failure]]);
+    live.providerJobs = {
+      ...live.providerJobs,
+      failuresByJobKey: new Map([["host-1:claude-code", failure]]),
+    };
     startPluginUpdateMock.mockResolvedValue({
       id: "job-2",
       pluginId: "linear",
       displayName: "linear",
       state: "queued",
     });
-    pluginJobsState.jobs = [
+    live.pluginJobs = [
       {
         id: "job-1",
         pluginId: "linear",
@@ -580,32 +617,35 @@ describe("SidebarUpdatesBadge", () => {
       ["linearFailed · try again", "failed"],
     ]);
     fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
-    expect(runner.startInstall).toHaveBeenCalledTimes(2);
+    expect(startInstallMock).toHaveBeenCalledTimes(2);
     expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
   });
 
   it("offers Try again when only failed updates are left", async () => {
     const claude = providerIssue("claude-code", "Claude Code");
-    runner.failuresByJobKey = new Map([
-      [
-        "host-1:claude-code",
-        {
-          issueFingerprint: claude.fingerprint,
-          kind: "command",
-          logDialogState: {
-            displayName: "Claude Code",
-            title: "Claude Code update log",
-            message: "Command exited with code 1",
-            log: "",
+    live.providerJobs = {
+      ...live.providerJobs,
+      failuresByJobKey: new Map([
+        [
+          "host-1:claude-code",
+          {
+            issueFingerprint: claude.fingerprint,
+            kind: "command",
+            logDialogState: {
+              displayName: "Claude Code",
+              title: "Claude Code update log",
+              message: "Command exited with code 1",
+              log: "",
+            },
           },
-        },
-      ],
-    ]);
+        ],
+      ]),
+    };
     renderBadge({ machines: [machine({ issues: [claude] })] });
 
     const card = await openCard();
     fireEvent.click(within(card).getByRole("button", { name: "Try again" }));
-    expect(runner.startInstall).toHaveBeenCalledWith({
+    expect(startInstallMock).toHaveBeenCalledWith({
       hostId: "host-1",
       issue: claude,
     });
@@ -675,9 +715,9 @@ describe("SidebarUpdatesBadge", () => {
     expect(screen.queryByTestId("sidebar-machines-attention-badge")).toBeNull();
     cleanup();
 
-    const reloaded = renderBadge({ isLoading: true });
-    useUpdateInventoryMock.mockReturnValue(
-      inventory({
+    renderBadge({ isLoading: true });
+    setLive({
+      inventory: inventory({
         machines: [
           {
             ...offline,
@@ -686,8 +726,7 @@ describe("SidebarUpdatesBadge", () => {
         ],
         appUpdateAvailable: true,
       }),
-    );
-    reloaded.rerender(<BadgeHarness />);
+    });
     expect(screen.queryByTestId("sidebar-machines-attention-badge")).toBeNull();
     expect(screen.getByTestId("sidebar-update-button")).toBeTruthy();
     cleanup();
@@ -705,25 +744,20 @@ describe("SidebarUpdatesBadge", () => {
     const second = machine({
       host: makeHost({ id: "second", status: "disconnected" }),
     });
-    const result = renderBadge({ machines: [first, second] });
+    renderBadge({ machines: [first, second] });
     fireEvent.click(screen.getByRole("link", { name: "Machines offline" }));
-    useUpdateInventoryMock.mockReturnValue(inventory({ machines: [first] }));
-    result.rerender(<BadgeHarness />);
+    setLive({ inventory: inventory({ machines: [first] }) });
     expect(screen.queryByTestId("sidebar-machines-attention-badge")).toBeNull();
 
-    useUpdateInventoryMock.mockReturnValue(
-      inventory({
+    setLive({
+      inventory: inventory({
         machines: [
           first,
           { ...second, host: { ...second.host, status: "connected" } },
         ],
       }),
-    );
-    result.rerender(<BadgeHarness />);
-    useUpdateInventoryMock.mockReturnValue(
-      inventory({ machines: [first, second] }),
-    );
-    result.rerender(<BadgeHarness />);
+    });
+    setLive({ inventory: inventory({ machines: [first, second] }) });
     expect(screen.getByRole("link", { name: "Machines offline" })).toBeTruthy();
   });
 

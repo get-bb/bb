@@ -291,6 +291,11 @@ describe("ProjectDetailSettingsView", () => {
       ),
     ).toBeDefined();
     await waitFor(() =>
+      expect(sdk.hosts.directory).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host_remote" }),
+      ),
+    );
+    await waitFor(() =>
       expect(
         screen
           .getByRole("button", { name: "Save path" })
@@ -306,9 +311,6 @@ describe("ProjectDetailSettingsView", () => {
         type: "local_path",
         path: "/home/me/bb",
       }),
-    );
-    expect(sdk.hosts.directory).toHaveBeenCalledWith(
-      expect.objectContaining({ hostId: "host_remote" }),
     );
   });
 

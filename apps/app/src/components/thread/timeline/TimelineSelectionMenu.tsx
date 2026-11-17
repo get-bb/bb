@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type MouseEvent,
@@ -239,7 +240,9 @@ export function TimelineSelectionMenu({
     [selection, collisionBoundary],
   );
   const virtualAnchorRef = useRef(virtualAnchor);
-  virtualAnchorRef.current = virtualAnchor;
+  useLayoutEffect(() => {
+    virtualAnchorRef.current = virtualAnchor;
+  }, [virtualAnchor]);
 
   if (!selection) return null;
 
@@ -283,8 +286,8 @@ export function TimelineSelectionMenu({
           collisionPadding={SELECTION_MENU_COLLISION_PADDING}
           collisionBoundary={collisionBoundary}
           className={SELECTION_MENU_CONTENT_CLASS}
-          onPointerEnter={() => virtualAnchorRef.current.hold()}
-          onPointerLeave={() => virtualAnchorRef.current.release()}
+          onPointerEnter={() => virtualAnchor.hold()}
+          onPointerLeave={() => virtualAnchor.release()}
           onEscapeKeyDown={() => onDismiss()}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}

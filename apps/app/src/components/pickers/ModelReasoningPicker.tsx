@@ -368,14 +368,15 @@ export function ModelReasoningPicker({
     ...providerRouting,
     providerId: isPreviewing ? previewProviderId : undefined,
   });
+  const previewProviders = previewQuery.data?.providers;
   const previewProvider = useMemo(
     () =>
       isPreviewing
-        ? previewQuery.data?.providers.find(
+        ? previewProviders?.find(
             (provider) => provider.id === previewProviderId,
           )
         : undefined,
-    [isPreviewing, previewProviderId, previewQuery.data?.providers],
+    [isPreviewing, previewProviderId, previewProviders],
   );
   const previewCatalogIsVerified =
     isPreviewing &&

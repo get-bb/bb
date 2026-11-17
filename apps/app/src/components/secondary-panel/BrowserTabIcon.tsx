@@ -3,6 +3,11 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 
+interface TabFaviconUrls {
+  tabId: string;
+  urls: readonly string[];
+}
+
 const imageSizes = new Map<string, number>();
 
 function rememberImageSize(url: string, size: number): void {
@@ -46,19 +51,24 @@ export function BrowserTabIcon({
   tabId: string;
   className?: string;
 }) {
-  const [urls, setUrls] = useState<readonly string[]>([]);
+  const [tabUrls, setTabUrls] = useState<TabFaviconUrls>({ tabId, urls: [] });
+  let urls = tabUrls.urls;
+  if (tabUrls.tabId !== tabId) {
+    urls = [];
+    setTabUrls({ tabId, urls });
+  }
 
   useLayoutEffect(() => {
-    setUrls([]);
     return getDesktopBrowserApi()?.onState((state) => {
       if (state.tabId !== tabId) return;
       const next =
         state.faviconUrls ?? (state.faviconUrl ? [state.faviconUrl] : []);
-      setUrls((current) =>
-        current.length === next.length &&
-        current.every((url, index) => url === next[index])
+      setTabUrls((current) =>
+        current.tabId === tabId &&
+        current.urls.length === next.length &&
+        current.urls.every((url, index) => url === next[index])
           ? current
-          : next,
+          : { tabId, urls: next },
       );
     });
   }, [tabId]);

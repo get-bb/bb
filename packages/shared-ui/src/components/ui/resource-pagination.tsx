@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
 import { observeSharedResize } from "../../lib/shared-resize-observer";
@@ -275,8 +282,9 @@ export function ResourceInfiniteScrollSentinel({
   onLoadMore: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const onLoadMoreRef = useRef(onLoadMore);
-  onLoadMoreRef.current = onLoadMore;
+  const loadMore = useEffectEvent(() => {
+    onLoadMore();
+  });
 
   useEffect(() => {
     const element = ref.current;
@@ -294,7 +302,7 @@ export function ResourceInfiniteScrollSentinel({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          onLoadMoreRef.current();
+          loadMore();
         }
       },
       {

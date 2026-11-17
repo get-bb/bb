@@ -43,21 +43,23 @@ const rootComposeProjectIdAtom = atom(
   },
 );
 
+function createImportedProjectDefault(store: ReturnType<typeof useStore>) {
+  let lastDefault: string | null = null;
+  return (projectId: string) => {
+    if (
+      store.get(rootComposeStoredProjectIdAtom) !== lastDefault ||
+      store.get(rootComposeProjectChosenAtom)
+    )
+      return;
+    store.set(rootComposeStoredProjectIdAtom, projectId);
+    lastDefault = projectId;
+  };
+}
+
 export function useImportedProjectDefault() {
   const store = useStore();
   useAtomValue(rootComposeStoredProjectIdAtom);
-  return useMemo(() => {
-    let lastDefault: string | null = null;
-    return (projectId: string) => {
-      if (
-        store.get(rootComposeStoredProjectIdAtom) !== lastDefault ||
-        store.get(rootComposeProjectChosenAtom)
-      )
-        return;
-      store.set(rootComposeStoredProjectIdAtom, projectId);
-      lastDefault = projectId;
-    };
-  }, [store]);
+  return useMemo(() => createImportedProjectDefault(store), [store]);
 }
 
 const rootComposeReuseEnvironmentAtom = atomWithStorage<string | null>(

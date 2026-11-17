@@ -4,7 +4,6 @@ import {
   useContext,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   type ReactNode,
@@ -176,6 +175,14 @@ interface CodeFenceRendererHostProps {
   streaming: boolean;
 }
 
+function orderCodeFenceEntries(
+  entries: ReadonlyMap<number, CodeFenceEntry>,
+): CodeFenceEntry[] {
+  return [...entries.values()].sort(
+    (left, right) => left.offset - right.offset,
+  );
+}
+
 export function CodeFenceRendererHost({
   children,
   message,
@@ -184,10 +191,11 @@ export function CodeFenceRendererHost({
 }: CodeFenceRendererHostProps) {
   const [entries] = useState(() => new Map<number, CodeFenceEntry>());
   const parkingRef = useRef<HTMLDivElement>(null);
-  const [, rerender] = useReducer((revision: number) => revision + 1, 0);
+  const [ordered, setOrdered] = useState<readonly CodeFenceEntry[]>([]);
 
-  const host = useMemo(
-    (): CodeFenceHost => ({
+  const host = useMemo((): CodeFenceHost => {
+    const rerender = () => setOrdered(orderCodeFenceEntries(entries));
+    return {
       registry,
       attach(offset, placeholder) {
         let entry = entries.get(offset);
@@ -238,13 +246,9 @@ export function CodeFenceRendererHost({
           rerender();
         }
       },
-    }),
-    [entries, registry],
-  );
+    };
+  }, [entries, registry]);
 
-  const ordered = [...entries.values()].sort(
-    (left, right) => left.offset - right.offset,
-  );
   const ordinals = new Map<string, number>();
   const mounts: ReactNode[] = [];
   for (const entry of ordered) {

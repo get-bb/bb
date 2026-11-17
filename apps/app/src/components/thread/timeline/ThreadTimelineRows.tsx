@@ -113,10 +113,7 @@ import {
   useScrollToSearchedMessage,
   useSearchMessageLocation,
 } from "./useScrollToSearchedMessage.js";
-import {
-  joinSignatureParts,
-  timelineRowRenderSignature,
-} from "@bb/client-core";
+import { timelineRowRenderSignature } from "@bb/client-core";
 import {
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
   timelineRowContainmentStyle,
@@ -310,11 +307,6 @@ interface TimelineRowTitleRenderStateArgs extends ActiveSummaryTreatmentArgs {
   compactActivityIntents: boolean;
 }
 
-interface TimelineRowTitleRenderStateCache {
-  key: string;
-  state: TimelineRowTitleRenderState;
-}
-
 type TimelineConversationViewRow = Extract<
   ThreadTimelineViewRow,
   { kind: "conversation" }
@@ -391,20 +383,6 @@ function useTimelineTurnStateContext(): TimelineTurnStateContextValue {
   return context;
 }
 
-function timelineRowTitleRenderStateKey({
-  activeLatestBundleId,
-  compactActivityIntents,
-  row,
-  scopeActive,
-}: TimelineRowTitleRenderStateArgs): string {
-  return joinSignatureParts([
-    timelineRowRenderSignature(row),
-    compactActivityIntents,
-    scopeActive,
-    activeLatestBundleId === row.id,
-  ]);
-}
-
 function buildTimelineRowTitleRenderState({
   activeLatestBundleId,
   compactActivityIntents,
@@ -433,24 +411,6 @@ function buildTimelineRowTitleRenderState({
     kind: "row-title",
     title,
   };
-}
-
-function useTimelineRowTitleRenderState(
-  args: TimelineRowTitleRenderStateArgs,
-): TimelineRowTitleRenderState {
-  const cacheRef = useRef<TimelineRowTitleRenderStateCache | null>(null);
-  const key = timelineRowTitleRenderStateKey(args);
-  const cached = cacheRef.current;
-  if (cached?.key === key) {
-    return cached.state;
-  }
-
-  const state = buildTimelineRowTitleRenderState(args);
-  cacheRef.current = {
-    key,
-    state,
-  };
-  return state;
 }
 
 function areTimelineRowViewPropsEqual(
@@ -505,11 +465,52 @@ function areReadonlySetsEqual(
 function useStableReadonlySet(
   values: ReadonlySet<string>,
 ): ReadonlySet<string> {
-  const valuesRef = useRef(values);
-  if (!areReadonlySetsEqual(valuesRef.current, values)) {
-    valuesRef.current = values;
+  const [stable, setStable] = useState(values);
+  if (!areReadonlySetsEqual(stable, values)) {
+    setStable(values);
+    return values;
   }
-  return valuesRef.current;
+  return stable;
+}
+
+function accumulateTerminalRowIds(
+  previous: ReadonlySet<string>,
+  frontierRowIds: Iterable<string>,
+): ReadonlySet<string> {
+  const accumulated = new Set(previous);
+  for (const id of frontierRowIds) {
+    accumulated.delete(id);
+    accumulated.add(id);
+  }
+  while (accumulated.size > TIMELINE_TERMINAL_EXPANSION_RETENTION) {
+    const oldestId = accumulated.values().next().value;
+    if (oldestId === undefined) {
+      break;
+    }
+    accumulated.delete(oldestId);
+  }
+  return accumulated;
+}
+
+function useAccumulatedTerminalRowIds(
+  frontierRowIds: Iterable<string>,
+): ReadonlySet<string> {
+  const [accumulation, setAccumulation] = useState(() => ({
+    frontierRowIds,
+    accumulated: accumulateTerminalRowIds(EMPTY_ROW_ID_SET, frontierRowIds),
+  }));
+  if (accumulation.frontierRowIds !== frontierRowIds) {
+    const next = {
+      frontierRowIds,
+      accumulated: accumulateTerminalRowIds(
+        accumulation.accumulated,
+        frontierRowIds,
+      ),
+    };
+    setAccumulation(next);
+    return next.accumulated;
+  }
+  return accumulation.accumulated;
 }
 
 function useTimelineSearchExpansionRowIds(
@@ -855,12 +856,10 @@ function InlineMessageEditorHost({
 }: {
   editor: ThreadTimelineInlineMessageEditor;
 }) {
+  const { onHostElementChange } = editor;
   return (
     <div className="ml-auto w-full max-w-[70%] max-md:max-w-full">
-      <div
-        ref={editor.onHostElementChange}
-        data-sent-message-inline-editor-host=""
-      />
+      <div ref={onHostElementChange} data-sent-message-inline-editor-host="" />
     </div>
   );
 }
@@ -1715,7 +1714,7 @@ function TimelineRowView({
 }: TimelineRowViewProps) {
   const horizontalPadding = timelineRowHorizontalPadding(spacing);
   const { onTitleAction } = useTimelineRendererStaticContext();
-  const titleState = useTimelineRowTitleRenderState({
+  const titleState = buildTimelineRowTitleRenderState({
     activeLatestBundleId,
     compactActivityIntents,
     row,
@@ -2334,24 +2333,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const liveAutoExpandedRowIds = useStableReadonlySet(
     computedAutoExpansionRowIds.liveExpandedRowIds,
   );
-  const accumulatedTerminalRowIdsRef = useRef(new Set<string>());
-  const accumulatedTerminalRowIds = useMemo(() => {
-    const accumulated = accumulatedTerminalRowIdsRef.current;
-    for (const id of computedAutoExpansionRowIds.terminalFrontierRowIds) {
-      accumulated.delete(id);
-      accumulated.add(id);
-    }
-    while (accumulated.size > TIMELINE_TERMINAL_EXPANSION_RETENTION) {
-      const oldestId = accumulated.values().next().value;
-      if (oldestId === undefined) {
-        break;
-      }
-      accumulated.delete(oldestId);
-    }
-    return new Set(accumulated);
-  }, [computedAutoExpansionRowIds.terminalFrontierRowIds]);
   const terminalAutoExpandedRowIds = useStableReadonlySet(
-    accumulatedTerminalRowIds,
+    useAccumulatedTerminalRowIds(
+      computedAutoExpansionRowIds.terminalFrontierRowIds,
+    ),
   );
   const initialAutoExpandedRowIds = useStableReadonlySet(
     props.initialExpanded ?? EMPTY_ROW_ID_SET,

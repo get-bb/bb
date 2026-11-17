@@ -293,6 +293,7 @@ function MessageActionMenuItems({
 }
 
 function MessageTimestampFooter({ timestamp }: { timestamp: number }) {
+  const [now] = useState(() => new Date());
   return (
     <div
       className="mt-1 border-t border-border px-2 pt-2 pb-1 text-xs text-subtle-foreground"
@@ -300,7 +301,7 @@ function MessageTimestampFooter({ timestamp }: { timestamp: number }) {
     >
       <MessageTime
         timestamp={timestamp}
-        label={formatDayMessageTime(timestamp, new Date())}
+        label={formatDayMessageTime(timestamp, now)}
       />
     </div>
   );
@@ -411,13 +412,10 @@ export function MessageActionBar({
       ? TOUCH_ACTION_WIDTH_PX
       : DESKTOP_ACTION_WIDTH_PX,
   });
-  const slotRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      measureSlotRef(node);
-      setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
-    },
-    [measureSlotRef],
-  );
+  const slotRef = (node: HTMLDivElement | null) => {
+    measureSlotRef(node);
+    setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
+  };
   const inlineCount = usesOverflowOnly ? 0 : fittedInlineCount;
   const menuActions = [
     ...(onCopyLink

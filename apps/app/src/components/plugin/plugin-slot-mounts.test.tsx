@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 import {
   startTransition,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -259,17 +260,17 @@ describe("useComposer", () => {
     function ComposerProbe() {
       const composer = useComposer();
       onRender?.(composer);
-      const initialMethods = useRef({
+      const [initialMethods] = useState(() => ({
         setText: composer.setText,
         updateText: composer.updateText,
         clear: composer.clear,
         setTextEffect: composer.setTextEffect,
-      });
+      }));
       const methodsAreStable =
-        initialMethods.current.setText === composer.setText &&
-        initialMethods.current.updateText === composer.updateText &&
-        initialMethods.current.clear === composer.clear &&
-        initialMethods.current.setTextEffect === composer.setTextEffect;
+        initialMethods.setText === composer.setText &&
+        initialMethods.updateText === composer.updateText &&
+        initialMethods.clear === composer.clear &&
+        initialMethods.setTextEffect === composer.setTextEffect;
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
@@ -716,7 +717,9 @@ describe("useComposer", () => {
         ],
       });
       const draftRef = useRef(draft);
-      draftRef.current = draft;
+      useInsertionEffect(() => {
+        draftRef.current = draft;
+      });
       const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
@@ -930,7 +933,9 @@ describe("useComposer", () => {
         ],
       });
       const draftRef = useRef(draft);
-      draftRef.current = draft;
+      useInsertionEffect(() => {
+        draftRef.current = draft;
+      });
       const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({

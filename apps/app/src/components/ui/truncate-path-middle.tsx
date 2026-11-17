@@ -90,7 +90,7 @@ export function useFittedPathMiddle<T extends HTMLElement>(
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    let disposed = false;
+    const lifecycle = { disposed: false };
     const measure = () =>
       fitPathMiddle(
         path,
@@ -100,7 +100,7 @@ export function useFittedPathMiddle<T extends HTMLElement>(
         (text) => measureTextWidth(text, container),
       );
     const fit = () => {
-      if (disposed) return;
+      if (lifecycle.disposed) return;
       setFitted(measure());
     };
     fit();
@@ -110,7 +110,7 @@ export function useFittedPathMiddle<T extends HTMLElement>(
     });
     void document.fonts?.ready?.then(fit);
     return () => {
-      disposed = true;
+      lifecycle.disposed = true;
       unobserve();
     };
   }, [path, measureReservedWidth]);

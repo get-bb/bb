@@ -15,23 +15,25 @@ export function useArmTopLevelTimelineRowContainment(
     if (!enabled || wrapper === null || !supportsScrollAnchoring()) {
       return;
     }
-    let cancelled = false;
-    let secondFrame: number | null = null;
+    const frames: { cancelled: boolean; secondFrame: number | null } = {
+      cancelled: false,
+      secondFrame: null,
+    };
     const firstFrame = requestAnimationFrame(() => {
-      if (cancelled) {
+      if (frames.cancelled) {
         return;
       }
-      secondFrame = requestAnimationFrame(() => {
-        if (!cancelled) {
+      frames.secondFrame = requestAnimationFrame(() => {
+        if (!frames.cancelled) {
           wrapper.classList.add(CONTENT_VISIBILITY_CLASS_NAME);
         }
       });
     });
     return () => {
-      cancelled = true;
+      frames.cancelled = true;
       cancelAnimationFrame(firstFrame);
-      if (secondFrame !== null) {
-        cancelAnimationFrame(secondFrame);
+      if (frames.secondFrame !== null) {
+        cancelAnimationFrame(frames.secondFrame);
       }
     };
   }, [enabled, wrapperRef]);

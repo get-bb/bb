@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import {
   usePendingAttachmentUploads,
@@ -120,7 +120,9 @@ export function useDraftAttachmentUploads({
 }: UseDraftAttachmentUploadsArgs): UseDraftAttachmentUploadsResult {
   const uploadPromptAttachment = useUploadPromptAttachment();
   const targetRef = useRef(target);
-  targetRef.current = target;
+  useLayoutEffect(() => {
+    targetRef.current = target;
+  });
   const [failure, setFailure] = useState<DraftAttachmentFailure>({
     targetKey: null,
     message: null,

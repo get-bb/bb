@@ -10,6 +10,7 @@ afterEach(cleanup);
 
 function ToggleableCard() {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [startedAt] = useState(() => Date.now() - 5_000);
   return (
     <ThreadWorkflowCard
       workflow={workflowRow({
@@ -17,7 +18,7 @@ function ToggleableCard() {
         status: "pending",
         taskStatus: "running",
         workflowName: "release-review",
-        startedAt: Date.now() - 5_000,
+        startedAt,
       })}
       isExpanded={isExpanded}
       onToggle={() => setIsExpanded((value) => !value)}

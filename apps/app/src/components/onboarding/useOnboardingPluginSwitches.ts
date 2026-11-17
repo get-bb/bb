@@ -52,6 +52,56 @@ function waitForInstallJob(
   });
 }
 
+interface PluginSwitchState {
+  desired: Map<string, boolean>;
+  applied: Map<string, boolean>;
+  requests: Map<string, PluginSwitchRequest>;
+  running: Set<string>;
+}
+
+async function drivePluginSwitch(
+  pluginId: string,
+  switches: PluginSwitchState,
+  queryClient: QueryClient,
+  refresh: () => Promise<void>,
+  settle: (pluginId: string) => void,
+): Promise<void> {
+  if (switches.running.has(pluginId)) return;
+  switches.running.add(pluginId);
+  try {
+    for (;;) {
+      const target = switches.desired.get(pluginId);
+      const request = switches.requests.get(pluginId);
+      if (target === undefined || request === undefined) return;
+      if (target === switches.applied.get(pluginId)) {
+        await refresh();
+        if (switches.desired.get(pluginId) !== target) continue;
+        settle(pluginId);
+        return;
+      }
+      let jobId: string | null;
+      try {
+        jobId = await request.apply(target);
+      } catch (error) {
+        settle(pluginId);
+        request.onFailed(error);
+        return;
+      }
+      if (
+        jobId !== null &&
+        (await waitForInstallJob(queryClient, jobId)) !== "succeeded"
+      ) {
+        settle(pluginId);
+        await refresh();
+        return;
+      }
+      switches.applied.set(pluginId, target);
+    }
+  } finally {
+    switches.running.delete(pluginId);
+  }
+}
+
 export function useOnboardingPluginSwitches(): OnboardingPluginSwitches {
   const queryClient = useQueryClient();
   const [desired, setDesired] = useState<ReadonlyMap<string, boolean>>(
@@ -76,42 +126,19 @@ export function useOnboardingPluginSwitches(): OnboardingPluginSwitches {
   }, [queryClient]);
 
   const drive = useCallback(
-    async (pluginId: string) => {
-      if (runningRef.current.has(pluginId)) return;
-      runningRef.current.add(pluginId);
-      try {
-        for (;;) {
-          const target = desiredRef.current.get(pluginId);
-          const request = requestsRef.current.get(pluginId);
-          if (target === undefined || request === undefined) return;
-          if (target === appliedRef.current.get(pluginId)) {
-            await refresh();
-            if (desiredRef.current.get(pluginId) !== target) continue;
-            settle(pluginId);
-            return;
-          }
-          let jobId: string | null;
-          try {
-            jobId = await request.apply(target);
-          } catch (error) {
-            settle(pluginId);
-            request.onFailed(error);
-            return;
-          }
-          if (
-            jobId !== null &&
-            (await waitForInstallJob(queryClient, jobId)) !== "succeeded"
-          ) {
-            settle(pluginId);
-            await refresh();
-            return;
-          }
-          appliedRef.current.set(pluginId, target);
-        }
-      } finally {
-        runningRef.current.delete(pluginId);
-      }
-    },
+    (pluginId: string) =>
+      drivePluginSwitch(
+        pluginId,
+        {
+          desired: desiredRef.current,
+          applied: appliedRef.current,
+          requests: requestsRef.current,
+          running: runningRef.current,
+        },
+        queryClient,
+        refresh,
+        settle,
+      ),
     [queryClient, refresh, settle],
   );
 

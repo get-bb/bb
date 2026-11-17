@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 import type {
   ThreadConversationOutlineItem,
@@ -20,6 +21,7 @@ import { useThreadConversationOutline } from "@/hooks/queries/thread-panel-queri
 import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { PROMPT_MENTION_PILL_CLASS } from "@bb/client-core";
+import { useMeasuredValue } from "@bb/shared-ui/hooks/use-measured-value";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { parseAgentMessageEnvelope } from "@bb/thread-view";
@@ -322,33 +324,15 @@ function contentInlineSize(element: HTMLElement): number {
   );
 }
 
+function readTocVisible(host: HTMLElement): boolean {
+  return contentInlineSize(host) >= TOC_MIN_VISIBLE_WIDTH_PX;
+}
+
 function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
-  const [visible, setVisible] = useState(
-    () => typeof ResizeObserver === "undefined",
-  );
-
-  useLayoutEffect(() => {
-    const host =
-      rootElement?.closest<HTMLElement>("[data-scroll-overlay]") ?? null;
-    if (typeof ResizeObserver === "undefined") {
-      setVisible(true);
-      return;
-    }
-    if (!host) {
-      setVisible(false);
-      return;
-    }
-
-    const readVisible = (entry: ResizeObserverEntry | undefined) =>
-      (entry === undefined
-        ? contentInlineSize(host)
-        : (entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width)) >=
-      TOC_MIN_VISIBLE_WIDTH_PX;
-    setVisible(readVisible(undefined));
-    return observeSharedResize(host, { read: readVisible, write: setVisible });
-  }, [rootElement]);
-
-  return visible;
+  const host =
+    rootElement?.closest<HTMLElement>("[data-scroll-overlay]") ?? null;
+  const visible = useMeasuredValue(host, readTocVisible, false);
+  return typeof ResizeObserver === "undefined" || (host !== null && visible);
 }
 
 function findTimelineRowElements(
@@ -372,6 +356,61 @@ function findTimelineRowElement(
   );
 }
 
+async function jumpToUnrenderedTimelineRow({
+  getScrollElement,
+  hasOlderRef,
+  id,
+  jumpInProgressRef,
+  loadOlderRef,
+  mountedRef,
+  rowIsLoaded,
+  scrollToRow,
+  setPendingJumpId,
+}: {
+  getScrollElement: () => HTMLElement | null;
+  hasOlderRef: RefObject<boolean>;
+  id: string;
+  jumpInProgressRef: RefObject<boolean>;
+  loadOlderRef: RefObject<() => Promise<void> | void>;
+  mountedRef: RefObject<boolean>;
+  rowIsLoaded: boolean;
+  scrollToRow: (element: HTMLElement) => void;
+  setPendingJumpId: (id: string | null) => void;
+}): Promise<void> {
+  const waitForRenderedRow = async () => {
+    for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES; frame++) {
+      await waitForAnimationFrame();
+      if (!mountedRef.current) return null;
+      const renderedRow = findTimelineRowElement(getScrollElement(), id);
+      if (renderedRow) return renderedRow;
+    }
+    return null;
+  };
+  let row: HTMLElement | null = null;
+  try {
+    if (rowIsLoaded) {
+      row = await waitForRenderedRow();
+      if (!mountedRef.current) return;
+    }
+    let loads = 0;
+    while (!row && hasOlderRef.current && loads < TOC_JUMP_MAX_PAGE_LOADS) {
+      loads += 1;
+      try {
+        await Promise.resolve(loadOlderRef.current());
+      } catch {
+        break;
+      }
+      if (!mountedRef.current) return;
+      row = await waitForRenderedRow();
+      if (!mountedRef.current) return;
+    }
+    if (!row) row = findTimelineRowElement(getScrollElement(), id);
+    if (row) scrollToRow(row);
+  } finally {
+    jumpInProgressRef.current = false;
+    setPendingJumpId(null);
+  }
+}
 function waitForAnimationFrame(): Promise<void> {
   return new Promise((resolve) => {
     if (typeof window === "undefined") {
@@ -580,9 +619,11 @@ export function ThreadTableOfContents({
   );
 
   const hasOlderRef = useRef(hasOlderTimelineRows);
-  hasOlderRef.current = hasOlderTimelineRows;
   const loadOlderRef = useRef(loadOlderTimelineRows);
-  loadOlderRef.current = loadOlderTimelineRows;
+  useLayoutEffect(() => {
+    hasOlderRef.current = hasOlderTimelineRows;
+    loadOlderRef.current = loadOlderTimelineRows;
+  });
   const jumpInProgressRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -611,13 +652,13 @@ export function ThreadTableOfContents({
         findActiveItemIds({ agentItems, scrollElement, userItems }),
       );
     };
-    let updateTimeout: number | null = null;
+    const scheduled: { timeout: number | null } = { timeout: null };
     const scheduleActiveItemsUpdate = () => {
-      if (updateTimeout !== null) {
-        window.clearTimeout(updateTimeout);
+      if (scheduled.timeout !== null) {
+        window.clearTimeout(scheduled.timeout);
       }
-      updateTimeout = window.setTimeout(() => {
-        updateTimeout = null;
+      scheduled.timeout = window.setTimeout(() => {
+        scheduled.timeout = null;
         updateActiveItems();
       }, TOC_ACTIVE_UPDATE_IDLE_MS);
     };
@@ -636,8 +677,8 @@ export function ThreadTableOfContents({
     return () => {
       scrollElement.removeEventListener("scroll", scheduleActiveItemsUpdate);
       unobserveResize?.();
-      if (updateTimeout !== null) {
-        window.clearTimeout(updateTimeout);
+      if (scheduled.timeout !== null) {
+        window.clearTimeout(scheduled.timeout);
       }
     };
   }, [agentItems, bottomAnchor, tocVisible, userItems]);
@@ -670,7 +711,7 @@ export function ThreadTableOfContents({
       };
       onNavigateToRow?.(id);
 
-      let row = findTimelineRowElement(getScrollElement(), id);
+      const row = findTimelineRowElement(getScrollElement(), id);
       if (row) {
         scrollToRow(row);
         return;
@@ -678,38 +719,17 @@ export function ThreadTableOfContents({
       if (jumpInProgressRef.current) return;
       jumpInProgressRef.current = true;
       setPendingJumpId(id);
-      const waitForRenderedRow = async () => {
-        for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES; frame++) {
-          await waitForAnimationFrame();
-          if (!mountedRef.current) return null;
-          const renderedRow = findTimelineRowElement(getScrollElement(), id);
-          if (renderedRow) return renderedRow;
-        }
-        return null;
-      };
-      try {
-        if (timelineRows.some((timelineRow) => timelineRow.id === id)) {
-          row = await waitForRenderedRow();
-          if (!mountedRef.current) return;
-        }
-        let loads = 0;
-        while (!row && hasOlderRef.current && loads < TOC_JUMP_MAX_PAGE_LOADS) {
-          loads += 1;
-          try {
-            await Promise.resolve(loadOlderRef.current());
-          } catch {
-            break;
-          }
-          if (!mountedRef.current) return;
-          row = await waitForRenderedRow();
-          if (!mountedRef.current) return;
-        }
-        if (!row) row = findTimelineRowElement(getScrollElement(), id);
-        if (row) scrollToRow(row);
-      } finally {
-        jumpInProgressRef.current = false;
-        setPendingJumpId(null);
-      }
+      await jumpToUnrenderedTimelineRow({
+        getScrollElement,
+        hasOlderRef,
+        id,
+        jumpInProgressRef,
+        loadOlderRef,
+        mountedRef,
+        rowIsLoaded: timelineRows.some((timelineRow) => timelineRow.id === id),
+        scrollToRow,
+        setPendingJumpId,
+      });
     },
     [bottomAnchor, onNavigateToRow, timelineRows],
   );
