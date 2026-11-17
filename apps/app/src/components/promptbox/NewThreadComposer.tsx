@@ -940,6 +940,7 @@ export function NewThreadComposer({
     environmentSelectionValue,
     hasMultipleProviders,
     isLoadingModels,
+    isLoadingReasoning,
     modelCatalogIsSettled,
     modelLoadError,
     modelLoadFailed,
@@ -2169,6 +2170,7 @@ export function NewThreadComposer({
             reasoning: {
               value: reasoningLevel,
               options: reasoningOptions,
+              isLoading: isLoadingReasoning,
               onChange: handleReasoningChange,
             },
             ...(pickerSessionOptionSections.length === 0
@@ -2231,6 +2233,7 @@ export function NewThreadComposer({
       providerOptions,
       reasoningLevel,
       reasoningOptions,
+      isLoadingReasoning,
       reuseEnvironmentId,
       reuseThreadOptions,
       selectedModel,

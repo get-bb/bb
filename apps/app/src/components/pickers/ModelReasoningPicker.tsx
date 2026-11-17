@@ -196,6 +196,7 @@ interface ModelReasoningPickerProps {
   formatModelLabel?: (displayName: string) => string;
   reasoningValue: ReasoningLevel;
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
+  reasoningIsLoading: boolean;
   onReasoningChange: (value: ReasoningLevel) => void;
   serviceTierValue: ServiceTier | undefined;
   serviceTierOptions: readonly ProviderOptionDescriptor[];
@@ -230,6 +231,7 @@ export function ModelReasoningPicker({
   formatModelLabel,
   reasoningValue,
   reasoningOptions,
+  reasoningIsLoading,
   onReasoningChange,
   serviceTierValue,
   serviceTierOptions,
@@ -560,6 +562,13 @@ export function ModelReasoningPicker({
     (isPreviewing
       ? hasActiveModelOptions && !activeModelIsLoading
       : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
+  const showReasoningPlaceholder =
+    reasoningIsLoading &&
+    !isPreviewing &&
+    !isShowingModelError &&
+    hasSelectedModel &&
+    !modelIsLoading &&
+    !selectedModelLoadFailed;
 
   const resetBrowseState = useCallback(() => {
     setHandoffMode(false);
@@ -1012,6 +1021,13 @@ export function ModelReasoningPicker({
               >
                 {triggerReasoningLabel}
               </span>
+            ) : reasoningIsLoading && hasSelectedModel && !modelIsLoading ? (
+              <Skeleton
+                aria-hidden
+                data-reasoning-loading-placeholder="trigger"
+                data-promptbox-hide-compact=""
+                className="h-3 w-8 shrink-0 rounded-sm"
+              />
             ) : null}
           </>
         )}
@@ -1161,6 +1177,7 @@ export function ModelReasoningPicker({
           selectionBlocked={previewSelectionBlocked}
           onModelSelect={handleModelSelect}
           showReasoningSection={showReasoningSection}
+          showReasoningPlaceholder={showReasoningPlaceholder}
           reasoningValue={activeReasoningValue}
           reasoningOptions={activeReasoningOptions}
           onReasoningSelect={handleReasoningSelect}

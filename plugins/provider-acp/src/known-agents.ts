@@ -54,7 +54,6 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
       "claude-fable-5",
       "composer-2.5",
     ],
-    reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
     fork: "none",
     launch: {
       displayName: "Cursor",
@@ -157,7 +156,6 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     dialect: "grok",
     supportsManualCompaction: true,
     fork: "none",
-    reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
     launch: {
       displayName: "Grok Build",
       command: "grok",
