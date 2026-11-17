@@ -2,10 +2,9 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { eq } from "drizzle-orm";
-import { environments } from "@bb/db";
+import { environments, hasThreadStartTurnRequest } from "@bb/db";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
-import { hasLiveThreadStartInFlight } from "../../../../apps/server/src/services/threads/thread-lifecycle.js";
 import {
   createHostThread,
   getEnvironment,
@@ -193,7 +192,7 @@ describe.sequential("fake provider smoke reuse integration", () => {
           });
 
           if (delayStartAcknowledgment) {
-            expect(hasLiveThreadStartInFlight(thread.id)).toBe(true);
+            expect(hasThreadStartTurnRequest(harness.db, thread.id)).toBe(true);
           }
           harness.db
             .update(environments)

@@ -44,8 +44,6 @@ import {
   replaceStoredThreadTabs,
 } from "../../src/data/thread-tabs.js";
 import {
-  applyThreadLifecycleEvent,
-  applyThreadLifecycleEventInTransaction,
   archiveThread,
   countNonDeletedAssignedChildThreads,
   countThreads,
@@ -97,9 +95,18 @@ import {
   seedThreads,
   type ThreadsSeed,
 } from "./threads-cases-seed.js";
+import {
+  hasThreadStartTurnRequest,
+  listThreadIdsAwaitingTurnRequestAnswers,
+  listThreadIdsWithOwedStopForHost,
+  listThreadIdsWithTurnRequestsForHost,
+  readThreadRunState,
+  writeThreadLifecycleStateInTransaction,
+} from "../../src/data/thread-run-state.js";
 
 const THREADS = "packages/db/src/data/threads.ts";
 const SECTIONS = "packages/db/src/data/thread-sections.ts";
+const RUN_STATE = "packages/db/src/data/thread-run-state.ts";
 const TABS = "packages/db/src/data/thread-tabs.ts";
 const PLUGIN_METADATA = "packages/db/src/data/thread-plugin-metadata.ts";
 const OUTLINES = "packages/db/src/data/thread-conversation-outlines.ts";
@@ -389,16 +396,6 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
     run: (db, _fixture, seed) =>
       unarchiveThread(db, noopNotifier, seed.archivedRootId),
   },
-  {
-    name: `${THREADS}#applyThreadLifecycleEventInTransaction`,
-    run: (db, _fixture, seed) =>
-      db.transaction((tx) =>
-        applyThreadLifecycleEventInTransaction(tx, {
-          threadId: seed.idleThreadId,
-          event: { type: "run.preparing" },
-        }),
-      ),
-  },
 ];
 
 const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
@@ -474,13 +471,53 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
         sourceThreadId: seed.managerRootId,
       }),
   },
+];
+
+const RUN_STATE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   {
-    name: `${THREADS}#applyThreadLifecycleEvent`,
+    name: `${RUN_STATE}#readThreadRunState`,
+    run: (db, _fixture, seed) => readThreadRunState(db, seed.idleThreadId),
+  },
+  {
+    name: `${RUN_STATE}#writeThreadLifecycleStateInTransaction`,
     run: (db, _fixture, seed) =>
-      applyThreadLifecycleEvent(db, {
-        threadId: seed.idleThreadId,
-        event: { type: "run.preparing" },
-      }),
+      db.transaction((tx) =>
+        writeThreadLifecycleStateInTransaction(tx, {
+          expectedStatus: "idle",
+          next: {
+            heldCompletion: null,
+            requests: [],
+            status: "starting",
+            stop: {
+              ackedAt: null,
+              reason: "manual-stop",
+              requestedAt: 1,
+              sentAt: null,
+            },
+          },
+          previous: { heldCompletion: null, requests: [], stop: null },
+          threadId: seed.idleThreadId,
+        }),
+      ),
+  },
+  {
+    name: `${RUN_STATE}#hasThreadStartTurnRequest`,
+    run: (db, _fixture, seed) =>
+      hasThreadStartTurnRequest(db, seed.idleThreadId),
+  },
+  {
+    name: `${RUN_STATE}#listThreadIdsAwaitingTurnRequestAnswers`,
+    run: (db) => listThreadIdsAwaitingTurnRequestAnswers(db),
+  },
+  {
+    name: `${RUN_STATE}#listThreadIdsWithOwedStopForHost`,
+    run: (db, _fixture, seed) =>
+      listThreadIdsWithOwedStopForHost(db, { hostId: seed.busiestHostId }),
+  },
+  {
+    name: `${RUN_STATE}#listThreadIdsWithTurnRequestsForHost`,
+    run: (db, _fixture, seed) =>
+      listThreadIdsWithTurnRequestsForHost(db, { hostId: seed.busiestHostId }),
   },
 ];
 
@@ -724,6 +761,7 @@ export const THREADS_COST_GROUP = registerCostGroup<ThreadsSeed>({
   cases: [
     ...THREAD_CASES,
     ...THREAD_LISTING_CASES,
+    ...RUN_STATE_CASES,
     ...SECTION_CASES,
     ...TAB_CASES,
     ...PLUGIN_METADATA_CASES,
