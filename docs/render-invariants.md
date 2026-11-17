@@ -135,21 +135,18 @@ the invariant, add it as a pending invariant and record the cause above.
 
 ## CI
 
-The three `Render invariants` shards run on main pushes, manual runs and pull requests
+The `Render invariants` job runs on main pushes, manual runs and pull requests
 that change `apps/app`, `packages/client-core`, `packages/core-ui`,
 `packages/plugin-sdk`, `packages/shared-ui`, `packages/thread-view`, a plugin
 whose `package.json` declares `bb.app`, the suite itself, the scripted echo
 provider, or the integration harness helpers. Selection lives in
-`scripts/plan-ci.mjs`. Each shard installs the Chromium headless shell pinned by
-`playwright-core` and runs the Turbo task above with `BB_CI_TEST_SHARD=N/3`.
-Idle, typing, and push invariants live in separate files, each with its own
-server, database, provider, browser, and cleanup. The existing Vitest file
-sharding partitions those files across runners. Within each file, scenarios
-still run sequentially with fresh browser contexts and the original settling
-and observation windows. Running without the shard variable executes all six
-scenarios locally.
+`scripts/plan-ci.mjs`. The job installs the Chromium headless shell pinned by
+`playwright-core` and runs the Turbo task above.
 
-The shard variable is part of the render task's Turbo cache key. Each runner
-has its own cache prefix, so a cached passing group cannot replace another
-group. Three jobs repeat fixture/build/setup work in exchange for overlapping
-the scenario groups; this targets latency rather than total runner minutes.
+Idle, typing, and push invariants live in separate files. Vitest runs those
+files concurrently with at most three workers on the existing four-vCPU
+runner. Each file owns its server, database, provider, browser, and cleanup.
+Within each file, scenarios remain sequential with fresh browser contexts and
+the original settling and observation windows. The job count and runner size
+are unchanged. Fixture setup repeats across the three groups, but browser
+waits overlap and dependency installation and the profiling build run once.

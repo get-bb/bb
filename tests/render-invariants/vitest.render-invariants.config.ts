@@ -5,7 +5,8 @@ export default defineWorkspaceTestConfig({
     name: "@bb/render-invariants",
     include: ["src/**/*.test.ts"],
     globalSetup: ["../integration/global-setup.ts"],
-    fileParallelism: false,
+    fileParallelism: true,
+    maxWorkers: 3,
     hookTimeout: 240_000,
     testTimeout: 90_000,
     env: {
