@@ -16,6 +16,7 @@ import {
 import { BbHttpError } from "@bb/sdk/browser";
 import type {
   ServerMoveStatus,
+  ServerMoveStatusResponse,
   ServerMoveStep,
   ServerMoveStepStatus,
 } from "@bb/server-contract";
@@ -375,13 +376,9 @@ describe("ServerMoveOverlay", () => {
         ok: true,
         serverMove: { moveId: "move_1", state: "pending" },
       })
-      .mockResolvedValueOnce({
-        ok: true,
-        serverMove: { moveId: "move_1", state: "activating" },
-      })
       .mockResolvedValue({
         ok: true,
-        serverMove: { moveId: "move_1", state: "ready" },
+        serverMove: { moveId: "move_1", state: "activating" },
       });
     const { navigateTo } = renderOverlay(
       "/projects/proj_1/threads/thr_1?panel=diff#turn-3",
@@ -394,6 +391,16 @@ describe("ServerMoveOverlay", () => {
     expect(
       within(waiting).queryByRole("link", { name: "Open the new address" }),
     ).toBeNull();
+    await waitFor(() => {
+      expect(
+        vi.mocked(fetchServerHealth).mock.calls.length,
+      ).toBeGreaterThanOrEqual(3);
+    });
+    expect(navigateTo).not.toHaveBeenCalled();
+    vi.mocked(fetchServerHealth).mockResolvedValue({
+      ok: true,
+      serverMove: { moveId: "move_1", state: "ready" },
+    });
     const destination =
       "https://desk.example.com/projects/proj_1/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3";
     await waitFor(() => {
@@ -433,18 +440,29 @@ describe("ServerMoveOverlay", () => {
         lastMove: null,
       })
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         move: null,
         lastMove: lastMove({ moveId: "move_0", toHostName: "old-desk" }),
-      })
-      .mockResolvedValue({ move: null, lastMove: lastMove() });
+      });
     realtime.state = "reconnecting";
-    const { navigateTo } = renderOverlay();
+    const { navigateTo, queryClient } = renderOverlay();
 
     expect(
       await screen.findByRole("dialog", { name: "Reconnecting to desk…" }),
     ).toBeDefined();
 
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData<ServerMoveStatusResponse>(
+          serverMoveStatusQueryKey(),
+        )?.lastMove?.moveId,
+      ).toBe("move_0");
+    });
+    expect(vi.mocked(appToast.success)).not.toHaveBeenCalled();
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: lastMove(),
+    });
     await waitFor(() => {
       expect(vi.mocked(appToast.success)).toHaveBeenCalledWith(
         "Server moved to desk",
@@ -525,17 +543,38 @@ describe("ServerMoveOverlay", () => {
   });
 
   it("explains a move the server forgot by restarting", async () => {
-    vi.mocked(sdk.experimental_server.moveStatus)
-      .mockResolvedValueOnce({ move: move(), lastMove: null })
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValue({ move: null, lastMove: null });
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: move(),
+      lastMove: null,
+    });
     realtime.state = "reconnecting";
-    renderOverlay();
+    const { queryClient } = renderOverlay();
 
     await screen.findByRole("dialog", { name: "Moving server to desk" });
+    const interrupted = new TypeError("Failed to fetch");
+    vi.mocked(sdk.experimental_server.moveStatus).mockRejectedValue(
+      interrupted,
+    );
+    await waitFor(() => {
+      expect(queryClient.getQueryState(serverMoveStatusQueryKey())?.error).toBe(
+        interrupted,
+      );
+    });
+    expect(
+      screen.getByRole("dialog", { name: "Moving server to desk" }),
+    ).toBeDefined();
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: null,
+    });
     const overlay = await screen.findByRole("dialog", {
       name: "Server move stopped",
     });
+    expect(
+      within(overlay).getByText(
+        "The server restarted before the move to desk finished, so nothing switched over.",
+      ),
+    ).toBeDefined();
     fireEvent.click(within(overlay).getByRole("button", { name: "Close" }));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
