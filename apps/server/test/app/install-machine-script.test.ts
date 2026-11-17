@@ -830,6 +830,25 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
       BB_INSTALL_SKIP_SERVICE: "1",
     });
 
+    process.stderr.write(
+      JSON.stringify({
+        probe: "installer-existing-enrollment",
+        status: result.status,
+        stderr: result.stderr,
+        files: Object.fromEntries(
+          [
+            "host-daemon-port",
+            "install-daemon.pid",
+            "install-daemon.log",
+            "invocation",
+          ].map((name) => {
+            const path = join(fixture.dataDir, name);
+            return [name, existsSync(path) ? readFileSync(path, "utf8") : null];
+          }),
+        ),
+      }) + "\n",
+    );
+
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("already joined");
     try {

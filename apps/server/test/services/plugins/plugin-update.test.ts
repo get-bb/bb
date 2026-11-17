@@ -1273,11 +1273,26 @@ describe.concurrent("independent plugin update contracts", () => {
   fixtureTest(
     "reports a release outside the saved range and changes the range only for the reviewed release",
     async ({ fixture }) => {
+      const started = performance.now();
+      const mark = (phase: string) => {
+        process.stderr.write(
+          JSON.stringify({
+            probe: "plugin-update-phase",
+            phase,
+            elapsed: performance.now() - started,
+          }) + "\n",
+        );
+      };
+      mark("test-entered");
       const { db, service, taggedRepo } = fixture;
       const tagged = await taggedRepo();
+      mark("repo-ready");
       await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      mark("installed");
       await service.setEnabled("tagged", false);
+      mark("disabled");
       const majorCommit = await releaseTag(tagged, "v2.0.0");
+      mark("published");
 
       expect(await service.checkForUpdates("tagged")).toMatchObject([
         {
@@ -1293,6 +1308,7 @@ describe.concurrent("independent plugin update contracts", () => {
           },
         },
       ]);
+      mark("checked");
       expect(
         service.list().find((entry) => entry.id === "tagged")?.updateState,
       ).toMatchObject({
@@ -1304,6 +1320,7 @@ describe.concurrent("independent plugin update contracts", () => {
         ok: true,
         result: { applied: false, outcome: "current" },
       });
+      mark("no-change-applied");
       await expect(
         service.applyUpdate("tagged", {
           range: "^2.0.0",
@@ -1318,6 +1335,7 @@ describe.concurrent("independent plugin update contracts", () => {
         sourceGitResolvedTag: "v1.0.0",
       });
 
+      mark("stale-refused");
       await expect(
         service.applyUpdate("tagged", {
           range: "^2.0.0",
@@ -1335,6 +1353,7 @@ describe.concurrent("independent plugin update contracts", () => {
         enabled: false,
       });
 
+      mark("update-applied");
       await expect(
         service.applyUpdate("tagged", { range: "^1.0.0" }),
       ).resolves.toMatchObject({
@@ -1345,6 +1364,7 @@ describe.concurrent("independent plugin update contracts", () => {
         sourceGitRange: "^2.0.0",
         gitResolvedCommit: majorCommit,
       });
+      mark("downgrade-refused");
     },
   );
 

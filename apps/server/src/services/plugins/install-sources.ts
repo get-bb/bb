@@ -619,6 +619,22 @@ export async function runInstallCommand(
     maxStdoutBytes?: number;
   },
 ): Promise<string> {
+  const started = performance.now();
+  const trace = args.some((arg) => arg.includes("bb-plugin-update-"));
+  const mark = (phase: string, code: number | null) => {
+    if (trace)
+      process.stderr.write(
+        JSON.stringify({
+          probe: "plugin-update-command",
+          phase,
+          command,
+          args,
+          code,
+          elapsed: performance.now() - started,
+        }) + "\n",
+      );
+  };
+  mark("entered", null);
   const timeoutMs = 5 * 60_000;
   const cancellation = installCancellationSignal();
   if (cancellation?.aborted) throw new PluginInstallCancelledError();
@@ -629,6 +645,7 @@ export async function runInstallCommand(
     detached: supportsProcessGroups(),
     env: omitNpmScriptPolicyEnv(process.env),
   });
+  child.once("spawn", () => mark("spawned", null));
   const killCommand = () => {
     if (supportsProcessGroups()) killProcessGroup({ child, signal: "SIGKILL" });
     else killPortableProcess(child, "SIGKILL");
@@ -678,6 +695,7 @@ export async function runInstallCommand(
       reject(error);
     });
     child.on("close", (code) => {
+      mark("closed", code);
       clearTimeout(timer);
       cancellation?.removeEventListener("abort", cancel);
       if (cancelled) {
