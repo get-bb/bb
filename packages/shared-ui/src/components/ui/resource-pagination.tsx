@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
+import { observeSharedResize } from "../../lib/shared-resize-observer";
 
 export const RESOURCE_LIST_PAGE_SIZE = 10;
 export const RESOURCE_GRID_PAGE_SIZE = 12;
@@ -87,23 +88,29 @@ export function useResourceViewportPageSize(
     if (viewport === null) return;
     const viewportElement = viewport;
 
+    const canObserveResize = typeof ResizeObserver !== "undefined";
     let observedPanel: HTMLElement | null = null;
-    let resizeObserver: ResizeObserver | null = null;
+    let unobservePanel: (() => void) | null = null;
     let tallestRowHeight = 0;
     let measuredWidth = viewportElement.clientWidth;
     let scheduledFrame: number | null = null;
+
+    const phases = { read: readPageSize, write: applyPageSize };
 
     function observeCurrentPanel() {
       const panel = viewportElement.querySelector<HTMLElement>(
         "[data-resource-list-panel]",
       );
       if (panel === observedPanel) return;
-      if (observedPanel !== null) resizeObserver?.unobserve(observedPanel);
+      unobservePanel?.();
+      unobservePanel = null;
       observedPanel = panel;
-      if (observedPanel !== null) resizeObserver?.observe(observedPanel);
+      if (observedPanel !== null && canObserveResize) {
+        unobservePanel = observeSharedResize(observedPanel, phases);
+      }
     }
 
-    function measure() {
+    function readPageSize(): number {
       observeCurrentPanel();
       const width = viewportElement.clientWidth;
       if (width !== measuredWidth) {
@@ -116,9 +123,15 @@ export function useResourceViewportPageSize(
         tallestRowHeight,
       );
       tallestRowHeight = measurement.rowHeight;
-      setPageSize((current) =>
-        current === measurement.pageSize ? current : measurement.pageSize,
-      );
+      return measurement.pageSize;
+    }
+
+    function applyPageSize(next: number) {
+      setPageSize((current) => (current === next ? current : next));
+    }
+
+    function measure() {
+      applyPageSize(readPageSize());
     }
 
     function scheduleMeasure() {
@@ -133,10 +146,9 @@ export function useResourceViewportPageSize(
       });
     }
 
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(scheduleMeasure);
-      resizeObserver.observe(viewportElement);
-    }
+    const unobserveViewport = canObserveResize
+      ? observeSharedResize(viewportElement, phases)
+      : null;
     const mutationObserver =
       typeof MutationObserver === "undefined"
         ? null
@@ -149,7 +161,8 @@ export function useResourceViewportPageSize(
 
     return () => {
       mutationObserver?.disconnect();
-      resizeObserver?.disconnect();
+      unobserveViewport?.();
+      unobservePanel?.();
       if (
         scheduledFrame !== null &&
         typeof cancelAnimationFrame === "function"

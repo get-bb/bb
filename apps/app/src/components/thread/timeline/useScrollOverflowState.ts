@@ -5,6 +5,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 
 interface ScrollOverflowSentinelRefs<TElement extends HTMLElement> {
   scrollRef: RefObject<TElement | null>;
@@ -63,12 +64,13 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     }
 
     let frame: number | null = null;
+    const readFlags = (): OverflowFlags => ({
+      above: scroll.scrollTop > 1,
+      below: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 1,
+    });
     const measure = () => {
       frame = null;
-      applyFlags({
-        above: scroll.scrollTop > 1,
-        below: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 1,
-      });
+      applyFlags(readFlags());
     };
     const scheduleMeasure = () => {
       if (frame !== null) return;
@@ -81,11 +83,10 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     scheduleMeasure();
     scroll.addEventListener("scroll", scheduleMeasure, { passive: true });
 
-    const resizeObserver =
+    const unobserveResize =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(scheduleMeasure);
-    resizeObserver?.observe(scroll);
+        : observeSharedResize(scroll, { read: readFlags, write: applyFlags });
 
     const mutationObserver =
       typeof MutationObserver === "undefined"
@@ -106,7 +107,7 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
         }
       }
       scroll.removeEventListener("scroll", scheduleMeasure);
-      resizeObserver?.disconnect();
+      unobserveResize?.();
       mutationObserver?.disconnect();
     };
   }, [applyFlags, options.enabled, options.measureOverflow]);

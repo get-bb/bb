@@ -251,12 +251,50 @@ const noComments = {
   },
 };
 
+const resizeObserverMessage =
+  "Observe element sizes with observeSharedResize or useMeasuredValue from @bb/shared-ui. They apply React state in the same frame as the resize; a raw ResizeObserver callback's setState paints one frame late.";
+
+function isResizeObserverConstructor(callee) {
+  if (callee.type === "Identifier") return callee.name === "ResizeObserver";
+  return (
+    callee.type === "MemberExpression" &&
+    !callee.computed &&
+    callee.property.type === "Identifier" &&
+    callee.property.name === "ResizeObserver"
+  );
+}
+
+const noRawResizeObserver = {
+  create(context) {
+    return {
+      NewExpression(node) {
+        if (isResizeObserverConstructor(node.callee)) {
+          context.report({ node: node.callee, message: resizeObserverMessage });
+        }
+      },
+      ImportDeclaration(node) {
+        if (node.source.value !== "usehooks-ts") return;
+        for (const specifier of node.specifiers) {
+          if (
+            specifier.type === "ImportSpecifier" &&
+            specifier.imported.type === "Identifier" &&
+            specifier.imported.name === "useResizeObserver"
+          ) {
+            context.report({ node: specifier, message: resizeObserverMessage });
+          }
+        }
+      },
+    };
+  },
+};
+
 export const rules = {
   "forkable-plugin-imports": forkablePluginImports,
   "no-blocking-child-process-call": noBlockingChildProcessCall,
   "no-comments": noComments,
   "no-native-title-on-button": noNativeTitleOnButton,
   "no-native-title-with-aria-label": noNativeTitleWithAriaLabel,
+  "no-raw-resize-observer": noRawResizeObserver,
 };
 
 export default {

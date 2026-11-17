@@ -44,10 +44,11 @@ function stubResizeObserver(): Array<() => void> {
   vi.stubGlobal(
     "ResizeObserver",
     class {
-      constructor(callback: () => void) {
-        observers.push(callback);
+      constructor(callback: (entries: ResizeObserverEntry[]) => void) {
+        observers.push(() => callback([]));
       }
       observe() {}
+      unobserve() {}
       disconnect() {}
     },
   );

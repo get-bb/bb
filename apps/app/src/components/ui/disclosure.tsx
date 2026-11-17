@@ -14,7 +14,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   observedBorderBoxBlockSize,
   observeSharedResize,
-} from "@/lib/shared-resize-observer";
+} from "@bb/shared-ui/lib/shared-resize-observer";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 

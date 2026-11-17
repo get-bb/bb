@@ -1347,8 +1347,8 @@ describe("Docs nav panel", () => {
     vi.stubGlobal(
       "ResizeObserver",
       class {
-        constructor(callback: () => void) {
-          resize = callback;
+        constructor(callback: (entries: ResizeObserverEntry[]) => void) {
+          resize = () => callback([]);
         }
         observe() {}
         disconnect() {}

@@ -224,6 +224,29 @@
       "rules": {
         "bb/forkable-plugin-imports": "error"
       }
+    },
+    {
+      "files": [
+        "apps/**/*.{ts,tsx}",
+        "packages/**/*.{ts,tsx}",
+        "plugins/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "bb/no-raw-resize-observer": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/shared-ui/src/lib/shared-resize-observer.ts",
+        "apps/app/src/components/ui/scroll-position-keeper.ts",
+        "apps/web/src/landing/hero-window-stage.tsx",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx"
+      ],
+      "rules": {
+        "bb/no-raw-resize-observer": "off"
+      }
     }
   ]
 }

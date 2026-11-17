@@ -254,6 +254,11 @@
       "types": "./src/components/ui/hooks/use-media-query.ts",
       "default": "./src/components/ui/hooks/use-media-query.ts"
     },
+    "./hooks/use-measured-value": {
+      "source": "./src/components/ui/hooks/use-measured-value.ts",
+      "types": "./src/components/ui/hooks/use-measured-value.ts",
+      "default": "./src/components/ui/hooks/use-measured-value.ts"
+    },
     "./hooks/use-pointer-coarse": {
       "source": "./src/components/ui/hooks/use-pointer-coarse.ts",
       "types": "./src/components/ui/hooks/use-pointer-coarse.ts",
@@ -273,6 +278,11 @@
       "source": "./src/lib/portal-scope.ts",
       "types": "./src/lib/portal-scope.ts",
       "default": "./src/lib/portal-scope.ts"
+    },
+    "./lib/shared-resize-observer": {
+      "source": "./src/lib/shared-resize-observer.ts",
+      "types": "./src/lib/shared-resize-observer.ts",
+      "default": "./src/lib/shared-resize-observer.ts"
     },
     "./question-form": {
       "source": "./src/components/ui/question-form.tsx",

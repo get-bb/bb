@@ -8,7 +8,7 @@ import {
 import {
   observedBorderBoxBlockSize,
   observeSharedResize,
-} from "@/lib/shared-resize-observer";
+} from "@bb/shared-ui/lib/shared-resize-observer";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 const HEIGHT_TRANSITION_DURATION_MS = 180;

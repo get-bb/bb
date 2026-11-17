@@ -4,6 +4,7 @@ import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Slot } from "@radix-ui/react-slot";
 
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -1785,16 +1786,15 @@ const SidebarContent = React.forwardRef<
     if (!element || typeof ResizeObserver === "undefined") {
       return;
     }
-    const publishScrollbarLane = () => {
-      element.style.setProperty(
-        "--bb-sidebar-scrollbar-lane",
-        `${element.offsetWidth - element.clientWidth}px`,
-      );
+    const readScrollbarLane = () => element.offsetWidth - element.clientWidth;
+    const publishScrollbarLane = (lane: number) => {
+      element.style.setProperty("--bb-sidebar-scrollbar-lane", `${lane}px`);
     };
-    publishScrollbarLane();
-    const observer = new ResizeObserver(publishScrollbarLane);
-    observer.observe(element);
-    return () => observer.disconnect();
+    publishScrollbarLane(readScrollbarLane());
+    return observeSharedResize(element, {
+      read: readScrollbarLane,
+      write: publishScrollbarLane,
+    });
   }, []);
   return (
     <div

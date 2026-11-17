@@ -17,6 +17,7 @@ import {
   SIDEBAR_WINDOWED_NAV_ATTRIBUTE,
   type SidebarWindowedNavigationEntry,
 } from "./sidebarThreadShortcuts.js";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 
 const WINDOW_VIEWPORT_MARGIN_PX = 240;
 const DEFAULT_ROW_HEIGHT_PX = 30;
@@ -234,7 +235,7 @@ export function SidebarWindowedItems({
     }
 
     let observer: IntersectionObserver | null = null;
-    let resizeObserver: ResizeObserver | null = null;
+    let unobserveSize: (() => void) | null = null;
 
     const connect = () => {
       if (observer || scrollElement.clientHeight === 0) {
@@ -281,18 +282,20 @@ export function SidebarWindowedItems({
       for (const element of wrapperByKeyRef.current.values()) {
         observer.observe(element);
       }
-      resizeObserver?.disconnect();
-      resizeObserver = null;
+      unobserveSize?.();
+      unobserveSize = null;
     };
 
     connect();
     if (!observer && typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(() => connect());
-      resizeObserver.observe(scrollElement);
+      unobserveSize = observeSharedResize(scrollElement, {
+        read: () => scrollElement.clientHeight,
+        write: () => connect(),
+      });
     }
 
     return () => {
-      resizeObserver?.disconnect();
+      unobserveSize?.();
       observerRef.current = null;
       observer?.disconnect();
     };

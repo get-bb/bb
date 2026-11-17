@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
@@ -13,6 +20,7 @@ import { useThreadConversationOutline } from "@/hooks/queries/thread-panel-queri
 import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { PROMPT_MENTION_PILL_CLASS } from "@bb/client-core";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { parseAgentMessageEnvelope } from "@bb/thread-view";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
@@ -305,12 +313,21 @@ function currentOutlineItems(
     : data?.items;
 }
 
+function contentInlineSize(element: HTMLElement): number {
+  const style = window.getComputedStyle(element);
+  return (
+    element.clientWidth -
+    (Number.parseFloat(style.paddingLeft) || 0) -
+    (Number.parseFloat(style.paddingRight) || 0)
+  );
+}
+
 function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
   const [visible, setVisible] = useState(
     () => typeof ResizeObserver === "undefined",
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const host =
       rootElement?.closest<HTMLElement>("[data-scroll-overlay]") ?? null;
     if (typeof ResizeObserver === "undefined") {
@@ -322,14 +339,13 @@ function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
       return;
     }
 
-    const resizeObserver = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const inlineSize =
-        entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width;
-      setVisible(inlineSize >= TOC_MIN_VISIBLE_WIDTH_PX);
-    });
-    resizeObserver.observe(host, { box: "content-box" });
-    return () => resizeObserver.disconnect();
+    const readVisible = (entry: ResizeObserverEntry | undefined) =>
+      (entry === undefined
+        ? contentInlineSize(host)
+        : (entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width)) >=
+      TOC_MIN_VISIBLE_WIDTH_PX;
+    setVisible(readVisible(undefined));
+    return observeSharedResize(host, { read: readVisible, write: setVisible });
   }, [rootElement]);
 
   return visible;
@@ -609,15 +625,17 @@ export function ThreadTableOfContents({
     scrollElement.addEventListener("scroll", scheduleActiveItemsUpdate, {
       passive: true,
     });
-    const resizeObserver =
+    const unobserveResize =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(scheduleActiveItemsUpdate);
-    resizeObserver?.observe(scrollElement);
+        : observeSharedResize(scrollElement, {
+            read: () => undefined,
+            write: scheduleActiveItemsUpdate,
+          });
 
     return () => {
       scrollElement.removeEventListener("scroll", scheduleActiveItemsUpdate);
-      resizeObserver?.disconnect();
+      unobserveResize?.();
       if (updateTimeout !== null) {
         window.clearTimeout(updateTimeout);
       }

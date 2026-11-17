@@ -15,7 +15,7 @@ import {
   observeSharedResize,
   observedBorderBoxBlockSize,
   settleAfterSharedResizeWrites,
-} from "@/lib/shared-resize-observer";
+} from "@bb/shared-ui/lib/shared-resize-observer";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keeper";
 

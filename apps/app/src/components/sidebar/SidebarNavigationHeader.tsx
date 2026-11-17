@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { flushSync } from "react-dom";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import type { ExperimentalSidebarHeaderProps } from "@get-bb/plugin-sdk";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
@@ -74,22 +74,26 @@ function PluginNavigationHeader({
   useLayoutEffect(() => {
     const element = slotRef.current;
     if (element === null) return;
-    const measure = (width: number) => {
-      if (element.hidden) return;
-      const controlSize = readControlSize(element);
+    const measure = (width: number) =>
+      element.hidden ? null : { width, controlSize: readControlSize(element) };
+    const apply = (next: { width: number; controlSize: number } | null) => {
+      if (next === null) return;
       setSize((current) =>
-        current.width === width && current.controlSize === controlSize
+        current.width === next.width && current.controlSize === next.controlSize
           ? current
-          : { width, controlSize },
+          : next,
       );
     };
-    measure(Math.floor(element.clientWidth - paddingOf(element)));
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[entries.length - 1];
-      if (entry) flushSync(() => measure(Math.floor(entry.contentRect.width)));
+    const measureClientWidth = () =>
+      measure(Math.floor(element.clientWidth - paddingOf(element)));
+    apply(measureClientWidth());
+    return observeSharedResize(element, {
+      read: (entry) =>
+        entry === undefined
+          ? measureClientWidth()
+          : measure(Math.floor(entry.contentRect.width)),
+      write: apply,
     });
-    observer.observe(element);
-    return () => observer.disconnect();
   }, [isCompactViewport]);
 
   const props = {

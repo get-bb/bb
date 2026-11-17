@@ -8,7 +8,6 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import { flushSync } from "react-dom";
 import { useAtom } from "jotai";
 import type {
   ExperimentalThreadContextCardProps,
@@ -18,6 +17,7 @@ import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -369,18 +369,9 @@ export function ThreadContextCard() {
       "[data-scroll-overlay]",
     );
     if (!overlay || !setLayout) return;
-    const measured = {
-      layout: resolveThreadContextCardLayout(overlay.clientWidth),
-    };
-    setLayout(measured.layout);
-    const observer = new ResizeObserver(() => {
-      const next = resolveThreadContextCardLayout(overlay.clientWidth);
-      if (next === measured.layout) return;
-      measured.layout = next;
-      flushSync(() => setLayout(next));
-    });
-    observer.observe(overlay);
-    return () => observer.disconnect();
+    const measure = () => resolveThreadContextCardLayout(overlay.clientWidth);
+    setLayout(measure());
+    return observeSharedResize(overlay, { read: measure, write: setLayout });
   }, [setLayout]);
 
   if (state === null) return null;
