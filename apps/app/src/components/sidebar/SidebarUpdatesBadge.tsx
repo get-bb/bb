@@ -240,7 +240,7 @@ export function SidebarUpdateButton({
           sideOffset={8}
           mobileTitle="Updates"
           data-testid="sidebar-update-card"
-          className="w-76 p-3 text-xs"
+          className={UPDATE_CARD_CLASS}
         >
           {cardBody}
         </PopoverContent>
@@ -268,13 +268,20 @@ export function SidebarUpdateButton({
         align="end"
         sideOffset={8}
         data-testid="sidebar-update-card"
-        className="w-76 p-3 text-xs"
+        className={UPDATE_CARD_CLASS}
       >
         {cardBody}
       </HoverCardContent>
     </HoverCard>
   );
 }
+
+const UPDATE_CARD_CLASS =
+  "w-76 p-3 text-xs max-md:pointer-coarse:px-4 max-md:pointer-coarse:pb-4";
+
+const UPDATE_CARD_ICON_CLASS = "size-3.5 max-md:pointer-coarse:size-4";
+
+const UPDATE_CARD_BUTTON_CLASS = "h-7 flex-1 max-md:pointer-coarse:h-9";
 
 const UPDATE_BUTTON_CLASS = cn(
   SIDEBAR_FOOTER_ACTION_CLASS,
@@ -307,7 +314,7 @@ function SidebarUpdateCardBody({
         />
       )}
       {model.bb !== null && model.rows.length > 0 ? (
-        <div className="-mx-3 my-3 border-t border-border" />
+        <div className="-mx-3 my-3 border-t border-border max-md:pointer-coarse:-mx-4" />
       ) : null}
       {model.rows.length === 0 ? null : (
         <ul className="space-y-0.5" aria-label="Updates">
@@ -320,8 +327,13 @@ function SidebarUpdateCardBody({
           ))}
         </ul>
       )}
-      <div className="mt-3 flex gap-2">
-        <Button asChild variant="outline" size="sm" className="h-7 flex-1">
+      <div className="mt-3 flex gap-2 max-md:pointer-coarse:mt-4">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className={UPDATE_CARD_BUTTON_CLASS}
+        >
           <Link to={getSettingsRoutePath("updates")} onClick={onDetails}>
             Details
           </Link>
@@ -329,7 +341,7 @@ function SidebarUpdateCardBody({
         {model.rows.length === 0 ? null : (
           <Button
             size="sm"
-            className="h-7 flex-1"
+            className={UPDATE_CARD_BUTTON_CLASS}
             disabled={model.startableCount === 0}
             onClick={onUpdateAll}
           >
@@ -358,9 +370,9 @@ function SidebarBbUpdateSection({
 }) {
   return (
     <section aria-label="bb update">
-      <div className="flex items-center gap-1.5">
-        <BbLogo className="size-3.5" />
-        <span className="text-sm font-medium">
+      <div className="flex items-center gap-1.5 max-md:pointer-coarse:gap-2">
+        <BbLogo className={UPDATE_CARD_ICON_CLASS} />
+        <span className="text-sm font-medium max-md:pointer-coarse:text-base">
           {bb.version === null ? "bb update" : `bb ${bb.version}`}
         </span>
         {bb.currentVersion === null || bb.version === null ? null : (
@@ -369,10 +381,13 @@ function SidebarBbUpdateSection({
           </span>
         )}
       </div>
-      <div className="mt-2 flex items-center gap-1.5 text-muted-foreground">
+      <div className="mt-2 flex items-center gap-1.5 text-muted-foreground max-md:pointer-coarse:gap-2">
         <Icon
           name={bb.restarting ? "Loading" : "Clock"}
-          className={cn("size-3 shrink-0", bb.restarting && "animate-spin")}
+          className={cn(
+            "size-3 shrink-0 max-md:pointer-coarse:size-3.5",
+            bb.restarting && "animate-spin",
+          )}
         />
         <span className="min-w-0 flex-1 truncate">
           {bb.restarting
@@ -408,11 +423,16 @@ function SidebarUpdateRowItem({
       data-update-row={row.key}
       data-state={row.state}
       className={cn(
-        "flex h-6 items-center gap-2",
+        "flex h-6 items-center gap-2 max-md:pointer-coarse:h-8",
         row.state === "failed" && "text-muted-foreground",
       )}
     >
-      <span className="flex size-3.5 shrink-0 items-center justify-center">
+      <span
+        className={cn(
+          UPDATE_CARD_ICON_CLASS,
+          "flex shrink-0 items-center justify-center",
+        )}
+      >
         {row.kind === "provider" ? (
           <SidebarProviderMark
             providerId={row.provider}
@@ -423,7 +443,7 @@ function SidebarUpdateRowItem({
             pluginId={row.pluginId}
             icon={row.icon}
             fallbackIcon="Plug02"
-            className="size-3.5"
+            className={UPDATE_CARD_ICON_CLASS}
           />
         )}
       </span>
@@ -456,12 +476,12 @@ function SidebarProviderMark({
   const iconInfo = getProviderIconInfo("agent", providerId, provider);
   if (iconInfo === undefined) return null;
   return provider === null ? (
-    <iconInfo.icon className="size-3.5" />
+    <iconInfo.icon className={UPDATE_CARD_ICON_CLASS} />
   ) : (
     <ProviderIconMark
       provider={provider}
       icon={iconInfo.icon}
-      className="size-3.5"
+      className={UPDATE_CARD_ICON_CLASS}
     />
   );
 }
