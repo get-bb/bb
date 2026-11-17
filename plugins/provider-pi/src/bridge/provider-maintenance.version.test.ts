@@ -100,7 +100,7 @@ describe("Pi version probe", () => {
       const cli = path.join(pkg, "cli.cjs");
       await writeFile(
         cli,
-        'if (process.argv[2] !== "--version") process.exit(2); process.stdout.write("0.85.1\\n");',
+        'if (process.argv[2] !== "--version") process.exit(2); setTimeout(() => process.stdout.write("0.85.1\\n"), 2000);',
       );
       await writeFile(
         path.join(root, "pi.cmd"),
