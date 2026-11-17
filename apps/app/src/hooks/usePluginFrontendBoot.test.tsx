@@ -11,9 +11,9 @@ import {
   usePluginFrontendsSettled,
 } from "@/lib/plugin-frontend-boot-state";
 import {
-  markRouteContentPainted,
-  resetRouteContentPaintForTest,
-} from "@/lib/route-content-paint";
+  markScreenPainted,
+  resetScreenPaintForTest,
+} from "@/lib/screen-paint";
 
 const mocks = vi.hoisted(() => ({
   bootPluginFrontends: vi.fn(async () => {}),
@@ -26,7 +26,10 @@ vi.mock("@/lib/split-prefetch", () => ({
   holdSplitPreloads: () => mocks.releaseSplitPreloads,
 }));
 
-vi.mock("@/lib/plugin-frontend-lazy", () => ({
+vi.mock("@/lib/plugin-frontend-lazy", async (importOriginal) => ({
+  createRetryingModuleLoader: (
+    await importOriginal<typeof import("@/lib/plugin-frontend-lazy")>()
+  ).createRetryingModuleLoader,
   bootPluginFrontends: mocks.bootPluginFrontends,
   preloadPluginFrontend: mocks.preloadPluginFrontend,
   whenPriorityPluginFrontendsLoaded: () => new Promise(() => {}),
@@ -50,7 +53,7 @@ beforeEach(() => {
   );
   vi.useFakeTimers();
   mocks.systemConfigData = { generalSettings: {} };
-  resetRouteContentPaintForTest();
+  resetScreenPaintForTest();
   window.history.replaceState(null, "", "/");
 });
 
@@ -71,7 +74,7 @@ afterEach(() => {
 });
 
 describe("usePluginFrontendBoot", () => {
-  it("downloads priority bundles and starts the runtime before route paint", async () => {
+  it("downloads priority bundles and starts the runtime before the screen paints", async () => {
     const plugins = ["bb--composer", "thread-list", "navigation", "other"].map(
       (id) =>
         makeInstalledPlugin({
@@ -125,7 +128,7 @@ describe("usePluginFrontendBoot", () => {
     const fetchList = vi.spyOn(appQueryClient, "fetchQuery");
     const { rerender } = renderHook(() => usePluginFrontendBoot());
     await act(async () => {
-      markRouteContentPainted();
+      markScreenPainted();
       await vi.advanceTimersByTimeAsync(5_000);
     });
     expect(mocks.bootPluginFrontends).not.toHaveBeenCalled();

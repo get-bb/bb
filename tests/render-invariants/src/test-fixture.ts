@@ -24,6 +24,9 @@ export function useRenderFixture() {
     get fixture() {
       return fixture;
     },
+    get browser() {
+      return browser;
+    },
     async inThread(
       threadId: string,
       run: (session: RenderSession) => Promise<void>,

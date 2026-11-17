@@ -420,3 +420,21 @@ it.runIf(process.platform === "win32")(
     expect(stdout.trim()).toBe(argument);
   },
 );
+
+it("reports a missing bare command without launching an intermediate shell", async () => {
+  const child = spawnHostProcess("bb-test-command-that-does-not-exist", [], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const closed = new Promise<void>((resolve) =>
+    child.once("close", () => resolve()),
+  );
+  const failed = new Promise<Error>((resolve) => child.once("error", resolve));
+  child.stdin.on("error", () => {});
+  child.stdin.write("initialize\n");
+  try {
+    await expect(failed).resolves.toMatchObject({ code: "ENOENT" });
+    expect(child.pid).toBeUndefined();
+  } finally {
+    await closed;
+  }
+});

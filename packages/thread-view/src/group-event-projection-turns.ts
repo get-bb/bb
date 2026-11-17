@@ -41,6 +41,7 @@ interface ProjectionTurnBoundsUpdate {
 interface GroupEventProjectionTurnsArgs {
   delegatedTurnIds: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
+  externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>;
   messages: EventProjectionMessage[];
 }
 
@@ -201,7 +202,17 @@ function findRootTurnRunningAtSequence(
 function applyExternalUserBoundaries(
   turnsById: Map<string, ProjectionTurnDraft>,
   messages: EventProjectionMessage[],
+  known: ReadonlyMap<string, readonly number[]> | undefined,
 ): void {
+  if (known !== undefined) {
+    for (const [turnId, draft] of turnsById) {
+      const boundarySeqs = known.get(turnId) ?? [];
+      if (boundarySeqs.length > 0) {
+        draft.turn.externalUserBoundarySeqs = [...boundarySeqs];
+      }
+    }
+    return;
+  }
   const userMessages = messages.flatMap((message) =>
     message.kind === "user" && message.initiator === "user"
       ? [
@@ -374,7 +385,11 @@ export function groupEventProjectionTurns(
     addProjectionTurnMessage(turnDraft, message);
   }
 
-  applyExternalUserBoundaries(turnsById, args.messages);
+  applyExternalUserBoundaries(
+    turnsById,
+    args.messages,
+    args.externalUserBoundarySeqsByTurnId,
+  );
 
   const orderedEntryDrafts = [...entryDrafts].sort((left, right) => {
     if (left.sourceSeqStart !== right.sourceSeqStart) {

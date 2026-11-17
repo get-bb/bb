@@ -12,7 +12,7 @@ function makeHarness() {
   let nextTimer = 1;
   const boot = vi.fn();
   const cancel = scheduleDeferredPluginFrontendBoot(boot, {
-    whenRoutePainted: () => painted,
+    whenScreenPainted: () => painted,
     requestIdle: (callback) => {
       idleCallbacks.push(callback);
       return cancelIdle;
@@ -44,7 +44,7 @@ function makeHarness() {
 }
 
 describe("scheduleDeferredPluginFrontendBoot", () => {
-  it("waits for route paint and then idle before booting, and drops the timeout", async () => {
+  it("waits for the screen paint and then idle before booting, and drops the timeout", async () => {
     const h = makeHarness();
     expect(h.boot).not.toHaveBeenCalled();
     expect(h.idleCallbacks).toHaveLength(0);
