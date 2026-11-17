@@ -591,12 +591,14 @@ export function TimelineWindowedItems({
       };
       if ((urgent && uncovered) || pending.frame !== null) {
         pending.state = next;
-        pending.frame ??= requestAnimationFrame(() => {
-          pending.frame = null;
-          const state = pending.state;
-          pending.state = null;
-          if (state !== null) flushSync(() => setWindowState(state));
-        });
+        if (pending.frame === null) {
+          pending.frame = requestAnimationFrame(() => {
+            pending.frame = null;
+            const state = pending.state;
+            pending.state = null;
+            if (state !== null) flushSync(() => setWindowState(state));
+          });
+        }
         return;
       }
       setWindowState(next);

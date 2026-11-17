@@ -366,27 +366,34 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     [routeContent, routeThread],
   );
 
-  const [reconciledContent, setReconciledContent] =
-    useState<PaneContent | null>(null);
-  const layout = useMemo<SplitLayout | null>(() => {
-    if (currentContent === null) {
-      return storedLayout;
+  const [reconciliation, setReconciliation] = useState<{
+    content: PaneContent;
+    from: SplitLayout | null;
+    layout: SplitLayout;
+  } | null>(null);
+  let layout = storedLayout;
+  if (currentContent !== null) {
+    if (reconciliation?.content !== currentContent) {
+      const next = {
+        content: currentContent,
+        from: storedLayout,
+        layout: reconcileLayoutForContent(storedLayout, currentContent),
+      };
+      setReconciliation(next);
+      layout = next.layout;
+    } else if (storedLayout === reconciliation.from) {
+      layout = reconciliation.layout;
     }
-    if (storedLayout !== null && currentContent === reconciledContent) {
-      return storedLayout;
-    }
-    return reconcileLayoutForContent(storedLayout, currentContent);
-  }, [currentContent, reconciledContent, storedLayout]);
+  }
 
   useEffect(() => {
-    if (currentContent === null) {
+    if (reconciliation === null) {
       return;
     }
     setLayout((previous) =>
-      reconcileLayoutForContent(previous, currentContent),
+      reconcileLayoutForContent(previous, reconciliation.content),
     );
-    setReconciledContent(currentContent);
-  }, [currentContent, setLayout]);
+  }, [reconciliation, setLayout]);
   const panes = layout === null ? [] : listPanes(layout.root);
   const isSplitActive = splitWorkspaceActive && panes.length > 1;
   const maximizedPane =

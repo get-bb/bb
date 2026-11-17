@@ -466,6 +466,18 @@ async function runWhileFollowUpShortcutSending(
   }
 }
 
+async function runWhileCreatingHandoffThread(
+  creatingRef: RefObject<boolean>,
+  task: () => Promise<void>,
+): Promise<void> {
+  creatingRef.current = true;
+  try {
+    await task();
+  } finally {
+    creatingRef.current = false;
+  }
+}
+
 export function ThreadDetailPromptArea({
   canRestoreEnvironment,
   composerId,
@@ -1298,26 +1310,28 @@ export function ThreadDetailPromptArea({
         ...baseRequest,
         ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
       };
-      isCreatingHandoffThreadRef.current = true;
-      const clearedSubmittedDraft =
-        promptDraft.clearIfCurrentMatches(submittedDraft);
-      setBottomAttachmentError(null);
-      try {
-        const created = await createThread.mutateAsync(request);
-        navigate(
-          getThreadRoutePath({
-            projectId: created.projectId,
-            threadId: created.id,
-          }),
-        );
-      } catch (error) {
-        if (clearedSubmittedDraft) {
-          promptDraft.restoreIfEmpty(submittedDraft);
-        }
-        throw error;
-      } finally {
-        isCreatingHandoffThreadRef.current = false;
-      }
+      await runWhileCreatingHandoffThread(
+        isCreatingHandoffThreadRef,
+        async () => {
+          const clearedSubmittedDraft =
+            promptDraft.clearIfCurrentMatches(submittedDraft);
+          setBottomAttachmentError(null);
+          try {
+            const created = await createThread.mutateAsync(request);
+            navigate(
+              getThreadRoutePath({
+                projectId: created.projectId,
+                threadId: created.id,
+              }),
+            );
+          } catch (error) {
+            if (clearedSubmittedDraft) {
+              promptDraft.restoreIfEmpty(submittedDraft);
+            }
+            throw error;
+          }
+        },
+      );
       return true;
     },
     [
