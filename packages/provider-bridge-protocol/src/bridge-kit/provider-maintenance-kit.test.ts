@@ -32,7 +32,7 @@ describe("provider maintenance kit", () => {
           : `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${script.replaceAll("'", "'\\''")}' "$@"\n`,
         { mode: 0o755 },
       );
-      expect(await readCliVersion(executable)).toBe("1.2.3");
+      expect(await readCliVersion(executable, process.env)).toBe("1.2.3");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -131,7 +131,7 @@ describe("provider maintenance kit", () => {
         `#!/bin/sh\necho "codex ${version}"${redirect}\n`,
       );
       await chmod(executable, 0o755);
-      expect(await readCliVersion(executable)).toBeNull();
+      expect(await readCliVersion(executable, process.env)).toBeNull();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

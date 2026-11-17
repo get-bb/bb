@@ -309,7 +309,11 @@ interface ProviderMaintenanceArgs {
   cwd?: string;
 }
 
-interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
+interface ProviderProbeArgs extends ProviderMaintenanceArgs {
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+}
+
+interface ProviderInstallationStatusArgs extends ProviderProbeArgs {
   requirement?: "thread_rewind";
   checkUpdates?: boolean;
 }
@@ -348,7 +352,7 @@ export interface AgentRuntime {
 
   listCommands(args: ListCommandsArgs): Promise<CommandListResult>;
 
-  providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
+  providerHealth(args: ProviderProbeArgs): Promise<ProviderHealthResult>;
 
   providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
 

@@ -5,6 +5,7 @@ export const providerMaintenanceParamsSchema = z
     providerId: z.string().min(1),
     cwd: z.string().min(1).optional(),
     providerOptions: z.record(z.string(), z.unknown()).optional(),
+    envVars: z.record(z.string(), z.string()).optional(),
   })
   .passthrough();
 

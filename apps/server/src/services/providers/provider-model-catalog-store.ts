@@ -30,7 +30,7 @@ import {
   expectedFallbackErrorLogFields,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-import { resolvePluginProviderEnv } from "../plugins/plugin-agent-contributions.js";
+import { resolveHostProviderEnv } from "../plugins/plugin-agent-contributions.js";
 import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
@@ -196,10 +196,10 @@ async function resolveCatalogLaunch(args: {
   bridgeLaunch: HostDaemonBridgeLaunch;
 }): Promise<CatalogLaunch> {
   const { bridgeLaunch } = args;
-  const contributedEnv = await resolvePluginProviderEnv({
-    providerId: args.providerId,
-    context: { threadId: null, projectId: null, hostId: args.hostId },
-  });
+  const contributedEnv = await resolveHostProviderEnv(
+    args.hostId,
+    args.providerId,
+  );
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify([

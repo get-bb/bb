@@ -9,7 +9,6 @@ import {
   type PromptInput,
   type ThreadDelta,
   type ProviderRateLimitState,
-  sanitizeInheritedChildProcessEnv,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -40,7 +39,7 @@ import {
   createBridgeLineHandler,
   decodeBridgeJsonRpcResponse,
   runBridgeRequest,
-  withoutBridgeRuntimeEnv,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
   type BridgeJsonRpcResponse,
   type DecodedInteractiveRequest,
   type PreparedProviderCommandDispatch,
@@ -291,12 +290,6 @@ const CODEX_APP_SERVER_COMMAND_ENV = "BB_CODEX_BRIDGE_APP_SERVER_COMMAND";
 const CODEX_APP_SERVER_ARGS_ENV = "BB_CODEX_BRIDGE_APP_SERVER_ARGS";
 const CODEX_POOL_BASE_URL_ENV = "CODEX_OPENAI_BASE_URL";
 const CODEX_POOL_AUTH_TOKEN_ENV = "CODEX_POOL_AUTH_TOKEN";
-const CODEX_HOME_ENV = "CODEX_HOME";
-const APP_SERVER_LAUNCH_ENV_NAMES = [
-  CODEX_POOL_BASE_URL_ENV,
-  CODEX_POOL_AUTH_TOKEN_ENV,
-  CODEX_HOME_ENV,
-] as const;
 
 const CODEX_INITIALIZE_PARAMS = {
   clientInfo: { name: "bb", version: "1.0.0", title: null },
@@ -361,7 +354,7 @@ async function delay(ms: number): Promise<void> {
 const MISSING_CODEX_CLI_GUIDANCE =
   "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.";
 
-export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
+export function resolveAppServerLaunch(env: NodeJS.ProcessEnv): {
   command: string;
   args: string[];
 } {
@@ -397,27 +390,6 @@ export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
       'model_providers.bb-account-pool.env_http_headers.x-bb-account-pool-token="CODEX_POOL_AUTH_TOKEN"',
     ],
   };
-}
-
-function appServerLaunchEnv(
-  envVars: Readonly<Record<string, string>> | undefined,
-): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const name of APP_SERVER_LAUNCH_ENV_NAMES) {
-    const value = envVars?.[name];
-    if (value !== undefined) env[name] = value;
-  }
-  return env;
-}
-
-function buildAppServerEnv(
-  envVars: Readonly<Record<string, string>> | undefined,
-): NodeJS.ProcessEnv {
-  return withoutBridgeRuntimeEnv(
-    sanitizeInheritedChildProcessEnv({
-      env: appServerLaunchEnv(envVars),
-    }),
-  );
 }
 
 function isCodexSpawnFailure(error: unknown): boolean {
@@ -999,8 +971,8 @@ function spawnChildConnection(callbacks: {
   ) => void;
   onExit: (info: CodexAppServerExitInfo) => void;
 }): CodexAppServerConnection {
-  const env = buildAppServerEnv(callbacks.envVars);
-  const launch = resolveAppServerLaunch(appServerLaunchEnv(callbacks.envVars));
+  const env = buildProviderCliEnv(callbacks.envVars);
+  const launch = resolveAppServerLaunch(env);
   const { envVars: _envVars, ...connectionCallbacks } = callbacks;
   return createCodexAppServerConnection({
     command: launch.command,
@@ -1243,7 +1215,7 @@ async function constructThreadSession(
         : { presentation: tool.presentation }),
     })),
   );
-  const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
+  const launchEnv = buildProviderCliEnv(decoded.sessionOptions.envVars);
   const envHash = environmentHash(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
@@ -2645,15 +2617,24 @@ async function handleRequest(
       await handleModelList(request.id, request.params);
       break;
     case "provider/health":
-      sendResult(request.id, await getCodexProviderHealth());
+      sendResult(
+        request.id,
+        await getCodexProviderHealth(
+          buildProviderCliEnv(request.params.envVars),
+        ),
+      );
       break;
     case "provider/usage":
-      sendResult(request.id, await getCodexProviderUsage());
+      sendResult(
+        request.id,
+        await getCodexProviderUsage(buildProviderCliEnv(request.params.envVars)),
+      );
       break;
     case "provider/installation/status":
       sendResult(
         request.id,
         await getCodexProviderInstallationStatus(
+          buildProviderCliEnv(request.params.envVars),
           request.params.requirement,
           request.params.checkUpdates,
         ),
@@ -2662,7 +2643,10 @@ async function handleRequest(
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getCodexProviderInstallationRun(request.params.action),
+        await getCodexProviderInstallationRun(
+          buildProviderCliEnv(request.params.envVars),
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":

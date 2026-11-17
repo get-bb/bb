@@ -129,16 +129,19 @@ function buildAcpSessionInstructions(
   return instructions.length > 0 ? instructions.join("\n\n") : undefined;
 }
 
-function launchEnvVars(launchSpec: AcpLaunchSpec): {
+function launchEnvVars(
+  launchSpec: AcpLaunchSpec,
+  envVars: Readonly<Record<string, string>>,
+): {
   envVars?: Record<string, string>;
 } {
-  return Object.keys(launchSpec.env).length > 0
-    ? { envVars: launchSpec.env }
-    : {};
+  const merged = { ...launchSpec.env, ...envVars };
+  return Object.keys(merged).length > 0 ? { envVars: merged } : {};
 }
 
 function buildAcpModelListCommand(
   launchSpec: AcpLaunchSpec,
+  envVars: Readonly<Record<string, string>>,
 ): AcpAgentCommandParam | undefined {
   if (!launchSpec.modelCli || launchSpec.modelCli.listArgs.length === 0) {
     return undefined;
@@ -147,30 +150,35 @@ function buildAcpModelListCommand(
     command: launchSpec.command,
     args: [...launchSpec.modelCli.listArgs],
     ...(launchSpec.cwd !== undefined ? { cwd: launchSpec.cwd } : {}),
-    ...launchEnvVars(launchSpec),
+    ...launchEnvVars(launchSpec, envVars),
   };
 }
 
-function buildAcpAgentCommand(launchSpec: AcpLaunchSpec): AcpAgentCommandParam {
+function buildAcpAgentCommand(
+  launchSpec: AcpLaunchSpec,
+  envVars: Readonly<Record<string, string>>,
+): AcpAgentCommandParam {
   return {
     command: launchSpec.command,
     args: [...launchSpec.args],
     ...(launchSpec.cwd !== undefined ? { cwd: launchSpec.cwd } : {}),
-    ...launchEnvVars(launchSpec),
+    ...launchEnvVars(launchSpec, envVars),
   };
 }
 
 function buildAcpModelDiscoveryAgentCommand(
   launchSpec: AcpLaunchSpec,
+  envVars: Readonly<Record<string, string>>,
 ): AcpAgentCommandParam | undefined {
-  return buildAcpModelListCommand(launchSpec) !== undefined
+  return buildAcpModelListCommand(launchSpec, envVars) !== undefined
     ? undefined
-    : buildAcpAgentCommand(launchSpec);
+    : buildAcpAgentCommand(launchSpec, envVars);
 }
 
 interface AcpModelListOptions {
   parameterizedModelPicker: boolean;
   primaryModels?: readonly string[];
+  envVars: Readonly<Record<string, string>>;
 }
 
 export function buildAcpModelListParams(
@@ -186,12 +194,15 @@ export function buildAcpModelListParams(
       parameterizedModelPicker: options.parameterizedModelPicker,
     };
   }
-  const listCommand = buildAcpModelListCommand(launchSpec);
-  const agent = buildAcpModelDiscoveryAgentCommand(launchSpec);
+  const listCommand = buildAcpModelListCommand(launchSpec, options.envVars);
+  const agent = buildAcpModelDiscoveryAgentCommand(
+    launchSpec,
+    options.envVars,
+  );
   return {
     ...(listCommand !== undefined ? { listCommand } : {}),
     ...(agent !== undefined ? { agent } : {}),
-    optionsAgent: buildAcpAgentCommand(launchSpec),
+    optionsAgent: buildAcpAgentCommand(launchSpec, options.envVars),
     primaryModels,
     parameterizedModelPicker: options.parameterizedModelPicker,
     ...(launchSpec.reasoningCli !== undefined
@@ -207,7 +218,7 @@ export function buildAcpModelSelectionParams(
   launchSpec: AcpLaunchSpec,
   options: Pick<
     AcpSessionExecutionOptions,
-    "model" | "reasoningLevel" | "serviceTier"
+    "model" | "reasoningLevel" | "serviceTier" | "envVars"
   >,
   parameterizedModelPicker: boolean,
   dialectId: string | undefined,
@@ -231,13 +242,16 @@ function buildAcpModelSelection(
   launchSpec: AcpLaunchSpec,
   options: Pick<
     AcpSessionExecutionOptions,
-    "model" | "reasoningLevel" | "serviceTier"
+    "model" | "reasoningLevel" | "serviceTier" | "envVars"
   >,
   parameterizedModelPicker: boolean,
   dialectId: string | undefined,
 ): AcpModelSelection | undefined {
   const model = options.model;
-  const listCommand = buildAcpModelListCommand(launchSpec);
+  const listCommand = buildAcpModelListCommand(
+    launchSpec,
+    options.envVars ?? {},
+  );
   if (!model || model === ACP_DEFAULT_MODEL_ID) {
     return undefined;
   }

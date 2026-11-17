@@ -1456,6 +1456,23 @@ hook; confirm the `{ threadId | null }` scope is the right key once bridges
 multiplex several threads over one child; and settle the recording entry
 shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
+## Provider CLI environment (`experimental_buildProviderCliEnv`) (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_buildProviderCliEnv(envVars)` returns the environment for a
+provider CLI the bridge starts: the bridge process environment without
+`ELECTRON_RUN_AS_NODE` and `BB_PROVIDER_BRIDGE_RECORD_DIR`, plus the request's
+`envVars` filtered to valid shell names. Request `envVars` win. Core callers:
+the Claude Code, Codex, Pi and ACP bridges build their session, model-list,
+health and installation-probe envs with it, and read their launch overrides
+(`BB_CLAUDE_CODE_EXECUTABLE`, `BB_CODEX_BRIDGE_APP_SERVER_COMMAND`,
+`BB_PI_BRIDGE_COMMAND`) from its result.
+
+**Audit before stabilizing.** Decide whether inherited `BB_*` names other than
+the declared passthrough should be dropped here rather than relying on the
+runtime's bridge allowlist, and whether the result should carry the
+HostToolchain PATH merge so callers that do not spawn through
+`experimental_spawnPortableProcess` get the same PATH.
+
 ## Portable provider spawn (`experimental_spawnPortableProcess`, `experimental_killPortableProcess`) (`@get-bb/plugin-sdk/provider-bridge`)
 
 `experimental_spawnPortableProcess({ command, args, cwd?, env?, stdio?, detached? })`
@@ -1501,7 +1518,9 @@ a user-installed CLI.
   `readCliVersion` runs `--version` with stdin closed and returns the first
   valid SemVer token or null. `commandOutput` returns trimmed stdout+stderr
   or null. The others are `versionFrom`, `npmLatestVersion` and
-  `probeNpmGlobalPackage`.
+  `probeNpmGlobalPackage`. Every probe takes the env to search and run with
+  as an argument; pass `experimental_buildProviderCliEnv(params.envVars)` so a
+  probe sees the same CLI a session starts.
 - Decisions: `compareVersions` uses SemVer precedence and throws `TypeError`
   on invalid input. `npmGlobalInstallSource` returns `npmGlobal`, `external`
   or `notInstalled`. `installationVerification` passes an install on

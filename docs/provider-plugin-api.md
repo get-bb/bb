@@ -151,6 +151,9 @@ resolved with a `null` thread and project and expanded like a session's
 `options.envVars`. A bridge whose catalog depends on credentials or routing,
 such as Codex behind the Account Pooler, launches its listing process with
 these values so the picker matches what new threads can use.
+`provider/health` and `provider/installation/status` carry the same
+host-scoped `envVars`, so a contributed executable such as
+`BB_CLAUDE_CODE_EXECUTABLE` is the one bb reports as installed.
 
 Still experimental on the declaration (see api_to_audit.md):
 

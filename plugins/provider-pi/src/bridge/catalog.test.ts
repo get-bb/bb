@@ -40,7 +40,7 @@ describe("pi catalog child generations", () => {
     process.env.FAKE_PI_SCOPE_BY_SPAWN = "1";
     process.env.FAKE_PI_EXIT_AFTER_FIRST_AVAILABLE = "1";
 
-    const catalog = await getPiCatalog(workspace, extensionPath);
+    const catalog = await getPiCatalog(workspace, extensionPath, {});
     const first = await catalog.listModels();
     expect(first.models.map((model) => model.id)).toEqual([
       "fake-provider/fake-model",
@@ -133,7 +133,7 @@ describe("pi catalog freshness", () => {
     rmSync(toolsPath);
     process.env.PI_BB_TOOLS_FILE = toolsPath;
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath, {});
 
     expect(modelIds(await catalog.listModels())).toEqual([
       "fake-provider/fake-model",
@@ -143,7 +143,7 @@ describe("pi catalog freshness", () => {
   it("serves models added after the child started without respawning it", async () => {
     const paths = setUpFakeCatalog({});
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath, {});
     expect(modelIds(await catalog.listModels())).toEqual([
       "fake-provider/fake-model",
     ]);
@@ -163,7 +163,7 @@ describe("pi catalog freshness", () => {
   it("shares one model refresh between concurrent reads", async () => {
     const paths = setUpFakeCatalog({});
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath, {});
     await catalog.listModels();
     writeFileSync(paths.modelsPath, JSON.stringify([FAKE_MODEL, ADDED_MODEL]));
 
@@ -181,7 +181,7 @@ describe("pi catalog freshness", () => {
   it("falls back to a new child when Pi exposes no model registry", async () => {
     const paths = setUpFakeCatalog({ FAKE_PI_NO_MODEL_REGISTRY: "1" });
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath, {});
     expect(modelIds(await catalog.listModels())).toEqual([
       "fake-provider/fake-model",
     ]);
@@ -204,7 +204,7 @@ describe("pi catalog freshness", () => {
     async (_label, failure) => {
       const paths = setUpFakeCatalog({ FAKE_PI_REFRESH_FAILURE: failure });
 
-      const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+      const catalog = await getPiCatalog(paths.workspace, paths.extensionPath, {});
       await catalog.listModels();
       writeFileSync(
         paths.modelsPath,

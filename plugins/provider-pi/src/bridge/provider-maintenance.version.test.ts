@@ -61,11 +61,11 @@ describe("Pi version probe", () => {
     configureNodeProbe(
       'if (process.argv[1] !== "--version") process.exit(2); process.stdout.write("0.85.1\\n");',
     );
-    expect(await probePiVersion()).toEqual({
+    expect(await probePiVersion(process.env)).toEqual({
       version: "0.85.1",
       failure: null,
     });
-    expect(await getPiInstallGate()).toEqual({
+    expect(await getPiInstallGate(process.env)).toEqual({
       ok: true,
       installedVersion: "0.85.1",
     });
@@ -73,7 +73,7 @@ describe("Pi version probe", () => {
 
   it("reports a non-zero exit even when stdout contains a version", async () => {
     configureNodeProbe('process.stdout.write("0.85.1\\n"); process.exit(2);');
-    expect(await probePiVersion()).toMatchObject({
+    expect(await probePiVersion(process.env)).toMatchObject({
       version: null,
       failure: expect.stringContaining("exited with 2"),
     });
@@ -81,7 +81,7 @@ describe("Pi version probe", () => {
 
   it("does not interpret stderr as a successful version response", async () => {
     configureNodeProbe('process.stderr.write("0.85.1\\n");');
-    expect(await probePiVersion()).toMatchObject({
+    expect(await probePiVersion(process.env)).toMatchObject({
       version: null,
       failure: expect.stringContaining("printed no version"),
     });
@@ -91,7 +91,7 @@ describe("Pi version probe", () => {
     configureNodeProbe(
       'process.stdout.write("0.85.1\\n"); setInterval(() => {}, 1000);',
     );
-    expect(await probePiVersion()).toMatchObject({
+    expect(await probePiVersion(process.env)).toMatchObject({
       version: null,
       failure: expect.stringContaining("timed out after 15 s"),
     });
@@ -102,7 +102,7 @@ describe("Pi version probe", () => {
     temporaryDirectories.push(root);
     vi.stubEnv(PI_BRIDGE_COMMAND_ENV, path.join(root, "missing-pi"));
     vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
-    expect(await probePiVersion()).toMatchObject({
+    expect(await probePiVersion(process.env)).toMatchObject({
       version: null,
       failure: expect.stringContaining("exited with ENOENT"),
     });
@@ -140,12 +140,12 @@ describe("Pi version probe", () => {
       vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
       signal.throwIfAborted();
       childProcessChannel.subscribe(trackShimChild);
-      expect(await getPiInstallGate()).toEqual({
+      expect(await getPiInstallGate(process.env)).toEqual({
         ok: true,
         installedVersion: "0.85.1",
       });
       signal.throwIfAborted();
-      expect(await getPiProviderInstallationStatus(false)).toMatchObject({
+      expect(await getPiProviderInstallationStatus(process.env, false)).toMatchObject({
         executablePath: path.join(root, "pi.cmd"),
         currentVersion: "0.85.1",
       });

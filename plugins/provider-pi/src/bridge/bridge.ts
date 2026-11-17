@@ -13,6 +13,7 @@ import {
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   buildShellEnvOverrides,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
   createBridgeLineHandler,
@@ -543,13 +544,19 @@ async function handleRequest(
     case "provider/installation/status":
       sendResult(
         request.id,
-        await getPiProviderInstallationStatus(request.params.checkUpdates),
+        await getPiProviderInstallationStatus(
+          buildProviderCliEnv(request.params.envVars),
+          request.params.checkUpdates,
+        ),
       );
       break;
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getPiProviderInstallationRun(request.params.action),
+        await getPiProviderInstallationRun(
+          buildProviderCliEnv(request.params.envVars),
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":
@@ -612,9 +619,9 @@ function toPiSessionParams(
 
 async function handleModelList(
   id: string | number,
-  params: { cwd?: string },
+  params: { cwd?: string; envVars?: Record<string, string> },
 ): Promise<void> {
-  const gate = await getPiInstallGate();
+  const gate = await getPiInstallGate(buildProviderCliEnv(params.envVars));
   if (!gate.ok) {
     sendError(
       id,
@@ -631,6 +638,7 @@ async function handleModelList(
     const catalog = await getPiCatalog(
       params.cwd ?? process.cwd(),
       requireExtensionPath(),
+      params.envVars ?? {},
     );
     contextWindows.learn(await catalog.rawModels());
     sendResult(id, await catalog.listModels());
@@ -645,9 +653,9 @@ async function handleModelList(
 
 async function handleProviderHealth(
   id: string | number,
-  params: { cwd?: string },
+  params: { cwd?: string; envVars?: Record<string, string> },
 ): Promise<void> {
-  const gate = await getPiInstallGate();
+  const gate = await getPiInstallGate(buildProviderCliEnv(params.envVars));
   if (!gate.ok) {
     sendResult(id, gate.result);
     return;
@@ -657,6 +665,7 @@ async function handleProviderHealth(
     const catalog = await getPiCatalog(
       params.cwd ?? process.cwd(),
       requireExtensionPath(),
+      params.envVars ?? {},
     );
     await catalog.probe();
     const models = await catalog.rawModels();
@@ -684,7 +693,7 @@ async function resolvePiModel(
   modelStr: string,
   cwd: string,
 ): Promise<{ provider: string; id: string }> {
-  const catalog = await getPiCatalog(cwd, requireExtensionPath());
+  const catalog = await getPiCatalog(cwd, requireExtensionPath(), {});
   const models = await catalog.rawModels();
   const canonical = models.find(
     (model) => `${model.provider}/${model.id}` === modelStr,

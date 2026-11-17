@@ -120,6 +120,7 @@ async function requireSupportedProviderCliForThreadStart({
       providerId: command.providerId,
       bridgeLaunch: command.bridgeLaunch,
       requirement,
+      contributedEnv: command.contributedEnv,
     }),
     async () => {
       const bridgeLaunch = await resolveRuntimeBridgeLaunch(
@@ -131,6 +132,7 @@ async function requireSupportedProviderCliForThreadStart({
         bridgeLaunch,
         checkUpdates: false,
         ...(requirement !== undefined ? { requirement } : {}),
+        contributedEnv: command.contributedEnv,
       });
     },
   );

@@ -40,7 +40,7 @@ import {
   experimental_defineProviderBridge,
   mimeTypeFromExtension,
   runBridgeRequest,
-  withoutBridgeRuntimeEnv,
+  buildProviderCliEnv,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   BridgeJsonRpcResponse,
@@ -863,10 +863,7 @@ async function loadAgentModelCatalog(
 ): Promise<AgentModelCatalog | null> {
   const stdout = await execPortableFile(listCommand.command, listCommand.args, {
     cwd: listCommand.cwd ?? process.cwd(),
-    env: {
-      ...withoutBridgeRuntimeEnv(process.env),
-      ...(listCommand.envVars ?? {}),
-    },
+    env: buildProviderCliEnv(listCommand.envVars),
     maxBuffer: 1024 * 1024,
     timeout: MODEL_LIST_TIMEOUT_MS,
   }).then(
@@ -1049,10 +1046,7 @@ async function loadDeclaredSessionOptions(
   if (cached !== null) {
     return cached;
   }
-  const childEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
-    ...(agent.envVars ?? {}),
-  };
+  const childEnv = buildProviderCliEnv(agent.envVars);
   const connection = createBridgeAgentConnection({
     command: agent.command,
     args: agent.args,
@@ -1157,10 +1151,7 @@ async function loadSessionDiscoveredModels(
     return cachedSessionDiscoveredModels.models;
   }
 
-  const childEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
-    ...(agent.envVars ?? {}),
-  };
+  const childEnv = buildProviderCliEnv(agent.envVars);
   const connection = createBridgeAgentConnection({
     command: agent.command,
     args: agent.args,
@@ -2370,11 +2361,10 @@ async function startAgentSession(
   }
   const agentLabel = [params.agent.command, ...params.agent.args].join(" ");
   let session: AcpThreadSession;
-  const childEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
+  const childEnv = buildProviderCliEnv({
     ...params.envVars,
     ...dialectLaunchEnv(dialect.id, params.permissionMode),
-  };
+  });
   const connection = createBridgeAgentConnection({
     command: params.agent.command,
     args: launch.args,
@@ -3868,6 +3858,7 @@ function decodeDialectId(
 
 function maintenanceTarget(
   providerOptions: Record<string, unknown> | undefined,
+  envVars: Readonly<Record<string, string>> | undefined,
 ): {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
@@ -3883,7 +3874,7 @@ function maintenanceTarget(
     maintenance: dialect.maintenance,
     command: launchSpec?.command ?? null,
     dialectId: dialect.id,
-    env: { ...process.env, ...launchSpec?.env },
+    env: buildProviderCliEnv({ ...launchSpec?.env, ...envVars }),
   };
 }
 
@@ -3920,7 +3911,7 @@ async function handleRequest(
         inModelListWorkspace(
           buildAcpModelListParams(
             decodeLaunchSpec(request.params.providerOptions),
-            modelPicker,
+            { ...modelPicker, envVars: request.params.envVars ?? {} },
           ),
           await resolveModelListWorkspace(request.params.cwd),
         ),
@@ -3934,7 +3925,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderHealth(
-          maintenanceTarget(request.params.providerOptions),
+          maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
         ),
       );
       return;
@@ -3943,7 +3937,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderUsage(
-          maintenanceTarget(request.params.providerOptions),
+          maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
         ),
       );
       return;
@@ -3952,7 +3949,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderInstallationStatus(
-          maintenanceTarget(request.params.providerOptions),
+          maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
         ),
       );
       return;
@@ -3961,7 +3961,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderInstallationRun({
-          ...maintenanceTarget(request.params.providerOptions),
+          ...maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
           action: request.params.action,
         }),
       );

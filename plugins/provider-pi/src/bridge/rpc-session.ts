@@ -1,13 +1,15 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runSettlementError } from "./run-settlement.js";
-import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  experimental_buildBridgeToolCallContent as buildBridgeToolCallContent,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import {
   NO_REQUEST_TIMEOUT,
   PiRpcChild,
   PiRpcChildExitedError,
-  buildPiChildEnv,
   type PiRpcChildExitInfo,
 } from "./rpc-child.js";
 
@@ -320,7 +322,7 @@ export class PiRpcSession {
     const onExtensionUiRequest = this.options.onExtensionUiRequest;
     const child = new PiRpcChild({
       cwd: this.options.cwd,
-      env: buildPiChildEnv({
+      env: buildProviderCliEnv({
         ...(this.options.shellEnvOverrides ?? {}),
         PI_BB_TOOLS_FILE: toolsFilePath,
       }),

@@ -97,7 +97,13 @@ export function forkHostProcess(
       ? hostToolchain.node({ env, cwd: options.cwd })
       : options.execPath;
   return observe(
-    nodeFork(modulePath, args, { ...options, env, execArgv, execPath }),
+    nodeFork(modulePath, args, {
+      ...options,
+      env,
+      execArgv,
+      execPath,
+      windowsHide: options.windowsHide ?? true,
+    }),
   );
 }
 

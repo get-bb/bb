@@ -36,7 +36,7 @@ describe("Claude Code installation status", () => {
   it("checks the local installation without npm or doctor probes", async () => {
     state.compatibilityOnly = true;
     try {
-      const status = await getClaudeProviderInstallationStatus(false);
+      const status = await getClaudeProviderInstallationStatus(process.env, false);
       expect(status).toMatchObject({
         installed: true,
         currentVersion: "2.1.274",
@@ -66,7 +66,7 @@ describe("Claude Code installation status", () => {
       state.tags = output;
       state.channel = channel;
 
-      const status = await getClaudeProviderInstallationStatus();
+      const status = await getClaudeProviderInstallationStatus(process.env, true);
 
       expect(status.latestVersion).toBe(latestVersion);
       expect(status.needsUpdate).toBe(needsUpdate);
@@ -85,7 +85,7 @@ describe("Claude Code installation status", () => {
     state.tags = output;
     state.channel = "latest";
 
-    const status = await getClaudeProviderInstallationStatus();
+    const status = await getClaudeProviderInstallationStatus(process.env, true);
 
     expect(status.latestVersion).toBeNull();
     expect(status.needsUpdate).toBe(false);

@@ -725,6 +725,10 @@
         "$TURBO_ROOT$/plugins/provider-codex/package.json",
         "$TURBO_ROOT$/plugins/provider-claude-code/src/**",
         "$TURBO_ROOT$/plugins/provider-claude-code/package.json",
+        "$TURBO_ROOT$/plugins/provider-pi/src/**",
+        "$TURBO_ROOT$/plugins/provider-pi/package.json",
+        "$TURBO_ROOT$/packages/provider-bridge-acp/src/**",
+        "$TURBO_ROOT$/packages/provider-bridge-acp/package.json",
         "$TURBO_ROOT$/packages/plugin-sdk/src/**"
       ]
     },

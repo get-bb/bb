@@ -73,8 +73,8 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
       chmod(probeState.executablePath, 0o755),
     ]);
 
-    const status = await getPiProviderInstallationStatus();
-    const run = await getPiProviderInstallationRun("update");
+    const status = await getPiProviderInstallationStatus(process.env, true);
+    const run = await getPiProviderInstallationRun(process.env, "update");
 
     expect(status.installAction?.command).toBe(
       "bun add -g @earendil-works/pi-coding-agent@latest",
@@ -88,7 +88,7 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
     });
 
     vi.clearAllMocks();
-    const compatibilityStatus = await getPiProviderInstallationStatus(false);
+    const compatibilityStatus = await getPiProviderInstallationStatus(process.env, false);
     expect(compatibilityStatus).toMatchObject({
       installed: true,
       currentVersion: "0.84.0",

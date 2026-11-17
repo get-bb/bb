@@ -75,6 +75,7 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderHealthResult>;
   providerUsage: (args: {
     providerId: string;
@@ -87,6 +88,7 @@ export interface CommandDispatchOptions {
     cwd?: string;
     requirement?: "thread_rewind";
     checkUpdates?: boolean;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderInstallationStatus>;
   providerInstallationRun: (args: {
     providerId: string;

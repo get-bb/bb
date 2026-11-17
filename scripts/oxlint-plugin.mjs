@@ -76,6 +76,53 @@ const noBlockingChildProcessCall = {
   },
 };
 
+const rawChildProcessModules = new Set([
+  "node:child_process",
+  "child_process",
+  "cross-spawn",
+  "execa",
+]);
+
+const noRawChildProcess = {
+  create(context) {
+    function check(node, typeOnly) {
+      if (typeOnly) return;
+      if (node?.type !== "Literal" || typeof node.value !== "string") return;
+      if (!rawChildProcessModules.has(node.value)) return;
+      context.report({
+        node,
+        message: `${node.value} spawns outside the host spawn policy. Use the @bb/process-utils helpers (spawnHostProcess, execHostFile, forkHostProcess, spawnManagedProcess, execPortableFile), or @get-bb/plugin-sdk/process in a plugin, so PATH, proxy, and windowsHide come from one owner.`,
+      });
+    }
+    return {
+      ImportDeclaration(node) {
+        check(
+          node.source,
+          node.importKind === "type" ||
+            (node.specifiers.length > 0 &&
+              node.specifiers.every(
+                (specifier) => specifier.importKind === "type",
+              )),
+        );
+      },
+      ExportNamedDeclaration(node) {
+        check(node.source, node.exportKind === "type");
+      },
+      ExportAllDeclaration(node) {
+        check(node.source, node.exportKind === "type");
+      },
+      ImportExpression(node) {
+        check(node.source, false);
+      },
+      CallExpression(node) {
+        if (calleeName(node.callee) === "require") {
+          check(node.arguments[0], false);
+        }
+      },
+    };
+  },
+};
+
 function findJsxAttribute(node, name) {
   return node.attributes.find(
     (attribute) =>
@@ -294,6 +341,7 @@ export const rules = {
   "no-comments": noComments,
   "no-native-title-on-button": noNativeTitleOnButton,
   "no-native-title-with-aria-label": noNativeTitleWithAriaLabel,
+  "no-raw-child-process": noRawChildProcess,
   "no-raw-resize-observer": noRawResizeObserver,
 };
 

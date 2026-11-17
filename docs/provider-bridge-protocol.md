@@ -615,8 +615,18 @@ bridge-internal and invisible to the runtime. Bridges that spawn children
 finalize on `close`, not `exit`, with a bounded grace, verify currency in
 stream callbacks, and never let a descendant holding an inherited pipe inject
 into a fresh session. The bridge's own environment is constructed by the
-runtime from an allowlist; bridges construct their children's environments
-the same way and must not leak their own inherited env downward.
+runtime from an allowlist. Every provider CLI a bridge starts (session
+children, model listing, health and installation probes) gets
+`buildProviderCliEnv(envVars)` from the bridge kit: the bridge's environment
+without bridge-only runtime variables (`ELECTRON_RUN_AS_NODE`,
+`BB_PROVIDER_BRIDGE_RECORD_DIR`), plus the request's `envVars`. Launch
+settings such as an executable override are read from that same env, so a
+plugin-contributed value changes the CLI that runs, not just the variable its
+shell sees. `provider/health`, `provider/usage`, and `provider/installation/*`
+accept optional `envVars`; the runtime sends the host-scoped contributed env
+on health and installation status. The contract test
+`contract-tests/provider-cli-env.test.ts` runs this rule against every
+first-party bridge.
 
 ## Record mode
 

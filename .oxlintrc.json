@@ -94,6 +94,35 @@
     },
     {
       "files": [
+        "apps/**/*.{ts,tsx,mts,cts}",
+        "packages/**/*.{ts,tsx,mts,cts}",
+        "plugins/**/*.{ts,tsx,mts,cts}"
+      ],
+      "rules": {
+        "bb/no-raw-child-process": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/process-utils/src/**",
+        "packages/test-helpers/**",
+        "packages/provider-parity/**",
+        "apps/connect-next/**",
+        "apps/app/vite*.ts",
+        "**/test/**",
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*test-support.ts",
+        "**/test-fixture.ts",
+        "**/scripts/**"
+      ],
+      "rules": {
+        "bb/no-raw-child-process": "off"
+      }
+    },
+    {
+      "files": [
         "packages/agent-runtime/src/**/*.ts",
         "packages/provider-bridge-acp/src/bridge/agent-connection.ts",
         "packages/config/src/verified-process-stop.ts",

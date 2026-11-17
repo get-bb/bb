@@ -6,8 +6,6 @@ import {
   experimental_readBoundedLines,
   experimental_recordProviderChildIo,
   experimental_spawnPortableProcess,
-  sanitizeInheritedChildProcessEnv,
-  withoutBridgeRuntimeEnv,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
 import { PiBridgeChannel } from "./bridge-channel.js";
@@ -88,19 +86,6 @@ export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
   return { command, args: parsed };
 }
 
-export function buildPiChildEnv(
-  overrides: Record<string, string>,
-): NodeJS.ProcessEnv {
-  const inheritedEnv = withoutBridgeRuntimeEnv(
-    sanitizeInheritedChildProcessEnv({ env: process.env }),
-  );
-  delete inheritedEnv.PI_BB_TOOLS_FILE;
-  return {
-    ...inheritedEnv,
-    ...overrides,
-  };
-}
-
 export class PiRpcChild {
   readonly child: ChildProcess;
   private readonly pending = new Map<string, PendingRequest>();
@@ -132,7 +117,7 @@ export class PiRpcChild {
         this.kill();
       },
     });
-    const launch = resolvePiLaunch(process.env);
+    const launch = resolvePiLaunch(args.env);
     try {
       this.child = experimental_spawnPortableProcess({
         command: launch.command,

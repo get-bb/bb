@@ -948,6 +948,7 @@ const providerHealthCommandSchema = z
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 
@@ -956,6 +957,7 @@ const providerInstallationStatusCommandSchema = z
     type: z.literal("provider.installation.status"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 

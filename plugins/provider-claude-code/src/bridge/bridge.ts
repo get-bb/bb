@@ -27,7 +27,7 @@ import {
   decodeBridgeJsonRpcResponse,
   runBridgeRequest,
   shouldAutoDenyInteractiveRequest,
-  withoutBridgeRuntimeEnv,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
   type BridgeToolCallRequest,
   experimental_defineProviderBridge,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -1803,11 +1803,10 @@ async function closeClaudeThreadSession(
 }
 
 function buildSessionEnv(
-  envOverrides: Record<string, string>,
+  envVars: Readonly<Record<string, string>>,
 ): NodeJS.ProcessEnv {
   const sessionEnv: NodeJS.ProcessEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
-    ...envOverrides,
+    ...buildProviderCliEnv(envVars),
     CLAUDE_CODE_ENTRYPOINT: "cli",
   };
   delete sessionEnv.CLAUDE_AGENT_SDK_CLIENT_APP;
@@ -2342,21 +2341,37 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       }
       break;
     case "provider/health":
-      sendResult(request.id, await getClaudeProviderHealth());
+      sendResult(
+        request.id,
+        await getClaudeProviderHealth(
+          buildSessionEnv(request.params.envVars ?? {}),
+        ),
+      );
       break;
     case "provider/usage":
-      sendResult(request.id, await getClaudeProviderUsage());
+      sendResult(
+        request.id,
+        await getClaudeProviderUsage(
+          buildSessionEnv(request.params.envVars ?? {}),
+        ),
+      );
       break;
     case "provider/installation/status":
       sendResult(
         request.id,
-        await getClaudeProviderInstallationStatus(request.params.checkUpdates),
+        await getClaudeProviderInstallationStatus(
+          buildSessionEnv(request.params.envVars ?? {}),
+          request.params.checkUpdates,
+        ),
       );
       break;
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getClaudeProviderInstallationRun(request.params.action),
+        await getClaudeProviderInstallationRun(
+          buildSessionEnv(request.params.envVars ?? {}),
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":

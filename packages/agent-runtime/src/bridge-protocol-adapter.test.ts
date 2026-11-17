@@ -147,11 +147,19 @@ describe("handshake gating", () => {
   it("routes declared sessionless maintenance methods with provider context", () => {
     const adapter = makeAdapter();
     expect(
-      adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
+      adapter.buildCommandPlan({
+        type: "provider/health",
+        cwd: "/workspace",
+        envVars: { CONTRIBUTED: "1" },
+      }),
     ).toEqual({
       kind: "request",
       method: "provider/health",
-      params: { providerId: "fake-bridge", cwd: "/workspace" },
+      params: {
+        providerId: "fake-bridge",
+        cwd: "/workspace",
+        envVars: { CONTRIBUTED: "1" },
+      },
     });
     expect(adapter.buildCommandPlan({ type: "provider/usage" })).toEqual({
       kind: "request",
@@ -164,6 +172,7 @@ describe("handshake gating", () => {
         checkUpdates: false,
         cwd: "/workspace",
         requirement: "thread_rewind",
+        envVars: {},
       }),
     ).toEqual({
       kind: "request",
@@ -173,6 +182,7 @@ describe("handshake gating", () => {
         cwd: "/workspace",
         requirement: "thread_rewind",
         checkUpdates: false,
+        envVars: {},
       },
     });
     expect(

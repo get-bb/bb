@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { withoutBridgeRuntimeEnv } from "@bb/provider-bridge-protocol/bridge-kit";
+import { buildProviderCliEnv } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   AcpAgentExitedError,
   createAcpAgentConnection,
@@ -40,7 +40,7 @@ export async function probeAcpAgent(
       command: request.command,
       args: [...request.args],
       cwd: request.cwd,
-      env: withoutBridgeRuntimeEnv({ ...process.env, ...(request.env ?? {}) }),
+      env: buildProviderCliEnv(request.env),
       recordThreadId: null,
       onNotification: () => {},
       onRequest: (_method, _params, responder) => {

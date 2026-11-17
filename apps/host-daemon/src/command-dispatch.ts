@@ -13,6 +13,7 @@ import {
   type DesktopBrowserResult,
   type HostDaemonCommand,
   type HostDaemonCommandResult,
+  type HostDaemonContributedEnvEntry,
   type HostDaemonOnlineRpcCommand,
   type HostDaemonOnlineRpcCommandType,
   type HostDaemonOnlineRpcResult,
@@ -334,7 +335,10 @@ async function runProviderInstallationOnHost(
     if (events.some((event) => event.type === "completed" && event.success)) {
       try {
         const status =
-          await options.providerInstallationStatus(maintenanceArgs);
+          await options.providerInstallationStatus({
+            ...maintenanceArgs,
+            contributedEnv: [],
+          });
         if (!installationVerificationPassed(run.verification, status)) {
           events = failProviderInstallationVerification({
             providerId: command.providerId,
@@ -417,6 +421,7 @@ async function withResolvedBridgeLaunch<TResult>(
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<TResult>,
 ): Promise<TResult> {
   const bridgeLaunch = await resolveRuntimeBridgeLaunch(
@@ -427,6 +432,7 @@ async function withResolvedBridgeLaunch<TResult>(
     providerId: command.providerId,
     ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
     bridgeLaunch,
+    contributedEnv: command.contributedEnv,
   });
 }
 
@@ -691,6 +697,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     return options.providerInstallationStatus({
       providerId: command.providerId,
       bridgeLaunch,
+      contributedEnv: command.contributedEnv,
     });
   },
   "provider.installation.run": runProviderInstallationOnHost,
