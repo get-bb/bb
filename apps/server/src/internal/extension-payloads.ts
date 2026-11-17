@@ -181,7 +181,6 @@ function toUnhandledEvent(
   providerId: string | null,
   reason: string,
 ): ThreadEvent {
-  const payloadBytes = Buffer.byteLength(JSON.stringify(site.payload));
   return {
     type: "provider/unhandled",
     threadId: site.threadId,
@@ -193,9 +192,7 @@ function toUnhandledEvent(
       method: site.eventType,
       params: {
         kind: site.kind,
-        ...(payloadBytes > EXTENSION_PAYLOAD_MAX_BYTES
-          ? { payloadOmitted: true, payloadBytes }
-          : { payload: site.payload }),
+        payload: site.payload,
         reason: boundedReason(reason),
       },
     },

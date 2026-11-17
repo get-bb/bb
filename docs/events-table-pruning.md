@@ -26,6 +26,22 @@ root context snapshot can be kept. Command-output deltas are deleted only when
 the completed item carries `aggregatedOutput`. Completed items and `fileChange`
 events remain available to timeline readers.
 
+## Write-time storage rules
+
+Every event row is written through one insert path, which applies these rules
+before and right after the insert:
+
+- A completed item's large output moves to `retained_event_outputs`; the row
+  keeps its head and tail.
+- A `provider/unhandled` row is at most 64 KiB. When it would be larger, the
+  largest top-level fields of `rawEvent.params` are omitted until it fits, and
+  `params` records `payloadOmitted: true` and the original `payloadBytes`.
+- When a `fileChange` item completes, each `changes[i].diff` in its
+  `item/started` row that the completion repeats at the same index and path is
+  removed from the started row. The timeline shows a completed change's diff
+  from its completion, so nothing visible changes. A completion without diffs,
+  such as a denied approval, leaves the started diffs in place.
+
 ## When pruning runs
 
 Live triggers (thread activity, idle, and archive transitions) and a background

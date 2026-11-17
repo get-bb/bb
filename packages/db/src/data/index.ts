@@ -2,6 +2,7 @@ export * from "./app-settings.js";
 export * from "./app-theme.js";
 export * from "./environments.js";
 export * from "./event-rewrite-generation.js";
+export { PROVIDER_UNHANDLED_EVENT_MAX_BYTES } from "./event-storage-rules.js";
 export * from "./events.js";
 export * from "./experiments.js";
 export * from "./hosts.js";

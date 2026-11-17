@@ -92,9 +92,12 @@ import {
 import {
   copyRetainedEventOutputs,
   insertPreparedRetainedEventOutput,
-  prepareCompletedEventOutputData,
 } from "./retained-event-outputs.js";
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
+import {
+  applySettledEventStorageRules,
+  prepareStoredEventData,
+} from "./event-storage-rules.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
@@ -474,7 +477,7 @@ function insertStoredEventRow(
   args: InsertStoredEventRowArgs,
 ): InsertStoredEventRowResult {
   const id = createEventId();
-  const prepared = prepareCompletedEventOutputData({
+  const prepared = prepareStoredEventData({
     createdAt: args.createdAt,
     data: args.data,
     itemKind: args.itemKind,
@@ -502,6 +505,14 @@ function insertStoredEventRow(
   if (result.changes === 0) {
     return { id, inserted: false };
   }
+  applySettledEventStorageRules(db, {
+    data: prepared.data,
+    itemId: args.itemId,
+    itemKind: args.itemKind,
+    sequence: args.sequence,
+    threadId: args.threadId,
+    type: args.type,
+  });
   const root = rootConnectionOf(db);
   if (root !== undefined) {
     const row: StoredEventRow = {

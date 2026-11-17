@@ -52,3 +52,19 @@ export function findAppendedEventRows(
   }
   return found;
 }
+
+export function replaceAppendedEventRowData(
+  db: DbConnection,
+  threadId: string,
+  id: string,
+  data: string,
+): void {
+  const rows = appendedRows.get(db)?.get(threadId);
+  const row = rows?.get(id);
+  if (rows === undefined || row === undefined) return;
+  if (data.length <= MAX_ROW_DATA_CHARS) {
+    rows.set(id, { ...row, data });
+  } else {
+    rows.delete(id);
+  }
+}

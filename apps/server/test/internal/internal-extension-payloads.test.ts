@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { events } from "@bb/db";
+import { events, PROVIDER_UNHANDLED_EVENT_MAX_BYTES } from "@bb/db";
 import { threadScope, turnScope, type ExtensionKind } from "@bb/domain";
 import {
   groupHostDaemonEvents,
@@ -360,6 +360,7 @@ describe("extension payload ingest validation", () => {
       try {
         const payload = { [field]: "\u00e9".repeat(128 * 1024) };
         const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
+        const reason = `payload is ${payloadBytes} bytes; the limit is 65536`;
         const response = await post(harness, session.id, [
           turnStarted(thread.id),
           makeEvent(thread.id, payload),
@@ -386,33 +387,35 @@ describe("extension payload ingest validation", () => {
               params: {
                 kind: GOAL_KIND,
                 payloadOmitted: true,
-                payloadBytes,
-                reason: `payload is ${payloadBytes} bytes; the limit is 65536`,
+                payloadBytes: Buffer.byteLength(
+                  JSON.stringify({ kind: GOAL_KIND, payload, reason }),
+                ),
+                reason,
               },
             },
           },
         });
-        expect(Buffer.byteLength(JSON.stringify(rows[1]!.data))).toBeLessThan(
-          EXTENSION_PAYLOAD_MAX_BYTES,
-        );
+        expect(
+          Buffer.byteLength(JSON.stringify(rows[1]!.data)),
+        ).toBeLessThanOrEqual(PROVIDER_UNHANDLED_EVENT_MAX_BYTES);
       } finally {
         await harness.cleanup();
       }
     },
   );
 
-  it("keeps a rejected payload at the size limit and omits one a byte over it, whatever the rejection reason", async () => {
+  it("keeps a rejected payload that fits the stored diagnostic and omits one that does not, whatever the rejection reason", async () => {
     const { harness, session, thread } = await setup();
     try {
       const padded = (bytes: number) => {
         const pad = bytes - JSON.stringify({ objective: "" }).length;
         return { objective: "x".repeat(pad) };
       };
-      const atLimit = padded(EXTENSION_PAYLOAD_MAX_BYTES);
+      const fits = padded(1024);
       const overLimit = padded(EXTENSION_PAYLOAD_MAX_BYTES + 1);
       const response = await post(harness, session.id, [
         turnStarted(thread.id),
-        extensionItemEvent(thread.id, atLimit, "provider-nobody/goal"),
+        extensionItemEvent(thread.id, fits, "provider-nobody/goal"),
         extensionItemEvent(thread.id, overLimit, "provider-nobody/goal"),
         extensionItemEvent(thread.id, overLimit, `${PLUGIN_ID}/widget`),
         extensionStateEvent(
@@ -436,7 +439,7 @@ describe("extension payload ingest validation", () => {
             (row.data as { rawEvent: { params: Record<string, unknown> } })
               .rawEvent.params,
         );
-      expect(params[0]).toMatchObject({ payload: atLimit });
+      expect(params[0]).toMatchObject({ payload: fits });
       expect(params[0]).not.toHaveProperty("payloadOmitted");
       for (const omitted of params.slice(1)) {
         expect(omitted).not.toHaveProperty("payload");
@@ -445,10 +448,6 @@ describe("extension payload ingest validation", () => {
           payloadBytes: expect.any(Number),
         });
       }
-      expect(params.slice(1, 3).map((p) => p.payloadBytes)).toEqual([
-        EXTENSION_PAYLOAD_MAX_BYTES + 1,
-        EXTENSION_PAYLOAD_MAX_BYTES + 1,
-      ]);
       expect(params[1]!.reason).toContain("is owned by plugin");
       expect(params[2]!.reason).toContain("declares no");
       expect(params[3]!.reason).toContain("bytes; the limit is");
