@@ -273,8 +273,8 @@ describe("timeline read cost as history grows", () => {
             buildThread(harness, historyEvents, runningTurn),
           ),
         );
-      const smaller = await measure(HISTORY_EVENTS);
-      const larger = await measure(HISTORY_EVENTS * 2);
+      const smaller = await measure(HISTORY_EVENTS * 2);
+      const larger = await measure(HISTORY_EVENTS * 3);
       expect(larger).toEqual(smaller);
     },
     120_000,

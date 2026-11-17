@@ -4054,6 +4054,61 @@ export function listStoredStandaloneThreadTimelineRows(
     .all();
 }
 
+export function listStoredThreadInteractionLifecycleRows(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    interactionIds: readonly string[];
+    maxInlineOutputChars: InlineOutputCharLimit;
+    sequenceStart: number;
+    threadId: string;
+  },
+): StoredEventRow[] {
+  if (args.interactionIds.length === 0) return [];
+  return db
+    .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+    .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "system/interaction/lifecycle"),
+        gte(events.sequence, args.sequenceStart),
+        lt(events.sequence, args.beforeSequence),
+        isNull(events.turnId),
+        inArray(
+          sql`json_extract(${events.data}, '$.interaction.id')`,
+          [...args.interactionIds],
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredThreadNoticeAndInteractionRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs,
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+    .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+    .where(
+      and(
+        ...storedTimelineWindowConditions(args),
+        inArray(events.type, [
+          "provider/modelFallback",
+          "provider/unhandled",
+          "provider/warning",
+          "system/interaction/lifecycle",
+        ]),
+        sql`(${events.type} <> 'provider/unhandled' OR ${isProviderModelFallbackMessage})`,
+        isNull(events.turnId),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
 export function listStoredTimelineWindowEventRows(
   db: DbConnection,
   args: ListStoredTimelineWindowEventRowsArgs,

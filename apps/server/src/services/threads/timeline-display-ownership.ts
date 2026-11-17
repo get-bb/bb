@@ -20,7 +20,10 @@ export interface TimelineDisplayOwnership {
     windowEnd: number,
   ): TimelineSequenceRange[];
   ownedTurnIdsBefore(windowStart: number, windowEnd: number): string[];
-  ownershipSequences(rows: readonly TimelineRow[]): Map<string, number>;
+  ownershipSequences(
+    rows: readonly TimelineRow[],
+    joinedTurnIdBySequence: ReadonlyMap<number, string>,
+  ): Map<string, number>;
 }
 
 interface LoadedTurnSequences {
@@ -332,14 +335,16 @@ export function createTimelineDisplayOwnership(
       }
       return owned;
     },
-    ownershipSequences(rows) {
+    ownershipSequences(rows, joinedTurnIdBySequence) {
       const sequences = new Map<string, number>();
       let displayedMax = -Infinity;
       for (const row of rows) {
+        const turnId =
+          row.turnId ?? joinedTurnIdBySequence.get(row.sourceSeqStart) ?? null;
         const entryStart =
-          row.turnId === null
+          turnId === null
             ? row.sourceSeqStart
-            : (blockStarts.get(row.turnId) ?? row.sourceSeqStart);
+            : (blockStarts.get(turnId) ?? row.sourceSeqStart);
         displayedMax = Math.max(displayedMax, row.sourceSeqStart);
         const owned = Math.max(
           displayedMax,

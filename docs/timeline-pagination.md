@@ -34,6 +34,17 @@ To render the rows it owns the same way a full build does, a page also loads
 the turns and thread rows its window owns by display position, and the
 `turn/started` event of any turn a steer in its context targets, including a
 steer that was rejected.
+
+Provider warnings, model fallbacks, and plugin interactions such as secret
+requests can be recorded with thread scope while a turn runs. The projection
+groups them into the root turn running at their first event, and they display
+inside that turn. A page that loads such a row also loads the turn it joins, a
+page that loads a turn also loads the thread rows that join it, and a page that
+loads one lifecycle event of a thread-scoped interaction loads all of them,
+because the interaction's row starts at its first event. These rows belong to
+the page that owns their turn. The latest-window memo rebuilds instead of
+appending such a row when its turn or the interaction's earlier events are not
+in the held selection.
 Visible user rows, including accepted steers, define conversation segments
 inside the window; the leading segment can be partial. Hidden and empty
 requests do not count as visible segments. The response takes up to

@@ -110,7 +110,13 @@ interface OpenTurn {
   abandonedDelegations: number;
   delegations: OpenDelegation[];
   pendingSteerAcceptances: string[];
+  questions: OpenQuestion[];
   turnId: string;
+}
+
+interface OpenQuestion {
+  id: string;
+  resolving: boolean;
 }
 
 interface OpenDelegation {
@@ -153,10 +159,13 @@ export interface EventLogShape {
   hiddenRequestWeight: number;
   largeOutputChance: number;
   messageWeight: number;
+  pluginInteractionWeight: number;
+  providerWarningWeight: number;
   requestFreeRunsInsideTurns: boolean;
   requestFreeRunWeight: number;
   steerWeight: number;
   turnCompleteWeight: number;
+  userQuestionWeight: number;
 }
 
 export const MIXED_EVENT_LOG: EventLogShape = {
@@ -172,10 +181,13 @@ export const MIXED_EVENT_LOG: EventLogShape = {
   hiddenRequestWeight: 0,
   largeOutputChance: 0.04,
   messageWeight: 4,
+  pluginInteractionWeight: 0.4,
+  providerWarningWeight: 0.3,
   requestFreeRunsInsideTurns: true,
   requestFreeRunWeight: 0,
   steerWeight: 1.5,
   turnCompleteWeight: 2,
+  userQuestionWeight: 0.4,
 };
 
 export const INTERLEAVED_EVENT_LOG: EventLogShape = {
@@ -290,6 +302,7 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
   let backgroundTasks: OpenBackgroundTask[] = [];
   let backgroundDelegations: OpenDelegation[] = [];
   let completedTurns: { completedAt: number; turnId: string }[] = [];
+  let openPluginInteractions: { id: string; startSequence: number }[] = [];
   const turnStartSequences = new Map<string, number>();
   let requests: UserRequest[] = [];
   let bulkInputs: EventInput[] | null = null;
@@ -396,6 +409,7 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
       abandonedDelegations: 0,
       delegations: [],
       pendingSteerAcceptances: [],
+      questions: [],
       turnId,
     });
     setStatus("active");
@@ -733,6 +747,144 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
         ];
   }
 
+  function pluginInteraction(
+    id: string,
+    status: "interrupted" | "pending" | "resolved",
+  ): EventInput {
+    return event(
+      "system/interaction/lifecycle",
+      threadScope(),
+      {
+        interaction: {
+          id,
+          status,
+          statusReason: status === "interrupted" ? "Thread stopped" : null,
+          origin: {
+            kind: "plugin",
+            pluginId: "secrets",
+            rendererId: "secret-request",
+          },
+          payload: {
+            kind: "plugin",
+            title: "Add secrets",
+            presentation: {
+              label: {
+                pending: `Requesting ${id}`,
+                completed: `Requested ${id}`,
+              },
+              icon: { glyph: "Lock" },
+            },
+          },
+          resolution:
+            status === "resolved"
+              ? {
+                  kind: "plugin_submitted",
+                  description: { title: `Provided ${id}` },
+                }
+              : null,
+        },
+      },
+      null,
+    );
+  }
+
+  function providerWarning(): EventInput[] {
+    const category = pick(rng, ["general", "config", "deprecation"] as const);
+    return [
+      event("provider/warning", threadScope(), {
+        providerThreadId: PROVIDER_THREAD_ID,
+        category,
+        summary: `Warning ${sequence + 1}`,
+        details: `Details for warning ${sequence + 1}`,
+      }),
+    ];
+  }
+
+  function requestPluginInteraction(): EventInput[] {
+    const id = nextId("plugin-interaction");
+    openPluginInteractions.push({ id, startSequence: sequence + 1 });
+    return [pluginInteraction(id, "pending")];
+  }
+
+  function settlePluginInteraction(): EventInput[] {
+    const open = pick(rng, openPluginInteractions);
+    openPluginInteractions = openPluginInteractions.filter(
+      (each) => each !== open,
+    );
+    return [
+      pluginInteraction(open.id, chance(rng, 0.8) ? "resolved" : "interrupted"),
+    ];
+  }
+
+  function userQuestion(
+    turnId: string,
+    id: string,
+    status: "interrupted" | "pending" | "resolved" | "resolving",
+  ): EventInput {
+    const questionId = `${id}:question-1`;
+    return event("system/interaction/lifecycle", turnScope(turnId), {
+      interaction: {
+        id,
+        status,
+        statusReason: status === "interrupted" ? "Turn ended" : null,
+        origin: {
+          kind: "provider",
+          providerId: "claude-code",
+          providerRequestId: `${id}:request`,
+        },
+        payload: {
+          kind: "user_question",
+          questions: [
+            {
+              id: questionId,
+              prompt: `Question ${id}`,
+              shortLabel: "Choice",
+              multiSelect: false,
+              options: [
+                {
+                  value: `${questionId}:option-1`,
+                  label: "First",
+                  description: "First option",
+                },
+                {
+                  value: `${questionId}:option-2`,
+                  label: "Second",
+                  description: "Second option",
+                },
+              ],
+              allowFreeText: true,
+            },
+          ],
+        },
+        resolution:
+          status === "resolved" || status === "resolving"
+            ? {
+                kind: "user_answer",
+                answers: {
+                  [questionId]: { selected: [`${questionId}:option-1`] },
+                },
+              }
+            : null,
+      },
+    });
+  }
+
+  function askUserQuestion(turn: OpenTurn): EventInput[] {
+    const id = nextId("question");
+    turn.questions.push({ id, resolving: false });
+    return [userQuestion(turn.turnId, id, "pending")];
+  }
+
+  function answerUserQuestion(turn: OpenTurn): EventInput[] {
+    const question = pick(rng, turn.questions);
+    if (!question.resolving) {
+      question.resolving = true;
+      return [userQuestion(turn.turnId, question.id, "resolving")];
+    }
+    turn.questions = turn.questions.filter((open) => open !== question);
+    return [userQuestion(turn.turnId, question.id, "resolved")];
+  }
+
   function compaction(turn: OpenTurn): EventInput[] {
     const id = nextId("compaction");
     return [
@@ -756,6 +908,10 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
       );
     }
     turn.pendingSteerAcceptances = [];
+    for (const question of turn.questions) {
+      inputs.push(userQuestion(turn.turnId, question.id, "interrupted"));
+    }
+    turn.questions = [];
     for (const task of backgroundTasks) {
       if (
         (task.kind === "agentTask" || task.kind === "rootAgent") &&
@@ -883,7 +1039,22 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
         requestFreeRun,
       ],
       [shape.extensionStateWeight, extensionState],
+      [shape.pluginInteractionWeight, requestPluginInteraction],
+      [shape.providerWarningWeight, providerWarning],
+      [shape.userQuestionWeight, () => askUserQuestion(turn)],
     ];
+    if (openPluginInteractions.length > 0) {
+      options.push([
+        shape.pluginInteractionWeight * 2,
+        settlePluginInteraction,
+      ]);
+    }
+    if (turn.questions.length > 0) {
+      options.push([
+        shape.userQuestionWeight * 4,
+        () => answerUserQuestion(turn),
+      ]);
+    }
     if (openDelegations.length > 0) {
       options.push([
         shape.delegationWeight,
@@ -925,7 +1096,14 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     const options: [number, () => EventInput[]][] = [
       [3, () => startTurn(`User message ${turnCount + 1}`)],
       [shape.requestFreeRunWeight, requestFreeRun],
+      [shape.providerWarningWeight, providerWarning],
     ];
+    if (openPluginInteractions.length > 0) {
+      options.push([
+        shape.pluginInteractionWeight * 2,
+        settlePluginInteraction,
+      ]);
+    }
     if (backgroundDelegations.length > 0) {
       options.push([
         1,
@@ -950,6 +1128,9 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     );
     completedTurns = completedTurns.filter((turn) => turn.completedAt < cutoff);
     requests = requests.filter((entry) => entry.sequence < cutoff);
+    openPluginInteractions = openPluginInteractions.filter(
+      (open) => open.startSequence < cutoff,
+    );
   }
 
   function nextTurn(): OpenTurn | null {
@@ -991,6 +1172,10 @@ export function createThreadLog(args: CreateThreadLogArgs): ThreadLog {
     finishOpenWork() {
       const inputs: EventInput[] = [];
       for (const turn of openTurns) inputs.push(...completeTurn(turn));
+      for (const open of openPluginInteractions) {
+        inputs.push(pluginInteraction(open.id, "resolved"));
+      }
+      openPluginInteractions = [];
       for (const task of backgroundTasks) {
         inputs.push(...finishBackgroundTask(task));
       }

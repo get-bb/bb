@@ -11,6 +11,8 @@ import {
   listLatestBackgroundTaskStateRowsByItemIds,
   listStoredDelegatingItemRowsByItemIds,
   listStoredStandaloneThreadTimelineRows,
+  listStoredThreadInteractionLifecycleRows,
+  listStoredThreadNoticeAndInteractionRows,
   listStoredEventRowsByParentToolCallIds,
   listAppendedEventRows,
   listStoredTimelineTurnEventRows,
@@ -24,12 +26,14 @@ import {
 } from "@bb/db";
 import {
   getTimelineGroupingContext,
+  rootTurnJoinedByThreadRow,
   type TimelineGroupingContext,
 } from "./timeline-context-order.js";
 import { measuredTimelineRowJsonBytes } from "./timeline-content-pagination.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 import type { DecodedTimelineRows } from "./timeline-selection-decode.js";
 import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
+import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
@@ -81,6 +85,12 @@ export interface TimelineSelectionRowSource {
   ): StoredEventRow[];
   listStandaloneThreadRows(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
+  ): StoredEventRow[];
+  listThreadNoticeAndInteractionRows(
+    args: Parameters<typeof listStoredThreadNoticeAndInteractionRows>[1],
+  ): StoredEventRow[];
+  listThreadInteractionRows(
+    args: Parameters<typeof listStoredThreadInteractionLifecycleRows>[1],
   ): StoredEventRow[];
   listRootWindowTurnIds(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
@@ -726,11 +736,41 @@ function acceptsBackgroundTask(
   );
 }
 
+function acceptsThreadRowJoiningTurn(
+  scope: SelectionExtensionScope,
+  row: StoredEventRow,
+): boolean {
+  const joined = rootTurnJoinedByThreadRow(
+    scope.db,
+    row,
+    groupingContextOf(scope).turnBlocks,
+  );
+  if (
+    joined !== null &&
+    !scope.extension.appendableTurnIds.has(joined.turnId)
+  ) {
+    return false;
+  }
+  if (row.turnId !== null || row.type !== "system/interaction/lifecycle") {
+    return true;
+  }
+  const event = decodeStoredEventRowCached(scope.db, row);
+  if (event.type !== "system/interaction/lifecycle") return false;
+  return listStoredThreadInteractionLifecycleRows(scope.db, {
+    threadId: scope.args.threadId,
+    interactionIds: [event.interaction.id],
+    sequenceStart: scope.args.epochSequenceStart,
+    beforeSequence: row.sequence,
+    maxInlineOutputChars: scope.args.maxInlineOutputChars,
+  }).every((earlier) => selectionHasRow(scope.entry.selection.rows, earlier));
+}
+
 function acceptsAppendedRow(
   scope: SelectionExtensionScope,
   row: StoredEventRow,
 ): boolean {
   return (
+    acceptsThreadRowJoiningTurn(scope, row) &&
     acceptsParent(scope, row) &&
     acceptsDelegatingItem(scope, row) &&
     acceptsTurn(scope, row) &&
@@ -894,6 +934,12 @@ function createTrimmedSelectionRowSource(
     },
     listStandaloneThreadRows(query) {
       return listStoredStandaloneThreadTimelineRows(db, query);
+    },
+    listThreadNoticeAndInteractionRows(query) {
+      return listStoredThreadNoticeAndInteractionRows(db, query);
+    },
+    listThreadInteractionRows(query) {
+      return listStoredThreadInteractionLifecycleRows(db, query);
     },
     listThreadWindowRows(query) {
       const sequenceStart = expectLatestBounds(query);

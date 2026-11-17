@@ -14,7 +14,9 @@ import {
 import {
   externalUserBoundarySequencesForTurns,
   getTimelineGroupingContext,
+  rootTurnJoinedByThreadRow,
   type TimelineExternalUserBoundaries,
+  type TimelineTurnBlock,
   orderTimelineRowsUsingContext,
 } from "./timeline-context-order.js";
 import { createTimelineDisplayOwnership } from "./timeline-display-ownership.js";
@@ -92,6 +94,8 @@ import {
   listStoredTimelineWindowEventRows,
   listStoredTimelineTurnEventRows,
   listStoredStandaloneThreadTimelineRows,
+  listStoredThreadInteractionLifecycleRows,
+  listStoredThreadNoticeAndInteractionRows,
   listStoredTimelineThreadWindowEventRows,
   listTimelineRootWindowTurnIds,
   listStoredDelegatingItemRowsByItemIds,
@@ -619,6 +623,10 @@ function databaseTimelineRowSource(
     listRootWindowTurnIds: (args) => listTimelineRootWindowTurnIds(db, args),
     listStandaloneThreadRows: (args) =>
       listStoredStandaloneThreadTimelineRows(db, args),
+    listThreadNoticeAndInteractionRows: (args) =>
+      listStoredThreadNoticeAndInteractionRows(db, args),
+    listThreadInteractionRows: (args) =>
+      listStoredThreadInteractionLifecycleRows(db, args),
     listThreadWindowRows: (args) =>
       listStoredTimelineThreadWindowEventRows(db, args),
     listTurnRows: (args) => listStoredTimelineTurnEventRows(db, args),
@@ -1045,6 +1053,19 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
   return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
+function turnIdsJoinedByThreadRows(
+  db: DbConnection,
+  rows: readonly StoredEventRow[],
+  turnBlocks: readonly TimelineTurnBlock[],
+): Map<number, string> {
+  const joined = new Map<number, string>();
+  for (const row of rows) {
+    const turn = rootTurnJoinedByThreadRow(db, row, turnBlocks);
+    if (turn !== null) joined.set(row.sequence, turn.turnId);
+  }
+  return joined;
+}
+
 function selectStandardTimelineEventRows(
   db: DbConnection,
   thread: Thread,
@@ -1150,9 +1171,41 @@ function selectStandardTimelineEventRows(
   const fetchedTurns = new Set<string>();
   const parentedRowLookups =
     createTimelineWindowParentedRowLookups(fetchedTurns);
+  const turnBlocksById = new Map(
+    groupingContext.turnBlocks.map((block) => [block.turnId, block]),
+  );
+  const runningTurnJoinedByThreadRow = (
+    row: StoredEventRow,
+  ): TimelineTurnBlock | null =>
+    rootTurnJoinedByThreadRow(db, row, groupingContext.turnBlocks);
+  const listThreadRowsJoiningTurns = (
+    turnIds: readonly string[],
+  ): StoredEventRow[] => {
+    const blocks = turnIds.flatMap((turnId) => {
+      const block = turnBlocksById.get(turnId);
+      return block === undefined ? [] : [block];
+    });
+    if (blocks.length === 0) return [];
+    const candidates = source.listThreadNoticeAndInteractionRows({
+      ...windowArgs,
+      sequenceStart: Math.max(
+        epochSequenceStart,
+        Math.min(...blocks.map((block) => block.startedSequence + 1)),
+      ),
+      beforeSequence:
+        Math.max(...blocks.map((block) => block.completionSequence ?? maxSeq)) +
+        1,
+    });
+    const joined = new Set(turnIds);
+    return candidates.filter((row) => {
+      const turn = runningTurnJoinedByThreadRow(row);
+      return turn !== null && joined.has(turn.turnId);
+    });
+  };
   rows = measureThreadTimelineStage(profile, "group-context-query", () => {
     let selectedRows = rows;
     const fetchedThreadRowRanges = new Set<string>();
+    const fetchedInteractionIds = new Set<string>();
     for (;;) {
       const ownership = createTimelineDisplayOwnership({
         boundarySequence: groupingContext.orderingBoundarySequence,
@@ -1178,13 +1231,45 @@ function selectStandardTimelineEventRows(
           ]);
         }
       }
+      const interactionIds = [
+        ...new Set(
+          selectedRows.flatMap((row) => {
+            if (
+              row.turnId !== null ||
+              row.type !== "system/interaction/lifecycle"
+            ) {
+              return [];
+            }
+            const event = decode(row);
+            return event.type === "system/interaction/lifecycle" &&
+              !fetchedInteractionIds.has(event.interaction.id)
+              ? [event.interaction.id]
+              : [];
+          }),
+        ),
+      ];
+      if (interactionIds.length > 0) {
+        for (const id of interactionIds) fetchedInteractionIds.add(id);
+        selectedRows = mergeStoredEventRowsById([
+          ...selectedRows,
+          ...source.listThreadInteractionRows({
+            threadId: thread.id,
+            interactionIds,
+            sequenceStart: epochSequenceStart,
+            beforeSequence: maxSeq + 1,
+            maxInlineOutputChars,
+          }),
+        ]);
+      }
       const turnIds = [
         ...new Set([
           ...initialTurnIds,
           ...ownership.ownedTurnIdsBefore(sequenceStart, beforeSequence),
-          ...selectedRows.flatMap((row) =>
-            row.turnId === null ? [] : [row.turnId],
-          ),
+          ...selectedRows.flatMap((row) => {
+            if (row.turnId !== null) return [row.turnId];
+            const turn = runningTurnJoinedByThreadRow(row);
+            return turn === null ? [] : [turn.turnId];
+          }),
         ]),
       ].filter((turnId) => !fetchedTurns.has(turnId));
       if (turnIds.length === 0) break;
@@ -1197,6 +1282,7 @@ function selectStandardTimelineEventRows(
           beforeSequence: maxSeq + 1,
           turnIds,
         }),
+        ...listThreadRowsJoiningTurns(turnIds),
       ]);
       selectedRows = ensureTimelineWindowParentedRows(db, {
         threadId: thread.id,
@@ -1702,7 +1788,10 @@ function buildThreadTimelineInternal(
     loadedRows: rawEventRows,
     maxSeq: snapshot.maxSeq,
     turnBlocks: groupingContext.turnBlocks,
-  }).ownershipSequences(pageableTimelineRows);
+  }).ownershipSequences(
+    pageableTimelineRows,
+    turnIdsJoinedByThreadRows(db, rawEventRows, groupingContext.turnBlocks),
+  );
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",

@@ -1,6 +1,7 @@
 import type { TimelineRow } from "@bb/server-contract";
 import {
   isExternalUserBoundaryForTurn,
+  threadEventJoinsRunningTurn,
   type ExternalUserBoundaryMessage,
   type ExternalUserBoundaryTurnSpan,
 } from "@bb/thread-view";
@@ -11,7 +12,9 @@ import {
   getTimelineGroupingContextChangesInRange,
   listTimelineOrderingContext,
   type DbConnection,
+  type StoredEventRow,
 } from "@bb/db";
+import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 
 export interface TimelineClientRequestContext {
   acceptedSequences: readonly number[];
@@ -24,6 +27,37 @@ export interface TimelineTurnBlock {
   sequenceStart: number;
   startedSequence: number;
   turnId: string;
+}
+
+export function rootTurnRunningAtSequence(
+  turnBlocks: readonly TimelineTurnBlock[],
+  sequence: number,
+): TimelineTurnBlock | null {
+  let running: TimelineTurnBlock | null = null;
+  for (const block of turnBlocks) {
+    if (block.startedSequence >= sequence) continue;
+    if (
+      block.completionSequence !== null &&
+      block.completionSequence < sequence
+    ) {
+      continue;
+    }
+    if (running === null || block.startedSequence > running.startedSequence) {
+      running = block;
+    }
+  }
+  return running;
+}
+
+export function rootTurnJoinedByThreadRow(
+  db: DbConnection,
+  row: StoredEventRow,
+  turnBlocks: readonly TimelineTurnBlock[],
+): TimelineTurnBlock | null {
+  return row.turnId === null &&
+    threadEventJoinsRunningTurn(decodeStoredEventRowCached(db, row))
+    ? rootTurnRunningAtSequence(turnBlocks, row.sequence)
+    : null;
 }
 
 export interface TimelineGroupingContext {
