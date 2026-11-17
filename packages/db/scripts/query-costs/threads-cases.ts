@@ -10,6 +10,14 @@ import {
   upsertThreadConversationOutlineRecord,
 } from "../../src/data/thread-conversation-outlines.js";
 import {
+  deleteStoredThreadTimelineProjections,
+  listCompletedRootTurns,
+  listEventTurnRefsBetween,
+  listThreadTurnSummaryRecords,
+  markThreadTurnSummariesValidated,
+  upsertThreadTurnSummaryRecords,
+} from "../../src/data/thread-turn-summaries.js";
+import {
   getThreadPluginMetadata,
   insertThreadPluginMetadata,
   listPluginThreadMetadata,
@@ -103,6 +111,7 @@ const SECTIONS = "packages/db/src/data/thread-sections.ts";
 const TABS = "packages/db/src/data/thread-tabs.ts";
 const PLUGIN_METADATA = "packages/db/src/data/thread-plugin-metadata.ts";
 const OUTLINES = "packages/db/src/data/thread-conversation-outlines.ts";
+const TURN_SUMMARIES = "packages/db/src/data/thread-turn-summaries.ts";
 const PRUNING = "packages/db/src/data/thread-pruning.ts";
 const PRUNING_WORK = "packages/db/src/data/thread-pruning-work.ts";
 const PURGES = "packages/db/src/data/thread-purges.ts";
@@ -609,6 +618,75 @@ const OUTLINE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
 ];
 
+function summarizedTurnIds(fixture: HistoryFixture): string[] {
+  return fixture.turns.slice(-TIMELINE_WINDOW_TURNS).map((turn) => turn.turnId);
+}
+
+function storeWindowTurnSummaries(
+  db: DbConnection,
+  fixture: HistoryFixture,
+): void {
+  upsertThreadTurnSummaryRecords(db, {
+    records: summarizedTurnIds(fixture).map((turnId) => ({
+      projectionKey: "v1",
+      summaryJson: outlineItemsJson(1),
+      turnId,
+      validatedThrough: fixture.latestSequence,
+    })),
+    threadId: fixture.threadId,
+  });
+}
+
+const TURN_SUMMARY_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
+  {
+    name: `${TURN_SUMMARIES}#upsertThreadTurnSummaryRecords`,
+    run: (db, fixture) => storeWindowTurnSummaries(db, fixture),
+  },
+  {
+    name: `${TURN_SUMMARIES}#listThreadTurnSummaryRecords`,
+    prepare: (db, fixture) => storeWindowTurnSummaries(db, fixture),
+    run: (db, fixture) =>
+      listThreadTurnSummaryRecords(db, {
+        threadId: fixture.threadId,
+        turnIds: summarizedTurnIds(fixture),
+      }),
+  },
+  {
+    name: `${TURN_SUMMARIES}#markThreadTurnSummariesValidated`,
+    prepare: (db, fixture) => storeWindowTurnSummaries(db, fixture),
+    run: (db, fixture) =>
+      markThreadTurnSummariesValidated(db, {
+        threadId: fixture.threadId,
+        turnIds: summarizedTurnIds(fixture),
+        validatedThrough: fixture.latestSequence + 1,
+      }),
+  },
+  {
+    name: `${TURN_SUMMARIES}#deleteStoredThreadTimelineProjections`,
+    prepare: (db, fixture) => storeWindowTurnSummaries(db, fixture),
+    run: (db, fixture) =>
+      deleteStoredThreadTimelineProjections(db, fixture.threadId),
+  },
+  {
+    name: `${TURN_SUMMARIES}#listCompletedRootTurns`,
+    run: (db, fixture) =>
+      listCompletedRootTurns(db, {
+        maxSeq: fixture.latestSequence,
+        threadId: fixture.threadId,
+        turnIds: summarizedTurnIds(fixture),
+      }),
+  },
+  {
+    name: `${TURN_SUMMARIES}#listEventTurnRefsBetween`,
+    run: (db, fixture) =>
+      listEventTurnRefsBetween(db, {
+        afterSequence: turnAt(fixture, -1).requestSequence,
+        threadId: fixture.threadId,
+        throughSequence: fixture.latestSequence,
+      }),
+  },
+];
+
 const PRUNING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   {
     name: `${PRUNING}#getNextThreadPruningPolicy`,
@@ -728,6 +806,7 @@ export const THREADS_COST_GROUP = registerCostGroup<ThreadsSeed>({
     ...TAB_CASES,
     ...PLUGIN_METADATA_CASES,
     ...OUTLINE_CASES,
+    ...TURN_SUMMARY_CASES,
     ...PRUNING_CASES,
     ...PURGE_CASES,
     ...PROMPT_HISTORY_CASES,

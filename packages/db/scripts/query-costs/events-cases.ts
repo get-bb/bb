@@ -87,6 +87,7 @@ import {
   listStoredItemLifecycleRowsByItems,
   listStoredRootConversationOutlineEventRows,
   listStoredTaskTurnRequestEvents,
+  listStoredTimelineSummarizedTurnRows,
   listStoredTimelineThreadWindowEventRows,
   listStoredTimelineTurnEventRows,
   listStoredTimelineWindowEventRows,
@@ -619,6 +620,20 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
     prepare: selectLiveWindowStart,
     run: (db, fixture) =>
       listStoredTimelineThreadWindowEventRows(db, liveTimelineArgs(fixture)),
+  },
+  {
+    name: `${EVENTS}#listStoredTimelineSummarizedTurnRows`,
+    run: (db, fixture) =>
+      listStoredTimelineSummarizedTurnRows(db, {
+        ...timelineWindowArgs(fixture),
+        turns: windowTurns(fixture).map((turn) => ({
+          itemIds: [turn.agentMessageItemId],
+          ranges: [
+            { end: turn.completedSequence, start: turn.completedSequence - 2 },
+          ],
+          turnId: turn.turnId,
+        })),
+      }),
   },
   {
     name: `${EVENTS}#listTimelineRootWindowTurnIds`,
