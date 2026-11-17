@@ -38,9 +38,8 @@ export function SubagentActionControls({
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPending(null);
     }
+    setPending(null);
   };
 
   return (

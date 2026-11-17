@@ -330,9 +330,7 @@ export function sendJsonRpcRequest<TResult>(
               params: { requestId: id },
             }),
           );
-        } catch {
-          // A closed stdin still rejects the timed-out request below.
-        }
+        } catch {}
       }
       if (args.afterTimeout === undefined) {
         args.pending.delete(id);
