@@ -1,10 +1,5 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -190,6 +185,15 @@ async function loadHandleLine(path: string) {
   return handleLineModuleSchema.parse(module).handleLine;
 }
 
+async function removeWorkspace(path: string): Promise<void> {
+  await rm(path, {
+    recursive: true,
+    force: true,
+    maxRetries: 20,
+    retryDelay: 100,
+  });
+}
+
 function readJsonLines(path: string): Record<string, unknown>[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
@@ -308,7 +312,7 @@ async function runAcp(ask: AcpAsk, reply: AcpReply): Promise<Observation> {
       await harness.waitForResponse(99).catch(() => undefined);
     }
     harness.restore();
-    rmSync(workspaceDir, { recursive: true, force: true });
+    await removeWorkspace(workspaceDir);
   }
 }
 
@@ -484,7 +488,7 @@ async function runPi(dialog: object, reply: PiReply): Promise<Observation> {
     await module.experimental_closeAllForTests();
     harness.restore();
     vi.unstubAllEnvs();
-    rmSync(workspaceDir, { recursive: true, force: true });
+    await removeWorkspace(workspaceDir);
   }
 }
 
@@ -643,7 +647,7 @@ async function runCodex(
     }
     harness.restore();
     vi.unstubAllEnvs();
-    rmSync(workspaceDir, { recursive: true, force: true });
+    await removeWorkspace(workspaceDir);
   }
 }
 
