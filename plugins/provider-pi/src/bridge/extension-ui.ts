@@ -1,6 +1,7 @@
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   PI_EXTENSION_UI_KIND,
+  PI_EXTENSION_UI_MAX_MESSAGE_LENGTH,
   piExtensionUiPayloadDataSchema,
   piExtensionUiRequestSchema,
   piExtensionUiResolutionSchema,
@@ -76,6 +77,24 @@ function cardTitle(title: string): string {
   return `${shortened.trimEnd()}…`;
 }
 
+function cardMessage(message: string): string {
+  if (message.length <= PI_EXTENSION_UI_MAX_MESSAGE_LENGTH) {
+    return message;
+  }
+  const notice = (hidden: number) =>
+    `\n\n[${hidden} more characters not shown]`;
+  const budget =
+    PI_EXTENSION_UI_MAX_MESSAGE_LENGTH - notice(message.length).length;
+  let shortened = "";
+  for (const codePoint of message) {
+    if (shortened.length + codePoint.length > budget) {
+      break;
+    }
+    shortened += codePoint;
+  }
+  return `${shortened}${notice(message.length - shortened.length)}`;
+}
+
 export function createExtensionUiCoordinator(
   options: ExtensionUiCoordinatorOptions,
 ): ExtensionUiCoordinator {
@@ -102,7 +121,9 @@ export function createExtensionUiCoordinator(
         ...(title === request.title.trim() ? {} : { fullTitle: request.title }),
         method: request.method,
         ...(request.options ? { options: request.options } : {}),
-        ...(request.message !== undefined ? { message: request.message } : {}),
+        ...(request.message !== undefined
+          ? { message: cardMessage(request.message) }
+          : {}),
         ...(request.placeholder !== undefined
           ? { placeholder: request.placeholder }
           : {}),
