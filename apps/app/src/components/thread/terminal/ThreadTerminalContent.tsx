@@ -97,6 +97,7 @@ export function ThreadTerminalContent({
     <ThreadTerminalView
       autoFocus={autoFocus}
       isPanelOpen={controller.isPanelOpen}
+      keepAlive
       onAutoFocusHandled={onAutoFocusHandled}
       onOpenLink={onOpenLink}
       onSelectionAddToChat={onSelectionAddToChat}

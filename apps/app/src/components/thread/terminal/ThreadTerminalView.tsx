@@ -78,6 +78,11 @@ import {
 } from "./terminal-mobile-input";
 import { forwardLateImeInput } from "./terminal-late-ime-input";
 import {
+  evictTerminalRuntime,
+  parkTerminalRuntime,
+  takeParkedTerminalRuntime,
+} from "./terminal-runtime-cache";
+import {
   createTerminalOsc8LinkHandler,
   isTerminalLinkActivation,
   requestTerminalLinkOpen,
@@ -394,6 +399,7 @@ export function observeTerminalFontLoading(
 interface ThreadTerminalViewProps {
   autoFocus: boolean;
   isPanelOpen: boolean;
+  keepAlive?: boolean;
   onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
@@ -675,15 +681,13 @@ function handleTerminalServerMessage({
   }
 }
 
-interface MountThreadTerminalOptions {
-  container: HTMLDivElement;
+interface TerminalRuntimeLive {
   appNavigationRef: RefObject<ReturnType<typeof useAppNavigationHost>>;
   autoFocusRef: RefObject<boolean>;
   controlActiveRef: RefObject<boolean>;
   copyTerminalContextValue: (text: string, successMessage: string) => void;
   isPanelOpenRef: RefObject<boolean>;
   lastPointerReleaseAnchorRef: RefObject<SelectionAnchor | null>;
-  lastStatusNoticeRef: RefObject<TerminalSessionStatusNotice | null>;
   onAutoFocusHandledRef: RefObject<(() => void) | undefined>;
   onSessionChangeRef: RefObject<
     ((session: TerminalSession) => void) | undefined
@@ -693,64 +697,140 @@ interface MountThreadTerminalOptions {
   pointerIsDownRef: RefObject<boolean>;
   reportTerminalSelection: (anchor: SelectionAnchor | null) => void;
   requestOpenTerminalLink: (target: TerminalLinkTarget) => void;
-  scheduleFitRef: RefObject<TerminalFitScheduler | null>;
-  sessionId: string;
   sessionRef: RefObject<TerminalSession>;
   sessionStatusRef: RefObject<TerminalSession["status"]>;
   setConnectionNotice: (notice: TerminalConnectionNotice | null) => void;
   setControlActive: (active: boolean) => void;
   setSearchAddon: (addon: SearchAddon | null) => void;
   setTerminalReady: (ready: boolean) => void;
-  terminalRef: RefObject<XTermTerminal | null>;
   updateHoveredTerminalLink: (target: TerminalLinkTarget | null) => void;
+}
+
+interface TerminalRuntime {
+  connectionNotice: TerminalConnectionNotice | null;
+  dispose: () => void;
+  element: HTMLDivElement;
+  ended: boolean;
+  fitAddon: FitAddon;
+  lastStatusNotice: TerminalSessionStatusNoticeRef;
+  live: RefObject<TerminalRuntimeLive>;
+  parked: boolean;
+  searchAddon: SearchAddon;
+  terminal: XTermTerminal;
+  transport: TerminalWebSocketTransport;
+}
+
+const TERMINAL_ENDED_ERROR_CODES = new Set([
+  "terminal_exited",
+  "terminal_not_found",
+  "terminal_not_running",
+]);
+
+function isTerminalEndedMessage(message: TerminalServerMessage): boolean {
+  return (
+    message.type === "exited" ||
+    (message.type === "error" && TERMINAL_ENDED_ERROR_CODES.has(message.code))
+  );
+}
+
+interface MountThreadTerminalOptions {
+  container: HTMLDivElement;
+  keepAlive: boolean;
+  liveRef: RefObject<TerminalRuntimeLive>;
+  runtimeRef: RefObject<TerminalRuntime | null>;
+  scheduleFitRef: RefObject<TerminalFitScheduler | null>;
+  sessionId: string;
+  terminalRef: RefObject<XTermTerminal | null>;
 }
 
 function mountThreadTerminal({
   container,
-  appNavigationRef,
-  autoFocusRef,
-  controlActiveRef,
-  copyTerminalContextValue,
-  isPanelOpenRef,
-  lastPointerReleaseAnchorRef,
-  lastStatusNoticeRef,
-  onAutoFocusHandledRef,
-  onSessionChangeRef,
-  onTitleChangeRef,
-  pasteFromClipboard,
-  pointerIsDownRef,
-  reportTerminalSelection,
-  requestOpenTerminalLink,
+  keepAlive,
+  liveRef,
+  runtimeRef,
   scheduleFitRef,
   sessionId,
-  sessionRef,
-  sessionStatusRef,
-  setConnectionNotice,
-  setControlActive,
-  setSearchAddon,
-  setTerminalReady,
   terminalRef,
-  updateHoveredTerminalLink,
 }: MountThreadTerminalOptions): () => void {
   const activeElementAtMount = document.activeElement;
 
   let disposed = false;
-  let transport: TerminalWebSocketTransport | null = null;
-  let terminal: XTermTerminal | null = null;
-  let fitAddon: FitAddon | null = null;
-  let replayNextSeq: number | null = null;
-  const replayWriteState: TerminalReplayWriteState = {
-    suppressedWriteCount: 0,
-  };
+  let attached: TerminalRuntime | null = null;
   let resizeAnimationFrame: number | null = null;
-  let connectionNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
-  let selectionAnimationFrame: number | null = null;
   let unobserveResize: (() => void) | null = null;
-  let selectionChangeDisposable: { dispose: () => void } | null = null;
-  let lateImeInputDisposable: { dispose: () => void } | null = null;
   let stopObservingFonts: (() => void) | null = null;
   const reportDocumentVisibility = () => {
-    transport?.setVisible(document.visibilityState === "visible");
+    attached?.transport.setVisible(
+      !attached.parked && document.visibilityState === "visible",
+    );
+  };
+
+  const attachRuntime = (runtime: TerminalRuntime) => {
+    const live = liveRef.current;
+    attached = runtime;
+    runtime.live = liveRef;
+    runtime.parked = false;
+    container.appendChild(runtime.element);
+    terminalRef.current = runtime.terminal;
+    runtimeRef.current = runtime;
+    live.setSearchAddon(runtime.searchAddon);
+    live.setConnectionNotice(runtime.connectionNotice);
+    const fitTerminal = () => {
+      if (!hasVisibleTerminalSize({ containerElement: container })) {
+        return;
+      }
+      runtime.fitAddon.fit();
+      runtime.transport.sendResize(
+        runtime.terminal.cols,
+        runtime.terminal.rows,
+      );
+    };
+    const scheduleFit: TerminalFitScheduler = () => {
+      if (resizeAnimationFrame !== null) {
+        return;
+      }
+      resizeAnimationFrame = window.requestAnimationFrame(() => {
+        resizeAnimationFrame = null;
+        fitTerminal();
+      });
+    };
+    fitTerminal();
+    const fontSet = document.fonts;
+    if (fontSet !== undefined) {
+      stopObservingFonts = observeTerminalFontLoading(fontSet, () => {
+        forceTerminalFontMeasurement(runtime.terminal);
+        scheduleFit();
+      });
+    }
+    scheduleFitRef.current = scheduleFit;
+    const currentActiveElement = document.activeElement;
+    if (
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable:
+          currentActiveElement !== null &&
+          currentActiveElement !== document.body &&
+          currentActiveElement.isConnected,
+        hasExplicitFocusRequest: live.autoFocusRef.current,
+        focusMovedDuringMount: currentActiveElement !== activeElementAtMount,
+        isPanelOpen: live.isPanelOpenRef.current,
+      })
+    ) {
+      runtime.terminal.focus();
+      live.onAutoFocusHandledRef.current?.();
+    }
+    reportDocumentVisibility();
+    document.addEventListener("visibilitychange", reportDocumentVisibility);
+    live.setTerminalReady(true);
+    unobserveResize = observeSharedResize(container, {
+      read: (entry) =>
+        hasVisibleTerminalSize({
+          containerElement: container,
+          entries: entry === undefined ? undefined : [entry],
+        }),
+      write: (visible) => {
+        if (visible) scheduleFit();
+      },
+    });
   };
 
   async function mountTerminal(
@@ -772,16 +852,34 @@ function mountThreadTerminal({
       return;
     }
 
+    let runtimeDisposed = false;
+    let replayNextSeq: number | null = null;
+    const replayWriteState: TerminalReplayWriteState = {
+      suppressedWriteCount: 0,
+    };
+    let connectionNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
+    let selectionAnimationFrame: number | null = null;
+    const live = () => runtime.live.current;
+    const showConnectionNotice = (notice: TerminalConnectionNotice | null) => {
+      runtime.connectionNotice = notice;
+      if (!runtime.parked) {
+        live().setConnectionNotice(notice);
+      }
+    };
+
     const osc8LinkHandler = createTerminalOsc8LinkHandler({
-      onActivate: requestOpenTerminalLink,
+      onActivate: (target) => live().requestOpenTerminalLink(target),
       onHover: (target) => {
-        if (!disposed) {
-          updateHoveredTerminalLink(target);
+        if (!runtime.parked) {
+          live().updateHoveredTerminalLink(target);
         }
       },
     });
 
-    terminal = new Terminal({
+    const element = document.createElement("div");
+    element.style.width = "100%";
+    element.style.height = "100%";
+    const terminal = new Terminal({
       allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
       convertEol: true,
       cursorBlink: true,
@@ -791,17 +889,16 @@ function mountThreadTerminal({
       scrollback: 10_000,
       theme: buildTerminalTheme(),
     });
-    terminalRef.current = terminal;
     terminal.attachCustomKeyEventHandler(
       createTerminalClipboardKeyHandler({
         terminal,
-        copy: (text) => copyTerminalContextValue(text, "Selection copied"),
-        paste: pasteFromClipboard,
+        copy: (text) =>
+          live().copyTerminalContextValue(text, "Selection copied"),
+        paste: () => live().pasteFromClipboard(),
       }),
     );
     const loadedSearchAddon = new LoadedSearchAddon();
     terminal.loadAddon(loadedSearchAddon);
-    setSearchAddon(loadedSearchAddon);
     let reportedCwd: string | null = null;
     terminal.parser.registerOscHandler(7, (data) => {
       reportedCwd = parseTerminalReportedCwd(data) ?? reportedCwd;
@@ -810,14 +907,14 @@ function mountThreadTerminal({
     terminal.registerLinkProvider(
       createTerminalFileLinkProvider({
         terminal,
-        getCwd: () => reportedCwd ?? sessionRef.current.initialCwd,
-        hostId: sessionRef.current.hostId,
+        getCwd: () => reportedCwd ?? live().sessionRef.current.initialCwd,
+        hostId: liveRef.current.sessionRef.current.hostId,
         openFile: (intent) => {
-          appNavigationRef.current.openFilePreview(intent);
+          live().appNavigationRef.current.openFilePreview(intent);
         },
       }),
     );
-    fitAddon = new LoadedFitAddon();
+    const fitAddon = new LoadedFitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new Unicode11Addon());
     terminal.unicode.activeVersion = TERMINAL_UNICODE_VERSION;
@@ -827,14 +924,14 @@ function mountThreadTerminal({
           if (!isTerminalLinkActivation(event)) {
             return;
           }
-          requestOpenTerminalLink({ source: "detected-url", uri });
+          live().requestOpenTerminalLink({ source: "detected-url", uri });
         },
         {
           hover: (_event, uri) => {
-            updateHoveredTerminalLink({ source: "detected-url", uri });
+            live().updateHoveredTerminalLink({ source: "detected-url", uri });
           },
           leave: () => {
-            updateHoveredTerminalLink(null);
+            live().updateHoveredTerminalLink(null);
           },
         },
       ),
@@ -845,61 +942,10 @@ function mountThreadTerminal({
         () => new webglAddonModule.WebglAddon(),
       );
     }
-    terminal.open(containerElement);
-    lateImeInputDisposable = forwardLateImeInput(terminal);
-    writeTerminalSessionStatusNotice({
-      lastNotice: lastStatusNoticeRef,
-      session: sessionRef.current,
-      terminal,
-    });
-    const fitTerminal = () => {
-      if (!fitAddon || !terminal) {
-        return;
-      }
-      if (!hasVisibleTerminalSize({ containerElement })) {
-        return;
-      }
-      fitAddon.fit();
-      transport?.sendResize(terminal.cols, terminal.rows);
-    };
-    const scheduleFit: TerminalFitScheduler = () => {
-      if (resizeAnimationFrame !== null) {
-        return;
-      }
-      resizeAnimationFrame = window.requestAnimationFrame(() => {
-        resizeAnimationFrame = null;
-        fitTerminal();
-      });
-    };
-    fitTerminal();
-    const fontSet = document.fonts;
-    if (fontSet !== undefined) {
-      stopObservingFonts = observeTerminalFontLoading(fontSet, () => {
-        if (terminal === null) {
-          return;
-        }
-        forceTerminalFontMeasurement(terminal);
-        scheduleFit();
-      });
-    }
-    scheduleFitRef.current = scheduleFit;
-    const currentActiveElement = document.activeElement;
-    if (
-      shouldFocusTerminalAfterAsyncMount({
-        currentFocusIsAvailable:
-          currentActiveElement !== null &&
-          currentActiveElement !== document.body &&
-          currentActiveElement.isConnected,
-        hasExplicitFocusRequest: autoFocusRef.current,
-        focusMovedDuringMount: currentActiveElement !== activeElementAtMount,
-        isPanelOpen: isPanelOpenRef.current,
-      })
-    ) {
-      terminal.focus();
-      onAutoFocusHandledRef.current?.();
-    }
+    containerElement.appendChild(element);
+    terminal.open(element);
+    const lateImeInputDisposable = forwardLateImeInput(terminal);
 
-    const activeTerminal = terminal;
     let reconnecting = false;
     let reconnectingNoticeVisible = false;
     const clearConnectionNoticeTimeout = () => {
@@ -908,9 +954,9 @@ function mountThreadTerminal({
         connectionNoticeTimeout = null;
       }
     };
-    const activeTransport = new TerminalWebSocketTransport({
+    const transport = new TerminalWebSocketTransport({
       onConnectionState: (state) => {
-        if (disposed) {
+        if (runtimeDisposed) {
           return;
         }
         if (state === "reconnecting") {
@@ -919,157 +965,205 @@ function mountThreadTerminal({
           }
           reconnecting = true;
           clearConnectionNoticeTimeout();
-          setConnectionNotice(null);
+          showConnectionNotice(null);
           connectionNoticeTimeout = setTimeout(() => {
             connectionNoticeTimeout = null;
             reconnectingNoticeVisible = true;
-            setConnectionNotice("reconnecting");
+            showConnectionNotice("reconnecting");
           }, TERMINAL_RECONNECTING_NOTICE_DELAY_MS);
           return;
         }
         reconnecting = false;
         clearConnectionNoticeTimeout();
         if (state === "attached" && reconnectingNoticeVisible) {
-          setConnectionNotice("reconnected");
+          showConnectionNotice("reconnected");
           connectionNoticeTimeout = setTimeout(() => {
             connectionNoticeTimeout = null;
-            setConnectionNotice(null);
+            showConnectionNotice(null);
           }, TERMINAL_RECONNECTED_NOTICE_DURATION_MS);
         } else {
-          setConnectionNotice(null);
+          showConnectionNotice(null);
         }
         reconnectingNoticeVisible = false;
       },
       onInputOverflow: (maxBytes) => {
         writeTerminalStatus({
-          terminal: activeTerminal,
+          terminal,
           text: `Terminal input queue is full (${maxBytes} bytes); input was not sent`,
         });
       },
       onInvalidMessage: () => {
         writeTerminalStatus({
-          terminal: activeTerminal,
+          terminal,
           text: "Terminal received an invalid server message",
         });
       },
       onMessage: (message) => {
+        if (isTerminalEndedMessage(message)) {
+          runtime.ended = true;
+        }
         handleTerminalServerMessage({
-          acknowledgeOutput: (nextSeq) =>
-            activeTransport.acknowledgeOutput(nextSeq),
+          acknowledgeOutput: (nextSeq) => transport.acknowledgeOutput(nextSeq),
           message,
-          onSessionChange: onSessionChangeRef.current,
+          onSessionChange: live().onSessionChangeRef.current,
           replayNextSeq,
           replayWriteState,
           setReplayNextSeq: (nextSeq) => {
             replayNextSeq = nextSeq;
           },
-          terminal: activeTerminal,
+          terminal,
         });
+        if (runtime.ended && runtime.parked) {
+          evictTerminalRuntime(sessionId);
+        }
       },
       onSequenceGap: () => {
-        activeTerminal.reset();
+        terminal.reset();
         writeTerminalStatus({
-          terminal: activeTerminal,
+          terminal,
           text: "Some terminal output was unavailable after reconnect",
         });
       },
       shouldReconnect: () =>
-        !disposed && sessionStatusRef.current === "running",
+        !runtimeDisposed && live().sessionStatusRef.current === "running",
       url: buildTerminalWebSocketUrl({ terminalId: sessionId }),
     });
-    transport = activeTransport;
-    activeTransport.sendResize(activeTerminal.cols, activeTerminal.rows);
-    reportDocumentVisibility();
-    document.addEventListener("visibilitychange", reportDocumentVisibility);
-    activeTransport.start();
-    const sendTerminalInput = (dataBase64: string) =>
-      activeTransport.sendInput(dataBase64);
-    activeTerminal.onData((data) => {
-      if (controlActiveRef.current) {
+
+    const runtime: TerminalRuntime = {
+      connectionNotice: null,
+      dispose: () => {
+        if (runtimeDisposed) {
+          return;
+        }
+        runtimeDisposed = true;
+        clearConnectionNoticeTimeout();
+        if (selectionAnimationFrame !== null) {
+          window.cancelAnimationFrame(selectionAnimationFrame);
+          selectionAnimationFrame = null;
+        }
+        lateImeInputDisposable.dispose();
+        transport.dispose();
+        terminal.dispose();
+        element.remove();
+      },
+      element,
+      ended: false,
+      fitAddon,
+      lastStatusNotice: { current: null },
+      live: liveRef,
+      parked: false,
+      searchAddon: loadedSearchAddon,
+      terminal,
+      transport,
+    };
+
+    writeTerminalSessionStatusNotice({
+      lastNotice: runtime.lastStatusNotice,
+      session: liveRef.current.sessionRef.current,
+      terminal,
+    });
+    terminal.onData((data) => {
+      const current = live();
+      if (current.controlActiveRef.current) {
         data = applyTerminalControl(data);
-        controlActiveRef.current = false;
-        setControlActive(false);
+        current.controlActiveRef.current = false;
+        current.setControlActive(false);
       }
       forwardTerminalData({
         data,
-        onInput: sendTerminalInput,
+        onInput: (dataBase64) => transport.sendInput(dataBase64),
         replayWriteState,
-        sessionStatus: sessionStatusRef.current,
+        sessionStatus: current.sessionStatusRef.current,
       });
     });
-    setTerminalReady(true);
-    activeTerminal.onTitleChange((title) => {
+    terminal.onTitleChange((title) => {
       if (replayWriteState.suppressedWriteCount > 0) {
         return;
       }
-      if (sessionStatusRef.current !== "running") {
+      const current = live();
+      if (current.sessionStatusRef.current !== "running") {
         return;
       }
-      onTitleChangeRef.current?.(title);
+      current.onTitleChangeRef.current?.(title);
     });
-    const scheduleSelectionReport = () => {
-      if (pointerIsDownRef.current || selectionAnimationFrame !== null) {
+    terminal.onSelectionChange(() => {
+      if (
+        runtime.parked ||
+        live().pointerIsDownRef.current ||
+        selectionAnimationFrame !== null
+      ) {
         return;
       }
       selectionAnimationFrame = window.requestAnimationFrame(() => {
         selectionAnimationFrame = null;
-        reportTerminalSelection(lastPointerReleaseAnchorRef.current);
+        const current = live();
+        current.reportTerminalSelection(
+          current.lastPointerReleaseAnchorRef.current,
+        );
       });
-    };
-    selectionChangeDisposable = activeTerminal.onSelectionChange(
-      scheduleSelectionReport,
-    );
+    });
 
-    unobserveResize = observeSharedResize(containerElement, {
-      read: (entry) =>
-        hasVisibleTerminalSize({
-          containerElement,
-          entries: entry === undefined ? undefined : [entry],
-        }),
-      write: (visible) => {
-        if (visible) scheduleFit();
-      },
+    attachRuntime(runtime);
+    transport.start();
+  }
+
+  const reused = keepAlive
+    ? takeParkedTerminalRuntime<TerminalRuntime>(sessionId)
+    : null;
+  if (reused !== null) {
+    attachRuntime(reused);
+    reused.terminal.refresh(0, reused.terminal.rows - 1);
+  } else {
+    void mountTerminal(container).catch((error) => {
+      if (!disposed) {
+        container.textContent =
+          error instanceof Error ? error.message : String(error);
+      }
     });
   }
 
-  void mountTerminal(container).catch((error) => {
-    if (!disposed) {
-      container.textContent =
-        error instanceof Error ? error.message : String(error);
-    }
-  });
-
   return () => {
+    const live = liveRef.current;
     disposed = true;
-    controlActiveRef.current = false;
-    setControlActive(false);
-    setTerminalReady(false);
+    live.controlActiveRef.current = false;
+    live.setControlActive(false);
+    live.setTerminalReady(false);
     stopObservingFonts?.();
     if (resizeAnimationFrame !== null) {
       window.cancelAnimationFrame(resizeAnimationFrame);
     }
-    if (selectionAnimationFrame !== null) {
-      window.cancelAnimationFrame(selectionAnimationFrame);
-    }
-    if (connectionNoticeTimeout !== null) {
-      clearTimeout(connectionNoticeTimeout);
-    }
-    setConnectionNotice(null);
+    live.setConnectionNotice(null);
     unobserveResize?.();
-    selectionChangeDisposable?.dispose();
-    lateImeInputDisposable?.dispose();
     document.removeEventListener("visibilitychange", reportDocumentVisibility);
-    transport?.dispose();
-    terminal?.dispose();
     terminalRef.current = null;
-    setSearchAddon(null);
+    runtimeRef.current = null;
+    live.setSearchAddon(null);
     scheduleFitRef.current = null;
+    const runtime = attached;
+    attached = null;
+    if (runtime === null) {
+      return;
+    }
+    if (
+      keepAlive &&
+      !runtime.ended &&
+      live.sessionStatusRef.current === "running"
+    ) {
+      runtime.element.remove();
+      runtime.parked = true;
+      runtime.terminal.clearSelection();
+      runtime.transport.setVisible(false);
+      parkTerminalRuntime(sessionId, runtime);
+      return;
+    }
+    runtime.dispose();
   };
 }
 
 export function ThreadTerminalView({
   autoFocus,
   isPanelOpen,
+  keepAlive = false,
   onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
@@ -1120,7 +1214,7 @@ export function ThreadTerminalView({
   const isPanelOpenRef = useRef(isPanelOpen);
   const sessionStatusRef = useRef<TerminalSession["status"]>(session.status);
   const sessionRef = useRef(session);
-  const lastStatusNoticeRef = useRef<TerminalSessionStatusNotice | null>(null);
+  const runtimeRef = useRef<TerminalRuntime | null>(null);
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
   const systemConfig = useSystemConfig();
   const copyOnSelectRef = useRef(false);
@@ -1303,6 +1397,33 @@ export function ThreadTerminalView({
     });
   }, []);
 
+  const live: TerminalRuntimeLive = {
+    appNavigationRef,
+    autoFocusRef,
+    controlActiveRef,
+    copyTerminalContextValue,
+    isPanelOpenRef,
+    lastPointerReleaseAnchorRef,
+    onAutoFocusHandledRef,
+    onSessionChangeRef,
+    onTitleChangeRef,
+    pasteFromClipboard,
+    pointerIsDownRef,
+    reportTerminalSelection,
+    requestOpenTerminalLink,
+    sessionRef,
+    sessionStatusRef,
+    setConnectionNotice,
+    setControlActive,
+    setSearchAddon,
+    setTerminalReady,
+    updateHoveredTerminalLink,
+  };
+  const liveRef = useRef(live);
+  useLayoutEffect(() => {
+    liveRef.current = live;
+  });
+
   const handleSelectionAddToChat = useCallback(
     (text: string) => {
       onSelectionAddToChat?.(text);
@@ -1434,40 +1555,14 @@ export function ThreadTerminalView({
 
     return mountThreadTerminal({
       container,
-      appNavigationRef,
-      autoFocusRef,
-      controlActiveRef,
-      copyTerminalContextValue,
-      isPanelOpenRef,
-      lastPointerReleaseAnchorRef,
-      lastStatusNoticeRef,
-      onAutoFocusHandledRef,
-      onSessionChangeRef,
-      onTitleChangeRef,
-      pasteFromClipboard,
-      pointerIsDownRef,
-      reportTerminalSelection,
-      requestOpenTerminalLink,
+      keepAlive,
+      liveRef,
+      runtimeRef,
       scheduleFitRef,
       sessionId: session.id,
-      sessionRef,
-      sessionStatusRef,
-      setConnectionNotice,
-      setControlActive,
-      setSearchAddon,
-      setTerminalReady,
       terminalRef,
-      updateHoveredTerminalLink,
     });
-  }, [
-    copyTerminalContextValue,
-    pasteFromClipboard,
-    reportTerminalSelection,
-    requestOpenTerminalLink,
-    session.id,
-    session.threadId,
-    updateHoveredTerminalLink,
-  ]);
+  }, [keepAlive, session.id, session.threadId]);
 
   useEffect(() => {
     if (!isPanelOpen || !autoFocus) {
@@ -1482,14 +1577,14 @@ export function ThreadTerminalView({
   }, [autoFocus, isPanelOpen]);
 
   useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
+    const runtime = runtimeRef.current;
+    if (!runtime) {
       return;
     }
     writeTerminalSessionStatusNotice({
-      lastNotice: lastStatusNoticeRef,
+      lastNotice: runtime.lastStatusNotice,
       session,
-      terminal,
+      terminal: runtime.terminal,
     });
   }, [session]);
 
