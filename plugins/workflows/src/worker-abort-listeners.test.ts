@@ -43,6 +43,7 @@ it("removes the worker abort listener after a run finishes", async () => {
         get: async () =>
           ({
             id: "origin",
+            projectId: "project-test",
             environmentId: "environment-1",
             providerId: "codex",
           }) as never,

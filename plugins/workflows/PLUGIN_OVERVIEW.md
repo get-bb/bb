@@ -20,4 +20,9 @@ Agents start runs with the `bb_workflow_run` tool and inspect them with the `bb 
 
 ## Requirements
 
-The plugin is off by default. Commands must run inside a bb project thread.
+The plugin is off by default. Commands must run inside a bb project thread,
+or pass `--project <id>` explicitly (headless invocation). `run` and
+`validate` additionally require `--origin-thread <thread-id>` headless:
+`--project` must list in `bb project list --include-personal --json`, and
+`--origin-thread` must be an existing, unarchived thread with an environment
+in the same project.

@@ -52,14 +52,62 @@ async function guarded(
   }
 }
 
-function requireContext(ctx: PluginCliContext): {
-  projectId: string;
-  threadId: string;
-} {
-  if (ctx.projectId === undefined || ctx.threadId === undefined) {
+async function requireProjectAvailable(
+  bb: BbPluginApi,
+  projectId: string,
+): Promise<void> {
+  try {
+    await bb.sdk.projects.get({ projectId });
+  } catch (error) {
+    throw new Error(
+      `Project ${projectId} is not available: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function resolveProject(
+  bb: BbPluginApi,
+  ctx: Pick<PluginCliContext, "projectId">,
+  project: string | undefined,
+): Promise<string> {
+  const projectId = project ?? ctx.projectId;
+  if (projectId === undefined) {
     throw new Error("This command must run inside a BB project thread");
   }
-  return { projectId: ctx.projectId, threadId: ctx.threadId };
+  if (project !== undefined) {
+    await requireProjectAvailable(bb, project);
+  }
+  return projectId;
+}
+
+async function resolveOriginContext(
+  bb: BbPluginApi,
+  ctx: PluginCliContext,
+  options: { project: string | undefined; "origin-thread": string | undefined },
+): Promise<{ projectId: string; threadId: string }> {
+  const projectId = options.project ?? ctx.projectId;
+  const threadId = options["origin-thread"] ?? ctx.threadId;
+  if (projectId === undefined || threadId === undefined) {
+    if (
+      options.project === undefined &&
+      options["origin-thread"] === undefined
+    ) {
+      throw new Error("This command must run inside a BB project thread");
+    }
+    throw new PluginCliError(
+      projectId === undefined
+        ? "missing required option --project"
+        : "missing required option --origin-thread",
+      {
+        code: "missing_required",
+        hint: "Invoking outside a BB project thread needs --project and --origin-thread; `bb project list --include-personal --json` lists project ids.",
+      },
+    );
+  }
+  if (options.project !== undefined) {
+    await requireProjectAvailable(bb, options.project);
+  }
+  return { projectId, threadId };
 }
 
 function sourceInput(
@@ -313,6 +361,18 @@ const SOURCE_CONSTRAINT = {
   kind: "exactly-one",
   options: ["script", "file", "name"],
 } as const;
+const PROJECT_OPTION = {
+  type: "string",
+  placeholder: "id",
+  description:
+    "Project that owns the runs; overrides the attached thread's project. `bb project list --include-personal --json` lists ids",
+} as const;
+const ORIGIN_THREAD_OPTION = {
+  type: "string",
+  placeholder: "thread-id",
+  description:
+    "Thread that owns the runs and receives their notifications; overrides the attached thread. Must be an existing, unarchived thread with an environment in the same project; runs stop if it is archived or deleted",
+} as const;
 
 export function registerWorkflowCli(
   bb: BbPluginApi,
@@ -330,6 +390,8 @@ export function registerWorkflowCli(
           constraints: [SOURCE_CONSTRAINT],
           options: {
             ...SOURCE_OPTIONS,
+            project: PROJECT_OPTION,
+            "origin-thread": ORIGIN_THREAD_OPTION,
             args: {
               type: "string",
               placeholder: "json",
@@ -346,7 +408,11 @@ export function registerWorkflowCli(
           },
           run(input, ctx) {
             return guarded(async () => {
-              const context = requireContext(ctx);
+              const context = await resolveOriginContext(
+                bb,
+                ctx,
+                input.options,
+              );
               const prepared = await prepareWorkflowSource(
                 bb,
                 context,
@@ -372,11 +438,17 @@ export function registerWorkflowCli(
           constraints: [SOURCE_CONSTRAINT],
           options: {
             ...SOURCE_OPTIONS,
+            project: PROJECT_OPTION,
+            "origin-thread": ORIGIN_THREAD_OPTION,
             json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
           },
           run(input, ctx) {
             return guarded(async () => {
-              const context = requireContext(ctx);
+              const context = await resolveOriginContext(
+                bb,
+                ctx,
+                input.options,
+              );
               const prepared = await prepareWorkflowSource(
                 bb,
                 context,
@@ -393,14 +465,19 @@ export function registerWorkflowCli(
           summary: "Show a compact workflow run summary",
           positionals: [RUN_ID_POSITIONAL],
           options: {
+            project: PROJECT_OPTION,
             json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
           },
           run(input, ctx) {
             return guarded(async () => {
-              const context = requireContext(ctx);
+              const projectId = await resolveProject(
+                bb,
+                ctx,
+                input.options.project,
+              );
               const runId = input.positionals["run-id"];
               const page = service.inspectPage(runId, -1, 1);
-              if (page === null || page.run.projectId !== context.projectId) {
+              if (page === null || page.run.projectId !== projectId) {
                 throw new Error(`Unknown workflow run ${runId}`);
               }
               return success(statusSummary(page));
@@ -427,15 +504,20 @@ export function registerWorkflowCli(
               default: DEFAULT_HISTORY_LIMIT,
               description: "How many calls to include in this page",
             },
+            project: PROJECT_OPTION,
             json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
           },
           run(input, ctx) {
             return guarded(async () => {
               const runId = input.positionals["run-id"];
               const { cursor, limit } = input.options;
-              const context = requireContext(ctx);
+              const projectId = await resolveProject(
+                bb,
+                ctx,
+                input.options.project,
+              );
               const page = service.inspectPage(runId, cursor - 1, limit + 1);
-              if (page === null || page.run.projectId !== context.projectId) {
+              if (page === null || page.run.projectId !== projectId) {
                 throw new Error(`Unknown workflow run ${runId}`);
               }
               const exportedAt = Date.now();
@@ -473,14 +555,19 @@ export function registerWorkflowCli(
               default: DEFAULT_LIST_LIMIT,
               description: "How many recent runs to list, newest first",
             },
+            project: PROJECT_OPTION,
             json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
           },
           run(input, ctx) {
             return guarded(async () => {
-              const context = requireContext(ctx);
+              const projectId = await resolveProject(
+                bb,
+                ctx,
+                input.options.project,
+              );
               return success(
                 service
-                  .list(context.projectId, input.options.limit)
+                  .list(projectId, input.options.limit)
                   .map(listRunSummary),
               );
             });
@@ -490,14 +577,19 @@ export function registerWorkflowCli(
           summary: "Cancel a workflow run",
           positionals: [RUN_ID_POSITIONAL],
           options: {
+            project: PROJECT_OPTION,
             json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
           },
           run(input, ctx) {
             return guarded(async () => {
-              const context = requireContext(ctx);
+              const projectId = await resolveProject(
+                bb,
+                ctx,
+                input.options.project,
+              );
               const runId = input.positionals["run-id"];
               const run = service.get(runId);
-              if (run === null || run.projectId !== context.projectId) {
+              if (run === null || run.projectId !== projectId) {
                 throw new Error(`Unknown workflow run ${runId}`);
               }
               return success({ runId, stopped: await service.stop(runId) });

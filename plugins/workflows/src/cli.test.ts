@@ -5,6 +5,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import plugin from "./server.js";
 
+const SCRIPT = `export const meta = {
+  name: "headless-start",
+  description: "Started from explicit context flags",
+};
+return args;`;
+
 describe("workflows CLI argument validation", () => {
   let harness: ReturnType<typeof createFakePluginHost>["harness"];
 
@@ -41,6 +47,10 @@ describe("workflows CLI argument validation", () => {
     {
       argv: ["status", "run-1", "--limit", "2"],
       error: "unknown option '--limit'",
+    },
+    {
+      argv: ["list", "--origin-thread", "thr-1"],
+      error: "unknown option '--origin-thread'",
     },
     {
       argv: ["history", "run-1", "--cursor", "-1"],
@@ -91,6 +101,209 @@ describe("workflows CLI argument validation", () => {
     expect(result.stderr).toBe(
       "This command must run inside a BB project thread\n",
     );
+  });
+
+  it("starts a run from explicit context flags and overrides the attached thread context", async () => {
+    harness.sdk.stub("projects.get", () => ({ id: "proj-1" }));
+    harness.sdk.stub("threads.get", () => ({
+      id: "thr-1",
+      projectId: "proj-1",
+      environmentId: "env-1",
+      providerId: "prov-1",
+      archivedAt: null,
+    }));
+    harness.sdk.stub("environments.get", () => ({
+      id: "env-1",
+      projectId: "proj-1",
+      hostId: "host-1",
+      path: "/workspace",
+    }));
+    harness.sdk.stub("threads.defaultExecutionOptions", () => ({
+      model: "model-1",
+      reasoningLevel: "medium",
+      permissionMode: "auto",
+    }));
+
+    const result = await harness.runCli(
+      [
+        "run",
+        "--script",
+        SCRIPT,
+        "--project",
+        "proj-1",
+        "--origin-thread",
+        "thr-1",
+        "--args",
+        '{"request":"review"}',
+      ],
+      { projectId: "proj-ctx", threadId: "thr-ctx" },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const started = JSON.parse(result.stdout) as {
+      runId: string;
+      name: string;
+      status: string;
+    };
+    expect(started.runId).toMatch(/^wfr_/);
+    expect(started.name).toBe("headless-start");
+    expect(started.status).toBe("queued");
+    expect(harness.sdk.callsTo("projects.get")).toEqual([
+      [{ projectId: "proj-1" }],
+    ]);
+
+    const listed = await harness.runCli(["list", "--project", "proj-1"]);
+    expect(listed.exitCode).toBe(0);
+    const runs = JSON.parse(listed.stdout) as Array<{ id: string }>;
+    expect(runs.map((run) => run.id)).toEqual([started.runId]);
+
+    const scopedElsewhere = await harness.runCli(["list"], {
+      projectId: "proj-ctx",
+    });
+    expect(scopedElsewhere.exitCode).toBe(0);
+    expect(JSON.parse(scopedElsewhere.stdout)).toEqual([]);
+
+    const status = await harness.runCli([
+      "status",
+      started.runId,
+      "--project",
+      "proj-1",
+    ]);
+    expect(status.exitCode).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      id: started.runId,
+      originThreadId: "thr-1",
+    });
+
+    const unknownElsewhere = await harness.runCli([
+      "status",
+      started.runId,
+      "--project",
+      "proj-2",
+    ]);
+    expect(unknownElsewhere.exitCode).toBe(1);
+    expect(unknownElsewhere.stderr).toContain("Unknown workflow run");
+  });
+
+  it("rejects a headless run whose origin thread is archived", async () => {
+    harness.sdk.stub("projects.get", () => ({ id: "proj-1" }));
+    harness.sdk.stub("threads.get", () => ({
+      id: "thr-1",
+      projectId: "proj-1",
+      environmentId: "env-1",
+      providerId: "prov-1",
+      archivedAt: Date.now(),
+    }));
+    harness.sdk.stub("environments.get", () => ({
+      id: "env-1",
+      projectId: "proj-1",
+      hostId: "host-1",
+      path: "/workspace",
+    }));
+
+    const result = await harness.runCli([
+      "run",
+      "--script",
+      SCRIPT,
+      "--project",
+      "proj-1",
+      "--origin-thread",
+      "thr-1",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Workflow origin thread is archived");
+  });
+
+  it("rejects a headless run whose origin thread belongs to another project", async () => {
+    harness.sdk.stub("projects.get", () => ({ id: "proj-1" }));
+    harness.sdk.stub("threads.get", () => ({
+      id: "thr-1",
+      projectId: "proj-other",
+      environmentId: "env-1",
+      providerId: "prov-1",
+      archivedAt: null,
+    }));
+    harness.sdk.stub("environments.get", () => ({
+      id: "env-1",
+      projectId: "proj-other",
+      hostId: "host-1",
+      path: "/workspace",
+    }));
+
+    const result = await harness.runCli([
+      "run",
+      "--script",
+      SCRIPT,
+      "--project",
+      "proj-1",
+      "--origin-thread",
+      "thr-1",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "Workflow origin thread belongs to a different project",
+    );
+  });
+
+  it("prefers the explicit project flag over the attached thread context", async () => {
+    harness.sdk.stub("projects.get", () => ({ id: "proj-flag" }));
+
+    const result = await harness.runCli(["list", "--project", "proj-flag"], {
+      projectId: "proj-ctx",
+      threadId: "thr-ctx",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(harness.sdk.callsTo("projects.get")).toEqual([
+      [{ projectId: "proj-flag" }],
+    ]);
+  });
+
+  it("rejects an explicit project that is not available", async () => {
+    harness.sdk.stub("projects.get", () => {
+      throw new Error("no such project");
+    });
+
+    const result = await harness.runCli(["list", "--project", "proj-missing"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "Project proj-missing is not available: no such project",
+    );
+  });
+
+  it("names the missing context flag when only one is passed outside a thread", async () => {
+    const missingThread = await harness.runCli([
+      "run",
+      "--script",
+      SCRIPT,
+      "--project",
+      "proj-1",
+    ]);
+    expect(missingThread.exitCode).toBe(1);
+    expect(missingThread.stderr.split("\n")[0]).toContain(
+      "missing required option --origin-thread",
+    );
+
+    const missingProject = await harness.runCli([
+      "run",
+      "--script",
+      SCRIPT,
+      "--origin-thread",
+      "thr-1",
+      "--json",
+    ]);
+    expect(missingProject.exitCode).toBe(1);
+    expect(JSON.parse(missingProject.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: "missing_required",
+        message: "missing required option --project",
+      },
+    });
   });
 
   it.each([["--help"], ["help"], ["history", "--help"]])(

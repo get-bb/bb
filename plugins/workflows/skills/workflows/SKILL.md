@@ -13,7 +13,10 @@ script can fan out work, pipeline stages, verify results, and return structured
 data. Worker threads retain normal workspace tools and permissions.
 
 The plugin is disabled on fresh installations; `bb plugin enable workflows`
-turns it on. `bb workflows` commands must run from a BB project thread.
+turns it on. `bb workflows` commands must run from a BB project thread, or pass
+`--project <id>` explicitly to invoke them outside one (cron, scripts, plain
+shell); `run` and `validate` additionally need `--origin-thread <thread-id>`
+headless.
 
 ## Start safely
 

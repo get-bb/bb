@@ -90,6 +90,7 @@ function setup(
             }
             return {
               id: threadId,
+              projectId: "project-test",
               environmentId: "environment-1",
               providerId: "codex",
               status: "idle",
@@ -105,6 +106,7 @@ function setup(
           }
           return {
             id: threadId,
+            projectId: "project-test",
             environmentId: "environment-1",
             providerId: "codex",
             status: worker?.status ?? "active",
@@ -428,6 +430,7 @@ describe("workflow service policy integration", () => {
           get: async () =>
             ({
               id: "thread-test",
+              projectId: "project-test",
               environmentId: "environment-1",
               providerId: "codex",
             }) as never,

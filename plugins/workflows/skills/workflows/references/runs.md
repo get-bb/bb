@@ -98,6 +98,24 @@ option limits, and rules for a command and exit 0. Command output is JSON;
 adding `--json` also reports a failure as `{"ok":false,"error":{…}}` on stdout,
 alongside the readable message on stderr.
 
+Every command also accepts `--project <id>`; `run` and `validate` additionally
+accept `--origin-thread <thread-id>`. Pass `--project` to invoke the CLI
+outside a BB project thread (cron, shell scripts, CI); given, it overrides the
+attached thread's project. `--project` must list in
+`bb project list --include-personal --json`. `--origin-thread` names the
+origin thread that owns the runs and receives their completion notifications;
+it must be an existing, unarchived thread with an environment in the same
+project, and runs stop if that thread is later archived or deleted. Passing
+only `--origin-thread` outside a thread fails with
+`missing required option`. Without the flags, behavior is unchanged.
+
+```bash
+bb workflows run --name review-change \
+  --project proj_xxx --origin-thread thr_xxx --args '{"request":"…"}'
+bb workflows status <run-id> --project proj_xxx
+bb workflows list --project proj_xxx
+```
+
 Workflow worker threads use hidden visibility and are plugin-attributed. They
 stay out of sidebar organization without contributing unread/pending favicon
 attention. Ordinary search, prompt history,

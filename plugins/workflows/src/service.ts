@@ -576,6 +576,12 @@ export function createWorkflowService(
 
   async function resolveOrigin(input: StartWorkflowInput) {
     const thread = await bb.sdk.threads.get({ threadId: input.originThreadId });
+    if (thread.projectId !== input.projectId) {
+      throw new Error("Workflow origin thread belongs to a different project");
+    }
+    if (thread.archivedAt != null) {
+      throw new Error("Workflow origin thread is archived");
+    }
     if (thread.environmentId === null) {
       throw new Error("Workflow origin thread has no environment");
     }

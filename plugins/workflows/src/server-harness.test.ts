@@ -132,6 +132,7 @@ describe("workflows plugin", () => {
             get: async () =>
               ({
                 id: "thread-test",
+                projectId: "project-test",
                 environmentId: "environment-1",
                 providerId: "codex",
               }) as never,
@@ -827,6 +828,7 @@ describe("workflow resume cache integration", () => {
           get: async ({ threadId }) =>
             ({
               id: threadId,
+              projectId: "project-test",
               environmentId: "environment-1",
               providerId: "codex",
               status: threadId === "origin" ? "idle" : "working",

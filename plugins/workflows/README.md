@@ -164,7 +164,7 @@ pnpm exec turbo run test --filter=bb-plugin-workflows --force
 bb plugin build plugins/workflows
 ```
 
-User-facing commands (run these from a BB project thread) are:
+User-facing commands are:
 
 ```bash
 bb workflows validate --script '<javascript>'
@@ -179,6 +179,23 @@ bb workflows list --limit 20
 bb workflows stop <run-id>
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb provider models <provider-id> --environment "$BB_ENVIRONMENT_ID" --json
+```
+
+Every command also accepts `--project <id>` to run it outside a BB project
+thread (cron, scripts, plain shell); `run` and `validate` additionally accept
+`--origin-thread <thread-id>`, which names the thread that owns the runs and
+receives their notifications. The flags override the attached thread's
+context; without them, nothing changes and invocations outside a BB project
+thread keep failing with `This command must run inside a BB project thread`.
+`--project` must list in `bb project list --include-personal --json`;
+`--origin-thread` must be an existing, unarchived thread with an environment
+in the same project, because runs stop when their origin thread is archived
+or deleted:
+
+```bash
+bb workflows run --name review --project proj_xxx --origin-thread thr_xxx --args '{}'
+bb workflows list --project proj_xxx
+bb workflows status <run-id> --project proj_xxx
 ```
 
 Every command accepts `--help` (printed from the declarative CLI spec, exit 0)
