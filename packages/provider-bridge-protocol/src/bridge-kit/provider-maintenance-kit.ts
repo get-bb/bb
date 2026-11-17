@@ -15,20 +15,20 @@ const INSTALLATION_CHECK_TIMEOUT_MS = 15_000;
 
 export async function resolveExecutablePath(
   command: string,
-  env: NodeJS.ProcessEnv,
+  env?: NodeJS.ProcessEnv,
 ): Promise<string | null> {
-  return hostToolchain.resolve(command, { env });
+  return hostToolchain.resolve(command, env === undefined ? {} : { env });
 }
 
 export async function commandOutput(
   command: string,
   args: readonly string[],
-  env: NodeJS.ProcessEnv,
+  env?: NodeJS.ProcessEnv,
 ): Promise<string | null> {
   try {
     const { stdout, stderr } = await execPortableFile(command, [...args], {
       cwd: process.cwd(),
-      env,
+      env: env ?? process.env,
       maxBuffer: 1024 * 1024,
       timeout: INSTALLATION_CHECK_TIMEOUT_MS,
     });
@@ -47,12 +47,12 @@ export function versionFrom(value: string | null): string | null {
 
 export async function readCliVersion(
   command: string,
-  env: NodeJS.ProcessEnv,
+  env?: NodeJS.ProcessEnv,
 ): Promise<string | null> {
   try {
     const { stdout, stderr } = await execPortableFile(command, ["--version"], {
       cwd: process.cwd(),
-      env,
+      env: env ?? process.env,
       maxBuffer: 1024 * 1024,
       timeout: CLI_PROBE_TIMEOUT_MS,
     });
@@ -93,7 +93,7 @@ export function npmGlobalInstallCommand(
 
 export async function npmLatestVersion(
   npmPackage: string,
-  env: NodeJS.ProcessEnv,
+  env?: NodeJS.ProcessEnv,
 ): Promise<string | null> {
   return versionFrom(
     await commandOutput(npmCommand(), ["view", npmPackage, "version"], env),
@@ -107,7 +107,7 @@ export interface NpmGlobalPackageProbe {
 
 export async function probeNpmGlobalPackage(
   npmPackage: string,
-  env: NodeJS.ProcessEnv,
+  env?: NodeJS.ProcessEnv,
 ): Promise<NpmGlobalPackageProbe> {
   const npm = npmCommand();
   const [prefixOutput, listOutput] = await Promise.all([

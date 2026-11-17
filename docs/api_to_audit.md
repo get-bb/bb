@@ -1518,9 +1518,10 @@ a user-installed CLI.
   `readCliVersion` runs `--version` with stdin closed and returns the first
   valid SemVer token or null. `commandOutput` returns trimmed stdout+stderr
   or null. The others are `versionFrom`, `npmLatestVersion` and
-  `probeNpmGlobalPackage`. Every probe takes the env to search and run with
-  as an argument; pass `experimental_buildProviderCliEnv(params.envVars)` so a
-  probe sees the same CLI a session starts.
+  `probeNpmGlobalPackage`. Every probe takes an optional env to search and run
+  with; without one it uses the bridge's own environment, as before. First-party
+  bridges pass `experimental_buildProviderCliEnv(params.envVars)` so a probe
+  sees the same CLI a session starts.
 - Decisions: `compareVersions` uses SemVer precedence and throws `TypeError`
   on invalid input. `npmGlobalInstallSource` returns `npmGlobal`, `external`
   or `notInstalled`. `installationVerification` passes an install on
