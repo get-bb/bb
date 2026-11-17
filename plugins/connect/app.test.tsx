@@ -1001,6 +1001,11 @@ describe("Connect settings realtime recovery", () => {
 
 describe("connect setup guide section", () => {
   const section = () => app.setupGuideSections[0]!;
+  const readySetupButton = async (slot: ReturnType<typeof renderSlot>) => {
+    const button = await slot.findByRole("button", { name: "Set up" });
+    await waitFor(() => expect(button).toHaveProperty("disabled", false));
+    return button;
+  };
   const openPairingStep = async (slot: {
     findByRole: (
       role: string,
@@ -1011,14 +1016,25 @@ describe("connect setup guide section", () => {
       await slot.findByRole("button", { name: "I have the app" }),
     );
 
-  it("offers only Set up while bb connect is off", async () => {
+  it("offers Set up only after the initial status is ready", async () => {
+    let resolveStatus!: (value: ConnectStatus) => void;
+    const initialStatus = new Promise<ConnectStatus>((resolve) => {
+      resolveStatus = resolve;
+    });
+    const onSetupStarted = vi.fn();
     const slot = renderSlot(
       section(),
-      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
-      { rpc: { status: () => status() } },
+      { onPhone: false, onSetupStarted, onSetupFailed: () => {} },
+      { rpc: { status: () => initialStatus } },
     );
 
-    await slot.findByRole("button", { name: "Set up" });
+    const setUp = await slot.findByRole("button", { name: "Set up" });
+    expect(setUp).toHaveProperty("disabled", true);
+    fireEvent.click(setUp);
+    expect(onSetupStarted).not.toHaveBeenCalled();
+    expect(slot.rpcCalls.map((call) => call.method)).toEqual(["status"]);
+    await act(async () => resolveStatus(status()));
+    expect(setUp).toHaveProperty("disabled", false);
     slot.getByText(/A private web address for your bb server/);
     expect(
       slot.queryByRole("button", { name: "Have a pairing code?" }),
@@ -1028,6 +1044,28 @@ describe("connect setup guide section", () => {
     expect(slot.rpcCalls.map((call) => call.method)).not.toContain(
       "createMachineCode",
     );
+  });
+
+  it("allows retry after the initial status request fails", async () => {
+    const loadStatus = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("connection unavailable"))
+      .mockResolvedValue(status());
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
+      { rpc: { status: loadStatus } },
+    );
+
+    await slot.findByText(/Couldn't load bb connect: connection unavailable/);
+    const retry = slot.getByRole("button", { name: "Set up" });
+    expect(retry).toHaveProperty("disabled", false);
+    fireEvent.click(retry);
+    await waitFor(() => {
+      expect(loadStatus).toHaveBeenCalledTimes(2);
+      expect(slot.queryByText(/Couldn't load bb connect/)).toBeNull();
+    });
+    expect(retry).toHaveProperty("disabled", false);
   });
 
   it("starts sign-in from Set up, opens getbb.app, and shows only the getbb.app link without a code or a Cancel", async () => {
@@ -1046,7 +1084,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    fireEvent.click(await readySetupButton(slot));
     await slot.findByRole("link", { name: "getbb.app" });
     expect(onSetupStarted).toHaveBeenCalledOnce();
     expect(slot.navigateCalls).toContainEqual({
@@ -1090,7 +1128,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    fireEvent.click(await readySetupButton(slot));
     const showCode = await slot.findByRole("button", {
       name: "Show pairing code",
     });
@@ -1144,7 +1182,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    fireEvent.click(await readySetupButton(slot));
     const toggle = await slot.findByRole("button", {
       name: "Have a pairing code?",
     });
@@ -1203,7 +1241,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    fireEvent.click(await readySetupButton(slot));
     fireEvent.click(
       await slot.findByRole("button", { name: "Have a pairing code?" }),
     );
@@ -1254,7 +1292,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    fireEvent.click(await readySetupButton(slot));
     fireEvent.click(
       await slot.findByRole("button", { name: "Have a pairing code?" }),
     );
@@ -1308,7 +1346,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    const setUp = await slot.findByRole("button", { name: "Set up" });
+    const setUp = await readySetupButton(slot);
     await waitFor(() =>
       expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
     );
@@ -1348,7 +1386,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    const setUp = await slot.findByRole("button", { name: "Set up" });
+    const setUp = await readySetupButton(slot);
     await waitFor(() =>
       expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
     );
@@ -1424,7 +1462,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    const setUp = await slot.findByRole("button", { name: "Set up" });
+    const setUp = await readySetupButton(slot);
     await waitFor(() =>
       expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
     );
