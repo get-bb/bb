@@ -46,7 +46,10 @@ import {
   buildPiTurnOptions,
   type PiSessionParams,
 } from "../session-params.js";
-import { piSessionNeedsRelocation } from "./session-cwd.js";
+import {
+  piSessionNeedsRelocation,
+  readPiSessionFileState,
+} from "./session-cwd.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import {
   createExtensionUiCoordinator,
@@ -1047,37 +1050,29 @@ async function reconcileTurnOptions(
       ? {}
       : { thinkingLevel: turnOptions.thinkingLevel }),
   };
-  const sessionFileMissing = !existsSync(
+  const sessionFileState = readPiSessionFileState(
     resolvePiSessionFilePath({
       ...piSessionPaths(),
       threadId: threadSession.providerThreadId,
     }),
   );
-  let replacement: ThreadSession;
-  let reason = sessionFileMissing
-    ? "pi's session file was missing, so the conversation continues without its earlier context."
-    : piExited
-      ? "pi exited; the session was restored from its session file."
-      : "Execution settings changed; the pi session was rebuilt to apply them.";
-  let contextLost = sessionFileMissing;
-  try {
-    replacement = await rebuildThreadSession(
-      threadId,
-      threadSession,
-      rebuildParams,
-      threadSession.providerThreadId,
-    );
-  } catch (error) {
-    if (!piExited) throw error;
-    replacement = await rebuildThreadSession(
-      threadId,
-      threadSession,
-      rebuildParams,
-      `pi_${randomUUID()}`,
-    );
-    reason = `pi could not reopen its session (${error instanceof Error ? error.message : String(error)}), so the conversation continues in a new session without its earlier context.`;
-    contextLost = true;
-  }
+  const reason =
+    sessionFileState === "missing"
+      ? "pi's session file was missing, so the conversation continues without its earlier context."
+      : sessionFileState === "invalid"
+        ? "pi's session file is not a valid pi session, so the conversation continues in a new session without its earlier context."
+        : piExited
+          ? "pi exited; the session was restored from its session file."
+          : "Execution settings changed; the pi session was rebuilt to apply them.";
+  const replacement = await rebuildThreadSession(
+    threadId,
+    threadSession,
+    rebuildParams,
+    sessionFileState === "invalid"
+      ? `pi_${randomUUID()}`
+      : threadSession.providerThreadId,
+  );
+  const contextLost = sessionFileState !== "valid";
   sendThreadIdentity(threadId, replacement.providerThreadId);
   sendSessionResetBoundary(threadId);
   send({

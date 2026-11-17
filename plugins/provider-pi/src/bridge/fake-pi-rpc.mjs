@@ -38,6 +38,12 @@ function flag(name) {
   const index = args.indexOf(name);
   return index === -1 ? undefined : args[index + 1];
 }
+const failNextStartFile = process.env.FAKE_PI_FAIL_NEXT_START_FILE;
+if (failNextStartFile && existsSync(failNextStartFile)) {
+  rmSync(failNextStartFile);
+  process.stderr.write("Error: pi failed to start\n");
+  process.exit(1);
+}
 const sessionFile = args.includes("--no-session")
   ? undefined
   : flag("--session");

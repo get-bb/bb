@@ -186,6 +186,48 @@ it("after pi dies with a corrupt session file, the next turn runs in a new sessi
   expect(providerThreadIdFor(threadId)).not.toBe(next.originalProviderThreadId);
 }, 90_000);
 
+it("after pi dies, a failed restart keeps the session, and the next turn resumes it", async () => {
+  const threadId = "thr_r2_failed_restart";
+  await harness.startThread(threadId);
+  const providerThreadId = providerThreadIdFor(threadId);
+  turnStart(threadId, "/die", "creq_ab23456789");
+  await harness.waitForDelta(
+    threadId,
+    (d) => d.kind === "turn.boundary" && d.status === "failed",
+  );
+  const failNextStartFile = join(harness.workspaceDir, "fail-next-pi-start");
+  vi.stubEnv("FAKE_PI_FAIL_NEXT_START_FILE", failNextStartFile);
+  writeFileSync(failNextStartFile, "");
+  const failed = await harness.request((nextId += 1), "turn/start", {
+    threadId,
+    providerThreadId,
+    clientRequestId: "creq_cd23456789",
+    input: [{ type: "text", text: "hello again", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(failed.error).toBeDefined();
+  expect(sessionReplacedFor(threadId)).toEqual([]);
+  expect(providerThreadIdFor(threadId)).toBe(providerThreadId);
+
+  const next = await harness.request((nextId += 1), "turn/start", {
+    threadId,
+    providerThreadId,
+    clientRequestId: "creq_ef23456789",
+    input: [{ type: "text", text: "hello once more", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(next.error).toBeUndefined();
+  await harness.waitForDelta(
+    threadId,
+    (d) =>
+      d.kind === "input.accepted" && d.clientRequestId === "creq_ef23456789",
+  );
+  expect(providerThreadIdFor(threadId)).toBe(providerThreadId);
+  expect(sessionReplacedFor(threadId).at(-1)).toMatchObject({
+    contextLost: false,
+  });
+}, 90_000);
+
 it("a missing executable fails thread/start fast with the spawn error", async () => {
   vi.stubEnv(PI_BRIDGE_COMMAND_ENV, join(harness.workspaceDir, "no-such-pi"));
   vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
