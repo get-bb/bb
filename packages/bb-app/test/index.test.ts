@@ -1,6 +1,7 @@
 import { execHostFile, nodeNetworkArgs } from "@bb/process-utils";
 import { execFileSync, spawn } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -28,9 +29,9 @@ import {
   completeFullStackSupervision,
   createDaemonEnv,
   createHostEnrollKeyRequestBody,
+  createOwnedServerDaemonStarter,
   createServerEnv,
   createHostDaemonJoinEnv,
-  maybeAddAutoJoinEnv,
   parseLauncherArgs,
   readBbAppPackageVersion,
   resolveBbAppRuntimeState,
@@ -40,6 +41,7 @@ import {
   resolveServerListenerUrl,
   resolveBundledCliLaunch,
   resolveWorktreeRuntimePolicy,
+  HostDaemonAuthRejectedError,
   runBbApp,
   shouldRunSourceAppUpdateShim,
   runBundledCliCommand,
@@ -943,104 +945,75 @@ describe("bb-app launcher", () => {
     });
   });
 
-  describe("local auto-join with persisted host auth", () => {
-    async function withEnrollKeyServer(
-      status: number,
-      run: (serverUrl: string, requests: unknown[]) => Promise<void>,
-    ): Promise<void> {
-      const requests: unknown[] = [];
-      const server = createServer((request, response) => {
-        let body = "";
-        request.on("data", (chunk: Buffer) => {
-          body += chunk.toString("utf8");
-        });
-        request.on("end", () => {
-          requests.push({ url: request.url, body: JSON.parse(body) });
-          response.statusCode = status;
-          response.setHeader("content-type", "application/json");
-          response.end(
-            status === 201
-              ? JSON.stringify({
-                  enrollKey: "bbde_fresh",
-                  hostId: "host_local",
-                })
-              : JSON.stringify({ message: "boom" }),
-          );
-        });
-      });
-      await new Promise<void>((resolveListen) =>
-        server.listen(0, "127.0.0.1", resolveListen),
-      );
-      const address = server.address();
-      if (typeof address === "string" || address === null) {
-        throw new Error("Expected test server to listen on a TCP port");
-      }
-      const { port }: AddressInfo = address;
-      try {
-        await run(`http://127.0.0.1:${port}`, requests);
-      } finally {
-        await new Promise<void>((resolveClose) =>
-          server.close(() => resolveClose()),
-        );
-      }
-    }
-
-    function createPersistedHostDataDir(hostId: string | null): string {
-      const dataDir = mkdtempSync(join(tmpdir(), "bb-app-auto-join-"));
+  describe("daemon start on a server this launcher owns", () => {
+    function createRejectedAuthDataDir(): string {
+      const dataDir = mkdtempSync(join(tmpdir(), "bb-app-auth-rejected-"));
       writeFileSync(
         join(dataDir, "auth.json"),
-        JSON.stringify({ hostId: "host_local", hostKey: "bbhk_stale" }),
+        JSON.stringify({ hostId: "host_local", hostKey: "bbdh_rejected" }),
         "utf8",
       );
-      if (hostId !== null) {
-        writeFileSync(join(dataDir, "host-id"), `${hostId}\n`, "utf8");
-      }
       return dataDir;
     }
 
-    it("mints a recovery enroll key for the persisted host", async () => {
-      await withEnrollKeyServer(201, async (serverUrl, requests) => {
-        const env = await maybeAddAutoJoinEnv({
-          dataDir: createPersistedHostDataDir("host_local"),
-          env: {},
-          serverUrl,
-        });
-        expect(env).toMatchObject({
-          BB_HOST_ENROLL_KEY: "bbde_fresh",
-          BB_HOST_ID: "host_local",
-        });
-        expect(requests).toEqual([
-          {
-            url: "/internal/hosts/enroll-key",
-            body: createHostEnrollKeyRequestBody({
-              requestedHostId: "host_local",
-            }),
-          },
-        ]);
+    it("re-enrolls once after the server rejects the saved host key", async () => {
+      const dataDir = createRejectedAuthDataDir();
+      const startedWith: NodeJS.ProcessEnv[] = [];
+      let prepared = 0;
+      const start = await createOwnedServerDaemonStarter({
+        dataDir,
+        prepareEnv: async () => {
+          prepared += 1;
+          return existsSync(join(dataDir, "auth.json"))
+            ? {}
+            : { BB_HOST_ENROLL_KEY: `bbde_${prepared}` };
+        },
+        start: async (env) => {
+          startedWith.push(env);
+          if (env.BB_HOST_ENROLL_KEY === undefined) {
+            throw new HostDaemonAuthRejectedError();
+          }
+          return "daemon";
+        },
       });
+
+      await expect(start()).resolves.toBe("daemon");
+      expect(startedWith).toEqual([{}, { BB_HOST_ENROLL_KEY: "bbde_2" }]);
+      expect(existsSync(join(dataDir, "auth.json"))).toBe(false);
     });
 
-    it("keeps the persisted auth when the server cannot mint a key", async () => {
-      await withEnrollKeyServer(500, async (serverUrl) => {
-        const env = await maybeAddAutoJoinEnv({
-          dataDir: createPersistedHostDataDir("host_local"),
-          env: { KEEP: "1" },
-          serverUrl,
-        });
-        expect(env).toEqual({ KEEP: "1" });
+    it("keeps the saved host key when the daemon fails for another reason", async () => {
+      const dataDir = createRejectedAuthDataDir();
+      const failure = new Error("Host daemon failed to become healthy");
+      let starts = 0;
+      const start = await createOwnedServerDaemonStarter({
+        dataDir,
+        prepareEnv: async () => ({}),
+        start: async () => {
+          starts += 1;
+          throw failure;
+        },
       });
+
+      await expect(start()).rejects.toBe(failure);
+      expect(starts).toBe(1);
+      expect(existsSync(join(dataDir, "auth.json"))).toBe(true);
     });
 
-    it("skips minting when the persisted host ID is unknown", async () => {
-      await withEnrollKeyServer(201, async (serverUrl, requests) => {
-        const env = await maybeAddAutoJoinEnv({
-          dataDir: createPersistedHostDataDir(null),
-          env: {},
-          serverUrl,
-        });
-        expect(env).toEqual({});
-        expect(requests).toEqual([]);
+    it("gives up when the daemon is rejected again after re-enrolling", async () => {
+      const dataDir = createRejectedAuthDataDir();
+      let starts = 0;
+      const start = await createOwnedServerDaemonStarter({
+        dataDir,
+        prepareEnv: async () => ({}),
+        start: async () => {
+          starts += 1;
+          throw new HostDaemonAuthRejectedError();
+        },
       });
+
+      await expect(start()).rejects.toBeInstanceOf(HostDaemonAuthRejectedError);
+      expect(starts).toBe(2);
     });
   });
 

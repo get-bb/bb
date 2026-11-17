@@ -19,11 +19,8 @@ import { enrollDaemonHost } from "./enroll.js";
 import { loadHostIdentity, persistHostId } from "./identity.js";
 import { acquireDaemonLock } from "./lock.js";
 import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
-import {
-  classifyDaemonStartFailure,
-  startWithPersistedAuthRecovery,
-  type HostDaemonStartAttempt,
-} from "./persisted-auth-recovery.js";
+import { PersistedHostAuthRejectedError } from "./persisted-auth-rejection.js";
+import { ServerResponseError } from "./server-client.js";
 import {
   prepareRuntimeShellEnv,
   resolvePowerShellExecutionPolicyDefault,
@@ -48,17 +45,6 @@ interface StartHostDaemonOptions {
 
 export async function startHostDaemon(
   options: StartHostDaemonOptions = {},
-): Promise<HostDaemon> {
-  return startWithPersistedAuthRecovery({
-    enrollKey: options.enrollKey,
-    start: (attempt) => startHostDaemonOnce(options, attempt),
-    warn: (message, fields) => console.warn(message, fields),
-  });
-}
-
-async function startHostDaemonOnce(
-  options: StartHostDaemonOptions,
-  attempt: HostDaemonStartAttempt,
 ): Promise<HostDaemon> {
   const resolvedConfig = loadHostDaemonStartConfig({});
   const dataDir = resolvedConfig.dataDir;
@@ -88,9 +74,7 @@ async function startHostDaemonOnce(
   let app: Awaited<ReturnType<typeof createHostDaemonApp>> | undefined;
   let machineAuthProxy: MachineAuthProxy | undefined;
   try {
-    const persistedAuth = attempt.ignorePersistedAuth
-      ? null
-      : await readHostAuthState(dataDir);
+    const persistedAuth = await readHostAuthState(dataDir);
     const identity = await loadHostIdentity({
       dataDir,
       providedHostId: options.hostId,
@@ -218,10 +202,10 @@ async function startHostDaemonOnce(
     try {
       await app.daemon.start();
     } catch (error) {
-      throw classifyDaemonStartFailure({
-        error,
-        usedPersistedAuth: persistedAuth !== null,
-      });
+      if (persistedAuth !== null && isHostKeyRejection(error)) {
+        throw new PersistedHostAuthRejectedError(error);
+      }
+      throw error;
     }
     return app.daemon;
   } catch (error) {
@@ -231,4 +215,8 @@ async function startHostDaemonOnce(
     }
     throw error;
   }
+}
+
+function isHostKeyRejection(error: unknown): error is ServerResponseError {
+  return error instanceof ServerResponseError && error.status === 401;
 }
