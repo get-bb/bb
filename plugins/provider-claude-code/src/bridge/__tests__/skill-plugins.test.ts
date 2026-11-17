@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CLAUDE_SKILL_PLUGIN_NAME,
@@ -86,7 +86,7 @@ describe("claude skill plugins", () => {
     ensureClaudeSkillPlugin({ pluginsRoot, root: { id: "r", path: root } });
 
     expect(lstatSync(skillsLink).ino).toBe(before);
-    expect(readlinkSync(skillsLink)).toBe(`${root}${sep}`);
+    expect(resolve(readlinkSync(skillsLink))).toBe(resolve(root));
   });
 
   it("is idempotent for a root and re-points the link when the root moves", () => {
