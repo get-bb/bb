@@ -48,7 +48,7 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "The subquery supplies the outer search's sequence, so it runs once per thread; check:query-costs measures it",
   ),
   boundedCorrelatedEvents(
-    `${EVENTS}#listThreadIdsStoppedSinceLastTurnStart`,
+    `${EVENTS}#listThreadIdsStoppedSinceLastTurnRequest`,
     "The subquery supplies the outer search's sequence, so it runs once per thread; check:query-costs measures it",
   ),
   boundedCorrelatedEvents(

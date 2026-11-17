@@ -1,0 +1,22 @@
+{
+  "provider": "acp-opencode",
+  "cell": "provider-exit",
+  "threadId": "thr_6f6a155be7",
+  "scope": "thread",
+  "cliVersion": "opencode 2.0.22",
+  "recordedAt": "2026-11-14",
+  "description": "The provider process is killed mid-command, then a follow-up turn.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 3,
+    "bridge\u2192runtime": 37,
+    "provider\u2192bridge": 30,
+    "bridge\u2192provider": 9
+  },
+  "providerExit": {
+    "run": 1794633121342,
+    "seq": 472,
+    "signal": "SIGKILL"
+  }
+}

@@ -17,7 +17,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { highlightMarkdownCode } from "./markdown-code-highlight";
 import { MarkdownPreview } from "./markdown-preview";
 import { MARKDOWN_TABLE_START_OFFSET_VARIABLE } from "./markdown-table-breakout";
@@ -48,7 +48,7 @@ const inlineCodeLinkRouting = {
   },
 } satisfies MarkdownLinkRouting;
 
-beforeAll(() => LazyMarkdownHtml.preload());
+await LazyMarkdownHtml.preload();
 
 afterEach(() => {
   resolveApplicationUrlConfirmation("cancel");

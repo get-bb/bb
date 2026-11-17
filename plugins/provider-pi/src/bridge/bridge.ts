@@ -46,7 +46,10 @@ import {
   buildPiTurnOptions,
   type PiSessionParams,
 } from "../session-params.js";
-import { piSessionNeedsRelocation } from "./session-cwd.js";
+import {
+  piSessionNeedsRelocation,
+  readPiSessionFileState,
+} from "./session-cwd.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import {
   createExtensionUiCoordinator,
@@ -218,6 +221,7 @@ let configuredSkillPaths: string[] | null = null;
 
 let scratchDir: string | null = null;
 let scratchDirIsPrivate = false;
+let bridgeDataDir: string | undefined;
 let extensionPath: string | null = null;
 
 function requireScratchDir(): string {
@@ -715,10 +719,10 @@ async function buildSessionOptions(args: {
       ? { model: await resolvePiModel(args.params.model, args.params.cwd) }
       : {}),
     sessionFilePath: resolvePiSessionFilePath({
-      env: process.env,
+      ...piSessionPaths(),
       threadId: args.providerThreadId,
     }),
-    sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
+    sessionDir: resolvePiBridgeSessionDir(piSessionPaths()),
     systemPrompt: args.params.baseInstructions,
     appendSystemPrompt: args.params.appendSystemPrompt,
     shellEnvOverrides: args.params.shellEnvOverrides,
@@ -811,12 +815,13 @@ async function rebuildThreadSession(
   threadId: string,
   previous: ThreadSession,
   params: PiSessionParams,
+  providerThreadId: string,
 ): Promise<ThreadSession> {
   let replacement: ThreadSession;
   try {
     replacement = await constructPiThreadSession(
       threadId,
-      previous.providerThreadId,
+      providerThreadId,
       params,
     );
   } catch (error) {
@@ -858,7 +863,7 @@ async function handleThreadConstruction(
     });
   }
   const sourceFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: providerThreadId,
   });
   const relocate = piSessionNeedsRelocation(sourceFile, params.cwd);
@@ -866,7 +871,7 @@ async function handleThreadConstruction(
     ? `pi_${randomUUID()}`
     : providerThreadId;
   const targetFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: nextProviderThreadId,
   });
   try {
@@ -875,7 +880,7 @@ async function handleThreadConstruction(
         sourceFile,
         targetFile,
         cwd: params.cwd,
-        sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
+        sessionDir: resolvePiBridgeSessionDir(piSessionPaths()),
         extensionPath: requireExtensionPath(),
         scratchDir: requireScratchDir(),
         recordThreadId: threadId,
@@ -894,7 +899,7 @@ async function handleThreadFork(
   params: ThreadForkParams,
 ): Promise<void> {
   const sourceSessionFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: params.sourceProviderThreadId,
   });
   if (!existsSync(sourceSessionFile)) {
@@ -906,10 +911,10 @@ async function handleThreadFork(
     return;
   }
   const targetSessionFile = resolvePiSessionFilePath({
-    env: process.env,
+    ...piSessionPaths(),
     threadId: params.threadId,
   });
-  mkdirSync(resolvePiBridgeSessionDir({ env: process.env }), {
+  mkdirSync(resolvePiBridgeSessionDir(piSessionPaths()), {
     recursive: true,
   });
   try {
@@ -917,7 +922,7 @@ async function handleThreadFork(
       sourceFile: sourceSessionFile,
       targetFile: targetSessionFile,
       cwd: params.cwd,
-      sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
+      sessionDir: resolvePiBridgeSessionDir(piSessionPaths()),
       ...(params.sourceProviderCheckpointId === undefined
         ? {}
         : { checkpointId: params.sourceProviderCheckpointId }),
@@ -1011,7 +1016,9 @@ async function reconcileTurnOptions(
   const thinkingLevelChanged =
     turnOptions.thinkingLevel !== undefined &&
     turnOptions.thinkingLevel !== construction.thinkingLevel;
+  const piExited = threadSession.session.hasExited();
   if (
+    !piExited &&
     !environmentChanged &&
     changedModelRequest === undefined &&
     !thinkingLevelChanged
@@ -1027,17 +1034,45 @@ async function reconcileTurnOptions(
     (threadSession.constructionModel === undefined ||
       threadSession.constructionModel.provider !== nextModel.provider ||
       threadSession.constructionModel.id !== nextModel.id);
-  if (!environmentChanged && !modelChanged && !thinkingLevelChanged) {
+  if (
+    !piExited &&
+    !environmentChanged &&
+    !modelChanged &&
+    !thinkingLevelChanged
+  ) {
     return threadSession;
   }
-  const replacement = await rebuildThreadSession(threadId, threadSession, {
+  const rebuildParams: PiSessionParams = {
     ...construction,
     ...(shellEnvOverrides === undefined ? {} : { shellEnvOverrides }),
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
       ? {}
       : { thinkingLevel: turnOptions.thinkingLevel }),
-  });
+  };
+  const sessionFileState = readPiSessionFileState(
+    resolvePiSessionFilePath({
+      ...piSessionPaths(),
+      threadId: threadSession.providerThreadId,
+    }),
+  );
+  const reason =
+    sessionFileState === "missing"
+      ? "pi's session file was missing, so the conversation continues without its earlier context."
+      : sessionFileState === "invalid"
+        ? "pi's session file is not a valid pi session, so the conversation continues in a new session without its earlier context."
+        : piExited
+          ? "pi exited; the session was restored from its session file."
+          : "Execution settings changed; the pi session was rebuilt to apply them.";
+  const replacement = await rebuildThreadSession(
+    threadId,
+    threadSession,
+    rebuildParams,
+    sessionFileState === "invalid"
+      ? `pi_${randomUUID()}`
+      : threadSession.providerThreadId,
+  );
+  const contextLost = sessionFileState !== "valid";
   sendThreadIdentity(threadId, replacement.providerThreadId);
   sendSessionResetBoundary(threadId);
   send({
@@ -1046,9 +1081,8 @@ async function reconcileTurnOptions(
     params: {
       threadId,
       providerThreadId: replacement.providerThreadId,
-      reason:
-        "Execution settings changed; the pi session was rebuilt to apply them.",
-      contextLost: false,
+      reason,
+      contextLost,
     },
   });
   return replacement;
@@ -1122,6 +1156,10 @@ async function handleTurnSteer(
     sendError(id, -32000, "Cannot steer while context compaction is active");
     return;
   }
+  if (threadSession.session.hasExited()) {
+    rejectStaleSteer(id);
+    return;
+  }
   try {
     await threadSession.session.steer(
       text,
@@ -1132,12 +1170,23 @@ async function handleTurnSteer(
     ]);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
+    if (threadSession.session.hasExited()) {
+      rejectStaleSteer(id);
+      return;
+    }
     sendError(
       id,
       -32000,
       error instanceof Error ? error.message : String(error),
     );
   }
+}
+
+function rejectStaleSteer(id: string | number): void {
+  const message = "pi exited before it took the steer";
+  sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+    recovery: { kind: "staleTurn", message, retryable: false },
+  });
 }
 
 async function handleThreadStop(
@@ -1169,7 +1218,7 @@ async function handleThreadDiscard(
   });
   rmSync(
     resolvePiSessionFilePath({
-      env: process.env,
+      ...piSessionPaths(),
       threadId: params.providerThreadId,
     }),
     {
@@ -1236,9 +1285,17 @@ export async function experimental_closeAllForTests(): Promise<void> {
   }
 }
 
+function piSessionPaths(): {
+  env: NodeJS.ProcessEnv;
+  bridgeDataDir: string | undefined;
+} {
+  return { env: process.env, bridgeDataDir };
+}
+
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
   start: (context) => {
+    bridgeDataDir = context.dataDir;
     scratchDir = join(context.tempDir, "pi");
     scratchDirIsPrivate = false;
     mkdirSync(scratchDir, { recursive: true });
