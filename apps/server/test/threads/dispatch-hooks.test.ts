@@ -289,6 +289,74 @@ describe("message.dispatch hook context", () => {
       expect(queuedRows(harness, thread.id)).toHaveLength(1);
     });
   });
+
+  it("admits a CLI spawn on the sender's computer and holds one aimed elsewhere", async () => {
+    await withTestHarness(async (harness) => {
+      const senderSide = seedDispatchFixture(harness, "host-spawn-sender");
+      const otherSide = seedDispatchFixture(harness, "host-spawn-other");
+      const sender = seedThread(harness.deps, {
+        environmentId: senderSide.environment.id,
+        projectId: senderSide.project.id,
+      });
+      const seen: { senderThreadId: string | null; hostId: string | null }[] =
+        [];
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "device-selection-guard",
+            handler: (context) => {
+              seen.push({
+                senderThreadId: context.senderThreadId,
+                hostId: context.host?.id ?? null,
+              });
+              if (
+                context.senderThreadId === sender.id &&
+                context.host?.id === senderSide.host.id
+              ) {
+                return { action: "proceed" };
+              }
+              return { action: "wait", reason: "other computer" };
+            },
+          },
+        ],
+      });
+
+      const spawnOn = (
+        side: ReturnType<typeof seedDispatchFixture>,
+        path: string,
+      ) =>
+        createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId: side.host.id,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("Compare the source clip"),
+          origin: "cli",
+          projectId: side.project.id,
+          providerId: "codex",
+          senderThreadId: sender.id,
+          startedOnBehalfOf: null,
+        });
+
+      const same = await spawnOn(senderSide, "/tmp/dispatch-hooks-same");
+      const other = await spawnOn(otherSide, "/tmp/dispatch-hooks-other");
+
+      expect(seen).toEqual([
+        { senderThreadId: sender.id, hostId: senderSide.host.id },
+        { senderThreadId: sender.id, hostId: otherSide.host.id },
+      ]);
+      expect(turnRequests(harness, same.id)).toHaveLength(1);
+      expect(queuedRows(harness, same.id)).toHaveLength(0);
+      expect(turnRequests(harness, other.id)).toHaveLength(0);
+      expect(onlyQueuedRow(harness, other.id).senderThreadId).toBe(sender.id);
+      expect(onlyQueuedRow(harness, other.id).waitingOn).toEqual({
+        kind: "plugin",
+        pluginId: "device-selection-guard",
+        reason: "other computer",
+      });
+    });
+  });
 });
 
 describe("pending admission races", () => {
