@@ -166,18 +166,11 @@ export function ThreadStatusGlyph({
       );
     case "runtime":
       return (
-        <span
-          className={cn(
-            "inline-flex shrink-0 animate-spin motion-reduce:animate-none",
-            iconSizeClass,
-          )}
-        >
-          <Icon
-            name="Loading"
-            className={cn(SIDEBAR_WORKING_STATUS_COLOR_CLASS, iconSizeClass)}
-            aria-label={threadIndicatorLabel(indicator) ?? undefined}
-          />
-        </span>
+        <Icon
+          name="Loading"
+          className={cn(SIDEBAR_WORKING_STATUS_COLOR_CLASS, iconSizeClass)}
+          aria-label={threadIndicatorLabel(indicator) ?? undefined}
+        />
       );
     case "draft":
       return (

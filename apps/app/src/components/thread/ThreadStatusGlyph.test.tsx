@@ -35,7 +35,7 @@ describe("ThreadStatusGlyph", () => {
     },
   );
 
-  it("shimmers named work and spins the runtime glyph unless motion is reduced", () => {
+  it("shimmers named work and keeps the runtime glyph still so it costs no frames (#7233)", () => {
     const { rerender } = render(<ThreadStatusGlyph indicator="workflow" />);
     const workflow = screen.getByLabelText("Workflow running");
     expect(Array.from(workflow.classList)).toContain("animate-shine-icon");
@@ -45,14 +45,15 @@ describe("ThreadStatusGlyph", () => {
 
     rerender(<ThreadStatusGlyph indicator="runtime" />);
     const runtime = screen.getByLabelText("Thread working");
-    expect(runtime.tagName.toLowerCase()).toBe("svg");
-    expect(Array.from(runtime.classList)).not.toContain("animate-spin");
-    const rotor = runtime.parentElement;
-    expect(rotor?.tagName).toBe("SPAN");
-    expect(Array.from(rotor?.classList ?? [])).toContain("animate-spin");
-    expect(Array.from(rotor?.classList ?? [])).toContain(
-      "motion-reduce:animate-none",
+    expect(runtime.getAttribute("data-icon")).toBe("Loading");
+    expect(Array.from(runtime.classList)).toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
     );
+    expect(
+      Array.from(runtime.classList).filter((name) =>
+        name.startsWith("animate-"),
+      ),
+    ).toEqual([]);
   });
 
   it("draws unread success as a dot and nothing for none", () => {
