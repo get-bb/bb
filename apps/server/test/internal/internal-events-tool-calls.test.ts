@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { once } from "node:events";
-import { setTimeout as sleep } from "node:timers/promises";
 import { gunzipSync } from "node:zlib";
 import { eq } from "drizzle-orm";
 import {
@@ -221,8 +220,11 @@ async function runDirectorySwitchTurn(
 }
 
 describe("internal event and tool-call routes", () => {
-  it("returns the response head before a plugin tool completes", async () => {
-    await withTestHarness(async (harness) => {
+  it("returns the response head before a plugin tool completes", async ({
+    signal,
+    onTestFinished,
+  }) => {
+    const running = withTestHarness(async (harness) => {
       const record = {
         name: "wait_for_user",
       } as PluginAgentToolRecord;
@@ -262,15 +264,16 @@ describe("internal event and tool-call routes", () => {
           port: 0,
         });
         try {
-          if (!server.listening) await once(server, "listening");
+          if (!server.listening) await once(server, "listening", { signal });
           const address = server.address();
           if (address === null || typeof address === "string") {
             throw new Error("Expected a TCP server address");
           }
-          const responsePromise = fetch(
+          const response = await fetch(
             `http://127.0.0.1:${address.port}/internal/session/tool-call`,
             {
               method: "POST",
+              signal,
               headers: internalAuthHeaders(harness),
               body: JSON.stringify({
                 sessionId: session.id,
@@ -282,32 +285,28 @@ describe("internal event and tool-call routes", () => {
               }),
             },
           );
-          const earlyResponse = await Promise.race([
-            responsePromise,
-            sleep(1_000).then(() => null),
-          ]);
-
           completeTool({
             success: true,
             contentItems: [{ type: "inputText", text: "answered" }],
           });
-          const response = earlyResponse ?? (await responsePromise);
-
-          expect(earlyResponse).not.toBeNull();
           expect(response.status).toBe(200);
           await expect(readJson(response)).resolves.toEqual({
             success: true,
             contentItems: [{ type: "inputText", text: "answered" }],
           });
         } finally {
+          completeTool({ success: false, contentItems: [] });
           await new Promise<void>((resolve, reject) => {
             server.close((error) => (error ? reject(error) : resolve()));
+            if ("closeAllConnections" in server) server.closeAllConnections();
           });
         }
       } finally {
         setPluginAgentContributions(undefined);
       }
     });
+    onTestFinished(() => running.catch(() => undefined));
+    await running;
   });
 
   it("serves a small event batch response over HTTP with an exact Content-Length", async () => {
