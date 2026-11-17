@@ -747,8 +747,23 @@ function filterExactEventRowsForRequestedTurn(
 ): StoredEventRow[] {
   const rows: StoredEventRow[] = [];
   const openToolCallIds = new Set<string>();
+  const delegatingItemIds = new Set<string>();
+  const delegatedTurnIds = new Set<string>();
   for (const row of args.exactEventRows) {
-    if (row.scopeKind === "turn" && row.turnId !== args.turnId) {
+    const parentToolCallId = getStoredEventParentToolCallId(row);
+    if (
+      row.type === "turn/started" &&
+      row.turnId !== null &&
+      parentToolCallId !== undefined &&
+      delegatingItemIds.has(parentToolCallId)
+    ) {
+      delegatedTurnIds.add(row.turnId);
+    }
+    if (
+      row.scopeKind === "turn" &&
+      row.turnId !== args.turnId &&
+      (row.turnId === null || !delegatedTurnIds.has(row.turnId))
+    ) {
       const continuesOpenToolCall =
         row.itemId !== null &&
         row.type.startsWith("item/") &&
@@ -774,6 +789,9 @@ function filterExactEventRowsForRequestedTurn(
       args.acceptedClientRequestIdsForOtherTurns.has(requestId)
     ) {
       continue;
+    }
+    if (isStoredDelegatingItemRow(row) && row.itemId !== null) {
+      delegatingItemIds.add(row.itemId);
     }
     rows.push(row);
   }
