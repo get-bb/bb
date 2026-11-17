@@ -539,6 +539,9 @@ async function createPendingThreadAndAttemptFirstDispatch(
           ? { executionInputSources: args.request.executionInputSources }
           : {}),
         ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+        ...(args.request.senderThreadId !== undefined
+          ? { senderThreadId: args.request.senderThreadId }
+          : {}),
       },
       source: { kind: "inline" },
       queuePayload: { kind: "inline" },
