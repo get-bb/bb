@@ -1,18 +1,129 @@
-import { execFile } from "node:child_process";
+import { fork } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
-import { afterEach, describe, expect, it, onTestFailed } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  nativePluginMessageSchema,
+  type NativePluginRequest,
+  type NativePluginResult,
+} from "../../fixtures/native-plugin-server-protocol.js";
 
-const run = promisify(execFile);
+function startNativePluginChild() {
+  const child = fork(
+    new URL("../../fixtures/native-plugin-server-child.ts", import.meta.url),
+    [],
+    {
+      cwd: resolve(import.meta.dirname, "../../.."),
+      execArgv: ["--conditions=source", "--import", "tsx"],
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    },
+  );
+  let output = "";
+  for (const stream of [child.stdout, child.stderr]) {
+    stream?.on("data", (chunk: Buffer) => {
+      output = (output + chunk.toString()).slice(-8_192);
+    });
+  }
+  let readyResolve!: () => void;
+  let readyReject!: (error: Error) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  let pending:
+    | {
+        resolve: (result: NativePluginResult) => void;
+        reject: (error: Error) => void;
+      }
+    | undefined;
+  let active: Promise<NativePluginResult> | undefined;
+  const fail = (error: Error) => {
+    readyReject(error);
+    pending?.reject(error);
+  };
+  child.once("error", fail);
+  const closed = new Promise<void>((resolve) => {
+    child.once("close", (code, signal) => {
+      fail(
+        new Error(`Native plugin child exited (${code ?? signal}): ${output}`),
+      );
+      resolve();
+    });
+  });
+  child.on("message", (raw: unknown) => {
+    const message = nativePluginMessageSchema.safeParse(raw);
+    if (!message.success) {
+      fail(message.error);
+      return;
+    }
+    if (message.data.kind === "ready") readyResolve();
+    else if (message.data.kind === "error")
+      pending?.reject(new Error(message.data.message));
+    else pending?.resolve(message.data.result);
+  });
+  let stopping: Promise<void> | undefined;
+  const stop = () => {
+    stopping ??= (async () => {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+      await closed;
+    })();
+    return stopping;
+  };
+  return {
+    ready,
+    stop,
+    async idle() {
+      await active?.catch(() => undefined);
+    },
+    run(
+      request: NativePluginRequest,
+      signal: AbortSignal,
+    ): Promise<NativePluginResult> {
+      signal.throwIfAborted();
+      if (!child.connected)
+        return Promise.reject(
+          new Error(`Native plugin child is disconnected: ${output}`),
+        );
+      if (pending !== undefined)
+        return Promise.reject(
+          new Error("Native plugin child already has an active request"),
+        );
+      const abort = () => {
+        void stop();
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      active = new Promise<NativePluginResult>((resolve, reject) => {
+        pending = { resolve, reject };
+        child.send(request, (error) => {
+          if (error) reject(error);
+        });
+      }).finally(() => {
+        pending = undefined;
+        signal.removeEventListener("abort", abort);
+      });
+      return active;
+    },
+  };
+}
 
 describe("native plugin server loading", () => {
   const tempDirs: string[] = [];
+  let native: ReturnType<typeof startNativePluginChild>;
+
+  beforeAll(async () => {
+    native = startNativePluginChild();
+    await native.ready;
+  }, 30_000);
+
+  afterAll(async () => {
+    await native?.stop();
+  });
 
   afterEach(async () => {
+    await native?.idle();
     await Promise.all(
       tempDirs
         .splice(0)
@@ -20,7 +131,9 @@ describe("native plugin server loading", () => {
     );
   });
 
-  it("resolves BB-provided externals in a native Node import", async () => {
+  it("resolves BB-provided externals in a native Node import", async ({
+    signal,
+  }) => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-native-plugin-load-"));
     tempDirs.push(workDir);
     const rootDir = join(workDir, "plugin");
@@ -57,121 +170,21 @@ export default function plugin() {
         sdkVersion: PLUGIN_SDK_VERSION,
       }),
     );
-    const runtimeUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/plugins/plugin-service.ts",
-      ),
-    ).href;
-    const aiRegistryUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/ai/ai-service-registry.ts",
-      ),
-    ).href;
-    const telemetryUrl = pathToFileURL(
-      resolve(import.meta.dirname, "../../../src/services/system/telemetry.ts"),
-    ).href;
-    const script = `
-import pino from "pino";
-import { upsertInstalledPlugin } from "@bb/db";
-import { createMigratedConnection } from "@bb/db/testing";
-import { createPluginService } from ${JSON.stringify(runtimeUrl)};
-import { createAiServiceRegistry } from ${JSON.stringify(aiRegistryUrl)};
-import { createNoopTelemetryService } from ${JSON.stringify(telemetryUrl)};
-const progress = (phase) => process.stderr.write(JSON.stringify({ phase, uptimeSeconds: process.uptime() }) + "\\n");
-progress("imports-ready");
-const [rootDir, dataDir] = process.argv.slice(1);
-const db = createMigratedConnection();
-progress("database-ready");
-upsertInstalledPlugin(db, {
-  id: "native-externals",
-  source: "git:github.com/acme/bb-plugin-native-externals@v1",
-  rootDir,
-  version: "0.1.0",
-  enabled: true,
-  provenance: { kind: "direct" },
-  sourceIntent: {
-    kind: "git",
-    url: "https://github.com/acme/bb-plugin-native-externals",
-    subdirectory: null,
-    selector: { kind: "ref", ref: "v1", refKind: "branch" }
-  },
-  exactResolution: { kind: "git", commit: "test-commit" },
-  updateState: {
-    lastCheckAt: null,
-    availableCompatibleVersion: null,
-    newestIncompatibleVersion: null,
-    statusDetail: null
-  },
-  activeArtifactId: null
-});
-const service = createPluginService({
-  aiServices: createAiServiceRegistry(),
-  telemetry: createNoopTelemetryService(),
-  db,
-  hub: {
-    getDaemonSessionIdForHost: () => null,
-    notifyPluginChanged: () => {}, onWatchedTargets: () => () => {}, notifyPluginSignal: () => 0,
-    notifySystem: () => {}
-  },
-  logger: pino({ enabled: false }),
-  dataDir,
-  appVersion: "0.9.0",
-  loadTimeoutMs: 2000
-});
-progress("service-ready");
-await service.reload("native-externals");
-progress("reload-complete");
-const entry = service.list().find((plugin) => plugin.id === "native-externals");
-const result = {
-  status: entry?.status,
-  statusDetail: entry?.statusDetail,
-  types: globalThis.__nativeExternalTypes
-};
-await service.stop();
-progress("stop-complete");
-process.stdout.write(JSON.stringify(result));
-`;
-
-    const startedAt = performance.now();
-    const execution = run(
-      process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        script,
-        rootDir,
-        join(workDir, "data"),
-      ],
-      { cwd: resolve(import.meta.dirname, "../../..") },
+    const result = await native.run(
+      { kind: "prebuilt", rootDir, dataDir: join(workDir, "data") },
+      signal,
     );
-    let progressOutput = "";
-    execution.child.stderr?.on("data", (chunk: Buffer | string) => {
-      progressOutput += chunk.toString();
-    });
-    onTestFailed(() => {
-      console.error("Native plugin child progress", {
-        elapsedMs: Math.round(performance.now() - startedAt),
-        pid: execution.child.pid,
-        exitCode: execution.child.exitCode,
-        signalCode: execution.child.signalCode,
-        progress: progressOutput,
-      });
-    });
-    const { stdout } = await execution;
 
-    expect(JSON.parse(stdout)).toEqual({
+    expect(result).toEqual({
       status: "running",
       statusDetail: null,
       types: ["function", "function"],
     });
   });
 
-  it("loads a TypeScript source plugin through the cache in native Node", async () => {
+  it("loads a TypeScript source plugin through the cache in native Node", async ({
+    signal,
+  }) => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-native-source-load-"));
     tempDirs.push(workDir);
     const rootDir = join(workDir, "plugin");
@@ -199,76 +212,21 @@ export default function plugin(bb: BbPluginApi) {
 }
 `,
     );
-    const serviceUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/plugins/plugin-service.ts",
-      ),
-    ).href;
-    const aiRegistryUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/ai/ai-service-registry.ts",
-      ),
-    ).href;
-    const telemetryUrl = pathToFileURL(
-      resolve(import.meta.dirname, "../../../src/services/system/telemetry.ts"),
-    ).href;
-    const script = `
-import pino from "pino";
-import { createMigratedConnection } from "@bb/db/testing";
-import { createPluginService } from ${JSON.stringify(serviceUrl)};
-import { createAiServiceRegistry } from ${JSON.stringify(aiRegistryUrl)};
-import { createNoopTelemetryService } from ${JSON.stringify(telemetryUrl)};
-const [rootDir, dataDir] = process.argv.slice(1);
-const db = createMigratedConnection();
-const service = createPluginService({
-  aiServices: createAiServiceRegistry(),
-  telemetry: createNoopTelemetryService(),
-  db,
-  hub: {
-    getDaemonSessionIdForHost: () => null,
-    notifyPluginChanged: () => {}, onWatchedTargets: () => () => {}, notifyPluginSignal: () => 0,
-    notifySystem: () => {}
-  },
-  logger: pino({ enabled: false }),
-  dataDir,
-  appVersion: "0.9.0",
-  loadTimeoutMs: 2000
-});
-const entry = await service.installPath(rootDir);
-const result = {
-  status: entry.status,
-  statusDetail: entry.statusDetail,
-  value: globalThis.__nativeSourceResult
-};
-await service.stop();
-process.stdout.write(JSON.stringify(result));
-`;
-
-    const { stdout } = await run(
-      process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        script,
-        rootDir,
-        join(workDir, "data"),
-      ],
-      { cwd: resolve(import.meta.dirname, "../../..") },
+    const result = await native.run(
+      { kind: "source", rootDir, dataDir: join(workDir, "data") },
+      signal,
     );
 
-    expect(JSON.parse(stdout)).toEqual({
+    expect(result).toEqual({
       status: "running",
       statusDetail: null,
       value: ["loaded", "function"],
     });
   });
 
-  it("preserves cross-plugin dynamic imports across source reloads", async () => {
+  it("preserves cross-plugin dynamic imports across source reloads", async ({
+    signal,
+  }) => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-native-source-reload-"));
     tempDirs.push(workDir);
     const importedDir = join(workDir, "bb-plugin-imported");
@@ -317,72 +275,16 @@ process.stdout.write(JSON.stringify(result));
 }
 `,
     );
-    const serviceUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/plugins/plugin-service.ts",
-      ),
-    ).href;
-    const aiRegistryUrl = pathToFileURL(
-      resolve(
-        import.meta.dirname,
-        "../../../src/services/ai/ai-service-registry.ts",
-      ),
-    ).href;
-    const telemetryUrl = pathToFileURL(
-      resolve(import.meta.dirname, "../../../src/services/system/telemetry.ts"),
-    ).href;
-    const script = `
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import pino from "pino";
-import { createMigratedConnection } from "@bb/db/testing";
-import { createPluginService } from ${JSON.stringify(serviceUrl)};
-import { createAiServiceRegistry } from ${JSON.stringify(aiRegistryUrl)};
-import { createNoopTelemetryService } from ${JSON.stringify(telemetryUrl)};
-const [importedDir, importerDir, dataDir] = process.argv.slice(1);
-const db = createMigratedConnection();
-const service = createPluginService({
-  aiServices: createAiServiceRegistry(),
-  telemetry: createNoopTelemetryService(),
-  db,
-  hub: {
-    getDaemonSessionIdForHost: () => null,
-    notifyPluginChanged: () => {}, onWatchedTargets: () => () => {}, notifyPluginSignal: () => 0,
-    notifySystem: () => {}
-  },
-  logger: pino({ enabled: false }),
-  dataDir,
-  appVersion: "0.9.0",
-  loadTimeoutMs: 2000
-});
-await service.installPath(importedDir);
-await service.installPath(importerDir);
-const read = globalThis.__readImportedPlugin;
-const before = await read();
-await writeFile(join(importedDir, "shared.js"), 'export const value = "after";\\n');
-await service.reload("imported");
-const after = await read();
-await service.stop();
-process.stdout.write(JSON.stringify({ before, after }));
-`;
-
-    const { stdout } = await run(
-      process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        script,
+    const result = await native.run(
+      {
+        kind: "reload",
         importedDir,
         importerDir,
-        join(workDir, "data"),
-      ],
-      { cwd: resolve(import.meta.dirname, "../../..") },
+        dataDir: join(workDir, "data"),
+      },
+      signal,
     );
 
-    expect(JSON.parse(stdout)).toEqual({ before: "before", after: "after" });
+    expect(result).toEqual({ before: "before", after: "after" });
   });
 });
