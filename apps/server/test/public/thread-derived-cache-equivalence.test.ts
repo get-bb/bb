@@ -44,20 +44,24 @@ interface Server {
 interface Surface {
   name: string;
   path(threadId: string): string;
+  churn: "rename" | "append";
 }
 
 const LATEST_WINDOW: Surface = {
   name: "latest timeline window",
+  churn: "rename",
   path: (threadId) =>
     `/threads/${threadId}/timeline?segmentLimit=20&deferContent=true`,
 };
 const TURN_DETAILS: Surface = {
   name: "turn details",
+  churn: "append",
   path: (threadId) =>
     `/threads/${threadId}/timeline/turn-summary-details?turnId=turn-1&sourceSeqStart=2&sourceSeqEnd=6`,
 };
 const OUTLINE: Surface = {
   name: "conversation outline",
+  churn: "rename",
   path: (threadId) => `/threads/${threadId}/conversation-outline`,
 };
 const SURFACES = [LATEST_WINDOW, TURN_DETAILS, OUTLINE] as const;
@@ -552,7 +556,18 @@ describe("thread-derived caches keep entries that are still current", () => {
           sequence < NEXT_SEQUENCE + LARGEST_CACHE_ENTRY_LIMIT + 8;
           sequence += 1
         ) {
-          seedUserMessage(harness, streaming, sequence, `Message ${sequence}`);
+          if (surface.churn === "append") {
+            seedUserMessage(
+              harness,
+              streaming,
+              sequence,
+              `Message ${sequence}`,
+            );
+          } else {
+            updateThread(harness.db, harness.hub, streaming.threadId, {
+              title: `Title ${sequence}`,
+            });
+          }
           await readSurface(warm, surface.path(streaming.threadId));
         }
         expect(await countStatements(warm, idlePath)).toBe(hitStatements);
