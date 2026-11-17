@@ -454,6 +454,87 @@ describe("client metadata documents", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("accepts metadata with both token auth fields omitted", async () => {
+    const result = await load(
+      documentFetch({ token_endpoint_auth_method: undefined }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects an empty token_endpoint_auth_methods_supported array", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: [],
+      }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a non-array token_endpoint_auth_methods_supported", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: "none",
+      }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a singular auth method that is not listed in the plural", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: "private_key_jwt",
+        token_endpoint_auth_methods_supported: ["none"],
+      }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a non-string token_endpoint_auth_method when plural is present", async () => {
+    const result = await load(
+      documentFetch({
+        token_endpoint_auth_method: 7,
+        token_endpoint_auth_methods_supported: ["none"],
+      }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it.each([
+    "client_secret_basic",
+    "client_secret_post",
+    "client_secret_jwt",
+  ])(
+    "rejects plural token_endpoint_auth_methods_supported that lists %s even with none",
+    async (method) => {
+      const result = await load(
+        documentFetch({
+          token_endpoint_auth_method: "none",
+          token_endpoint_auth_methods_supported: ["none", method],
+        }),
+      );
+      expect(result.ok).toBe(false);
+    },
+  );
+
+  it.each([
+    ["client_secret_basic", "client_secret_basic"],
+    ["client_secret_post", "client_secret_post"],
+    ["client_secret_jwt", "client_secret_jwt"],
+  ])(
+    "rejects singular %s when plural also advertises none",
+    async (_label, method) => {
+      const result = await load(
+        documentFetch({
+          token_endpoint_auth_method: method,
+          token_endpoint_auth_methods_supported: ["none", method],
+        }),
+      );
+      expect(result.ok).toBe(false);
+    },
+  );
+
   it("rejects a non-JSON content type", async () => {
     const result = await load(
       fetchReturning(
@@ -555,6 +636,30 @@ describe("redirect URI matching", () => {
 });
 
 describe("authorization requests", () => {
+  it("completes PKCE authorization when client metadata uses ChatGPT-style CIMD auth fields", async () => {
+    const chatGptDeps = deps({
+      token_endpoint_auth_method: "private_key_jwt",
+      token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+    });
+    const result = await prepareOAuthAuthorization(
+      ENV,
+      db,
+      "alice",
+      authorizeParams(),
+      chatGptDeps,
+    );
+    expect(result.kind).toBe("consent");
+    const completed = await completeOAuthAuthorization(
+      ENV,
+      db,
+      "alice",
+      authorizeParams(),
+      { approved: true },
+      chatGptDeps,
+    );
+    expect(redirectParams(completed).get("code")).toBeTruthy();
+  });
+
   it("shows consent for a valid request", async () => {
     const result = await prepareOAuthAuthorization(
       ENV,

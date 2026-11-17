@@ -275,6 +275,11 @@ function isJsonContentType(value: string | null): boolean {
   );
 }
 
+const SYMMETRIC_TOKEN_ENDPOINT_AUTH_METHODS = new Set([
+  "client_secret_basic",
+  "client_secret_post",
+  "client_secret_jwt",
+]);
 const PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE =
   "only public clients (token_endpoint_auth_method none) are supported";
 
@@ -285,19 +290,36 @@ function publicClientTokenAuthSupported(
     OAUTH_AS_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED,
   );
   const plural = document.token_endpoint_auth_methods_supported;
+  const singular = document.token_endpoint_auth_method;
   if (plural !== undefined) {
     if (
       !Array.isArray(plural) ||
+      plural.length === 0 ||
       !plural.every((entry): entry is string => typeof entry === "string")
     ) {
       return "client metadata has invalid token_endpoint_auth_methods_supported";
     }
-    if (plural.some((method) => supportedByAs.has(method))) {
-      return null;
+    if (
+      plural.some((method) => SYMMETRIC_TOKEN_ENDPOINT_AUTH_METHODS.has(method))
+    ) {
+      return PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE;
     }
-    return PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE;
+    if (!plural.some((method) => supportedByAs.has(method))) {
+      return PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE;
+    }
+    if (singular !== undefined) {
+      if (typeof singular !== "string") {
+        return "client metadata has invalid token_endpoint_auth_method";
+      }
+      if (SYMMETRIC_TOKEN_ENDPOINT_AUTH_METHODS.has(singular)) {
+        return PUBLIC_CLIENT_AUTH_UNSUPPORTED_MESSAGE;
+      }
+      if (!plural.includes(singular)) {
+        return "client metadata token_endpoint_auth_method is not listed in token_endpoint_auth_methods_supported";
+      }
+    }
+    return null;
   }
-  const singular = document.token_endpoint_auth_method;
   if (singular === undefined || singular === "none") {
     return null;
   }
