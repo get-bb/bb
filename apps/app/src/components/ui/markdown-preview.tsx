@@ -1776,9 +1776,9 @@ function MarkdownPreviewComponent({
   const [expandedImage, setExpandedImage] =
     useState<ExpandedMarkdownImage | null>(null);
   const [markdownPieceCache] = useState(createMarkdownPieceCache);
-  const rendersHtml = allowHtml && content.includes("<");
+  const mayRenderHtml = allowHtml && content.includes("<");
   const usesIncrementalBlocks =
-    incrementalBlocks && !rendersHtml && promptMentions === undefined;
+    incrementalBlocks && promptMentions === undefined;
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1957,9 +1957,13 @@ function MarkdownPreviewComponent({
       resolvedUrlTransform,
     ],
   );
-  const markdownPieces = usesIncrementalBlocks
+  const resolvedMarkdownPieces = usesIncrementalBlocks
     ? resolveMarkdownPieces(markdownPieceCache, markdownPieceRenderConfig, body)
     : null;
+  const rendersHtml =
+    mayRenderHtml &&
+    (resolvedMarkdownPieces === null || resolvedMarkdownPieces.hasHtml);
+  const markdownPieces = rendersHtml ? null : resolvedMarkdownPieces;
 
   const Markdown = rendersHtml ? LazyMarkdownHtml : ReactMarkdown;
   const renderedMarkdown =
