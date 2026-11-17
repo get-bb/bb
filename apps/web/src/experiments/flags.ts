@@ -1,6 +1,5 @@
 export const EXPERIMENT_VARIANTS = {
   "homepage-qa-check": ["test"],
-  "homepage-download-path": ["test"],
   "homepage-hero": ["test"],
   "homepage-below-fold": ["test"],
 } as const satisfies Record<string, readonly string[]>;
@@ -17,9 +16,7 @@ export const EXPERIMENT_KEYS = Object.keys(
 
 export const EXPERIMENT_PATHS: ReadonlySet<string> = new Set(["/"]);
 
-export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [
-  "homepage-download-path",
-];
+export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [];
 
 export const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";
 

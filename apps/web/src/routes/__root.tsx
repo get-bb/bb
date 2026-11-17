@@ -8,7 +8,6 @@ import { useEffect } from "react";
 
 import {
   RouteExperimentsProvider,
-  useExperiment,
   experimentsBeforeLoad,
 } from "../experiments/use-experiment";
 import { readVisitIds } from "../landing/analytics";
@@ -65,15 +64,6 @@ export const Route = createRootRoute({
 
 const JS_INIT = `document.documentElement.classList.add("js")`;
 
-function SiteBody({ children }: { children: React.ReactNode }) {
-  const siteFontButtons = useExperiment("homepage-download-path") === "test";
-  return (
-    <body data-download-area={siteFontButtons ? "test" : undefined}>
-      {children}
-    </body>
-  );
-}
-
 function RootDocument({ children }: { children: React.ReactNode }) {
   useEffect(() => watchSystemTheme(), []);
   useEffect(() => carryUtmToDownloadLinks(readVisitIds), []);
@@ -103,10 +93,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           )}
           <HeadContent />
         </head>
-        <SiteBody>
+        <body>
           {children}
           <Scripts />
-        </SiteBody>
+        </body>
       </html>
     </RouteExperimentsProvider>
   );

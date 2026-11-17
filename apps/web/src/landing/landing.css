@@ -518,6 +518,7 @@ html:has(.nav-sticky) {
   display: inline-block;
   padding: 10px 20px;
   border-radius: calc(var(--radius) - 2px);
+  font-family: var(--font-sans);
   font-size: 14.5px;
   font-weight: 500;
   cursor: pointer;
@@ -731,10 +732,6 @@ html:has(.nav-sticky) {
 
 .oss-link {
   white-space: nowrap;
-}
-
-[data-download-area="test"] .btn:not(.cmd-btn) {
-  font-family: var(--font-sans);
 }
 
 .oss-ic {
@@ -4876,7 +4873,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   /* The full download CTA is repeated immediately below in the hero. Hide the
      nav copy on mobile so the three utility links retain comfortable spacing. */
-  .nav-links .btn,
   .nav-actions .btn {
     display: none;
   }
@@ -5005,7 +5001,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     justify-content: space-between;
   }
 
-  .nav-links .nav-icon-button,
   .nav-actions {
     display: none;
   }

@@ -418,6 +418,32 @@ describe("site-wide experiments", () => {
     return { ...context, config };
   }
 
+  it("runs only the homepage experiments by default", async () => {
+    const { calls, config } = setup(async () => flagsResponse(assigned));
+    const { siteWideKeys: _, ...defaults } = config;
+    expect(await resolveExperiments(htmlRequest("/blog"), defaults)).toBeNull();
+    expect(calls).toHaveLength(0);
+    const home = await resolveExperiments(
+      pageRequest(
+        "/",
+        stored(`homepage-download-path=test~${NOW}&homepage-hero=test~${NOW}`),
+      ),
+      defaults,
+    );
+    expect(calls[0]?.body).toMatchObject({
+      flag_keys_to_evaluate: ["homepage-qa-check", "homepage-below-fold"],
+    });
+    expect(home?.bootstrap.featureFlags).toEqual({
+      "homepage-qa-check": "test",
+      "homepage-hero": "test",
+    });
+    expect(home?.setCookies).toEqual([
+      siteCookie(
+        `homepage-below-fold=%7E${NOW}&homepage-hero=test%7E${NOW}&homepage-qa-check=test%7E${NOW}`,
+      ),
+    ]);
+  });
+
   it("assigns a first visit to any page and stores it for a day", async () => {
     const { calls, config } = siteSetup(async () => flagsResponse(assigned));
     const resolution = await resolveExperiments(htmlRequest("/blog"), config);
@@ -738,7 +764,7 @@ describe("local evaluation from cached definitions", () => {
 
   it("assigns locally evaluable experiments when /flags times out", async () => {
     const { calls, config, logs } = localSetup(
-      [simple("homepage-hero"), personTargeted("homepage-download-path")],
+      [simple("homepage-hero"), personTargeted("homepage-below-fold")],
       timeout,
     );
     const resolution = await resolveExperiments(

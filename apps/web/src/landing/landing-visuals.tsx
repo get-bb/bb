@@ -19,7 +19,6 @@ import {
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
-import { useExperiment } from "../experiments/use-experiment";
 import FilesEditorIcon from "../assets/plugin-icons/files-editor.svg";
 import TaskboardIcon from "../assets/plugin-icons/taskboard.svg";
 import {
@@ -98,17 +97,14 @@ import {
   OpencodeIcon,
   PiIcon,
 } from "./icons";
-import type { CtaPlacement, DesktopPlatform } from "./site";
+import type { CtaPlacement } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 import { useActiveWhileVisible, usePageHidden } from "./visibility";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
-  const simple = useExperiment("homepage-download-path") === "test";
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
-  const otherPlatform: DesktopPlatform =
-    platform === "macos" ? "linux" : "macos";
-  const simpleLinks = (
+  const links = (
     <>
       <OpenSourceLink placement={placement} />
       {" · "}
@@ -124,57 +120,41 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           placement={placement}
           platform={platform}
           note={
-            simple ? (
+            <>
+              {download.shortNote ? `${download.shortNote} · ` : null}
+              {links}
+            </>
+          }
+          touchNote={links}
+        />
+        <span className="install-choice">
+          <CommandButton
+            command={CLI_COMMAND}
+            label={`Copy browser install command: ${CLI_COMMAND}`}
+            size="hero"
+            onCopy={() =>
+              trackLandingEvent({
+                name: "landing_cli_command_copied",
+                properties: { placement, command: CLI_COMMAND },
+              })
+            }
+          />
+          <span className="install-note">
+            {platform !== "windows" && (
               <>
-                {download.shortNote ? `${download.shortNote} · ` : null}
-                {simpleLinks}
-              </>
-            ) : (
-              <>
-                {download.note}
-                {" · "}
                 <DownloadLink
                   placement={placement}
-                  platform={otherPlatform}
+                  platform="windows"
                   className="install-note-link"
                 >
-                  Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
+                  {DESKTOP_DOWNLOADS.windows.label}
                 </DownloadLink>
+                ,{" "}
               </>
-            )
-          }
-          touchNote={simple ? simpleLinks : undefined}
-        />
-        {simple ? null : (
-          <span className="install-choice">
-            <CommandButton
-              command={CLI_COMMAND}
-              label={`Copy browser install command: ${CLI_COMMAND}`}
-              size="hero"
-              onCopy={() =>
-                trackLandingEvent({
-                  name: "landing_cli_command_copied",
-                  properties: { placement, command: CLI_COMMAND },
-                })
-              }
-            />
-            <span className="install-note">
-              {platform !== "windows" && (
-                <>
-                  <DownloadLink
-                    placement={placement}
-                    platform="windows"
-                    className="install-note-link"
-                  >
-                    {DESKTOP_DOWNLOADS.windows.label}
-                  </DownloadLink>
-                  ,{" "}
-                </>
-              )}
-              Intel Macs &amp; remote machines
-            </span>
+            )}
+            Intel Macs &amp; remote machines
           </span>
-        )}
+        </span>
       </div>
     </div>
   );
