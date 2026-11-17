@@ -45,8 +45,12 @@ describe("ThreadStatusGlyph", () => {
 
     rerender(<ThreadStatusGlyph indicator="runtime" />);
     const runtime = screen.getByLabelText("Thread working");
-    expect(Array.from(runtime.classList)).toContain("animate-spin");
-    expect(Array.from(runtime.classList)).toContain(
+    expect(runtime.tagName.toLowerCase()).toBe("svg");
+    expect(Array.from(runtime.classList)).not.toContain("animate-spin");
+    const rotor = runtime.parentElement;
+    expect(rotor?.tagName).toBe("SPAN");
+    expect(Array.from(rotor?.classList ?? [])).toContain("animate-spin");
+    expect(Array.from(rotor?.classList ?? [])).toContain(
       "motion-reduce:animate-none",
     );
   });
