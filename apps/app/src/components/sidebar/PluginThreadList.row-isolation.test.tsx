@@ -61,19 +61,18 @@ function AppTitleMentionResources({ children }: { children: ReactNode }) {
   );
 }
 
-async function prepareThreadList() {
+function prepareThreadList() {
   resetThreadActionRegistryForTest();
   stubPluginRpcFetch((method) => ({
     result: method === "listPreferences" ? { preferences: {} } : null,
   }));
   vi.stubGlobal("IntersectionObserver", undefined);
-  replacement = await loadPluginThreadListReplacement({
-    withNotifications: false,
-  });
   return seedSidebarQueryClient(60);
 }
 
-let replacement: Awaited<ReturnType<typeof loadPluginThreadListReplacement>>;
+const replacement = await loadPluginThreadListReplacement({
+  withNotifications: false,
+});
 
 function ThreadList() {
   return (
@@ -100,7 +99,7 @@ async function settle() {
 }
 
 it("renders only the changed row on a thread update, and no row while typing an answer", async () => {
-  const queryClient = await prepareThreadList();
+  const queryClient = prepareThreadList();
   render(
     <SidebarThreadListHarness queryClient={queryClient}>
       <ThreadList />
@@ -154,7 +153,7 @@ it("renders only the changed row on a thread update, and no row while typing an 
 });
 
 it("moves a row when its sort order changes while nothing is being dragged", async () => {
-  const queryClient = await prepareThreadList();
+  const queryClient = prepareThreadList();
   render(
     <SidebarThreadListHarness queryClient={queryClient}>
       <ThreadList />
