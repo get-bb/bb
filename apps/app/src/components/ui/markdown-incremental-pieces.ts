@@ -53,11 +53,13 @@ interface MarkdownPieceSummary {
   endsOpen: boolean;
   endsWithIndentedCode: boolean;
   hasGlobalConstructs: boolean;
+  hasHtml: boolean;
   lastTopLevelType: string | null;
 }
 
 interface ResolvedMarkdownPieces {
   children: readonly ReactNode[];
+  hasHtml: boolean;
   mounts: readonly MountedMessageDirective[];
 }
 
@@ -72,6 +74,7 @@ interface MarkdownPieceEntry {
 export interface MarkdownPieceCache {
   config: MarkdownPieceRenderConfig | null;
   entries: readonly MarkdownPieceEntry[];
+  htmlPrefix: string | null;
   latchedWholeDocumentPrefix: string | null;
   resolved: { body: string; result: ResolvedMarkdownPieces } | null;
 }
@@ -117,6 +120,7 @@ const EMPTY_MARKDOWN_PIECE_SUMMARY: MarkdownPieceSummary = {
   endsOpen: false,
   endsWithIndentedCode: false,
   hasGlobalConstructs: false,
+  hasHtml: false,
   lastTopLevelType: null,
 };
 
@@ -270,6 +274,15 @@ function markdownTreeHasGlobalConstructs(tree: Root): boolean {
   return found;
 }
 
+function markdownTreeHasHtml(tree: Root): boolean {
+  let found = false;
+  visit(tree, "html", () => {
+    found = true;
+    return EXIT;
+  });
+  return found;
+}
+
 function endsWithIndentedMarkdownCode(tree: Root, source: string): boolean {
   const last = tree.children[tree.children.length - 1];
   if (last?.type !== "code") {
@@ -288,6 +301,7 @@ function remarkMarkdownPieceSummary(target: MarkdownPieceSummaryTarget) {
       hasGlobalConstructs:
         (source.includes("]:") || source.includes("[^")) &&
         markdownTreeHasGlobalConstructs(tree),
+      hasHtml: source.includes("<") && markdownTreeHasHtml(tree),
       lastTopLevelType: tree.children[tree.children.length - 1]?.type ?? null,
     };
   };
@@ -508,7 +522,9 @@ function buildResolvedMarkdownPieces(
 ): ResolvedMarkdownPieces {
   const children: ReactNode[] = [];
   const mounts: MountedMessageDirective[] = [];
+  let hasHtml = false;
   for (const entry of entries) {
+    hasHtml ||= entry.summary.hasHtml;
     if (entry.children.length > 0) {
       if (children.length > 0) {
         children.push("\n");
@@ -519,6 +535,7 @@ function buildResolvedMarkdownPieces(
   }
   return {
     children,
+    hasHtml,
     mounts: mounts.length === 0 ? EMPTY_MOUNTED_MESSAGE_DIRECTIVES : mounts,
   };
 }
@@ -527,6 +544,7 @@ export function createMarkdownPieceCache(): MarkdownPieceCache {
   return {
     config: null,
     entries: [],
+    htmlPrefix: null,
     latchedWholeDocumentPrefix: null,
     resolved: null,
   };
@@ -540,6 +558,7 @@ export function resolveMarkdownPieces(
   if (cache.config !== config) {
     cache.config = config;
     cache.entries = [];
+    cache.htmlPrefix = null;
     cache.latchedWholeDocumentPrefix = null;
     cache.resolved = null;
   }
@@ -575,4 +594,25 @@ export function resolveMarkdownPieces(
   cache.entries = entries;
   cache.resolved = { body, result };
   return result;
+}
+
+export function resolveMarkdownPiecesUnlessHtml(
+  cache: MarkdownPieceCache,
+  config: MarkdownPieceRenderConfig,
+  body: string,
+): ResolvedMarkdownPieces | null {
+  if (
+    cache.config === config &&
+    cache.htmlPrefix !== null &&
+    body.startsWith(cache.htmlPrefix)
+  ) {
+    return null;
+  }
+  const resolved = resolveMarkdownPieces(cache, config, body);
+  if (!resolved.hasHtml) {
+    cache.htmlPrefix = null;
+    return resolved;
+  }
+  cache.htmlPrefix = body;
+  return null;
 }

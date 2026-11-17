@@ -24,6 +24,7 @@ import {
   createMarkdownPieceCache,
   findMarkdownPieceCandidates,
   resolveMarkdownPieces,
+  resolveMarkdownPiecesUnlessHtml,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces";
 import { normalizeMathFences } from "./markdown-math-fences";
@@ -414,4 +415,53 @@ describe("resolveMarkdownPieces", () => {
     expectStreamedFixtureMatchesWholeDocument,
     60_000,
   );
+});
+
+describe("resolveMarkdownPieces html detection", () => {
+  it("reports html only for parsed html nodes, not for '<' in code or prose", () => {
+    const hasHtml = (body: string) =>
+      resolveMarkdownPieces(createMarkdownPieceCache(), config, body).hasHtml;
+    expect(
+      hasHtml(
+        "Use `Array<T>` when a < b.\n\n```ts\nconst x: Map<string, number> = new Map();\nif (a <b) {}\n```\n\nArrows <- and <= stay text.",
+      ),
+    ).toBe(false);
+    expect(hasHtml("Press <kbd>Ctrl</kbd> to copy.")).toBe(true);
+    expect(hasHtml("Intro.\n\n<details>\n\nHidden.\n\n</details>")).toBe(true);
+    expect(hasHtml("Intro.\n\n<!-- note -->")).toBe(true);
+  });
+
+  it("keeps reporting html from a settled piece while later pieces stream", () => {
+    const cache = createMarkdownPieceCache();
+    const first = "<sub>note</sub>\n\nParagraph one.\n\n";
+    expect(resolveMarkdownPieces(cache, config, first).hasHtml).toBe(true);
+    expect(
+      resolveMarkdownPieces(cache, config, `${first}Paragraph two.`).hasHtml,
+    ).toBe(true);
+  });
+
+  it("stops parsing pieces while a message with html keeps growing", () => {
+    const recorded: string[] = [];
+    const recordingConfig = createRecordingConfig(recorded);
+    const cache = createMarkdownPieceCache();
+    const first = "<sub>note</sub>\n\nParagraph one.";
+    expect(
+      resolveMarkdownPiecesUnlessHtml(cache, recordingConfig, first),
+    ).toBeNull();
+    recorded.length = 0;
+    expect(
+      resolveMarkdownPiecesUnlessHtml(
+        cache,
+        recordingConfig,
+        `${first}\n\nParagraph two.`,
+      ),
+    ).toBeNull();
+    expect(recorded).toEqual([]);
+    const replaced = "Use `Array<T>` instead.";
+    expect(
+      resolveMarkdownPiecesUnlessHtml(cache, recordingConfig, replaced)
+        ?.hasHtml,
+    ).toBe(false);
+    expect(recorded).toEqual([replaced]);
+  });
 });
