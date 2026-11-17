@@ -134,6 +134,29 @@ function runCompaction(threadId) {
   }, COMPACTION_TURN_DELAY_MS);
 }
 
+function runVoiceHandoffTurn(threadId, text) {
+  turnCounter += 1;
+  const turnId = `turn-handoff-${turnCounter}`;
+  notify("turn/started", {
+    threadId,
+    turn: { id: turnId, status: "inProgress" },
+  });
+  notify("item/completed", {
+    threadId,
+    turnId,
+    item: {
+      type: "userMessage",
+      id: `handoff-${turnCounter}`,
+      clientId: null,
+      content: [{ type: "text", text, text_elements: [] }],
+    },
+  });
+  notify("turn/completed", {
+    threadId,
+    turn: { id: turnId, status: "completed" },
+  });
+}
+
 function runScriptedTurn(threadId, presetTurnId) {
   turnCounter += 1;
   const turnId = presetTurnId ?? `turn-fx-${turnCounter}`;
@@ -840,6 +863,12 @@ async function handleRequest(message) {
         sdp: "native-answer",
       });
       if (script?.voiceStartsTurn) runScriptedTurn(params.threadId);
+      if (script?.voiceHandoff) {
+        setTimeout(
+          () => runVoiceHandoffTurn(params.threadId, script.voiceHandoff),
+          50,
+        );
+      }
       return;
     case "thread/realtime/stop":
       respond(id, {});

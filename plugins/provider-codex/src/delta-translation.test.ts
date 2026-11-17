@@ -452,6 +452,119 @@ describe("codex item translation", () => {
     expect(events).toMatchObject([]);
   });
 
+  describe("native voice handoffs", () => {
+    const HANDOFF =
+      "<realtime_delegation>\n  <input>Compare A &amp; B &lt;fast&gt; paths</input>\n  <transcript_delta>user: earlier private words\nassistant: sure</transcript_delta>\n</realtime_delegation>";
+
+    function userMessage(text: string, id = "handoff-1") {
+      return {
+        type: "userMessage" as const,
+        id,
+        clientId: null,
+        content: [{ type: "text" as const, text, text_elements: [] }],
+      };
+    }
+    function startTurn(harness: CodexEquivalenceHarness, id = "turn-1") {
+      return harness.translate(
+        codexEvent("turn/started", {
+          threadId: "t1",
+          turn: codexTurn({ id, status: "inProgress", error: null }),
+        }),
+      );
+    }
+    function completeUserMessage(
+      harness: CodexEquivalenceHarness,
+      text: string,
+      args: { turnId?: string; id?: string } = {},
+    ) {
+      return harness.translate(
+        codexEvent("item/completed", {
+          threadId: "t1",
+          turnId: args.turnId ?? "turn-1",
+          completedAtMs: 0,
+          item: userMessage(text, args.id),
+        }),
+      );
+    }
+
+    it("records the current request of an unrequested turn opened during voice", () => {
+      const harness = createHarness();
+      harness.translator.setNativeVoiceActive(true);
+      startTurn(harness);
+      expect(
+        harness.translate(
+          codexEvent("item/started", {
+            threadId: "t1",
+            turnId: "turn-1",
+            startedAtMs: 0,
+            item: userMessage(HANDOFF),
+          }),
+        ),
+      ).toEqual([]);
+      const completed = completeUserMessage(harness, HANDOFF);
+      expect(completed).toEqual([
+        expect.objectContaining({
+          type: "item/completed",
+          scope: turnScope(harness.turnId("turn-1")),
+          item: {
+            type: "userMessage",
+            id: expect.stringMatching(ITEM_ID_PATTERN),
+            content: [{ type: "text", text: "Compare A & B <fast> paths" }],
+          },
+        }),
+      ]);
+      expect(completed[0]).not.toHaveProperty("item.clientRequestId");
+      expect(JSON.stringify(completed)).not.toContain("earlier private words");
+      expect(
+        completeUserMessage(harness, HANDOFF, { id: "steer-echo" }),
+      ).toEqual([]);
+    });
+
+    it("drops a typed request echo even when it is an exact handoff wrapper", () => {
+      const harness = createHarness();
+      harness.translator.setNativeVoiceActive(true);
+      expect(
+        harness.translator.prepareTurnStart({
+          clientRequestId: "creq_typed_wrapper",
+          providerThreadId: "t1",
+        }),
+      ).not.toBeNull();
+      expect(startTurn(harness)).toContainEqual(
+        expect.objectContaining({
+          type: "turn/input/accepted",
+          clientRequestId: "creq_typed_wrapper",
+        }),
+      );
+      expect(completeUserMessage(harness, HANDOFF)).toEqual([]);
+    });
+
+    it("drops handoff-shaped input when no native voice session is active", () => {
+      const harness = createHarness();
+      startTurn(harness);
+      expect(completeUserMessage(harness, HANDOFF)).toEqual([]);
+      harness.translator.setNativeVoiceActive(true);
+      harness.translator.setNativeVoiceActive(false);
+      startTurn(harness, "turn-2");
+      expect(
+        completeUserMessage(harness, HANDOFF, { turnId: "turn-2" }),
+      ).toEqual([]);
+    });
+
+    it("ignores transcript-tail flushes and malformed wrappers", () => {
+      for (const text of [
+        "<realtime_delegation>\n  <source>transcript_tail_flush</source>\n  <input>user: bye</input>\n</realtime_delegation>",
+        "Plan the release notes for the voice launch",
+        "<realtime_delegation>\n  <input>   </input>\n</realtime_delegation>",
+        "Quoted: <realtime_delegation>\n  <input>not a handoff</input>\n</realtime_delegation>",
+      ]) {
+        const harness = createHarness();
+        harness.translator.setNativeVoiceActive(true);
+        startTurn(harness);
+        expect(completeUserMessage(harness, text)).toEqual([]);
+      }
+    });
+  });
+
   it("maps imageView items on start and completion", () => {
     const harness = createHarness();
     const started = harness.translate(

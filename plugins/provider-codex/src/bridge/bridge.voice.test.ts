@@ -81,6 +81,48 @@ it("uses the existing native thread and process for voice and translates native 
   ).toHaveLength(1);
 }, 15000);
 
+it("records only the current request of a native voice handoff as provider input", async () => {
+  workspaceDir = mkdtempSync(join(tmpdir(), "bb-voice-handoff-"));
+  processLogPath = join(workspaceDir, "process.log");
+  const requestLogPath = join(workspaceDir, "requests.ndjson");
+  const script = join(workspaceDir, "scenario.json");
+  writeFileSync(
+    script,
+    JSON.stringify({
+      processLogPath,
+      requestLogPath,
+      voiceHandoff:
+        "<realtime_delegation>\n  <input>Draft the release notes</input>\n  <transcript_delta>user: private earlier words</transcript_delta>\n</realtime_delegation>",
+    }),
+  );
+  stubFakeCodexAppServer(script);
+  harness = createHarness(handleLine);
+  harness.sendRequest(1, "thread/resume", {
+    threadId,
+    providerThreadId,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+  harness.sendRequest(2, "thread/voice", {
+    threadId,
+    providerThreadId,
+    command: { action: "start", sessionId, sdp: "browser-offer" },
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  await vi.waitFor(() => {
+    expect(JSON.stringify(harness?.messages)).toContain(
+      '"kind":"input.provider","text":"Draft the release notes"',
+    );
+  });
+  const log = JSON.stringify(harness.messages);
+  expect(log).not.toContain("private earlier words");
+  expect(readFileSync(requestLogPath, "utf8")).not.toContain(
+    '"method":"turn/start"',
+  );
+}, 15000);
+
 it("rejects an older live app-server before sending unsupported realtime parameters", async () => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-voice-version-"));
   processLogPath = join(workspaceDir, "process.log");

@@ -2802,6 +2802,9 @@ async function handleRequest(
             session.connection,
             request.params.providerThreadId,
             (payload) => {
+              session.translator.setNativeVoiceActive(
+                payload.status === "active",
+              );
               sendThreadDeltas(session, [
                 {
                   kind: "extension.state",
