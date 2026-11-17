@@ -39,6 +39,7 @@ interface ProjectionTurnBoundsUpdate {
 }
 
 interface GroupEventProjectionTurnsArgs {
+  delegatedTurnIds: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
 }
@@ -174,13 +175,14 @@ function canGroupThreadMessageInTurn(message: EventProjectionMessage): boolean {
   }
 }
 
-function findTurnRunningAtSequence(
+function findRootTurnRunningAtSequence(
   turnsById: ReadonlyMap<string, ProjectionTurnDraft>,
+  delegatedTurnIds: ReadonlySet<string>,
   sequence: number,
 ): ProjectionTurnDraft | null {
   let running: ProjectionTurnDraft | null = null;
-  for (const draft of turnsById.values()) {
-    if (draft.startedSequence >= sequence) {
+  for (const [turnId, draft] of turnsById) {
+    if (delegatedTurnIds.has(turnId) || draft.startedSequence >= sequence) {
       continue;
     }
     if (
@@ -342,7 +344,11 @@ export function groupEventProjectionTurns(
   for (const message of args.messages) {
     if (message.scope.kind === "thread") {
       const runningTurn = canGroupThreadMessageInTurn(message)
-        ? findTurnRunningAtSequence(turnsById, message.sourceSeqStart)
+        ? findRootTurnRunningAtSequence(
+            turnsById,
+            args.delegatedTurnIds,
+            message.sourceSeqStart,
+          )
         : null;
       if (runningTurn !== null) {
         addProjectionTurnMessage(runningTurn, message);
