@@ -26,8 +26,6 @@ import {
   type TurnStartDeadlineCandidate,
   requestThreadPurge,
   environments,
-  findLastCompletedRootStoredTurn,
-  findLatestUnresolvedClientTurnRequestIdAfterSequence,
   getEnvironment,
   getHost,
   getLatestSessionForHost,
@@ -64,7 +62,6 @@ import {
   type ThreadLifecycleEvent,
   type ThreadStatus,
   clientTurnRequestIdSchema,
-  type ClientTurnRequestId,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -391,6 +388,7 @@ interface ReconcileDaemonReportedThreadsArgs {
   activeThreadIds: readonly string[];
   hostId: string;
   sameDaemonInstance: boolean;
+  turnCommandThreadIds: readonly string[];
   undeliveredEventThreadIds: readonly string[];
 }
 
@@ -814,6 +812,20 @@ function recordEmptyThreadStartProviderSessionInTransaction(
   });
 }
 
+function mayHaveStartedATurn(
+  deps: ThreadCommandResultSettlementDeps,
+  command: TurnSubmitCommand,
+): boolean {
+  if (command.target.mode === "start") {
+    return true;
+  }
+  return (
+    command.target.mode === "auto" &&
+    command.target.expectedTurnId === null &&
+    getActiveTurnId(deps, command.threadId) === null
+  );
+}
+
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
@@ -835,7 +847,7 @@ function settleThreadCommandFailure(
     args.command.type === "turn.submit" &&
     args.report.errorCode === HOST_CONNECTION_LOST_ERROR_CODE
   ) {
-    if (args.command.target.mode === "start") {
+    if (mayHaveStartedATurn(args.deps, args.command)) {
       settleUnconfirmedTurnStartInTransaction(args.deps.db, {
         requestId: args.command.requestId,
         threadId: thread.id,
@@ -1015,31 +1027,15 @@ export function settleThreadStartCommandResult(
   return { postCommitActions };
 }
 
-const startRequestsThatMayJoinARunningTurn = new Set<ClientTurnRequestId>();
-
-export function allowStartToJoinARunningTurn(
-  requestId: ClientTurnRequestId,
-): void {
-  startRequestsThatMayJoinARunningTurn.add(requestId);
-}
-
-function missedItsTurn(args: SettleTurnSubmitCommandResultArgs): boolean {
-  if (args.report.ok) return false;
-  if (args.command.target.mode === "start") {
-    return (
-      args.report.errorCode === COMPETING_TURN_ERROR_CODE &&
-      startRequestsThatMayJoinARunningTurn.has(args.command.requestId) &&
-      getActiveTurnId(args.deps, args.command.threadId) !== null
-    );
-  }
-  return args.report.errorCode === STALE_TURN_ERROR_CODE;
-}
-
-function redeliverRequestThatMissedItsTurn(
+function redeliverStaleSteer(
   args: SettleTurnSubmitCommandResultArgs,
 ): CommandResultSideEffectsResult | null {
   const { command } = args;
-  if (!missedItsTurn(args)) {
+  if (
+    args.report.ok ||
+    args.report.errorCode !== STALE_TURN_ERROR_CODE ||
+    command.target.mode === "start"
+  ) {
     return null;
   }
   const thread = getThread(args.deps.db, command.threadId);
@@ -1079,8 +1075,7 @@ function redeliverRequestThatMissedItsTurn(
 export function settleTurnSubmitCommandResult(
   args: SettleTurnSubmitCommandResultArgs,
 ): CommandResultSideEffectsResult {
-  const redelivered = redeliverRequestThatMissedItsTurn(args);
-  startRequestsThatMayJoinARunningTurn.delete(args.command.requestId);
+  const redelivered = redeliverStaleSteer(args);
   if (redelivered !== null) {
     return redelivered;
   }
@@ -1106,7 +1101,7 @@ export function ensureThreadCanStartRequest(thread: Thread): void {
 
 export async function prepareReadyThreadTurnCommand(
   deps: LoggedWorkSessionDeps,
-  args: Omit<ThreadStartCommandArgs, "fork">,
+  args: Omit<ThreadStartCommandArgs, "fork"> & { mayJoinRunningTurn: boolean },
 ): Promise<PreparedReadyThreadTurnCommand> {
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
@@ -1125,7 +1120,9 @@ export async function prepareReadyThreadTurnCommand(
         : {}),
       permissionEscalation: args.permissionEscalation,
       providerThreadId,
-      target: { mode: "start" },
+      target: args.mayJoinRunningTurn
+        ? { mode: "auto", expectedTurnId: null }
+        : { mode: "start" },
       thread: args.thread,
     });
     return {
@@ -2408,19 +2405,6 @@ export function finalizeStoppedThreadInTransaction(
   }
 }
 
-function hasTurnRequestAwaitingItsTurn(
-  db: DbQueryConnection,
-  threadId: string,
-): boolean {
-  const lastCompletedTurn = findLastCompletedRootStoredTurn(db, { threadId });
-  return (
-    findLatestUnresolvedClientTurnRequestIdAfterSequence(db, {
-      afterSequence: lastCompletedTurn?.completedSequence ?? 0,
-      threadId,
-    }) !== null
-  );
-}
-
 export async function reconcileDaemonReportedThreads(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: ReconcileDaemonReportedThreadsArgs,
@@ -2522,6 +2506,7 @@ export async function reconcileDaemonReportedThreads(
 
   const threadIdsStillReporting = [
     ...args.activeThreadIds,
+    ...args.turnCommandThreadIds,
     ...args.undeliveredEventThreadIds,
   ];
   const activeButMissing = deps.db
@@ -2541,16 +2526,10 @@ export async function reconcileDaemonReportedThreads(
     .all();
 
   interruptActiveThreads(deps, {
-    threads: activeButMissing
-      .filter(
-        (thread) =>
-          !args.sameDaemonInstance ||
-          !hasTurnRequestAwaitingItsTurn(deps.db, thread.id),
-      )
-      .map((thread) => ({
-        environmentId: thread.environmentId,
-        threadId: thread.id,
-      })),
+    threads: activeButMissing.map((thread) => ({
+      environmentId: thread.environmentId,
+      threadId: thread.id,
+    })),
     reason: "host-daemon-restarted",
     cause: args.sameDaemonInstance ? "host-connection-lost" : undefined,
     resumingThreadIds: new Set(),

@@ -485,6 +485,13 @@ class FakeDaemon {
         dataDir: `/tmp/bb-host-data/${this.hostId}`,
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        turnCommandThreadIds: this.held.some(
+          (held) =>
+            held.request.command.type === "turn.submit" ||
+            held.request.command.type === "thread.start",
+        )
+          ? [this.threadId]
+          : [],
         activeThreads:
           this.activeTurn === null
             ? []

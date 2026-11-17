@@ -626,7 +626,7 @@ describe("startup queue waits", () => {
       ).toEqual([
         expect.objectContaining({
           input: textInput("follow-up after startup settled"),
-          target: { mode: "start" },
+          target: { mode: "auto", expectedTurnId: null },
         }),
       ]);
     });
@@ -749,7 +749,10 @@ describe("startup queue waits", () => {
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toEqual([
-        expect.objectContaining({ input, target: { mode: "start" } }),
+        expect.objectContaining({
+          input,
+          target: { mode: "auto", expectedTurnId: null },
+        }),
       ]);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
@@ -2266,7 +2269,7 @@ describe("competing turn refusals", () => {
     });
   }
 
-  const refusedStarts: {
+  const sendsFromIdle: {
     name: string;
     joins: boolean;
     start: (
@@ -2394,9 +2397,9 @@ describe("competing turn refusals", () => {
   ];
 
   it.each(
-    refusedStarts.map((entry, index) => [entry.name, entry, index] as const),
+    sendsFromIdle.map((entry, index) => [entry.name, entry, index] as const),
   )(
-    "lets %s refused as a competing turn join the running turn only when it is a plain message",
+    "sends %s from an idle thread so that it joins a turn the agent started only when it is a plain message",
     async (_name, entry, index) => {
       await withTestHarness(async (harness) => {
         const value = 70 + index;
@@ -2415,6 +2418,13 @@ describe("competing turn refusals", () => {
         if (queued.command.type !== "turn.submit") {
           throw new Error("Expected a turn.submit command");
         }
+        if (entry.joins) {
+          expect(queued.command.target).toEqual({
+            mode: "auto",
+            expectedTurnId: null,
+          });
+          return;
+        }
         expect(queued.command.target).toEqual({ mode: "start" });
         const { requestId } = queued.command;
         seedTurnStarted(harness.deps, {
@@ -2429,30 +2439,16 @@ describe("competing turn refusals", () => {
           errorMessage: competingTurnMessage(fixture.thread.id),
         });
 
-        const rejections = listEvents(harness.db, {
-          threadId: fixture.thread.id,
-        })
-          .filter((event) => event.type === "client/turn/rejected")
-          .map((event) => JSON.parse(event.data));
-        const resent = listQueuedThreadCommands(
-          harness,
-          "turn.submit",
-          fixture.thread.id,
-        );
-        if (entry.joins) {
-          expect(rejections).toEqual([]);
-          expect(resent).toEqual([
-            expect.objectContaining({
-              requestId,
-              target: { mode: "auto", expectedTurnId: null },
-            }),
-          ]);
-        } else {
-          expect(rejections).toEqual([
-            expect.objectContaining({ requestId, reason: "competing_turn" }),
-          ]);
-          expect(resent).toEqual([]);
-        }
+        expect(
+          listEvents(harness.db, { threadId: fixture.thread.id })
+            .filter((event) => event.type === "client/turn/rejected")
+            .map((event) => JSON.parse(event.data)),
+        ).toEqual([
+          expect.objectContaining({ requestId, reason: "competing_turn" }),
+        ]);
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", fixture.thread.id),
+        ).toEqual([]);
         expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
       });
     },
@@ -2953,7 +2949,10 @@ describe("a turn request in flight when a turn ends", () => {
         trace: { spans: [] },
       });
       const next = await heldSubmit(harness, threadId, "send B");
-      expect(next.command.target).toEqual({ mode: "start" });
+      expect(next.command.target).toEqual({
+        mode: "auto",
+        expectedTurnId: null,
+      });
       await deliverLikeDaemon(harness, daemon, next);
       await completeTurn(harness, daemon);
 
@@ -3015,7 +3014,10 @@ describe("a turn request in flight when a turn ends", () => {
         errorMessage: "The provider refused the steer",
       });
       const next = await heldSubmit(harness, threadId, "send B");
-      expect(next.command.target).toEqual({ mode: "start" });
+      expect(next.command.target).toEqual({
+        mode: "auto",
+        expectedTurnId: null,
+      });
       await deliverLikeDaemon(harness, daemon, next);
       await completeTurn(harness, daemon);
 
@@ -3035,7 +3037,10 @@ describe("a turn request in flight when a turn ends", () => {
       const { daemon, threadId } = idleThread(harness, 107);
       await send(harness, threadId, "start A", "auto");
       const start = await heldSubmit(harness, threadId, "start A");
-      expect(start.command.target).toEqual({ mode: "start" });
+      expect(start.command.target).toEqual({
+        mode: "auto",
+        expectedTurnId: null,
+      });
 
       await runProviderInitiatedTurn(harness, daemon);
       await expectHeldUntilRequestSettles(harness, threadId, "send B");

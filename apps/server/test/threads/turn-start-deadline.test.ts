@@ -508,7 +508,7 @@ describe("a thread start whose reply is lost with the daemon connection", () => 
   async function reconnectDaemon(
     harness: TestAppHarness,
     fixture: Awaited<ReturnType<typeof createThreadAwaitingStart>>,
-    args: { threadRunning: boolean },
+    daemon: "running" | "starting" | "never-received",
   ): Promise<string> {
     const response = await harness.app.request("/internal/session/open", {
       method: "POST",
@@ -522,9 +522,9 @@ describe("a thread start whose reply is lost with the daemon connection", () => 
         dataDir: "/tmp/host-daemon-lost-start-reply",
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-        activeThreads: args.threadRunning
-          ? [{ threadId: fixture.threadId }]
-          : [],
+        turnCommandThreadIds: daemon === "starting" ? [fixture.threadId] : [],
+        activeThreads:
+          daemon === "running" ? [{ threadId: fixture.threadId }] : [],
         openThreadWork: [],
       }),
     });
@@ -552,9 +552,7 @@ describe("a thread start whose reply is lost with the daemon connection", () => 
   it("keeps the thread running when the daemon started it, and settles it when the turn ends", async () => {
     await withTestHarness(async (harness) => {
       const fixture = await createThreadAwaitingStart(harness);
-      const sessionId = await reconnectDaemon(harness, fixture, {
-        threadRunning: true,
-      });
+      const sessionId = await reconnectDaemon(harness, fixture, "running");
       const turn = {
         threadId: fixture.threadId,
         providerThreadId: "provider-lost-start-reply",
@@ -599,12 +597,24 @@ describe("a thread start whose reply is lost with the daemon connection", () => 
     });
   });
 
-  it("fails the thread at the turn-start deadline when the daemon never received it", async () => {
+  it("fails the thread on reconnect when the daemon never received it", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = await createThreadAwaitingStart(harness);
+      await reconnectDaemon(harness, fixture, "never-received");
+
+      expect(getThread(harness.db, fixture.threadId)?.status).toBe("error");
+      expect(threadErrorCodes(harness, fixture.threadId)).toEqual([
+        "thread_command_failed",
+      ]);
+    });
+  });
+
+  it("keeps the thread running while the daemon is still starting it, up to the turn-start deadline", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     await withTestHarness(async (harness) => {
       const requestedAt = Date.now();
       const fixture = await createThreadAwaitingStart(harness);
-      await reconnectDaemon(harness, fixture, { threadRunning: false });
+      await reconnectDaemon(harness, fixture, "starting");
       expect(getThread(harness.db, fixture.threadId)?.status).toBe("active");
 
       await sweepAt(harness, requestedAt + TURN_START_DEADLINE_MS + 1_000);

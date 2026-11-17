@@ -39,7 +39,6 @@ import {
 } from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import {
-  allowStartToJoinARunningTurn,
   ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
 } from "./thread-lifecycle.js";
@@ -725,7 +724,13 @@ async function sendThreadMessageWithoutContextClear(
           }),
           mode: "thread.start" as const,
         }
-      : await prepareReadyThreadTurnCommand(deps, commandArgs);
+      : await prepareReadyThreadTurnCommand(deps, {
+          ...commandArgs,
+          mayJoinRunningTurn:
+            payload.mode !== "start" &&
+            args.retryOf === undefined &&
+            !hasCommandMention(input),
+        });
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       beforeAppendInTransaction: ({ tx }) => {
@@ -765,14 +770,6 @@ async function sendThreadMessageWithoutContextClear(
       thread,
     });
     trackInFlightTurnRequest(thread.id);
-    if (
-      command.mode === "turn.submit" &&
-      payload.mode !== "start" &&
-      args.retryOf === undefined &&
-      !hasCommandMention(input)
-    ) {
-      allowStartToJoinARunningTurn(requestId);
-    }
     deps.hub.notifyThread(
       thread.id,
       queuedRequest.request.notificationChanges,

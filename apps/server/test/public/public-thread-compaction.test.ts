@@ -627,7 +627,7 @@ describe("public thread compaction", () => {
           )[1]?.command,
         ).toMatchObject({
           input,
-          target: { mode: "start" },
+          target: { mode: "auto", expectedTurnId: null },
         });
         const notices = listEvents(harness.db, { threadId: thread.id })
           .filter((event) => event.type === "client/turn/requested")
