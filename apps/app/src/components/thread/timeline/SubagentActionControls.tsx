@@ -3,16 +3,18 @@ import { Button } from "@bb/shared-ui/button";
 import { Textarea } from "@bb/shared-ui/textarea";
 import type { TimelineViewDelegationWorkRow } from "@bb/thread-view";
 import { sdk } from "@/lib/sdk";
+import { useThreadProvider } from "../thread-provider-context.js";
 
 export function SubagentActionControls({
   row,
 }: {
   row: TimelineViewDelegationWorkRow;
 }) {
+  const { supportsSubagentMessaging } = useThreadProvider();
   const [text, setText] = useState("");
   const [pending, setPending] = useState<"tell" | "cancel" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  if (row.childRef === null) return null;
+  if (row.childRef === null || supportsSubagentMessaging !== true) return null;
   const childRef = row.childRef;
 
   const run = async (kind: "tell" | "cancel") => {

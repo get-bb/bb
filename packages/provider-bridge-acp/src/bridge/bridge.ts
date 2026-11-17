@@ -38,6 +38,7 @@ import type {
 } from "@bb/provider-bridge-protocol";
 import {
   PROVIDER_TOOL_CALL_CANCELLED_METHOD,
+  providerToolCallCancellationSchema,
   BridgeRecoveryError,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
@@ -2602,6 +2603,7 @@ type AcpSessionStartRequest =
       kind: "fork";
       params: AcpSessionParams;
       sourceProviderThreadId: string;
+      sourceCwd?: string;
     };
 
 function fileCreatedSince(
@@ -2852,9 +2854,10 @@ async function startAgentSession(
     let forkHandoffProviderThreadId: string | undefined;
     if (request.kind === "fork") {
       if (dialect.id === "grok") {
-        const sourceCwd =
-          getSessionByProviderThreadId(request.sourceProviderThreadId)?.cwd ??
-          params.cwd;
+        const liveSourceCwd = getSessionByProviderThreadId(
+          request.sourceProviderThreadId,
+        )?.cwd;
+        const sourceCwd = liveSourceCwd ?? request.sourceCwd ?? params.cwd;
         const forkResult = decodeGrokForkResult(
           await connection.request({
             method: "_x.ai/session/fork",
@@ -3676,6 +3679,7 @@ function runTurn(
   firstInput: AcpPendingTurnInput,
   turnAlreadyOpen = false,
 ): void {
+  const actionSession = session;
   setActivePromptKind(session, "turn");
   if (!turnAlreadyOpen) {
     emitForSession(session, ACP_TURN_STARTED_METHOD, {
@@ -3768,6 +3772,10 @@ function runTurn(
             });
           }
         }
+        cancelPendingSubagentActions(
+          actionSession,
+          "Parent turn ended before the subagent action was acknowledged",
+        );
         setActivePromptKind(session, null);
         return;
       }
@@ -4841,6 +4849,9 @@ async function handleRequest(
                 kind: "fork",
                 params: sessionParams,
                 sourceProviderThreadId: request.params.sourceProviderThreadId,
+                ...(request.params.sourceCwd === undefined
+                  ? {}
+                  : { sourceCwd: request.params.sourceCwd }),
               }
             : { kind: "start", params: sessionParams },
       );
@@ -4998,7 +5009,46 @@ async function handleRequest(
   }
 }
 
+function cancelSubagentActionFromRuntime(parsed: unknown): boolean {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return false;
+  }
+  const message = parsed as {
+    id?: unknown;
+    method?: unknown;
+    params?: unknown;
+  };
+  if (
+    message.method !== PROVIDER_TOOL_CALL_CANCELLED_METHOD ||
+    message.id !== undefined
+  ) {
+    return false;
+  }
+  const params = providerToolCallCancellationSchema.safeParse(message.params);
+  if (!params.success) {
+    return true;
+  }
+  const key = String(params.data.requestId);
+  for (const session of sessionsByBbThreadId.values()) {
+    const action = session.pendingSubagentActions.get(key);
+    if (action === undefined) {
+      continue;
+    }
+    failPendingSubagentAction(
+      session,
+      action,
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+    requestSteerCancel(session);
+    break;
+  }
+  return true;
+}
+
 function handleParsedMessage(parsed: unknown): void {
+  if (cancelSubagentActionFromRuntime(parsed)) {
+    return;
+  }
   const response = decodeBridgeJsonRpcResponse(parsed);
   if (response && typeof response.id === "number") {
     const pending = pendingRuntimeRequests.get(response.id);

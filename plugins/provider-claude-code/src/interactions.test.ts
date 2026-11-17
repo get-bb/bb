@@ -258,6 +258,42 @@ describe("claude-code interactive requests", () => {
       behavior: "deny",
       message: expect.stringContaining("AskUserQuestion"),
     });
+    expect(response).toMatchObject({
+      message: expect.not.stringContaining("The user asked for these changes"),
+    });
+  });
+
+  it("forwards plan-review comments when the user rejects a plan", () => {
+    const response = buildClaudeInteractiveResponse(
+      {
+        payload: {
+          kind: "approval",
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
+          subject: {
+            kind: "plan",
+            itemId: "toolu_plan",
+            plan: "# Plan",
+            planFilePath: null,
+          },
+        },
+        resolution: {
+          decision: "deny",
+          comments: "Keep the migration behind a flag.",
+        },
+      },
+      [],
+    );
+
+    expect(response).toMatchObject({
+      behavior: "deny",
+      message: expect.stringContaining("AskUserQuestion"),
+    });
+    expect(response).toMatchObject({
+      message: expect.stringContaining(
+        "The user asked for these changes:\nKeep the migration behind a flag.",
+      ),
+    });
   });
 
   it("decodes Claude Edit approvals with file-change execution scope", () => {

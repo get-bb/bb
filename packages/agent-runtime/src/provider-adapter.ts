@@ -82,6 +82,7 @@ export type AdapterCommand =
       cwd: string;
       sourceProviderThreadId: string;
       sourceProviderCheckpointId?: string;
+      sourceCwd?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       instructionMode: InstructionMode;

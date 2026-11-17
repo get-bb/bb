@@ -59,6 +59,7 @@ const REGISTRATION_FIELDS = {
   supportsThreadArchive: "capabilities.supportsThreadArchive",
   supportsThreadRename: "capabilities.supportsThreadRename",
   supportsServiceTier: "capabilities.supportsServiceTier",
+  supportsSubagentMessaging: "capabilities.supportsSubagentMessaging",
   maintenance: "maintenance",
   composerActions: "composerActions",
   completedTurnDisplay: "completedTurnDisplay",

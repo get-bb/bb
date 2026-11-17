@@ -473,6 +473,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     resultSchema: SendJsonRpcRequestArgs<TResult>["resultSchema"];
     timeoutMs?: number;
     afterTimeout?: SendJsonRpcRequestArgs<TResult>["afterTimeout"];
+    cancelOnTimeout?: boolean;
     recovery?: RequestRecoveryArgs;
   }): Promise<TResult> {
     return sendRequestWithRecovery({
@@ -489,6 +490,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         ...(args.afterTimeout !== undefined
           ? { afterTimeout: args.afterTimeout }
           : {}),
+        ...(args.cancelOnTimeout === true ? { cancelOnTimeout: true } : {}),
       },
     });
   }
@@ -1591,12 +1593,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             proc: currentProc,
             message: cmd,
             resultSchema: threadSubagentMessageResultSchema,
+            timeoutMs: threadCreationRequestTimeoutMs,
+            cancelOnTimeout: true,
           });
         }
         return sendCommand({
           proc: currentProc,
           message: cmd,
           resultSchema: threadSubagentCancelResultSchema,
+          timeoutMs: threadCreationRequestTimeoutMs,
+          cancelOnTimeout: true,
         });
       },
     });
@@ -1702,6 +1708,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                       sourceProviderCheckpointId:
                         fork.sourceProviderCheckpointId,
                     }
+                  : {}),
+                ...(fork.sourceCwd !== undefined
+                  ? { sourceCwd: fork.sourceCwd }
                   : {}),
                 options: providerExecutionContext,
                 dynamicTools,

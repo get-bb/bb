@@ -28,6 +28,7 @@ export interface AcpAgentDefinition {
   iconTint?: { light: string; dark: string };
   supportsManualCompaction?: boolean;
   supportsNativeUserQuestion?: boolean;
+  supportsSubagentMessaging?: boolean;
   fork?: "none" | "tip" | "checkpoint";
   reasoningLevels?: readonly PluginProviderReasoningLevel[];
   providerUsage?: boolean;
