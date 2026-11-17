@@ -37,6 +37,7 @@ import {
   type ComposerDraftSource,
   type ComposerDraftStore,
   type PluginComposerHost,
+  useComposerDraftSelector,
   usePluginComposerStaticViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
@@ -119,6 +120,10 @@ function PromptBoxWithScrollAnchor({
   );
 }
 
+const selectIsBlankDraft = (draft: PromptDraftState) =>
+  draft.text.trim().length === 0 && draft.attachments.length === 0;
+const selectNeverBlankDraft = () => false;
+
 const NO_HOST_DRAFT: ComposerDraftSource = {
   getCurrent: () => ({ text: "", mentions: [], attachments: [] }),
   subscribeDraft: () => () => {},
@@ -150,6 +155,7 @@ export interface FollowUpComposerProps {
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
+  sendsEmptyDraft: boolean;
   steerActiveThreadOnEnter: boolean;
   submitMode: FollowUpSubmitMode;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -292,6 +298,10 @@ function FollowUpPromptBoxWithComposer({
   }, []);
   const steerOnPrimarySubmit =
     submitMode.kind === "queue" && composer.steerActiveThreadOnEnter;
+  const continuesOnSubmit = useComposerDraftSelector(
+    composer.draft,
+    composer.sendsEmptyDraft ? selectIsBlankDraft : selectNeverBlankDraft,
+  );
   const onModifierSubmit = composer.canModifierSubmit
     ? composer.onModifierSubmit
     : undefined;
@@ -749,27 +759,30 @@ function FollowUpPromptBoxWithComposer({
                 : undefined,
           onModifierSubmit,
           queuesDraft: submitMode.kind === "queue",
+          sendsEmptyDraft: composer.sendsEmptyDraft,
           swapSubmitActions: steerOnPrimarySubmit,
           showModifierSubmitAction: submitMode.kind === "queue",
           title: composer.isFollowUpSubmitting
             ? "Submitting..."
             : canSubmit && compactBeforeSend?.compactFirst
               ? `Compact ${formatCompactTokenCount(compactBeforeSend.tokens)} tokens, then send (Enter)`
-              : canSubmit && composer.submitTitle !== undefined
-                ? composer.submitTitle
-                : isStopping
-                  ? "Queue for after the stop (Enter)"
-                  : canQueueFollowUp
-                    ? steerOnPrimarySubmit
-                      ? isSteeringWhenReady
-                        ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
-                        : `Steer current run (Enter)${modifierSubmitHint("queue")}`
-                      : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
-                    : isLoadingExecutionOptions
-                      ? "Loading models..."
-                      : isUnavailable
-                        ? "Unavailable"
-                        : "Submit (Enter)",
+              : continuesOnSubmit
+                ? "Ask the agent to continue (Enter)"
+                : canSubmit && composer.submitTitle !== undefined
+                  ? composer.submitTitle
+                  : isStopping
+                    ? "Queue for after the stop (Enter)"
+                    : canQueueFollowUp
+                      ? steerOnPrimarySubmit
+                        ? isSteeringWhenReady
+                          ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
+                          : `Steer current run (Enter)${modifierSubmitHint("queue")}`
+                        : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
+                      : isLoadingExecutionOptions
+                        ? "Loading models..."
+                        : isUnavailable
+                          ? "Unavailable"
+                          : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

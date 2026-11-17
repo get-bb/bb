@@ -82,7 +82,7 @@ interface SeedIdleThreadFixtureArgs {
 }
 
 interface SeedProviderThreadFixtureArgs extends SeedIdleThreadFixtureArgs {
-  status?: "active" | "idle" | "starting";
+  status?: "active" | "error" | "idle" | "starting";
   serviceTier?: ServiceTier;
 }
 
@@ -3087,6 +3087,110 @@ describe("a turn request in flight when a turn ends", () => {
         },
       ]);
       expect(listQueuedThreadMessages(harness.db, threadId)).toHaveLength(1);
+    });
+  });
+});
+
+describe("blank follow-up input", () => {
+  it.each([
+    ["a steer to an idle thread", textInput(""), "steer", "idle", 2001],
+    [
+      "whitespace queued to an idle thread",
+      textInput("  \n "),
+      "queue-if-active",
+      "idle",
+      2002,
+    ],
+    [
+      "a queue-if-active send to an errored thread",
+      textInput(""),
+      "queue-if-active",
+      "error",
+      2003,
+    ],
+  ] as const)(
+    "asks the provider to continue with an agent-only nudge for %s",
+    async (_label, input, mode, status, value) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedProviderThreadFixture({
+          harness,
+          status,
+          value,
+        });
+
+        await expect(
+          acceptThreadSendRequest(harness.deps, {
+            payload: { input, mode },
+            thread,
+          }),
+        ).resolves.toMatchObject({ ok: true, delivery: "sent" });
+
+        const [command] = listQueuedThreadCommands(
+          harness,
+          "turn.submit",
+          thread.id,
+        );
+        expect(command?.type === "turn.submit" ? command.input : null).toEqual([
+          {
+            type: "text",
+            text: "Please continue.",
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ]);
+      });
+    },
+  );
+
+  it.each(["steer", "steer-if-active", "queue-if-active"] as const)(
+    "refuses a blank %s send to a running thread without queueing it",
+    async (mode) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedProviderThreadFixture({
+          harness,
+          status: "active",
+          value: 2010,
+        });
+
+        await expect(
+          acceptThreadSendRequest(harness.deps, {
+            payload: { input: textInput(""), mode },
+            thread,
+          }),
+        ).rejects.toMatchObject({
+          body: { code: "invalid_request" },
+          status: 409,
+        });
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toEqual([]);
+      });
+    },
+  );
+
+  it("refuses a scheduled blank send without queueing it", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 2011,
+      });
+
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input: textInput(""),
+            mode: "queue-if-active",
+            sendAt: Date.now() + 60_000,
+          },
+          thread,
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "invalid_request" },
+        status: 400,
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
   });
 });

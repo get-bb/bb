@@ -41,6 +41,15 @@ Messaging:
   and `sendAt`. A deferred message waits for a thread
   that failed while it was deferred, and delivers when the thread is retried.
 
+  An empty message (`bb thread tell <id> ""`) to an idle or errored thread
+  asks the agent to continue from where it stopped: the provider receives an
+  agent-only "Please continue." in a new turn, and the timeline and prompt
+  history show no user message for it. Pressing Enter in an idle thread's empty
+  composer does the same. A thread that is running, starting, stopping, or not
+  started yet refuses an empty message with a 409 instead of steering or
+  queueing it, and an empty message cannot take --send-at. SDK callers send
+  `input` made only of blank text.
+
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
   Code and Codex threads). Providers without a declared plan action reject

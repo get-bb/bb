@@ -279,6 +279,12 @@ export const forkThreadRequestSchema = z
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
 const sendMessageRequestFieldsSchema = z.object({
+  /**
+   * Input made only of blank text asks an idle or errored thread to continue:
+   * the provider receives an agent-only "Please continue." in a new turn and
+   * the timeline shows no user message for it. Any other thread status refuses
+   * it with 409, and it cannot carry `sendAt`.
+   */
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
