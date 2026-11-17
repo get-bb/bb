@@ -827,27 +827,28 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
 
   describe("caching and compression", () => {
     it("caches immutable assets per label", async () => {
-      const first = await get("/asset.js", {
+      const before = origin.counts.get("/asset.js") ?? 0;
+      const first = await get("/asset.js?immutable", {
         ...owner,
         "accept-encoding": "gzip",
       });
-      const second = await get("/asset.js", {
+      const second = await get("/asset.js?immutable", {
         ...owner,
         "accept-encoding": "gzip",
       });
       expect(first.headers["x-bb-cache"]).toBe("miss");
       expect(second.headers["x-bb-cache"]).toBe("hit");
-      expect(origin.counts.get("/asset.js")).toBe(1);
+      expect((origin.counts.get("/asset.js") ?? 0) - before).toBe(1);
       expect(gunzipSync(second.body).toString()).toBe(
         gunzipSync(first.body).toString(),
       );
-      const conditional = await get("/asset.js", {
+      const conditional = await get("/asset.js?immutable", {
         ...owner,
         "accept-encoding": "gzip",
         "if-none-match": '"asset-1"',
       });
       expect(conditional.status).toBe(304);
-      const stranger = await get("/asset.js", {
+      const stranger = await get("/asset.js?immutable", {
         cookie: `${SESSION}=sess-stranger`,
       });
       expect(stranger.status).toBe(403);
@@ -857,10 +858,10 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     });
 
     it("revalidates the shell with its etag", async () => {
-      const first = await get("/shell");
+      const first = await get("/shell?revalidate");
       expect(first.headers["x-bb-cache"]).toBe("miss");
       const before = origin.seen.length;
-      const second = await get("/shell");
+      const second = await get("/shell?revalidate");
       expect(second.status).toBe(200);
       expect(second.headers["x-bb-cache"]).toBe("revalidated");
       expect(second.text).toContain("<title>shell</title>");
@@ -872,13 +873,18 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     it("hands renewed cookies to the visitor on cached responses without storing them", async () => {
       const desktop = { cookie: `${DESKTOP}=desk-owner` };
       const renewed = `${DESKTOP}=renewed; Path=/; HttpOnly`;
-      for (const path of ["/shell", "/shell", "/asset.js", "/asset.js"]) {
+      for (const path of [
+        "/shell?renewed",
+        "/shell?renewed",
+        "/asset.js?renewed",
+        "/asset.js?renewed",
+      ]) {
         const answer = await get(path, desktop);
         expect(answer.status, path).toBe(200);
         expect(answer.headers["x-bb-cache"], path).toBeDefined();
         expect(answer.headers["set-cookie"], path).toEqual([renewed]);
       }
-      for (const path of ["/shell", "/asset.js"]) {
+      for (const path of ["/shell?renewed", "/asset.js?renewed"]) {
         const answer = await get(path, owner);
         expect(answer.headers["set-cookie"], path).toBeUndefined();
       }
@@ -1109,40 +1115,50 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     });
 
     it("waits for a dropped tunnel to come back, then gives up after the grace", async () => {
-      await bee.kill();
-      await waitFor(
-        () => !gate.directory.onlineLabels().includes("bee"),
-        10_000,
-        "bee to drop",
-      );
-      await gate.settlePresence();
-      expect(account.presence.at(-1)).toMatchObject({
-        label: "bee",
-        state: "disconnected",
-      });
-      const pending = get("/echo");
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      bee = await connectBee();
-      expect((await pending).status).toBe(200);
-
-      await bee.kill();
-      await waitFor(
-        () => gate.directory.locate("bee").kind === "offline",
-        10_000,
-        "bee to drop",
-      );
-      const started = Date.now();
-      const waited = await get("/echo");
-      expect(waited.status).toBe(503);
-      expect(Date.now() - started).toBeGreaterThan(GRACE_MS - 600);
-      const immediate = Date.now();
-      expect((await get("/echo")).status).toBe(503);
-      expect(Date.now() - immediate).toBeLessThan(500);
-      const cached = await get("/asset.js", {
+      const warm = await get("/asset.js?offline", {
         ...owner,
         "accept-encoding": "gzip",
       });
-      expect(cached.headers["x-bb-cache"]).toBe("hit");
+      expect(warm.status).toBe(200);
+      try {
+        await bee.kill();
+        await waitFor(
+          () => !gate.directory.onlineLabels().includes("bee"),
+          10_000,
+          "bee to drop",
+        );
+        await gate.settlePresence();
+        expect(account.presence.at(-1)).toMatchObject({
+          label: "bee",
+          state: "disconnected",
+        });
+        const pending = get("/echo");
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        bee = await connectBee();
+        expect((await pending).status).toBe(200);
+
+        await bee.kill();
+        await waitFor(
+          () => gate.directory.locate("bee").kind === "offline",
+          10_000,
+          "bee to drop",
+        );
+        const started = Date.now();
+        const waited = await get("/echo");
+        expect(waited.status).toBe(503);
+        expect(Date.now() - started).toBeGreaterThan(GRACE_MS - 600);
+        const immediate = Date.now();
+        expect((await get("/echo")).status).toBe(503);
+        expect(Date.now() - immediate).toBeLessThan(500);
+        const cached = await get("/asset.js?offline", {
+          ...owner,
+          "accept-encoding": "gzip",
+        });
+        expect(cached.headers["x-bb-cache"]).toBe("hit");
+      } finally {
+        await bee.kill();
+        bee = await connectBee();
+      }
     });
 
     it("answers with a bb page when nothing listens behind a proxy", async () => {
