@@ -18,6 +18,7 @@ const cleanups: (() => void)[] = [];
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   for (const run of cleanups.splice(0).reverse()) run();
   document.body.replaceChildren();
 });

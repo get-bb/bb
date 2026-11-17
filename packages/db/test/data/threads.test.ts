@@ -704,7 +704,7 @@ describe("threads", () => {
     expect(rootThreads.map((thread) => thread.id)).toContain(parent.id);
   });
 
-  it("paginates archived threads ordered by archive recency", async () => {
+  it("paginates archived threads ordered by archive recency", () => {
     const { db, project } = setup();
     const created: { id: string }[] = [];
     for (let index = 0; index < 5; index += 1) {
@@ -714,32 +714,39 @@ describe("threads", () => {
       });
       created.push(thread);
     }
-    for (const thread of created) {
-      archiveThread(db, noopNotifier, thread.id);
-      await new Promise((resolve) => setTimeout(resolve, 2));
+    const archivedAt = Date.now();
+    const now = vi.spyOn(Date, "now");
+    try {
+      for (const [index, thread] of created.entries()) {
+        now.mockReturnValue(archivedAt + index);
+        archiveThread(db, noopNotifier, thread.id);
+      }
+
+      const archivedFirstPage = listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        archived: true,
+        limit: 3,
+      });
+      expect(archivedFirstPage.map((thread) => thread.id)).toEqual([
+        created[4]?.id,
+        created[3]?.id,
+        created[2]?.id,
+      ]);
+
+      const archivedSecondPage = listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        archived: true,
+        limit: 3,
+        offset: 3,
+      });
+      expect(archivedSecondPage.map((thread) => thread.id)).toEqual([
+        created[1]?.id,
+        created[0]?.id,
+      ]);
+    } finally {
+      now.mockRestore();
+      db.$client.close();
     }
-
-    const archivedFirstPage = listThreadsWithPendingInteractionState(db, {
-      projectId: project.id,
-      archived: true,
-      limit: 3,
-    });
-    expect(archivedFirstPage.map((thread) => thread.id)).toEqual([
-      created[4]?.id,
-      created[3]?.id,
-      created[2]?.id,
-    ]);
-
-    const archivedSecondPage = listThreadsWithPendingInteractionState(db, {
-      projectId: project.id,
-      archived: true,
-      limit: 3,
-      offset: 3,
-    });
-    expect(archivedSecondPage.map((thread) => thread.id)).toEqual([
-      created[1]?.id,
-      created[0]?.id,
-    ]);
   });
 
   it("counts archived assigned child threads", () => {

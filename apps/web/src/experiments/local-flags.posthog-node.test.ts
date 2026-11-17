@@ -116,17 +116,21 @@ describe("local flag evaluation against posthog-node", () => {
       if (definitions === null) {
         throw new Error("definitions did not parse");
       }
-      for (const id of IDS) {
-        const expected = await client.getFeatureFlag(key, id, {
-          onlyEvaluateLocally: true,
-          sendFeatureFlagEvents: false,
-        });
-        const actual = await evaluateLocalFlag(definitions, key, id);
-        expect(actual.kind).toBe("assigned");
-        expect([
-          id,
-          actual.kind === "assigned" ? (actual.variant ?? false) : null,
-        ]).toEqual([id, expected ?? false]);
+      for (let offset = 0; offset < IDS.length; offset += 16) {
+        await Promise.all(
+          IDS.slice(offset, offset + 16).map(async (id) => {
+            const expected = await client.getFeatureFlag(key, id, {
+              onlyEvaluateLocally: true,
+              sendFeatureFlagEvents: false,
+            });
+            const actual = await evaluateLocalFlag(definitions, key, id);
+            expect(actual.kind).toBe("assigned");
+            expect([
+              id,
+              actual.kind === "assigned" ? (actual.variant ?? false) : null,
+            ]).toEqual([id, expected ?? false]);
+          }),
+        );
       }
     },
   );

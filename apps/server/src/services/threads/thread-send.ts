@@ -228,6 +228,14 @@ export function ensureThreadQueueIsWritable(thread: Thread): void {
   ensureThreadIsWritable(thread, true);
 }
 
+function hasCommandMention(input: readonly PromptInput[]): boolean {
+  return input.some(
+    (item) =>
+      item.type === "text" &&
+      item.mentions.some((mention) => mention.resource.kind === "command"),
+  );
+}
+
 function resolveSendMode(
   thread: Thread,
   requestedMode: SendThreadMessageMode,
@@ -716,7 +724,13 @@ async function sendThreadMessageWithoutContextClear(
           }),
           mode: "thread.start" as const,
         }
-      : await prepareReadyThreadTurnCommand(deps, commandArgs);
+      : await prepareReadyThreadTurnCommand(deps, {
+          ...commandArgs,
+          mayJoinRunningTurn:
+            payload.mode !== "start" &&
+            args.retryOf === undefined &&
+            !hasCommandMention(input),
+        });
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       beforeAppendInTransaction: ({ tx }) => {

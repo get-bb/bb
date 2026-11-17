@@ -193,6 +193,7 @@ interface OpenSessionArgs {
   dataDir: string;
   instanceId: string;
   localApiPort: number | null;
+  turnCommandThreadIds: string[];
   activeThreads: HostDaemonActiveThread[] | Promise<HostDaemonActiveThread[]>;
   openThreadWork: HostDaemonOpenThreadWork[];
   undeliveredEventThreadIds: string[];
@@ -379,6 +380,7 @@ export function createServerClient(
         dataDir: args.dataDir,
         localApiPort: args.localApiPort,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        turnCommandThreadIds: args.turnCommandThreadIds,
         activeThreads: await args.activeThreads,
         openThreadWork: args.openThreadWork,
         undeliveredEventThreadIds: args.undeliveredEventThreadIds,

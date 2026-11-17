@@ -34,3 +34,36 @@ export function piSessionNeedsRelocation(
     !(existsSync(header.cwd) && realpathSync(header.cwd) === realpathSync(cwd))
   );
 }
+
+const sessionIdentitySchema = z
+  .object({
+    type: z.literal("session"),
+    id: z.string(),
+  })
+  .passthrough();
+
+export type PiSessionFileState = "missing" | "valid" | "invalid";
+
+export function readPiSessionFileState(
+  sessionFile: string,
+): PiSessionFileState {
+  let contents: string;
+  try {
+    contents = readFileSync(sessionFile, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return "missing";
+    throw error;
+  }
+  for (const line of contents.split("\n")) {
+    if (!line.trim()) continue;
+    let entry: unknown;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    return sessionIdentitySchema.safeParse(entry).success ? "valid" : "invalid";
+  }
+  return contents.length === 0 ? "valid" : "invalid";
+}

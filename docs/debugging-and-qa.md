@@ -1277,13 +1277,26 @@ values receive the original CSS, so a tab retained across a server update
 keeps working with its old host styles. Compressed responses are cached
 separately for the original and stripped variants.
 
-The app also adds `css-scope=owned-root-v1`. When a plugin's `app.js` never sets
-`data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes then
-drop the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
-plugin's utility selectors, so its rules cannot match outside its own roots and
-restyles of the rest of the page stay cheap. The server checks the bundle when
-it loads the plugin; any id-less root keeps that plugin on the original CSS, and
-`bb plugin build` warns about it. Authored CSS is never rewritten.
+The app also adds `css-scope=owned-root-v1`. When a plugin's `app.js` never
+sets `data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes drop
+the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
+plugin's utility selectors; otherwise the plugin keeps the original CSS, and
+`bb plugin build` warns. Authored CSS is never rewritten.
+
+With the `keyedPluginCss` experiment on, the app sends
+`css-scope=plugin-attribute-v1` instead. For the same bundles, the routes also
+key utility selectors on `[data-bb-plugin-scope-<id>]` instead of
+`[data-bb-plugin=<id>]`. Browsers' ancestor filters hash attribute names but
+not values, so only a per-plugin attribute name lets the browser skip another
+plugin's copy of `.flex` without walking every ancestor of each element inside
+the sidebar, composer, or any other plugin root. Plugin roots the host renders
+(slot mounts, panel header content, and portaled overlays) carry
+`data-bb-plugin-scope-<id>=""` next to `data-bb-plugin`. For elements a plugin
+labels itself, including old `portal-scope` copies and
+`element.dataset.bbPlugin = id`, the app watches the document
+(`apps/app/src/lib/plugin-scope-attributes.ts`) and adds the attribute before
+the element is styled. Tabs that send `owned-root-v1` or no scope get the
+variants above.
 
 To reproduce version skew, load the production main app in Chrome, restart
 the same isolated server on the branch without reloading the tab, and open

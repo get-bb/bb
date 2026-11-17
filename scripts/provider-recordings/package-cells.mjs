@@ -173,6 +173,12 @@ const CELL_DESCRIPTIONS = {
   "archived-resume": "codex: resume a thread archived natively by another app-server client.",
   "empty-rollout": "codex: resume after the rollout file was truncated to zero bytes.",
   "auth-failure": "A turn against an empty provider config home (401 / not logged in).",
+  "settings-follow-up":
+    "Follow-up turns that each change one setting: model, env var, permission mode, reasoning level.",
+  "settings-steer":
+    "Long turns, each steered with one changed setting: model, env var, permission mode, reasoning level.",
+  "steer-race": "A steer sent as its turn ends, then a follow-up turn.",
+  "provider-exit": "The provider process is killed mid-command, then a follow-up turn.",
 };
 
 function describeCell(cell) {

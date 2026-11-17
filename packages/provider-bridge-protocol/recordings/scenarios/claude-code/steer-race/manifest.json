@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "steer-race",
+  "threadId": "thr_de8d07569a",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.323 (Agent SDK 0.3.318)",
+  "recordedAt": "2026-11-14",
+  "description": "A steer sent as its turn ends, then a follow-up turn.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 28,
+    "provider→bridge": 49,
+    "bridge→provider": 5
+  }
+}

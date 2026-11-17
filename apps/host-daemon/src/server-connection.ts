@@ -347,6 +347,7 @@ export class ServerConnection {
         hostName: this.options.hostName,
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
+        turnCommandThreadIds: this.options.getTurnCommandThreadIds?.() ?? [],
         activeThreads: this.options.getActiveThreads?.() ?? [],
         openThreadWork: this.options.getOpenThreadWork?.() ?? [],
         undeliveredEventThreadIds:

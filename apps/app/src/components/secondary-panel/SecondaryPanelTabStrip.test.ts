@@ -19,6 +19,7 @@ import {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("secondary panel tab-strip edge fades", () => {
