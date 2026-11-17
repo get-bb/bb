@@ -22,7 +22,15 @@ import { AppToasterView } from "@/components/AppToasterView";
 import { appToast } from "@/components/ui/app-toast";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
-import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
+import {
+  hostProviderStateQueryKey,
+  pluginCatalogSearchQueryKey,
+  systemProviderCatalogQueryKey,
+} from "@/hooks/queries/query-keys";
+import type {
+  SystemProviderCatalogEntry,
+  SystemProviderState,
+} from "@bb/server-contract";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -258,6 +266,61 @@ describe("OnboardingFlow", () => {
     expect(button(/^Retry$/u)).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
     expect(agentLoadFailures()).toEqual(["timed_out"]);
+  });
+
+  it("keeps showing agents whose checks answered while slower checks are still running", () => {
+    vi.useFakeTimers();
+    const { queryClient } = renderFlow({ initialStep: "agent" });
+    const catalogEntry = (id: string): SystemProviderCatalogEntry => ({
+      id,
+      displayName: id,
+      pluginId: `provider-${id}`,
+      pluginName: id,
+      pluginEnabled: true,
+      enabled: true,
+      available: true,
+      logoUrl: null,
+      info: null,
+    });
+    const claudeCode: SystemProviderState = {
+      providerId: "claude-code",
+      displayName: "Claude Code",
+      status: "ready",
+      statusMessage: null,
+      accountEmail: null,
+      planLabel: null,
+      installedVersion: "2.1.0",
+      minimumSupportedVersion: null,
+      canInstall: true,
+      canUpdate: true,
+      loginCommand: "claude auth login",
+      localLoginCommand: null,
+      internal_DO_NOT_USE_guidedSignIn: false,
+      internal_DO_NOT_USE_setupGuidePlanLabel: null,
+    };
+    act(() => {
+      queryClient.setQueryData(
+        hostProviderStateQueryKey({
+          hostId: "host_1",
+          providerId: "claude-code",
+        }),
+        { providers: [claudeCode] },
+      );
+      queryClient.setQueryData(systemProviderCatalogQueryKey(), [
+        catalogEntry("claude-code"),
+        catalogEntry("codex"),
+      ]);
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    expect(screen.getByText("Claude Code")).toBeTruthy();
+    expect(
+      screen.queryByText("Provider readiness could not be checked."),
+    ).toBeNull();
+    expect(agentLoadFailures()).toEqual([]);
   });
 
   it.each([
