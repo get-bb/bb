@@ -12,7 +12,9 @@ import {
   type ServiceTier,
   type ThreadExecutionSource,
   type Thread,
+  resolvedThreadExecutionOptionsSchema,
 } from "@bb/domain";
+import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
@@ -29,6 +31,11 @@ import {
 import { getLastExecutionOptions } from "./thread-events.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
+import { readThreadStartupContextOfKind } from "./thread-startup-store.js";
+
+const pendingThreadExecutionSeedSchema = z.object({
+  executionOptions: resolvedThreadExecutionOptionsSchema.optional(),
+});
 
 interface ExecutionPlanFieldInput<TValue> {
   source: CallerExecutionInputSource;
@@ -85,6 +92,13 @@ function getStoredThreadExecutionOptions(
   if (lastExecution !== null || thread.status !== "pending") {
     return lastExecution;
   }
+  const executionSeed = readThreadStartupContextOfKind(
+    deps.db,
+    thread.id,
+    "pending",
+    pendingThreadExecutionSeedSchema,
+  )?.executionOptions;
+  if (executionSeed !== undefined) return executionSeed;
   const queuedStart = getQueuedThreadStartMessage(deps.db, thread.id);
   if (queuedStart === null) return null;
   const queued = toThreadQueuedMessage(queuedStart);

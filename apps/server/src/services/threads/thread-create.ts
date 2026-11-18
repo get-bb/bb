@@ -4,7 +4,13 @@ import {
   admitAfterPathClaimsSettle,
   assertEnvironmentPathAvailable,
 } from "../environments/path-admission.js";
-import { markThreadDeleted, getEnvironment, getThread } from "@bb/db";
+import {
+  markThreadDeleted,
+  getEnvironment,
+  getThread,
+  setThreadExecutionOverride,
+  setThreadStartupContext,
+} from "@bb/db";
 import {
   describeSessionOptionConflict,
   modelSessionOptionConflict,
@@ -527,6 +533,24 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
+    if (args.createEmpty) {
+      startContext.executionOptions = execution;
+      setThreadStartupContext(deps.db, {
+        threadId: thread.id,
+        startupContext: JSON.stringify({
+          kind: "pending",
+          ...startContext,
+          ...(historyEndSequence === null
+            ? {}
+            : { historyCopy: FORK_HISTORY_COPY_MARK }),
+        }),
+      });
+      setThreadExecutionOverride(deps.db, {
+        threadId: thread.id,
+        modelOverride: execution.model,
+        reasoningLevelOverride: execution.reasoningLevel,
+      });
+    }
     if (!args.createEmpty)
       await attemptDispatch(deps, {
         thread,
@@ -557,10 +581,12 @@ async function createPendingThreadAndAttemptFirstDispatch(
     discardUnstartedThread(deps, thread);
     throw error;
   }
-  rememberProjectExecutionDefaultsForCreate(deps, {
-    execution,
-    request: args.request,
-  });
+  if (!args.createEmpty) {
+    rememberProjectExecutionDefaultsForCreate(deps, {
+      execution,
+      request: args.request,
+    });
+  }
   return getThreadSafe(deps, thread.id);
 }
 

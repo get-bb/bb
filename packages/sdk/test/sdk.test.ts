@@ -1371,6 +1371,45 @@ describe("@bb/sdk", () => {
     );
   });
 
+  it("serializes explicit empty creates and rejects non-empty createEmpty input", async () => {
+    const queue = createFetchQueue([{ body: { id: "thr_empty" }, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.spawn({
+      projectId: "proj_123",
+      environment: {
+        type: "host",
+        hostId: "host_123",
+        workspace: { type: "unmanaged", path: null },
+      },
+      createEmpty: true,
+    });
+
+    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toMatchObject({
+      createEmpty: true,
+      input: [],
+    });
+    await expect(
+      sdk.threads.spawn({
+        projectId: "proj_123",
+        environment: {
+          type: "host",
+          hostId: "host_123",
+          workspace: { type: "unmanaged", path: null },
+        },
+        createEmpty: true,
+        input: [{ type: "text", text: "Not empty", mentions: [] }],
+      }),
+    ).rejects.toThrow("createEmpty cannot be combined with thread input.");
+    expect(queue.requests).toHaveLength(1);
+  });
+
   it("defaults thread forks to source-environment reuse and preserves an agent-only context seed", async () => {
     const queue = createFetchQueue([{ body: { id: "thr_fork" }, status: 201 }]);
     const sdk = createBbSdk({

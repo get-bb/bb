@@ -3,6 +3,7 @@ import { z } from "zod";
 export const widgetIcons = [
   "message",
   "camera",
+  "microphone",
   "code",
   "terminal",
   "check",
@@ -22,7 +23,7 @@ export const widgetTargetSchema = z
     baseBranch: optionalSetting,
     reasoningLevel: optionalSetting,
     icon: z.enum(widgetIcons),
-    action: z.enum(["thread", "photo"]),
+    action: z.enum(["thread", "photo", "voice"]),
   })
   .refine(
     (target) =>

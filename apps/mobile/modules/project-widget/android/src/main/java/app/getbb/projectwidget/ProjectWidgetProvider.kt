@@ -31,7 +31,7 @@ class ProjectWidgetProvider : AppWidgetProvider() {
     fun configure(context: Context, id: Int, targetJson: String) {
       val target = JSONObject(targetJson)
       require(target.getString("profileId").isNotBlank() && target.getString("projectId").isNotBlank())
-      require(target.getString("projectName").isNotBlank() && target.getString("action") in setOf("photo", "thread"))
+      require(target.getString("projectName").isNotBlank() && target.getString("action") in setOf("photo", "thread", "voice"))
       icon(target.getString("icon"))
       check(preferences(context).edit().putString(id.toString(), targetJson).commit())
       update(context, AppWidgetManager.getInstance(context), id, target)
@@ -40,6 +40,7 @@ class ProjectWidgetProvider : AppWidgetProvider() {
     private fun icon(name: String): Int = when (name) {
       "message" -> R.drawable.bb_widget_icon_message
       "camera" -> R.drawable.bb_widget_icon_camera
+      "microphone" -> R.drawable.bb_widget_icon_microphone
       "code" -> R.drawable.bb_widget_icon_code
       "terminal" -> R.drawable.bb_widget_icon_terminal
       "check" -> R.drawable.bb_widget_icon_check
@@ -49,8 +50,11 @@ class ProjectWidgetProvider : AppWidgetProvider() {
 
     private fun update(context: Context, manager: AppWidgetManager, id: Int, target: JSONObject) {
       val name = target.getString("projectName")
-      val action = if (target.getString("action") == "photo") R.string.bb_project_widget_photo
-      else R.string.bb_project_widget_label
+      val action = when (target.getString("action")) {
+        "photo" -> R.string.bb_project_widget_photo
+        "voice" -> R.string.bb_project_widget_voice
+        else -> R.string.bb_project_widget_label
+      }
       val launch = Intent(context, ProjectWidgetLaunchActivity::class.java)
         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
       val tap = PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE)

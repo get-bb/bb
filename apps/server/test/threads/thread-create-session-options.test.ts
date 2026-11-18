@@ -1,5 +1,10 @@
-import { upsertProjectExecutionDefaults } from "@bb/db";
-import { threadSchema } from "@bb/domain";
+import {
+  getAppSettings,
+  getProjectExecutionDefaults,
+  setAppSettings,
+  upsertProjectExecutionDefaults,
+} from "@bb/db";
+import { threadSchema, type ReasoningLevel } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   listQueuedThreadCommands,
@@ -14,6 +19,7 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
 import { resolvePendingThreadSessionOptions } from "../../src/services/threads/thread-session-options.js";
+import { buildExecutionOptions } from "../../src/services/threads/thread-commands.js";
 import { availableModelFixture } from "../helpers/available-models.js";
 import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 
@@ -21,9 +27,10 @@ function daybreakModel(
   model: string,
   daybreak: { value: boolean; fixed: boolean },
   isDefault = false,
+  reasoningLevels: readonly ReasoningLevel[] = ["low"],
 ) {
   return {
-    ...availableModelFixture({ model, isDefault }),
+    ...availableModelFixture({ model, isDefault, reasoningLevels }),
     sessionOptions: [
       {
         type: "boolean" as const,
@@ -47,7 +54,10 @@ function registerDaybreakCatalog(
       codex: {
         models: [
           daybreakModel("gpt-standard", { value: false, fixed: true }, true),
-          daybreakModel("gpt-both", { value: false, fixed: false }),
+          daybreakModel("gpt-both", { value: false, fixed: false }, false, [
+            "low",
+            "high",
+          ]),
         ],
         selectedOnlyModels: [
           daybreakModel("gpt-daybreak-only", { value: true, fixed: true }),
@@ -75,8 +85,12 @@ async function createThread(
   args: {
     hostId: string;
     projectId: string;
+    origin?: "app" | "cli";
     sessionOptions?: unknown;
     model?: string | null;
+    reasoningLevel?: ReasoningLevel;
+    permissionMode?: "accept-edits" | "auto" | "full";
+    serviceTier?: string;
     createEmpty?: boolean;
   },
 ) {
@@ -84,10 +98,19 @@ async function createThread(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      origin: "app",
+      origin: args.origin ?? "app",
       projectId: args.projectId,
       providerId: "codex",
       ...(args.model === null ? {} : { model: args.model ?? "gpt-5" }),
+      ...(args.reasoningLevel === undefined
+        ? {}
+        : { reasoningLevel: args.reasoningLevel }),
+      ...(args.permissionMode === undefined
+        ? {}
+        : { permissionMode: args.permissionMode }),
+      ...(args.serviceTier === undefined
+        ? {}
+        : { serviceTier: args.serviceTier }),
       input: args.createEmpty
         ? []
         : [{ type: "text", text: "Start with my options" }],
@@ -133,56 +156,123 @@ function seedWorkspace(harness: TestAppHarness, name: string) {
 }
 
 describe("session options chosen when a thread is created", () => {
-  it("persists an idle thread and applies its execution choices on the first later message", async () => {
+  it("keeps interleaved empty-thread execution choices per thread through the first send", async () => {
     await withTestHarness(async (harness) => {
       const { host, session, project } = seedWorkspace(
         harness,
         "create-empty-options",
       );
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-standard",
+        reasoningLevel: "low",
+        permissionMode: "auto",
+        serviceTier: "default",
+      });
+      const projectDefaultsBefore = getProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+      });
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        allowFastServiceTier: true,
+      });
       registerDaybreakCatalog(harness, {
         hostId: host.id,
         sessionId: session.id,
       });
 
-      const response = await createThread(harness, {
+      const cliCreateResponse = await createThread(harness, {
         hostId: host.id,
         projectId: project.id,
+        origin: "cli",
         model: "gpt-both",
+        reasoningLevel: "high",
+        permissionMode: "full",
+        serviceTier: "fast",
         sessionOptions: { daybreak: true },
         createEmpty: true,
       });
-      expect(response.status).toBe(201);
-      const thread = threadSchema.parse(await readJson(response));
-      expect(thread.status).toBe("pending");
-      expect(resolvePendingThreadSessionOptions(harness.db, thread.id)).toEqual(
-        { daybreak: true },
-      );
+      expect(cliCreateResponse.status).toBe(201);
+      const cliThread = threadSchema.parse(await readJson(cliCreateResponse));
       expect(
-        listQueuedThreadCommands(harness, "thread.start", thread.id),
+        listQueuedThreadCommands(harness, "thread.start", cliThread.id),
       ).toHaveLength(0);
 
-      const sent = await harness.app.request(
-        `/api/v1/threads/${thread.id}/send`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            input: [{ type: "text", text: "First real message" }],
-            mode: "auto",
-          }),
-        },
-      );
-      expect(sent.status).toBe(200);
-      const start = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "thread.start" && command.threadId === thread.id,
-      );
+      const appCreateResponse = await createThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        origin: "app",
+        model: "gpt-standard",
+        reasoningLevel: "low",
+        permissionMode: "accept-edits",
+        serviceTier: "ultrafast",
+        createEmpty: true,
+      });
+      expect(appCreateResponse.status).toBe(201);
+      const appThread = threadSchema.parse(await readJson(appCreateResponse));
+      expect(appThread.status).toBe("pending");
       expect(
-        start.command.type === "thread.start" ? start.command.options : null,
-      ).toMatchObject({
+        resolvePendingThreadSessionOptions(harness.db, cliThread.id),
+      ).toEqual({ daybreak: true });
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", appThread.id),
+      ).toHaveLength(0);
+      expect(
+        getProjectExecutionDefaults(harness.db, { projectId: project.id }),
+      ).toEqual(projectDefaultsBefore);
+
+      const sendFirstMessage = async (threadId: string) => {
+        const sent = await harness.app.request(
+          `/api/v1/threads/${threadId}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              input: [{ type: "text", text: "First real message" }],
+              mode: "auto",
+            }),
+          },
+        );
+        expect(sent.status).toBe(200);
+        const start = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === threadId,
+        );
+        return start.command.type === "thread.start"
+          ? start.command.options
+          : null;
+      };
+
+      await expect(sendFirstMessage(appThread.id)).resolves.toMatchObject({
+        model: "gpt-standard",
+        reasoningLevel: "low",
+        permissionMode: "accept-edits",
+        serviceTier: "ultrafast",
+      });
+      await expect(
+        buildExecutionOptions(harness.deps, {}, { threadId: appThread.id }),
+      ).resolves.toMatchObject({
+        model: "gpt-standard",
+        reasoningLevel: "low",
+        permissionMode: "accept-edits",
+        serviceTier: "ultrafast",
+      });
+      await expect(sendFirstMessage(cliThread.id)).resolves.toMatchObject({
         model: "gpt-both",
+        reasoningLevel: "high",
+        permissionMode: "full",
+        serviceTier: "fast",
         sessionOptions: { daybreak: true },
+      });
+      await expect(
+        buildExecutionOptions(harness.deps, {}, { threadId: cliThread.id }),
+      ).resolves.toMatchObject({
+        model: "gpt-both",
+        reasoningLevel: "high",
+        permissionMode: "full",
+        serviceTier: "fast",
       });
     });
   });

@@ -20,6 +20,7 @@ const queryClient = new QueryClient();
 const iconLabels: Record<WidgetTarget["icon"], string> = {
   message: "Message",
   camera: "Camera",
+  microphone: "Microphone",
   code: "Code",
   terminal: "Terminal",
   check: "Check",
@@ -184,9 +185,27 @@ function TargetPicker({
   );
 
   const project = projects.data?.find((item) => item.id === projectId);
-  const host = hosts.data?.find((item) => item.id === hostId);
-  const model = options.data?.models.find(
-    (item) => item.id === modelId || item.model === modelId,
+  const models = options.data?.models ?? [];
+  const model = models.find((item) => item.id === modelId);
+  const uniqueModels = models.filter(
+    (item, index) =>
+      models.findIndex((candidate) => candidate.model === item.model) === index,
+  );
+  const compatibleHosts = (hosts.data ?? []).filter(
+    (item) =>
+      item.status === "connected" &&
+      item.lifecycle.phase === "active" &&
+      project?.sources.some((source) => source.hostId === item.id),
+  );
+  const host = compatibleHosts.find((item) => item.id === hostId);
+  const duplicateModelValues = new Set(
+    models
+      .filter(
+        (item, index) =>
+          models.findIndex((candidate) => candidate.model === item.model) !==
+          index,
+      )
+      .map((item) => item.model),
   );
   const branchesList = branches.data?.branches ?? [];
 
@@ -223,9 +242,7 @@ function TargetPicker({
   }
 
   function chooseModel(nextModelId: string) {
-    const nextModel = options.data?.models.find(
-      (item) => item.id === nextModelId || item.model === nextModelId,
-    );
+    const nextModel = models.find((item) => item.id === nextModelId);
     setModelId(nextModelId);
     setReasoningLevel(nextModel?.defaultReasoningEffort ?? null);
   }
@@ -263,6 +280,10 @@ function TargetPicker({
               trailing={item.id === projectId ? "checkmark" : undefined}
               onPress={() => {
                 setProjectId(item.id);
+                setHostId(null);
+                setProviderId(null);
+                setModelId(null);
+                setReasoningLevel(null);
                 setBranch(null);
               }}
               disabled={saving}
@@ -272,7 +293,7 @@ function TargetPicker({
       ) : null}
       {project ? (
         <GroupedSection title="Machine">
-          {(hosts.data ?? []).map((item) => (
+          {compatibleHosts.map((item) => (
             <GroupedRow
               key={item.id}
               title={item.name}
@@ -289,54 +310,63 @@ function TargetPicker({
               disabled={saving}
             />
           ))}
+          {compatibleHosts.length === 0 ? (
+            <Text>No connected machine has a checkout for this project.</Text>
+          ) : null}
         </GroupedSection>
       ) : null}
       {project && host ? (
         <>
           {providers.isPending ? <Spinner /> : null}
-          {providers.isError ? (
-            <Text>Could not load providers for this machine.</Text>
-          ) : null}
-          {providers.isSuccess ? (
-            <GroupedSection title="Provider">
-              {providers.data.map((item) => (
-                <GroupedRow
-                  key={item.id}
-                  title={item.displayName}
-                  selected={item.id === providerId}
-                  trailing={item.id === providerId ? "checkmark" : undefined}
-                  onPress={() => chooseProvider(item.id)}
-                  disabled={saving}
-                />
-              ))}
-              <GroupedRow
-                title="Use server default"
-                subtitle="Let bb choose the provider and model"
-                selected={providerId === null}
-                trailing={providerId === null ? "checkmark" : undefined}
-                onPress={() => {
-                  setProviderId(null);
-                  setModelId(null);
-                  setReasoningLevel(null);
-                }}
-                disabled={saving}
-              />
-            </GroupedSection>
-          ) : null}
+          <GroupedSection title="Provider">
+            {providers.isError ? (
+              <Text>
+                Could not load providers. The server default is still available.
+              </Text>
+            ) : null}
+            {providers.isSuccess
+              ? providers.data
+                  .filter((item) => item.available)
+                  .map((item) => (
+                    <GroupedRow
+                      key={item.id}
+                      title={item.displayName}
+                      selected={item.id === providerId}
+                      trailing={
+                        item.id === providerId ? "checkmark" : undefined
+                      }
+                      onPress={() => chooseProvider(item.id)}
+                      disabled={saving}
+                    />
+                  ))
+              : null}
+            <GroupedRow
+              title="Use server default"
+              subtitle="Let bb choose the provider and model"
+              selected={providerId === null}
+              trailing={providerId === null ? "checkmark" : undefined}
+              onPress={() => {
+                setProviderId(null);
+                setModelId(null);
+                setReasoningLevel(null);
+              }}
+              disabled={saving}
+            />
+          </GroupedSection>
           {providerId && options.isPending ? <Spinner /> : null}
           {providerId && options.isSuccess ? (
             <GroupedSection title="Model">
-              {options.data.models.map((item) => (
+              {uniqueModels.map((item) => (
                 <GroupedRow
                   key={item.id}
                   title={item.displayName}
-                  subtitle={item.description || undefined}
-                  selected={item.id === modelId || item.model === modelId}
-                  trailing={
-                    item.id === modelId || item.model === modelId
-                      ? "checkmark"
-                      : undefined
+                  subtitle={
+                    duplicateModelValues.has(item.model)
+                      ? "Server-selected route"
+                      : item.description || undefined
                   }
+                  selected={item.id === modelId}
+                  trailing={item.id === modelId ? "checkmark" : undefined}
                   onPress={() => chooseModel(item.id)}
                   disabled={saving}
                 />
@@ -367,6 +397,18 @@ function TargetPicker({
                 selected={branch === null}
                 trailing={branch === null ? "checkmark" : undefined}
                 onPress={() => setBranch(null)}
+                disabled={saving}
+              />
+            </GroupedSection>
+          ) : null}
+          {branches.isError ? (
+            <GroupedSection
+              title="Could not load branches"
+              footer="You can still save this widget using the project checkout."
+            >
+              <GroupedRow
+                title="Try again"
+                onPress={() => void branches.refetch()}
                 disabled={saving}
               />
             </GroupedSection>
@@ -405,6 +447,14 @@ function TargetPicker({
           selected={action === "photo"}
           trailing={action === "photo" ? "checkmark" : undefined}
           onPress={() => setAction("photo")}
+          disabled={saving}
+        />
+        <GroupedRow
+          title="Voice input"
+          subtitle="Open a new thread and dictate your first prompt"
+          selected={action === "voice"}
+          trailing={action === "voice" ? "checkmark" : undefined}
+          onPress={() => setAction("voice")}
           disabled={saving}
         />
       </GroupedSection>

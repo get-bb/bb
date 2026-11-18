@@ -253,7 +253,7 @@ export type ThreadSpawnArgs = ThreadSpawnBaseArgs &
     | {
         input: CreateThreadRequest["input"];
         prompt?: never;
-        createEmpty?: never;
+        createEmpty?: boolean;
       }
     | {
         input?: never;
@@ -869,10 +869,15 @@ function spawnInput(input: ThreadSpawnArgs): PromptInput[] {
   if (input.input !== undefined && input.prompt !== undefined) {
     throw new Error("Provide only one of input or prompt.");
   }
+  if (input.createEmpty === true) {
+    if (input.input?.length || input.prompt !== undefined) {
+      throw new Error("createEmpty cannot be combined with thread input.");
+    }
+    return [];
+  }
   if (input.input !== undefined) {
     return input.input;
   }
-  if (input.createEmpty === true) return [];
   return [{ type: "text", text: input.prompt, mentions: [] }];
 }
 

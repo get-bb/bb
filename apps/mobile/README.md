@@ -247,6 +247,7 @@ project's label.
 **New thread** opens an empty thread with the selected settings. The first
 prompt starts the agent. **Attach a photo** opens the camera, lets you retake
 or cancel, and starts the thread with the photo after you confirm.
+**Voice input** opens an empty thread with the composer’s voice input ready.
 
 Use an updated bb server for empty threads. The picker uses the existing SDK
 project, machine, branch and provider catalogs. Empty creation is available
@@ -257,8 +258,9 @@ For a device smoke test, add two widgets to different projects or saved
 servers and choose distinct icons. Confirm each tap opens a new thread on the
 intended server with its saved settings. Test warm and cold app launches.
 Add a camera widget, cancel one capture, then capture and confirm a second
-photo. Check that the second thread starts with the photo. Cancel a fourth
-widget during setup and check that the launcher leaves no widget behind.
+photo. Check that the second thread starts with the photo. Tap a voice widget
+and check that the composer offers recording. Cancel another widget during
+setup and check that the launcher removes its pending placement.
 
 ### Android production setup
 

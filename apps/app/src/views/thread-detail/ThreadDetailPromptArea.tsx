@@ -223,6 +223,7 @@ interface ThreadDetailPromptAreaProps {
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
   composerFocusRequestKey: string | number;
+  widgetVoiceReady?: boolean;
   thread: ThreadWithRuntime;
 }
 
@@ -513,6 +514,7 @@ export function ThreadDetailPromptArea({
   sentMessageEdit,
   steerActiveThreadOnEnter,
   composerFocusRequestKey,
+  widgetVoiceReady,
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useImmediateRouteNavigate();
@@ -2431,6 +2433,7 @@ export function ThreadDetailPromptArea({
   const bottomContent = (
     <FollowUpPromptBox
       id={composerId}
+      widgetVoiceReady={widgetVoiceReady}
       attachments={bottomAttachmentsConfig}
       stack={pendingInteractionNode ? pendingInteractionStack : promptStack}
       pendingInteraction={pendingInteractionNode}

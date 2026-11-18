@@ -2,5 +2,6 @@
   <string name="bb_project_widget_title">New thread</string>
   <string name="bb_project_widget_label">New thread in %1$s</string>
   <string name="bb_project_widget_photo">Take a photo for %1$s</string>
+  <string name="bb_project_widget_voice">Open voice input in %1$s</string>
   <color name="bb_project_widget_background">#1b2840</color>
 </resources>

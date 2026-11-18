@@ -128,30 +128,38 @@ function WidgetLaunch({
   const router = useRouter();
   const creation = useRef<ReturnType<typeof startWidgetThread> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [threadToReopen, setThreadToReopen] = useState<Awaited<
+    ReturnType<typeof startWidgetThread>
+  > | null>(null);
 
   const openThread = useCallback(
     async (
       thread: Awaited<ReturnType<typeof startWidgetThread>>,
       signal?: AbortSignal,
     ) => {
-      await getProfileStore().setActiveProfile(profile.id);
-      const ready = await waitForActiveConnection(profile.id);
-      if (signal?.aborted) return;
-      if (!ready) throw new Error("Server profile did not activate");
-      router.replace(
-        webViewShellHref({
-          path: getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
+      try {
+        await getProfileStore().setActiveProfile(profile.id);
+        const ready = await waitForActiveConnection(profile.id);
+        if (signal?.aborted) return;
+        if (!ready) throw new Error("Server profile did not activate");
+        const path = getThreadRoutePath({
+          projectId: thread.projectId,
+          threadId: thread.id,
+        });
+        router.replace(
+          webViewShellHref({
+            path: target.action === "voice" ? `${path}?widgetVoice=1` : path,
           }),
-        }),
-      );
+        );
+      } catch {
+        if (!signal?.aborted) setThreadToReopen(thread);
+      }
     },
-    [profile.id, router],
+    [profile.id, router, target.action],
   );
 
   useEffect(() => {
-    if (target.action !== "thread") return;
+    if (target.action === "photo") return;
     const guard = new AbortController();
     creation.current ??= startWidgetThread(profile, target);
     void creation.current
@@ -169,6 +177,14 @@ function WidgetLaunch({
     return () => guard.abort();
   }, [openThread, profile, target]);
 
+  if (threadToReopen) {
+    return (
+      <WidgetLaunchError
+        message="The thread was created, but bb could not open it."
+        retry={() => void openThread(threadToReopen)}
+      />
+    );
+  }
   if (error) return <WidgetLaunchError message={error} />;
   return (
     <GroupedScreen>
@@ -191,12 +207,19 @@ function WidgetLaunch({
   );
 }
 
-function WidgetLaunchError({ message }: { message: string }) {
+function WidgetLaunchError({
+  message,
+  retry,
+}: {
+  message: string;
+  retry?: () => void;
+}) {
   const router = useRouter();
   return (
     <GroupedScreen>
       <Text>{message}</Text>
       <GroupedSection>
+        {retry && <GroupedRow title="Open thread" onPress={retry} />}
         <GroupedRow title="Open bb" onPress={() => router.replace("/")} />
       </GroupedSection>
     </GroupedScreen>
