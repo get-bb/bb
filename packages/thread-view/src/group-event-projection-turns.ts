@@ -14,7 +14,6 @@ import {
   getProjectionSummaryCount,
 } from "./apply-turn-message-detail.js";
 import { findLastTerminalTimelineMessage } from "./timeline-message-helpers.js";
-import { isExternalUserBoundaryForTurn } from "./external-user-boundaries.js";
 
 export interface ThreadEventWithMeta {
   event: ThreadEvent;
@@ -41,7 +40,6 @@ interface ProjectionTurnBoundsUpdate {
 interface GroupEventProjectionTurnsArgs {
   delegatedTurnIds: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
-  externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>;
   messages: EventProjectionMessage[];
 }
 
@@ -199,42 +197,44 @@ function findRootTurnRunningAtSequence(
   return running;
 }
 
+function isVisibleRootUserMessage(message: EventProjectionMessage): boolean {
+  return (
+    message.kind === "user" &&
+    !message.parentToolCallId &&
+    !(
+      message.initiator === "system" &&
+      message.systemMessageSubject?.kind === "tool-call" &&
+      message.systemMessageSubject.suppress
+    )
+  );
+}
+
 function applyExternalUserBoundaries(
   turnsById: Map<string, ProjectionTurnDraft>,
-  messages: EventProjectionMessage[],
-  known: ReadonlyMap<string, readonly number[]> | undefined,
+  delegatedTurnIds: ReadonlySet<string>,
+  standaloneMessages: readonly EventProjectionMessage[],
 ): void {
-  if (known !== undefined) {
-    for (const [turnId, draft] of turnsById) {
-      const boundarySeqs = known.get(turnId) ?? [];
-      if (boundarySeqs.length > 0) {
-        draft.turn.externalUserBoundarySeqs = [...boundarySeqs];
-      }
-    }
-    return;
-  }
-  const userMessages = messages.flatMap((message) =>
-    message.kind === "user" && message.initiator === "user"
-      ? [
-          {
-            sequence: message.sourceSeqStart,
-            turnId: message.scope.kind === "turn" ? message.scope.turnId : null,
-          },
-        ]
-      : [],
-  );
+  const messages = [
+    ...standaloneMessages.map((message) => ({ message, turnId: null })),
+    ...[...turnsById]
+      .filter(([turnId]) => !delegatedTurnIds.has(turnId))
+      .flatMap(([turnId, draft]) =>
+        draft.messages.map((message) => ({ message, turnId })),
+      ),
+  ].filter(({ message }) => isVisibleRootUserMessage(message));
   for (const [turnId, draft] of turnsById) {
-    const span = {
-      completionSequence: draft.completionSequence,
-      sequenceStart: draft.turn.sourceSeqStart,
-      turnId,
-    };
-    const boundarySeqs = new Set<number>();
-    for (const message of userMessages) {
-      if (isExternalUserBoundaryForTurn(span, message)) {
-        boundarySeqs.add(message.sequence);
-      }
-    }
+    if (delegatedTurnIds.has(turnId)) continue;
+    const boundarySeqs = new Set(
+      messages
+        .filter(
+          (entry) =>
+            entry.turnId !== turnId &&
+            entry.message.sourceSeqStart > draft.startedSequence &&
+            (draft.completionSequence === null ||
+              entry.message.sourceSeqStart < draft.completionSequence),
+        )
+        .map((entry) => entry.message.sourceSeqStart),
+    );
     if (boundarySeqs.size > 0) {
       draft.turn.externalUserBoundarySeqs = [...boundarySeqs].sort(
         (left, right) => left - right,
@@ -387,8 +387,10 @@ export function groupEventProjectionTurns(
 
   applyExternalUserBoundaries(
     turnsById,
-    args.messages,
-    args.externalUserBoundarySeqsByTurnId,
+    args.delegatedTurnIds,
+    entryDrafts.flatMap((draft) =>
+      draft.kind === "projected-message" ? [draft.message] : [],
+    ),
   );
 
   const orderedEntryDrafts = [...entryDrafts].sort((left, right) => {

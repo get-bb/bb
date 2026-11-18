@@ -520,8 +520,8 @@ describe("timeline CLI rendering snapshots", () => {
       timeline.rows.some(
         (row) => row.kind === "conversation" && row.role === "user",
       ),
-    ).toBe(true);
-    const pendingSteerRow = timeline.rows.find(
+    ).toBe(false);
+    const pendingSteerRow = timeline.pendingSteers.find(
       (
         row,
       ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
@@ -628,24 +628,20 @@ describe("timeline CLI rendering snapshots", () => {
       }),
     ]);
 
-    const userRows = timeline.rows.filter(
-      (
-        row,
-      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
-        row.kind === "conversation" && row.role === "user",
-    );
-    expect(userRows).toEqual(
+    expect(timeline.rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           text: "First steer",
           turnRequest: expect.objectContaining({ status: "rejected" }),
         }),
-        expect.objectContaining({
-          text: "Second steer",
-          turnRequest: expect.objectContaining({ status: "pending" }),
-        }),
       ]),
     );
+    expect(timeline.pendingSteers).toEqual([
+      expect.objectContaining({
+        text: "Second steer",
+        turnRequest: expect.objectContaining({ status: "pending" }),
+      }),
+    ]);
   });
 
   it("places accepted active-turn steers at the acceptance position", () => {
@@ -1091,7 +1087,7 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(timeline.turnRows).toHaveLength(1);
     expect(timeline.turnRows[0]).toMatchObject({
-      sourceSeqStart: 1,
+      sourceSeqStart: 2,
       sourceSeqEnd: 5,
     });
     expect(timeline.text).toMatchInlineSnapshot(`
@@ -1141,7 +1137,7 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(timeline.turnRows).toHaveLength(1);
     expect(timeline.turnRows[0]).toMatchObject({
-      sourceSeqStart: 1,
+      sourceSeqStart: 2,
       sourceSeqEnd: 6,
     });
     expect(timeline.text).toMatchInlineSnapshot(`

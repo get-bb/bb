@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { getTimelineGroupingContext } from "../../../src/services/threads/timeline-context-order.js";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
   applyThreadTimelineDelta,
@@ -40,70 +39,6 @@ import {
 } from "../../../src/services/threads/timeline.js";
 
 const LARGE_BUDGET = 1_000_000;
-
-it.each([
-  { ends: [30], accepted: 0, boundary: null },
-  { ends: [30], accepted: -1, boundary: 15 },
-  { ends: [30, 20], accepted: 0, boundary: 15 },
-  { ends: [30, 10], accepted: 0, boundary: null },
-  { ends: [10, 12], accepted: -1, boundary: null },
-  { ends: [20, 30], accepted: 1, boundary: 15 },
-])("finds external requests among overlapping turns: %j", (testCase) => {
-  const { db, thread } = setup();
-  try {
-    const events: Parameters<typeof insertEvents>[2] = [];
-    for (const [index, end] of testCase.ends.entries()) {
-      const scope = turnScope(`span-${index}`);
-      const base = {
-        threadId: thread.id,
-        scope,
-        providerThreadId,
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-      };
-      events.push(
-        { ...base, sequence: index * 2 + 1, type: "turn/started", data: "{}" },
-        { ...base, sequence: end, type: "turn/completed", data: "{}" },
-      );
-      if (index === testCase.accepted)
-        events.push({
-          ...base,
-          sequence: index * 2 + 2,
-          type: "turn/input/accepted",
-          data: JSON.stringify({ clientRequestId: requestId(1) }),
-        });
-    }
-    events.push({
-      threadId: thread.id,
-      scope: threadScope(),
-      sequence: 15,
-      type: "client/turn/requested",
-      itemId: null,
-      itemKind: null,
-      parentToolCallId: null,
-      data: JSON.stringify({
-        requestId: requestId(1),
-        initiator: "user",
-        input: [{ type: "text", text: "external request", mentions: [] }],
-      }),
-    });
-    insertEvents(
-      db,
-      noopNotifier,
-      events.sort((a, b) => a.sequence - b.sequence),
-    );
-    expect(
-      getTimelineGroupingContext(db, {
-        threadId: thread.id,
-        sequenceStart: 0,
-        maxSeq: 30,
-      }).orderingBoundarySequence,
-    ).toBe(testCase.boundary);
-  } finally {
-    db.$client.close();
-  }
-});
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -1667,4 +1602,133 @@ it("resolves acceptance after the next conversation boundary", () => {
   }
   expect(rows).toEqual(expected.rows);
   db.$client.close();
+});
+
+it("keeps a pending steer off every page and on the latest page until the turn accepts it", () => {
+  const { db, thread: idleThread } = setup();
+  try {
+    insertTurns(db, idleThread, 3, 4);
+    db.$client
+      .prepare("UPDATE threads SET status = 'active' WHERE id = ?")
+      .run(idleThread.id);
+    const thread: Thread = { ...idleThread, status: "active" };
+    const runningTurn = "turn-4";
+    const steerRequestId = requestId(99);
+    let sequence = 3 * (3 + 4);
+    const turnEvent = (
+      type: "turn/started" | "turn/input/accepted",
+      data: object,
+    ) => ({
+      threadId: thread.id,
+      sequence: ++sequence,
+      type,
+      scope: turnScope(runningTurn),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify(data),
+    });
+    const agentMessage = (item: number) => ({
+      threadId: thread.id,
+      sequence: ++sequence,
+      type: "item/completed" as const,
+      scope: turnScope(runningTurn),
+      providerThreadId,
+      itemId: `${runningTurn}-item-${item}`,
+      itemKind: "agentMessage" as const,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        item: {
+          type: "agentMessage",
+          id: `${runningTurn}-item-${item}`,
+          text: `Running item ${item}`,
+        },
+      }),
+    });
+    insertEvents(db, noopNotifier, [
+      turnEvent("turn/started", {}),
+      agentMessage(0),
+      {
+        threadId: thread.id,
+        sequence: ++sequence,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: steerRequestId,
+          senderThreadId: null,
+          input: [{ type: "text", text: "Steer while running", mentions: [] }],
+          target: { kind: "steer", expectedTurnId: runningTurn },
+          execution,
+        }),
+      },
+      agentMessage(1),
+      agentMessage(2),
+    ]);
+    const build = (
+      eventBudget: number,
+      page: Parameters<typeof buildThreadTimelineWithProfile>[2]["page"],
+    ) =>
+      buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
+        eventBudget,
+        includeClearedContextHistory: false,
+        includeDiagnosticOperations: false,
+        compactionOfferEnabled: false,
+        summarizeShellCommands: true,
+        includeNestedRows: true,
+        maxInlineOutputChars: null,
+        maxSeq: sequence,
+        page,
+      }).response;
+    const isSteer = (row: TimelineRow) =>
+      row.kind === "conversation" && row.text === "Steer while running";
+
+    const latest = build(LARGE_BUDGET, { kind: "latest", segmentLimit: 20 });
+    expect(latest.rows.some(isSteer)).toBe(false);
+    expect(latest.rows.at(-1)).toMatchObject({ text: "Running item 2" });
+    expect(latest.pendingSteers).toEqual([
+      expect.objectContaining({
+        text: "Steer while running",
+        turnRequest: expect.objectContaining({ status: "pending" }),
+      }),
+    ]);
+
+    let page = build(3, { kind: "latest", segmentLimit: 1 });
+    expect(page.pendingSteers.map((row) => row.id)).toEqual(
+      latest.pendingSteers.map((row) => row.id),
+    );
+    while (page.timelinePage.olderCursor !== null) {
+      expect(page.rows.some(isSteer)).toBe(false);
+      page = build(3, {
+        kind: "older",
+        beforeCursor: page.timelinePage.olderCursor,
+        segmentLimit: 1,
+      });
+      expect(page.pendingSteers).toEqual([]);
+    }
+    expect(page.rows.some(isSteer)).toBe(false);
+
+    insertEvents(db, noopNotifier, [
+      turnEvent("turn/input/accepted", { clientRequestId: steerRequestId }),
+    ]);
+    const accepted = build(LARGE_BUDGET, {
+      kind: "latest",
+      segmentLimit: 20,
+    });
+    expect(accepted.pendingSteers).toEqual([]);
+    expect(accepted.rows.find(isSteer)).toMatchObject({
+      id: latest.pendingSteers[0]!.id,
+      turnRequest: { status: "accepted" },
+    });
+  } finally {
+    db.$client.close();
+  }
 });

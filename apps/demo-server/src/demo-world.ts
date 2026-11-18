@@ -553,6 +553,7 @@ export class DemoWorld {
       activeThinking: null,
       activeWorkflows: [],
       activeBackgroundCommands: [],
+      pendingSteers: [],
       pendingTodos: null,
       extensionStates: {},
       providerCommands: null,
