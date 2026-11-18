@@ -77,8 +77,9 @@ import {
 } from "@/lib/bb-desktop";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
   FixedTabTargetScope,
   getPluginFixedTabOwnerId,
@@ -471,7 +472,6 @@ export function PluginPanelRightPanelHost({
     activeTabId: isOpen ? (activeTab?.id ?? null) : null,
     close: hidePanel,
     destinations: panelDestinations,
-    isFocused: isFocused && panel !== null,
   });
   const pluginActions = useMemo(
     () =>
@@ -574,6 +574,11 @@ export function PluginPanelRightPanelHost({
     reveal: revealPanel,
   });
   const openBrowser = panelBrowser.open;
+  const openBrowserUrl = panelBrowser.openUrl;
+  const handleOpenPanelLink = useCallback<MarkdownPreviewLinkHandler>(
+    ({ href }) => openBrowserUrl(href),
+    [openBrowserUrl],
+  );
 
   const fixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
     () =>
@@ -649,7 +654,9 @@ export function PluginPanelRightPanelHost({
               isPanelPersistedOpen={panelState.secondary.isOpen}
               onAutoFocusHandled={terminals.handleAutoFocusHandled}
               onCloseStart={() => terminals.close(tab.terminalId)}
+              onOpenLink={handleOpenPanelLink}
               onRetryStart={() => terminals.retryStart(tab.terminalId)}
+              onSelectionAddToChat={null}
               target={tab.target}
               terminalId={tab.terminalId}
             />
@@ -724,6 +731,7 @@ export function PluginPanelRightPanelHost({
     },
     [
       activateTab,
+      handleOpenPanelLink,
       pluginActions,
       panel,
       panelPath,
@@ -948,7 +956,10 @@ export function PluginPanelRightPanelHost({
 
   return (
     <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-      <AppNavigationHostProvider capabilities={navigationCapabilities}>
+      <AppNavigationSurfaceProvider
+        capabilities={navigationCapabilities}
+        isFocused={isFocused && panel !== null}
+      >
         <AppPanelTabsPublisher
           publish={panelController.publishTabs}
           activeTabId={activeTab?.id ?? null}
@@ -963,7 +974,7 @@ export function PluginPanelRightPanelHost({
           {registeredTabs.observers}
           {routedPage}
         </PluginDetailRouteNavigationProvider>
-      </AppNavigationHostProvider>
+      </AppNavigationSurfaceProvider>
     </UrlOpenRoutingProvider>
   );
 }

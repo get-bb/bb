@@ -3415,3 +3415,84 @@ describe("SplitThreadArea compact breakpoint crossings", () => {
     expect(paneMounts.get("new-thread")).toBe(1);
   });
 });
+
+function UnsavedPluginForm() {
+  const [value, setValue] = useState("");
+  return (
+    <input
+      data-testid="plugin-form-input"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+    />
+  );
+}
+
+describe("SplitThreadArea single-pane breakpoint contract", () => {
+  const SINGLE_PANE_SURFACES: ReadonlyArray<{
+    name: string;
+    path: string;
+    content: PaneContent;
+    rootTestId: string;
+  }> = [
+    {
+      name: "thread",
+      path: threadPath("thr-a"),
+      content: threadContent("thr-a"),
+      rootTestId: "pane-thr-a",
+    },
+    {
+      name: "new thread",
+      path: "/",
+      content: newThreadContent,
+      rootTestId: "root-compose-view",
+    },
+    {
+      name: "plugin navigation panel",
+      path: "/plugins/docs/docs",
+      content: docsContent,
+      rootTestId: "plugin-browser-host",
+    },
+  ];
+
+  it.each(SINGLE_PANE_SURFACES)(
+    "keeps a single $name pane mounted across compact breakpoint crossings",
+    async ({ path, content, rootTestId }) => {
+      setPluginSlotRegistrations(
+        "docs",
+        makePluginRegistrationSet({
+          navPanels: [
+            {
+              id: "docs",
+              title: "Docs",
+              icon: "FileText",
+              path: "docs",
+              component: UnsavedPluginForm,
+            },
+          ],
+        }),
+      );
+      renderSplitArea({
+        path,
+        layout: {
+          root: { type: "pane", paneId: "pane-1", content },
+          focusedPaneId: "pane-1",
+        },
+        routeAwareContent: true,
+      });
+      const root = await screen.findByTestId(rootTestId);
+      const input = screen.queryByTestId<HTMLInputElement>("plugin-form-input");
+      expect(input !== null).toBe(content.kind === "plugin-panel");
+      if (input !== null)
+        fireEvent.change(input, { target: { value: "unsaved plugin form" } });
+
+      for (const compact of [true, false, true, false]) {
+        setCompactViewport(compact);
+        expect(screen.getByTestId(rootTestId)).toBe(root);
+        if (input !== null) {
+          expect(screen.getByTestId("plugin-form-input")).toBe(input);
+          expect(input.value).toBe("unsaved plugin form");
+        }
+      }
+    },
+  );
+});

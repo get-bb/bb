@@ -6,8 +6,8 @@ import type {
 import { getEnvironmentFilePreviewSourceAtRef } from "@bb/client-core";
 import { normalizeAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import {
+  AUTHORED_MARKDOWN_THREAD_MENTIONS,
   MarkdownPreview,
-  type MarkdownThreadMentions,
 } from "@/components/ui/markdown-preview";
 import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
 import { WithoutCodeFenceRenderers } from "@/components/ui/markdown-code-fence-renderers";
@@ -29,11 +29,6 @@ import {
 import { normalizeExperimentalLiveFileTarget } from "@/lib/live-file-navigation";
 import { useLocalFileLinkOpener } from "@/hooks/useLocalFileLinkOpener";
 import { useResolvedLiveFileRoot } from "@/hooks/useResolvedLiveFileTarget";
-
-const PLUGIN_MARKDOWN_THREAD_MENTIONS: MarkdownThreadMentions = {
-  mentions: [],
-  preserveSoftBreaks: false,
-};
 
 function parsePluginMarkdownDocument(
   document: NonNullable<MarkdownProps["experimental_document"]>,
@@ -124,7 +119,7 @@ function PluginDocumentMarkdown({
       className={className}
       linkRouting={linkRouting}
       messageDirectives={messageDirectives}
-      threadMentions={PLUGIN_MARKDOWN_THREAD_MENTIONS}
+      threadMentions={AUTHORED_MARKDOWN_THREAD_MENTIONS}
     />
   );
 }
@@ -162,7 +157,7 @@ function PluginMarkdownBody({
       className={className}
       linkRouting={document === null ? {} : messageRouting}
       messageDirectives={messageDirectives}
-      threadMentions={PLUGIN_MARKDOWN_THREAD_MENTIONS}
+      threadMentions={AUTHORED_MARKDOWN_THREAD_MENTIONS}
     />
   );
 }

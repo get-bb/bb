@@ -59,7 +59,9 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { getFixedPanelTabsStateStorageKey } from "@bb/client-core";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
-import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
+import { createPluginPanelController } from "@/lib/plugin-panel-controller";
+import type { ExperimentalOpenTabOptions } from "@get-bb/plugin-sdk";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
 
@@ -2709,5 +2711,66 @@ describe("plugin detail source and settings", () => {
     expect(screen.getByTestId("location").textContent).toBe(
       "/threads/thr_1?panel=files",
     );
+  });
+});
+
+describe("Plugins view panel controller", () => {
+  it("gives plugin commands a panel that declines plugin tabs without changing the view's tabs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return Response.json({ enabled: true, plugins: [] });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return Response.json({ results: [], collections: [] });
+        }
+        return Response.json({ error: "not found" }, { status: 404 });
+      }),
+    );
+    renderWithQueryClient(
+      <Provider store={createStore()}>
+        <MemoryRouter initialEntries={["/plugins"]}>
+          <AppCommandProvider>
+            <RoutedPluginsView />
+          </AppCommandProvider>
+        </MemoryRouter>
+      </Provider>,
+    );
+    await waitFor(() => expect(getFocusedAppPanelController()).not.toBeNull());
+    const panel = createPluginPanelController(
+      "contract",
+      getFocusedAppPanelController,
+    );
+    const before = panel.getTabs();
+    const declined: ExperimentalOpenTabOptions[] = [
+      {
+        tab: {
+          id: "probe",
+          context: { kind: "thread" },
+          availability: "action",
+        },
+      },
+      {
+        tab: {
+          id: "probe",
+          context: { kind: "thread" },
+          availability: "fixed",
+        },
+      },
+      {
+        tab: {
+          id: "probe",
+          context: { kind: "nav-panel", panelId: "plugins" },
+          availability: "action",
+        },
+      },
+    ];
+    for (const options of declined) {
+      expect(panel.openTab(options)).toBe(false);
+      expect(panel.toggleTab(options)).toBe(false);
+    }
+    expect(panel.getTabs()).toEqual(before);
   });
 });

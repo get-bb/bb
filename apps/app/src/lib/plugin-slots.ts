@@ -15,7 +15,6 @@ import type {
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
-  PluginMessageActionRegistration,
   ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -39,6 +38,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   type CollectedPluginCommandRegistration,
+  type CollectedPluginMessageActionRegistration,
   type LegacyThreadPanelActionRegistration,
   type LegacyThreadHeaderActionRegistration,
   type LegacyNavPanelRegistration,
@@ -83,7 +83,7 @@ export interface PluginRegistrationSet {
   composers?: readonly ExperimentalComposerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   codeFenceRenderers?: readonly ExperimentalCodeFenceRendererRegistration[];
-  messageActions?: readonly PluginMessageActionRegistration[];
+  messageActions?: readonly CollectedPluginMessageActionRegistration[];
   messageMetadata?: readonly ExperimentalMessageMetadataRegistration[];
   commandPaletteActions?: readonly CollectedPluginCommandRegistration[];
   providerIcons?: readonly CollectedPluginProviderIconRegistration[];
@@ -176,8 +176,8 @@ export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginCodeFenceRendererSlot
   extends ExperimentalCodeFenceRendererRegistration, PluginSlotBase {}
-export interface PluginMessageActionSlot
-  extends PluginMessageActionRegistration, PluginSlotBase {}
+export type PluginMessageActionSlot = CollectedPluginMessageActionRegistration &
+  PluginSlotBase;
 export interface PluginMessageMetadataSlot
   extends ExperimentalMessageMetadataRegistration, PluginSlotBase {}
 export type PluginCommandPaletteActionSlot =

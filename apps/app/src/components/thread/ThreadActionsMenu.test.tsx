@@ -46,6 +46,7 @@ import {
   useAppPanelController,
   type AppFixedTabDestination,
 } from "@/lib/app-fixed-tab-navigation";
+import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
@@ -914,13 +915,16 @@ describe("thread actions outside bb's own surfaces", () => {
       },
     ];
     function FocusedThreadView() {
-      useAppPanelController({
+      const panel = useAppPanelController({
         activeTabId: null,
         close,
         destinations,
-        isFocused: true,
       });
-      return null;
+      return (
+        <AppNavigationSurfaceProvider capabilities={{ panel }} isFocused>
+          {null}
+        </AppNavigationSurfaceProvider>
+      );
     }
     type RetiredNavigate = {
       openThreadPanel(options: { actionId: string }): boolean;

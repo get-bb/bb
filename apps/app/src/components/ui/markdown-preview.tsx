@@ -168,6 +168,11 @@ export interface MarkdownThreadMentions {
   preserveSoftBreaks: boolean;
 }
 
+export const AUTHORED_MARKDOWN_THREAD_MENTIONS: MarkdownThreadMentions = {
+  mentions: [],
+  preserveSoftBreaks: false,
+};
+
 interface MarkdownAnchorProps
   extends ComponentPropsWithoutRef<"a">, ExtraProps {
   linkRouting?: MarkdownLinkRouting;
