@@ -1,0 +1,23 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity
+      android:name="app.getbb.projectwidget.ProjectWidgetActivity"
+      android:exported="true"
+      android:theme="@style/AppTheme">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+      </intent-filter>
+    </activity>
+    <receiver
+      android:name="app.getbb.projectwidget.ProjectWidgetProvider"
+      android:exported="false"
+      android:label="@string/bb_project_widget_title">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/bb_project_widget_info" />
+    </receiver>
+  </application>
+</manifest>

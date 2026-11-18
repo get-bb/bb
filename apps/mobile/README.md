@@ -235,6 +235,26 @@ screens, matching the fix proposed in upstream
 It addresses a release-build crash reproduced immediately after pairing on
 Android 16. Recheck and remove it when upgrading to a version with the fix.
 
+### Android new-thread widget
+
+Add a server in bb, then open the Android launcher's widget picker and add
+**New thread** from bb or bb dev. Choose a saved server and one of its
+projects. Tap the widget to open that project's composer. Each widget has its
+own target. Remove and add it again to change the target or refresh its label
+after a project rename.
+
+For a device smoke test, add widgets for two projects across two saved test
+servers. Check the labels and tap each widget while bb is running and after
+closing bb from the recent apps screen. Navigate to another page and tap the
+same widget again. Verify the selected project each time and leave the prompt
+unsent. Cancel a third widget during setup. Remove a saved server or delete a
+test project and check that its widget reports the missing target.
+
+The Android launcher owns widget placement. The picker reads projects through
+the existing SDK `projects.list` API, also available as `bb project list`.
+The widget opens the existing project composer route. It switches the active
+server only after checking that the target project still exists.
+
 ### Android production setup
 
 The manual `Mobile Android (EAS)` workflow builds preview APKs or production

@@ -1,0 +1,15 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.getbb.projectwidget'
+version = '1.0.0'
+
+android {
+  namespace 'app.getbb.projectwidget'
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+}

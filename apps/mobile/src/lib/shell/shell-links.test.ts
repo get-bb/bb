@@ -24,6 +24,10 @@ describe("resolveShellIncomingLink", () => {
     ["bb://settings", "/webview?path=%2Fsettings"],
     ["bb://settings/general", "/webview?path=%2Fsettings%2Fgeneral"],
     ["bb://connections", "/webview?path=%2Fconnections"],
+    [
+      "bb://widget/new-thread?profileId=p_lan&projectId=proj_work",
+      "/widget/new-thread?profileId=p_lan&projectId=proj_work",
+    ],
   ])("routes the scheme link %s to %s", (url, path) => {
     expect(resolveShellIncomingLink(url, context)).toEqual({
       kind: "navigate",
@@ -54,6 +58,19 @@ describe("resolveShellIncomingLink", () => {
     ).toEqual({
       kind: "navigate",
       path: "/webview?path=%2Fthreads%2Fx%3Fa%3D1",
+      profileId: null,
+    });
+  });
+
+  it("keeps a server URL with the widget path in the WebView", () => {
+    expect(
+      resolveShellIncomingLink(
+        "https://bee.getbb.app/widget/new-thread",
+        context,
+      ),
+    ).toEqual({
+      kind: "navigate",
+      path: "/webview?path=%2Fwidget%2Fnew-thread",
       profileId: null,
     });
   });

@@ -1,0 +1,5 @@
+<resources>
+  <string name="bb_project_widget_title">New thread</string>
+  <string name="bb_project_widget_label">New thread in %1$s</string>
+  <color name="bb_project_widget_background">#1b2840</color>
+</resources>

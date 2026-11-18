@@ -56,6 +56,9 @@ export function resolveShellIncomingLink(
           profileId: null,
         };
       }
+      if (link.path.split("?", 1)[0] === "/widget/new-thread") {
+        return { kind: "navigate", path: link.path, profileId: null };
+      }
       if (isNativeOnlyShellPath(link.path)) {
         return { kind: "navigate", path: link.path, profileId: null };
       }

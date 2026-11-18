@@ -107,6 +107,10 @@ export function RootNavigator() {
         />
         <Stack.Screen name="dev/webview-spike" options={hiddenHeader} />
         <Stack.Screen name="e2e/reset" options={hiddenHeader} />
+        <Stack.Screen
+          name="widget/new-thread"
+          options={{ title: "New thread" }}
+        />
       </Stack>
     </NavigationThemeProvider>
   );
