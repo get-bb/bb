@@ -1088,6 +1088,8 @@ function ThreadDetailViewInternal(
   );
   const handleTimelineTitleAction = useThreadTimelineTitleActions({
     threadId,
+    projectId,
+    openThread: navigateInPane,
     environmentId: thread?.environmentId ?? null,
     panel,
     openFilePreview: openLiveFilePreview,

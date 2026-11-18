@@ -210,6 +210,8 @@ function PluginThreadChatBody({
   }).openLink;
   const handleTimelineTitleAction = useThreadTimelineTitleActions({
     threadId,
+    projectId: thread?.projectId ?? "",
+    openThread: navigateToThread,
     environmentId: thread?.environmentId ?? null,
     panel: navigation.panel,
     openFilePreview: navigation.openFilePreview,

@@ -63,16 +63,20 @@ export function resolveThreadEnvironmentAccess({
 
 export function useThreadTimelineTitleActions({
   threadId,
+  projectId,
   environmentId,
   panel,
   openFilePreview,
   openLocalFileLink,
+  openThread,
 }: {
   threadId: string;
+  projectId: string;
   environmentId: string | null;
   panel: AppPanelController;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
   openLocalFileLink: ThreadTimelineLocalFileLinkHandler;
+  openThread: (target: { projectId: string; threadId: string }) => void;
 }): TimelineTitleActionResolver {
   return useCallback<TimelineTitleActionResolver>(
     (action) => {
@@ -100,7 +104,7 @@ export function useThreadTimelineTitleActions({
           };
         case "open-plugin-side-chat":
           return () => {
-            panel.openTab({
+            const openedInPanel = panel.openTab({
               tab: {
                 ownerId: getThreadFixedTabOwnerId(SIDE_CHAT_PLUGIN_ID),
                 tabId: SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
@@ -108,11 +112,21 @@ export function useThreadTimelineTitleActions({
               availability: "action",
               params: { threadId: action.threadId, sourceThreadId: threadId },
             });
+            if (!openedInPanel)
+              openThread({ projectId, threadId: action.threadId });
           };
         default:
           return assertNever(action);
       }
     },
-    [environmentId, openFilePreview, openLocalFileLink, panel, threadId],
+    [
+      environmentId,
+      openFilePreview,
+      openLocalFileLink,
+      openThread,
+      panel,
+      projectId,
+      threadId,
+    ],
   );
 }
