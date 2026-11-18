@@ -296,8 +296,8 @@ origin filtering, and render isolation during streaming and across messages.
 Requires SDK 0.6.157.
 
 `app.slots.messageAction({ ..., experimental_surfaces })` limits the action to
-some thread timelines. `"thread"` is bb's thread view, including split panes;
-`"thread-chat"` is an embedded `ThreadChat` in any variant. Omitted, the action
+some thread timelines. `"thread-view"` is bb's thread view, including split panes;
+`"embedded-chat"` is an embedded `ThreadChat` in any variant. Omitted, the action
 shows on both. An empty array or any other value fails registration. Type:
 `ExperimentalMessageActionSurface`.
 
@@ -306,7 +306,7 @@ and the timeline reads the slots through `useSurfaceMessageActionSlots`
 (`apps/app/src/lib/message-action-surface.tsx`), so every surface filters the same way.
 
 Caller: the bundled Side chat plugin's "Reply in side chat" declares
-`["thread"]`. Its side chat tab only exists in the thread view's panel, and a
+`["thread-view"]`. Its side chat tab only exists in the thread view's panel, and a
 side chat is itself an embedded `ThreadChat`, so the action stays out of side
 chats and other plugins' embedded chats.
 

@@ -6,7 +6,7 @@ import {
 } from "./plugin-slots";
 
 const MessageActionSurfaceContext =
-  createContext<ExperimentalMessageActionSurface>("thread");
+  createContext<ExperimentalMessageActionSurface>("thread-view");
 
 export const MessageActionSurfaceProvider =
   MessageActionSurfaceContext.Provider;

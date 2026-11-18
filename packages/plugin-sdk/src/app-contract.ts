@@ -3621,7 +3621,7 @@ export interface ExperimentalMessageMetadataRegistration {
 }
 
 /** A timeline a `messageAction` can show in; see {@link PluginMessageActionRegistration.experimental_surfaces}. */
-export type ExperimentalMessageActionSurface = "thread" | "thread-chat";
+export type ExperimentalMessageActionSurface = "thread-view" | "embedded-chat";
 
 /** Context handed to a `messageAction`'s `run`. */
 export interface PluginMessageActionContext {
@@ -3659,8 +3659,8 @@ export interface PluginMessageActionRegistration {
   title: string;
   icon?: BbIconName;
   /**
-   * Timelines that show the action: `"thread"` is bb's thread view and
-   * `"thread-chat"` an embedded `ThreadChat`. Omit for both. Experimental:
+   * Timelines that show the action: `"thread-view"` is bb's thread view and
+   * `"embedded-chat"` an embedded `ThreadChat`. Omit for both. Experimental:
    * see docs/api_to_audit.md.
    */
   experimental_surfaces?: readonly ExperimentalMessageActionSurface[];

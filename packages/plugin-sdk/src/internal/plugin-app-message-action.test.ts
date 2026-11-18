@@ -18,15 +18,15 @@ describe("messageAction surfaces", () => {
     expect(
       collect({ id: "everywhere", title: "Everywhere", run })[0]
         ?.experimental_surfaces,
-    ).toEqual(["thread", "thread-chat"]);
+    ).toEqual(["thread-view", "embedded-chat"]);
     expect(
       collect({
         id: "thread-only",
         title: "Thread only",
-        experimental_surfaces: ["thread"],
+        experimental_surfaces: ["thread-view"],
         run,
       })[0]?.experimental_surfaces,
-    ).toEqual(["thread"]);
+    ).toEqual(["thread-view"]);
   });
 
   it("rejects an empty or unknown surface list", () => {
@@ -40,6 +40,6 @@ describe("messageAction surfaces", () => {
       });
     expect(register([])).toThrow(/experimental_surfaces/);
     expect(register(["sidebar"])).toThrow(/experimental_surfaces/);
-    expect(register("thread")).toThrow(/experimental_surfaces/);
+    expect(register("thread-view")).toThrow(/experimental_surfaces/);
   });
 });

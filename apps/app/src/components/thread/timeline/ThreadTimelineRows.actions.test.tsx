@@ -38,8 +38,8 @@ function messageActionRegistrationSet(
     messageActions: messageActions.map((action) => ({
       ...action,
       experimental_surfaces: action.experimental_surfaces ?? [
-        "thread",
-        "thread-chat",
+        "thread-view",
+        "embedded-chat",
       ],
     })),
   });

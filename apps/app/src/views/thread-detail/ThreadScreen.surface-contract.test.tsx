@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ExperimentalMessageActionSurface } from "@get-bb/plugin-sdk";
 import { Provider } from "jotai";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -202,7 +203,7 @@ vi.mock("./useThreadDetailThread", () => ({
 
 interface ThreadScreenSurface {
   name: string;
-  messageActionSurface: "thread" | "thread-chat";
+  messageActionSurface: ExperimentalMessageActionSurface;
   hasComposer: boolean;
   render: (hosts: SurfaceHosts) => ReactNode;
   openedReadme: (hosts: SurfaceHosts) => boolean;
@@ -238,7 +239,7 @@ function pluginOpenedReadme({ openFilePreview }: SurfaceHosts) {
 const SURFACES: readonly ThreadScreenSurface[] = [
   {
     name: "thread page",
-    messageActionSurface: "thread",
+    messageActionSurface: "thread-view",
     hasComposer: true,
     render: ({ sink }) => (
       <DefaultPaneContextProvider
@@ -270,21 +271,21 @@ const SURFACES: readonly ThreadScreenSurface[] = [
   },
   {
     name: "plugin ThreadChat full",
-    messageActionSurface: "thread-chat",
+    messageActionSurface: "embedded-chat",
     hasComposer: true,
     render: pluginThreadChat("full"),
     openedReadme: pluginOpenedReadme,
   },
   {
     name: "plugin ThreadChat compact",
-    messageActionSurface: "thread-chat",
+    messageActionSurface: "embedded-chat",
     hasComposer: true,
     render: pluginThreadChat("compact"),
     openedReadme: pluginOpenedReadme,
   },
   {
     name: "plugin ThreadChat timeline",
-    messageActionSurface: "thread-chat",
+    messageActionSurface: "embedded-chat",
     hasComposer: false,
     render: pluginThreadChat("timeline"),
     openedReadme: pluginOpenedReadme,
@@ -306,21 +307,21 @@ beforeEach(() => {
           id: "summarize",
           title: "Summarize",
           icon: "Zap",
-          experimental_surfaces: ["thread", "thread-chat"],
+          experimental_surfaces: ["thread-view", "embedded-chat"],
           run: vi.fn(),
         },
         {
           id: "thread-view-only",
           title: "Thread view only",
           icon: "Zap",
-          experimental_surfaces: ["thread"],
+          experimental_surfaces: ["thread-view"],
           run: vi.fn(),
         },
         {
           id: "thread-chat-only",
           title: "ThreadChat only",
           icon: "Zap",
-          experimental_surfaces: ["thread-chat"],
+          experimental_surfaces: ["embedded-chat"],
           run: vi.fn(),
         },
       ],
@@ -375,10 +376,10 @@ describe.each(SURFACES)("ThreadScreen surface contract: $name", (surface) => {
       expect(row.querySelector('[aria-label="Summarize"]')).not.toBeNull(),
     );
     expect(row.querySelector('[aria-label="Thread view only"]') !== null).toBe(
-      surface.messageActionSurface === "thread",
+      surface.messageActionSurface === "thread-view",
     );
     expect(row.querySelector('[aria-label="ThreadChat only"]') !== null).toBe(
-      surface.messageActionSurface === "thread-chat",
+      surface.messageActionSurface === "embedded-chat",
     );
   });
 

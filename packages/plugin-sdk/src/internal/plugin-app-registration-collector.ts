@@ -317,14 +317,14 @@ export type CollectedPluginMessageActionRegistration = Omit<
 };
 
 const MESSAGE_ACTION_SURFACES: readonly ExperimentalMessageActionSurface[] = [
-  "thread",
-  "thread-chat",
+  "thread-view",
+  "embedded-chat",
 ];
 
 function isMessageActionSurface(
   value: unknown,
 ): value is ExperimentalMessageActionSurface {
-  return value === "thread" || value === "thread-chat";
+  return value === "thread-view" || value === "embedded-chat";
 }
 
 function collectMessageActionSurfaces(
@@ -338,7 +338,7 @@ function collectMessageActionSurfaces(
     !value.every(isMessageActionSurface)
   ) {
     throw new Error(
-      `${kind}: "experimental_surfaces" must be a non-empty array of "thread" or "thread-chat", got ${JSON.stringify(value)}`,
+      `${kind}: "experimental_surfaces" must be a non-empty array of "thread-view" or "embedded-chat", got ${JSON.stringify(value)}`,
     );
   }
   return MESSAGE_ACTION_SURFACES.filter((surface) => value.includes(surface));

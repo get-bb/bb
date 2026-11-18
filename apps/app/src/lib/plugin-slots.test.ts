@@ -158,7 +158,7 @@ describe("plugin slot store structural sharing", () => {
           {
             id: "copy",
             title: "copy",
-            experimental_surfaces: ["thread", "thread-chat"],
+            experimental_surfaces: ["thread-view", "embedded-chat"],
             run: () => {},
           },
         ],
@@ -208,7 +208,7 @@ describe("plugin slot store structural sharing", () => {
           {
             id: "a-copy",
             title: "a-copy",
-            experimental_surfaces: ["thread", "thread-chat"],
+            experimental_surfaces: ["thread-view", "embedded-chat"],
             run: () => {},
           },
         ],
@@ -246,7 +246,7 @@ describe("plugin slot batches", () => {
           {
             id: "a",
             title: "a",
-            experimental_surfaces: ["thread", "thread-chat"],
+            experimental_surfaces: ["thread-view", "embedded-chat"],
             run: () => {},
           },
         ],
@@ -259,7 +259,7 @@ describe("plugin slot batches", () => {
           {
             id: "b",
             title: "b",
-            experimental_surfaces: ["thread", "thread-chat"],
+            experimental_surfaces: ["thread-view", "embedded-chat"],
             run: () => {},
           },
         ],
@@ -290,7 +290,7 @@ describe("plugin slot batches", () => {
             {
               id: "fast",
               title: "fast",
-              experimental_surfaces: ["thread", "thread-chat"],
+              experimental_surfaces: ["thread-view", "embedded-chat"],
               run: () => {},
             },
           ],
