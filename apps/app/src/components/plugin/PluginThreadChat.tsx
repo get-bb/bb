@@ -56,13 +56,13 @@ import {
 } from "@/views/thread-detail/thread-screen-hosts";
 import { useThreadUnreadDividerState } from "@/views/thread-detail/useThreadUnreadDividerState";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
-
-const NO_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
-  [];
 import {
   ThreadScreen,
   type ThreadScreenPresentation,
 } from "@/views/thread-detail/ThreadScreen";
+
+const NO_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
+  [];
 
 export function PluginThreadChat({
   threadId,
