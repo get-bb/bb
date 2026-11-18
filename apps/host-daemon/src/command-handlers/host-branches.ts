@@ -31,7 +31,9 @@ export async function listHostBranchOptions(
 
   return listBranchOptions({
     ...command,
-    ...userExecutableProcessOptions(options?.runtimeManager.getShellEnv() ?? {}),
+    ...userExecutableProcessOptions(
+      options?.runtimeManager.getShellEnv() ?? {},
+    ),
   });
 }
 

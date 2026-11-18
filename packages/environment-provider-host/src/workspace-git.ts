@@ -334,10 +334,15 @@ export async function runGit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
   for (let attempt = 1; ; attempt += 1) {
-    const run = await runVcsProcess("git", args, () => spawnGit(args, options), {
-      priority: options.priority,
-      signal: options.signal,
-    }).catch((error: unknown) => {
+    const run = await runVcsProcess(
+      "git",
+      args,
+      () => spawnGit(args, options),
+      {
+        priority: options.priority,
+        signal: options.signal,
+      },
+    ).catch((error: unknown) => {
       if (options.signal?.aborted) {
         throw createGitCommandCancelledError(args, error);
       }

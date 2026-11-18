@@ -27,7 +27,9 @@ export async function resolveWorktreeBaseBranch(
 ): Promise<ResolvedWorktreeBaseBranch | null> {
   const repo = await ensureGitRepo(sourcePath);
   if (requested.kind === "named") {
-    return worktreeBaseBranch(await resolveBranchRef(repo.path, requested.name));
+    return worktreeBaseBranch(
+      await resolveBranchRef(repo.path, requested.name),
+    );
   }
   return worktreeBaseBranch((await readDefaultBranchRefs(repo)).baseBranch);
 }

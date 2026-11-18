@@ -31,10 +31,7 @@ afterEach(async () => {
 
 describe("resolveBranchRef", () => {
   it.each(BRANCH_REF_CASES)("$name", async (testCase) => {
-    const fixture = await createBranchRefFixture(
-      await fixtureRoot(),
-      testCase,
-    );
+    const fixture = await createBranchRefFixture(await fixtureRoot(), testCase);
     await expect(
       resolveBranchRef(fixture.path, testCase.requested),
     ).resolves.toMatchObject({ ref: testCase.expected.ref });

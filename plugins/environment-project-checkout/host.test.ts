@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
-import { BRANCH_REF_CASES, createBranchRefFixture } from "bb-environment-provider-host/testing/branch-ref-cases";
+import {
+  BRANCH_REF_CASES,
+  createBranchRefFixture,
+} from "bb-environment-provider-host/testing/branch-ref-cases";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCheckoutHostEntry } from "./host.js";
 

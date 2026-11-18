@@ -299,13 +299,18 @@ export async function resolveMergeBaseBranch(
   ref: string,
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
-  const gitOptions = { ...options, priority: options.priority ?? gitPriority() };
+  const gitOptions = {
+    ...options,
+    priority: options.priority ?? gitPriority(),
+  };
   const resolved = await resolveBranchRef(cwd, ref, gitOptions);
   const result = await runGit(
     ["rev-parse", "--verify", "--end-of-options", `${resolved.ref}^{commit}`],
     { cwd, ...gitOptions, allowFailure: true },
   );
-  return result.exitCode === 0 ? trimOutput(result.stdout) || undefined : undefined;
+  return result.exitCode === 0
+    ? trimOutput(result.stdout) || undefined
+    : undefined;
 }
 
 export async function readMergeBaseRef(

@@ -25,10 +25,7 @@ afterEach(async () => {
 
 describe("worktree base branch resolution", () => {
   it.each(BRANCH_REF_CASES)("named base: $name", async (testCase) => {
-    const fixture = await createBranchRefFixture(
-      await fixtureRoot(),
-      testCase,
-    );
+    const fixture = await createBranchRefFixture(await fixtureRoot(), testCase);
     const resolved = await resolveWorktreeBaseBranch(fixture.path, {
       kind: "named",
       name: testCase.requested,
