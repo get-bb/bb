@@ -333,6 +333,252 @@ const imeSafeKeyHandlers = {
   },
 };
 
+const rawTextTruncationMessage =
+  "Cutting text at a length cap can split a surrogate pair (an emoji) and leave a lone surrogate, which Codex and the Claude API reject. Use sliceUtf16Head or sliceUtf16Tail from @bb/text-utils (or the plugin's own copy in a forkable plugin).";
+const stringOnlyCutMethods = new Set(["substring", "substr"]);
+const stringProducingMethods = new Set([
+  "join",
+  "normalize",
+  "padEnd",
+  "padStart",
+  "replace",
+  "replaceAll",
+  "stringify",
+  "text",
+  "toLocaleLowerCase",
+  "toLocaleUpperCase",
+  "toLowerCase",
+  "toUpperCase",
+  "trim",
+  "trimEnd",
+  "trimStart",
+]);
+const stringConsumingMethods = new Set([
+  "charAt",
+  "charCodeAt",
+  "codePointAt",
+  "endsWith",
+  "localeCompare",
+  "normalize",
+  "padEnd",
+  "padStart",
+  "replace",
+  "replaceAll",
+  "split",
+  "startsWith",
+  "toLowerCase",
+  "toUpperCase",
+  "trim",
+  "trimEnd",
+  "trimStart",
+]);
+const asciiOnlyReceiverName =
+  /(?:sha|hash|commit|digest|hex|uuid|iso|date|Id|ID|^id)$/u;
+const textReceiverName =
+  /(?:text|title|message|prompt|output|summary|content|body|label|description|command|instructions?|reason|detail|comment|query|preview|stderr|stdout|snippet|excerpt|markdown|subject|heading|name)$/iu;
+const looseTextReceiverName =
+  /(?:value|trimmed|normalized|collapsed|sanitized|cleaned|str|string|href|url)$/iu;
+const constantName = /^[A-Z][A-Z0-9_]*$/u;
+const capName = /(?:max|limit|budget|cap|chars|width|retained|keep)/iu;
+const SHORT_ID_PREFIX_MAX = 16;
+
+function unwrapExpression(node) {
+  let current = node;
+  while (
+    current.type === "ParenthesizedExpression" ||
+    current.type === "TSAsExpression" ||
+    current.type === "TSNonNullExpression" ||
+    current.type === "ChainExpression"
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function finalName(node) {
+  const expression = unwrapExpression(node);
+  if (expression.type === "Identifier") return expression.name;
+  if (
+    expression.type === "MemberExpression" &&
+    !expression.computed &&
+    expression.property.type === "Identifier"
+  ) {
+    return expression.property.name;
+  }
+  return null;
+}
+
+function calledMethodName(node) {
+  const expression = unwrapExpression(node);
+  if (expression.type === "AwaitExpression") {
+    return calledMethodName(expression.argument);
+  }
+  if (expression.type !== "CallExpression") return null;
+  if (expression.callee.type === "Identifier") return expression.callee.name;
+  return finalName(expression.callee);
+}
+
+function isNumericLiteral(node) {
+  const expression = unwrapExpression(node);
+  return expression.type === "Literal" && typeof expression.value === "number";
+}
+
+function isNamedCap(node) {
+  const expression = unwrapExpression(node);
+  if (
+    expression.type !== "Identifier" &&
+    expression.type !== "MemberExpression"
+  ) {
+    return false;
+  }
+  if (expression.type === "Identifier" && expression.name === "length") {
+    return true;
+  }
+  const name = finalName(expression);
+  return name !== null && (constantName.test(name) || capName.test(name));
+}
+
+function isLengthCap(node) {
+  const expression = unwrapExpression(node);
+  if (isNumericLiteral(expression)) return expression.value >= 1;
+  if (isNamedCap(expression)) return true;
+  if (
+    expression.type === "BinaryExpression" &&
+    (expression.operator === "-" || expression.operator === "+")
+  ) {
+    return isLengthCap(expression.left) && !isNumericLiteral(expression.left)
+      ? true
+      : isNamedCap(expression.right) ||
+          (expression.operator === "-" && isNumericLiteral(expression.left));
+  }
+  if (expression.type === "CallExpression") {
+    const name = calleeName(expression.callee);
+    return (
+      (name === "Math.max" || name === "Math.min") &&
+      expression.arguments.some(isLengthCap)
+    );
+  }
+  return false;
+}
+
+function cutLength(node) {
+  const [first, second] = node.arguments;
+  if (first === undefined) return null;
+  const start = unwrapExpression(first);
+  if (start.type === "Literal" && start.value === 0) {
+    return second !== undefined && isLengthCap(second) ? second : null;
+  }
+  if (
+    second === undefined &&
+    start.type === "UnaryExpression" &&
+    start.operator === "-" &&
+    isLengthCap(start.argument)
+  ) {
+    return start.argument;
+  }
+  return null;
+}
+
+function receiverTextConfidence(receiver) {
+  const expression = unwrapExpression(receiver);
+  if (expression.type === "TemplateLiteral") return "likely";
+  if (expression.type === "Literal") {
+    return typeof expression.value === "string" ? "likely" : null;
+  }
+  if (
+    expression.type === "CallExpression" &&
+    expression.callee.type === "Identifier" &&
+    expression.callee.name === "String"
+  ) {
+    return "likely";
+  }
+  const method = calledMethodName(expression);
+  if (method !== null)
+    return stringProducingMethods.has(method) ? "likely" : null;
+  const name = finalName(expression);
+  if (name === null) return null;
+  if (textReceiverName.test(name)) return "certain";
+  return looseTextReceiverName.test(name) ? "likely" : null;
+}
+
+function isUsedAsString(node) {
+  const parent = node.parent;
+  if (parent === undefined || parent === null) return false;
+  if (parent.type === "TemplateLiteral") return true;
+  if (parent.type === "BinaryExpression" && parent.operator === "+") {
+    const other = parent.left === node ? parent.right : parent.left;
+    const sibling = unwrapExpression(other);
+    return (
+      sibling.type === "TemplateLiteral" ||
+      (sibling.type === "Literal" && typeof sibling.value === "string")
+    );
+  }
+  if (
+    parent.type === "MemberExpression" &&
+    parent.object === node &&
+    !parent.computed &&
+    parent.property.type === "Identifier"
+  ) {
+    return stringConsumingMethods.has(parent.property.name);
+  }
+  return false;
+}
+
+function isAsciiOnlyReceiver(receiver) {
+  const expression = unwrapExpression(receiver);
+  const method = calledMethodName(expression);
+  if (
+    method === "digest" ||
+    method === "toISOString" ||
+    method === "randomUUID"
+  ) {
+    return true;
+  }
+  const name = finalName(expression);
+  return name !== null && asciiOnlyReceiverName.test(name);
+}
+
+function isShortIdPrefix(length) {
+  const expression = unwrapExpression(length);
+  if (expression.type === "BinaryExpression") {
+    return isShortIdPrefix(expression.left);
+  }
+  return (
+    isNumericLiteral(expression) && expression.value <= SHORT_ID_PREFIX_MAX
+  );
+}
+
+const noRawTextTruncation = {
+  create(context) {
+    return {
+      CallExpression(node) {
+        const callee = unwrapExpression(node.callee);
+        if (
+          callee.type !== "MemberExpression" ||
+          callee.computed ||
+          callee.property.type !== "Identifier"
+        ) {
+          return;
+        }
+        const method = callee.property.name;
+        if (method !== "slice" && !stringOnlyCutMethods.has(method)) return;
+        const length = cutLength(node);
+        if (length === null || isAsciiOnlyReceiver(callee.object)) return;
+        const confidence = stringOnlyCutMethods.has(method)
+          ? "certain"
+          : receiverTextConfidence(callee.object);
+        if (
+          confidence === "certain" ||
+          ((confidence === "likely" || isUsedAsString(node)) &&
+            !isShortIdPrefix(length))
+        ) {
+          context.report({ node, message: rawTextTruncationMessage });
+        }
+      },
+    };
+  },
+};
+
 export const rules = {
   "forkable-plugin-imports": forkablePluginImports,
   "ime-safe-key-handlers": imeSafeKeyHandlers,
@@ -341,6 +587,7 @@ export const rules = {
   "no-native-title-on-button": noNativeTitleOnButton,
   "no-native-title-with-aria-label": noNativeTitleWithAriaLabel,
   "no-raw-resize-observer": noRawResizeObserver,
+  "no-raw-text-truncation": noRawTextTruncation,
 };
 
 export default {

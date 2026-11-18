@@ -6,6 +6,7 @@ import {
   experimental_spawnPortableProcess,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
+import { wellFormedJsonStrings } from "../utf16.js";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSE_AFTER_EXIT_GRACE_MS = 1_000;
@@ -218,7 +219,7 @@ export function createCodexAppServerConnection(
       }
       return;
     }
-    stdin.write(JSON.stringify(message) + "\n");
+    stdin.write(`${JSON.stringify(message, wellFormedJsonStrings)}\n`);
   }
 
   function finalizeExit(status: {

@@ -1,3 +1,9 @@
+function sliceUtf16Head(value: string, maxChars: number): string {
+  const end = Math.min(value.length, Math.max(0, maxChars));
+  const last = value.charCodeAt(end - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 const REFERENCED_TITLE_MAX_LENGTH = 40;
 const CODE_FENCE_PATTERN = /^\s*(```|~~~)/u;
 const BREAK_PATTERN = /^\s{0,3}(?:#{1,6}(?:\s|$)|([-*_])(?:\s*\1){2,}\s*$)/u;
@@ -10,7 +16,7 @@ const THREAD_REFERENCE_PATTERN =
 
 export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+  return `${sliceUtf16Head(text, maxLength - 1).trimEnd()}…`;
 }
 
 function* paragraphs(markdown: string): Generator<string[]> {

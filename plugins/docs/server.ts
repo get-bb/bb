@@ -48,6 +48,12 @@ import {
   type WatchVault,
 } from "./vault-watches.js";
 
+function sliceUtf16Head(value: string, maxChars: number): string {
+  const end = Math.min(value.length, Math.max(0, maxChars));
+  const last = value.charCodeAt(end - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 const DEFAULT_DIR = "~/Notes";
 const PREVIEW_LENGTH = 100;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
@@ -276,11 +282,12 @@ function summarizeMarkdown(
     : documentHeadingIndex >= 0
       ? documentHeadingIndex
       : firstContentIndex;
-  const title = (
+  const title = sliceUtf16Head(
     document.title ??
-    (titleLineIndex >= 0 ? cleanedLines[titleLineIndex] : null) ??
-    fallback
-  ).slice(0, 120);
+      (titleLineIndex >= 0 ? cleanedLines[titleLineIndex] : null) ??
+      fallback,
+    120,
+  );
   const firstHeadingIndex = lines.findIndex(
     (line) => markdownHeadingLevel(line) !== null,
   );
@@ -290,16 +297,18 @@ function summarizeMarkdown(
       : firstHeadingIndex >= 0 && cleanedLines[firstHeadingIndex] === title
         ? firstHeadingIndex
         : -1;
-  const preview = cleanedLines
-    .filter(
-      (line, index) =>
-        index !== previewHeadingIndex &&
-        line &&
-        line !== title &&
-        !line.startsWith("::html{"),
-    )
-    .join(" ")
-    .slice(0, PREVIEW_LENGTH);
+  const preview = sliceUtf16Head(
+    cleanedLines
+      .filter(
+        (line, index) =>
+          index !== previewHeadingIndex &&
+          line &&
+          line !== title &&
+          !line.startsWith("::html{"),
+      )
+      .join(" "),
+    PREVIEW_LENGTH,
+  );
   return { title, preview };
 }
 
@@ -308,21 +317,24 @@ function deriveTitle(content: string, fallback: string): string {
 }
 
 function kebabCase(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
-    .replace(/-+$/g, "");
+  return sliceUtf16Head(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, ""),
+    80,
+  ).replace(/-+$/g, "");
 }
 
 function sanitizeName(raw: string): string {
-  return raw
-    .replace(/\.(md|html?)$/i, "")
-    .replace(/[/\\:*?"<>|]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
+  return sliceUtf16Head(
+    raw
+      .replace(/\.(md|html?)$/i, "")
+      .replace(/[/\\:*?"<>|]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim(),
+    80,
+  );
 }
 
 function parseVaultRow(value: unknown): Vault {

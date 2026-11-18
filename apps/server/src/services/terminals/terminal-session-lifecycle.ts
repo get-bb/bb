@@ -55,6 +55,7 @@ import {
   PendingRpcRegistry,
 } from "./pending-rpc-registry.js";
 import { TerminalOutputFlowControl } from "./terminal-output-flow-control.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
 const DEFAULT_TERMINAL_CLOSE_TIMEOUT_MS = 5_000;
@@ -375,7 +376,7 @@ function titleFromCommand(command: string): string {
   if (normalized.length <= 80) {
     return normalized;
   }
-  return `${normalized.slice(0, 77)}...`;
+  return `${sliceUtf16Head(normalized, 77)}...`;
 }
 
 function initialTitleForTerminal(

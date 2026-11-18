@@ -52,6 +52,7 @@ import { resolveBbCliVersion } from "../version.js";
 
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 import { renderBorderlessTable } from "../table.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 interface NewPluginTarget {
   packageName: string;
@@ -500,7 +501,7 @@ async function callPlugins(
     parsed = text ? JSON.parse(text) : {};
   } catch {
     throw new Error(
-      `Unexpected response from /api/v1/plugins${path} (${response.status}): ${text.slice(0, 200)}`,
+      `Unexpected response from /api/v1/plugins${path} (${response.status}): ${sliceUtf16Head(text, 200)}`,
     );
   }
   if (!response.ok && ![400, 404, 422].includes(response.status)) {

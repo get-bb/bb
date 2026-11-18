@@ -15,11 +15,12 @@ import {
 } from "./login.js";
 import { registerAccountRpc } from "./rpc.js";
 import { createKvAccountStore } from "./store.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const CLIENT_NAME_MAX_LENGTH = 100;
 
 function clientName(): string {
-  const name = hostname().trim().slice(0, CLIENT_NAME_MAX_LENGTH);
+  const name = sliceUtf16Head(hostname().trim(), CLIENT_NAME_MAX_LENGTH);
   return name.length > 0 ? name : "bb";
 }
 

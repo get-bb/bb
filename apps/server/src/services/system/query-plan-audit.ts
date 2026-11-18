@@ -7,6 +7,7 @@ import {
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerLogger } from "../../types.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const MAX_LOGGED_SQL_LENGTH = 1_000;
 const SERVER_BUNDLE = {
@@ -55,7 +56,10 @@ export function createGatedQueryPlanObserver(options: {
             caller: finding.caller,
             detail: finding.detail,
             plan: finding.plan,
-            sql: finding.sql.replace(/\s+/g, " ").slice(0, MAX_LOGGED_SQL_LENGTH),
+            sql: sliceUtf16Head(
+              finding.sql.replace(/\s+/g, " "),
+              MAX_LOGGED_SQL_LENGTH,
+            ),
           },
           "Slow SQLite query plan",
         );

@@ -8,6 +8,7 @@ import {
   marketplaceAssetUrl,
   resolveMarketplaceCategory,
 } from "./marketplace-view-model.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const INK = "#333333";
 const DIM = "#6b6b6b";
@@ -30,7 +31,7 @@ interface MarketplaceOgArtwork {
 
 function clip(text: string, length: number) {
   if (text.length <= length) return text;
-  const cut = text.slice(0, length - 1);
+  const cut = sliceUtf16Head(text, length - 1);
   const space = cut.lastIndexOf(" ");
   const words = space > length * 0.6 ? cut.slice(0, space) : cut;
   return `${words.replace(/[\s.,;:!?—–-]+$/u, "")}…`;
@@ -38,7 +39,7 @@ function clip(text: string, length: number) {
 
 function summary(text: string, length: number) {
   if (text.length <= length) return text;
-  const sentenceEnd = text.slice(0, length).lastIndexOf(". ");
+  const sentenceEnd = sliceUtf16Head(text, length).lastIndexOf(". ");
   return sentenceEnd > length * 0.4
     ? text.slice(0, sentenceEnd + 1)
     : clip(text, length);

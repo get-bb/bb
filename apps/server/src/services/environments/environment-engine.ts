@@ -133,6 +133,7 @@ import {
 } from "../hosts/online-rpc.js";
 import { ApiError } from "../../errors.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 type Deps = ThreadProvisioningDeps;
 
@@ -289,9 +290,9 @@ function provisioningReporter(
     step: (text) =>
       report(
         (row) => {
-          row.statusMessage = text.slice(0, 200);
+          row.statusMessage = sliceUtf16Head(text, 200);
         },
-        text.slice(0, 200),
+        sliceUtf16Head(text, 200),
       ),
     log: (text) =>
       report((row) => {

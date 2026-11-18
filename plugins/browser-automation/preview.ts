@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { PreviewFrame, PreviewSize } from "./contracts.js";
+import { sliceUtf16Head } from "./utf16.js";
 
 const messageSchema = z.object({
   id: z.number().int().optional(),
@@ -209,8 +210,8 @@ export function createPreview(
       latest = {
         ...latest,
         sequence: ++sequence,
-        url: info.url.slice(0, 2_000),
-        title: info.title.slice(0, 300),
+        url: sliceUtf16Head(info.url, 2_000),
+        title: sliceUtf16Head(info.title, 300),
       };
       for (const waiter of [...waiters]) waiter.check();
     }
@@ -254,8 +255,8 @@ export function createPreview(
           data: frame.data,
           width: frame.metadata.deviceWidth,
           height: frame.metadata.deviceHeight,
-          url: (target?.url ?? "").slice(0, 2_000),
-          title: (target?.title ?? "").slice(0, 300),
+          url: sliceUtf16Head(target?.url ?? "", 2_000),
+          title: sliceUtf16Head(target?.title ?? "", 300),
         };
         for (const waiter of [...waiters]) waiter.check();
       }

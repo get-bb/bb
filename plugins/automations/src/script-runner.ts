@@ -17,6 +17,12 @@ import {
   scriptsRoot,
 } from "./script-files.js";
 
+function sliceUtf16Head(value: string, maxChars: number): string {
+  const end = Math.min(value.length, Math.max(0, maxChars));
+  const last = value.charCodeAt(end - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 const execFileAsync = experimental_execHostFile;
 const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;
 const SCRIPT_FAILURE_DETAIL_MAX_CHARS = 200;
@@ -152,7 +158,7 @@ function firstStderrLine(stderr: string): string | null {
         .trim();
       if (trimmed.length > 0) {
         return trimmed.length > SCRIPT_FAILURE_DETAIL_MAX_CHARS
-          ? `${trimmed.slice(0, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
+          ? `${sliceUtf16Head(trimmed, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
           : trimmed;
       }
     }

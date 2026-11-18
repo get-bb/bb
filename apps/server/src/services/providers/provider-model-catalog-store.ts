@@ -35,6 +35,7 @@ import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
 } from "../system/provider-bridge-launch.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const PROVIDER_MODEL_CATALOG_PUSH_COALESCE_MS = 250;
 export const PROVIDER_MODEL_CATALOG_MEMORY_ENTRY_LIMIT = 256;
@@ -180,7 +181,7 @@ export function toProviderModelCatalogFailureDetail(
     return null;
   }
   return collapsed.length > FAILURE_DETAIL_MAX_LENGTH
-    ? `${collapsed.slice(0, FAILURE_DETAIL_MAX_LENGTH - 1).trimEnd()}\u2026`
+    ? `${sliceUtf16Head(collapsed, FAILURE_DETAIL_MAX_LENGTH - 1).trimEnd()}\u2026`
     : collapsed;
 }
 

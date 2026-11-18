@@ -10,6 +10,7 @@ import {
   type QueryDiagnosticsLogFields,
 } from "./query-diagnostics.js";
 import * as schema from "./schema.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface SlowDbQueryLogFields {
   bindingArgumentCount: number;
@@ -159,8 +160,8 @@ function formatSqlForLog(
   if (normalized.length <= maxLength) {
     return normalized;
   }
-  return `${normalized.slice(
-    0,
+  return `${sliceUtf16Head(
+    normalized,
     maxLength - SQL_TRUNCATION_SUFFIX.length,
   )}${SQL_TRUNCATION_SUFFIX}`;
 }

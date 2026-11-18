@@ -16,6 +16,7 @@ import { outputSchema, type RunOutput } from "./contracts.js";
 import { createPreview, type PreviewSource } from "./preview.js";
 import { execute, OutputLimitError, supervise } from "./process.js";
 import type { ResolvedRuntime } from "./runtime-pin.js";
+import { sliceUtf16Head } from "./utf16.js";
 
 const frameSchema = z.discriminatedUnion("type", [
   z.object({
@@ -143,7 +144,7 @@ export async function decodeOutput(
   for (const value of endpoint.searchParams.values())
     if (value) safeText = safeText.split(value).join("[credential]");
   return outputSchema.parse({
-    text: safeText.slice(0, 160_000),
+    text: sliceUtf16Head(safeText, 160_000),
     images,
     exitCode,
   });

@@ -12,6 +12,7 @@ import { verifyMachineCredentialDetails } from "./session.js";
 import { methodNotAllowed } from "./json-response.js";
 import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
 import type { Env } from "./tunnel-do.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 function fallbackLabel(machineId: string): string {
   const idPrefix = machineId
@@ -25,13 +26,14 @@ export function sanitizeMachineLabelBase(
   desiredName: string,
   machineId: string,
 ): string {
-  const label = desiredName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .slice(0, HANDLE_MAX_LENGTH)
-    .replace(/-+$/gu, "");
+  const label = sliceUtf16Head(
+    desiredName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gu, "-")
+      .replace(/^-+|-+$/gu, ""),
+    HANDLE_MAX_LENGTH,
+  ).replace(/-+$/gu, "");
   return label.length > 0 && validateLabel(label) === null
     ? label
     : fallbackLabel(machineId);
@@ -40,9 +42,10 @@ export function sanitizeMachineLabelBase(
 function labelWithSuffix(base: string, ordinal: number): string {
   if (ordinal === 1) return base;
   const suffix = `-${ordinal}`;
-  const stem = base
-    .slice(0, HANDLE_MAX_LENGTH - suffix.length)
-    .replace(/-+$/gu, "");
+  const stem = sliceUtf16Head(base, HANDLE_MAX_LENGTH - suffix.length).replace(
+    /-+$/gu,
+    "",
+  );
   return `${stem}${suffix}`;
 }
 

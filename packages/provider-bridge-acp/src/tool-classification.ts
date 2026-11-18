@@ -27,6 +27,7 @@ import {
   type AcpToolCallPathOptions,
 } from "./tool-call-operation.js";
 import { extractAcpContentText, type AcpToolCallUpdateEvent } from "./wire.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface AcpClassifiedToolCall {
   item: DeltaItemShape;
@@ -81,7 +82,7 @@ function truncatedPayloadText(text: string): string {
     return text;
   }
   const removed = text.length - ACP_TOOL_PAYLOAD_MAX_CHARS;
-  return `${text.slice(0, ACP_TOOL_PAYLOAD_MAX_CHARS)}\n…[${removed.toLocaleString("en-US")} more characters truncated]`;
+  return `${sliceUtf16Head(text, ACP_TOOL_PAYLOAD_MAX_CHARS)}\n…[${removed.toLocaleString("en-US")} more characters truncated]`;
 }
 
 export function boundAcpToolPayload(value: unknown): unknown {

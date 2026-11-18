@@ -6,6 +6,7 @@ import {
   redeemMachineCredential,
   type ConnectCredential,
 } from "@bb/connect-client";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const CREATE_MACHINE_CODE_RPC = "createMachineCode";
 
@@ -58,10 +59,12 @@ function redeemFailureCode(
 }
 
 function desktopDeviceName(): string | undefined {
-  const name = hostname()
-    .replace(/\.local$/u, "")
-    .trim()
-    .slice(0, 128);
+  const name = sliceUtf16Head(
+    hostname()
+      .replace(/\.local$/u, "")
+      .trim(),
+    128,
+  );
   return name.length > 0 ? name : undefined;
 }
 

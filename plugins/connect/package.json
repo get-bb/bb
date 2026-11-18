@@ -30,6 +30,7 @@
     "@bb/connect-client": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/shared-ui": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
     "bb-plugin-bb-account": "workspace:*",

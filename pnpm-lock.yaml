@@ -693,6 +693,9 @@ importers:
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -990,6 +993,9 @@ importers:
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@expo/ui':
         specifier: 58.0.27
         version: 58.0.27(@babel/core@7.29.13)(expo@58.0.23)(react-dom@19.3.1(react@19.3.1))(react-native-worklets@0.13.0(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13))(react-native@0.88.1(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13))(@types/react@19.3.0)(react@19.3.1))(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13))(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)
@@ -1358,6 +1364,9 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../../packages/tunnel-contract
@@ -1613,6 +1622,9 @@ importers:
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../provider-bridge-protocol
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -2148,6 +2160,9 @@ importers:
 
   packages/domain:
     dependencies:
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -2219,6 +2234,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../tunnel-contract
@@ -2456,6 +2474,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
@@ -2680,6 +2701,9 @@ importers:
       '@bb/test-helpers':
         specifier: workspace:*
         version: link:../test-helpers
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -2783,6 +2807,9 @@ importers:
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../provider-bridge-protocol
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -3723,6 +3750,9 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -4116,6 +4146,9 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/tunnel-client':
         specifier: workspace:*
         version: link:../../packages/tunnel-client

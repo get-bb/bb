@@ -12,6 +12,7 @@ import {
   first,
 } from "@bb/connect-db";
 import { SettledLookupCache } from "./session.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const MCP_GRANT_CACHE_TTL_MS = 30_000;
 const MCP_CLIENT_NAME_HEADER_MAX_LENGTH = 80;
@@ -110,11 +111,10 @@ export function mcpChallengeResponse(
 }
 
 export function headerSafeClientName(value: string): string {
-  const safe = value
-    .replace(/[^\x20-\x7e]/gu, "?")
-    .trim()
-    .slice(0, MCP_CLIENT_NAME_HEADER_MAX_LENGTH)
-    .trim();
+  const safe = sliceUtf16Head(
+    value.replace(/[^\x20-\x7e]/gu, "?").trim(),
+    MCP_CLIENT_NAME_HEADER_MAX_LENGTH,
+  ).trim();
   return safe === "" ? "unknown" : safe;
 }
 

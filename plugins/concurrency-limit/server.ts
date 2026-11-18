@@ -17,6 +17,12 @@ import {
   type LimitConfiguration,
 } from "./limits.js";
 
+function sliceUtf16Head(value: string, maxChars: number): string {
+  const end = Math.min(value.length, Math.max(0, maxChars));
+  const last = value.charCodeAt(end - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 const CONFIGURATION_KEY = "configuration";
 const CAPACITIES_KEY = "host-capacities";
 const CONFIGURATION_CHANGED_CHANNEL = "configuration-changed";
@@ -130,7 +136,7 @@ function waitDecision(
     reason:
       reason.length <= MAX_REASON_LENGTH
         ? reason
-        : `${reason.slice(0, MAX_REASON_LENGTH - 1)}…`,
+        : `${sliceUtf16Head(reason, MAX_REASON_LENGTH - 1)}…`,
   };
 }
 

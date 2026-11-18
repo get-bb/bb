@@ -10,6 +10,12 @@ import {
 } from "./contracts.js";
 import { NOT_UNIQUE_MESSAGE } from "./tool-definition.js";
 
+function sliceUtf16Head(value: string, maxChars: number): string {
+  const end = Math.min(value.length, Math.max(0, maxChars));
+  const last = value.charCodeAt(end - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 export function validateToolInput(input: ToolInput): string | null {
   const prompts = input.questions.map((question) => question.question);
   if (new Set(prompts).size !== prompts.length) return NOT_UNIQUE_MESSAGE;
@@ -43,7 +49,7 @@ function normalizePreview(preview: string | undefined): string | undefined {
   if (preview === undefined) return undefined;
   const trimmed = preview.trim();
   if (trimmed.length === 0) return undefined;
-  return trimmed.slice(0, MAX_OPTION_PREVIEW_LENGTH);
+  return sliceUtf16Head(trimmed, MAX_OPTION_PREVIEW_LENGTH);
 }
 
 export function buildInteractionPayload(input: ToolInput): InteractionPayload {

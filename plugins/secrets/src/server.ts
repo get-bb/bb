@@ -15,6 +15,12 @@ import {
 } from "./secret-request.js";
 import { assertNoDuplicateAssignments, reconcileDotenv } from "./dotenv.js";
 
+function sliceUtf16Head(value: string, maxChars: number): string {
+  const end = Math.min(value.length, Math.max(0, maxChars));
+  const last = value.charCodeAt(end - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 interface ParsedRequest {
   names: string[];
   purpose: string | null;
@@ -163,7 +169,7 @@ const ROW_LABEL_MAX_LENGTH = 80;
 const ROW_TITLE_MAX_LENGTH = 160;
 
 function clampToLength(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`;
+  return text.length <= max ? text : `${sliceUtf16Head(text, max - 1)}\u2026`;
 }
 
 function httpStatus(error: unknown): number | null {

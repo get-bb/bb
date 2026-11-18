@@ -1,4 +1,5 @@
 import type { OnboardingFailureDetail } from "@bb/server-contract";
+import { sliceUtf16Tail } from "@bb/text-utils";
 
 const CLASSIFIED_OUTPUT_TAIL_CHARS = 64 * 1024;
 const ANSI_ESCAPE_PATTERN = /\x1b\[[0-9;?]*[A-Za-z]/gu;
@@ -41,7 +42,7 @@ export function classifyProviderCliInstallFailure(args: {
     }
   }
   const output =
-    `${args.output.slice(-CLASSIFIED_OUTPUT_TAIL_CHARS)}\n${errorMessage ?? ""}`.replace(
+    `${sliceUtf16Tail(args.output, CLASSIFIED_OUTPUT_TAIL_CHARS)}\n${errorMessage ?? ""}`.replace(
       ANSI_ESCAPE_PATTERN,
       "",
     );

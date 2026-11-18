@@ -13,6 +13,12 @@ import {
   type SandboxLimits,
 } from "./sandbox.js";
 
+function sliceUtf16Head(value: string, maxChars: number): string {
+  const end = Math.min(value.length, Math.max(0, maxChars));
+  const last = value.charCodeAt(end - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
 export const SCRIPT_TOTAL_DEADLINE_MS = 25_000;
 const CLI_CALL_TIMEOUT_MS = 24_000;
 const SLEEP_MAX_MS = 20_000;
@@ -68,7 +74,7 @@ export interface ToolDependencies {
 
 function truncate(text: string): string {
   if (text.length <= RESULT_MAX_CHARS) return text;
-  return `${text.slice(0, RESULT_MAX_CHARS)}\n[truncated: ${text.length - RESULT_MAX_CHARS} more characters. Return less: filter or slice inside the script.]`;
+  return `${sliceUtf16Head(text, RESULT_MAX_CHARS)}\n[truncated: ${text.length - RESULT_MAX_CHARS} more characters. Return less: filter or slice inside the script.]`;
 }
 
 function errorMessage(error: unknown): string {

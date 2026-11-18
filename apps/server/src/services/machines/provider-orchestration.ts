@@ -59,6 +59,7 @@ import { toHostWithStatus } from "../lib/entity-lookup.js";
 import { perDbRegistry } from "../lib/per-db-registry.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import { emitPluginHostDeleted } from "../plugins/plugin-thread-events.js";
+import { sliceUtf16Head, sliceUtf16Tail } from "@bb/text-utils";
 
 type Deps = ThreadProvisioningDeps;
 type MachineLifecycleDeps = Pick<Deps, "db" | "hub" | "logger">;
@@ -186,7 +187,7 @@ function createReporter(
       const current = getHost(deps.db, owner.id);
       if (!createOwns(current, owner) || current.phase !== "creating") return;
       updateHost(deps.db, deps.hub, owner.id, {
-        statusMessage: text.slice(0, 500),
+        statusMessage: sliceUtf16Head(text, 500),
       });
       deps.hub.notifyHost(owner.id, ["host-connected"]);
     },
@@ -194,9 +195,10 @@ function createReporter(
       const current = getHost(deps.db, owner.id);
       if (!createOwns(current, owner) || current.phase !== "creating") return;
       updateHost(deps.db, deps.hub, owner.id, {
-        pendingLog: (
-          current.pendingLog + (text.endsWith("\n") ? text : `${text}\n`)
-        ).slice(-16_384),
+        pendingLog: sliceUtf16Tail(
+          current.pendingLog + (text.endsWith("\n") ? text : `${text}\n`),
+          16_384,
+        ),
       });
       deps.hub.notifyHost(owner.id, ["host-connected"]);
     },
@@ -221,12 +223,12 @@ function lifecycleReporter(
       )
         return;
       updateHost(deps.db, deps.hub, hostId, {
-        statusMessage: text.slice(0, 500),
+        statusMessage: sliceUtf16Head(text, 500),
       });
       deps.hub.notifyHost(hostId, ["host-connected"]);
     },
     log: (text) => {
-      deps.logger.info({ hostId }, text.slice(-16_384));
+      deps.logger.info({ hostId }, sliceUtf16Tail(text, 16_384));
     },
   };
 }

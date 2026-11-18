@@ -13,6 +13,7 @@ import {
 } from "./query-plan-guard.js";
 import { QUERY_PLAN_ALLOWLIST } from "./query-plan-allowlist.js";
 import { createMigratedConnection } from "./testing.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export type QueryPlanReportRow =
   | ({ kind: "finding" } & QueryPlanFindingReport)
@@ -153,7 +154,7 @@ export function formatQueryPlanViolations(
   return violations
     .map(
       (violation) =>
-        `${violation.rule} on ${violation.table} in ${violation.caller}: ${violation.detail}\n  plan: ${violation.plan.join(" | ")}\n  sql: ${violation.sql.replace(/\s+/g, " ").slice(0, 400)}`,
+        `${violation.rule} on ${violation.table} in ${violation.caller}: ${violation.detail}\n  plan: ${violation.plan.join(" | ")}\n  sql: ${sliceUtf16Head(violation.sql.replace(/\s+/g, " "), 400)}`,
     )
     .join("\n\n");
 }

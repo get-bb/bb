@@ -41,6 +41,7 @@ import {
   getClaudeFileEditPath,
   parseClaudeBashCommand,
 } from "./tool-classification.js";
+import { sliceUtf16Head } from "./utf16.js";
 
 interface ClaudeSessionRulesArgs {
   permissions: PendingInteractionGrantedPermissionProfile;
@@ -194,7 +195,7 @@ function buildClaudeUserQuestion(
   }
   return {
     question: question.prompt,
-    header: question.shortLabel ?? question.prompt.slice(0, 12),
+    header: question.shortLabel ?? sliceUtf16Head(question.prompt, 12),
     options: question.options.map((option) => ({
       label: option.label,
       description: option.description ?? option.label,

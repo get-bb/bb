@@ -1,4 +1,5 @@
 import { HOST_TAILWIND_CSS } from "./generated/plugin-theme.generated.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const NESTED_STYLE_RULE_AT_RULES = new Set([
   "media",
@@ -216,7 +217,7 @@ function assertNoUnscopedClassRule(statement: Statement): void {
     if (!prelude.includes(".")) return;
     throw new Error(
       `Compiled plugin CSS has a class rule outside the utilities layer ` +
-        `(${prelude.slice(0, 80)}). Its utilities would leak into the host ` +
+        `(${sliceUtf16Head(prelude, 80)}). Its utilities would leak into the host ` +
         `page; check the Tailwind version against buildTailwindCss()'s input.`,
     );
   }
