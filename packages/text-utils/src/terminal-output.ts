@@ -22,17 +22,13 @@ interface TerminalStyle {
 
 interface TerminalRun {
   text: string;
+  length: number;
   style: number;
 }
 
 interface TerminalLine {
   runs: TerminalRun[];
   length: number;
-}
-
-interface TerminalCells {
-  chars: string[];
-  styles: number[];
 }
 
 type ExtendedColorTarget = "foreground" | "background" | "ignored";
@@ -216,67 +212,81 @@ function emptyLine(): TerminalLine {
   return { runs: [], length: 0 };
 }
 
-function appendRun(line: TerminalLine, text: string, style: number): void {
-  if (text.length === 0) return;
+function appendRun(
+  line: TerminalLine,
+  text: string,
+  length: number,
+  style: number,
+): void {
+  if (length === 0) return;
   const last = line.runs.at(-1);
   if (last !== undefined && last.style === style) {
     last.text += text;
+    last.length += length;
   } else {
-    line.runs.push({ text, style });
+    line.runs.push({ text, length, style });
   }
-  line.length += codePointLength(text);
+  line.length += length;
 }
 
-function explodeLine(line: TerminalLine): TerminalCells {
-  const chars: string[] = [];
-  const styles: number[] = [];
-  for (const run of line.runs) {
-    for (const char of run.text) {
-      chars.push(char);
-      styles.push(run.style);
+function sliceRun(run: TerminalRun, start: number, end: number): string {
+  return run.text.length === run.length
+    ? run.text.slice(start, end)
+    : Array.from(run.text).slice(start, end).join("");
+}
+
+function splitLineAt(line: TerminalLine, col: number): number {
+  let start = 0;
+  for (let index = 0; index < line.runs.length; index += 1) {
+    if (start === col) return index;
+    const run = line.runs[index]!;
+    const end = start + run.length;
+    if (col < end) {
+      const offset = col - start;
+      const tail: TerminalRun = {
+        text: sliceRun(run, offset, run.length),
+        length: run.length - offset,
+        style: run.style,
+      };
+      run.text = sliceRun(run, 0, offset);
+      run.length = offset;
+      line.runs.splice(index + 1, 0, tail);
+      return index + 1;
     }
+    start = end;
   }
-  return { chars, styles };
+  return line.runs.length;
+}
+
+function mergeWithPreviousRun(line: TerminalLine, index: number): void {
+  const previous = line.runs[index - 1];
+  const run = line.runs[index];
+  if (previous === undefined || run === undefined) return;
+  if (previous.style !== run.style) return;
+  previous.text += run.text;
+  previous.length += run.length;
+  line.runs.splice(index, 1);
 }
 
 function truncateLine(line: TerminalLine, col: number): void {
   if (col >= line.length) return;
-  let remaining = col;
-  let keep = 0;
-  while (keep < line.runs.length && remaining > 0) {
-    const run = line.runs[keep]!;
-    const runLength = codePointLength(run.text);
-    if (runLength > remaining) {
-      run.text = SURROGATE_PATTERN.test(run.text)
-        ? Array.from(run.text).slice(0, remaining).join("")
-        : run.text.slice(0, remaining);
-      remaining = 0;
-    } else {
-      remaining -= runLength;
-    }
-    keep += 1;
-  }
-  line.runs.length = keep;
+  line.runs.length = splitLineAt(line, col);
   line.length = col;
 }
 
-function rebuildLine(line: TerminalLine, cells: TerminalCells): void {
-  line.runs.length = 0;
-  line.length = 0;
-  let start = 0;
-  for (let index = 1; index <= cells.chars.length; index += 1) {
-    if (
-      index === cells.chars.length ||
-      cells.styles[index] !== cells.styles[start]
-    ) {
-      appendRun(
-        line,
-        cells.chars.slice(start, index).join(""),
-        cells.styles[start]!,
-      );
-      start = index;
-    }
-  }
+function overwriteLine(
+  line: TerminalLine,
+  col: number,
+  text: string,
+  length: number,
+  style: number,
+): void {
+  if (length === 0) return;
+  const start = splitLineAt(line, col);
+  const end = splitLineAt(line, col + length);
+  line.runs.splice(start, end - start, { text, length, style });
+  mergeWithPreviousRun(line, start + 1);
+  mergeWithPreviousRun(line, start);
 }
 
 class TerminalScreen {
@@ -292,22 +302,17 @@ class TerminalScreen {
   write(text: string): void {
     const line = this.currentLine();
     if (this.col > line.length) {
-      appendRun(line, " ".repeat(this.col - line.length), 0);
+      const gap = this.col - line.length;
+      appendRun(line, " ".repeat(gap), gap, 0);
     }
-    const textLength = codePointLength(text);
-    if (this.col + textLength >= line.length) {
+    const length = codePointLength(text);
+    if (this.col + length >= line.length) {
       truncateLine(line, this.col);
-      appendRun(line, text, this.styleId);
-      this.col = line.length;
-      return;
+      appendRun(line, text, length, this.styleId);
+    } else {
+      overwriteLine(line, this.col, text, length, this.styleId);
     }
-    const cells = explodeLine(line);
-    for (const char of text) {
-      cells.chars[this.col] = char;
-      cells.styles[this.col] = this.styleId;
-      this.col += 1;
-    }
-    rebuildLine(line, cells);
+    this.col += length;
   }
 
   lineFeed(): void {
@@ -348,11 +353,8 @@ class TerminalScreen {
       return;
     }
     if (mode !== 1) return;
-    const cells = explodeLine(line);
-    const end = Math.min(cells.chars.length, this.col + 1);
-    cells.chars.fill(" ", 0, end);
-    cells.styles.fill(0, 0, end);
-    rebuildLine(line, cells);
+    const end = Math.min(line.length, this.col + 1);
+    overwriteLine(line, 0, " ".repeat(end), end, 0);
   }
 
   eraseBelow(): void {
