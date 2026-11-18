@@ -82,6 +82,11 @@ const PRESERVED_ENV_VALUES = new Map([
 const GROK_SUBAGENT_ACTION_PROMPT =
   /^Use (?:send_subagent_message|kill_command_or_subagent) with /;
 const GROK_SYNTHETIC_SUBAGENT_MESSAGE = "CHILD_MESSAGE 😀 مراجعة";
+const GROK_SYNTHETIC_INTERJECT_TEXTS = new Set([
+  "INTERJECT_FIRST 😀",
+  "INTERJECT_SECOND مراجعة",
+  "INTERJECT_FIRST 😀 مراجعة",
+]);
 const PRESERVED_RAW_INPUT_KEYS = ["subagent_id", "task_id", "delivery"];
 const GROK_SYNTHETIC_SPAWN_RESULTS = new Set([
   "Subagent started in background.\nsubagent_id: child-alpha\ndescription: CHILD_ALPHA",
@@ -387,7 +392,8 @@ function redactLine(line) {
   preserveLiteralCompactCommand(parsed, redacted);
   if (
     !Array.isArray(parsed) &&
-    (parsed.method === "_x.ai/interject" ||
+    ((parsed.method === "_x.ai/interject" &&
+      GROK_SYNTHETIC_INTERJECT_TEXTS.has(parsed.params?.text)) ||
       (parsed.method === "subagent/tell" &&
         parsed.params?.text?.includes(GROK_SYNTHETIC_SUBAGENT_MESSAGE))) &&
     typeof parsed.params?.text === "string" &&

@@ -132,4 +132,40 @@ describe("Grok extension fork probing", () => {
       extensionFork: false,
     });
   });
+
+  it("leaves fork support unchanged when authentication fails before the extension is called", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      env: {
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_AUTH_REJECT: "expired",
+      },
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe.reachable).toBe(false);
+    expect(probe.reachable === false && probe.reason).toContain(
+      "expired credentials",
+    );
+    expect(probe).not.toHaveProperty("extensionFork");
+  });
+
+  it("leaves fork support unchanged when session setup fails before the extension is called", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      env: { FAKE_ACP_SESSION_NEW_ERROR: "session setup timed out" },
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe).toEqual({
+      reachable: false,
+      reason: expect.stringContaining("session setup timed out"),
+    });
+  });
 });

@@ -170,15 +170,20 @@ describe("Grok recording redaction", () => {
     ]);
   });
 
-  it("preserves_interject_text_without_preserving_prompts_or_token_shapes", () => {
+  it("preserves_only_synthetic_interject_text", () => {
     const root = tempRoot();
     const input = join(root, "input");
     const output = join(root, "output");
     const interjectText = "INTERJECT_FIRST 😀 مراجعة";
+    const privateSteer = "please rewrite the private customer plan";
     writeRecording(input, [
       {
         method: "_x.ai/interject",
         params: { sessionId: "s1", text: interjectText },
+      },
+      {
+        method: "_x.ai/interject",
+        params: { sessionId: "s1", text: privateSteer },
       },
       {
         method: "_x.ai/interject",
@@ -204,9 +209,14 @@ describe("Grok recording redaction", () => {
     redact(input, output);
     const text = readFileSync(join(output, "provider→bridge.ndjson"), "utf8");
     expect(text).toContain(interjectText);
+    expect(text).not.toContain(privateSteer);
     expect(text).not.toContain("private-user-prompt");
     expect(text).not.toContain("sk-live-abcdefghijklmnop");
     expect(text).not.toContain("private-steer-text");
+    expect(readMessages(output)).toContainEqual({
+      method: "_x.ai/interject",
+      params: { sessionId: "s1", text: "REDACTED_TEXT" },
+    });
     expect(readMessages(output)).toContainEqual({
       method: "turn/steer",
       params: {

@@ -264,6 +264,7 @@ interface AcpPendingTurnInput {
   input: PromptInput[];
   requestId: AcpBridgeRequestId | null;
   options: BridgeExecutionOptions;
+  subagentActionRequestId?: string;
 }
 
 interface AcpNativeConfigState {
@@ -3772,6 +3773,19 @@ function runTurn(
           finishTurn(session, "cancelled");
           return;
         }
+        if (
+          pending.subagentActionRequestId !== undefined &&
+          session !== previousSession &&
+          !session.pendingSubagentActions.has(pending.subagentActionRequestId)
+        ) {
+          dropTurnInput(
+            pending,
+            "ACP session was replaced before the subagent action ran",
+          );
+          setActivePromptKind(session, "turn");
+          finishTurn(session, "cancelled");
+          return;
+        }
         setActivePromptKind(session, "turn");
         session.turnSettled = previousSession.turnSettled;
         session.awaitingFirstPrompt = false;
@@ -3875,10 +3889,10 @@ function runTurn(
   })();
 }
 
-function reconcileExecutionSettings(
+function plannedExecutionSettings(
   session: AcpThreadSession,
   options: BridgeExecutionOptions,
-): AcpThreadSession | Promise<AcpThreadSession> {
+): { construction: AcpSessionParams; restart: boolean } {
   if (options.permissionMode === "auto") {
     throw new Error('ACP does not support permission mode "auto".');
   }
@@ -3940,15 +3954,25 @@ function reconcileExecutionSettings(
       dialectLaunchEnv(session.dialect.id, construction.permissionMode),
     ) ||
     launchModelChanged;
-  const restart =
-    session.connection.exited ||
-    session.restartAfterCancelError ||
-    launchArgsChanged ||
-    !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
+  return {
+    construction,
+    restart:
+      session.connection.exited ||
+      session.restartAfterCancelError ||
+      launchArgsChanged ||
+      !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {}),
+  };
+}
+
+function reconcileExecutionSettings(
+  session: AcpThreadSession,
+  options: BridgeExecutionOptions,
+): AcpThreadSession | Promise<AcpThreadSession> {
+  const { construction, restart } = plannedExecutionSettings(session, options);
   cancelPendingPermissions(session);
   session.policy = {
-    permissionMode: options.permissionMode,
-    workspaceWriteRoots,
+    permissionMode: construction.permissionMode,
+    workspaceWriteRoots: construction.workspaceWriteRoots,
   };
   if (restart) {
     return rebuildAgentSession(session, construction);
@@ -4945,6 +4969,23 @@ async function startGrokSubagentAction(
       );
       return;
     }
+    try {
+      if (plannedExecutionSettings(session, options).restart) {
+        sendError(
+          request.id,
+          -32000,
+          "The parent session must restart before the subagent action can run",
+        );
+        return;
+      }
+    } catch (error) {
+      sendError(
+        request.id,
+        -32000,
+        error instanceof Error ? error.message : String(error),
+      );
+      return;
+    }
     const toolName =
       kind === "tell" ? "send_subagent_message" : "kill_command_or_subagent";
     const text =
@@ -4967,6 +5008,7 @@ async function startGrokSubagentAction(
       input: [{ type: "text", text, mentions: [] }],
       requestId: null,
       options,
+      subagentActionRequestId: String(request.id),
     });
   } finally {
     session.subagentActionReserved = false;
