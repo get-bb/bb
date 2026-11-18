@@ -89,7 +89,6 @@ import {
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
   listStoredTimelineTurnEventRows,
-  listStoredStandaloneThreadTimelineRows,
   listStoredThreadInteractionLifecycleRows,
   listStoredThreadNoticeAndInteractionRows,
   listStoredTimelineThreadWindowEventRows,
@@ -614,8 +613,6 @@ function databaseTimelineRowSource(
       listStoredEventRows(db, { ...args, types: [...args.types] }),
     listParentRows: (args) => listStoredDelegatingItemRowsByItemIds(db, args),
     listRootWindowTurnIds: (args) => listTimelineRootWindowTurnIds(db, args),
-    listStandaloneThreadRows: (args) =>
-      listStoredStandaloneThreadTimelineRows(db, args),
     listThreadNoticeAndInteractionRows: (args) =>
       listStoredThreadNoticeAndInteractionRows(db, args),
     listThreadInteractionRows: (args) =>

@@ -3899,30 +3899,6 @@ export function listStoredTimelineThreadWindowEventRows(
     .all();
 }
 
-export function listStoredStandaloneThreadTimelineRows(
-  db: DbConnection,
-  args: ListStoredTimelineWindowEventRowsArgs,
-): StoredEventRow[] {
-  return db
-    .select(
-      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
-    )
-    .from(events)
-    .where(
-      and(
-        ...storedTimelineWindowConditions(args),
-        isNull(events.turnId),
-        isNull(events.itemKind),
-        notInArray(events.type, [
-          "client/turn/requested",
-          "client/turn/rejected",
-        ]),
-      ),
-    )
-    .orderBy(events.sequence)
-    .all();
-}
-
 export function listStoredThreadInteractionLifecycleRows(
   db: DbConnection,
   args: {
