@@ -20,6 +20,7 @@ import {
   type SystemProviderEnabledRequest,
   type TestAiServiceRequest,
   type TestAiServiceResponse,
+  type SystemSetupGuideResponse,
 } from "./api/system.js";
 import {
   desktopBrowserBrokerProofRequestSchema,
@@ -1951,6 +1952,12 @@ export const publicApiRoutes = {
         testAiServiceRequestSchema,
       ),
       response: jsonResponse<TestAiServiceResponse>(),
+    }),
+    setupGuide: defineRoute({
+      path: "/system/setup-guide",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemSetupGuideResponse>(),
     }),
     recordTelemetryEvent: defineRoute({
       path: "/system/telemetry/events",

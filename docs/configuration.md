@@ -340,6 +340,8 @@ when it was finished or skipped; `bb settings replay-onboarding`, or Settings â†
 General â†’ Setup guide, clears it so the guide shows again. The projects step
 lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
+Every install gets the same guide. `GET /api/v1/system/setup-guide` stays for
+older apps and always returns `{ "variant": "new" }`.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.

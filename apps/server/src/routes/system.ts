@@ -347,6 +347,8 @@ export function registerSystemRoutes(
     return context.json(compatibleGeneralSettings());
   });
 
+  get(routes.setupGuide, (context) => context.json({ variant: "new" }));
+
   post(routes.recordTelemetryEvent, async (context, payload) => {
     if (
       payload.name === "recommendation" &&

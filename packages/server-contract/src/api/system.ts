@@ -491,6 +491,13 @@ export type RecordTelemetryEventRequest = z.infer<
   typeof recordTelemetryEventRequestSchema
 >;
 
+export const systemSetupGuideResponseSchema = z.object({
+  variant: z.literal("new"),
+});
+export type SystemSetupGuideResponse = z.infer<
+  typeof systemSetupGuideResponseSchema
+>;
+
 export const serverAccessStatusSchema = z.object({
   providers: z.array(
     z.object({
