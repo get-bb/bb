@@ -135,6 +135,7 @@ function UsageWindowRow({ window }: { window: UsageWindow }) {
 }
 
 interface ProviderUsageBlockProps {
+  refreshError?: string;
   accountLabel?: string;
   config: ProviderConfig;
   usage: ProviderUsage | undefined;
@@ -209,6 +210,7 @@ function UsageLocationPicker({
 }
 
 function ProviderUsageBlock({
+  refreshError,
   accountLabel,
   config,
   usage,
@@ -246,6 +248,11 @@ function ProviderUsageBlock({
             {accountEmail && accountEmail !== config.name ? (
               <p className="truncate text-xs text-muted-foreground">
                 {accountEmail}
+              </p>
+            ) : null}
+            {refreshError ? (
+              <p className="text-xs text-muted-foreground">
+                {refreshError} Showing last update.
               </p>
             ) : null}
             {!showsUsageWindows ? (
@@ -298,6 +305,7 @@ function UsageResourceGroup({
         return (
           <ProviderUsageBlock
             key={resource.id}
+            refreshError={resource.refreshError}
             accountLabel={email ?? undefined}
             config={config}
             usage={usage}
