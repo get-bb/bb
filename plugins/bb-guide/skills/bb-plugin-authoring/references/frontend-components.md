@@ -7,7 +7,8 @@ Host components:
   settings sections). This is the deliberate exception to the
   no-host-components rule: a stable product capability, not a UI kit. Props:
   `{ threadId, variant?, layout?, focusRequest?, permissionPolicy?,
-className?, leadingContent?, messageActions? }` —
+className?, leadingContent?, messageActions?,
+experimental_environmentContext? }` —
   `variant` is `"full"` (standard chat controls, default), `"compact"`
   (side-panel presentation), or `"timeline"` (transcript without a
   composer); `layout` is `"contained"` (fills and scrolls within the
@@ -28,7 +29,12 @@ className?, leadingContent?, messageActions? }` —
   same narrow `ThreadChatMessageReference` as the `messageAction` slot;
   errors from `run` are contained and logged, never breaking the timeline.
   Unlike the global `messageAction` slot, these actions are scoped to the
-  one `ThreadChat` instance that supplied them. The
+  one `ThreadChat` instance that supplied them.
+  `experimental_environmentContext: true` gives the context row above the
+  composer the thread's environment, so its changed files and pull request
+  segments show as in bb's thread view; the default `false` shows only
+  segments that need no environment, such as the parent thread. Leave it off
+  when the chat sits next to a view that already shows them. The
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.

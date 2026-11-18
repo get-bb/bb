@@ -314,6 +314,31 @@ Before stabilizing, decide whether surfaces should instead follow panel
 capability (whether the surface's panel can host the tab the action opens), and
 whether more surfaces (New thread previews, plugin documents) need names.
 
+## `ThreadChatProps.experimental_environmentContext` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.158.
+
+`<ThreadChat experimental_environmentContext />` passes the thread's environment
+to the context row above the composer, so the segments that read it (core's
+changed files, GitHub PR Status's pull request) show as they do in bb's thread
+view. The default, `false`, passes no environment, so the row shows only
+segments that need none, such as the parent thread. Ignored by
+`variant: "timeline"`.
+
+Core caller: `ThreadDetailView` and `PluginThreadChat` both hand the composer a
+`contextEnvironmentId` from `resolveThreadEnvironmentAccess`
+(`apps/app/src/views/thread-detail/thread-screen-hosts.ts`); the thread view
+always uses it, and `ThreadChat` uses it only with this prop. Contract tests:
+`ThreadScreen.surface-contract.test.tsx` runs the context environment row on
+the thread page and on embedded chats that opt in, and checks that a chat that
+does not opt in passes none. The bundled Side chat leaves it off, because its
+parent thread's composer already shows the same row beside it.
+
+Before stabilizing, decide whether the default should flip to match the thread
+view once a first-party plugin embeds a chat away from its thread, and whether
+the prop should cover other environment chrome (the footer's checkout and
+branch).
+
 ## `app.commands.register`
 
 Unprefixed by explicit request. Registers frontend commands

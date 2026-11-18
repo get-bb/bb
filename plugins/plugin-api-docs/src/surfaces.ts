@@ -1796,6 +1796,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalAppIcons",
           "PluginAppBuilder.experimental_icons",
           "ThreadChat",
+          "ThreadChatProps.experimental_environmentContext",
           "Markdown",
           "MarkdownProps.experimental_document",
           "MarkdownProps.experimental_message",

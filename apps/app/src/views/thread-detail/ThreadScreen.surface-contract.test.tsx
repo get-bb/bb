@@ -214,13 +214,17 @@ interface SurfaceHosts {
   sink: ContractStateSink;
 }
 
-function pluginThreadChat(variant: "full" | "compact" | "timeline") {
+function pluginThreadChat(
+  variant: "full" | "compact" | "timeline",
+  environmentContext = true,
+) {
   return ({ openFilePreview }: SurfaceHosts) => (
     <AppNavigationHostProvider capabilities={{ openFilePreview }}>
       <PluginSlotMount pluginId="host" slotKind="navPanel" slotId="page">
         <pluginSdkAppImplementation.ThreadChat
           threadId={THREAD.id}
           variant={variant}
+          experimental_environmentContext={environmentContext}
         />
       </PluginSlotMount>
     </AppNavigationHostProvider>
@@ -407,4 +411,15 @@ describe.each(SURFACES)("ThreadScreen surface contract: $name", (surface) => {
       expect(typeof props.onCreateNewThreadInEnvironment).toBe("function");
     },
   );
+});
+
+it("keeps the thread's environment out of an embedded chat's context row unless the chat opts in", async () => {
+  renderSurface({
+    ...SURFACES[1]!,
+    render: pluginThreadChat("compact", false),
+  });
+  await waitFor(() => expect(screen.getByTestId("prompt-area")).toBeTruthy());
+  const props = mocks.promptAreaProps.at(-1)!;
+  expect(props.contextEnvironmentId).toBeNull();
+  expect(typeof props.onCreateNewThreadInEnvironment).toBe("function");
 });

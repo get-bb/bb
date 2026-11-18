@@ -73,6 +73,7 @@ export function PluginThreadChat({
   className,
   leadingContent,
   messageActions,
+  experimental_environmentContext: environmentContext = false,
 }: ThreadChatProps) {
   const containerClassName = cn(
     layout === "contained" ? "flex h-full min-h-0 flex-col" : "flex flex-col",
@@ -88,6 +89,7 @@ export function PluginThreadChat({
         permissionPolicy={permissionPolicy}
         leadingContent={leadingContent}
         messageActions={messageActions}
+        environmentContext={environmentContext}
       />
     </div>
   );
@@ -101,6 +103,7 @@ interface PluginThreadChatBodyProps {
   permissionPolicy: "inherit" | "editable";
   leadingContent: ReactNode;
   messageActions: readonly ThreadChatMessageAction[] | undefined;
+  environmentContext: boolean;
 }
 
 function PluginThreadChatBody({
@@ -111,6 +114,7 @@ function PluginThreadChatBody({
   permissionPolicy,
   leadingContent,
   messageActions,
+  environmentContext,
 }: PluginThreadChatBodyProps) {
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
@@ -354,8 +358,9 @@ function PluginThreadChatBody({
                     environmentCheckout,
                     environmentChrome,
                     focusRequest: focusRequest ?? null,
-                    contextEnvironmentId:
-                      environmentAccess.contextEnvironmentId,
+                    contextEnvironmentId: environmentContext
+                      ? environmentAccess.contextEnvironmentId
+                      : null,
                     onCreateNewThreadInEnvironment:
                       environmentAccess.reusesEnvironment
                         ? createThreadInEnvironment

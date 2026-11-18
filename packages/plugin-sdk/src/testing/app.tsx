@@ -897,6 +897,7 @@ function TestThreadChat({
   className,
   leadingContent,
   messageActions,
+  experimental_environmentContext = false,
 }: ThreadChatProps) {
   return (
     <div
@@ -906,6 +907,7 @@ function TestThreadChat({
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-permission-policy={permissionPolicy}
+      data-environment-context={experimental_environmentContext}
       data-message-actions={(messageActions ?? [])
         .map((action) => action.id)
         .join(" ")}
