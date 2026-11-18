@@ -193,6 +193,10 @@ after restarting bb, and terminals keep normal priority.
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
+`resumeDaemonSessions` keeps a machine connected through a network drop of
+under 30 seconds: its daemon resumes the same server session, so terminals and
+running requests carry on, instead of opening a new one. It defaults on for
+early adopters and applies from the next disconnect.
 `resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
 machine restart cut off, and wakes idle threads whose background work it
 stopped, a few seconds after the machine's daemon comes back; see `bb guide
@@ -224,7 +228,7 @@ the server. It applies live.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `compactExpiredCache`, `dismissReadNotifications`, `keyedPluginCss`,
-`pluginUpdates`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
+`pluginUpdates`, `resumeDaemonSessions`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
 `updateWhenIdle`; an
 experiment you set yourself keeps your value.
 

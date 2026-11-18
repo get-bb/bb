@@ -240,7 +240,9 @@ export function registerInternalSessionRoutes(
         sessionId: session.id,
         heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
-        reconnectGraceMs: HOST_RECONNECT_GRACE_MS,
+        reconnectGraceMs: getExperiments(deps.db).resumeDaemonSessions
+          ? HOST_RECONNECT_GRACE_MS
+          : 0,
         watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,

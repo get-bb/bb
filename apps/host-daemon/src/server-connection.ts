@@ -672,6 +672,7 @@ export class ServerConnection {
     if (
       session === null ||
       sequencer === null ||
+      session.reconnectGraceMs === 0 ||
       !this.sessionSocketOpened ||
       !sequencer.replayable
     ) {

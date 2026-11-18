@@ -72,6 +72,7 @@ describe("experiments settings", () => {
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,
+        resumeDaemonSessions: false,
         resumeThreadsAfterRestart: false,
         skipFocusedThreadNotifications: false,
         threadContextCard: false,

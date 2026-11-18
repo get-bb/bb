@@ -12,13 +12,14 @@ import {
   getAutoAppUpdate,
   getSkippedAppUpdate,
   setAutoAppUpdate,
+  setExperiments,
   setSkippedAppUpdate,
   listRunningThreads,
   startWalCheckpointer,
   type DbConnection,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
-import { defaultFeatureFlags } from "@bb/domain";
+import { defaultFeatureFlags, type ExperimentUpdates } from "@bb/domain";
 import {
   acquireDaemonLock,
   createHostDaemonApp,
@@ -130,6 +131,7 @@ export interface IntegrationHarness {
 }
 
 interface CreateHarnessOptions {
+  experiments?: ExperimentUpdates;
   proxyDaemonConnection?: boolean;
   serverPort?: number;
   bindHost?: "127.0.0.1" | "0.0.0.0";
@@ -208,6 +210,9 @@ async function startIntegrationServer(
   const db = createMigratedConnection();
   const walCheckpointer = startWalCheckpointer({ logger: testLogger });
   ensurePersonalProject(db);
+  if (options.experiments !== undefined) {
+    setExperiments(db, options.experiments);
+  }
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });

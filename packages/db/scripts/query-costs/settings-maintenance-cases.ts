@@ -440,6 +440,7 @@ const SETTINGS_CASES: readonly Case[] = [
         serverMove: false,
         performanceDiagnostics: true,
         pluginUpdates: true,
+        resumeDaemonSessions: true,
         resumeThreadsAfterRestart: true,
         skipFocusedThreadNotifications: true,
         threadContextCard: true,

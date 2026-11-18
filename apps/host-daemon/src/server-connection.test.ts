@@ -15,6 +15,7 @@ import type {
 interface CreateServerClientFixtureArgs {
   heartbeatIntervalMs?: number;
   leaseTimeoutMs?: number;
+  reconnectGraceMs?: number;
   sessionIds?: string[];
   openSessionError?: Error;
 }
@@ -45,6 +46,7 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
 interface CreateSessionArgs {
   heartbeatIntervalMs: number;
   leaseTimeoutMs: number;
+  reconnectGraceMs: number;
   sessionId: string;
 }
 
@@ -64,7 +66,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     idleProviderSessionTimeoutMinutes: 30,
     agentCpuPriority: true,
     leaseTimeoutMs: args.leaseTimeoutMs,
-    reconnectGraceMs: args.leaseTimeoutMs,
+    reconnectGraceMs: args.reconnectGraceMs,
     retiredEnvironmentIds: [],
     endedInteractiveRequests: [],
     connectShares: { generation: 0, ports: [] },
@@ -94,6 +96,7 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
     return createSession({
       heartbeatIntervalMs: args.heartbeatIntervalMs ?? 5_000,
       leaseTimeoutMs: args.leaseTimeoutMs ?? 30_000,
+      reconnectGraceMs: args.reconnectGraceMs ?? args.leaseTimeoutMs ?? 30_000,
       sessionId,
     });
   });
@@ -319,6 +322,29 @@ describe("ServerConnection", () => {
       }
     } finally {
       for (const fixture of fixtures) await fixture.connection.shutdown();
+    }
+  });
+
+  it("opens a new session instead of resuming when the server offers no reconnect grace", async () => {
+    const { connection, openSession, setSession, webSocket } =
+      createConnectionFixture({
+        reconnectGraceMs: 0,
+        sessionIds: ["first", "second"],
+      });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+
+      socket.reconnect();
+      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
+      expect(openSession).toHaveBeenCalledTimes(2);
+      expect(setSession).toHaveBeenCalledWith(null);
+      expect(webSocket.urls.some((url) => url.includes("resumeFrom"))).toBe(
+        false,
+      );
+    } finally {
+      await connection.shutdown();
     }
   });
 

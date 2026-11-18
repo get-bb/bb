@@ -252,7 +252,7 @@ export const hostDaemonSessionOpenResponseSchema = z
     agentCpuPriority: z.boolean(),
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
-    reconnectGraceMs: z.number().int().positive(),
+    reconnectGraceMs: z.number().int().nonnegative(),
     watchSet: hostDaemonWatchSetSchema.default({
       generation: 0,
       workspaceTargets: [],
