@@ -24,11 +24,14 @@ Spawning:
 
   bb thread spawn --project <id> --prompt "..." [options]
   bb thread spawn --project <id> --prompt-file <path> [options]
+  bb thread spawn --project <id> --empty [options]
 
-    --prompt <prompt>              Initial prompt (one of --prompt or --prompt-file is required)
+    --prompt <prompt>              Initial prompt (one of --prompt, --prompt-file, or --empty is required)
     --prompt-file <path>           Read the prompt from a file; `-` reads stdin. Use this for
                                    multi-line or Markdown prompts: inside double quotes the shell
                                    runs `backticks` and $(...) before bb sees them
+    --empty                        Create an idle thread without sending a first message; select
+                                   its project and execution options now, then send a message later
     --title <title>                Thread title
     --project <id>                 Project (required; when omitted the error prints this thread's project ID to add)
     --parent-thread <id>           Parent thread (may be in another project)

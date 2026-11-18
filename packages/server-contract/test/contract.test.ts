@@ -380,8 +380,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
+      "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults; createEmpty is omitted for normal first-message creation.",
     fields: [
+      "createThreadRequestSchema.createEmpty",
       "createThreadRequestSchema.sectionId",
       "createThreadRequestSchema.pinned",
       "createThreadRequestSchema.model",
@@ -1413,6 +1414,35 @@ describe("server-contract canonical schemas", () => {
         permissionMode: "readonly",
       }),
     ).toThrow();
+  });
+
+  it("allows an explicitly empty create request only without a first turn", () => {
+    const createBase = {
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app" as const,
+      input: [] as const,
+      createEmpty: true,
+      environment: {
+        type: "host" as const,
+        hostId: "host_abc",
+        workspace: { type: "unmanaged" as const, path: null },
+      },
+    };
+
+    expect(createThreadRequestSchema.parse(createBase).createEmpty).toBe(true);
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...createBase,
+        input: [{ type: "text", text: "synthetic" }],
+      }),
+    ).toThrow("input must be empty when createEmpty is true");
+    expect(() =>
+      createThreadRequestSchema.parse({ ...createBase, sendAt: Date.now() }),
+    ).toThrow("sendAt is not available when createEmpty is true");
+    expect(() =>
+      createThreadRequestSchema.parse({ ...createBase, createEmpty: false }),
+    ).toThrow("input must contain at least one entry");
   });
 
   it("keeps only intentional optional request fields", () => {

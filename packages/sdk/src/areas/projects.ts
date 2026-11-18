@@ -300,6 +300,10 @@ function hasAttachmentArrayBuffer(
   return "arrayBuffer" in clientFile;
 }
 
+function isAttachmentBlob(file: ProjectAttachmentUploadFile): file is Blob {
+  return "size" in file && "slice" in file && "stream" in file;
+}
+
 async function attachmentBytes(
   clientFile: ProjectAttachmentUploadFile,
 ): Promise<ArrayBuffer> {
@@ -401,9 +405,12 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       const filename = resolveAttachmentFilename(input);
       const mimeType =
         input.mimeType ?? embeddedAttachmentMimeType(input.clientFile) ?? "";
-      const file = new Blob([await attachmentBytes(input.clientFile)], {
-        type: mimeType,
-      });
+      const file =
+        isAttachmentBlob(input.clientFile) && input.clientFile.type === mimeType
+          ? input.clientFile
+          : new Blob([await attachmentBytes(input.clientFile)], {
+              type: mimeType,
+            });
       const form = new FormData();
       form.set("file", file, filename);
       const baseUrl = transport.baseUrl.replace(/\/$/u, "");

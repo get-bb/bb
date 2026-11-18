@@ -138,6 +138,7 @@ export const createThreadRequestSchema = z
     visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     input: z.array(promptInputSchema),
+    createEmpty: z.boolean().optional(),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
@@ -204,7 +205,25 @@ export const createThreadRequestSchema = z
         path: ["originPluginId"],
       });
     }
-    if (value.originKind === null && value.input.length === 0) {
+    if (value.createEmpty === true && value.input.length !== 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "input must be empty when createEmpty is true",
+        path: ["input"],
+      });
+    }
+    if (value.createEmpty === true && value.sendAt !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "sendAt is not available when createEmpty is true",
+        path: ["sendAt"],
+      });
+    }
+    if (
+      value.originKind === null &&
+      value.input.length === 0 &&
+      value.createEmpty !== true
+    ) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",

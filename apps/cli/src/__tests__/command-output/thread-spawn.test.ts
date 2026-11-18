@@ -57,6 +57,43 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("creates an idle thread with selected execution options and no first message", async () => {
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      createThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "thread-idle",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--empty",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        projectId: "proj-1",
+        providerId: "codex",
+        model: "gpt-5",
+        createEmpty: true,
+        input: [],
+      }),
+    });
+  });
+
   it("bb thread spawn --prompt-file sends shell-active text untouched", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-spawn-prompt-"));
     const path = join(dir, "prompt.md");

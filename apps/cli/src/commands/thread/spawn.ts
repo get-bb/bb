@@ -49,6 +49,7 @@ const PROVIDER_HELP =
 interface ThreadSpawnCommandOptions {
   prompt?: string;
   promptFile?: string;
+  empty?: boolean;
   json?: boolean;
   project?: string;
   environment?: string;
@@ -334,6 +335,7 @@ export function registerSpawnCommand(
       "--prompt-file <path>",
       `Read the initial prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
     )
+    .option("--empty", "Create an idle thread without sending a first message")
     .option(
       "--lifecycle-owner-thread <id>",
       "Archive/delete this thread with its lifecycle owner",
@@ -421,12 +423,32 @@ export function registerSpawnCommand(
     )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
-        const prompt = await requireTextInput({
-          file: opts.promptFile,
-          fileLabel: "--prompt-file",
-          inline: opts.prompt,
-          inlineLabel: "--prompt <prompt>",
-        });
+        if (
+          opts.empty &&
+          (opts.prompt !== undefined || opts.promptFile !== undefined)
+        ) {
+          throw new Error(
+            "--empty cannot be combined with --prompt or --prompt-file.",
+          );
+        }
+        if (
+          opts.empty &&
+          ((opts.file?.length ?? 0) > 0 ||
+            (opts.image?.length ?? 0) > 0 ||
+            opts.plan)
+        ) {
+          throw new Error(
+            "--empty cannot be combined with --file, --image, or --plan.",
+          );
+        }
+        const prompt = opts.empty
+          ? ""
+          : await requireTextInput({
+              file: opts.promptFile,
+              fileLabel: "--prompt-file",
+              inline: opts.prompt,
+              inlineLabel: "--prompt <prompt>",
+            });
         const projectId = resolveExplicitIdFlag({
           flagName: "--project flag",
           value: opts.project,
@@ -589,22 +611,26 @@ export function registerSpawnCommand(
         let thread: Thread;
         try {
           const sdk = createCliBbSdk(getUrl());
-          const input = await uploadClientAttachmentInputs({
-            input: buildPromptInputs({
-              message: prompt,
-              plan: opts.plan,
-              files: opts.file,
-              images: opts.image,
-            }),
-            resolveProjectId: async () => projectId,
-            sdk,
-          });
+          const input = opts.empty
+            ? []
+            : await uploadClientAttachmentInputs({
+                input: buildPromptInputs({
+                  message: prompt,
+                  plan: opts.plan,
+                  files: opts.file,
+                  images: opts.image,
+                }),
+                resolveProjectId: async () => projectId,
+                sdk,
+              });
           thread = await sdk.threads.spawn({
             origin: "cli",
             projectId,
             ...(providerId ? { providerId } : {}),
             ...(opts.model ? { model: opts.model } : {}),
-            input,
+            ...(opts.empty
+              ? { createEmpty: true as const }
+              : { input }),
             ...(reasoningLevel ? { reasoningLevel } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),

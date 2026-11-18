@@ -29,10 +29,9 @@ class ProjectWidgetActivity : ReactActivity() {
     super.onCreate(null)
   }
 
-  fun configure(id: Int, profileId: String, projectId: String, name: String) {
+  fun configure(id: Int, targetJson: String) {
     check(!isFinishing && id == widgetId && canConfigure())
-    require(profileId.isNotBlank() && projectId.isNotBlank() && name.isNotBlank())
-    ProjectWidgetProvider.configure(this, widgetId, profileId, projectId, name)
+    ProjectWidgetProvider.configure(this, widgetId, targetJson)
     setResult(RESULT_OK, resultIntent())
     finish()
   }
@@ -41,7 +40,7 @@ class ProjectWidgetActivity : ReactActivity() {
     if (intent.action != AppWidgetManager.ACTION_APPWIDGET_CONFIGURE) return false
     val provider = AppWidgetManager.getInstance(this).getAppWidgetInfo(widgetId)?.provider
     return provider == ComponentName(this, ProjectWidgetProvider::class.java) &&
-      !ProjectWidgetProvider.isConfigured(this, widgetId)
+      ProjectWidgetProvider.readTarget(this, widgetId) == null
   }
 
   private fun resultIntent() = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)

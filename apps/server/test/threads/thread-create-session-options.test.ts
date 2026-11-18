@@ -1,7 +1,10 @@
 import { upsertProjectExecutionDefaults } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { waitForQueuedCommand } from "../helpers/commands.js";
+import {
+  listQueuedThreadCommands,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -74,6 +77,7 @@ async function createThread(
     projectId: string;
     sessionOptions?: unknown;
     model?: string | null;
+    createEmpty?: boolean;
   },
 ) {
   return harness.app.request("/api/v1/threads", {
@@ -84,7 +88,10 @@ async function createThread(
       projectId: args.projectId,
       providerId: "codex",
       ...(args.model === null ? {} : { model: args.model ?? "gpt-5" }),
-      input: [{ type: "text", text: "Start with my options" }],
+      input: args.createEmpty
+        ? []
+        : [{ type: "text", text: "Start with my options" }],
+      ...(args.createEmpty ? { createEmpty: true } : {}),
       ...(args.sessionOptions === undefined
         ? {}
         : { sessionOptions: args.sessionOptions }),
@@ -126,6 +133,60 @@ function seedWorkspace(harness: TestAppHarness, name: string) {
 }
 
 describe("session options chosen when a thread is created", () => {
+  it("persists an idle thread and applies its execution choices on the first later message", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, project } = seedWorkspace(
+        harness,
+        "create-empty-options",
+      );
+      registerDaybreakCatalog(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const response = await createThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        model: "gpt-both",
+        sessionOptions: { daybreak: true },
+        createEmpty: true,
+      });
+      expect(response.status).toBe(201);
+      const thread = threadSchema.parse(await readJson(response));
+      expect(thread.status).toBe("pending");
+      expect(resolvePendingThreadSessionOptions(harness.db, thread.id)).toEqual(
+        { daybreak: true },
+      );
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toHaveLength(0);
+
+      const sent = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "First real message" }],
+            mode: "auto",
+          }),
+        },
+      );
+      expect(sent.status).toBe(200);
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      expect(
+        start.command.type === "thread.start" ? start.command.options : null,
+      ).toMatchObject({
+        model: "gpt-both",
+        sessionOptions: { daybreak: true },
+      });
+    });
+  });
+
   it("sends the choices with the thread's first command, before the provider has reported any option", async () => {
     await withTestHarness(async (harness) => {
       const { host, project } = seedWorkspace(harness, "create-options");

@@ -25,8 +25,8 @@ describe("resolveShellIncomingLink", () => {
     ["bb://settings/general", "/webview?path=%2Fsettings%2Fgeneral"],
     ["bb://connections", "/webview?path=%2Fconnections"],
     [
-      "bb://widget/new-thread?profileId=p_lan&projectId=proj_work",
-      "/widget/new-thread?profileId=p_lan&projectId=proj_work",
+      "bb://widget/new-thread?launchToken=one-time-token",
+      "/widget/new-thread?launchToken=one-time-token",
     ],
   ])("routes the scheme link %s to %s", (url, path) => {
     expect(resolveShellIncomingLink(url, context)).toEqual({

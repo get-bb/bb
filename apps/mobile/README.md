@@ -237,23 +237,28 @@ Android 16. Recheck and remove it when upgrading to a version with the fix.
 
 ### Android new-thread widget
 
-Add a server in bb, then open the Android launcher's widget picker and add
-**New thread** from bb or bb dev. Choose a saved server and one of its
-projects. Tap the widget to open that project's composer. Each widget has its
-own target. Remove and add it again to change the target or refresh its label
-after a project rename.
+Add a server in bb, then add a **New thread** widget from the Android launcher.
+Choose a saved server, project, machine, icon and action. Select a provider,
+model, reasoning level or base branch to override the defaults. An explicit
+branch creates a worktree for the thread. Each 1×1 widget keeps its own target.
+Remove and add a widget again to change its settings or refresh a renamed
+project's label.
 
-For a device smoke test, add widgets for two projects across two saved test
-servers. Check the labels and tap each widget while bb is running and after
-closing bb from the recent apps screen. Navigate to another page and tap the
-same widget again. Verify the selected project each time and leave the prompt
-unsent. Cancel a third widget during setup. Remove a saved server or delete a
-test project and check that its widget reports the missing target.
+**New thread** opens an empty thread with the selected settings. The first
+prompt starts the agent. **Attach a photo** opens the camera, lets you retake
+or cancel, and starts the thread with the photo after you confirm.
 
-The Android launcher owns widget placement. The picker reads projects through
-the existing SDK `projects.list` API, also available as `bb project list`.
-The widget opens the existing project composer route. It switches the active
-server only after checking that the target project still exists.
+Use an updated bb server for empty threads. The picker uses the existing SDK
+project, machine, branch and provider catalogs. Empty creation is available
+through `sdk.threads.spawn({ …, createEmpty: true })` or
+`bb thread spawn --project <id> --empty` with the execution flags you want.
+
+For a device smoke test, add two widgets to different projects or saved
+servers and choose distinct icons. Confirm each tap opens a new thread on the
+intended server with its saved settings. Test warm and cold app launches.
+Add a camera widget, cancel one capture, then capture and confirm a second
+photo. Check that the second thread starts with the photo. Cancel a fourth
+widget during setup and check that the launcher leaves no widget behind.
 
 ### Android production setup
 

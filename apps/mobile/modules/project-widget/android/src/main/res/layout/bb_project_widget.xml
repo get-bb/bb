@@ -1,14 +1,27 @@
-<TextView xmlns:android="http://schemas.android.com/apk/res/android"
-  android:id="@+id/bb_project_widget_label"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/bb_project_widget"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:background="@drawable/bb_project_widget_background"
-  android:ellipsize="end"
-  android:gravity="center_vertical"
-  android:maxLines="2"
-  android:paddingStart="12dp"
-  android:paddingEnd="12dp"
-  android:text="@string/bb_project_widget_title"
-  android:textColor="@android:color/white"
-  android:textSize="14sp"
-  android:textStyle="bold" />
+  android:gravity="center"
+  android:orientation="vertical"
+  android:padding="4dp">
+  <ImageView
+    android:id="@+id/bb_project_widget_icon"
+    android:layout_width="22dp"
+    android:layout_height="22dp"
+    android:importantForAccessibility="no"
+    android:src="@drawable/bb_widget_icon_message" />
+  <TextView
+    android:id="@+id/bb_project_widget_label"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:ellipsize="end"
+    android:gravity="center"
+    android:importantForAccessibility="no"
+    android:singleLine="true"
+    android:text="@string/bb_project_widget_title"
+    android:textColor="@android:color/white"
+    android:textSize="11sp"
+    android:textStyle="bold" />
+</LinearLayout>

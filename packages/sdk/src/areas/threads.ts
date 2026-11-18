@@ -241,7 +241,7 @@ export type ThreadTimelineTurnSummaryDetailsResult =
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
-  "input" | "origin" | "originKind" | "startedOnBehalfOf"
+  "input" | "createEmpty" | "origin" | "originKind" | "startedOnBehalfOf"
 > {
   origin?: CreateThreadRequest["origin"];
   originKind?: CreateThreadRequest["originKind"];
@@ -253,10 +253,17 @@ export type ThreadSpawnArgs = ThreadSpawnBaseArgs &
     | {
         input: CreateThreadRequest["input"];
         prompt?: never;
+        createEmpty?: never;
       }
     | {
         input?: never;
         prompt: string;
+        createEmpty?: never;
+      }
+    | {
+        input?: never;
+        prompt?: never;
+        createEmpty: true;
       }
   );
 
@@ -865,6 +872,7 @@ function spawnInput(input: ThreadSpawnArgs): PromptInput[] {
   if (input.input !== undefined) {
     return input.input;
   }
+  if (input.createEmpty === true) return [];
   return [{ type: "text", text: input.prompt, mentions: [] }];
 }
 

@@ -8,9 +8,11 @@ class ProjectWidgetModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("BBProjectWidget")
 
-    AsyncFunction("configure") { widgetId: Int, profileId: String, projectId: String, name: String ->
+    AsyncFunction("takeLaunch") { token: String -> ProjectWidgetLaunchActivity.take(token) }
+
+    AsyncFunction("configure") { widgetId: Int, targetJson: String ->
       val activity = appContext.currentActivity as? ProjectWidgetActivity
-      checkNotNull(activity).configure(widgetId, profileId, projectId, name)
+      checkNotNull(activity).configure(widgetId, targetJson)
     }.runOnQueue(Queues.MAIN)
   }
 }

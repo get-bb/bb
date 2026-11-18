@@ -85,6 +85,7 @@ interface CreateProvisioningThreadArgs {
   fork: ThreadForkPoint | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
+  createEmpty: boolean;
 }
 
 interface ResolveForkPointArgs {
@@ -526,31 +527,32 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
-    await attemptDispatch(deps, {
-      thread,
-      payload: {
-        input: args.request.input,
-        mode: "start",
-        model: execution.model,
-        reasoningLevel: execution.reasoningLevel,
-        serviceTier: execution.serviceTier,
-        permissionMode: execution.permissionMode,
-        ...(args.request.executionInputSources !== undefined
-          ? { executionInputSources: args.request.executionInputSources }
-          : {}),
-        ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
-      },
-      source: { kind: "inline" },
-      queuePayload: { kind: "inline" },
-      pluginSubmission: args.request.pluginSubmission ?? null,
-      systemNotice: null,
-      startContext,
-      executionDefaults: executionPlanArgs,
-      origin: args.request.origin,
-      originPluginId: args.request.originPluginId ?? null,
-      startedOnBehalfOf: args.request.startedOnBehalfOf,
-      trigger: "user",
-    });
+    if (!args.createEmpty)
+      await attemptDispatch(deps, {
+        thread,
+        payload: {
+          input: args.request.input,
+          mode: "start",
+          model: execution.model,
+          reasoningLevel: execution.reasoningLevel,
+          serviceTier: execution.serviceTier,
+          permissionMode: execution.permissionMode,
+          ...(args.request.executionInputSources !== undefined
+            ? { executionInputSources: args.request.executionInputSources }
+            : {}),
+          ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+        },
+        source: { kind: "inline" },
+        queuePayload: { kind: "inline" },
+        pluginSubmission: args.request.pluginSubmission ?? null,
+        systemNotice: null,
+        startContext,
+        executionDefaults: executionPlanArgs,
+        origin: args.request.origin,
+        originPluginId: args.request.originPluginId ?? null,
+        startedOnBehalfOf: args.request.startedOnBehalfOf,
+        trigger: "user",
+      });
   } catch (error) {
     discardUnstartedThread(deps, thread);
     throw error;
@@ -868,6 +870,7 @@ export async function createThreadFromRequest(
     environmentIntent,
     defaultModel,
     fork,
+    createEmpty: requestInput.createEmpty === true,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }
       : {}),

@@ -8,6 +8,10 @@
         <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
       </intent-filter>
     </activity>
+    <activity
+      android:name="app.getbb.projectwidget.ProjectWidgetLaunchActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.NoDisplay" />
     <receiver
       android:name="app.getbb.projectwidget.ProjectWidgetProvider"
       android:exported="false"
