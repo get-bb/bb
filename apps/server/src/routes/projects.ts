@@ -2,7 +2,6 @@ import {
   projectMachineEnvironmentView,
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
-import { requestAllHostDerivedStateRefresh } from "../services/hosts/host-derived-state.js";
 import {
   setMachineEnvironmentVariable,
   deleteMachineEnvironmentVariable,
@@ -364,7 +363,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const project = requirePublicProject(deps.db, context.req.param("id"));
     await deleteMachineEnvironmentVariable(deps.db, payload.name, project.id);
     deps.hub.notifySystem(["config-changed"]);
-    requestAllHostDerivedStateRefresh(deps);
     return context.json(
       await projectMachineEnvironmentView(deps.db, project.id),
     );
@@ -385,7 +383,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       project.id,
     );
     deps.hub.notifySystem(["config-changed"]);
-    requestAllHostDerivedStateRefresh(deps);
     return context.json(
       await projectMachineEnvironmentView(deps.db, project.id),
     );
@@ -406,7 +403,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       project.id,
     );
     deps.hub.notifySystem(["config-changed"]);
-    requestAllHostDerivedStateRefresh(deps);
     return context.json(
       await projectMachineEnvironmentView(deps.db, project.id),
     );

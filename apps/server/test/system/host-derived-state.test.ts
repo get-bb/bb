@@ -43,17 +43,28 @@ function statusAnswer(
   };
 }
 
+const CODEX_DIRECTORY = "/opt/codex-bin";
+
 function seedHost(harness: TestAppHarness, hostId: string) {
-  let installed = false;
+  let appliedPath: string | null = null;
   const { host, session } = seedHostSession(harness.deps, { id: hostId });
   const { requests } = registerHostRpcResponder(harness, {
     hostId: host.id,
     sessionId: session.id,
+    onMachineEnvironment: ({ environment }) => {
+      const value = environment.entries.find(
+        (entry) => entry.name === "PATH",
+      )?.value;
+      appliedPath = typeof value === "string" ? value : null;
+    },
     handle: ({ command }) => {
       if (command.type !== "provider.installation.status") {
         throw new Error(`Unexpected RPC command ${command.type}`);
       }
-      return statusAnswer(command, installed);
+      return statusAnswer(
+        command,
+        appliedPath?.includes(CODEX_DIRECTORY) ?? false,
+      );
     },
   });
   const hostChanges: string[] = [];
@@ -65,9 +76,6 @@ function seedHost(harness: TestAppHarness, hostId: string) {
   return {
     hostId: host.id,
     hostChanges,
-    install: () => {
-      installed = true;
-    },
     probes: () =>
       requests.filter(
         ({ command }) => command.type === "provider.installation.status",
@@ -88,28 +96,44 @@ async function codexInstalled(
 }
 
 describe("host-derived state owner", () => {
-  it("re-probes connected hosts when the machine environment changes", async () => {
+  it("re-probes a host after its daemon applies a changed machine environment, both ways", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness, "host-derived-machine-env");
       expect(await codexInstalled(harness, host.hostId)).toBe(false);
 
-      host.install();
-      const response = await harness.app.request(
-        "/api/v1/settings/machine-environment",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: "BB_TEST_PATH_HINT", value: "1" }),
-        },
-      );
-      expect(response.status).toBe(200);
+      const setPath = async (method: "POST" | "DELETE") => {
+        const changesBefore = host.hostChanges.filter(
+          (change) => change === "provider-cli-status-changed",
+        ).length;
+        const response = await harness.app.request(
+          "/api/v1/settings/machine-environment",
+          {
+            method,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(
+              method === "POST"
+                ? { name: "PATH", value: `${CODEX_DIRECTORY}:/usr/bin` }
+                : { name: "PATH" },
+            ),
+          },
+        );
+        expect(response.status).toBe(200);
+        await vi.waitFor(() =>
+          expect(
+            host.hostChanges.filter(
+              (change) => change === "provider-cli-status-changed",
+            ).length,
+          ).toBeGreaterThan(changesBefore),
+        );
+      };
 
-      await vi.waitFor(() =>
-        expect(host.hostChanges).toContain("provider-cli-status-changed"),
-      );
-      const probesAfterRefresh = host.probes();
+      await setPath("POST");
+      const probesAfterInstall = host.probes();
       expect(await codexInstalled(harness, host.hostId)).toBe(true);
-      expect(host.probes()).toBe(probesAfterRefresh);
+      expect(host.probes()).toBe(probesAfterInstall);
+
+      await setPath("DELETE");
+      expect(await codexInstalled(harness, host.hostId)).toBe(false);
     });
   });
 

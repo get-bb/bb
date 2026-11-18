@@ -4,12 +4,14 @@ import { resolveHostEnvironment } from "./host-environment.js";
 export class HostEnvironmentSync {
   private revision = 0;
   private readonly pending = new Map<string, number>();
+  private readonly sentEntriesByHostId = new Map<string, string>();
 
   constructor(
     private readonly deps: Pick<AppDeps, "db" | "hub"> & {
       config: Pick<AppDeps["config"], "dataDir">;
       logger: Pick<AppDeps["logger"], "warn">;
     },
+    private readonly onEnvironmentChanged: (hostId: string) => void,
   ) {
     deps.hub.onChangedMessage((message) => {
       if (
@@ -45,10 +47,17 @@ export class HostEnvironmentSync {
       .then((environment) => {
         if (this.pending.get(hostId) !== revision) return;
         this.pending.delete(hostId);
-        this.deps.hub.sendDaemonMessage(hostId, {
+        const sent = this.deps.hub.sendDaemonMessage(hostId, {
           type: "machine-environment.replace",
           environment,
         });
+        if (!sent) return;
+        const entries = JSON.stringify(environment.entries);
+        const previous = this.sentEntriesByHostId.get(hostId);
+        this.sentEntriesByHostId.set(hostId, entries);
+        if (previous !== undefined && previous !== entries) {
+          this.onEnvironmentChanged(hostId);
+        }
       })
       .catch(() => {
         if (this.pending.get(hostId) === revision) this.pending.delete(hostId);

@@ -73,7 +73,7 @@ async function drainHost(
   }
 }
 
-function requestHostDerivedStateRefresh(
+export function requestHostDerivedStateRefresh(
   deps: LoggedWorkSessionDeps,
   hostId: string,
 ): void {
@@ -81,14 +81,6 @@ function requestHostDerivedStateRefresh(
   refresher.pending.add(hostId);
   if (!refresher.running.has(hostId)) {
     void drainHost(deps, refresher, hostId);
-  }
-}
-
-export function requestAllHostDerivedStateRefresh(
-  deps: LoggedWorkSessionDeps,
-): void {
-  for (const hostId of deps.hub.listConnectedHostIds()) {
-    requestHostDerivedStateRefresh(deps, hostId);
   }
 }
 
