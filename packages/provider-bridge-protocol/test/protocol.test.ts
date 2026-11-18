@@ -42,11 +42,17 @@ describe("handshake", () => {
 });
 
 describe("provider installation status", () => {
-  it("requires the host-scoped contributed env on every request", () => {
+  it("accepts requests from runtimes and harnesses that send no envVars", () => {
     expect(
-      providerInstallationStatusParamsSchema.safeParse({ providerId: "codex" })
-        .success,
-    ).toBe(false);
+      providerInstallationStatusParamsSchema.parse({ providerId: "codex" })
+        .envVars,
+    ).toBeUndefined();
+    expect(
+      providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        envVars: { CODEX_HOME: "/managed" },
+      }).envVars,
+    ).toEqual({ CODEX_HOME: "/managed" });
   });
 
   it("defaults legacy requests to update discovery and accepts local-only probes", () => {

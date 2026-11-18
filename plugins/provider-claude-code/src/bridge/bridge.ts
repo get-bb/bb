@@ -2314,7 +2314,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       try {
         sendResult(
           request.id,
-          await listModelsMemoized(request.params.envVars),
+          await listModelsMemoized(request.params.envVars ?? {}),
         );
       } catch (error) {
         if (error instanceof MissingClaudeCliError) {
@@ -2334,7 +2334,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           request.id,
           await listCommandsMemoized(
             request.params.cwd,
-            request.params.envVars,
+            request.params.envVars ?? {},
           ),
         );
       } catch (error) {
@@ -2353,7 +2353,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderHealth(
-          buildSessionEnv(request.params.envVars),
+          buildSessionEnv(request.params.envVars ?? {}),
         ),
       );
       break;
@@ -2361,7 +2361,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderUsage(
-          buildSessionEnv(request.params.envVars),
+          buildSessionEnv(request.params.envVars ?? {}),
         ),
       );
       break;
@@ -2369,7 +2369,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderInstallationStatus(
-          buildSessionEnv(request.params.envVars),
+          buildSessionEnv(request.params.envVars ?? {}),
           request.params.checkUpdates,
         ),
       );
@@ -2378,7 +2378,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderInstallationRun(
-          buildSessionEnv(request.params.envVars),
+          buildSessionEnv(request.params.envVars ?? {}),
           request.params.action,
         ),
       );

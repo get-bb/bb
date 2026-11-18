@@ -42,7 +42,7 @@ const sessionConstructionFields = {
 export const modelListParamsSchema = z
   .object({
     cwd: z.string().min(1).optional(),
-    envVars: z.record(z.string(), z.string()),
+    envVars: z.record(z.string(), z.string()).optional(),
     selectedModel: z.string().min(1).optional(),
   })
   .passthrough();
@@ -50,7 +50,7 @@ export const modelListParamsSchema = z
 export const commandListParamsSchema = z
   .object({
     cwd: z.string().min(1),
-    envVars: z.record(z.string(), z.string()),
+    envVars: z.record(z.string(), z.string()).optional(),
   })
   .passthrough();
 
