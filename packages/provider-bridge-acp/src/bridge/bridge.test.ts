@@ -4364,7 +4364,12 @@ describe("acp bridge", () => {
     const firstPid = Number(
       readFileSync(launchLog, "utf8").match(/launch (\d+)/u)?.[1],
     );
-    expect(firstPid).toBeGreaterThan(0);
+    const firstAgent = [...childProcesses.children]
+      .reverse()
+      .find((candidate) => candidate.pid === firstPid);
+    if (firstAgent === undefined) {
+      throw new Error("The first ACP agent was not tracked");
+    }
     await waitForResponse(
       sendTurnRequest("turn/start", providerThreadId, {
         input: [{ type: "text", text: "hang", mentions: [] }],
@@ -4380,14 +4385,7 @@ describe("acp bridge", () => {
       () => (notifications("session/replaced").length === 1 ? true : undefined),
       "permission rebuild",
     );
-    await waitFor(() => {
-      try {
-        process.kill(firstPid, 0);
-        return undefined;
-      } catch {
-        return true;
-      }
-    }, "previous agent exit");
+    await waitForExit(firstAgent);
     expect(
       readFileSync(launchLog, "utf8")
         .trim()
@@ -7858,6 +7856,88 @@ describe("acp bridge: questions the agent asks", () => {
         { childRef: "child-alpha", status: "running" },
         { childRef: "child-beta", status: "completed" },
       ],
+    });
+  });
+
+  it("does not acknowledge a tell that changes the requested text", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_WRONG_TEXT: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "for alpha only",
+      }),
+    );
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+  });
+
+  it("acknowledges a tell completed on the first tool call", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_RESULT_ON_TOOL_CALL: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "delivered once",
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      childRef: "child-alpha",
+      messageId: "message-child-alpha",
+    });
+  });
+
+  it("rejects a second subagent action while session options are applying", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_CONFIG_DELAY_MS: "300",
+    });
+    const options = {
+      ...executionOptions({}),
+      sessionOptions: { approach: "plan" },
+    };
+    const first = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "first action",
+      clientRequestId: "creq_bbcdefghjk",
+      options,
+    });
+    const second = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "second action",
+      clientRequestId: "creq_cbcdefghjk",
+      options,
+    });
+    expect((await waitForResponse(second)).error?.message).toContain(
+      "The parent session already has an active turn",
+    );
+    expect((await waitForResponse(first)).error).toBeUndefined();
+  });
+
+  it("settles a running grok subagent when the agent exits", async () => {
+    const readyFile = join(workspaceDir, "grok-exit-ready");
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_READY_FILE: readyFile,
+    });
+    trackedAgent(readyFile).kill("SIGTERM");
+    await waitForAgentExit(readyFile);
+    const settled = await waitFor(
+      () =>
+        threadEventsOfType("item/delegation/completed").find((event) =>
+          JSON.stringify(event).includes('"childRef":"child-alpha"'),
+        ),
+      "exited agent delegation",
+    );
+    expect(settled).toMatchObject({
+      item: expect.objectContaining({
+        childRef: "child-alpha",
+        status: "interrupted",
+      }),
     });
   });
 

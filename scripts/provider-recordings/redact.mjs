@@ -10,18 +10,18 @@
  * (or, for a converted transcript, the bare message line) is rewritten:
  *
  *   1. structurally (when it parses as JSON): provider tool and command
- *      catalogs collapse to names, environment maps and secret-shaped fields
- *      lose their values, free-form user content is replaced, and long strings
- *      keep Unicode-safe heads and tails around a marker;
+ *      catalogs collapse to names, `env`/`envVars` maps lose secret-shaped
+ *      keys and the record-mode variable, and any string longer than
+ *      MAX_STRING_CHARS keeps its head and tail around a marker;
  *   2. textually: absolute paths under the home directory become
  *      `/home/user`, emails become `user@example.com`, and token shapes
  *      (bbde_, GitHub gh[pousr]_/github_pat_, sk-, sk-ant-, xox?-, JWTs,
  *      bearer values, Authorization headers) are replaced by
  *      `<prefix>REDACTED`.
  *
- * The script is idempotent: a redacted file rewrites to itself. Output is
- * staged until every file passes the survivor sweep; malformed input or any
- * survivor aborts publication instead of leaving a partial output directory.
+ * The script is idempotent: a redacted file rewrites to itself. After writing
+ * it sweeps the output for every pattern again and exits 3 if anything
+ * survived, so a new secret shape fails loudly instead of landing in git.
  */
 import {
   mkdirSync,

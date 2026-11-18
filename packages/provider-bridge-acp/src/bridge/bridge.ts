@@ -264,6 +264,7 @@ interface PendingGrokSubagentAction {
   requestId: AcpBridgeRequestId;
   toolName: "send_subagent_message" | "kill_command_or_subagent";
   toolCallId?: string;
+  text?: string;
 }
 
 interface AcpPendingTurnInput {
@@ -330,6 +331,7 @@ interface AcpThreadSession {
   subagentIdsByToolCall: Map<string, string>;
   earlyGrokSubagentNotifications: Map<string, GrokSubagentNotification[]>;
   pendingSubagentActions: Map<string, PendingGrokSubagentAction>;
+  subagentActionReserved: boolean;
   pendingPermissions: Set<PendingAcpPermission>;
   sessionGrants: Set<string>;
   pendingElicitations: Map<AcpAgentRequestResponder, AbortController>;
@@ -2870,6 +2872,9 @@ async function startAgentSession(
       handleAgentRequest(session, method, requestParams, responder),
     onExit: (info) => {
       const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
+      if (!session.stopping) {
+        settleOpenSessionDelegations(session);
+      }
       cancelPendingPermissions(session);
       cancelPendingSubagentActions(
         session,
@@ -2937,6 +2942,7 @@ async function startAgentSession(
     subagentIdsByToolCall: new Map(),
     earlyGrokSubagentNotifications: new Map(),
     pendingSubagentActions: new Map(),
+    subagentActionReserved: false,
     pendingPermissions: new Set(),
     sessionGrants: new Set(),
     pendingElicitations: new Map(),
@@ -4546,6 +4552,26 @@ function grokSubagentToolTarget(
     : undefined;
 }
 
+function grokSubagentToolText(rawInput: unknown): string | undefined {
+  if (!isJsonObject(rawInput)) return undefined;
+  const text = rawInput["text"];
+  return typeof text === "string" ? text : undefined;
+}
+
+function grokSubagentActionMatches(
+  action: PendingGrokSubagentAction,
+  update: { title?: string; rawInput?: unknown },
+): boolean {
+  if (action.toolName !== update.title) return false;
+  if (
+    grokSubagentToolTarget(action.toolName, update.rawInput) !== action.childRef
+  ) {
+    return false;
+  }
+  if (action.kind !== "tell" || action.text === undefined) return true;
+  return grokSubagentToolText(update.rawInput) === action.text;
+}
+
 function noteGrokSubagentToolCall(
   session: AcpThreadSession,
   update: {
@@ -4571,20 +4597,35 @@ function noteGrokSubagentToolCall(
       flushEarlyGrokSubagentNotifications(session, subagentId);
     } catch {}
   }
-  const action = Array.from(session.pendingSubagentActions.values()).find(
+  let action = Array.from(session.pendingSubagentActions.values()).find(
     (candidate) => candidate.toolCallId === update.toolCallId,
   );
   if (action === undefined) {
     const pending = Array.from(session.pendingSubagentActions.values()).find(
       (candidate) =>
         candidate.toolCallId === undefined &&
-        candidate.toolName === update.title &&
-        grokSubagentToolTarget(candidate.toolName, update.rawInput) ===
-          candidate.childRef,
+        grokSubagentActionMatches(candidate, update),
     );
-    if (pending !== undefined && update.sessionUpdate === "tool_call") {
-      pending.toolCallId = update.toolCallId;
+    if (pending === undefined || update.sessionUpdate !== "tool_call") {
+      return;
     }
+    pending.toolCallId = update.toolCallId;
+    if (update.status !== "completed" && update.status !== "failed") {
+      return;
+    }
+    action = pending;
+  }
+  if (
+    action.kind === "tell" &&
+    action.text !== undefined &&
+    update.rawInput !== undefined &&
+    grokSubagentToolText(update.rawInput) !== action.text
+  ) {
+    failPendingSubagentAction(
+      session,
+      action,
+      `Grok tell action sent different text to subagent "${action.childRef}"`,
+    );
     return;
   }
   if (update.status === "failed") {
@@ -5008,7 +5049,7 @@ async function startGrokSubagentAction(
   > & { id: AcpBridgeRequestId },
 ): Promise<void> {
   const { childRef, clientRequestId, options } = request.params;
-  if (session.activePromptKind !== null) {
+  if (session.activePromptKind !== null || session.subagentActionReserved) {
     sendError(
       request.id,
       -32000,
@@ -5037,45 +5078,62 @@ async function startGrokSubagentAction(
     );
     return;
   }
-  if (options.sessionOptions !== undefined) {
-    await applySessionOptionSelections(session, options.sessionOptions);
+  const requestedText =
+    kind === "tell" &&
+    "text" in request.params &&
+    typeof request.params.text === "string"
+      ? request.params.text
+      : undefined;
+  session.subagentActionReserved = true;
+  try {
+    if (options.sessionOptions !== undefined) {
+      await applySessionOptionSelections(session, options.sessionOptions);
+    }
+    if (
+      session.stopping ||
+      sessionsByBbThreadId.get(session.bbThreadId) !== session
+    ) {
+      sendError(
+        request.id,
+        -32000,
+        "The parent session was replaced before the subagent action started",
+      );
+      return;
+    }
+    if (session.activePromptKind !== null) {
+      sendError(
+        request.id,
+        -32000,
+        "The parent session already has an active turn",
+      );
+      return;
+    }
+    const toolName =
+      kind === "tell" ? "send_subagent_message" : "kill_command_or_subagent";
+    const text =
+      kind === "tell"
+        ? buildGrokSubagentActionPrompt({
+            kind,
+            childRef,
+            text: requestedText,
+          })
+        : buildGrokSubagentActionPrompt({ kind, childRef });
+    session.pendingSubagentActions.set(String(request.id), {
+      kind,
+      childRef,
+      requestId: request.id,
+      toolName,
+      ...(requestedText === undefined ? {} : { text: requestedText }),
+    });
+    runTurn(session, {
+      clientRequestId,
+      input: [{ type: "text", text, mentions: [] }],
+      requestId: null,
+      options,
+    });
+  } finally {
+    session.subagentActionReserved = false;
   }
-  if (
-    session.stopping ||
-    sessionsByBbThreadId.get(session.bbThreadId) !== session
-  ) {
-    sendError(
-      request.id,
-      -32000,
-      "The parent session was replaced before the subagent action started",
-    );
-    return;
-  }
-  const toolName =
-    kind === "tell" ? "send_subagent_message" : "kill_command_or_subagent";
-  const text =
-    kind === "tell"
-      ? buildGrokSubagentActionPrompt({
-          kind,
-          childRef,
-          text:
-            "text" in request.params && typeof request.params.text === "string"
-              ? request.params.text
-              : undefined,
-        })
-      : buildGrokSubagentActionPrompt({ kind, childRef });
-  session.pendingSubagentActions.set(String(request.id), {
-    kind,
-    childRef,
-    requestId: request.id,
-    toolName,
-  });
-  runTurn(session, {
-    clientRequestId,
-    input: [{ type: "text", text, mentions: [] }],
-    requestId: null,
-    options,
-  });
 }
 
 async function handleRequest(

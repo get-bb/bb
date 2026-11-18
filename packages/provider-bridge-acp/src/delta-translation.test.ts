@@ -3137,6 +3137,16 @@ describe("acp delta translation (dialects)", () => {
           label: "Read README first line",
         }),
       }),
+      expect.objectContaining({
+        type: "item/delegation/progress",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          childRef: "78d1cd3b-94d2-4c87-82a2-c83fe54712f1",
+          label: "Read README first line",
+          summary: "model default",
+        }),
+      }),
     ]);
 
     expect(
@@ -3323,6 +3333,40 @@ describe("acp delta translation (dialects)", () => {
       }),
     ]);
     expect(harness.translator.settleOpenDelegations(THREAD_ID)).toEqual([]);
+  });
+
+  it("publishes a background grok delegation report after the parent turn", () => {
+    const harness = dialectHarness("grok");
+    const opened = harness.translate(
+      grokSpawnUpdate({ toolCallId: "call-spawn", background: true }),
+    );
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+    harness.translate(turnCompletedEvent("end_turn"));
+
+    const reported = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.noteDelegationReport(THREAD_ID, {
+        toolCallId: "call-spawn",
+        childRef: "child-1",
+        label: "Audit the config loader",
+        detail: "turn 2",
+      }),
+    });
+    expect(reported).toEqual([
+      expect.objectContaining({
+        type: "item/delegation/progress",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          status: "pending",
+          childRef: "child-1",
+          label: "Audit the config loader",
+          background: true,
+          summary: "turn 2",
+        }),
+      }),
+    ]);
   });
 
   it("closes a failed or cancelled background grok spawn without a child", () => {

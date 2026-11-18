@@ -1345,15 +1345,28 @@ export function createAcpDeltaTranslator(
       label: report.label,
     };
     mergedToolCalls.set(key, { ...open, delegation: report });
+    const presentation = delegationPresentation({
+      label: report.label,
+      ...(report.detail === undefined ? {} : { detail: report.detail }),
+    });
     return [
       {
         kind: "item.open",
         key: { providerItemId: report.toolCallId },
         item,
-        presentation: delegationPresentation({
+        presentation,
+      },
+      {
+        kind: "item.progress",
+        key: { providerItemId: report.toolCallId },
+        snapshot: {
+          type: "delegation",
+          childRef: report.childRef,
           label: report.label,
-          ...(report.detail === undefined ? {} : { detail: report.detail }),
-        }),
+          background: classified.item.background,
+          ...(report.detail === undefined ? {} : { summary: report.detail }),
+        },
+        flush: true,
       },
     ];
   }
