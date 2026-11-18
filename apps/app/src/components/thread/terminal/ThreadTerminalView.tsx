@@ -78,10 +78,10 @@ import {
 } from "./terminal-mobile-input";
 import { forwardLateImeInput } from "./terminal-late-ime-input";
 import {
-  evictTerminalRuntime,
+  type ParkedTerminalRuntime,
   parkTerminalRuntime,
   takeParkedTerminalRuntime,
-} from "./terminal-runtime-cache";
+} from "@/lib/terminal-runtime-cache";
 import {
   createTerminalOsc8LinkHandler,
   isTerminalLinkActivation,
@@ -706,18 +706,51 @@ interface TerminalRuntimeLive {
   updateHoveredTerminalLink: (target: TerminalLinkTarget | null) => void;
 }
 
-interface TerminalRuntime {
-  connectionNotice: TerminalConnectionNotice | null;
+interface TerminalRuntimeParts {
   dispose: () => void;
   element: HTMLDivElement;
-  ended: boolean;
   fitAddon: FitAddon;
-  lastStatusNotice: TerminalSessionStatusNoticeRef;
   live: RefObject<TerminalRuntimeLive>;
-  parked: boolean;
   searchAddon: SearchAddon;
   terminal: XTermTerminal;
   transport: TerminalWebSocketTransport;
+}
+
+class TerminalRuntime implements ParkedTerminalRuntime {
+  connectionNotice: TerminalConnectionNotice | null = null;
+  ended = false;
+  readonly lastStatusNotice: TerminalSessionStatusNoticeRef = {
+    current: null,
+  };
+  parked = false;
+  live: RefObject<TerminalRuntimeLive>;
+  readonly dispose: () => void;
+  readonly element: HTMLDivElement;
+  readonly fitAddon: FitAddon;
+  readonly searchAddon: SearchAddon;
+  readonly terminal: XTermTerminal;
+  readonly transport: TerminalWebSocketTransport;
+
+  constructor(parts: TerminalRuntimeParts) {
+    this.dispose = parts.dispose;
+    this.element = parts.element;
+    this.fitAddon = parts.fitAddon;
+    this.live = parts.live;
+    this.searchAddon = parts.searchAddon;
+    this.terminal = parts.terminal;
+    this.transport = parts.transport;
+  }
+}
+
+function takeParkedThreadTerminalRuntime(
+  terminalId: string,
+): TerminalRuntime | null {
+  const parked = takeParkedTerminalRuntime(terminalId);
+  if (parked instanceof TerminalRuntime) {
+    return parked;
+  }
+  parked?.dispose();
+  return null;
 }
 
 const TERMINAL_ENDED_ERROR_CODES = new Set([
@@ -760,9 +793,7 @@ function mountThreadTerminal({
   let unobserveResize: (() => void) | null = null;
   let stopObservingFonts: (() => void) | null = null;
   const reportDocumentVisibility = () => {
-    attached?.transport.setVisible(
-      !attached.parked && document.visibilityState === "visible",
-    );
+    attached?.transport.setVisible(document.visibilityState === "visible");
   };
 
   const attachRuntime = (runtime: TerminalRuntime) => {
@@ -1013,9 +1044,6 @@ function mountThreadTerminal({
           },
           terminal,
         });
-        if (runtime.ended && runtime.parked) {
-          evictTerminalRuntime(sessionId);
-        }
       },
       onSequenceGap: () => {
         terminal.reset();
@@ -1029,8 +1057,7 @@ function mountThreadTerminal({
       url: buildTerminalWebSocketUrl({ terminalId: sessionId }),
     });
 
-    const runtime: TerminalRuntime = {
-      connectionNotice: null,
+    const runtime = new TerminalRuntime({
       dispose: () => {
         if (runtimeDisposed) {
           return;
@@ -1047,15 +1074,12 @@ function mountThreadTerminal({
         element.remove();
       },
       element,
-      ended: false,
       fitAddon,
-      lastStatusNotice: { current: null },
       live: liveRef,
-      parked: false,
       searchAddon: loadedSearchAddon,
       terminal,
       transport,
-    };
+    });
 
     writeTerminalSessionStatusNotice({
       lastNotice: runtime.lastStatusNotice,
@@ -1107,12 +1131,11 @@ function mountThreadTerminal({
     transport.start();
   }
 
-  const reused = keepAlive
-    ? takeParkedTerminalRuntime<TerminalRuntime>(sessionId)
-    : null;
+  const reused = keepAlive ? takeParkedThreadTerminalRuntime(sessionId) : null;
   if (reused !== null) {
     attachRuntime(reused);
     reused.terminal.refresh(0, reused.terminal.rows - 1);
+    reused.transport.start();
   } else {
     void mountTerminal(container).catch((error) => {
       if (!disposed) {
@@ -1152,7 +1175,7 @@ function mountThreadTerminal({
       runtime.element.remove();
       runtime.parked = true;
       runtime.terminal.clearSelection();
-      runtime.transport.setVisible(false);
+      runtime.transport.suspend();
       parkTerminalRuntime(sessionId, runtime);
       return;
     }

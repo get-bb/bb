@@ -3,7 +3,11 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
-import { evictTerminalRuntime } from "./terminal-runtime-cache";
+import {
+  applyTerminalSessionClose,
+  applyTerminalSessionMissing,
+} from "@/hooks/cache-owners/terminal-cache-owner";
+import { QueryClient } from "@tanstack/react-query";
 import { ThreadTerminalView } from "./ThreadTerminalView";
 
 const state = vi.hoisted(() => ({
@@ -11,6 +15,8 @@ const state = vi.hoisted(() => ({
     dispose: ReturnType<typeof vi.fn>;
     onMessage: (message: unknown) => void;
     setVisible: ReturnType<typeof vi.fn>;
+    start: ReturnType<typeof vi.fn>;
+    suspend: ReturnType<typeof vi.fn>;
   }>,
 }));
 
@@ -29,6 +35,8 @@ vi.mock("@bb/client-core", async (importOriginal) => ({
   TerminalWebSocketTransport: class {
     dispose = vi.fn();
     setVisible = vi.fn();
+    start = vi.fn();
+    suspend = vi.fn();
     onMessage: (message: unknown) => void;
     constructor(options: { onMessage: (message: unknown) => void }) {
       this.onMessage = options.onMessage;
@@ -37,7 +45,6 @@ vi.mock("@bb/client-core", async (importOriginal) => ({
     acknowledgeOutput() {}
     sendInput() {}
     sendResize() {}
-    start() {}
   },
 }));
 
@@ -51,7 +58,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  evictTerminalRuntime(session.id);
+  applyTerminalSessionMissing({
+    queryClient: new QueryClient(),
+    terminalId: session.id,
+  });
   vi.restoreAllMocks();
   state.transports = [];
 });
@@ -77,32 +87,49 @@ async function mountTerminal(keepAlive: boolean) {
   return { view, xterm };
 }
 
-it("reuses the parked terminal and socket when the same session remounts", async () => {
+it("closes the socket of a parked terminal and resumes it when the same session remounts", async () => {
   const first = await mountTerminal(true);
   const transport = state.transports[0]!;
+  expect(transport.start).toHaveBeenCalledTimes(1);
   first.view.unmount();
-  expect(transport.setVisible).toHaveBeenLastCalledWith(false);
+  expect(transport.suspend).toHaveBeenCalledTimes(1);
   expect(transport.dispose).not.toHaveBeenCalled();
   const second = renderTerminal(true);
   expect(second.container.querySelector(".xterm")).toBe(first.xterm);
   expect(state.transports).toHaveLength(1);
+  expect(transport.start).toHaveBeenCalledTimes(2);
   expect(transport.setVisible).toHaveBeenLastCalledWith(true);
   expect(transport.dispose).not.toHaveBeenCalled();
 });
 
-it("disposes a parked terminal that exits and creates a new one on return", async () => {
+it("disposes a parked terminal that closes as exited and creates a new one on return", async () => {
   const first = await mountTerminal(true);
   const transport = state.transports[0]!;
   first.view.unmount();
+  act(() => {
+    applyTerminalSessionClose({
+      queryClient: new QueryClient(),
+      session: { ...session, status: "exited", exitCode: 0 },
+      terminalId: session.id,
+    });
+  });
+  expect(transport.dispose).toHaveBeenCalledTimes(1);
+  await mountTerminal(true);
+  expect(state.transports).toHaveLength(2);
+});
+
+it("does not park a terminal that exited while it was shown", async () => {
+  const first = await mountTerminal(true);
+  const transport = state.transports[0]!;
   act(() => {
     transport.onMessage({
       type: "exited",
       session: { ...session, status: "exited", exitCode: 0 },
     });
   });
+  first.view.unmount();
+  expect(transport.suspend).not.toHaveBeenCalled();
   expect(transport.dispose).toHaveBeenCalledTimes(1);
-  await mountTerminal(true);
-  expect(state.transports).toHaveLength(2);
 });
 
 it("disposes the terminal on unmount without keepAlive", async () => {

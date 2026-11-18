@@ -8,7 +8,7 @@ import {
   terminalsQueryKey,
   type TerminalQueryScope,
 } from "../queries/query-keys";
-import { evictTerminalRuntime } from "@/components/thread/terminal/terminal-runtime-cache";
+import { evictTerminalRuntime } from "@/lib/terminal-runtime-cache";
 
 interface TerminalSessionCacheArgs {
   queryClient: QueryClient;

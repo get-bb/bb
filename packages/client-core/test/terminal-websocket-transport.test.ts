@@ -175,6 +175,48 @@ describe("TerminalWebSocketTransport", () => {
     harness.transport.dispose();
   });
 
+  it("closes the socket on suspend and resumes from the next output sequence", () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    const output = (seq: number): TerminalServerMessage => ({
+      type: "output",
+      chunk: {
+        seq,
+        dataBase64: Buffer.from(String(seq)).toString("base64"),
+      },
+    });
+
+    harness.transport.start();
+    harness.transport.sendResize(80, 24);
+    harness.sockets[0]?.open();
+    harness.sockets[0]?.receive(output(0));
+    harness.sockets[0]?.receive(output(1));
+    harness.transport.suspend();
+    vi.advanceTimersByTime(60_000);
+
+    expect(harness.sockets).toHaveLength(1);
+    expect(harness.sockets[0]?.readyState).toBe(3);
+    expect(harness.states.at(-1)).toBe("closed");
+
+    harness.transport.start();
+    harness.sockets[1]?.open();
+    harness.sockets[1]?.receive(output(2));
+
+    expect(harness.urls).toEqual([
+      "ws://example.test/ws/terminals/term-1?sinceSeq=0&outputAcks=1",
+      "ws://example.test/ws/terminals/term-1?sinceSeq=2&outputAcks=1",
+    ]);
+    expect(
+      harness.sockets[1]?.sent.map((payload) => JSON.parse(payload)),
+    ).toEqual([{ type: "resize", cols: 80, rows: 24 }]);
+    expect(
+      harness.messages
+        .filter((message) => message.type === "output")
+        .map((message) => message.chunk.seq),
+    ).toEqual([0, 1, 2]);
+    harness.transport.dispose();
+  });
+
   it("sends one acknowledgement for the furthest output parsed in a task", async () => {
     const harness = createHarness();
     harness.transport.start();
