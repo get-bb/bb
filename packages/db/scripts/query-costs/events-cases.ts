@@ -73,6 +73,9 @@ import {
   listOpenBackgroundTaskItemRowsForThread,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOwnerStoppedBackgroundTaskRowsForHost,
+  listStoredStandaloneThreadTimelineRows,
+  listStoredThreadInteractionLifecycleRows,
+  listStoredThreadNoticeAndInteractionRows,
   listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
@@ -943,6 +946,39 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
           ...fixture.delegationItemIds.slice(-1),
         ],
         threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredStandaloneThreadTimelineRows`,
+    run: (db, fixture) =>
+      listStoredStandaloneThreadTimelineRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: Math.max(0, fixture.latestSequence - 2_000),
+        beforeSequence: fixture.latestSequence + 1,
+        excludeDiagnosticEvents: true,
+        maxInlineOutputChars: 32_000,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredThreadInteractionLifecycleRows`,
+    run: (db, fixture) =>
+      listStoredThreadInteractionLifecycleRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: 0,
+        beforeSequence: fixture.latestSequence + 1,
+        maxInlineOutputChars: 32_000,
+        interactionIds: ["pint_query_cost_1", "pint_query_cost_2"],
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredThreadNoticeAndInteractionRows`,
+    run: (db, fixture) =>
+      listStoredThreadNoticeAndInteractionRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: Math.max(0, fixture.latestSequence - 2_000),
+        beforeSequence: fixture.latestSequence + 1,
+        excludeDiagnosticEvents: true,
+        maxInlineOutputChars: 32_000,
       }),
   },
   {

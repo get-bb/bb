@@ -740,6 +740,10 @@ describe("slow query index plans", () => {
           threadId,
           throughSequence: 30,
         }),
+      probes: [
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH completed USING COVERING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+      ],
     },
     {
       name: "lists rows in a sequence range",
@@ -751,8 +755,9 @@ describe("slow query index plans", () => {
           threadId,
           throughSequence: 30,
         }),
+      probes: [],
     },
-  ])("$name through the thread sequence index", ({ run }) => {
+  ])("$name through the thread sequence index", ({ probes, run }) => {
     const { db, thread } = setup();
 
     const [query] = captureStatements(db, () => run(db, thread.id));
@@ -761,6 +766,7 @@ describe("slow query index plans", () => {
     }
     expect(queryPlanDetails({ db, ...query }).split("\n")).toEqual([
       "SEARCH events USING INDEX events_thread_sequence_idx (thread_id=? AND sequence>? AND sequence<?)",
+      ...probes,
     ]);
 
     db.$client.close();
