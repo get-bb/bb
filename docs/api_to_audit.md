@@ -293,7 +293,7 @@ origin filtering, and render isolation during streaming and across messages.
 
 ## `PluginMessageActionRegistration.experimental_surfaces` (`@get-bb/plugin-sdk/app`)
 
-Requires SDK 0.6.157.
+Requires SDK 0.6.158.
 
 `app.slots.messageAction({ ..., experimental_surfaces })` limits the action to
 some thread timelines. `"thread-view"` is bb's thread view, including split panes;
