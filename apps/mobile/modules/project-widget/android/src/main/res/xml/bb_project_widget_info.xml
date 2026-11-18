@@ -2,10 +2,10 @@
   android:configure="app.getbb.projectwidget.ProjectWidgetActivity"
   android:initialLayout="@layout/bb_project_widget"
   android:previewLayout="@layout/bb_project_widget"
-  android:minWidth="45dp"
-  android:minHeight="45dp"
+  android:minWidth="30dp"
+  android:minHeight="30dp"
   android:targetCellWidth="1"
   android:targetCellHeight="1"
-  android:resizeMode="horizontal"
+  android:resizeMode="none"
   android:updatePeriodMillis="0"
   android:widgetCategory="home_screen" />
