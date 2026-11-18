@@ -341,6 +341,9 @@ export function defineWorkspaceTestConfig(
           ? {
               reporters: [
                 "default",
+                ...(process.env.GITHUB_ACTIONS === "true"
+                  ? ["github-actions"]
+                  : []),
                 new TestDurationReporter(process.env.BB_TEST_DURATIONS_DIR),
               ],
             }
