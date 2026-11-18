@@ -339,6 +339,7 @@ describe("public thread fork route", () => {
       }
       expect(queued.command.fork).toEqual({
         sourceProviderThreadId: "provider-personal-directory-source",
+        sourceCwd: "/tmp/personal-switched-directory",
       });
     });
   });
@@ -452,6 +453,7 @@ describe("public thread fork route", () => {
       expect(forkEnvironment?.status).toBe("ready");
       expect(start.command.fork).toEqual({
         sourceProviderThreadId: "provider-personal-directory-source",
+        sourceCwd: "/tmp/personal-switched-directory",
       });
     });
   });
@@ -486,6 +488,7 @@ describe("public thread fork route", () => {
         expect(queued.command.input).toEqual([]);
         expect(queued.command.fork).toEqual({
           sourceProviderThreadId: "provider-fork-source",
+          sourceCwd: "/tmp/public-thread-fork",
         });
       });
     },
@@ -606,6 +609,7 @@ describe("public thread fork route", () => {
       expect(queued.command.fork).toEqual({
         sourceProviderThreadId: "provider-fork-source",
         sourceProviderCheckpointId: "checkpoint-fork-source",
+        sourceCwd: "/tmp/public-thread-fork",
       });
     });
   });
@@ -629,6 +633,7 @@ describe("public thread fork route", () => {
       const forkDescriptor = failedStart.command.fork;
       expect(forkDescriptor).toEqual({
         sourceProviderThreadId: "provider-fork-source",
+        sourceCwd: "/tmp/public-thread-fork",
       });
       await reportQueuedCommandError(harness, failedStart, {
         errorCode: "provider_error",
@@ -1511,6 +1516,7 @@ describe("fork branch point and inherited history", () => {
       expect(start.fork).toEqual({
         sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
         sourceProviderCheckpointId: "checkpoint-after-turn-1",
+        sourceCwd: "/tmp/public-thread-fork-history",
       });
       expect(await readConversationTexts(harness, fork.id)).toEqual([
         "Reply only with ok.",
@@ -1574,6 +1580,7 @@ describe("fork branch point and inherited history", () => {
       const start = await waitForForkStart(harness, fork.id);
       expect(start.fork).toEqual({
         sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
+        sourceCwd: "/tmp/public-thread-fork-history",
       });
       expect(await readConversationTexts(harness, fork.id)).toEqual([
         "Reply only with ok.",
@@ -1598,6 +1605,7 @@ describe("fork branch point and inherited history", () => {
       expect(start.fork).toEqual({
         sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
         sourceProviderCheckpointId: "checkpoint-after-turn-2",
+        sourceCwd: "/tmp/public-thread-fork-history",
       });
       expect(await readConversationTexts(harness, fork.id)).toEqual([
         "Reply only with ok.",
@@ -1629,6 +1637,7 @@ describe("fork branch point and inherited history", () => {
       expect(start.fork).toEqual({
         sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
         sourceProviderCheckpointId: "checkpoint-after-turn-1",
+        sourceCwd: "/tmp/public-thread-fork-history",
       });
       expect(await readConversationTexts(harness, fork.id)).toEqual([]);
       expect(
@@ -1845,6 +1854,7 @@ describe("fork branch point and inherited history", () => {
       const start = await waitForForkStart(harness, fork.id);
       expect(start.fork).toEqual({
         sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
+        sourceCwd: "/tmp/public-thread-fork-history",
       });
       expect(await readConversationTexts(harness, fork.id)).toEqual([
         "Reply only with ok.",
@@ -1881,6 +1891,7 @@ describe("fork branch point and inherited history", () => {
       const start = await waitForForkStart(harness, fork.id);
       expect(start.fork).toEqual({
         sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
+        sourceCwd: "/tmp/public-thread-fork-history",
       });
       expect(await readConversationTexts(harness, fork.id)).toEqual([
         "Reply only with ok.",

@@ -340,14 +340,16 @@ export function decodeAvailableCommands(
     return null;
   }
   const commands: AcpAvailableCommand[] = [];
+  const names = new Set<string>();
   for (const entry of value) {
     if (!isJsonObject(entry)) {
       continue;
     }
     const name = readString(entry, "name");
-    if (name === undefined) {
+    if (name === undefined || name.trim() === "" || names.has(name)) {
       continue;
     }
+    names.add(name);
     const input = entry["input"];
     const inputHint = isJsonObject(input)
       ? readString(input, "hint")

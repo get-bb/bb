@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "prompts",
+  "threadId": "grok-prompts",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-16",
+  "description": "prompts",
+  "note": "Advertised image bytes and an embedded UTF-8 text resource.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 9,
+    "provider→bridge": 4,
+    "bridge→provider": 4
+  }
+}

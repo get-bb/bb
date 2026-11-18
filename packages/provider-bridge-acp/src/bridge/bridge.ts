@@ -1,4 +1,5 @@
 import {
+  approvalPendingInteractionResolutionSchema,
   isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
   reasoningEffortsForLevels,
@@ -7,13 +8,19 @@ import {
   userQuestionPendingInteractionResolutionSchema,
 } from "@bb/domain";
 import type {
+  ApprovalPendingInteractionResolution,
   AvailableModel,
   ExtensionKind,
   JsonValue,
+  PendingInteractionApprovalSubject,
   PromptInput,
   ReasoningLevel,
   SessionOptionSelections,
   ThreadSessionOption,
+  ThreadSubagent,
+  ThreadEventModelTokenUsage,
+  ThreadEventTokenUsageBreakdown,
+  ThreadUsageCost,
 } from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
 import {
@@ -31,6 +38,7 @@ import type {
 } from "@bb/provider-bridge-protocol";
 import {
   PROVIDER_TOOL_CALL_CANCELLED_METHOD,
+  providerToolCallCancellationSchema,
   BridgeRecoveryError,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
@@ -49,13 +57,23 @@ import type {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
-import { promises as fs, readFileSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  promises as fs,
+  readFileSync,
+  readSync,
+  statSync,
+} from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
+  ACP_CAPABILITIES_SNAPSHOT_METHOD,
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
   ACP_DEFAULT_MODEL_ID,
@@ -84,13 +102,53 @@ import {
   resolveAcpDialect,
   type AcpDialect,
 } from "../dialect.js";
+import {
+  decodeGrokCapabilitySnapshot,
+  type GrokCapabilitySnapshot,
+} from "../grok-capabilities.js";
+import { decodeGrokCompactionNotification } from "../grok-compaction.js";
+import {
+  decodeGrokPromptUsage,
+  grokTokenUsageBreakdownFromMetrics,
+  grokUsageCostFromMetrics,
+} from "../grok-usage.js";
+import {
+  assertGrokForkIdentity,
+  buildGrokForkParams,
+  decodeGrokForkResult,
+} from "../grok-fork.js";
+import {
+  buildGrokInterjectParams,
+  decodeGrokInterjectResult,
+} from "../grok-queue.js";
+import {
+  decodeGrokPlanApprovalParams,
+  grokPlanApprovalCancellation,
+  grokPlanApprovalResponse,
+  grokPlanApprovalSubject,
+} from "../grok-plan-approval.js";
+import {
+  buildGrokSubagentActionPrompt,
+  decodeGrokSpawnToolResult,
+  decodeGrokSubagentActionResult,
+  decodeGrokSubagentNotification,
+  type GrokSubagentNotification,
+} from "../grok-subagents.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import { describeAcpSignIn } from "../auth-guidance.js";
 import {
   applyOpenCodeSessionPermissions,
   openCodeUsesSessionPermissions,
 } from "./opencode-session-permissions.js";
-import { planAcpElicitation } from "../elicitation.js";
+import {
+  planAcpElicitation,
+  type AcpElicitationResponse,
+} from "../elicitation.js";
+import {
+  buildGrokQuestionPlan,
+  decodeGrokQuestionRequest,
+  grokQuestionResponse,
+} from "../grok-questions.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -187,6 +245,18 @@ interface AcpSessionPolicy {
 interface PendingAcpPermission {
   responder: AcpAgentRequestResponder;
   options: AcpPermissionOption[];
+  mapResolution?: (
+    resolution: ApprovalPendingInteractionResolution,
+  ) => Record<string, unknown>;
+}
+
+interface PendingGrokSubagentAction {
+  kind: "tell" | "cancel";
+  childRef: string;
+  requestId: AcpBridgeRequestId;
+  toolName: "send_subagent_message" | "kill_command_or_subagent";
+  toolCallId?: string;
+  text?: string;
 }
 
 interface AcpPendingTurnInput {
@@ -194,6 +264,7 @@ interface AcpPendingTurnInput {
   input: PromptInput[];
   requestId: AcpBridgeRequestId | null;
   options: BridgeExecutionOptions;
+  subagentActionRequestId?: string;
 }
 
 interface AcpNativeConfigState {
@@ -216,7 +287,9 @@ interface AcpThreadSession {
   agentUpdateCount: number;
   publishedThreadState: Map<string, string>;
   capabilities: AcpAgentCapabilities | undefined;
+  grokCapabilities: GrokCapabilitySnapshot | null;
   supportsImageInput: boolean;
+  supportsEmbeddedContext: boolean;
   supportsLoadSession: boolean;
   policy: AcpSessionPolicy;
   pendingInstructions: string | undefined;
@@ -231,8 +304,22 @@ interface AcpThreadSession {
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
   grokContextWindowSize: number | undefined;
+  grokCompactionTokensAfter: number | undefined;
+  grokTokenUsage:
+    | {
+        total: ThreadEventTokenUsageBreakdown;
+        last: ThreadEventTokenUsageBreakdown;
+        models: ThreadEventModelTokenUsage[];
+      }
+    | undefined;
+  grokPromptCost: ThreadUsageCost | undefined;
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
+  subagents: Map<string, ThreadSubagent>;
+  subagentIdsByToolCall: Map<string, string>;
+  earlyGrokSubagentNotifications: Map<string, GrokSubagentNotification[]>;
+  pendingSubagentActions: Map<string, PendingGrokSubagentAction>;
+  subagentActionReserved: boolean;
   pendingPermissions: Set<PendingAcpPermission>;
   sessionGrants: Set<string>;
   pendingElicitations: Set<AcpAgentRequestResponder>;
@@ -381,9 +468,19 @@ function rememberGrokContextWindow(
   if (session.dialect.id !== "grok") {
     return;
   }
+  const previousSize = session.grokContextWindowSize;
   const size = grokContextWindowSizeFromSessionModels(models);
-  if (size !== undefined) {
-    session.grokContextWindowSize = size;
+  session.grokContextWindowSize = size;
+  if (previousSize !== undefined && size === undefined) {
+    sendThreadDeltas(session.bbThreadId, [
+      {
+        kind: "contextWindow",
+        used: null,
+        size: null,
+        estimated: false,
+        attach: "open",
+      },
+    ]);
   }
 }
 
@@ -394,7 +491,8 @@ function emitGrokContextWindow(session: AcpThreadSession, used: number): void {
   ) {
     return;
   }
-  const cost = session.model.snapshot().usage?.cost ?? undefined;
+  const cost =
+    session.grokPromptCost ?? session.model.snapshot().usage?.cost ?? undefined;
   sendThreadDeltas(session.bbThreadId, [
     {
       kind: "contextWindow",
@@ -405,6 +503,91 @@ function emitGrokContextWindow(session: AcpThreadSession, used: number): void {
       ...(cost === undefined ? {} : { cost }),
     },
   ]);
+}
+
+function addGrokUsageBreakdown(
+  total: ThreadEventTokenUsageBreakdown,
+  last: ThreadEventTokenUsageBreakdown,
+): ThreadEventTokenUsageBreakdown {
+  return {
+    totalTokens: total.totalTokens + last.totalTokens,
+    inputTokens: total.inputTokens + last.inputTokens,
+    cachedInputTokens: total.cachedInputTokens + last.cachedInputTokens,
+    cacheReadInputTokens:
+      (total.cacheReadInputTokens ?? 0) + (last.cacheReadInputTokens ?? 0),
+    cacheWriteInputTokens:
+      (total.cacheWriteInputTokens ?? 0) + (last.cacheWriteInputTokens ?? 0),
+    outputTokens: total.outputTokens + last.outputTokens,
+    reasoningOutputTokens:
+      total.reasoningOutputTokens + last.reasoningOutputTokens,
+  };
+}
+
+function emitGrokTokenUsageFromPromptResult(
+  session: AcpThreadSession,
+  result: unknown,
+): void {
+  try {
+    const { metrics, models } = decodeGrokPromptUsage(result);
+    const last = grokTokenUsageBreakdownFromMetrics(metrics);
+    if (last !== null) {
+      const total = session.grokTokenUsage
+        ? addGrokUsageBreakdown(session.grokTokenUsage.total, last)
+        : last;
+      const modelUsage = models.flatMap(
+        ({ modelId, metrics: modelMetrics }) => {
+          const usage = grokTokenUsageBreakdownFromMetrics(modelMetrics);
+          if (usage === null) return [];
+          const cost = grokUsageCostFromMetrics(modelMetrics);
+          return [
+            {
+              modelId,
+              usage,
+              ...(cost === undefined ? {} : { cost }),
+            },
+          ];
+        },
+      );
+      session.grokTokenUsage = { total, last, models: modelUsage };
+      sendThreadDeltas(session.bbThreadId, [
+        {
+          kind: "usage",
+          total,
+          last,
+          modelContextWindow: session.grokContextWindowSize ?? null,
+          ...(modelUsage.length === 0 ? {} : { models: modelUsage }),
+        },
+      ]);
+    }
+    rememberGrokPromptCost(session, grokUsageCostFromMetrics(metrics));
+  } catch {}
+}
+
+function rememberGrokPromptCost(
+  session: AcpThreadSession,
+  cost: ThreadUsageCost | undefined,
+): void {
+  if (cost === undefined) return;
+  const previous = session.grokPromptCost;
+  session.grokPromptCost =
+    previous === undefined || previous.currency !== cost.currency
+      ? cost
+      : { amount: previous.amount + cost.amount, currency: cost.currency };
+}
+
+function emitGrokPromptUsage(session: AcpThreadSession, result: unknown): void {
+  if (session.stopping) return;
+  emitGrokTokenUsageFromPromptResult(session, result);
+  const tokensAfter = session.grokCompactionTokensAfter;
+  session.grokCompactionTokensAfter = undefined;
+  if (tokensAfter !== undefined) {
+    emitGrokContextWindow(session, tokensAfter);
+    return;
+  }
+  const usage = grokContextUsageFromPromptResult(result);
+  if (usage !== undefined) {
+    emitGrokContextWindow(session, usage.used);
+  }
 }
 
 function emitForSession(
@@ -1637,6 +1820,7 @@ async function selectAcpNativeModel(args: {
           currentModelId: selection.modelId,
         }),
     };
+    rememberGrokContextWindow(session, session.nativeConfig.models);
   }
   await selectAcpNativeReasoning({
     session,
@@ -1714,23 +1898,20 @@ async function selectAcpNativeReasoning(args: {
     thoughtLevelOption,
   );
   if (value === undefined) {
-    return;
+    throw new Error(
+      `Reasoning level "${reasoningLevel}" is not supported by model "${args.modelSelection.modelId}".`,
+    );
   }
-  let configState: AcpConfigStateResult | null;
-  try {
-    configState = await args.session.connection.request({
-      method: "session/set_config_option",
-      params: {
-        sessionId: args.sessionId,
-        configId: thoughtLevelOption.id,
-        value,
-      },
-      resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
-      timeoutMs: ACP_SESSION_CONFIG_TIMEOUT_MS,
-    });
-  } catch {
-    return;
-  }
+  const configState = await args.session.connection.request({
+    method: "session/set_config_option",
+    params: {
+      sessionId: args.sessionId,
+      configId: thoughtLevelOption.id,
+      value,
+    },
+    resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
+    timeoutMs: ACP_SESSION_CONFIG_TIMEOUT_MS,
+  });
   recordAcpConfigValue(args.session, configState, thoughtLevelOption.id, value);
 }
 
@@ -1816,6 +1997,72 @@ function textWithBbSkillCommandsSpelledOut(
   return text;
 }
 
+const EMBEDDED_TEXT_BYTE_LIMIT = 64 * 1024;
+const EMBEDDED_TEXT_OPEN_FLAGS =
+  process.platform === "win32"
+    ? "r"
+    : constants.O_RDONLY | constants.O_NONBLOCK;
+
+function imageBlockFromDataUrl(
+  url: string,
+): { type: "image"; data: string; mimeType: string } | undefined {
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/_=-]+)$/u.exec(
+    url,
+  );
+  const mimeType = match?.[1];
+  const data = match?.[2];
+  if (!mimeType || !data) {
+    return undefined;
+  }
+  return { type: "image", mimeType: mimeType.toLowerCase(), data };
+}
+
+function embeddedTextResource(
+  path: string,
+  mimeType: string | undefined,
+): AcpContentBlock | undefined {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, EMBEDDED_TEXT_OPEN_FLAGS);
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.size > EMBEDDED_TEXT_BYTE_LIMIT) {
+      return undefined;
+    }
+    const bytes = Buffer.alloc(info.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, offset);
+      if (count === 0) {
+        return undefined;
+      }
+      offset += count;
+    }
+    if (bytes.includes(0)) {
+      return undefined;
+    }
+    const text = bytes.toString("utf8");
+    if (!bytes.equals(Buffer.from(text, "utf8"))) {
+      return undefined;
+    }
+    return {
+      type: "resource",
+      resource: {
+        uri: pathToFileURL(path).href,
+        mimeType: mimeType && mimeType.length > 0 ? mimeType : "text/plain",
+        text,
+      },
+    };
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {}
+    }
+  }
+}
+
 function buildPromptContentBlocks(
   session: AcpThreadSession,
   input: PromptInput[],
@@ -1839,9 +2086,15 @@ function buildPromptContentBlocks(
           text: textWithBbSkillCommandsSpelledOut(session, item),
         });
         break;
-      case "image":
-        blocks.push({ type: "text", text: `[image attachment: ${item.url}]` });
+      case "image": {
+        const image = session.supportsImageInput
+          ? imageBlockFromDataUrl(item.url)
+          : undefined;
+        blocks.push(
+          image ?? { type: "text", text: `[image attachment: ${item.url}]` },
+        );
         break;
+      }
       case "localImage": {
         if (!session.supportsImageInput) {
           blocks.push({
@@ -1865,13 +2118,19 @@ function buildPromptContentBlocks(
         }
         break;
       }
-      case "localFile":
-        blocks.push({
-          type: "resource_link",
-          uri: `file://${item.path}`,
-          name: item.name ?? basename(item.path),
-        });
+      case "localFile": {
+        const embedded = session.supportsEmbeddedContext
+          ? embeddedTextResource(item.path, item.mimeType)
+          : undefined;
+        blocks.push(
+          embedded ?? {
+            type: "resource_link",
+            uri: `file://${item.path}`,
+            name: item.name ?? basename(item.path),
+          },
+        );
         break;
+      }
     }
   }
 
@@ -1909,6 +2168,16 @@ function respondPermission(
   pending: PendingAcpPermission,
   decision: "allow_once" | "allow_for_session" | "deny" | null,
 ): void {
+  if (pending.mapResolution !== undefined) {
+    pending.responder.result(
+      pending.mapResolution(
+        decision === null || decision === "deny"
+          ? { decision: "deny" }
+          : { decision, grantedPermissions: null },
+      ),
+    );
+    return;
+  }
   if (decision === null) {
     pending.responder.result({ outcome: { outcome: "cancelled" } });
     return;
@@ -1923,7 +2192,7 @@ function respondPermission(
 
 function cancelPendingPermissions(session: AcpThreadSession): void {
   for (const pending of session.pendingPermissions) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
+    respondPermission(pending, null);
   }
   session.pendingPermissions.clear();
   for (const responder of session.pendingElicitations) {
@@ -1932,20 +2201,11 @@ function cancelPendingPermissions(session: AcpThreadSession): void {
   session.pendingElicitations.clear();
 }
 
-function handleElicitationRequest(
+function handleQuestionPlanRequest(
   session: AcpThreadSession,
-  params: unknown,
+  plan: ReturnType<typeof planAcpElicitation>,
   responder: AcpAgentRequestResponder,
 ): void {
-  if (
-    session.stopping ||
-    session.cancelRequested ||
-    session.activePromptKind === "compaction"
-  ) {
-    responder.result({ action: "cancel" });
-    return;
-  }
-  const plan = planAcpElicitation(params);
   if (plan.kind === "unsupported") {
     emitForSession(session, ACP_WARNING_METHOD, {
       threadId: session.bbThreadId,
@@ -1985,10 +2245,65 @@ function handleElicitationRequest(
     });
 }
 
+function handleElicitationRequest(
+  session: AcpThreadSession,
+  params: unknown,
+  responder: AcpAgentRequestResponder,
+): void {
+  if (
+    session.stopping ||
+    session.cancelRequested ||
+    session.activePromptKind === "compaction"
+  ) {
+    responder.result({ action: "cancel" });
+    return;
+  }
+  handleQuestionPlanRequest(session, planAcpElicitation(params), responder);
+}
+
+function handleGrokQuestionRequest(
+  session: AcpThreadSession,
+  params: unknown,
+  responder: AcpAgentRequestResponder,
+): void {
+  if (
+    session.stopping ||
+    session.cancelRequested ||
+    session.activePromptKind === "compaction"
+  ) {
+    responder.result({ outcome: "skip_interview" });
+    return;
+  }
+  let request: ReturnType<typeof decodeGrokQuestionRequest>;
+  try {
+    request = decodeGrokQuestionRequest(params);
+  } catch (error) {
+    responder.error(
+      -32602,
+      `Invalid _x.ai/ask_user_question params: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  handleQuestionPlanRequest(session, buildGrokQuestionPlan(request), {
+    result(value) {
+      responder.result(
+        grokQuestionResponse(request, value as AcpElicitationResponse),
+      );
+    },
+    error(code, message) {
+      responder.error(code, message);
+    },
+  });
+}
+
 function handlePermissionRequest(
   session: AcpThreadSession,
   params: unknown,
   responder: AcpAgentRequestResponder,
+  overrides?: {
+    subject?: PendingInteractionApprovalSubject;
+    mapResolution?: PendingAcpPermission["mapResolution"];
+  },
 ): void {
   const parsed = acpRequestPermissionParamsSchema.safeParse(params);
   if (!parsed.success) {
@@ -2029,9 +2344,13 @@ function handlePermissionRequest(
   const pending: PendingAcpPermission = {
     responder,
     options: parsed.data.options,
+    ...(overrides?.mapResolution !== undefined
+      ? { mapResolution: overrides.mapResolution }
+      : {}),
   };
 
-  if (session.policy.permissionMode === "full") {
+  const planReview = overrides?.subject?.kind === "plan";
+  if (!planReview && session.policy.permissionMode === "full") {
     respondPermission(pending, "allow_once");
     return;
   }
@@ -2062,14 +2381,18 @@ function handlePermissionRequest(
         }
       : undefined;
 
-  const payload = buildAcpPermissionInteractionPayload({
+  const basePayload = buildAcpPermissionInteractionPayload({
     toolCall: normalizedToolCall,
     options: parsed.data.options,
     cwd: session.cwd,
     classifyToolCall: session.dialect.classifyToolCall,
   });
+  const payload =
+    overrides?.subject === undefined
+      ? basePayload
+      : { ...basePayload, subject: overrides.subject };
   const grantKey = acpSessionGrantKey(payload);
-  if (grantKey !== null && session.sessionGrants.has(grantKey)) {
+  if (!planReview && grantKey !== null && session.sessionGrants.has(grantKey)) {
     respondPermission(pending, "allow_once");
     return;
   }
@@ -2085,6 +2408,16 @@ function handlePermissionRequest(
   })
     .then((result) => {
       if (!session.pendingPermissions.delete(pending)) {
+        return;
+      }
+      if (pending.mapResolution !== undefined) {
+        const resolution =
+          approvalPendingInteractionResolutionSchema.safeParse(result);
+        if (resolution.success) {
+          responder.result(pending.mapResolution(resolution.data));
+        } else {
+          respondPermission(pending, null);
+        }
         return;
       }
       const resolution = pendingInteractionResolutionSchema.safeParse(result);
@@ -2105,6 +2438,63 @@ function handlePermissionRequest(
       }
       respondPermission(pending, null);
     });
+}
+
+function handleGrokPlanApprovalRequest(
+  session: AcpThreadSession,
+  params: unknown,
+  responder: AcpAgentRequestResponder,
+): void {
+  if (
+    session.stopping ||
+    session.cancelRequested ||
+    session.activePromptKind === "compaction"
+  ) {
+    responder.result(grokPlanApprovalCancellation());
+    return;
+  }
+  let request: ReturnType<typeof decodeGrokPlanApprovalParams>;
+  try {
+    request = decodeGrokPlanApprovalParams(params);
+  } catch (error) {
+    responder.error(
+      -32602,
+      `Invalid _x.ai/exit_plan_mode params: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  handlePermissionRequest(
+    session,
+    {
+      sessionId: request.sessionId,
+      toolCall: {
+        toolCallId: request.toolCallId,
+        title: "Review the implementation plan",
+        kind: "other",
+        status: "pending",
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: request.planContent },
+          },
+        ],
+        rawInput: { plan: request.planContent },
+      },
+      options: [
+        { optionId: "approve", name: "Approve plan", kind: "allow_once" },
+        {
+          optionId: "request-changes",
+          name: "Request changes",
+          kind: "reject_once",
+        },
+      ],
+    },
+    responder,
+    {
+      subject: grokPlanApprovalSubject(request),
+      mapResolution: grokPlanApprovalResponse,
+    },
+  );
 }
 
 function isPathInsideRoots(targetPath: string, roots: string[]): boolean {
@@ -2263,6 +2653,7 @@ type AcpSessionStartRequest =
       kind: "fork";
       params: AcpSessionParams;
       sourceProviderThreadId: string;
+      sourceCwd?: string;
     };
 
 function fileCreatedSince(
@@ -2392,7 +2783,14 @@ async function startAgentSession(
       handleAgentRequest(session, method, requestParams, responder),
     onExit: (info) => {
       const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
+      if (!session.stopping) {
+        settleOpenSessionDelegations(session);
+      }
       cancelPendingPermissions(session);
+      cancelPendingSubagentActions(
+        session,
+        "ACP agent exited before subagent action acknowledgement",
+      );
       if (!wasCurrent || session.stopping || session.providerThreadId === "") {
         removeSession(session);
         return;
@@ -2423,7 +2821,9 @@ async function startAgentSession(
     turnOutputCount: 0,
     publishedThreadState: new Map(),
     capabilities: undefined,
+    grokCapabilities: null,
     supportsImageInput: false,
+    supportsEmbeddedContext: false,
     supportsLoadSession: false,
     policy: {
       permissionMode: params.permissionMode,
@@ -2441,8 +2841,16 @@ async function startAgentSession(
     loadingSessionId: undefined,
     pendingLoadUsageUpdate: undefined,
     grokContextWindowSize: undefined,
+    grokCompactionTokensAfter: undefined,
+    grokTokenUsage: undefined,
+    grokPromptCost: undefined,
     stopping: false,
     turnSettled: undefined,
+    subagents: new Map(),
+    subagentIdsByToolCall: new Map(),
+    earlyGrokSubagentNotifications: new Map(),
+    pendingSubagentActions: new Map(),
+    subagentActionReserved: false,
     pendingPermissions: new Set(),
     sessionGrants: new Set(),
     pendingElicitations: new Set(),
@@ -2460,14 +2868,17 @@ async function startAgentSession(
       elicitation: true,
     });
     session.capabilities = capabilities;
+    session.grokCapabilities =
+      dialect.id === "grok" ? decodeGrokCapabilitySnapshot(capabilities) : null;
     await authenticateAcpAgent({
       connection,
       env: childEnv,
       capabilities,
     });
     session.supportsImageInput = capabilities.prompt.image;
+    session.supportsEmbeddedContext = capabilities.prompt.embeddedContext;
     const supportsLoadSession = capabilities.session.load;
-    const supportsFork = capabilities.session.fork;
+    const supportsFork = capabilities.session.fork || dialect.id === "grok";
     if (request.kind === "fork" && !supportsFork) {
       throw new Error(
         `ACP agent "${agentLabel}" does not advertise session/fork support.`,
@@ -2497,52 +2908,102 @@ async function startAgentSession(
     let createdFreshSession = false;
     let forkHandoffProviderThreadId: string | undefined;
     if (request.kind === "fork") {
-      const source = getSessionByProviderThreadId(
-        request.sourceProviderThreadId,
-      );
-      const handoffSource =
-        source !== undefined &&
-        !source.stopping &&
-        !source.connection.exited &&
-        source.capabilities?.session.fork === true &&
-        source.capabilities.session.close === true &&
-        (capabilities.session.resume || supportsLoadSession)
-          ? source
-          : undefined;
-      const forkedSession = await (
-        handoffSource?.connection ?? connection
-      ).request({
-        method: "session/fork",
-        params: {
-          sessionId: request.sourceProviderThreadId,
-          cwd: params.cwd,
-          mcpServers: handoffSource === undefined ? mcpServers : [],
-          ...additionalSessionDirectories(params, capabilities),
-        },
-        resultSchema: acpSessionForkResultSchema,
-        timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
-      });
-      if (
-        forkedSession.sessionId === request.sourceProviderThreadId ||
-        getSessionByProviderThreadId(forkedSession.sessionId) !== undefined
-      ) {
-        throw new Error(
-          `ACP agent "${agentLabel}" returned an active session ID for session/fork.`,
+      if (dialect.id === "grok") {
+        const liveSourceCwd = getSessionByProviderThreadId(
+          request.sourceProviderThreadId,
+        )?.cwd;
+        const sourceCwd = liveSourceCwd ?? request.sourceCwd ?? params.cwd;
+        const forkResult = decodeGrokForkResult(
+          await connection.request({
+            method: "_x.ai/session/fork",
+            params: buildGrokForkParams({
+              sourceSessionId: request.sourceProviderThreadId,
+              sourceCwd,
+              newCwd: params.cwd,
+              mcpServers,
+            }),
+            resultSchema: z.unknown(),
+            timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
+          }),
         );
-      }
-      loadedConfigOptions = forkedSession.configOptions;
-      loadedModels = forkedSession.models;
-      if (handoffSource === undefined) {
-        sessionId = forkedSession.sessionId;
-        rememberGrokContextWindow(session, forkedSession.models);
+        assertGrokForkIdentity(
+          forkResult,
+          request.sourceProviderThreadId,
+          Array.from(bbThreadIdByProviderThreadId.keys()),
+        );
+        session.loading = true;
+        session.loadingSessionId = forkResult.newSessionId;
+        session.pendingLoadUsageUpdate = undefined;
+        session.model.beginReplay();
+        try {
+          const configState = await connection.request({
+            method: capabilities.session.resume
+              ? "session/resume"
+              : "session/load",
+            params: {
+              sessionId: forkResult.newSessionId,
+              cwd: params.cwd,
+              mcpServers,
+            },
+            resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
+            timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
+          });
+          sessionId = forkResult.newSessionId;
+          loadedConfigOptions = configState?.configOptions;
+          loadedModels = configState?.models;
+          rememberGrokContextWindow(session, configState?.models);
+        } finally {
+          session.loading = false;
+          session.model.endReplay();
+        }
       } else {
-        forkHandoffProviderThreadId = forkedSession.sessionId;
-        await handoffSource.connection.request({
-          method: "session/close",
-          params: { sessionId: forkedSession.sessionId },
-          resultSchema: z.unknown(),
+        const source = getSessionByProviderThreadId(
+          request.sourceProviderThreadId,
+        );
+        const handoffSource =
+          source !== undefined &&
+          !source.stopping &&
+          !source.connection.exited &&
+          source.capabilities?.session.fork === true &&
+          source.capabilities.session.close === true &&
+          (capabilities.session.resume || supportsLoadSession)
+            ? source
+            : undefined;
+        const forkedSession = await (
+          handoffSource?.connection ?? connection
+        ).request({
+          method: "session/fork",
+          params: {
+            sessionId: request.sourceProviderThreadId,
+            cwd: params.cwd,
+            mcpServers: handoffSource === undefined ? mcpServers : [],
+            ...additionalSessionDirectories(params, capabilities),
+          },
+          resultSchema: acpSessionForkResultSchema,
           timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
         });
+        if (
+          forkedSession.sessionId === request.sourceProviderThreadId ||
+          getSessionByProviderThreadId(forkedSession.sessionId) !== undefined
+        ) {
+          throw new Error(
+            `ACP agent "${agentLabel}" returned an active session ID for session/fork.`,
+          );
+        }
+        loadedConfigOptions = forkedSession.configOptions;
+        loadedModels = forkedSession.models;
+        if (handoffSource === undefined) {
+          sessionId = forkedSession.sessionId;
+          rememberGrokContextWindow(session, forkedSession.models);
+        } else {
+          forkHandoffProviderThreadId = forkedSession.sessionId;
+          await handoffSource.connection.request({
+            method: "session/close",
+            params: { sessionId: forkedSession.sessionId },
+            resultSchema: z.unknown(),
+            timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
+          });
+        }
       }
     }
     const resumeProviderThreadId =
@@ -2680,6 +3141,12 @@ async function startAgentSession(
       providerThreadId: sessionId,
       sessionRestorable: session.supportsLoadSession,
     });
+    if (session.grokCapabilities !== null) {
+      sendNotification(ACP_CAPABILITIES_SNAPSHOT_METHOD, {
+        threadId: bbThreadId,
+        capabilities: session.grokCapabilities,
+      });
+    }
     if (request.kind !== "resume" || !request.continuesTurn) {
       sendThreadDeltas(bbThreadId, [{ kind: "session.reset" }]);
     }
@@ -2729,12 +3196,17 @@ async function stopSession(
   if (session.stopping) {
     return;
   }
+  settleOpenSessionDelegations(session);
   session.stopping = true;
   dropQueuedTurnInputs(
     session,
     "ACP session stopped before the steer was sent",
   );
   cancelPendingPermissions(session);
+  cancelPendingSubagentActions(
+    session,
+    "ACP session stopped or replaced before subagent action acknowledgement",
+  );
 
   if (session.activePromptKind !== null && !session.connection.exited) {
     session.connection.notify("session/cancel", {
@@ -3039,10 +3511,18 @@ function emitSessionUpdate(
   });
 }
 
+function settleOpenSessionDelegations(session: AcpThreadSession): void {
+  sendThreadDeltas(
+    session.bbThreadId,
+    session.translator.settleOpenDelegations(session.bbThreadId),
+  );
+}
+
 async function releaseSession(session: AcpThreadSession): Promise<void> {
   if (session.stopping) {
     return;
   }
+  settleOpenSessionDelegations(session);
   session.stopping = true;
   clearAgentTurnQuietTimer(session);
   dropQueuedTurnInputs(
@@ -3050,6 +3530,10 @@ async function releaseSession(session: AcpThreadSession): Promise<void> {
     "ACP session released before the steer was sent",
   );
   cancelPendingPermissions(session);
+  cancelPendingSubagentActions(
+    session,
+    "ACP session stopped or replaced before subagent action acknowledgement",
+  );
   await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
@@ -3069,6 +3553,84 @@ function requestSteerCancel(session: AcpThreadSession): void {
   session.connection.notify("session/cancel", {
     sessionId: session.providerThreadId,
   });
+}
+
+async function steerWithNativeInterject(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+  runtimeRequestId: AcpBridgeRequestId,
+  method: string,
+): Promise<void> {
+  const originalSession = session;
+  try {
+    const text = pending.input
+      .map((item) => {
+        if (item.type !== "text") {
+          throw new Error("Grok interject currently supports text input only");
+        }
+        return textWithBbSkillCommandsSpelledOut(session, item);
+      })
+      .join("\n\n");
+    const params = buildGrokInterjectParams({
+      sessionId: session.providerThreadId,
+      text,
+    });
+    const reconciled = reconcileExecutionSettings(session, pending.options);
+    session = reconciled instanceof Promise ? await reconciled : reconciled;
+    if (session.activePromptKind !== "turn") {
+      if (session !== originalSession) {
+        runTurn(session, pending, true);
+        sendResult(runtimeRequestId, { threadId: session.bbThreadId });
+        return;
+      }
+      throw new Error("No active turn to interject");
+    }
+    const turnSettled = session.turnSettled;
+    const result = decodeGrokInterjectResult(
+      await session.connection.request({
+        method,
+        params,
+        resultSchema: z.unknown(),
+        timeoutMs: ACP_SESSION_CONFIG_TIMEOUT_MS,
+      }),
+    );
+    if (
+      session.activePromptKind !== "turn" ||
+      session.turnSettled !== turnSettled
+    ) {
+      throw new Error("No active turn to interject");
+    }
+    if (
+      sessionsByBbThreadId.get(session.bbThreadId) !== session ||
+      session.stopping
+    ) {
+      throw new Error(
+        "Grok session was replaced before interject acknowledgement",
+      );
+    }
+    if (result.status !== "queued") {
+      throw new Error("Grok interject was not queued");
+    }
+    acceptTurnInput(session, pending);
+    sendResult(runtimeRequestId, { threadId: session.bbThreadId });
+  } catch (error) {
+    const stale =
+      sessionsByBbThreadId.get(session.bbThreadId) !== session ||
+      session.stopping;
+    const message = stale
+      ? "Grok session was replaced before interject acknowledgement"
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    sendError(
+      runtimeRequestId,
+      stale ? BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN : -32000,
+      message,
+      stale
+        ? { recovery: { kind: "staleTurn", message, retryable: false } }
+        : undefined,
+    );
+  }
 }
 
 function acceptTurnInput(
@@ -3118,6 +3680,13 @@ function finishTurn(
   dropQueuedTurnInputs(session, "ACP turn ended before the steer was sent");
   session.promptRequestPending = false;
   session.cancelRequested = false;
+  for (const action of session.pendingSubagentActions.values()) {
+    failPendingSubagentAction(
+      session,
+      action,
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+  }
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     stopReason,
@@ -3174,6 +3743,7 @@ function runTurn(
   firstInput: AcpPendingTurnInput,
   turnAlreadyOpen = false,
 ): void {
+  const actionSession = session;
   setActivePromptKind(session, "turn");
   if (!turnAlreadyOpen) {
     emitForSession(session, ACP_TURN_STARTED_METHOD, {
@@ -3203,6 +3773,19 @@ function runTurn(
           finishTurn(session, "cancelled");
           return;
         }
+        if (
+          pending.subagentActionRequestId !== undefined &&
+          session !== previousSession &&
+          !session.pendingSubagentActions.has(pending.subagentActionRequestId)
+        ) {
+          dropTurnInput(
+            pending,
+            "ACP session was replaced before the subagent action ran",
+          );
+          setActivePromptKind(session, "turn");
+          finishTurn(session, "cancelled");
+          return;
+        }
         setActivePromptKind(session, "turn");
         session.turnSettled = previousSession.turnSettled;
         session.awaitingFirstPrompt = false;
@@ -3227,10 +3810,7 @@ function runTurn(
           try {
             const result = await promptResult;
             stopReason = result.stopReason;
-            const grokUsage = grokContextUsageFromPromptResult(result);
-            if (grokUsage !== undefined) {
-              emitGrokContextWindow(session, grokUsage.used);
-            }
+            emitGrokPromptUsage(session, result);
             break;
           } catch (error) {
             if (
@@ -3269,6 +3849,10 @@ function runTurn(
             });
           }
         }
+        cancelPendingSubagentActions(
+          actionSession,
+          "Parent turn ended before the subagent action was acknowledged",
+        );
         setActivePromptKind(session, null);
         return;
       }
@@ -3305,10 +3889,10 @@ function runTurn(
   })();
 }
 
-function reconcileExecutionSettings(
+function plannedExecutionSettings(
   session: AcpThreadSession,
   options: BridgeExecutionOptions,
-): AcpThreadSession | Promise<AcpThreadSession> {
+): { construction: AcpSessionParams; restart: boolean } {
   if (options.permissionMode === "auto") {
     throw new Error('ACP does not support permission mode "auto".');
   }
@@ -3370,15 +3954,25 @@ function reconcileExecutionSettings(
       dialectLaunchEnv(session.dialect.id, construction.permissionMode),
     ) ||
     launchModelChanged;
-  const restart =
-    session.connection.exited ||
-    session.restartAfterCancelError ||
-    launchArgsChanged ||
-    !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
+  return {
+    construction,
+    restart:
+      session.connection.exited ||
+      session.restartAfterCancelError ||
+      launchArgsChanged ||
+      !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {}),
+  };
+}
+
+function reconcileExecutionSettings(
+  session: AcpThreadSession,
+  options: BridgeExecutionOptions,
+): AcpThreadSession | Promise<AcpThreadSession> {
+  const { construction, restart } = plannedExecutionSettings(session, options);
   cancelPendingPermissions(session);
   session.policy = {
-    permissionMode: options.permissionMode,
-    workspaceWriteRoots,
+    permissionMode: construction.permissionMode,
+    workspaceWriteRoots: construction.workspaceWriteRoots,
   };
   if (restart) {
     return rebuildAgentSession(session, construction);
@@ -3510,6 +4104,7 @@ function startCompaction(
   setActivePromptKind(session, "compaction");
   session.awaitingFirstPrompt = false;
   session.compactionAgentMessage = "";
+  session.grokCompactionTokensAfter = undefined;
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
@@ -3530,10 +4125,7 @@ function startCompaction(
 
   session.turnSettled = promptResult
     .then((result) => {
-      const grokUsage = grokContextUsageFromPromptResult(result);
-      if (grokUsage !== undefined) {
-        emitGrokContextWindow(session, grokUsage.used);
-      }
+      emitGrokPromptUsage(session, result);
       finish(
         result.stopReason === "end_turn"
           ? compactionOutcomeForEndTurn(
@@ -3590,6 +4182,12 @@ function handleAgentRequest(
     case "elicitation/create":
       handleElicitationRequest(session, params, responder);
       return;
+    case "_x.ai/ask_user_question":
+      handleGrokQuestionRequest(session, params, responder);
+      return;
+    case "_x.ai/exit_plan_mode":
+      handleGrokPlanApprovalRequest(session, params, responder);
+      return;
     default:
       handleDialectRequest(session, method, params, responder);
   }
@@ -3618,11 +4216,397 @@ function handleDialectRequest(
   responder.result(outcome.result);
 }
 
+function failPendingSubagentAction(
+  session: AcpThreadSession,
+  action: PendingGrokSubagentAction,
+  message: string,
+): void {
+  if (!session.pendingSubagentActions.delete(String(action.requestId))) {
+    return;
+  }
+  sendError(action.requestId, -32000, message);
+}
+
+function cancelPendingSubagentActions(
+  session: AcpThreadSession,
+  reason: string,
+): void {
+  for (const action of session.pendingSubagentActions.values()) {
+    sendError(action.requestId, -32000, reason);
+  }
+  session.pendingSubagentActions.clear();
+}
+
+function buffersEarlyGrokSubagentNotification(
+  session: AcpThreadSession,
+  notification: GrokSubagentNotification,
+): boolean {
+  if (notification.kind === "spawned") {
+    if (notification.parentSessionId !== session.providerThreadId) {
+      return false;
+    }
+    const existing = session.subagents.get(notification.subagentId);
+    if (existing !== undefined && existing.status !== "running") {
+      return false;
+    }
+    return (
+      session.subagentIdsByToolCall.get(notification.subagentId) === undefined
+    );
+  }
+  return session.subagents.get(notification.subagentId) === undefined;
+}
+
+function flushEarlyGrokSubagentNotifications(
+  session: AcpThreadSession,
+  subagentId: string,
+): void {
+  const queued = session.earlyGrokSubagentNotifications.get(subagentId);
+  if (queued === undefined) {
+    return;
+  }
+  session.earlyGrokSubagentNotifications.delete(subagentId);
+  const spawned = queued.filter(
+    (notification) => notification.kind === "spawned",
+  );
+  const rest = queued.filter((notification) => notification.kind !== "spawned");
+  for (const notification of spawned) {
+    applyGrokSubagentNotification(session, notification);
+  }
+  if (session.subagents.get(subagentId) === undefined) {
+    if (rest.length > 0) {
+      session.earlyGrokSubagentNotifications.set(subagentId, rest);
+    }
+    return;
+  }
+  for (const notification of rest) {
+    applyGrokSubagentNotification(session, notification);
+  }
+}
+
+function handleGrokSubagentNotification(
+  session: AcpThreadSession,
+  update: unknown,
+): void {
+  let notification: GrokSubagentNotification;
+  try {
+    notification = decodeGrokSubagentNotification(update);
+  } catch {
+    return;
+  }
+  if (buffersEarlyGrokSubagentNotification(session, notification)) {
+    const queued =
+      session.earlyGrokSubagentNotifications.get(notification.subagentId) ?? [];
+    queued.push(notification);
+    session.earlyGrokSubagentNotifications.set(notification.subagentId, queued);
+    return;
+  }
+  applyGrokSubagentNotification(session, notification);
+}
+
+function applyGrokSubagentNotification(
+  session: AcpThreadSession,
+  notification: GrokSubagentNotification,
+): void {
+  if (notification.kind === "spawned") {
+    if (
+      notification.parentSessionId !== session.providerThreadId ||
+      (session.subagents.get(notification.subagentId)?.status !== undefined &&
+        session.subagents.get(notification.subagentId)?.status !== "running")
+    ) {
+      return;
+    }
+    const parentToolCallId = session.subagentIdsByToolCall.get(
+      notification.subagentId,
+    );
+    if (parentToolCallId === undefined) {
+      return;
+    }
+    const existing = session.subagents.get(notification.subagentId);
+    session.subagents.set(notification.subagentId, {
+      childRef: notification.subagentId,
+      parentToolCallId,
+      label: notification.description,
+      subagentType: notification.subagentType,
+      ...(notification.model === undefined
+        ? {}
+        : { model: notification.model }),
+      status: existing?.status ?? "running",
+      ...(existing?.progress === undefined
+        ? {}
+        : { progress: existing.progress }),
+    });
+    sendThreadDeltas(
+      session.bbThreadId,
+      session.translator.noteDelegationReport(session.bbThreadId, {
+        toolCallId: parentToolCallId,
+        childRef: notification.subagentId,
+        label: notification.description,
+        detail: notification.subagentType,
+      }),
+    );
+    flushEarlyGrokSubagentNotifications(session, notification.subagentId);
+    return;
+  }
+  const existing = session.subagents.get(notification.subagentId);
+  if (existing === undefined || existing.status !== "running") {
+    return;
+  }
+  if (notification.kind === "progress") {
+    const progress = {
+      ...(notification.durationMs === undefined
+        ? {}
+        : { durationMs: notification.durationMs }),
+      ...(notification.turnCount === undefined
+        ? {}
+        : { turnCount: notification.turnCount }),
+      ...(notification.toolCallCount === undefined
+        ? {}
+        : { toolCallCount: notification.toolCallCount }),
+      ...(notification.tokensUsed === undefined
+        ? {}
+        : { tokensUsed: notification.tokensUsed }),
+    };
+    session.subagents.set(notification.subagentId, {
+      ...existing,
+      progress,
+    });
+    sendThreadDeltas(
+      session.bbThreadId,
+      session.translator.noteDelegationReport(session.bbThreadId, {
+        toolCallId: existing.parentToolCallId,
+        childRef: existing.childRef,
+        label: existing.label,
+        detail: `turn ${progress.turnCount ?? 1}`,
+      }),
+    );
+    return;
+  }
+  const status = notification.status;
+  const result = notification.output ?? notification.error;
+  session.subagents.set(notification.subagentId, {
+    ...existing,
+    status,
+    ...(notification.output === undefined
+      ? {}
+      : { result: notification.output }),
+    ...(notification.error === undefined ? {} : { error: notification.error }),
+  });
+  sendThreadDeltas(
+    session.bbThreadId,
+    session.translator.noteDelegationCompletion(
+      session.bbThreadId,
+      {
+        toolCallId: existing.parentToolCallId,
+        childRef: existing.childRef,
+        label: existing.label,
+        detail: existing.subagentType,
+      },
+      status === "cancelled"
+        ? "interrupted"
+        : status === "failed"
+          ? "failed"
+          : "completed",
+      result,
+    ),
+  );
+}
+
+function grokSubagentToolTarget(
+  toolName: PendingGrokSubagentAction["toolName"],
+  rawInput: unknown,
+): string | undefined {
+  if (!isJsonObject(rawInput)) return undefined;
+  if (toolName === "send_subagent_message") {
+    const childRef = rawInput["subagent_id"];
+    return typeof childRef === "string" && childRef.length > 0
+      ? childRef
+      : undefined;
+  }
+  const taskId = rawInput["task_id"];
+  if (typeof taskId === "string" && taskId.length > 0) return taskId;
+  const taskIds = rawInput["task_ids"];
+  const onlyTaskId = Array.isArray(taskIds) ? taskIds[0] : undefined;
+  return Array.isArray(taskIds) &&
+    taskIds.length === 1 &&
+    typeof onlyTaskId === "string" &&
+    onlyTaskId.length > 0
+    ? onlyTaskId
+    : undefined;
+}
+
+function grokSubagentToolText(rawInput: unknown): string | undefined {
+  if (!isJsonObject(rawInput)) return undefined;
+  const text = rawInput["text"];
+  return typeof text === "string" ? text : undefined;
+}
+
+function grokSubagentActionMatches(
+  action: PendingGrokSubagentAction,
+  update: { title?: string; rawInput?: unknown },
+): boolean {
+  if (action.toolName !== update.title) return false;
+  if (
+    grokSubagentToolTarget(action.toolName, update.rawInput) !== action.childRef
+  ) {
+    return false;
+  }
+  if (action.kind !== "tell" || action.text === undefined) return true;
+  return grokSubagentToolText(update.rawInput) === action.text;
+}
+
+function noteGrokSubagentToolCall(
+  session: AcpThreadSession,
+  update: {
+    sessionUpdate: string;
+    toolCallId?: string;
+    title?: string;
+    status?: string;
+    rawInput?: unknown;
+    rawOutput?: unknown;
+  },
+): string | undefined {
+  if (update.toolCallId === undefined) {
+    return undefined;
+  }
+  const spawnedSubagentId = bindGrokSpawnedSubagent(session, update);
+  noteGrokSubagentActionResult(session, update);
+  return spawnedSubagentId;
+}
+
+function bindGrokSpawnedSubagent(
+  session: AcpThreadSession,
+  update: {
+    toolCallId?: string;
+    rawInput?: unknown;
+    rawOutput?: unknown;
+  },
+): string | undefined {
+  if (
+    update.toolCallId === undefined ||
+    update.rawOutput === undefined ||
+    !isJsonObject(update.rawInput) ||
+    update.rawInput["variant"] !== "Task"
+  ) {
+    return undefined;
+  }
+  try {
+    const subagentId = decodeGrokSpawnToolResult(update.rawOutput);
+    session.subagentIdsByToolCall.set(subagentId, update.toolCallId);
+    return subagentId;
+  } catch {
+    return undefined;
+  }
+}
+
+function noteGrokSubagentActionResult(
+  session: AcpThreadSession,
+  update: {
+    sessionUpdate: string;
+    toolCallId?: string;
+    title?: string;
+    status?: string;
+    rawInput?: unknown;
+    rawOutput?: unknown;
+  },
+): void {
+  if (update.toolCallId === undefined) {
+    return;
+  }
+  let action = Array.from(session.pendingSubagentActions.values()).find(
+    (candidate) => candidate.toolCallId === update.toolCallId,
+  );
+  if (action === undefined) {
+    const pending = Array.from(session.pendingSubagentActions.values()).find(
+      (candidate) =>
+        candidate.toolCallId === undefined &&
+        grokSubagentActionMatches(candidate, update),
+    );
+    if (pending === undefined || update.sessionUpdate !== "tool_call") {
+      return;
+    }
+    pending.toolCallId = update.toolCallId;
+    if (update.status !== "completed" && update.status !== "failed") {
+      return;
+    }
+    action = pending;
+  }
+  if (
+    action.kind === "tell" &&
+    action.text !== undefined &&
+    update.rawInput !== undefined &&
+    grokSubagentToolText(update.rawInput) !== action.text
+  ) {
+    failPendingSubagentAction(
+      session,
+      action,
+      `Grok tell action sent different text to subagent "${action.childRef}"`,
+    );
+    return;
+  }
+  if (update.status === "failed") {
+    failPendingSubagentAction(
+      session,
+      action,
+      `Grok ${action.kind} action failed for subagent "${action.childRef}"`,
+    );
+    return;
+  }
+  if (update.status !== "completed") {
+    return;
+  }
+  try {
+    const result = decodeGrokSubagentActionResult(
+      action.toolName,
+      update.rawOutput,
+    );
+    if (result.kind === "cancel" && result.childRef !== action.childRef) {
+      failPendingSubagentAction(
+        session,
+        action,
+        `Grok cancel action finished for subagent "${result.childRef}" instead of "${action.childRef}"`,
+      );
+      return;
+    }
+    if (!session.pendingSubagentActions.delete(String(action.requestId))) {
+      return;
+    }
+    if (result.kind === "message") {
+      sendResult(action.requestId, {
+        childRef: action.childRef,
+        messageId: result.messageId,
+      });
+    } else {
+      sendResult(action.requestId, {
+        childRef: result.childRef,
+        status: "cancelled",
+      });
+    }
+  } catch (error) {
+    failPendingSubagentAction(
+      session,
+      action,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 function handleAgentNotification(
   session: AcpThreadSession,
   method: string,
   params: unknown,
 ): void {
+  if (method === "_x.ai/session_notification") {
+    if (session.stopping) {
+      return;
+    }
+    const parsed = z
+      .object({ sessionId: z.string(), update: z.unknown() })
+      .safeParse(params);
+    if (parsed.success && parsed.data.sessionId === session.providerThreadId) {
+      handleGrokSubagentNotification(session, parsed.data.update);
+    }
+    return;
+  }
   if (method !== "session/update") {
     return;
   }
@@ -3658,6 +4642,13 @@ function handleAgentNotification(
   if (parsed.data.sessionId !== session.providerThreadId) {
     return;
   }
+  let spawnedSubagentId: string | undefined;
+  if (
+    parsed.data.update.sessionUpdate === "tool_call" ||
+    parsed.data.update.sessionUpdate === "tool_call_update"
+  ) {
+    spawnedSubagentId = noteGrokSubagentToolCall(session, parsed.data.update);
+  }
   if (parsed.data.update.sessionUpdate === "config_option_update") {
     const configState = acpConfigStateResultSchema.safeParse(
       parsed.data.update,
@@ -3667,6 +4658,26 @@ function handleAgentNotification(
         ...session.nativeConfig,
         configOptions: configState.data.configOptions,
       };
+    }
+  }
+  if (session.dialect.id === "grok") {
+    try {
+      const notification = decodeGrokCompactionNotification(parsed.data.update);
+      if (notification !== null) {
+        if (notification.kind === "completed") {
+          session.grokCompactionTokensAfter = notification.tokensAfter;
+          emitGrokContextWindow(session, notification.tokensAfter);
+        }
+        return;
+      }
+    } catch (error) {
+      if (session.activePromptKind === "compaction") {
+        finishCompaction(session, {
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
     }
   }
   if (session.activePromptKind === "compaction") {
@@ -3679,6 +4690,9 @@ function handleAgentNotification(
     }
   }
   emitSessionUpdate(session, parsed.data.update, rawUpdate);
+  if (spawnedSubagentId !== undefined) {
+    flushEarlyGrokSubagentNotifications(session, spawnedSubagentId);
+  }
 }
 
 type DecodedAcpBridgeRequest =
@@ -3887,6 +4901,120 @@ function maintenanceTarget(
   };
 }
 
+async function startGrokSubagentAction(
+  session: AcpThreadSession,
+  kind: "tell" | "cancel",
+  request: Extract<
+    AcpBridgeCommand,
+    { method: "subagent/tell" | "subagent/cancel" }
+  > & { id: AcpBridgeRequestId },
+): Promise<void> {
+  const { childRef, clientRequestId, options } = request.params;
+  if (session.activePromptKind !== null || session.subagentActionReserved) {
+    sendError(
+      request.id,
+      -32000,
+      "The parent session already has an active turn",
+    );
+    return;
+  }
+  const child = session.subagents.get(childRef);
+  if (child === undefined) {
+    sendError(request.id, -32000, `Unknown subagent "${childRef}"`);
+    return;
+  }
+  if (kind === "cancel" && child.status !== "running") {
+    sendError(
+      request.id,
+      -32000,
+      `Subagent "${childRef}" has already settled and cannot be cancelled`,
+    );
+    return;
+  }
+  if (kind === "tell" && child.status === "cancelled") {
+    sendError(
+      request.id,
+      -32000,
+      `Subagent "${childRef}" is cancelled and cannot receive messages`,
+    );
+    return;
+  }
+  const requestedText =
+    kind === "tell" &&
+    "text" in request.params &&
+    typeof request.params.text === "string"
+      ? request.params.text
+      : undefined;
+  session.subagentActionReserved = true;
+  try {
+    if (options.sessionOptions !== undefined) {
+      await applySessionOptionSelections(session, options.sessionOptions);
+    }
+    if (
+      session.stopping ||
+      sessionsByBbThreadId.get(session.bbThreadId) !== session
+    ) {
+      sendError(
+        request.id,
+        -32000,
+        "The parent session was replaced before the subagent action started",
+      );
+      return;
+    }
+    if (session.activePromptKind !== null) {
+      sendError(
+        request.id,
+        -32000,
+        "The parent session already has an active turn",
+      );
+      return;
+    }
+    try {
+      if (plannedExecutionSettings(session, options).restart) {
+        sendError(
+          request.id,
+          -32000,
+          "The parent session must restart before the subagent action can run",
+        );
+        return;
+      }
+    } catch (error) {
+      sendError(
+        request.id,
+        -32000,
+        error instanceof Error ? error.message : String(error),
+      );
+      return;
+    }
+    const toolName =
+      kind === "tell" ? "send_subagent_message" : "kill_command_or_subagent";
+    const text =
+      kind === "tell"
+        ? buildGrokSubagentActionPrompt({
+            kind,
+            childRef,
+            text: requestedText,
+          })
+        : buildGrokSubagentActionPrompt({ kind, childRef });
+    session.pendingSubagentActions.set(String(request.id), {
+      kind,
+      childRef,
+      requestId: request.id,
+      toolName,
+      ...(requestedText === undefined ? {} : { text: requestedText }),
+    });
+    runTurn(session, {
+      clientRequestId,
+      input: [{ type: "text", text, mentions: [] }],
+      requestId: null,
+      options,
+      subagentActionRequestId: String(request.id),
+    });
+  } finally {
+    session.subagentActionReserved = false;
+  }
+}
+
 async function handleRequest(
   request: AcpBridgeCommand & { id: string | number },
 ): Promise<void> {
@@ -4023,6 +5151,9 @@ async function handleRequest(
                 kind: "fork",
                 params: sessionParams,
                 sourceProviderThreadId: request.params.sourceProviderThreadId,
+                ...(request.params.sourceCwd === undefined
+                  ? {}
+                  : { sourceCwd: request.params.sourceCwd }),
               }
             : { kind: "start", params: sessionParams },
       );
@@ -4074,6 +5205,31 @@ async function handleRequest(
       return;
     }
 
+    case "subagent/list": {
+      const session = liveSessionForThread(request.params.threadId);
+      if (session === undefined) {
+        sendError(request.id, -32000, "No active ACP session");
+        return;
+      }
+      sendResult(request.id, {
+        subagents: Array.from(session.subagents.values()),
+      });
+      return;
+    }
+    case "subagent/tell":
+    case "subagent/cancel": {
+      const session = liveSessionForThread(request.params.threadId);
+      if (session === undefined) {
+        sendError(request.id, -32000, "No active ACP session");
+        return;
+      }
+      await startGrokSubagentAction(
+        session,
+        request.method === "subagent/tell" ? "tell" : "cancel",
+        request,
+      );
+      return;
+    }
     case "turn/steer": {
       const params = request.params;
       const session = liveSessionForThread(params.threadId);
@@ -4102,12 +5258,22 @@ async function handleRequest(
         });
         return;
       }
-      session.queuedInputs.push({
+      const pending = {
         clientRequestId: params.clientRequestId,
         input: params.input,
         requestId: null,
         options: params.options,
-      });
+      };
+      if (session.dialect.nativeInterjectMethod !== undefined) {
+        void steerWithNativeInterject(
+          session,
+          pending,
+          request.id,
+          session.dialect.nativeInterjectMethod,
+        );
+        return;
+      }
+      session.queuedInputs.push(pending);
       requestSteerCancel(session);
       sendResult(request.id, { threadId: params.threadId });
       return;
@@ -4145,7 +5311,46 @@ async function handleRequest(
   }
 }
 
+function cancelSubagentActionFromRuntime(parsed: unknown): boolean {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return false;
+  }
+  const message = parsed as {
+    id?: unknown;
+    method?: unknown;
+    params?: unknown;
+  };
+  if (
+    message.method !== PROVIDER_TOOL_CALL_CANCELLED_METHOD ||
+    message.id !== undefined
+  ) {
+    return false;
+  }
+  const params = providerToolCallCancellationSchema.safeParse(message.params);
+  if (!params.success) {
+    return true;
+  }
+  const key = String(params.data.requestId);
+  for (const session of sessionsByBbThreadId.values()) {
+    const action = session.pendingSubagentActions.get(key);
+    if (action === undefined) {
+      continue;
+    }
+    failPendingSubagentAction(
+      session,
+      action,
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+    requestSteerCancel(session);
+    break;
+  }
+  return true;
+}
+
 function handleParsedMessage(parsed: unknown): void {
+  if (cancelSubagentActionFromRuntime(parsed)) {
+    return;
+  }
   const response = decodeBridgeJsonRpcResponse(parsed);
   if (response && typeof response.id === "number") {
     const pending = pendingRuntimeRequests.get(response.id);

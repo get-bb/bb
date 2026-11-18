@@ -1867,6 +1867,7 @@ export function createDeltaAssembler(
             ...(delta.promptCacheTtlMs === undefined
               ? {}
               : { promptCacheTtlMs: delta.promptCacheTtlMs }),
+            ...(delta.models === undefined ? {} : { models: delta.models }),
           },
         });
         return;

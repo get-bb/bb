@@ -1,6 +1,21 @@
 export { experimental_providerBridge as acpProviderBridge } from "./bridge/bridge.js";
 
 export { registerAcpDialect } from "./dialect.js";
+
+export {
+  decodeGrokCapabilitySnapshot,
+  GrokUnsupportedCapabilityError,
+  requireGrokCapability,
+} from "./grok-capabilities.js";
+export type {
+  GrokBooleanCapability,
+  GrokCapabilitySnapshot,
+  GrokCommandCapability,
+  GrokHooksCapability,
+  GrokModelCapability,
+  GrokReasoningEffort,
+  GrokToolOverrides,
+} from "./grok-capabilities.js";
 export type {
   AcpClientRequestOutcome,
   AcpDelegationReport,

@@ -146,6 +146,15 @@ function createRuntime(): FakeDispatchRuntime {
     }),
     runTurn: vi.fn(async () => ({ status: "started" as const })),
     steerTurn: vi.fn(async () => ({ status: "steered" as const })),
+    listSubagents: vi.fn(async () => []),
+    tellSubagent: vi.fn(async (args: { childRef: string }) => ({
+      childRef: args.childRef,
+      messageId: "message-1",
+    })),
+    cancelSubagent: vi.fn(async (args: { childRef: string }) => ({
+      childRef: args.childRef,
+      status: "cancelled" as const,
+    })),
     stopThread: vi.fn(async (args: { threadId: string }) => {
       activeTurnsByThreadId.delete(args.threadId);
       hostedThreadIds.delete(args.threadId);

@@ -438,6 +438,7 @@ type ExpectedThreadsKey =
   | "send"
   | "spawn"
   | "stop"
+  | "subagents"
   | "storageFiles"
   | "storageLocation"
   | "storagePaths"
@@ -456,6 +457,7 @@ type ExpectedThreadEventsKey = "list" | "wait";
  * edit, reorder, delete) live on `queuedMessages`.
  */
 type ExpectedThreadQueueKey = "list";
+type ExpectedThreadSubagentsKey = "list" | "tell" | "cancel";
 type ExpectedThreadInteractionsKey =
   | "cancel"
   | "get"
@@ -619,6 +621,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["threads"]["queue"]
     >().toEqualTypeOf<ExpectedThreadQueueKey>();
+    expectTypeOf<
+      keyof RootBbSdk["threads"]["subagents"]
+    >().toEqualTypeOf<ExpectedThreadSubagentsKey>();
     expectTypeOf<
       keyof RootBbSdk["threads"]["interactions"]
     >().toEqualTypeOf<ExpectedThreadInteractionsKey>();

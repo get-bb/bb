@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "subagent",
+  "threadId": "grok-subagents",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-11",
+  "description": "The agent delegates one task to a subagent (where the provider has one).",
+  "note": "Synthetic parent-mediated view, exact Unicode message, targeted cancellation, and continued parent turn.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 10,
+    "bridge→runtime": 36,
+    "provider→bridge": 23,
+    "bridge→provider": 7
+  }
+}

@@ -341,7 +341,7 @@ describe("grok session context _meta", () => {
     ).toBe(500_000);
   });
 
-  it("skips a model without a window and ignores empty catalogs", () => {
+  it("keeps the window unknown when the current model has no advertised size", () => {
     expect(
       grokContextWindowSizeFromSessionModels({
         currentModelId: "grok-4.6",
@@ -354,7 +354,7 @@ describe("grok session context _meta", () => {
           },
         ],
       }),
-    ).toBe(256_000);
+    ).toBeUndefined();
     expect(grokContextWindowSizeFromSessionModels(undefined)).toBeUndefined();
     expect(
       grokContextWindowSizeFromSessionModels({ availableModels: [] }),

@@ -12,6 +12,7 @@ import { registerShowCommand } from "./show.js";
 import { registerSpawnCommand } from "./spawn.js";
 import { registerForkCommand } from "./fork.js";
 import { registerWaitCommand } from "./wait.js";
+import { registerSubagentCommands } from "./subagents.js";
 
 export function registerThreadCommands(
   program: Command,
@@ -30,5 +31,6 @@ export function registerThreadCommands(
   registerPaneCommand(thread, getUrl);
   registerOrganizationCommands(thread, getUrl);
   registerActionsCommands(thread, getUrl);
+  registerSubagentCommands(thread, getUrl);
   registerInteractionCommands(thread, getUrl);
 }

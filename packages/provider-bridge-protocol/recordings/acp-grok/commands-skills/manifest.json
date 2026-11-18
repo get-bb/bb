@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "commands-skills",
+  "threadId": "grok-commands-skills",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-15",
+  "description": "commands-skills",
+  "note": "Synthetic command replacement, duplicate and empty filtering, Unicode metadata, and bb skill expansion.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 22,
+    "provider→bridge": 12,
+    "bridge→provider": 5
+  }
+}

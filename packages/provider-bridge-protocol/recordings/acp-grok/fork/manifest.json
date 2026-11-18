@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "fork",
+  "threadId": "grok-fork-child",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-10",
+  "description": "A thread forked from a resumed source thread, then one turn.",
+  "note": "Synthetic Grok tip fork with distinct child identity and a child turn.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 10,
+    "provider→bridge": 5,
+    "bridge→provider": 4
+  }
+}

@@ -1452,7 +1452,7 @@ export function validatePluginProviderDeclaration(
     providerId: id,
     value: capabilities,
     scope: "capabilities.",
-    read: new Set(),
+    read: new Set(["experimental_supportsSubagentMessaging"]),
     renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
     verb: "moved",
   });
@@ -1489,6 +1489,14 @@ export function validatePluginProviderDeclaration(
     }
   }
   if (
+    capabilities.experimental_supportsSubagentMessaging !== undefined &&
+    typeof capabilities.experimental_supportsSubagentMessaging !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_supportsSubagentMessaging must be a boolean`,
+    );
+  }
+  if (
     !(PROVIDER_FORK_VALUES as readonly string[]).includes(capabilities.fork)
   ) {
     throw new Error(
@@ -1502,6 +1510,9 @@ export function validatePluginProviderDeclaration(
     supportsManualCompaction: capabilities.supportsManualCompaction,
     supportsThreadArchive: capabilities.supportsThreadArchive,
     supportsThreadRename: capabilities.supportsThreadRename,
+    ...(capabilities.experimental_supportsSubagentMessaging === true
+      ? { experimental_supportsSubagentMessaging: true }
+      : {}),
     permissionModes: validateProviderLiteralArray({
       providerId: id,
       field: "capabilities.permissionModes",
@@ -2842,10 +2853,9 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<
-      [],
-      { id: number; statement_hash: string | null }
-    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+    .prepare<[], { id: number; statement_hash: string | null }>(
+      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+    )
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);

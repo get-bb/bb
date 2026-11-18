@@ -438,6 +438,30 @@ describe("provider declaration fields renamed in SDK 0.4.16", () => {
     );
   });
 
+  it("keeps experimental subagent messaging only when it is true", () => {
+    const base = declaration();
+    const enabled = validatePluginProviderDeclaration({
+      ...base,
+      capabilities: {
+        ...base.capabilities,
+        experimental_supportsSubagentMessaging: true,
+      },
+    });
+    expect(enabled.capabilities.experimental_supportsSubagentMessaging).toBe(
+      true,
+    );
+    const disabled = validatePluginProviderDeclaration({
+      ...base,
+      capabilities: {
+        ...base.capabilities,
+        experimental_supportsSubagentMessaging: false,
+      },
+    });
+    expect(disabled.capabilities).not.toHaveProperty(
+      "experimental_supportsSubagentMessaging",
+    );
+  });
+
   it("rejects an unknown experimental_ capability", () => {
     const base = declaration();
     const stale = {

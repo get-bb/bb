@@ -7,6 +7,7 @@ import {
   type PendingInteractionApprovalDecision,
   type ProviderPendingInteraction,
   type Thread,
+  type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import type {
   ThreadHeadStateResponse,
@@ -265,7 +266,7 @@ export function makeFileChangeApprovalPayload(
   };
 }
 
-export function makeUserQuestionPayload(): ProviderPendingInteraction["payload"] {
+export function makeUserQuestionPayload(): UserQuestionPendingInteractionPayload {
   return {
     kind: "user_question",
     questions: [

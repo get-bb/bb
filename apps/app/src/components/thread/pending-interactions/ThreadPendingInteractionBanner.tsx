@@ -22,6 +22,7 @@ import {
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { Textarea } from "@bb/shared-ui/textarea";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { getDetailScrollMaxHeightClass } from "@/components/ui/detail-scroll-size.js";
 import { UserQuestionAnswerForm } from "@/components/thread/user-questions/UserQuestionInteractionContent.js";
@@ -97,7 +98,10 @@ interface UseApprovalDecisionSubmissionArgs {
 interface ApprovalDecisionSubmission {
   errorMessage: string | null;
   loadingDecision: PendingInteractionApprovalDecision | null;
-  submitDecision: (decision: PendingInteractionApprovalDecision) => void;
+  submitDecision: (
+    decision: PendingInteractionApprovalDecision,
+    comments?: string,
+  ) => void;
   submitDisabled: boolean;
 }
 
@@ -199,10 +203,12 @@ function useApprovalDecisionSubmission({
     : null;
   const submitDecision = (
     decision: PendingInteractionApprovalDecision,
+    comments?: string,
   ): void => {
     const resolution = buildPendingInteractionApprovalResolution(
       interaction,
       decision,
+      comments,
     );
     void resolvePendingInteraction
       .mutateAsync({ threadId, interactionId: interaction.id, resolution })
@@ -224,6 +230,7 @@ function PlanReviewRequestBanner({
   threadId,
   collapsedByDefault,
 }: PlanReviewRequestBannerProps) {
+  const [comments, setComments] = useState("");
   const { errorMessage, loadingDecision, submitDecision, submitDisabled } =
     useApprovalDecisionSubmission({
       fallbackMessage: "Failed to resolve plan review",
@@ -244,7 +251,14 @@ function PlanReviewRequestBanner({
           decisions={approval.availableDecisions}
           disabled={submitDisabled}
           loadingDecision={loadingDecision}
-          onDecide={submitDecision}
+          onDecide={(decision) =>
+            submitDecision(
+              decision,
+              decision === "deny" && comments.trim() !== ""
+                ? comments
+                : undefined,
+            )
+          }
           subjectKind="plan"
         />
       }
@@ -267,6 +281,15 @@ function PlanReviewRequestBanner({
               {planFilePath}
             </p>
           ) : null}
+          <Textarea
+            aria-label="Plan change requests"
+            className="min-h-20 resize-y rounded-none border-0 border-t bg-transparent px-3 py-2 text-xs shadow-none focus-visible:ring-0"
+            disabled={submitDisabled}
+            maxLength={4096}
+            placeholder="What should change? (optional when keeping planning)"
+            value={comments}
+            onChange={(event) => setComments(event.target.value)}
+          />
         </div>
       )}
     </PendingInteractionShell>
