@@ -6,6 +6,7 @@ import {
   PromptMentionLinkContext,
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 export const COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY =
   "--composer-editor-available-height";
@@ -65,7 +66,7 @@ export function ComposerEditorSlot({
         <EditorContent
           editor={editor}
           onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
+            if (!isNonImeKey(event, "Escape")) return;
             if (editor === null || editor.isEditable) return;
             event.preventDefault();
             blurPromptEditor(editor);

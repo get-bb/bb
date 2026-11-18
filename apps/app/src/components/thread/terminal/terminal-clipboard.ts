@@ -1,3 +1,4 @@
+import { isImeComposing } from "@bb/shared-ui/lib/ime-keyboard";
 import type { Terminal } from "@xterm/xterm";
 
 export function createTerminalClipboardKeyHandler({
@@ -11,7 +12,7 @@ export function createTerminalClipboardKeyHandler({
 }): (event: KeyboardEvent) => boolean {
   return (event) => {
     if (
-      event.isComposing ||
+      isImeComposing(event) ||
       event.altKey ||
       (event.ctrlKey && event.metaKey) ||
       (!event.ctrlKey && !event.metaKey)

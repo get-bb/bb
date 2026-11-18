@@ -44,6 +44,7 @@ import type {
 } from "./git-diff-view-preferences.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { GitDiffStats } from "@bb/shared-ui/git-diff/parsing";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 const GIT_DIFF_SELECTOR_MENU_MIN_WIDTH = "20rem";
 
@@ -181,7 +182,7 @@ function GitDiffFileFilterInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
+          if (isNonImeKey(event, "Escape")) {
             event.preventDefault();
             onChange(null);
           }

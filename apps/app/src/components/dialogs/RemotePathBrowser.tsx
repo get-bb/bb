@@ -31,6 +31,7 @@ import { useCompilerSafeVirtualizer } from "@/hooks/useCompilerSafeVirtualizer";
 import { sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface Crumb {
   label: string;
@@ -322,10 +323,10 @@ export function RemotePathBrowser({
               placeholder="/path/to/project"
               onChange={(event) => setEditValue(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
+                if (isNonImeKey(event, "Enter")) {
                   event.preventDefault();
                   commitEditor();
-                } else if (event.key === "Escape") {
+                } else if (isNonImeKey(event, "Escape")) {
                   event.preventDefault();
                   setIsEditing(false);
                 }
@@ -478,10 +479,10 @@ export function RemotePathBrowser({
                   setNewFolderError(null);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") {
+                  if (isNonImeKey(event, "Enter")) {
                     event.preventDefault();
                     commitNewFolder();
-                  } else if (event.key === "Escape") {
+                  } else if (isNonImeKey(event, "Escape")) {
                     event.preventDefault();
                     cancelCreatingFolder();
                   }

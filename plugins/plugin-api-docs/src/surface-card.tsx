@@ -13,6 +13,7 @@ import {
 import { pluginIcon, surfaceIcon } from "./plugin-icons";
 import { UsedByList, UsedByPager } from "./used-by";
 import { SurfaceMapContext } from "./wireframes";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 export function SurfaceCard({
   surface,
@@ -89,7 +90,7 @@ export function SurfaceCard({
   useEffect(() => {
     if (probe) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onDismiss();
+      if (isNonImeKey(event, "Escape")) onDismiss();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

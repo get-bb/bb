@@ -111,6 +111,7 @@ import {
 import { getWorkspaceOpenTargetFallbackLabel } from "@/components/workspace-open-target/workspace-open-target-display";
 import type { LocalHostDaemonAccessState } from "@/lib/local-host-daemon-access";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const LOCAL_EDITOR_INTEGRATION_DOCS_URL =
   "https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md#open-bb-from-another-browser";
@@ -684,11 +685,11 @@ function ManagedBranchPrefixSetting({
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          if (event.key === "Enter") {
+          if (isNonImeKey(event, "Enter")) {
             event.preventDefault();
             commit();
           }
-          if (event.key === "Escape") {
+          if (isNonImeKey(event, "Escape")) {
             event.preventDefault();
             setDraft(value);
           }

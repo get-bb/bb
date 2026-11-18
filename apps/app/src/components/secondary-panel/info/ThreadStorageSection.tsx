@@ -25,6 +25,7 @@ import {
   type ThreadStorageFlattenOptions,
   type ThreadStorageTreeRow,
 } from "./thread-storage-tree";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const THREAD_STORAGE_FOLDER_CHILD_LIMIT = 5;
 
@@ -202,7 +203,7 @@ export function ThreadStorageSection({
                 if (searchQuery === "") setIsSearchOpen(false);
               }}
               onKeyDown={(event) => {
-                if (event.key === "Escape") {
+                if (isNonImeKey(event, "Escape")) {
                   event.preventDefault();
                   closeSearch();
                 }

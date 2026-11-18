@@ -57,6 +57,7 @@ import {
   type MarketplaceShelf,
   type MarketplaceSort,
 } from "./marketplace-view-model.js";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const SORT_LABELS: Record<MarketplaceSort, string> = {
   "recently-added": "New",
@@ -602,7 +603,7 @@ function MarketplaceToolbar({
             className="marketplace-category-select"
             ref={categoryMenu}
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
+              if (isNonImeKey(event, "Escape")) {
                 event.currentTarget.removeAttribute("open");
                 event.currentTarget.querySelector("summary")?.focus();
               }

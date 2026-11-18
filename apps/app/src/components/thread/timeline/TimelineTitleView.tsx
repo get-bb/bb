@@ -31,6 +31,7 @@ import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export type TimelineTitleActionResolver = (
   action: TimelineTitleAction,
@@ -158,7 +159,7 @@ function renderSegment(
           event.stopPropagation();
         }}
         onKeyDown={(event: KeyboardEvent<HTMLAnchorElement>) => {
-          if (event.key === "Enter" || event.key === " ") {
+          if (isNonImeKey(event, "Enter") || event.key === " ") {
             event.stopPropagation();
           }
         }}
@@ -184,7 +185,7 @@ function renderSegment(
           onClick();
         }}
         onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
-          if (event.key === "Enter" || event.key === " ") {
+          if (isNonImeKey(event, "Enter") || event.key === " ") {
             event.preventDefault();
             event.stopPropagation();
             onClick();

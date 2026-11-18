@@ -47,6 +47,7 @@ import {
   type BuiltinFooterId,
 } from "@/components/sidebar/sidebarFooterPreferences";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;
@@ -121,7 +122,7 @@ export function usePluginSidebarFooterDisclosure() {
   useEffect(() => {
     if (activeItem === null) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!isNonImeKey(event, "Escape")) return;
       event.preventDefault();
       dismiss();
     };

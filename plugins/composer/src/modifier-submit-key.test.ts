@@ -9,6 +9,8 @@ describe("isModifierSubmitKeyEvent", () => {
       ctrlKey: false,
       altKey: false,
       shiftKey: false,
+      isComposing: false,
+      keyCode: 13,
     };
     expect(isModifierSubmitKeyEvent({ ...base, ctrlKey: true })).toBe(true);
     expect(isModifierSubmitKeyEvent({ ...base, metaKey: true })).toBe(true);

@@ -67,6 +67,7 @@ import {
 } from "@/lib/app-keybindings";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserToolbarActions";
+import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface BrowserTabContentProps {
   tabId: string;
@@ -882,8 +883,8 @@ export function BrowserTabContent({
 
   const handleAddressKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.nativeEvent.isComposing) return;
-      if (event.key === "Escape") {
+      if (isImeComposing(event)) return;
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         event.stopPropagation();
         setAddressDraft(currentUrl);
@@ -895,7 +896,7 @@ export function BrowserTabContent({
       }
       if (
         onOpenInNewTab === null ||
-        event.key !== "Enter" ||
+        !isNonImeKey(event, "Enter") ||
         event.shiftKey ||
         event.ctrlKey
       ) {

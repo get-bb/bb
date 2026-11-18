@@ -112,6 +112,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 interface Vault {
   id: string;
@@ -551,7 +552,7 @@ function TiptapEditor(props: {
           "aria-multiline": "true",
         },
         handleKeyDown(view, event) {
-          if (!inline || event.key !== "Escape") return false;
+          if (!inline || !isNonImeKey(event, "Escape")) return false;
           view.dom.blur();
           return true;
         },
@@ -1779,7 +1780,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
               value={props.query}
               onChange={(event) => props.onQueryChange(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key !== "Escape") return;
+                if (!isNonImeKey(event, "Escape")) return;
                 props.onQueryChange("");
                 props.onSearchOpenChange(false);
               }}

@@ -14,6 +14,7 @@ import { useSidebarData } from "../model/use-sidebar-data.js";
 import { toThreadActionTarget } from "../rows/threadActionTarget.js";
 import { SIDEBAR_CONTENT_SELECTOR } from "../ui/sidebar.js";
 import { SIDEBAR_WINDOWED_NAV_ATTRIBUTE } from "../list/sidebarThreadShortcuts.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 const NO_THREAD_IDS: readonly string[] = [];
 
@@ -241,7 +242,11 @@ export function ThreadSelectionProvider({
   useEffect(() => {
     if (!hasSelection) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !event.isTrusted || event.defaultPrevented)
+      if (
+        !isNonImeKey(event, "Escape") ||
+        !event.isTrusted ||
+        event.defaultPrevented
+      )
         return;
       store.clear();
       store.restoreActiveThreadFocus();

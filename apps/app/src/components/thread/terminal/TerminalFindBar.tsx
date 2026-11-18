@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ISearchOptions, SearchAddon } from "@xterm/addon-search";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 function searchOptions(caseSensitive: boolean): ISearchOptions {
   const styles = getComputedStyle(document.documentElement);
@@ -68,12 +69,12 @@ export function TerminalFindBar({
       className="flex items-center gap-2 border-b border-border bg-sidebar p-2 text-xs"
       onKeyDown={(event) => {
         if (
-          event.key === "Escape" ||
-          (event.key === "Enter" && event.target === inputRef.current)
+          isNonImeKey(event, "Escape") ||
+          (isNonImeKey(event, "Enter") && event.target === inputRef.current)
         ) {
           event.preventDefault();
           event.stopPropagation();
-          if (event.key === "Escape") onClose();
+          if (isNonImeKey(event, "Escape")) onClose();
           else find(event.shiftKey);
         }
       }}

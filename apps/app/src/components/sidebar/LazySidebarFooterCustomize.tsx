@@ -8,6 +8,7 @@ import {
   useSidebarFooterPreferences,
 } from "./sidebarFooterPreferences";
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 function FooterCustomizePlaceholder({
   onDone,
@@ -24,7 +25,7 @@ function FooterCustomizePlaceholder({
     <div
       className="rounded-lg bg-sidebar-accent/40 py-1"
       onKeyDown={(event) => {
-        if (event.key === "Escape" && !event.defaultPrevented) {
+        if (isNonImeKey(event, "Escape") && !event.defaultPrevented) {
           event.preventDefault();
           onDone();
         }

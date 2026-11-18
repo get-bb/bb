@@ -687,7 +687,11 @@ describe("CommandPalette", () => {
     expect(fireEvent.keyDown(searchField(), { key: "a", ctrlKey: true })).toBe(
       true,
     );
-    for (const ignored of [{ repeat: true }, { isComposing: true }]) {
+    for (const ignored of [
+      { repeat: true },
+      { isComposing: true },
+      { keyCode: 229 },
+    ]) {
       fireEvent.keyDown(searchField(), {
         key: "o",
         ctrlKey: true,
@@ -2119,6 +2123,18 @@ describe("CommandPalette", () => {
     expect(testState.calls).toEqual([]);
 
     fireEvent.compositionEnd(input);
+    const safariConfirmation = new KeyboardEvent("keydown", {
+      key: "Enter",
+      keyCode: 229,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, safariConfirmation);
+
+    expect(safariConfirmation.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("combobox")).toBe(input);
+    expect(testState.calls).toEqual([]);
+
     const activation = new KeyboardEvent("keydown", {
       key: "Enter",
       bubbles: true,

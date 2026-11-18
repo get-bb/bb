@@ -20,6 +20,7 @@ import { EmptyState } from "../components/empty-state.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { observeSharedResize } from "@/lib/shared-resize-observer";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 const BOARD_MIN_WIDTH = 448;
 
@@ -139,7 +140,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   useEffect(() => {
     if (!onTaskRoute) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (!isNonImeKey(event, "Escape") || event.defaultPrevented) return;
       if (isEditableTarget(event.target)) return;
       if (hasOpenOverlay()) return;
       backRef.current();

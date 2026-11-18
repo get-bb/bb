@@ -56,6 +56,10 @@ function installAgentAnnotations(
     return existing.state();
   }
 
+  function isNonImeKey(event: KeyboardEvent, key: string): boolean {
+    return event.key === key && !event.isComposing && event.keyCode !== 229;
+  }
+
   const attributePrefix = "data-bb-annotation-";
   const attributeKeys = [
     "id",
@@ -477,10 +481,13 @@ function installAgentAnnotations(
     });
     textarea.addEventListener("keydown", (event) => {
       event.stopPropagation();
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         closeEditor();
-      } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      } else if (
+        isNonImeKey(event, "Enter") &&
+        (event.metaKey || event.ctrlKey)
+      ) {
         event.preventDefault();
         submit();
       }
@@ -489,7 +496,7 @@ function installAgentAnnotations(
     save.addEventListener("click", submit);
     panel.addEventListener("keydown", (event) => {
       event.stopPropagation();
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         closeEditor();
       }
@@ -530,7 +537,7 @@ function installAgentAnnotations(
   }
 
   function onKeyDown(event: KeyboardEvent): void {
-    if (!active || event.key !== "Escape" || event.target === host) {
+    if (!active || !isNonImeKey(event, "Escape") || event.target === host) {
       return;
     }
     event.preventDefault();

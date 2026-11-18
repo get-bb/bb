@@ -1,12 +1,19 @@
-export function isModifierSubmitKeyEvent(event: {
-  key: string;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): boolean {
+import { isNonImeKey } from "@/lib/ime-keyboard";
+
+export function isModifierSubmitKeyEvent(
+  event: Pick<
+    KeyboardEvent,
+    | "key"
+    | "metaKey"
+    | "ctrlKey"
+    | "altKey"
+    | "shiftKey"
+    | "isComposing"
+    | "keyCode"
+  >,
+): boolean {
   return (
-    event.key === "Enter" &&
+    isNonImeKey(event, "Enter") &&
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
     !event.shiftKey

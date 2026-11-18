@@ -25,6 +25,7 @@ import {
 import { useHostCloneDefaultPath } from "@/hooks/queries/host-queries";
 import { BbHttpError } from "@bb/sdk/browser";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export interface ProjectMachineSetupDialogTarget {
   projectId: string;
@@ -210,10 +211,10 @@ function ProjectMachineSetupDialogContent({
         placeholder={defaultClonePathQuery.data ?? "/path/to/checkout"}
         onChange={(event) => setClonePathDraft(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") {
+          if (isNonImeKey(event, "Enter")) {
             event.preventDefault();
             commitClonePathEdit();
-          } else if (event.key === "Escape") {
+          } else if (isNonImeKey(event, "Escape")) {
             event.preventDefault();
             setIsEditingClonePath(false);
           }
@@ -373,7 +374,7 @@ function SetupOptionCard({
       }}
       onKeyDown={(event) => {
         if (disabled) return;
-        if (event.key === " " || event.key === "Enter") {
+        if (event.key === " " || isNonImeKey(event, "Enter")) {
           event.preventDefault();
           onSelect();
         }
