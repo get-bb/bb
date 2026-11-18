@@ -3,7 +3,8 @@ import {
   getLatestThreadSequence,
   getThread,
   listQueuedThreadMessages,
-  setExperiments,
+  getAppSettings,
+  setAppSettings,
   threads,
 } from "@bb/db";
 import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
@@ -49,7 +50,10 @@ const WORKSPACE_PATH = "/tmp/restart-resume-project";
 afterEach(() => vi.useRealTimers());
 
 function continueAfterRestarts(harness: TestAppHarness, enabled: boolean) {
-  setExperiments(harness.db, { resumeThreadsAfterRestart: enabled });
+  setAppSettings(harness.db, {
+    ...getAppSettings(harness.db),
+    resumeThreadsAfterRestart: enabled,
+  });
 }
 
 function seedHostWithProject(harness: TestAppHarness) {

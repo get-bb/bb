@@ -20,7 +20,6 @@ import { createLogger } from "@bb/logger";
 import {
   getAppSettings,
   getDisabledProviderIds,
-  getExperiments,
   getAutoAppUpdate,
   getSkippedAppUpdate,
   setAutoAppUpdate,
@@ -296,7 +295,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       : null;
   const countRunningThreads = (): number => listRunningThreads(db).length;
   const threadsResumeAfterRestart = (): boolean =>
-    getExperiments(db).resumeThreadsAfterRestart;
+    getAppSettings(db).resumeThreadsAfterRestart;
   const sendHoldDeps = {
     aiServices,
     config: runtimeConfig,

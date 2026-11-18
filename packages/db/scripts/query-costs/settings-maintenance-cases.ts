@@ -440,7 +440,6 @@ const SETTINGS_CASES: readonly Case[] = [
         performanceDiagnostics: true,
         pluginUpdates: true,
         resumeDaemonSessions: true,
-        resumeThreadsAfterRestart: true,
         skipFocusedThreadNotifications: true,
         threadContextCard: true,
         walCheckpointWorker: true,

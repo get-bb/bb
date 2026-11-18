@@ -72,7 +72,6 @@ describe("experiments settings", () => {
         performanceDiagnostics: false,
         pluginUpdates: false,
         resumeDaemonSessions: false,
-        resumeThreadsAfterRestart: false,
         skipFocusedThreadNotifications: false,
         threadContextCard: true,
         walCheckpointWorker: false,

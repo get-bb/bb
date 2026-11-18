@@ -491,8 +491,8 @@ function registerAppUpdateCommands(
           let confirmInterruptingThreads = opts.yes === true;
           if (status.runningThreadCount > 0 && !confirmInterruptingThreads) {
             const count = status.runningThreadCount;
-            const { experiments } = await sdk.system.config();
-            const threadsResume = experiments.resumeThreadsAfterRestart;
+            const { generalSettings } = await sdk.system.config();
+            const threadsResume = generalSettings.resumeThreadsAfterRestart;
             const running = `${String(count)} thread${count === 1 ? " is" : "s are"} running.`;
             const warning = threadsResume
               ? `${running} Updating restarts bb, and ${count === 1 ? "it resumes" : "they resume"} after the update.`

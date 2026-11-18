@@ -123,9 +123,7 @@ vi.mock("@/hooks/queries/system-queries", async (original) => ({
   ...(await original<typeof import("@/hooks/queries/system-queries")>()),
   useSystemConfig: () => ({
     data: {
-      experiments: {
-        resumeThreadsAfterRestart: true,
-      },
+      generalSettings: { resumeThreadsAfterRestart: true },
     },
   }),
 }));

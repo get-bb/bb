@@ -12,7 +12,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultExperiments, type Host } from "@bb/domain";
+import { defaultAppSettings, type Host } from "@bb/domain";
 import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -2375,7 +2375,10 @@ The published lede.
     vi.mocked(sdk.system.config).mockResolvedValue(
       makeSystemConfig({
         primaryHostId: "host_primary",
-        experiments: { ...defaultExperiments, resumeThreadsAfterRestart: true },
+        generalSettings: {
+          ...defaultAppSettings,
+          resumeThreadsAfterRestart: true,
+        },
       }),
     );
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(

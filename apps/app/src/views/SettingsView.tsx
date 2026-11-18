@@ -175,6 +175,8 @@ interface GeneralSettingsSectionProps {
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   keepHistoryAfterContextClear: boolean;
   onKeepHistoryAfterContextClearChange: (enabled: boolean) => void;
+  resumeThreadsAfterRestart: boolean;
+  onResumeThreadsAfterRestartChange: (enabled: boolean) => void;
   summarizeShellCommands: boolean;
   onSummarizeShellCommandsChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
@@ -877,6 +879,8 @@ export function GeneralSettingsSection({
   onKeepHistoryAfterContextClearChange,
   summarizeShellCommands,
   onSummarizeShellCommandsChange,
+  resumeThreadsAfterRestart,
+  onResumeThreadsAfterRestartChange,
   desktopBrowserAvailable,
   generalSettingsDisabled,
   managedBranchPrefix,
@@ -984,6 +988,18 @@ export function GeneralSettingsSection({
               disabled={generalSettingsDisabled}
               onCheckedChange={onKeepHistoryAfterContextClearChange}
               aria-label="Show messages from before a context clear"
+            />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Resume interrupted threads after a restart"
+            description="Resume threads interrupted by an update, crash or restart, and tell the agent what was cut off. Queued messages send afterward."
+          >
+            <Switch
+              checked={resumeThreadsAfterRestart}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onResumeThreadsAfterRestartChange}
+              aria-label="Resume interrupted threads after a restart"
             />
           </SettingsWithControl>
 
@@ -1161,11 +1177,7 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When a machine's connection to the server drops for under 30 seconds, it picks up where it left off instead of reconnecting from scratch, so its terminals and running requests carry on. Applies from the next drop.",
   },
-  resumeThreadsAfterRestart: {
-    label: "Resume interrupted threads after a restart",
-    description:
-      "When an update, crash or restart cuts off a running thread or stops a background command a thread is waiting on, bb resumes the thread a few seconds after it comes back and tells the agent what was cut off. Messages you queued meanwhile send after it.",
-  },
+
   serverMove: {
     label: "Server move",
     description:
@@ -1459,6 +1471,12 @@ export function SettingsView() {
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
               keepHistoryAfterContextClear: enabled,
+            })
+          }
+          resumeThreadsAfterRestart={generalSettings.resumeThreadsAfterRestart}
+          onResumeThreadsAfterRestartChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              resumeThreadsAfterRestart: enabled,
             })
           }
           summarizeShellCommands={generalSettings.summarizeShellCommands}

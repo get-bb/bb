@@ -286,7 +286,9 @@ describe("bb updates command output", () => {
 
 function systemConfig(experiments: { resumeThreadsAfterRestart?: boolean }) {
   return vi.fn(async () => ({
-    experiments: { resumeThreadsAfterRestart: false, ...experiments },
+    generalSettings: {
+      resumeThreadsAfterRestart: experiments.resumeThreadsAfterRestart ?? false,
+    },
   }));
 }
 
