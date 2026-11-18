@@ -266,6 +266,16 @@ async function withUncachedServer<T>(
   }
 }
 
+export type BooleanKey<T> = {
+  [K in keyof T]-?: T[K] extends boolean ? K : never;
+}[keyof T];
+
+export function booleanKeysOf<T extends object>(value: T): BooleanKey<T>[] {
+  return Object.entries(value).flatMap(([key, field]) =>
+    typeof field === "boolean" ? [key as BooleanKey<T>] : [],
+  );
+}
+
 export interface ProviderVersion {
   declaration: Partial<PluginProviderDeclaration>;
 }

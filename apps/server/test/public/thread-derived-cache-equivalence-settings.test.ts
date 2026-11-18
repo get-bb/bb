@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { experimentKeys, type AppSettings } from "@bb/domain";
+import {
+  defaultAppSettings,
+  experimentKeys,
+  type AppSettings,
+} from "@bb/domain";
 import {
   getAppSettings,
   getExperiments,
@@ -7,42 +11,22 @@ import {
   setExperiments,
 } from "@bb/db";
 import {
+  booleanKeysOf,
   expectCachedReadsMatchUncachedBuilds,
   PROVIDER_ID,
+  type BooleanKey,
 } from "../helpers/thread-derived-cache-table.js";
 
-const SETTING_CHANGES: {
-  [K in keyof AppSettings]-?: (settings: AppSettings) => Pick<AppSettings, K>;
+type ValueSetting = Exclude<keyof AppSettings, BooleanKey<AppSettings>>;
+
+const VALUE_SETTING_CHANGES: {
+  [K in ValueSetting]-?: (settings: AppSettings) => Pick<AppSettings, K>;
 } = {
-  showKeyboardHints: (s) => ({ showKeyboardHints: !s.showKeyboardHints }),
-  steerActiveThreadOnEnter: (s) => ({
-    steerActiveThreadOnEnter: !s.steerActiveThreadOnEnter,
-  }),
-  terminalCopyOnSelect: (s) => ({
-    terminalCopyOnSelect: !s.terminalCopyOnSelect,
-  }),
-  confirmThreadArchive: (s) => ({
-    confirmThreadArchive: !s.confirmThreadArchive,
-  }),
-  showDiagnosticEvents: (s) => ({
-    showDiagnosticEvents: !s.showDiagnosticEvents,
-  }),
-  keepHistoryAfterContextClear: (s) => ({
-    keepHistoryAfterContextClear: !s.keepHistoryAfterContextClear,
-  }),
-  summarizeShellCommands: (s) => ({
-    summarizeShellCommands: !s.summarizeShellCommands,
-  }),
   providerOrder: () => ({ providerOrder: ["codex", PROVIDER_ID] }),
   defaultProviderId: () => ({ defaultProviderId: "codex" }),
   providerCompletedTurnDisplay: () => ({
     providerCompletedTurnDisplay: { [PROVIDER_ID]: "flat" },
   }),
-  streamerMode: (s) => ({ streamerMode: !s.streamerMode }),
-  allowFastServiceTier: (s) => ({
-    allowFastServiceTier: !s.allowFastServiceTier,
-  }),
-  telemetryEnabled: (s) => ({ telemetryEnabled: !s.telemetryEnabled }),
   managedBranchPrefix: () => ({ managedBranchPrefix: "work/" }),
   idleProviderSessionTimeoutMinutes: (s) => ({
     idleProviderSessionTimeoutMinutes:
@@ -51,26 +35,41 @@ const SETTING_CHANGES: {
   machineServerUrl: () => ({
     machineServerUrl: "https://machine.example.test",
   }),
-  machineGitCredentialsEnabled: (s) => ({
-    machineGitCredentialsEnabled: !s.machineGitCredentialsEnabled,
-  }),
   defaultMachineAccess: () => ({ defaultMachineAccess: "direct" }),
   onboardingCompletedAt: () => ({
     onboardingCompletedAt: "2026-11-17T00:00:00.000Z",
   }),
-  earlyAdopter: (s) => ({ earlyAdopter: !s.earlyAdopter }),
 };
 
-const SETTING_ROWS = (
-  Object.keys(SETTING_CHANGES) as (keyof AppSettings)[]
-).map((key) => ({ key }));
+interface SettingRow {
+  key: keyof AppSettings;
+  change(settings: AppSettings): AppSettings;
+}
+
+const SETTING_ROWS: SettingRow[] = [
+  ...booleanKeysOf(defaultAppSettings).map((key) => ({
+    key,
+    change: (settings: AppSettings) => {
+      const next = { ...settings };
+      next[key] = !settings[key];
+      return next;
+    },
+  })),
+  ...(Object.keys(VALUE_SETTING_CHANGES) as ValueSetting[]).map((key) => ({
+    key,
+    change: (settings: AppSettings) => ({
+      ...settings,
+      ...VALUE_SETTING_CHANGES[key](settings),
+    }),
+  })),
+];
 
 describe("thread-derived caches serve what an uncached build would after a setting changes", () => {
-  it.each(SETTING_ROWS)("the $key setting", ({ key }) =>
+  it.each(SETTING_ROWS)("the $key setting", ({ key, change }) =>
     expectCachedReadsMatchUncachedBuilds(
       ({ harness }) => {
         const settings = getAppSettings(harness.db);
-        const next = { ...settings, ...SETTING_CHANGES[key](settings) };
+        const next = change(settings);
         expect(next[key]).not.toEqual(settings[key]);
         setAppSettings(harness.db, next);
       },

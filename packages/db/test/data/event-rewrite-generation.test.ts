@@ -363,6 +363,12 @@ describe("thread event rewrite generation", () => {
       message(threadId, 4),
     ]);
     const otherBefore = getThreadEventRewriteGeneration(otherThreadId);
+    const otherOutline = {
+      itemsJson: "[]",
+      projectionKey: "other",
+      threadId: otherThreadId,
+    };
+    upsertThreadConversationOutlineRecord(db, otherOutline);
 
     expectGenerationBump(db, threadId, true, () => {
       expect(
@@ -373,5 +379,9 @@ describe("thread event rewrite generation", () => {
       ).toBe(2);
     });
     expect(getThreadEventRewriteGeneration(otherThreadId)).toBe(otherBefore);
+    expect(getThreadConversationOutlineRecord(db, otherThreadId)).toEqual({
+      itemsJson: otherOutline.itemsJson,
+      projectionKey: otherOutline.projectionKey,
+    });
   });
 });

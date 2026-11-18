@@ -3,7 +3,9 @@ import { z } from "zod";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   BASE_PROVIDER_DECLARATION,
+  booleanKeysOf,
   expectCachedReadsMatchUncachedBuilds,
+  type BooleanKey,
 } from "../helpers/thread-derived-cache-table.js";
 
 type Capabilities = PluginProviderDeclaration["capabilities"];
@@ -71,23 +73,14 @@ const DECLARATION_CHANGES: {
   },
 };
 
-const CAPABILITY_CHANGES: {
-  [K in keyof Capabilities]-?: FieldChange<Capabilities, K>;
+type ValueCapability = Exclude<keyof Capabilities, BooleanKey<Capabilities>>;
+
+const VALUE_CAPABILITY_CHANGES: {
+  [K in ValueCapability]-?: (
+    capabilities: Capabilities,
+  ) => Pick<Capabilities, K>;
 } = {
-  supportsServiceTier: (c) => ({ supportsServiceTier: !c.supportsServiceTier }),
-  supportsNativeUserQuestion: (c) => ({
-    supportsNativeUserQuestion: !c.supportsNativeUserQuestion,
-  }),
   fork: () => ({ fork: "tip" }),
-  supportsManualCompaction: (c) => ({
-    supportsManualCompaction: !c.supportsManualCompaction,
-  }),
-  supportsThreadArchive: (c) => ({
-    supportsThreadArchive: !c.supportsThreadArchive,
-  }),
-  supportsThreadRename: (c) => ({
-    supportsThreadRename: !c.supportsThreadRename,
-  }),
   permissionModes: () => ({
     permissionModes: ["accept-edits", "auto", "full"],
   }),
@@ -102,31 +95,44 @@ function changedDeclaration(
   return { ...BASE_PROVIDER_DECLARATION, ...change(BASE_PROVIDER_DECLARATION) };
 }
 
-function changedCapabilities(
-  field: keyof Capabilities,
-): PluginProviderDeclaration | null {
-  const change = CAPABILITY_CHANGES[field];
-  if ("excluded" in change) return null;
-  const capabilities = BASE_PROVIDER_DECLARATION.capabilities;
+function withCapabilities(
+  change: (capabilities: Capabilities) => Capabilities,
+): PluginProviderDeclaration {
   return {
     ...BASE_PROVIDER_DECLARATION,
-    capabilities: { ...capabilities, ...change(capabilities) },
+    capabilities: change(BASE_PROVIDER_DECLARATION.capabilities),
   };
 }
+
+const CAPABILITY_ROWS = [
+  ...booleanKeysOf(BASE_PROVIDER_DECLARATION.capabilities).map((field) => ({
+    field: `capabilities.${field}`,
+    declaration: withCapabilities((capabilities) => {
+      const next = { ...capabilities };
+      next[field] = !capabilities[field];
+      return next;
+    }),
+  })),
+  ...(Object.keys(VALUE_CAPABILITY_CHANGES) as ValueCapability[]).map(
+    (field) => ({
+      field: `capabilities.${field}`,
+      declaration: withCapabilities((capabilities) => ({
+        ...capabilities,
+        ...VALUE_CAPABILITY_CHANGES[field](capabilities),
+      })),
+    }),
+  ),
+];
 
 const ROWS = [
   ...(
     Object.keys(DECLARATION_CHANGES) as (keyof PluginProviderDeclaration)[]
-  ).map((field) => ({ field, declaration: changedDeclaration(field) })),
-  ...(Object.keys(CAPABILITY_CHANGES) as (keyof Capabilities)[]).map(
-    (field) => ({
-      field: `capabilities.${field}`,
-      declaration: changedCapabilities(field),
-    }),
-  ),
-].flatMap(({ declaration, field }) =>
-  declaration === null ? [] : [{ declaration, field }],
-);
+  ).flatMap((field) => {
+    const declaration = changedDeclaration(field);
+    return declaration === null ? [] : [{ declaration, field }];
+  }),
+  ...CAPABILITY_ROWS,
+];
 
 describe("thread-derived caches serve what an uncached build would after a provider update", () => {
   it.each(ROWS)("changes $field", ({ declaration }) => {
