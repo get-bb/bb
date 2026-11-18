@@ -41,6 +41,9 @@ ships as a `skills/` entry instead.
 `bb.status.needsConfiguration(message)` — mark the plugin
 `needs-configuration` (shown in `bb plugin list` and the UI) instead of
 failing. Cleared on the next load; saving settings retries the load.
+`bb.status.experimental_configured()` clears it without a reload once the
+missing piece appears (for example, a CLI the plugin re-probes and now
+finds). It does nothing when the plugin is not in `needs-configuration`.
 
 ### bb.onInstall
 

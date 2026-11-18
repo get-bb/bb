@@ -2212,6 +2212,13 @@ export interface PluginStatusApi {
    * `bb plugin reload <id>` after configuring.
    */
   needsConfiguration(message: string): void;
+  /**
+   * Clear a `needs-configuration` status this plugin reported, once the
+   * condition behind it is gone (for example, a CLI it needs is now
+   * installed). The plugin returns to `running` without a reload. Does
+   * nothing when the plugin is not in `needs-configuration`.
+   */
+  experimental_configured(): void;
 }
 
 /**
