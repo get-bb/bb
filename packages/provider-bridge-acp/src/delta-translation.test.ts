@@ -3291,6 +3291,40 @@ describe("acp delta translation (dialects)", () => {
     ).toEqual([]);
   });
 
+  it("settles an open background grok spawn when its session is replaced", () => {
+    const harness = dialectHarness("grok");
+    const opened = harness.translate(
+      grokSpawnUpdate({ toolCallId: "call-spawn", background: true }),
+    );
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+    harness.translator.noteDelegationReport(THREAD_ID, {
+      toolCallId: "call-spawn",
+      childRef: "child-1",
+      label: "Audit the config loader",
+      detail: "explore",
+    });
+
+    const settled = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.settleOpenDelegations(THREAD_ID),
+    });
+    expect(settled).toEqual([
+      expect.objectContaining({
+        type: "item/delegation/completed",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          status: "interrupted",
+          childRef: "child-1",
+          label: "Audit the config loader",
+          background: true,
+        }),
+      }),
+    ]);
+    expect(harness.translator.settleOpenDelegations(THREAD_ID)).toEqual([]);
+  });
+
   it("closes a failed or cancelled background grok spawn without a child", () => {
     for (const status of ["failed", "cancelled"] as const) {
       const harness = dialectHarness("grok");

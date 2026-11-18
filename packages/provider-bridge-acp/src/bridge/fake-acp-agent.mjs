@@ -57,12 +57,6 @@
  *                              that enabled terminal authentication
  * - FAKE_ACP_AUTH_OPTIONAL=1 → advertise the auth methods but never require
  *                              authenticate (a signed-in agent, as Cursor is)
- * - FAKE_ACP_AUTH_FAILURE_ONCE=1
- *                            → fail the first authenticate, then accept it
- * - FAKE_ACP_AUTH_REJECT=invalid|expired
- *                            → reject an advertised method without a session
- * - FAKE_ACP_EXIT_ON_AUTHENTICATE=<code>
- *                            → exit during authenticate, before any session
  * - FAKE_ACP_SESSION_NEW_ERROR
  *                            → reject session/new with this message (-32603)
  * - FAKE_ACP_EXIT_ON_SESSION_NEW=<code>
@@ -92,9 +86,6 @@
  * - FAKE_ACP_LOST_SESSION_FILE
  *                            → marker that limits the lost session to the
  *                              first launch
- * - FAKE_ACP_PROMPT_IMAGE=1  → advertise promptCapabilities.image
- * - FAKE_ACP_PROMPT_EMBEDDED=1
- *                            → advertise promptCapabilities.embeddedContext
  * - FAKE_ACP_GROK_CONTEXT=1  → advertise Grok model _meta.totalContextTokens
  *                              and prompt-result _meta.usage
  * - FAKE_ACP_COMPACT_STOP_REASON
@@ -648,48 +639,8 @@ function captureMcpServers(message) {
     : [];
 }
 
-function spawnGrokSubagent(args) {
-  const { childRef, description, toolCallId, result } = args;
-  const meta = {
-    "x.ai/tool": {
-      version: 1,
-      name: "spawn_subagent",
-      kind: "task",
-      namespace: "grok_build",
-      label: "Subagent",
-      read_only: false,
-    },
-  };
-  notifyUpdate({
-    sessionUpdate: "tool_call",
-    toolCallId,
-    title: "spawn_subagent",
-    rawInput: {
-      description,
-      prompt: result,
-      background: true,
-      run_in_background: true,
-    },
-    _meta: meta,
-  });
-  notifyUpdate({
-    sessionUpdate: "tool_call_update",
-    toolCallId,
-    title: description,
-    status: "completed",
-    rawInput: {
-      variant: "Task",
-      prompt: result,
-      description,
-      run_in_background: true,
-      task_id: null,
-    },
-    rawOutput: {
-      type: "Text",
-      text: `Subagent started in background.\nsubagent_id: ${childRef}\ndescription: ${description}`,
-    },
-    _meta: meta,
-  });
+function announceGrokSubagent(args) {
+  const { childRef, description, result } = args;
   notifySubagent("subagent_spawned", {
     subagent_id: childRef,
     attempt_id: `attempt-${childRef}`,
@@ -719,6 +670,54 @@ function spawnGrokSubagent(args) {
       });
     }
   }
+}
+
+function spawnGrokSubagent(args) {
+  const { childRef, description, toolCallId, result } = args;
+  const notifyBeforeResult =
+    process.env.FAKE_ACP_GROK_SUBAGENT_NOTIFY_BEFORE_RESULT === "1";
+  const meta = {
+    "x.ai/tool": {
+      version: 1,
+      name: "spawn_subagent",
+      kind: "task",
+      namespace: "grok_build",
+      label: "Subagent",
+      read_only: false,
+    },
+  };
+  if (notifyBeforeResult) announceGrokSubagent(args);
+  notifyUpdate({
+    sessionUpdate: "tool_call",
+    toolCallId,
+    title: "spawn_subagent",
+    rawInput: {
+      description,
+      ...(result === null ? {} : { prompt: result }),
+      background: true,
+      run_in_background: true,
+    },
+    _meta: meta,
+  });
+  notifyUpdate({
+    sessionUpdate: "tool_call_update",
+    toolCallId,
+    title: description,
+    status: "completed",
+    rawInput: {
+      variant: "Task",
+      ...(result === null ? {} : { prompt: result }),
+      description,
+      run_in_background: true,
+      task_id: null,
+    },
+    rawOutput: {
+      type: "Text",
+      text: `Subagent started in background.\nsubagent_id: ${childRef}\ndescription: ${description}`,
+    },
+    _meta: meta,
+  });
+  if (!notifyBeforeResult) announceGrokSubagent(args);
 }
 
 function spawnGrokSubagentPair() {

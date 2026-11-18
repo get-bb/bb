@@ -1403,6 +1403,32 @@ export function createAcpDeltaTranslator(
     return injectedToolBindings.get(callKey({ threadId }, toolCallId));
   }
 
+  function settleOpenDelegations(threadId: string): ThreadDelta[] {
+    const context = { threadId };
+    const deltas: ThreadDelta[] = [];
+    for (const [key, open] of threadCallEntries(context)) {
+      if (open.delegation !== undefined) {
+        deltas.push(
+          ...noteDelegationCompletion(threadId, open.delegation, "interrupted"),
+        );
+        continue;
+      }
+      if (!keepsOpenAcrossTurnBoundary(open)) {
+        continue;
+      }
+      mergedToolCalls.delete(key);
+      deltas.push(
+        toolCallClose({
+          context,
+          event: { ...open.event, status: "cancelled" },
+          status: "interrupted",
+          permissionTitle: open.permissionTitle,
+        }),
+      );
+    }
+    return deltas;
+  }
+
   return {
     configureInjectedTools,
     getInjectedToolBinding,
@@ -1410,6 +1436,7 @@ export function createAcpDeltaTranslator(
     noteDelegationCompletion,
     noteInjectedToolCall,
     notePermissionToolCall,
+    settleOpenDelegations,
     translateAcpEvent,
   };
 }

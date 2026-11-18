@@ -7681,6 +7681,102 @@ describe("acp bridge: questions the agent asks", () => {
     });
   }
 
+  it("grok_subagent_spawn_notification_before_tool_result_still_registers", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_NOTIFY_BEFORE_RESULT: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({
+      subagents: [
+        {
+          childRef: "child-alpha",
+          parentToolCallId: "spawn-alpha",
+          label: "CHILD_ALPHA",
+          status: "running",
+          progress: { turnCount: 1, toolCallCount: 0, tokensUsed: 100 },
+        },
+        {
+          childRef: "child-beta",
+          parentToolCallId: "spawn-beta",
+          label: "CHILD_BETA",
+          status: "completed",
+          result: "BETA_DONE",
+        },
+      ],
+    });
+  });
+
+  it("applies session options before a grok subagent action prompt", async () => {
+    const requestLog = join(workspaceDir, "subagent-session-options.log");
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "switch to code",
+        options: {
+          ...executionOptions({}),
+          sessionOptions: { approach: "plan" },
+        },
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    const requests = loggedAcpRequests(requestLog);
+    const setConfig = requests.findIndex(
+      (request) =>
+        request.method === "session/set_config_option" &&
+        request.params?.["configId"] === "approach" &&
+        request.params?.["value"] === "plan",
+    );
+    const tellPrompt = requests.reduce(
+      (found, request, index) =>
+        request.method === "session/prompt" ? index : found,
+      -1,
+    );
+    expect(setConfig).toBeGreaterThan(-1);
+    expect(setConfig).toBeLessThan(tellPrompt);
+  });
+
+  it("settles a running grok subagent when a later turn replaces the session", async () => {
+    const envVars = { FAKE_ACP_LOAD_SESSION: "1" };
+    const { providerThreadId } = await startGrokSubagentThread(envVars);
+    expect(
+      threadEventsOfType("item/delegation/completed").some((event) =>
+        JSON.stringify(event).includes('"childRef":"child-alpha"'),
+      ),
+    ).toBe(false);
+
+    await completeTurnWith(
+      providerThreadId,
+      "again",
+      executionOptions({
+        envVars: { ...envVars, SESSION_REPLACED: "1" },
+        providerOptions: launchProviderOptions({
+          dialectId: "grok",
+          envVars: { ...envVars, SESSION_REPLACED: "1" },
+        }),
+      }),
+    );
+
+    expect(notifications("session/replaced")).toHaveLength(1);
+    expect(threadEventsOfType("item/delegation/completed")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: expect.objectContaining({
+            type: "delegation",
+            childRef: "child-alpha",
+            status: "interrupted",
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("grok_subagent_view_preserves_parent_child_and_progress", async () => {
     const { providerThreadId } = await startGrokSubagentThread();
     const response = await waitForResponse(
