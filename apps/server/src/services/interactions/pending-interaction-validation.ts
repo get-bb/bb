@@ -161,7 +161,7 @@ export function pendingInteractionResolutionEquals(
 
   switch (left.decision) {
     case "deny":
-      return right.decision === "deny";
+      return right.decision === "deny" && left.comments === right.comments;
     case "allow_once":
       return (
         right.decision === "allow_once" && grantedResolutionEquals(left, right)

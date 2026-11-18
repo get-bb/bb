@@ -2348,7 +2348,8 @@ function handlePermissionRequest(
       : {}),
   };
 
-  if (session.policy.permissionMode === "full") {
+  const planReview = overrides?.subject?.kind === "plan";
+  if (!planReview && session.policy.permissionMode === "full") {
     respondPermission(pending, "allow_once");
     return;
   }
@@ -2390,7 +2391,7 @@ function handlePermissionRequest(
       ? basePayload
       : { ...basePayload, subject: overrides.subject };
   const grantKey = acpSessionGrantKey(payload);
-  if (grantKey !== null && session.sessionGrants.has(grantKey)) {
+  if (!planReview && grantKey !== null && session.sessionGrants.has(grantKey)) {
     respondPermission(pending, "allow_once");
     return;
   }
