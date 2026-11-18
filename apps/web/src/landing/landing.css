@@ -518,6 +518,7 @@ html:has(.nav-sticky) {
   display: inline-block;
   padding: 10px 20px;
   border-radius: calc(var(--radius) - 2px);
+  font-family: var(--font-sans);
   font-size: 14.5px;
   font-weight: 500;
   cursor: pointer;
@@ -559,20 +560,6 @@ html:has(.nav-sticky) {
   font-size: 13.5px;
 }
 
-.cta-row {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  margin-top: 38px;
-  flex-wrap: wrap;
-}
-
-.cta-row-secondary {
-  margin-top: 18px;
-}
-
-/* Two equal-height CTAs — solid "Download for macOS" and an outline button
-   whose body is the copyable run command — over one centered caption. */
 .install-options {
   margin: 38px auto 0;
   display: flex;
@@ -704,8 +691,6 @@ html:has(.nav-sticky) {
   border-top-color: var(--ink);
 }
 
-/* Each button carries its own caption, directly beneath it, so the platform
-   note clearly targets its option rather than the pair. */
 .install-choice {
   display: flex;
   flex-direction: column;
@@ -727,21 +712,6 @@ html:has(.nav-sticky) {
 
 .install-note-link:hover {
   color: var(--ink);
-}
-
-.oss-link {
-  white-space: nowrap;
-}
-
-[data-download-area="test"] .btn:not(.cmd-btn) {
-  font-family: var(--font-sans);
-}
-
-.oss-ic {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  margin-right: var(--gap-xs);
-  vertical-align: -2px;
 }
 
 .install-choice .install-send,
@@ -1233,147 +1203,6 @@ html:has(.nav-sticky) {
     0 30px 70px -32px color-mix(in oklab, var(--shade) 34%, transparent);
 }
 
-/* ── Self-constructing mock ───────────────────────────────────────────
-   On scroll-in the app assembles itself: frame drops in, title bar slides
-   down (dots pop), sidebar rows cascade from the left, then the
-   conversation rises and the composer settles in last. The `html.js` gate
-   holds it hidden from first paint; JS adds .constructing to play it.
-   Without JS the mock renders finished. */
-@keyframes c-frame {
-  from {
-    opacity: 0;
-    transform: translateY(26px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes c-down {
-  from {
-    opacity: 0;
-    transform: translateY(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes c-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes c-left {
-  from {
-    opacity: 0;
-    transform: translateX(-14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes c-up {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* When JS is available, hold the whole mock hidden from the first paint until
-   it scrolls into view and assembles. No-JS/prerender skip the `js` class, so
-   the finished mock stays visible. */
-html.js .mock[data-construct]:not(.constructing):not(.constructed) {
-  opacity: 0;
-}
-
-.mock.constructing {
-  animation: c-frame 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* title bar drops down, traffic-light dots pop in */
-.mock.constructing .mock-bar {
-  animation: c-down 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: 0.16s;
-}
-
-.mock.constructing .mock-dots i {
-  animation: c-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-.mock.constructing .mock-dots i:nth-child(1) {
-  animation-delay: 0.3s;
-}
-
-.mock.constructing .mock-dots i:nth-child(2) {
-  animation-delay: 0.37s;
-}
-
-.mock.constructing .mock-dots i:nth-child(3) {
-  animation-delay: 0.44s;
-}
-
-/* sidebar rows cascade in from the left */
-.mock.constructing .side > *:not(.threads) {
-  animation: c-left 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.mock.constructing .side > *:nth-child(1) {
-  animation-delay: 0.34s;
-}
-
-.mock.constructing .side > *:nth-child(2) {
-  animation-delay: 0.4s;
-}
-
-.mock.constructing .side > *:nth-child(3) {
-  animation-delay: 0.46s;
-}
-
-.mock.constructing .side > *:nth-child(4) {
-  animation-delay: 0.52s;
-}
-
-.mock.constructing .side > *:nth-child(5) {
-  animation-delay: 0.58s;
-}
-
-/* gear in the footer lands last */
-.mock.constructing .side > *:nth-child(7) {
-  animation-delay: 0.88s;
-}
-
-.mock.constructing .threads li {
-  animation: c-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-  /* per-row delay set inline */
-}
-
-/* conversation rises message by message, composer settles in last */
-.mock.constructing .feed > * {
-  animation: c-up 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
-  /* per-message delay set inline */
-}
-
-.mock.constructing .main-new .composer,
-.mock.constructing .feed ~ .composer {
-  animation: c-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: 1s;
-}
-
 /* window title bar (mirrors the desktop app) */
 .mock-bar {
   display: flex;
@@ -1442,37 +1271,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 8px;
 }
 
-.editor-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px 7px;
-}
-
-.editor-ic {
-  width: 17px;
-  height: 17px;
-  border-radius: 3px;
-  display: block;
-}
-
-.chev-xs {
-  width: 13px;
-  height: 13px;
-  color: var(--subtle);
-}
-
-.commit-btn {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 4px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-}
-
 .mock-dots {
   display: inline-flex;
   gap: 7px;
@@ -1534,11 +1332,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: auto;
 }
 
-.trow-pin .trow-title {
-  font-weight: 500;
-  color: var(--ink);
-}
-
 .ri {
   width: 18px;
   height: 18px;
@@ -1577,11 +1370,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border: 0;
   font: inherit;
   cursor: pointer;
-}
-
-.active-act {
-  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
-  color: var(--ink);
 }
 
 .side-foot {
@@ -1737,11 +1525,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--bg);
 }
 
-.main-new {
-  justify-content: flex-start;
-  padding: 16px 18px;
-}
-
 .feed {
   flex: 1;
   min-height: 0;
@@ -1798,181 +1581,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   justify-content: flex-end;
 }
 
-/* Tool line for a spawned subagent — its child appears nested in the sidebar. */
-.msg-spawn {
-  color: var(--dim);
-}
-
-.msg-spawn strong {
-  font-weight: 600;
-  color: var(--ink);
-}
-
-/* AskUserQuestion tool — replaces the prompt box (recessed card in the
-   composer slot), mirroring the app's pending-interaction banner. */
-.askq {
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-recessed);
-}
-
-.askq-q {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.askq-opts {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.askq-opt {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 7px;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.14s ease;
-}
-
-.askq-opt:hover {
-  background: var(--state-hover);
-}
-
-.askq-opt.on {
-  background: color-mix(in oklab, var(--accent) 8%, var(--bg));
-}
-
-.askq-radio {
-  margin-top: 1px;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--border);
-  border-radius: 50%;
-  color: var(--bg);
-}
-
-.askq-opt.on .askq-radio {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-.askq-check {
-  width: 11px;
-  height: 11px;
-}
-
-.askq-text {
-  min-width: 0;
-}
-
-.askq-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.askq-desc {
-  display: block;
-  margin-top: 1px;
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: var(--subtle);
-}
-
-.askq-actions {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.askq-cancel {
-  padding: 5px 10px;
-  border-radius: 7px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--dim);
-}
-
-.askq-submit {
-  padding: 5px 12px;
-  border-radius: 7px;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
 /* composer */
 .composer {
   flex-shrink: 0;
   border-top: 1px solid var(--border-soft);
   padding: 12px 16px 14px;
-}
-
-.composer-new {
-  border-top: none;
-  padding: 0;
-}
-
-.pr-bar {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 7px 11px;
-  margin-bottom: 10px;
-  font-size: 12.5px;
-  color: var(--dim);
-}
-
-.pr-ic {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  color: var(--dim);
-}
-
-.pr-strong {
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.pr-dim {
-  color: var(--subtle);
-}
-
-.pr-add {
-  color: var(--add);
-  font-weight: 500;
-}
-
-.pr-del {
-  color: var(--del);
-  font-weight: 500;
-}
-
-.pr-chev {
-  margin-left: auto;
-  color: var(--subtle);
 }
 
 .composer-box {
@@ -2094,28 +1707,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-.ctx-chev {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-  color: var(--subtle);
-}
-
 .ctx-branch {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 180px;
-}
-
-.ctx-perm {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 6px;
-  color: var(--spark);
-  font-weight: 500;
 }
 
 .ctx-spin {
@@ -2149,130 +1745,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bar-toggle .ri {
   width: 17px;
   height: 17px;
-}
-
-/* Diff / secondary panel. */
-.diff-panel {
-  display: flex;
-  flex-direction: column;
-  width: 320px;
-  flex-shrink: 0;
-  min-width: 0;
-  border-left: 1px solid var(--border-soft);
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.diff-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.diff-ic {
-  width: 16px;
-  height: 16px;
-  color: var(--dim);
-}
-
-.diff-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.diff-stat {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.diff-close {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  background: none;
-  border-radius: 6px;
-  color: var(--subtle);
-  cursor: pointer;
-}
-
-.diff-close:hover {
-  background: var(--state-hover);
-  color: var(--ink);
-}
-
-.diff-close .ri {
-  width: 16px;
-  height: 16px;
-}
-
-.diff-file {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 14px;
-  font-size: 12px;
-  color: var(--dim);
-  background: var(--surface-recessed);
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.diff-file-ic {
-  width: 13px;
-  height: 13px;
-  color: var(--subtle);
-}
-
-.diff-body {
-  flex: 1;
-  overflow: hidden;
-  padding: 8px 0;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.75;
-}
-
-.dl {
-  display: flex;
-  padding: 0 12px;
-  white-space: pre;
-}
-
-.dl-sign {
-  width: 11px;
-  flex-shrink: 0;
-  color: var(--subtle);
-}
-
-.dl-text {
-  min-width: 0;
-}
-
-.dl-ctx {
-  color: var(--dim);
-}
-
-.dl-add {
-  background: color-mix(in oklab, var(--add) 13%, transparent);
-}
-
-.dl-add .dl-sign,
-.dl-add .dl-text {
-  color: color-mix(in oklab, var(--add) 62%, var(--ink));
-}
-
-.dl-del {
-  background: color-mix(in oklab, var(--del) 13%, transparent);
-}
-
-.dl-del .dl-sign,
-.dl-del .dl-text {
-  color: color-mix(in oklab, var(--del) 62%, var(--ink));
 }
 
 /* ── Bands ──────────────────────────────────────────────────────── */
@@ -2336,344 +1808,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   align-items: center;
   justify-content: center;
   min-width: 0;
-}
-
-/* ── Band visual: Telegram-style chat with the bb bot ───────────── */
-
-.tg {
-  width: 100%;
-  max-width: 340px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--bg);
-  box-shadow: 0 18px 50px -26px
-    color-mix(in oklab, var(--shade) 32%, transparent);
-}
-
-/* contact bar */
-.tg-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--surface);
-}
-
-.tg-back {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  color: var(--accent);
-}
-
-.tg-contact {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.15;
-}
-
-.tg-name {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.tg-sub {
-  font-size: 11px;
-  color: var(--subtle);
-}
-
-.tg-av {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  overflow: hidden;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-recessed);
-}
-
-.tg-av img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* wallpaper + messages. --tg-card is Telegram's own surface colour, not a bb
-   token: the mock imitates a foreign app, so its values are deliberately
-   literal in both schemes, like the wallpaper and the outgoing green bubble. */
-.tg-feed {
-  --tg-card: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 12px;
-  min-height: 236px;
-  background-color: oklch(0.95 0.025 150);
-  background-image:
-    radial-gradient(
-      color-mix(in oklab, oklch(0.45 0.06 150) 9%, transparent) 1px,
-      transparent 1.5px
-    ),
-    linear-gradient(165deg, oklch(0.96 0.02 155), oklch(0.92 0.035 140));
-  background-size:
-    17px 17px,
-    100% 100%;
-}
-
-/* The messages live in their own layer so they can fade out together at the end
-   of the loop while the wallpaper underneath stays put (no reset flash). */
-.tg-msgs {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.tg-msgs.leaving {
-  animation: tg-leave 0.6s ease forwards;
-}
-
-@keyframes tg-leave {
-  to {
-    opacity: 0;
-  }
-}
-
-.tg-msg {
-  display: flex;
-  max-width: 86%;
-  animation: tg-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-}
-
-.tg-out {
-  align-self: flex-end;
-  justify-content: flex-end;
-}
-
-.tg-in {
-  align-self: flex-start;
-}
-
-.tg-bubble {
-  padding: 7px 10px 7px 11px;
-  border-radius: 15px;
-  font-size: 13px;
-  line-height: 1.4;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
-}
-
-.tg-in .tg-bubble {
-  background: var(--tg-card);
-  color: var(--ink-strong);
-  border-bottom-left-radius: 5px;
-}
-
-.tg-out .tg-bubble {
-  background: linear-gradient(180deg, #4ec264, #38ab53);
-  color: #fff;
-  border-bottom-right-radius: 5px;
-}
-
-.tg-time {
-  margin-left: 8px;
-  font-size: 10px;
-  opacity: 0.55;
-  white-space: nowrap;
-}
-
-/* The bb spawn command the bot runs, shown inline in its message. */
-.tg-cmd {
-  display: block;
-  margin-top: 6px;
-  padding: 5px 8px;
-  border-radius: 7px;
-  background: var(--surface-recessed);
-  color: var(--dim);
-  font-size: 11.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* the bb thread card the bot spawns */
-.tg-thread {
-  width: 100%;
-  background: var(--tg-card);
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  border-bottom-left-radius: 5px;
-  padding: 10px 11px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
-}
-
-.tg-thread-top {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.tg-thread-mark {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.tg-thread-eyebrow {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--subtle);
-}
-
-.tg-stat {
-  position: relative;
-  flex-shrink: 0;
-  width: 76px;
-  height: 18px;
-  margin-left: auto;
-}
-
-.tg-thread-title {
-  margin-top: 7px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.tg-thread-branch {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tg-stat-spawn,
-.tg-stat-run {
-  position: absolute;
-  right: 0;
-  top: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.tg-stat-spawn {
-  color: var(--accent);
-  animation: tg-fade-out 0.35s ease forwards;
-}
-
-.tg-stat-run {
-  opacity: 0;
-  color: var(--ok);
-  animation: tg-fade-in 0.35s ease forwards;
-}
-
-.tg-spin {
-  width: 12px;
-  height: 12px;
-  animation: spin 0.8s linear infinite;
-}
-
-.tg-rdot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-
-/* composer */
-.tg-input {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 11px;
-  border-top: 1px solid var(--border-soft);
-  background: var(--surface);
-}
-
-.tg-attach {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  color: var(--subtle);
-}
-
-.tg-field {
-  flex: 1;
-  min-width: 0;
-  padding: 7px 12px;
-  border-radius: 99px;
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
-  font-size: 12.5px;
-  color: var(--subtle);
-}
-
-.tg-send {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--accent);
-}
-
-.tg-send-ic {
-  width: 15px;
-  height: 15px;
-  color: #fff;
-}
-
-@keyframes tg-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes tg-fade-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes tg-fade-in {
-  to {
-    opacity: 1;
-  }
-}
-
-/* Telegram mock, dark: the wallpaper and incoming bubbles follow Telegram's
-   own dark appearance (dark green-tinted wallpaper, graphite bubbles) so the
-   foreign app stays recognizable instead of glaring white on the dark page.
-   The outgoing green bubble is Telegram's in both schemes and stays put. */
-.dark .tg-feed {
-  --tg-card: oklch(0.28 0 0);
-  background-color: oklch(0.24 0.02 150);
-  background-image:
-    radial-gradient(
-      color-mix(in oklab, oklch(0.75 0.06 150) 10%, transparent) 1px,
-      transparent 1.5px
-    ),
-    linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
 }
 
 .band-link {
@@ -4176,24 +3310,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--border);
 }
 
-/* ── Statement (Band 4) ─────────────────────────────────────────── */
-
-.statement {
-  border-top: 1px solid var(--border-soft);
-  padding: 84px 0;
-  text-align: center;
-}
-
-.statement .sec-title {
-  margin-bottom: 0;
-}
-
-.statement > p {
-  color: var(--dim);
-  max-width: 560px;
-  margin: 16px auto 0;
-}
-
 .testimonials {
   border-top: 1px solid var(--border-soft);
   padding: 52px 0 56px;
@@ -4864,19 +3980,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     zoom: var(--mock-scale, 0.62);
   }
 
-  /* Left-align the centered statement on mobile so it reads like the bands
-     above it instead of centered multi-line text on a narrow screen. */
-  .statement {
-    text-align: left;
-  }
-
-  .statement .cta-row {
-    justify-content: flex-start;
-  }
-
   /* The full download CTA is repeated immediately below in the hero. Hide the
      nav copy on mobile so the three utility links retain comfortable spacing. */
-  .nav-links .btn,
   .nav-actions .btn {
     display: none;
   }
@@ -5005,7 +4110,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     justify-content: space-between;
   }
 
-  .nav-links .nav-icon-button,
   .nav-actions {
     display: none;
   }
@@ -5087,13 +4191,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     opacity: 1;
   }
 
-  .tg-msg,
-  .tg-stat-spawn,
-  .tg-stat-run,
-  .tg-spin {
-    animation: none;
-  }
-
   .sb-thread,
   .sb-run,
   .sb-done,
@@ -5110,15 +4207,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     opacity: 1;
   }
 
-  /* Static spawned thread when motion is reduced. */
-  .tg-stat-spawn {
-    opacity: 0;
-  }
-
-  .tg-stat-run {
-    opacity: 1;
-  }
-
   .btn,
   .plogo,
   .trow,
@@ -5127,19 +4215,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     transition: none;
   }
 
-  /* The mock construction is JS-gated off here, but keep it inert as a
-     safety net so the finished app always shows. */
-  html.js .mock[data-construct]:not(.constructing):not(.constructed) {
-    opacity: 1;
-  }
-
-  .mock.constructing,
-  .mock.constructing .mock-bar,
-  .mock.constructing .mock-dots i,
-  .mock.constructing .side > *,
-  .mock.constructing .threads li,
-  .mock.constructing .feed > *,
-  .mock.constructing .composer,
   .kid-li {
     animation: none;
   }
