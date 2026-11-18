@@ -13,6 +13,7 @@ import {
 } from "./data.js";
 import {
   readRetryHandoff,
+  RETRY_DECISION_WAIT_MS,
   type RetryHandoff,
   type RetryHandoffApi,
 } from "./retry-handoff.js";
@@ -60,7 +61,7 @@ function buildScheduleFailureHandler(
 }
 
 async function readFailedRunHandoff(
-  bb: RetryHandoffApi,
+  bb: RetryHandoffApi & Pick<BbPluginApi, "log">,
   db: Db,
   args: { automation: AutomationRow; now: number },
 ): Promise<RetryHandoff> {
@@ -77,11 +78,22 @@ async function readFailedRunHandoff(
   ) {
     return { kind: "re-run" };
   }
-  const handoff = await readRetryHandoff(bb, {
-    threadId: latestRun.threadId,
-    failedAt: latestRun.finishedAt,
-    now: args.now,
-  });
+  let handoff: RetryHandoff;
+  try {
+    handoff = await readRetryHandoff(bb, {
+      threadId: latestRun.threadId,
+      failedAt: latestRun.finishedAt,
+      now: args.now,
+    });
+  } catch (error) {
+    bb.log.warn(
+      `Could not read the retry state of failed automation run ${latestRun.id} in thread ${latestRun.threadId}: ${errorMessage(error)}`,
+    );
+    handoff =
+      args.now - latestRun.finishedAt < RETRY_DECISION_WAIT_MS
+        ? { kind: "wait" }
+        : { kind: "re-run" };
+  }
   return handoff.kind === "stand-down"
     ? {
         kind: "stand-down",

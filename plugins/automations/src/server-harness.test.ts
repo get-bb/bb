@@ -2217,6 +2217,36 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("waits while provider retry's decision cannot be read, then re-runs after a minute", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const automation = await failScheduledRun(harness);
+    stubFailedThread(harness, {
+      status: "error",
+      queuedRetryReason: null,
+      latestRequest: { requestId: FAILED_REQUEST_ID },
+      providerRetry: { decidedRequestId: null },
+    });
+    harness.sdk.stub("plugins.callRpc", async () => {
+      throw new Error("The operation was aborted due to timeout");
+    });
+
+    await sweepAt(harness, "2026-01-01T01:00:40.000Z", async () => {
+      expect(harness.sdk.callsTo("plugins.callRpc")).toHaveLength(1);
+    });
+    expect(
+      (await listRuns(harness, automation.id)).map((run) => run.status),
+    ).toEqual(["failed"]);
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+
+    await sweepAt(harness, "2026-01-01T01:01:10.000Z", async () => {
+      expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(2);
+    });
+    expect(
+      (await listRuns(harness, automation.id)).map((run) => run.status),
+    ).toEqual(["running", "failed"]);
+    await harness.dispose();
+  });
+
   it("disables automations targeting a deleted thread", async () => {
     const { harness } = await bootAutomationsPlugin();
     const automation = await createAgentAutomation(harness, {
