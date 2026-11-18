@@ -8,6 +8,7 @@ import {
   applyTerminalSessionMissing,
 } from "@/hooks/cache-owners/terminal-cache-owner";
 import { QueryClient } from "@tanstack/react-query";
+import { Terminal } from "@xterm/xterm";
 import { ThreadTerminalView } from "./ThreadTerminalView";
 
 const state = vi.hoisted(() => ({
@@ -100,6 +101,27 @@ it("closes the socket of a parked terminal and resumes it when the same session 
   expect(transport.start).toHaveBeenCalledTimes(2);
   expect(transport.setVisible).toHaveBeenLastCalledWith(true);
   expect(transport.dispose).not.toHaveBeenCalled();
+});
+
+it("keeps the selection of a parked terminal when the same session remounts", async () => {
+  const opened: Terminal[] = [];
+  const open = Terminal.prototype.open;
+  vi.spyOn(Terminal.prototype, "open").mockImplementation(function (
+    this: Terminal,
+    parent: HTMLElement,
+  ) {
+    opened.push(this);
+    open.call(this, parent);
+  });
+  const first = await mountTerminal(true);
+  const terminal = opened[0]!;
+  await new Promise<void>((resolve) => terminal.write("hello", resolve));
+  terminal.select(0, 0, 5);
+  expect(terminal.getSelection()).toBe("hello");
+  first.view.unmount();
+  renderTerminal(true);
+  expect(opened).toHaveLength(1);
+  expect(terminal.getSelection()).toBe("hello");
 });
 
 it("disposes a parked terminal that closes as exited and creates a new one on return", async () => {

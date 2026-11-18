@@ -1180,7 +1180,6 @@ function mountThreadTerminal({
     ) {
       runtime.element.remove();
       runtime.parked = true;
-      runtime.terminal.clearSelection();
       runtime.transport.suspend();
       parkTerminalRuntime(sessionId, runtime);
       return;
