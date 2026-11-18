@@ -1801,7 +1801,11 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
-        CREATE TABLE app_settings (
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );        CREATE TABLE app_settings (
           id text PRIMARY KEY NOT NULL,
           caffeinate integer DEFAULT false NOT NULL,
           show_keyboard_hints integer DEFAULT true NOT NULL,
@@ -1834,6 +1838,7 @@ describe("migrate", () => {
         showDiagnosticEvents: true,
         keepHistoryAfterContextClear: false,
         summarizeShellCommands: true,
+        resumeThreadsAfterRestart: false,
         providerOrder: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},
@@ -1880,6 +1885,11 @@ describe("migrate", () => {
     const db = createConnection(":memory:");
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -1966,6 +1976,11 @@ describe("migrate", () => {
     const db = createConnection(":memory:");
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2028,6 +2043,11 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings (
           id text PRIMARY KEY NOT NULL,
           caffeinate integer DEFAULT false NOT NULL,
@@ -2063,6 +2083,11 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings (
           id text PRIMARY KEY NOT NULL,
           caffeinate integer DEFAULT false NOT NULL,
@@ -2100,6 +2125,11 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2124,6 +2154,11 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2148,6 +2183,11 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2190,6 +2230,11 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
+        CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2218,6 +2263,11 @@ describe("migrate", () => {
   });
 
   const ONBOARDING_STAMP_FIXTURE = `
+    CREATE TABLE system_experiments (
+          key text PRIMARY KEY NOT NULL,
+          value integer NOT NULL,
+          updated_at integer NOT NULL
+        );
     CREATE TABLE app_settings_values (
       key text PRIMARY KEY NOT NULL,
       value text NOT NULL,
