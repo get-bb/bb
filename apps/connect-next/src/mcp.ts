@@ -5,7 +5,6 @@ import {
   mcpResourceForOrigin,
 } from "@bb/connect-db";
 import { json, type Reply } from "./reply.js";
-import { sliceUtf16Head } from "@bb/text-utils";
 
 const MCP_CLIENT_NAME_HEADER_MAX_LENGTH = 80;
 const MCP_PATH_DECODE_ROUNDS = 4;
@@ -82,10 +81,11 @@ export function mcpChallengeReply(
 }
 
 export function headerSafeClientName(value: string): string {
-  const safe = sliceUtf16Head(
-    value.replace(/[^\x20-\x7e]/gu, "?").trim(),
-    MCP_CLIENT_NAME_HEADER_MAX_LENGTH,
-  ).trim();
+  const safe = value
+    .replace(/[^\x20-\x7e]/gu, "?")
+    .trim()
+    .slice(0, MCP_CLIENT_NAME_HEADER_MAX_LENGTH)
+    .trim();
   return safe === "" ? "unknown" : safe;
 }
 

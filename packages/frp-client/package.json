@@ -22,7 +22,6 @@
   },
   "dependencies": {
     "@bb/process-utils": "workspace:*",
-    "@bb/text-utils": "workspace:*",
     "@bb/tunnel-contract": "workspace:*"
   },
   "devDependencies": {

@@ -7,7 +7,6 @@ import {
   VISIT_PARAM_NAMES,
 } from "./site";
 import type { CtaPlacement, DesktopPlatform } from "./site";
-import { sliceUtf16Head } from "@bb/text-utils";
 
 const POSTHOG_CAPTURE_URL = "https://us.i.posthog.com/capture/?ip=0";
 const TRACKING_SOURCE = "landing_worker_redirect";
@@ -508,5 +507,9 @@ function getNonEmptySearchParam(
 }
 
 function truncateProperty(value: string): string {
-  return sliceUtf16Head(value, MAX_URL_PROPERTY_LENGTH);
+  if (value.length <= MAX_URL_PROPERTY_LENGTH) {
+    return value;
+  }
+
+  return value.slice(0, MAX_URL_PROPERTY_LENGTH);
 }

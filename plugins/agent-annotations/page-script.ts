@@ -253,7 +253,7 @@ function installAgentAnnotations(
         ? element.innerText
         : (element.textContent ?? "");
     return {
-      tagName: sliceUtf16Head(element.tagName.toLowerCase(), 64),
+      tagName: element.tagName.toLowerCase().slice(0, 64),
       name: elementName(element),
       selector: selectorFor(element),
       text: sliceUtf16Head(collapse(visibleText), 160),
@@ -380,7 +380,7 @@ function installAgentAnnotations(
         id,
         number,
         comment: sliceUtf16Head(trimmed, 4000),
-        url: sliceUtf16Head(location.href, 4096),
+        url: location.href.slice(0, 4096),
         title: sliceUtf16Head(document.title, 1024),
         viewport: { width: innerWidth, height: innerHeight },
         element: describe(element),

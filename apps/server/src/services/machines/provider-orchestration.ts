@@ -228,7 +228,7 @@ function lifecycleReporter(
       deps.hub.notifyHost(hostId, ["host-connected"]);
     },
     log: (text) => {
-      deps.logger.info({ hostId }, sliceUtf16Tail(text, 16_384));
+      deps.logger.info({ hostId }, text.slice(-16_384));
     },
   };
 }

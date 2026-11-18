@@ -9,8 +9,7 @@
     "builtin": true
   },
   "rules": {
-    "bb/no-comments": "error",
-    "bb/no-raw-text-truncation": "error"
+    "bb/no-comments": "error"
   },
   "ignorePatterns": [
     "**/node_modules/**",
@@ -153,14 +152,7 @@
       ],
       "rules": {
         "no-restricted-imports": "off",
-        "bb/no-blocking-child-process-call": "off",
-        "bb/no-raw-text-truncation": "off"
-      }
-    },
-    {
-      "files": ["**/test/**", "**/testing/**"],
-      "rules": {
-        "bb/no-raw-text-truncation": "off"
+        "bb/no-blocking-child-process-call": "off"
       }
     },
     {

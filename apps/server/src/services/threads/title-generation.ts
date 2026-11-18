@@ -13,7 +13,6 @@ import {
 import {
   countWords,
   displayWidth,
-  sliceUtf16Head,
   truncateToWidth,
   truncateToWidthAtWordBoundary,
 } from "@bb/text-utils";
@@ -174,15 +173,14 @@ export function sanitizeGeneratedTitle(value: string): string | null {
 }
 
 export function sanitizeGeneratedBranchSlug(value: string): string | null {
-  const slug = sliceUtf16Head(
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gu, "-")
-      .replace(/-{2,}/gu, "-")
-      .replace(/^-+|-+$/gu, ""),
-    MAX_BRANCH_SLUG_LENGTH,
-  ).replace(/-+$/u, "");
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/-{2,}/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, MAX_BRANCH_SLUG_LENGTH)
+    .replace(/-+$/u, "");
 
   return slug.length > 0 ? slug : null;
 }

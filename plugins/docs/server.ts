@@ -317,13 +317,12 @@ function deriveTitle(content: string, fallback: string): string {
 }
 
 function kebabCase(text: string): string {
-  return sliceUtf16Head(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, ""),
-    80,
-  ).replace(/-+$/g, "");
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .replace(/-+$/g, "");
 }
 
 function sanitizeName(raw: string): string {

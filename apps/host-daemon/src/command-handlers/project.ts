@@ -6,19 +6,17 @@ import {
   runGit,
   WorkspaceError,
 } from "bb-environment-provider-host/workspace-git";
-import { sliceUtf16Head } from "@bb/text-utils";
 
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 
 function normalizeProjectSlug(value: string): string {
-  const slug = sliceUtf16Head(
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gu, "-")
-      .replace(/^-+|-+$/gu, ""),
-    80,
-  ).replace(/-+$/u, "");
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 80)
+    .replace(/-+$/u, "");
   return slug || "project";
 }
 

@@ -210,7 +210,7 @@ export function createPreview(
       latest = {
         ...latest,
         sequence: ++sequence,
-        url: sliceUtf16Head(info.url, 2_000),
+        url: info.url.slice(0, 2_000),
         title: sliceUtf16Head(info.title, 300),
       };
       for (const waiter of [...waiters]) waiter.check();
@@ -255,7 +255,7 @@ export function createPreview(
           data: frame.data,
           width: frame.metadata.deviceWidth,
           height: frame.metadata.deviceHeight,
-          url: sliceUtf16Head(target?.url ?? "", 2_000),
+          url: (target?.url ?? "").slice(0, 2_000),
           title: sliceUtf16Head(target?.title ?? "", 300),
         };
         for (const waiter of [...waiters]) waiter.check();

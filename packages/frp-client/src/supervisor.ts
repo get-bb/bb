@@ -12,7 +12,6 @@ import {
   type TunnelServer,
 } from "./config.js";
 import { cleanFrpcLine, parseFrpcLine } from "./log.js";
-import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface FrpcLogger {
   info(message: string): void;
@@ -90,7 +89,7 @@ export const requestFrpcReload: FrpcReloadRequest = async (
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
-    const body = sliceUtf16Head(await response.text(), 500);
+    const body = (await response.text()).slice(0, 500);
     throw new Error(`frpc reload answered HTTP ${response.status} ${body}`);
   }
 };

@@ -2,12 +2,6 @@ import { WorkspaceError } from "bb-environment-provider-host/git";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
-function sliceUtf16Head(value: string, maxChars: number): string {
-  const end = Math.min(value.length, Math.max(0, maxChars));
-  const last = value.charCodeAt(end - 1);
-  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
-}
-
 const REPO_DIR_NAME_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 const WINDOWS_RESERVED_NAME_PATTERN =
   /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/iu;
@@ -60,12 +54,13 @@ function slugRepoDirName(candidate: string): string {
     .replace(/\p{Mark}+/gu, "")
     .replace(/[^A-Za-z0-9._-]+/gu, "-")
     .replace(/^[._-]+|[._-]+$/gu, "");
-  const readable = sliceUtf16Head(
+  const readable = (
     WINDOWS_RESERVED_NAME_PATTERN.test(normalizedReadable)
       ? `repo-${normalizedReadable}`
-      : normalizedReadable,
-    readableLimit,
-  ).replace(/[._-]+$/u, "");
+      : normalizedReadable
+  )
+    .slice(0, readableLimit)
+    .replace(/[._-]+$/u, "");
   return `${readable || "repo"}-${suffix}`;
 }
 

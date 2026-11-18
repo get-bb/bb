@@ -24,7 +24,6 @@ import {
   tunnelUrlForServerUrl,
 } from "./api.js";
 import { generateConnectCode, generateToken } from "./tokens.js";
-import { sliceUtf16Head } from "@bb/text-utils";
 
 export const LINK_POLL_INTERVAL_MS = 2_000;
 export const LINK_DELIVERY_GRACE_MS = 2 * 60 * 1000;
@@ -445,7 +444,7 @@ function labelSlug(value: string): string {
 }
 
 function fitLabel(value: string): string {
-  return sliceUtf16Head(value, HANDLE_MAX_LENGTH).replace(/-+$/u, "");
+  return value.slice(0, HANDLE_MAX_LENGTH).replace(/-+$/u, "");
 }
 
 export function suggestHandle(githubLogin: string | null): string {

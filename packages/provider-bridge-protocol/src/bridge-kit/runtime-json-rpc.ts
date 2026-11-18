@@ -205,7 +205,10 @@ function wellFormedStrings(_key: string, value: unknown): unknown {
 }
 
 export function serializeJsonRpcLine(message: object): string {
-  return JSON.stringify(message, wellFormedStrings);
+  const line = JSON.stringify(message);
+  return line.includes("\\ud")
+    ? JSON.stringify(message, wellFormedStrings)
+    : line;
 }
 
 function writeJsonRpcMessage(

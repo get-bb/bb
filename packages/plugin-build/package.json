@@ -27,7 +27,6 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
-    "@bb/text-utils": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "es-module-lexer": "^2.3.2",
     "npm": "11.21.2",

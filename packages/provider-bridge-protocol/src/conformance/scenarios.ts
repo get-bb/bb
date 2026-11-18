@@ -26,7 +26,6 @@ import {
   type JsonRpcWireMessage,
 } from "./client.js";
 import type { ConformanceCheckResult } from "./types.js";
-import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface ConformanceSessionFixture {
   cwd: string;
@@ -606,7 +605,7 @@ export async function runSessionLifecycleScenarios(
           : fail(
               "events/schema-valid",
               title2,
-              `${invalid.length} assembled event(s) failed validation; first: ${sliceUtf16Head(JSON.stringify(invalid[0]?.event), 400)}`,
+              `${invalid.length} assembled event(s) failed validation; first: ${JSON.stringify(invalid[0]?.event).slice(0, 400)}`,
             ),
       );
     }

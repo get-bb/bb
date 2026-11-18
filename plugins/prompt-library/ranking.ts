@@ -1,11 +1,5 @@
 import type { PromptSnippet } from "./contract.js";
 
-function sliceUtf16Head(value: string, maxChars: number): string {
-  const end = Math.min(value.length, Math.max(0, maxChars));
-  const last = value.charCodeAt(end - 1);
-  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
-}
-
 const SNIPPET_LENGTH = 160;
 const SNIPPET_LEAD = 32;
 const WORD = /[\p{L}\p{N}]+/gu;
@@ -67,7 +61,7 @@ function foldCase(text: string): string {
 }
 
 function normalizeOpening(text: string): string {
-  return foldCase(sliceUtf16Head(text.trimStart(), OPENING_LENGTH)).replace(
+  return foldCase(text.trimStart().slice(0, OPENING_LENGTH)).replace(
     /\s+/gu,
     " ",
   );
@@ -219,8 +213,7 @@ export function createSearchIndex<T>() {
       const index = documents.length;
       for (const [word, count] of counts) {
         const list = postings.get(word);
-        if (list === undefined)
-          postings.set([...word].join(""), [index, count]);
+        if (list === undefined) postings.set([...word].join(""), [index, count]);
         else list.push(index, count);
       }
       totalLength += length;
@@ -253,10 +246,7 @@ export function createSearchIndex<T>() {
       const count = documents.length + extras.length;
       const averageLength =
         (totalLength +
-          analyzedExtras.reduce(
-            (sum, entry) => sum + entry.analyzed.length,
-            0,
-          )) /
+          analyzedExtras.reduce((sum, entry) => sum + entry.analyzed.length, 0)) /
         Math.max(1, count);
       const inverseFrequency = terms.map((_, termIndex) => {
         const frequency =
@@ -273,7 +263,8 @@ export function createSearchIndex<T>() {
         length: number,
         matches: readonly TermMatch[],
       ): SearchMatch<T> {
-        const norm = BM25_K1 * (1 - BM25_B + (BM25_B * length) / averageLength);
+        const norm =
+          BM25_K1 * (1 - BM25_B + (BM25_B * length) / averageLength);
         let quality = 0;
         let relevance = 0;
         matches.forEach(({ weight, frequency }, termIndex) => {

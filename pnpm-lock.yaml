@@ -2234,9 +2234,6 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
-      '@bb/text-utils':
-        specifier: workspace:*
-        version: link:../text-utils
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../tunnel-contract
@@ -2474,9 +2471,6 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
-      '@bb/text-utils':
-        specifier: workspace:*
-        version: link:../text-utils
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
@@ -3750,9 +3744,6 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
-      '@bb/text-utils':
-        specifier: workspace:*
-        version: link:../../packages/text-utils
       zod:
         specifier: 4.6.7
         version: 4.6.7
