@@ -143,11 +143,14 @@ export function buildSidebarUpdateModel(input: {
   bb: SidebarBbUpdate | null;
   machines: readonly UpdateInventoryMachine[];
   plugins: UpdateInventoryPlugins | null;
+  showProviderCliUpdates: boolean;
   providerJobs: ProviderCliJobs;
   pluginJobs: readonly PluginUpdateJob[];
 }): SidebarUpdateModel {
   const rows = [
-    ...providerRows(input.machines, input.providerJobs),
+    ...(input.showProviderCliUpdates
+      ? providerRows(input.machines, input.providerJobs)
+      : []),
     ...pluginRows(input.plugins, input.pluginJobs),
   ];
   const startable = rows.filter((row) =>

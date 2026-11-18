@@ -49,6 +49,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
   "sidebar.threadListProvider",
+  "sidebar.updates.providerCli",
   "composer.provider",
   "infoPanel.collapsedSections",
   "threadContextCard.pinned",
@@ -150,6 +151,11 @@ export const uiPreferenceDefinitions = {
     ),
     "__automatic__",
     "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list.",
+  ),
+  "sidebar.updates.providerCli": defineUiPreference(
+    z.boolean(),
+    true,
+    "Whether agent CLI updates appear in the sidebar update button. false leaves them out of its count, card, and Update all; Settings → Updates and bb updates still list them.",
   ),
   "composer.provider": defineUiPreference(
     uiPreferenceStringSchema,

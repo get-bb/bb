@@ -150,6 +150,12 @@ CLI counterpart of Settings → Updates.
                                           for 15 minutes
   bb updates app dismiss                  Mark the last update result as seen
 
+The sidebar update button counts provider CLI updates alongside bb and plugin
+updates. To leave them out, for example when an organization manages agent
+CLIs, turn off "Show provider CLI updates in the sidebar" on Settings → Updates
+or run `bb settings ui set sidebar.updates.providerCli false`. Settings →
+Updates and `bb updates` still list them.
+
 `bb updates app apply --when-idle` updates at
 once when no thread is running.
 Otherwise the server schedules the update and the command returns, so an agent
