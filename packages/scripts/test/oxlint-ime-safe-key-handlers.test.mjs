@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const OXLINT = join(ROOT, "node_modules", ".bin", "oxlint");
+const OXLINT = join(ROOT, "node_modules", "oxlint", "bin", "oxlint");
 const run = promisify(execFile);
 let dir;
 
@@ -32,18 +32,24 @@ async function lintLines(source) {
   const file = join(dir, "handler.tsx");
   await writeFile(file, source);
   const result = await run(
-    OXLINT,
-    ["-c", join(dir, "oxlintrc.json"), "-f", "unix", file],
+    process.execPath,
+    [OXLINT, "-c", join(dir, "oxlintrc.json"), "-f", "unix", file],
     { cwd: dir },
-  ).catch((error) => error);
-  return [...result.stdout.matchAll(/handler\.tsx:(\d+):\d+: .*ime-safe/g)].map(
-    (match) => Number(match[1]),
-  );
+  ).catch((error) => {
+    if (error.code !== 1) throw error;
+    return error;
+  });
+  return {
+    lines: [
+      ...result.stdout.matchAll(/handler\.tsx:(\d+):\d+: .*ime-safe/g),
+    ].map((match) => Number(match[1])),
+    output: `${result.stdout}${result.stderr}`,
+  };
 }
 
 describe("bb/ime-safe-key-handlers", () => {
   it("flags raw Enter and Escape key checks in every comparison form", async () => {
-    const lines = await lintLines(
+    const { lines, output } = await lintLines(
       [
         "export function onKeyDown(event: KeyboardEvent, e: KeyboardEvent) {",
         '  if (event.key === "Enter") return 1;',
@@ -57,11 +63,11 @@ describe("bb/ime-safe-key-handlers", () => {
       ].join("\n"),
     );
 
-    expect(lines).toEqual([2, 3, 4, 6]);
+    expect(lines, output).toEqual([2, 3, 4, 6]);
   });
 
   it("allows the IME-aware helper and keys that IMEs do not consume", async () => {
-    const lines = await lintLines(
+    const { lines, output } = await lintLines(
       [
         'import { isNonImeKey } from "@/lib/ime-keyboard";',
         "export function onKeyDown(event: KeyboardEvent) {",
@@ -75,6 +81,6 @@ describe("bb/ime-safe-key-handlers", () => {
       ].join("\n"),
     );
 
-    expect(lines).toEqual([]);
+    expect(lines, output).toEqual([]);
   });
 });
