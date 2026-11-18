@@ -818,9 +818,16 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
+  getDaemonSessionSocket(sessionId: string): HubSocket | null {
+    return this.daemonSessions.get(sessionId)?.socket ?? null;
+  }
+
   takeSilentDaemonSessionIds(maxQuietChecks: number): string[] {
     const silentSessionIds: string[] = [];
     for (const [sessionId, entry] of this.daemonSessions) {
+      if (this.pendingDaemonDisconnects.has(sessionId)) {
+        continue;
+      }
       if (entry.heardSinceLivenessCheck) {
         entry.heardSinceLivenessCheck = false;
         entry.quietLivenessChecks = 0;

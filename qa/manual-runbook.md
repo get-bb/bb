@@ -683,6 +683,20 @@ Expected result:
   error, or an equivalent explicit interruption/error event, for the interrupted
   RPC.
 
+Drop the daemon's connection without stopping it (pause the network, or kill
+the Connect tunnel) for less than 30 s during active work:
+
+Expected result:
+
+- The daemon logs `Disconnected from server; resuming the session`, then
+  `Reconnected; resuming the server session` with the same `sessionId`; it
+  does not call `/internal/session/open` again.
+- The server logs `Daemon WebSocket closed; holding its session for a
+  reconnect`, then `Daemon WebSocket resumed its session`. The host stays
+  `connected`, open terminals keep their output, and the active turn finishes.
+- A drop longer than 30 s ends the session as `expired`; the daemon then opens
+  a new session.
+
 Kill the daemon during active work:
 
 ```bash

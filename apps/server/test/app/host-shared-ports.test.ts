@@ -515,10 +515,10 @@ describe("daemon session connect shares", () => {
         hostId: "host-1",
         sessionId: session.sessionId,
         socket: daemonSocket,
-        raw: JSON.stringify({
+        message: {
           type: "connect-tunnel.identity",
           identity: { label: "sawyer-air", baseDomain: "getbb.app" },
-        }),
+        },
       });
       expect(harness.deps.sharedPorts.getTunnelIdentity("host-1")).toEqual({
         label: "sawyer-air",
@@ -730,7 +730,7 @@ describe("connect next machine tunnels", () => {
         hostId: "host-1",
         sessionId: session.sessionId,
         socket: daemonSocket,
-        raw: JSON.stringify({
+        message: {
           type: "connect-next.status",
           status: {
             state: "connecting",
@@ -740,7 +740,7 @@ describe("connect next machine tunnels", () => {
             since: 1,
             shares: [],
           },
-        }),
+        },
       });
       expect(
         daemonSocket.messages.map((message) => JSON.parse(message)),

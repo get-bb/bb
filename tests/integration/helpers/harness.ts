@@ -1,6 +1,7 @@
 import { sweepProviderLifecycles } from "../../../apps/server/src/services/environments/environment-engine.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -116,6 +117,7 @@ export interface IntegrationHarness {
   cleanup(): Promise<void>;
   crashDaemon(): Promise<void>;
   daemonApp: HostDaemonApp;
+  dropDaemonConnections(): number;
   db: DbConnection;
   hostId: string;
   hub: NotificationHub;
@@ -128,6 +130,7 @@ export interface IntegrationHarness {
 }
 
 interface CreateHarnessOptions {
+  proxyDaemonConnection?: boolean;
   serverPort?: number;
   bindHost?: "127.0.0.1" | "0.0.0.0";
   staticDir?: string;
@@ -424,9 +427,54 @@ async function startIntegrationServer(
   };
 }
 
+interface DaemonConnectionProxy {
+  close(): Promise<void>;
+  dropConnections(): number;
+  url: string;
+}
+
+async function startDaemonConnectionProxy(
+  serverUrl: string,
+): Promise<DaemonConnectionProxy> {
+  const upstream = new URL(serverUrl);
+  const sockets = new Set<net.Socket>();
+  const track = (socket: net.Socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  };
+  const proxy = net.createServer((client) => {
+    const target = net.connect(Number(upstream.port), upstream.hostname);
+    track(client);
+    track(target);
+    client.on("error", () => target.destroy());
+    target.on("error", () => client.destroy());
+    client.pipe(target).pipe(client);
+  });
+  await new Promise<void>((resolve) =>
+    proxy.listen(0, upstream.hostname, resolve),
+  );
+  const address = proxy.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Daemon connection proxy has no port");
+  }
+  return {
+    url: `http://${upstream.hostname}:${address.port}`,
+    dropConnections() {
+      const dropped = sockets.size;
+      for (const socket of sockets) socket.resetAndDestroy();
+      return dropped;
+    },
+    close() {
+      for (const socket of sockets) socket.destroy();
+      return new Promise((resolve) => proxy.close(() => resolve()));
+    },
+  };
+}
+
 async function startHarnessDaemon(
   dataDir: string,
   server: RunningTestServer,
+  serverUrl: string,
 ): Promise<HarnessDaemonResources> {
   const releaseLock = await acquireDaemonLock(dataDir);
 
@@ -445,7 +493,7 @@ async function startHarnessDaemon(
       localApiConfig: null,
       logger: testLogger,
       releaseLock,
-      serverUrl: server.baseUrl,
+      serverUrl,
     });
     for (
       let attempt = 1;
@@ -498,6 +546,7 @@ export async function createIntegrationHarness(
   });
 
   let server: RunningTestServer | null = null;
+  let daemonProxy: DaemonConnectionProxy | null = null;
   let daemonResources: HarnessDaemonResources | null = null;
   let cleanedUp = false;
   let harness: IntegrationHarness | null = null;
@@ -513,7 +562,11 @@ export async function createIntegrationHarness(
       return;
     }
 
-    daemonResources = await startHarnessDaemon(daemonDataDir, server);
+    daemonResources = await startHarnessDaemon(
+      daemonDataDir,
+      server,
+      daemonProxy?.url ?? server.baseUrl,
+    );
     if (daemonResources.hostId !== harness.hostId) {
       const mismatchedResources = daemonResources;
       daemonResources = null;
@@ -564,6 +617,7 @@ export async function createIntegrationHarness(
     cleanedUp = true;
 
     await shutdownDaemon("integration-cleanup").catch(() => undefined);
+    await daemonProxy?.close().catch(() => undefined);
     await server?.close().catch(() => undefined);
     await killProcessesReferencingPath(tmpRoot);
     await removePathWithRetry(tmpRoot);
@@ -574,7 +628,14 @@ export async function createIntegrationHarness(
     const api = createPublicApiClient(server.baseUrl, {
       fetch: createIntegrationFetch(),
     });
-    daemonResources = await startHarnessDaemon(daemonDataDir, server);
+    if (options.proxyDaemonConnection === true) {
+      daemonProxy = await startDaemonConnectionProxy(server.baseUrl);
+    }
+    daemonResources = await startHarnessDaemon(
+      daemonDataDir,
+      server,
+      daemonProxy?.url ?? server.baseUrl,
+    );
     await waitForHostConnected(api);
     await persistHostId({
       dataDir: server.config.dataDir,
@@ -587,6 +648,12 @@ export async function createIntegrationHarness(
       crashDaemon,
       daemonApp: daemonResources.daemonApp,
       db: server.db,
+      dropDaemonConnections() {
+        if (daemonProxy === null) {
+          throw new Error("Pass proxyDaemonConnection to drop connections");
+        }
+        return daemonProxy.dropConnections();
+      },
       hostId: daemonResources.hostId,
       hub: server.hub,
       repoDir,
