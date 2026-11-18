@@ -48,6 +48,7 @@ interface UseQueuedMessageActionsArgs {
   onSaveSuccess?: () => void;
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
   dismissInlineQueuedMessageEditor: () => void;
+  abandonInlineQueuedMessageEdit: () => void;
   activeComposerDraftInput: PromptInput[];
 }
 
@@ -149,6 +150,7 @@ async function saveInlineQueuedMessage({
   updateQueuedMessage,
   onSaveSuccess,
   dismissInlineQueuedMessageEditor,
+  abandonInlineQueuedMessageEdit,
   setProcessingQueuedMessage,
 }: {
   edit: InlineQueuedMessageEditState;
@@ -160,6 +162,7 @@ async function saveInlineQueuedMessage({
   >;
   onSaveSuccess: (() => void) | undefined;
   dismissInlineQueuedMessageEditor: () => void;
+  abandonInlineQueuedMessageEdit: () => void;
   setProcessingQueuedMessage: SetProcessingQueuedMessage;
 }): Promise<void> {
   const { expectedUpdatedAt, ownerThreadId, queuedMessageId } = edit;
@@ -176,7 +179,7 @@ async function saveInlineQueuedMessage({
     dismissInlineQueuedMessageEditor();
   } catch (error) {
     if (error instanceof BbHttpError && error.status === 404) {
-      dismissInlineQueuedMessageEditor();
+      abandonInlineQueuedMessageEdit();
     }
     showMutationErrorToast({
       error,
@@ -198,6 +201,7 @@ export function useQueuedMessageActions({
   onSaveSuccess,
   inlineEditingQueuedMessage,
   dismissInlineQueuedMessageEditor,
+  abandonInlineQueuedMessageEdit,
   activeComposerDraftInput,
 }: UseQueuedMessageActionsArgs): UseQueuedMessageActionsResult {
   const updateQueuedMessage = useUpdateThreadQueuedMessage();
@@ -269,7 +273,7 @@ export function useQueuedMessageActions({
         (message) => message.id === inlineEditingQueuedMessage.queuedMessageId,
       )
     ) {
-      dismissInlineQueuedMessageEditor();
+      abandonInlineQueuedMessageEdit();
       return;
     }
     const queuedMessage = queuedMessagesRef.current.find(
@@ -282,9 +286,11 @@ export function useQueuedMessageActions({
       updateQueuedMessage,
       onSaveSuccess,
       dismissInlineQueuedMessageEditor,
+      abandonInlineQueuedMessageEdit,
       setProcessingQueuedMessage,
     });
   }, [
+    abandonInlineQueuedMessageEdit,
     activeComposerDraftInput,
     dismissInlineQueuedMessageEditor,
     inlineEditingQueuedMessage,

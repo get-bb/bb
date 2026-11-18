@@ -113,6 +113,24 @@ export function appendQuoteToDraftText<Draft extends { text: string }>(
   return { ...state, text };
 }
 
+function appendMissingAttachments(
+  existing: readonly PromptDraftAttachment[],
+  additions: readonly PromptDraftAttachment[],
+): PromptDraftAttachment[] {
+  const existingAttachmentPaths = new Set(
+    existing.map((attachment) => attachment.path),
+  );
+  const mergedAttachments = [...existing];
+  for (const attachment of additions) {
+    if (existingAttachmentPaths.has(attachment.path)) {
+      continue;
+    }
+    existingAttachmentPaths.add(attachment.path);
+    mergedAttachments.push(attachment);
+  }
+  return mergedAttachments;
+}
+
 export function appendQuoteAndAttachmentsToDraft<
   Draft extends { text: string; attachments: readonly PromptDraftAttachment[] },
 >(
@@ -121,27 +139,52 @@ export function appendQuoteAndAttachmentsToDraft<
   attachments: readonly PromptDraftAttachment[],
 ): Draft {
   const quotedState = appendQuoteToDraftText(state, quotedText);
-  if (attachments.length === 0) {
-    return quotedState;
-  }
-
-  const existingAttachmentPaths = new Set(
-    quotedState.attachments.map((attachment) => attachment.path),
+  const mergedAttachments = appendMissingAttachments(
+    quotedState.attachments,
+    attachments,
   );
-  const mergedAttachments = [...quotedState.attachments];
-  for (const attachment of attachments) {
-    if (existingAttachmentPaths.has(attachment.path)) {
-      continue;
-    }
-    existingAttachmentPaths.add(attachment.path);
-    mergedAttachments.push(attachment);
-  }
-
   if (mergedAttachments.length === quotedState.attachments.length) {
     return quotedState;
   }
 
   return { ...quotedState, attachments: mergedAttachments };
+}
+
+const UNSENT_DRAFT_SEPARATOR = "\n\n";
+
+export function mergeUnsentPromptDraft(
+  unsent: PromptDraftState,
+  current: PromptDraftState,
+): PromptDraftState {
+  if (
+    isPromptDraftEmpty(unsent) ||
+    arePromptDraftStatesEqual(unsent, current)
+  ) {
+    return current;
+  }
+  if (isPromptDraftEmpty(current)) {
+    return unsent;
+  }
+  const separator =
+    unsent.text.length > 0 && current.text.length > 0
+      ? UNSENT_DRAFT_SEPARATOR
+      : "";
+  const offset = unsent.text.length + separator.length;
+  return {
+    text: `${unsent.text}${separator}${current.text}`,
+    mentions: [
+      ...unsent.mentions,
+      ...current.mentions.map((mention) => ({
+        ...mention,
+        start: mention.start + offset,
+        end: mention.end + offset,
+      })),
+    ],
+    attachments: appendMissingAttachments(
+      unsent.attachments,
+      current.attachments,
+    ),
+  };
 }
 
 export function isPromptDraftEmpty(draft: PromptDraftState): boolean {

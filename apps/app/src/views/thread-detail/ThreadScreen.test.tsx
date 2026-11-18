@@ -299,6 +299,39 @@ describe("ThreadScreen", () => {
     expect(latestSentMessageEdit()).toBeUndefined();
   });
 
+  it("moves a changed edit into the composer when its message leaves the timeline", () => {
+    const draft = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: THREAD.projectId,
+      threadId: THREAD.id,
+    });
+    draft.setDraft({
+      text: "newer composer text",
+      mentions: [],
+      attachments: [],
+    });
+    const view = renderScreen({ kind: "page" }, timelineWithRowIds(["msg_1"]));
+    startEditingMessage("msg_1");
+    act(() => {
+      latestSentMessageEdit()!.updateDraft((current) => ({
+        ...current,
+        text: "/compact keep it short",
+      }));
+    });
+
+    mocks.timeline = timelineWithRowIds(["msg_2"]);
+    view.rerender(screenElement({ kind: "page" }));
+
+    expect(latestSentMessageEdit()).toBeUndefined();
+    expect(draft.getCurrent().text).toBe(
+      "/compact keep it short\n\nnewer composer text",
+    );
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "Your message edit is in the composer",
+      { description: "The message being edited is no longer available." },
+    );
+  });
+
   it("discards a failed edit whose message left the timeline while it was submitting", async () => {
     let rejectEdit!: (error: Error) => void;
     mocks.editMessageMutateAsync.mockReturnValue(
