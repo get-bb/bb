@@ -122,8 +122,10 @@ import {
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
   acpAgentMessageChunkUpdateSchema,
+  acpCompactionUpdateSchema,
   extractAcpContentText,
   acpUsageUpdateSchema,
+  type AcpCompactionUpdate,
   type AcpConfigStateResult,
   type AcpSessionModels,
   type AcpUsageUpdate,
@@ -222,6 +224,9 @@ interface AcpThreadSession {
   pendingInstructions: string | undefined;
   activePromptKind: "turn" | "compaction" | "agent" | null;
   compactionAgentMessage: string;
+  compactionUpdateOutcome: AcpCompactionUpdateOutcome | undefined;
+  openAgentCompactionIds: Set<string>;
+  seenAgentCompactionIds: Set<string>;
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
   cancelRequested: boolean;
@@ -2432,6 +2437,9 @@ async function startAgentSession(
     pendingInstructions: params.instructions,
     activePromptKind: null,
     compactionAgentMessage: "",
+    compactionUpdateOutcome: undefined,
+    openAgentCompactionIds: new Set(),
+    seenAgentCompactionIds: new Set(),
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
@@ -2787,6 +2795,7 @@ function setActivePromptKind(
   }
   if (kind === null) {
     clearAgentTurnQuietTimer(session);
+    session.openAgentCompactionIds.clear();
     if (session.promptWorkOpen) {
       session.promptWorkOpen = false;
       session.model.promptSettled({ stopReason: "end_turn" });
@@ -2807,6 +2816,7 @@ function agentTurnHasOpenWork(session: AcpThreadSession): boolean {
   return (
     session.pendingPermissions.size > 0 ||
     session.pendingElicitations.size > 0 ||
+    session.openAgentCompactionIds.size > 0 ||
     session.model.hasUnfinishedToolCalls()
   );
 }
@@ -3162,6 +3172,7 @@ const TURN_OUTPUT_UPDATE_KINDS = new Set([
   "tool_call",
   "tool_call_update",
   "plan",
+  "compaction_update",
 ]);
 
 function isTurnOutputUpdate(update: unknown): boolean {
@@ -3510,6 +3521,7 @@ function startCompaction(
   setActivePromptKind(session, "compaction");
   session.awaitingFirstPrompt = false;
   session.compactionAgentMessage = "";
+  session.compactionUpdateOutcome = undefined;
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
@@ -3536,10 +3548,11 @@ function startCompaction(
       }
       finish(
         result.stopReason === "end_turn"
-          ? compactionOutcomeForEndTurn(
-              session.dialect,
-              session.compactionAgentMessage,
-            )
+          ? (session.compactionUpdateOutcome ??
+              compactionOutcomeForEndTurn(
+                session.dialect,
+                session.compactionAgentMessage,
+              ))
           : result.stopReason === "cancelled"
             ? { status: "interrupted" }
             : {
@@ -3669,7 +3682,14 @@ function handleAgentNotification(
       };
     }
   }
+  const compactionUpdate = acpCompactionUpdateSchema.safeParse(
+    parsed.data.update,
+  );
   if (session.activePromptKind === "compaction") {
+    if (compactionUpdate.success) {
+      recordCompactionUpdateOutcome(session, compactionUpdate.data);
+      return;
+    }
     const chunk = acpAgentMessageChunkUpdateSchema.safeParse(
       parsed.data.update,
     );
@@ -3677,8 +3697,54 @@ function handleAgentNotification(
       session.compactionAgentMessage +=
         extractAcpContentText(chunk.data.content) ?? "";
     }
+  } else if (compactionUpdate.success) {
+    trackAgentCompaction(session, compactionUpdate.data);
   }
   emitSessionUpdate(session, parsed.data.update, rawUpdate);
+}
+
+type AcpCompactionUpdateOutcome =
+  | { status: "failed"; error: string }
+  | { status: "interrupted" };
+
+const TERMINAL_COMPACTION_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+function recordCompactionUpdateOutcome(
+  session: AcpThreadSession,
+  update: AcpCompactionUpdate,
+): void {
+  if (update.status === "failed") {
+    session.compactionUpdateOutcome = {
+      status: "failed",
+      error: update.error || "The agent reported that compaction failed",
+    };
+  } else if (update.status === "cancelled") {
+    session.compactionUpdateOutcome = { status: "interrupted" };
+  }
+}
+
+function trackAgentCompaction(
+  session: AcpThreadSession,
+  update: AcpCompactionUpdate,
+): void {
+  if (session.awaitingFirstPrompt && session.activePromptKind === null) {
+    return;
+  }
+  const firstSeen = !session.seenAgentCompactionIds.has(update.compactionId);
+  session.seenAgentCompactionIds.add(update.compactionId);
+  const terminal = TERMINAL_COMPACTION_STATUSES.has(update.status);
+  if (terminal) {
+    session.openAgentCompactionIds.delete(update.compactionId);
+  } else {
+    session.openAgentCompactionIds.add(update.compactionId);
+  }
+  if (session.activePromptKind === null && (firstSeen || !terminal)) {
+    openAgentTurn(session);
+  }
 }
 
 type DecodedAcpBridgeRequest =

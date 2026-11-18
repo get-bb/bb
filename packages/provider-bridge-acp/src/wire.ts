@@ -194,6 +194,16 @@ export const acpUsageUpdateSchema = z
   .passthrough();
 export type AcpUsageUpdate = z.infer<typeof acpUsageUpdateSchema>;
 
+export const acpCompactionUpdateSchema = z
+  .object({
+    sessionUpdate: z.literal("compaction_update"),
+    compactionId: z.string().min(1),
+    status: z.string(),
+    error: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type AcpCompactionUpdate = z.infer<typeof acpCompactionUpdateSchema>;
+
 const acpOtherSessionUpdateSchema = z
   .object({
     sessionUpdate: z.string(),
