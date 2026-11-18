@@ -237,6 +237,7 @@ function buildDefaultGitSourceInspectionResult(): HostDaemonOnlineRpcResult<"hos
     hasUncommittedChanges: false,
     operation: { kind: "none" },
     originDefaultBranch: "origin/main",
+    defaultWorktreeBaseBranch: "origin/main",
   };
 }
 

@@ -48,6 +48,11 @@
       "source": "./src/workspace-git.ts",
       "types": "./src/workspace-git.ts",
       "default": "./src/workspace-git.ts"
+    },
+    "./testing/branch-ref-cases": {
+      "source": "./src/testing/branch-ref-cases.ts",
+      "types": "./src/testing/branch-ref-cases.ts",
+      "default": "./src/testing/branch-ref-cases.ts"
     }
   },
   "scripts": {

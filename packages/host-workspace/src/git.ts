@@ -3,6 +3,7 @@ import path from "node:path";
 import type { ExecFileException } from "node:child_process";
 import { execHostFileBuffer, runVcsProcess } from "@bb/process-utils";
 import {
+  branchRefCandidates,
   createGitCommandFailedError,
   ensureGitRepo,
   type GitProcessOptions,
@@ -158,16 +159,14 @@ export async function readSharedGitRefsSnapshot(
       const watched = new Set(["refs/remotes/origin/HEAD"]);
       if (originHead) watched.add(originHead);
       if (mergeBaseBranch !== null) {
-        if (mergeBaseBranch.startsWith("refs/")) {
-          watched.add(mergeBaseBranch);
-        } else {
-          watched.add(`refs/heads/${mergeBaseBranch}`);
-          watched.add(`refs/remotes/${mergeBaseBranch}`);
+        for (const ref of branchRefCandidates(mergeBaseBranch)) {
+          watched.add(ref);
         }
       }
       if (defaultBranch !== null) {
-        watched.add(`refs/heads/${defaultBranch}`);
-        watched.add(`refs/remotes/origin/${defaultBranch}`);
+        for (const ref of branchRefCandidates(defaultBranch)) {
+          watched.add(ref);
+        }
       }
       if (branchName !== null) {
         const head = `refs/heads/${branchName}`;

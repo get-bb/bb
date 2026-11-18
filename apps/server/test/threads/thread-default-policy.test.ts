@@ -584,6 +584,7 @@ describe("resolveCreateThreadEnvironment", () => {
             hasUncommittedChanges: false,
             operation: { kind: "none" as const },
             originDefaultBranch: null,
+            defaultWorktreeBaseBranch: null,
           } satisfies GitSourceInspection,
         }),
       });
