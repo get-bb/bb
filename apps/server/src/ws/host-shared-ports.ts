@@ -14,7 +14,7 @@ import type { NotificationHub } from "./hub.js";
 
 interface HostSharedPortCoordinatorDeps {
   db: DbConnection;
-  hub: Pick<NotificationHub, "sendDaemonMessage">;
+  hub: Pick<NotificationHub, "getDaemonSessionIdForHost" | "sendDaemonMessage">;
 }
 
 interface SharedPortDeclaration {
@@ -28,7 +28,6 @@ interface HostConnectCapability {
 
 interface HostConnectCapabilityState {
   capability: HostConnectCapability;
-  leaseExpiresAt: number;
   protocolVersion: number;
 }
 
@@ -408,7 +407,6 @@ export class HostSharedPortCoordinator {
     }
     return {
       capability,
-      leaseExpiresAt: session.leaseExpiresAt,
       protocolVersion: session.protocolVersion,
     };
   }
@@ -425,7 +423,11 @@ export class HostSharedPortCoordinator {
   private requireConnectedEnrolledHost(hostId: string) {
     const host = this.requireDurablyEnrolledHost(hostId);
     const state = this.connectCapabilityState(hostId);
-    if (state === null || state.leaseExpiresAt <= Date.now()) {
+    if (
+      state === null ||
+      this.deps.hub.getDaemonSessionIdForHost(hostId) !==
+        state.capability.sessionId
+    ) {
       throw new ApiError(
         503,
         "connect_host_offline",

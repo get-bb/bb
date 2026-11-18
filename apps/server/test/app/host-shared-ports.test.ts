@@ -390,7 +390,9 @@ describe("HostSharedPortCoordinator", () => {
   });
 
   it("stores only daemon-reported tunnel identity", () => {
-    const { host, sharedPorts } = setup();
+    const { host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected an online host session");
+    hub.registerDaemon(session.id, host.id, createMockHubSocket());
     expect(sharedPorts.getTunnelIdentity(host.id)).toBeNull();
     expect(
       sharedPorts.recordTunnelIdentity(host.id, {
@@ -402,6 +404,21 @@ describe("HostSharedPortCoordinator", () => {
       label: "sawyer-air",
       baseDomain: "getbb.app",
     });
+  });
+
+  it("treats a host as connected while the hub holds its socket, whatever the persisted lease says", () => {
+    const { db, host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected an online host session");
+    hub.registerDaemon(session.id, host.id, createMockHubSocket());
+    heartbeatSession(db, session.id, Date.now() - 1);
+    expect(sharedPorts.getTunnelIdentity(host.id)).toBeNull();
+
+    hub.unregisterDaemon(session.id);
+    expect(() => sharedPorts.getTunnelIdentity(host.id)).toThrow(
+      expect.objectContaining({
+        body: expect.objectContaining({ code: "connect_host_offline" }),
+      }),
+    );
   });
 });
 

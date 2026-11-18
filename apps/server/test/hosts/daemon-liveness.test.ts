@@ -1,10 +1,4 @@
-import { eq } from "drizzle-orm";
-import {
-  closeSession,
-  getSessionById,
-  hostDaemonSessions,
-  noopNotifier,
-} from "@bb/db";
+import { closeSession, getSessionById, noopNotifier } from "@bb/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HEARTBEAT_INTERVAL_MS,
@@ -32,13 +26,10 @@ describe("daemon liveness checks", () => {
     vi.restoreAllMocks();
   });
 
-  it("bounds liveness writes during message bursts while renewing heartbeats and rejecting closed sessions", async () => {
+  it("acknowledges heartbeats without writing and persists the lease at most once per lease period", async () => {
     await withTestHarness(async (harness) => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
       const daemon = connectDaemon(harness);
-      const session = getSessionById(harness.db, {
-        sessionId: daemon.sessionId,
-      })!;
-      const now = vi.spyOn(Date, "now").mockReturnValue(session.updatedAt + 1);
       const changes = () =>
         harness.db.$client
           .prepare<[], { count: number }>("SELECT total_changes() AS count")
@@ -60,60 +51,64 @@ describe("daemon liveness checks", () => {
                   result: { files: [], truncated: false },
                 },
         });
+      const acks = () =>
+        daemon.socket.messages.filter(
+          (message) => JSON.parse(message).type === "heartbeat-ack",
+        ).length;
+      const lease = () =>
+        getSessionById(harness.db, { sessionId: daemon.sessionId })!
+          .leaseExpiresAt;
+
       const before = changes();
-      for (let index = 0; index < 100; index += 1) send("host-rpc.response");
-      expect(changes() - before).toBeLessThanOrEqual(2);
-      expect(daemon.socket.closed).toEqual([]);
+      const leaseBefore = lease();
+      for (let index = 0; index < 50; index += 1) {
+        now.mockReturnValue(1_000_000 + index * 500);
+        send("heartbeat");
+        send("host-rpc.response");
+      }
+      expect(changes() - before).toBe(0);
+      expect(acks()).toBe(50);
+      expect(lease()).toBe(leaseBefore);
 
-      now.mockReturnValue(session.updatedAt + HEARTBEAT_INTERVAL_MS);
-      send("host-rpc.response");
-      const renewed = getSessionById(harness.db, {
-        sessionId: daemon.sessionId,
-      })!;
-      expect(renewed.leaseExpiresAt).toBe(Date.now() + LEASE_TIMEOUT_MS);
-
-      now.mockReturnValue(Date.now() + 1);
+      now.mockReturnValue(1_000_000 + LEASE_TIMEOUT_MS);
       send("heartbeat");
-      expect(
-        getSessionById(harness.db, { sessionId: daemon.sessionId })!
-          .leaseExpiresAt,
-      ).toBe(Date.now() + LEASE_TIMEOUT_MS);
-      expect(
-        daemon.socket.messages.map((message) => JSON.parse(message)),
-      ).toContainEqual({ type: "heartbeat-ack" });
-
-      harness.db
-        .update(hostDaemonSessions)
-        .set({ leaseExpiresAt: Date.now() + 1 })
-        .where(eq(hostDaemonSessions.id, daemon.sessionId))
-        .run();
+      expect(lease()).toBe(Date.now() + LEASE_TIMEOUT_MS);
+      const renewed = changes();
+      send("heartbeat");
       send("host-rpc.response");
-      expect(
-        getSessionById(harness.db, { sessionId: daemon.sessionId })!
-          .leaseExpiresAt,
-      ).toBe(Date.now() + LEASE_TIMEOUT_MS);
+      expect(changes()).toBe(renewed);
+      expect(acks()).toBe(52);
 
-      const beforeClockChange = getSessionById(harness.db, {
-        sessionId: daemon.sessionId,
-      })!;
+      const beforeClockChange = lease();
       now.mockReturnValue(Date.now() - 100);
-      send("host-rpc.response");
-      expect(
-        getSessionById(harness.db, { sessionId: daemon.sessionId }),
-      ).toMatchObject({
-        updatedAt: Date.now(),
-        leaseExpiresAt: beforeClockChange.leaseExpiresAt + 1,
-      });
+      send("heartbeat");
+      expect(lease()).toBe(beforeClockChange + 1);
 
       closeSession(harness.db, noopNotifier, daemon.sessionId, "replaced");
-      const closed = getSessionById(harness.db, {
+      send("heartbeat");
+      expect(daemon.socket.closed).toEqual([]);
+      now.mockReturnValue(Date.now() + LEASE_TIMEOUT_MS);
+      send("heartbeat");
+      expect(daemon.socket.closed).toEqual([
+        { code: 1008, reason: "inactive-session" },
+      ]);
+    });
+  });
+
+  it("rejects a non-heartbeat message from a closed session immediately", async () => {
+    await withTestHarness(async (harness) => {
+      const daemon = connectDaemon(harness);
+      closeSession(harness.db, noopNotifier, daemon.sessionId, "replaced");
+      feedRawDaemonWebSocketMessage({
+        harness,
+        hostId: daemon.hostId,
         sessionId: daemon.sessionId,
+        socket: daemon.socket,
+        rawMessage: { type: "machine.shutdown-ack" },
       });
-      send("host-rpc.response");
-      expect(
-        getSessionById(harness.db, { sessionId: daemon.sessionId }),
-      ).toEqual(closed);
-      expect(daemon.socket.closed.length).toBeGreaterThan(0);
+      expect(daemon.socket.closed).toEqual([
+        { code: 1008, reason: "inactive-session" },
+      ]);
     });
   });
 

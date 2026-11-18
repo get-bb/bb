@@ -24,7 +24,7 @@ function createTestDaemonSocket(): TestDaemonSocket {
 }
 
 describe("internal environment change websocket hints", () => {
-  it("renews an active session from a late heartbeat after lease expiry", async () => {
+  it("acknowledges a heartbeat for an active session whose persisted lease lapsed", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-late-heartbeat",
@@ -49,7 +49,6 @@ describe("internal environment change websocket hints", () => {
         .where(eq(hostDaemonSessions.id, session.id))
         .get();
       expect(updatedSession?.status).toBe("active");
-      expect(updatedSession?.leaseExpiresAt).toBeGreaterThan(Date.now());
       expect(socket.send).toHaveBeenCalledWith(
         JSON.stringify({ type: "heartbeat-ack" }),
       );
