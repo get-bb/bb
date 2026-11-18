@@ -32,20 +32,6 @@ export const TYPEAHEAD_QUERY_POLICY = {
   staleTime: TYPEAHEAD_STALE_TIME_MS,
 } as const;
 
-const HOST_DERIVED_META_KEY = "hostDerivedHostId";
-
-export function hostDerivedQueryPolicy(hostId: string | null) {
-  return { meta: { [HOST_DERIVED_META_KEY]: hostId } };
-}
-
-export function readHostDerivedQueryHostId(
-  meta: Record<string, unknown> | undefined,
-): string | null | undefined {
-  if (meta === undefined || !(HOST_DERIVED_META_KEY in meta)) return undefined;
-  const hostId = meta[HOST_DERIVED_META_KEY];
-  return typeof hostId === "string" ? hostId : null;
-}
-
 export const EXPENSIVE_MANUAL_QUERY_POLICY = {
   refetchOnWindowFocus: false,
 } as const;

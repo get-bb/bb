@@ -1,7 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
 import { hostProviderCliStatusQueryKey } from "../queries/query-keys";
-import { hostDerivedQueryPolicy } from "../queries/query-policies";
 
 interface HostProviderCliStatusCacheArgs {
   queryClient: QueryClient;
@@ -30,6 +29,5 @@ export async function refreshHostProviderCliStatus(
         signal,
       }),
     staleTime: 0,
-    ...hostDerivedQueryPolicy(args.hostId),
   });
 }

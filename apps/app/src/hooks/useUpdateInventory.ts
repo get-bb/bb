@@ -26,10 +26,12 @@ import {
 import { pluginHasUpdateSurfaces } from "@/components/plugin/management/plugin-status";
 import { pluginsNeedingAttention } from "@/hooks/usePluginAttention";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
-import { hostProviderCliInstallJobsQueryKey } from "@/hooks/queries/query-keys";
+import {
+  hostProviderCliInstallJobsQueryKey,
+  hostProviderCliStatusQueryKey,
+} from "@/hooks/queries/query-keys";
 import { SESSION_STATIC_QUERY_POLICY } from "@/hooks/queries/query-policies";
 import {
-  hostProviderCliStatusQueryOptions,
   useSystemConfig,
   useSystemVersion,
 } from "@/hooks/queries/system-queries";
@@ -194,9 +196,13 @@ export function useUpdateInventory(
       ?.id ?? null;
 
   const providerStatusQueries = useQueries({
-    queries: connectedHosts.map((host) =>
-      hostProviderCliStatusQueryOptions({ hostId: host.id, enabled }),
-    ),
+    queries: connectedHosts.map((host) => ({
+      queryKey: hostProviderCliStatusQueryKey(host.id),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        sdk.hosts.providerCliStatus({ hostId: host.id, signal }),
+      enabled,
+      ...SESSION_STATIC_QUERY_POLICY,
+    })),
   });
   const providerStatusByHostId = new Map<
     string,

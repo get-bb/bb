@@ -1,10 +1,12 @@
 import { getHost } from "@bb/db";
 import type { LoggedWorkSessionDeps } from "../../types.js";
-import { invalidateEnvironmentProviderMachineAvailability } from "../environments/provider-machine-availability.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { isServerMoveFrozen } from "../server-move/freeze-state.js";
 import { resolvePluginProviderEnv } from "../plugins/plugin-agent-contributions.js";
-import { getProviderInstallations } from "../system/provider-installations.js";
+import {
+  forgetHostDerivedState,
+  getProviderInstallations,
+} from "../system/provider-installations.js";
 
 interface HostDerivedStateRefresher {
   pending: Set<string>;
@@ -43,14 +45,10 @@ async function refreshHost(
   deps: LoggedWorkSessionDeps,
   hostId: string,
 ): Promise<void> {
-  deps.providerRegistry.forgetInstalledForHost(hostId);
-  deps.lifecycleDedupers.providerModelCatalogs.markHostStale(hostId);
-  invalidateEnvironmentProviderMachineAvailability();
-  if (canProbeHost(deps, hostId)) {
-    await deps.providerRegistry.whenRegistrationsSettled();
-    await getProviderInstallations(deps, { hostId, mode: "refresh" });
-  }
-  deps.hub.notifyHost(hostId, ["host-state-changed"]);
+  forgetHostDerivedState(deps, hostId);
+  if (!canProbeHost(deps, hostId)) return;
+  await deps.providerRegistry.whenRegistrationsSettled();
+  await getProviderInstallations(deps, { hostId, mode: "refresh" });
 }
 
 async function drainHost(
@@ -75,7 +73,7 @@ async function drainHost(
   }
 }
 
-export function requestHostDerivedStateRefresh(
+function requestHostDerivedStateRefresh(
   deps: LoggedWorkSessionDeps,
   hostId: string,
 ): void {

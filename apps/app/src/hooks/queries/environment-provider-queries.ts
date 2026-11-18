@@ -9,10 +9,7 @@ import {
   readCachedEnvironmentProviderList,
   writeCachedEnvironmentProviderList,
 } from "@/lib/environment-provider-list-cache";
-import {
-  hostDerivedQueryPolicy,
-  SERVER_SESSION_QUERY_POLICY,
-} from "./query-policies";
+import { SERVER_SESSION_QUERY_POLICY } from "./query-policies";
 
 const SYSTEM_ENVIRONMENT_PROVIDERS_QUERY_KEY = "systemEnvironmentProviders";
 
@@ -62,7 +59,6 @@ export function environmentProvidersQueryOptions(
     placeholderData: () =>
       readCachedEnvironmentProviderList(cacheKey) ?? undefined,
     ...SERVER_SESSION_QUERY_POLICY,
-    ...hostDerivedQueryPolicy(query.hostId ?? null),
   };
 }
 

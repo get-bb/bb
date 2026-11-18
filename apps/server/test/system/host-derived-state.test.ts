@@ -5,7 +5,6 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
   installHostDerivedStateBaseline,
-  requestHostDerivedStateRefresh,
   requestHostDerivedStateRefreshForPluginChange,
 } from "../../src/services/hosts/host-derived-state.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
@@ -89,28 +88,6 @@ async function codexInstalled(
 }
 
 describe("host-derived state owner", () => {
-  it("re-probes a host when its toolchain changes and pushes the change without a client read", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness, "host-derived-toolchain");
-      expect(await codexInstalled(harness, host.hostId)).toBe(false);
-      const probesAfterRead = host.probes();
-
-      host.install();
-      requestHostDerivedStateRefresh(harness.deps, host.hostId);
-
-      await vi.waitFor(() =>
-        expect(host.hostChanges.at(-1)).toBe("host-state-changed"),
-      );
-      expect(new Set(host.hostChanges)).toEqual(
-        new Set(["provider-cli-status-changed", "host-state-changed"]),
-      );
-      expect(host.probes()).toBeGreaterThan(probesAfterRead);
-      const probesAfterRefresh = host.probes();
-      expect(await codexInstalled(harness, host.hostId)).toBe(true);
-      expect(host.probes()).toBe(probesAfterRefresh);
-    });
-  });
-
   it("re-probes connected hosts when the machine environment changes", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness, "host-derived-machine-env");
@@ -128,10 +105,11 @@ describe("host-derived state owner", () => {
       expect(response.status).toBe(200);
 
       await vi.waitFor(() =>
-        expect(host.hostChanges).toContain("host-state-changed"),
+        expect(host.hostChanges).toContain("provider-cli-status-changed"),
       );
-      expect(host.hostChanges).toContain("provider-cli-status-changed");
+      const probesAfterRefresh = host.probes();
       expect(await codexInstalled(harness, host.hostId)).toBe(true);
+      expect(host.probes()).toBe(probesAfterRefresh);
     });
   });
 
@@ -169,10 +147,7 @@ describe("host-derived state owner", () => {
 
         executable = "/opt/plugin-v2/claude";
         requestHostDerivedStateRefreshForPluginChange(harness.deps);
-        await vi.waitFor(() =>
-          expect(host.hostChanges).toContain("host-state-changed"),
-        );
-        expect(host.probes()).toBeGreaterThan(0);
+        await vi.waitFor(() => expect(host.probes()).toBeGreaterThan(0));
       } finally {
         baseline.stop();
         setPluginAgentContributions(undefined);

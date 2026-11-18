@@ -1,5 +1,4 @@
 import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
-import { requestHostDerivedStateRefresh } from "../services/hosts/host-derived-state.js";
 import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { getExperiments, heartbeatSession } from "@bb/db";
 import {
@@ -386,10 +385,6 @@ export function onDaemonSocketMessage(
       }
       if (message.type === "connect-tunnel.identity") {
         deps.sharedPorts.recordTunnelIdentity(args.hostId, message.identity);
-        return;
-      }
-      if (message.type === "host.toolchain-changed") {
-        requestHostDerivedStateRefresh(deps, args.hostId);
         return;
       }
       if (message.type === "connect-next.status") {

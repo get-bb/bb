@@ -1,15 +1,13 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { atom } from "jotai";
 import { useMemo } from "react";
 import type {
   OpenInTargetRequest,
   WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
-import { localWorkspaceOpenTargetsQueryKey } from "@/hooks/queries/query-keys";
-import { hostDerivedQueryPolicy } from "@/hooks/queries/query-policies";
 import {
   hostDaemonPortAtom,
   localHostDaemonReachableAtom,
+  localWorkspaceOpenTargetsAtom,
 } from "@/lib/system-config-atoms";
 import {
   fetchWorkspaceOpenTargets,
@@ -19,6 +17,7 @@ import { useAsyncAtomState } from "@/lib/use-async-atom-value";
 
 const disabledLocalHostDaemonReachableAtom = atom(false);
 const disabledHostDaemonPortAtom = atom<number | null>(null);
+const disabledWorkspaceOpenTargetsAtom = atom<WorkspaceOpenTarget[]>([]);
 const NO_WORKSPACE_OPEN_TARGETS: WorkspaceOpenTarget[] = [];
 
 interface UseWorkspaceOpenTargetsArgs {
@@ -47,24 +46,20 @@ export function useWorkspaceOpenTargets(
     args.enabled ? hostDaemonPortAtom : disabledHostDaemonPortAtom,
     null,
   );
+  const workspaceOpenTargetsState = useAsyncAtomState(
+    args.enabled
+      ? localWorkspaceOpenTargetsAtom
+      : disabledWorkspaceOpenTargetsAtom,
+    NO_WORKSPACE_OPEN_TARGETS,
+  );
   const localHostDaemonReachable = localHostDaemonReachableState.data;
   const daemonPort = daemonPortState.data;
-  const queryClient = useQueryClient();
-  const workspaceOpenTargetsQuery = useQuery({
-    queryKey: localWorkspaceOpenTargetsQueryKey(daemonPort, null),
-    queryFn: () =>
-      daemonPort === null ? [] : fetchWorkspaceOpenTargets(daemonPort),
-    enabled: args.enabled && !daemonPortState.isLoading,
-    staleTime: Infinity,
-    ...hostDerivedQueryPolicy(null),
-  });
-  const workspaceOpenTargets =
-    workspaceOpenTargetsQuery.data ?? NO_WORKSPACE_OPEN_TARGETS;
+  const workspaceOpenTargets = workspaceOpenTargetsState.data;
   const isLoading =
     args.enabled &&
     (localHostDaemonReachableState.isLoading ||
       daemonPortState.isLoading ||
-      workspaceOpenTargetsQuery.isPending);
+      workspaceOpenTargetsState.isLoading);
 
   const openWorkspace = useMemo(() => {
     if (
@@ -89,14 +84,8 @@ export function useWorkspaceOpenTargets(
       return null;
     }
     const port = daemonPort;
-    return (path: string) =>
-      queryClient.fetchQuery({
-        queryKey: localWorkspaceOpenTargetsQueryKey(port, path),
-        queryFn: () => fetchWorkspaceOpenTargets(port, { path }),
-        staleTime: 0,
-        ...hostDerivedQueryPolicy(null),
-      });
-  }, [args.enabled, localHostDaemonReachable, daemonPort, queryClient]);
+    return (path: string) => fetchWorkspaceOpenTargets(port, { path });
+  }, [args.enabled, localHostDaemonReachable, daemonPort]);
 
   return {
     fetchWorkspaceOpenTargetsForPath,

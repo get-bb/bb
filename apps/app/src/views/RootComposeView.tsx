@@ -86,6 +86,7 @@ import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
+import { useProviderCliStatusRecheckOnFocus } from "@/hooks/useProviderCliStatusRecheckOnFocus";
 import {
   requestComposerFocus,
   subscribeComposerFocusRequests,
@@ -676,6 +677,10 @@ function RootComposeSurface({
       ? selectedProviderCliStatus
       : null;
   const isProviderCliBlocked = blockingProviderCliStatus !== null;
+  useProviderCliStatusRecheckOnFocus({
+    hostId: rootProjectHostId,
+    blocked: isProviderCliBlocked,
+  });
   const selectedProviderCliIssue = useMemo(() => {
     if (blockingProviderCliStatus === null) {
       return null;

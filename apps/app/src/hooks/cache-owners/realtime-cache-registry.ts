@@ -70,7 +70,9 @@ import {
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
   allHostProviderCliInstallJobsQueryKeyPrefix,
+  allHostProviderCliStatusQueryKeyPrefix,
   hostProviderCliInstallJobsQueryKey,
+  hostProviderCliStatusQueryKey,
 } from "../queries/query-keys";
 import { systemEnvironmentProvidersQueryKey } from "../queries/environment-provider-queries";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
@@ -87,7 +89,6 @@ import {
   getThreadCompactedHistoryInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
-import { invalidateHostDerivedState } from "./host-derived-state-owner";
 
 interface TimelineInvalidationQueryKeysArgs {
   queryClient: QueryClient;
@@ -520,8 +521,8 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
   "host-connected": {
     dirty: [
       ...HOST_CONNECTION_DIRTY_HANDLERS,
+      dirtyHostSystemExecutionOptionQueries,
       dirtyAllThreadStorageQueries,
-      dirtyHostDerivedState,
     ],
   },
   "host-disconnected": {
@@ -534,13 +535,14 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
     dirty: [dirtyProjectCommandCatalogQueries],
   },
   "provider-cli-status-changed": {
-    dirty: [dirtyHostDerivedState],
+    dirty: [
+      dirtyHostProviderCliStatusQueries,
+      dirtySystemProviderQueries,
+      dirtyHostSystemExecutionOptionQueries,
+    ],
   },
   "provider-cli-install-jobs-changed": {
     dirty: [dirtyHostProviderCliInstallJobQueries],
-  },
-  "host-state-changed": {
-    dirty: [dirtyHostDerivedState],
   },
 } satisfies HostChangeRegistry;
 
@@ -1149,13 +1151,6 @@ function dirtyAllThreadTimelineQueries(): QueryKey[] {
   return getThreadTimelineInvalidationQueryKeys({ threadId: undefined });
 }
 
-function dirtyHostDerivedState({
-  hostId,
-  queryClient,
-}: HostRealtimeDirtyContext): void {
-  void invalidateHostDerivedState(queryClient, hostId ?? null);
-}
-
 function dirtySystemProviderQueries(): QueryKey[] {
   return [allSystemProvidersQueryKeyPrefix()];
 }
@@ -1179,6 +1174,16 @@ function dirtyHostProviderCliInstallJobQueries({
     hostId === undefined
       ? allHostProviderCliInstallJobsQueryKeyPrefix()
       : hostProviderCliInstallJobsQueryKey(hostId),
+  ];
+}
+
+function dirtyHostProviderCliStatusQueries({
+  hostId,
+}: HostRealtimeDirtyContext): QueryKey[] {
+  return [
+    hostId === undefined
+      ? allHostProviderCliStatusQueryKeyPrefix()
+      : hostProviderCliStatusQueryKey(hostId),
   ];
 }
 
