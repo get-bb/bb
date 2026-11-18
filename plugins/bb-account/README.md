@@ -86,6 +86,10 @@ server revokes the previous one.
 
 The base URL is `https://getbb.app`. In development, `BB_DEV_CONNECT_BASE_URL`
 may name an `http://bb.localhost:<port>` origin or `https://vibecodethis.site`.
-`--base-url` and the rpc `baseUrl` override it per command but accept only
-`https://getbb.app` and `https://vibecodethis.site`, plus
-`http://bb.localhost:<port>` in a development build.
+`--base-url` and the RPC `baseUrl` override it per command. They accept those built-in origins or additional exact HTTPS origins explicitly trusted by the standalone server operator (see below).
+
+## Trusted self-hosted account origins
+
+A standalone server operator may add exact HTTPS account origins with `BB_ACCOUNT_TRUSTED_ORIGINS` in the server's launch environment. It is a comma-separated list, not a default-site setting. The account plugin snapshots it when it loads; restart the server after changing it. For the packaged launcher, use `npx bb-app env set BB_ACCOUNT_TRUSTED_ORIGINS https://bb.example.com`, then `npx bb-app stop && npx bb-app start`. This key is startup-only. CLI process or workspace environment changes do not configure an already running server. An empty or invalid list fails account-plugin activation, not the whole server: at startup account and remote access remain unavailable until correction and restart; a failed plugin reload retains the previous running instance.
+
+For example, with `BB_ACCOUNT_TRUSTED_ORIGINS=https://bb.example.com` on the server, use `bb account login --base-url https://bb.example.com`, or redeem a dashboard code with `bb connect --code <code> --base-url https://bb.example.com`. The default remains getbb.app. See [configuration.md](../../docs/configuration.md#trusted-self-hosted-account-origins) for validation and scope. This enables account trust, not deployment of a relay or native-app configuration. Removing an origin from the list does not sign out an existing pairing; use `bb account logout` to revoke it.
