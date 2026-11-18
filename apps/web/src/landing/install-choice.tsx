@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { DesktopDownloadButton } from "./cta";
 import { SendToComputerButton } from "./send-to-computer-button";
 import type { CtaPlacement, DesktopPlatform } from "./site";
@@ -5,9 +7,11 @@ import type { CtaPlacement, DesktopPlatform } from "./site";
 export function DesktopInstallChoice({
   placement,
   platform,
+  note,
 }: {
   placement: CtaPlacement;
   platform: DesktopPlatform;
+  note: ReactNode;
 }) {
   return (
     <span className="install-choice">
@@ -17,6 +21,7 @@ export function DesktopInstallChoice({
         className="btn btn-primary btn-install install-download"
       />
       <SendToComputerButton placement={placement} />
+      <span className="install-note">{note}</span>
     </span>
   );
 }

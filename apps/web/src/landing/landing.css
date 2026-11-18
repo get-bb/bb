@@ -716,6 +716,17 @@ html:has(.nav-sticky) {
   color: var(--ink);
 }
 
+.oss-link {
+  white-space: nowrap;
+}
+
+.oss-ic {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  margin-right: var(--gap-xs);
+  vertical-align: -2px;
+}
+
 .install-choice .install-send,
 .install-note-touch {
   display: none;
