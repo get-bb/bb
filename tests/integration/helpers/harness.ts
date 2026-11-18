@@ -9,7 +9,6 @@ import { serve } from "@hono/node-server";
 import {
   ensurePersonalProject,
   getAppSettings,
-  getExperiments,
   getAutoAppUpdate,
   getSkippedAppUpdate,
   setAutoAppUpdate,

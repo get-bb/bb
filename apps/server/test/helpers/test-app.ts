@@ -11,7 +11,6 @@ import {
   ensurePersonalProject,
   getAppSettings,
   getDisabledProviderIds,
-  getExperiments,
   getAutoAppUpdate,
   getSkippedAppUpdate,
   setAutoAppUpdate,

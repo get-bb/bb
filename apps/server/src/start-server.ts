@@ -20,7 +20,6 @@ import { createLogger } from "@bb/logger";
 import {
   getAppSettings,
   getDisabledProviderIds,
-  getExperiments,
   getAutoAppUpdate,
   getSkippedAppUpdate,
   setAutoAppUpdate,

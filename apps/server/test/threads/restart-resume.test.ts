@@ -3,7 +3,6 @@ import {
   getLatestThreadSequence,
   getThread,
   listQueuedThreadMessages,
-  setExperiments,
   getAppSettings,
   setAppSettings,
   threads,

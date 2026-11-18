@@ -289,7 +289,6 @@ function systemConfig(experiments: { resumeThreadsAfterRestart?: boolean }) {
     generalSettings: {
       resumeThreadsAfterRestart: experiments.resumeThreadsAfterRestart ?? false,
     },
-    experiments: { updateWhenIdle: experiments.updateWhenIdle },
   }));
 }
 
