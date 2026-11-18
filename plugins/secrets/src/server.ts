@@ -6,6 +6,7 @@ import {
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -163,7 +164,7 @@ const ROW_LABEL_MAX_LENGTH = 80;
 const ROW_TITLE_MAX_LENGTH = 160;
 
 function clampToLength(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`;
+  return text.length <= max ? text : `${sliceUtf16Head(text, max - 1)}\u2026`;
 }
 
 function httpStatus(error: unknown): number | null {

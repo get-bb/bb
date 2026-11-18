@@ -1,4 +1,4 @@
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, notInArray } from "drizzle-orm";
 import type { DbQueryConnection } from "../connection.js";
 import { sweepItemFailures } from "../schema.js";
 
@@ -13,6 +13,26 @@ export function listSweepItemFailures(
     .from(sweepItemFailures)
     .where(eq(sweepItemFailures.sweep, sweep))
     .all();
+}
+
+export function listAllSweepItemFailures(
+  db: DbQueryConnection,
+): SweepItemFailure[] {
+  return db
+    .select()
+    .from(sweepItemFailures)
+    .orderBy(asc(sweepItemFailures.sweep), asc(sweepItemFailures.itemKey))
+    .all();
+}
+
+export function deleteSweepItemFailuresAfterAttempts(
+  db: DbQueryConnection,
+  attempts: number,
+): number {
+  return db
+    .delete(sweepItemFailures)
+    .where(gt(sweepItemFailures.attempts, attempts))
+    .run().changes;
 }
 
 export function getSweepItemFailure(

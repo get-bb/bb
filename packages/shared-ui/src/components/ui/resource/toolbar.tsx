@@ -29,6 +29,7 @@ import {
 } from "../tooltip";
 import { observeSharedResize } from "../../../lib/shared-resize-observer";
 import { cn } from "../../../lib/utils";
+import { isNonImeKey } from "../../../lib/ime-keyboard";
 
 interface ToolbarLayout {
   combined: boolean;
@@ -278,11 +279,10 @@ export function ResourceToolbar({
               aria-label={searchLabel ?? searchPlaceholder}
               enterKeyHint={expandSearchOnFocus ? "search" : undefined}
               onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing) return;
-                if (event.key === "Enter") {
+                if (isNonImeKey(event, "Enter")) {
                   event.preventDefault();
                   event.currentTarget.form?.requestSubmit();
-                } else if (event.key === "Escape" && searchExpanded) {
+                } else if (isNonImeKey(event, "Escape") && searchExpanded) {
                   event.preventDefault();
                   collapseSearch();
                 }

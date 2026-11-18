@@ -4,6 +4,7 @@ import {
   experimental_joinHostPath as joinPath,
   experimental_getHostPathDirname as getHostPathDirname,
   experimental_getRelativeHostPath as getRelativeHostPath,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { proposalSchema, type Proposal } from "./proposals.js";
 import os from "node:os";
@@ -276,11 +277,12 @@ function summarizeMarkdown(
     : documentHeadingIndex >= 0
       ? documentHeadingIndex
       : firstContentIndex;
-  const title = (
+  const title = sliceUtf16Head(
     document.title ??
-    (titleLineIndex >= 0 ? cleanedLines[titleLineIndex] : null) ??
-    fallback
-  ).slice(0, 120);
+      (titleLineIndex >= 0 ? cleanedLines[titleLineIndex] : null) ??
+      fallback,
+    120,
+  );
   const firstHeadingIndex = lines.findIndex(
     (line) => markdownHeadingLevel(line) !== null,
   );
@@ -290,16 +292,18 @@ function summarizeMarkdown(
       : firstHeadingIndex >= 0 && cleanedLines[firstHeadingIndex] === title
         ? firstHeadingIndex
         : -1;
-  const preview = cleanedLines
-    .filter(
-      (line, index) =>
-        index !== previewHeadingIndex &&
-        line &&
-        line !== title &&
-        !line.startsWith("::html{"),
-    )
-    .join(" ")
-    .slice(0, PREVIEW_LENGTH);
+  const preview = sliceUtf16Head(
+    cleanedLines
+      .filter(
+        (line, index) =>
+          index !== previewHeadingIndex &&
+          line &&
+          line !== title &&
+          !line.startsWith("::html{"),
+      )
+      .join(" "),
+    PREVIEW_LENGTH,
+  );
   return { title, preview };
 }
 
@@ -317,12 +321,14 @@ function kebabCase(text: string): string {
 }
 
 function sanitizeName(raw: string): string {
-  return raw
-    .replace(/\.(md|html?)$/i, "")
-    .replace(/[/\\:*?"<>|]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
+  return sliceUtf16Head(
+    raw
+      .replace(/\.(md|html?)$/i, "")
+      .replace(/[/\\:*?"<>|]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim(),
+    80,
+  );
 }
 
 function parseVaultRow(value: unknown): Vault {

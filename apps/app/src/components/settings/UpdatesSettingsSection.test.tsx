@@ -3022,7 +3022,7 @@ The published lede.
     expect(serverName.className).toBe(desktopName.className);
     expect(serverName.className).toContain("w-16");
     expect(
-      await within(bbCard).findByRole("switch", {
+      await screen.findByRole("switch", {
         name: "Restart and update the server automatically",
       }),
     ).toBeDefined();

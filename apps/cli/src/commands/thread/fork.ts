@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import {
   threadVisibilitySchema,
@@ -9,7 +10,7 @@ import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
 import { resolveTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
-import { collectOption, outputJson, prependErrorContext } from "../helpers.js";
+import { collectOption, prependErrorContext } from "../helpers.js";
 import {
   buildPromptInputs,
   parsePermissionMode,

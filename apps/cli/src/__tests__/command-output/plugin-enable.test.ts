@@ -8,36 +8,41 @@ import {
 import { registerPluginCommands } from "../../commands/plugin.js";
 
 const enableResponse = (status: string, statusDetail: string | null) =>
-  Response.json({
-    ok: true,
-    plugin: {
-      id: "boom",
-      source: "path:/plugins/boom",
-      rootDir: "/plugins/boom",
-      version: "0.0.1",
-      provenance: "direct",
-      publisherLabel: null,
-      isOrphanedBuiltin: false,
-      sourceDisplay: "path · /plugins/boom",
-      sourceNotice: null,
-      updateState: {},
-      enabled: true,
-      description: null,
-      name: null,
-      icon: null,
-      iconUrl: null,
-      status,
-      statusDetail,
-      handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-      services: [],
-      schedules: [],
-      cliCommand: null,
-      hasSettings: false,
-      app: { hasApp: false, bundle: null },
-      logoUrl: null,
-      logoDarkUrl: null,
+  Response.json(
+    {
+      ...(status === "error"
+        ? { ok: false, error: `plugin "boom" did not start: ${statusDetail}` }
+        : { ok: true }),
+      plugin: {
+        id: "boom",
+        source: "path:/plugins/boom",
+        rootDir: "/plugins/boom",
+        version: "0.0.1",
+        provenance: "direct",
+        publisherLabel: null,
+        isOrphanedBuiltin: false,
+        sourceDisplay: "path · /plugins/boom",
+        sourceNotice: null,
+        updateState: {},
+        enabled: true,
+        description: null,
+        name: null,
+        icon: null,
+        iconUrl: null,
+        status,
+        statusDetail,
+        handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+        services: [],
+        schedules: [],
+        cliCommand: null,
+        hasSettings: false,
+        app: { hasApp: false, bundle: null },
+        logoUrl: null,
+        logoDarkUrl: null,
+      },
     },
-  });
+    { status: status === "error" ? 422 : 200 },
+  );
 
 describe("bb plugin enable", () => {
   setupCommandOutputTestEnvironment();
@@ -45,7 +50,7 @@ describe("bb plugin enable", () => {
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
 
-  it("exits 1 with the load error when the enabled plugin fails to load", async () => {
+  it("exits 1 with the server's load error when the enabled plugin fails to load", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(enableResponse("error", "boom"));
 
     await expect(
@@ -56,7 +61,9 @@ describe("bb plugin enable", () => {
       "boom@0.0.1  error  (boom)",
       "  source: path:/plugins/boom",
     ]);
-    expect(console.error).toHaveBeenCalledWith("boom");
+    expect(console.error).toHaveBeenCalledWith(
+      'Error: plugin "boom" did not start: boom',
+    );
   });
 
   it("reports ok false in JSON when the enabled plugin fails to load", async () => {
@@ -69,7 +76,7 @@ describe("bb plugin enable", () => {
     const [payload] = collectLogPayloads(vi.mocked(console.log));
     expect(JSON.parse(payload ?? "")).toMatchObject({
       ok: false,
-      error: "boom",
+      error: 'plugin "boom" did not start: boom',
       plugin: { id: "boom", status: "error" },
     });
   });

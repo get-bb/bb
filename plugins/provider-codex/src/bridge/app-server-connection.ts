@@ -3,6 +3,7 @@ import { createInterface, type Interface } from "node:readline";
 import {
   experimental_killPortableProcess,
   experimental_recordProviderChildIo,
+  experimental_serializeJsonRpcLine,
   experimental_spawnPortableProcess,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
@@ -18,6 +19,7 @@ const CLOSED_STDIN_ERROR_CODES = new Set([
 ]);
 
 export interface CodexAppServerRequestResponder {
+  readonly requestId: string | number;
   result(value: unknown): void;
   error(code: number, message: string): void;
 }
@@ -218,7 +220,7 @@ export function createCodexAppServerConnection(
       }
       return;
     }
-    stdin.write(JSON.stringify(message) + "\n");
+    stdin.write(`${experimental_serializeJsonRpcLine(message)}\n`);
   }
 
   function finalizeExit(status: {
@@ -299,6 +301,7 @@ export function createCodexAppServerConnection(
       if (typeof id === "string" || typeof id === "number") {
         let settled = false;
         options.onRequest(message.method, message.params, {
+          requestId: id,
           result(value) {
             if (settled || finalized) return;
             settled = true;

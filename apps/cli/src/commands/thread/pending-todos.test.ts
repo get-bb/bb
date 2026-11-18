@@ -154,18 +154,16 @@ describe("fetchThreadPendingTodos", () => {
     ]);
   });
 
-  it("returns null when the head-state request fails at the network level (best-effort contract)", async () => {
+  it("fails when the head-state request fails at the network level", async () => {
     const { sdk } = makeSdkOverHttpBoundary(async () => {
       throw new Error("network down");
     });
-    const result = await fetchThreadPendingTodos({
-      sdk,
-      threadId: "thread-1",
-    });
-    expect(result).toBeNull();
+    await expect(
+      fetchThreadPendingTodos({ sdk, threadId: "thread-1" }),
+    ).rejects.toThrow("network down");
   });
 
-  it("returns null when the server responds with an HTTP error (best-effort contract)", async () => {
+  it("returns null when the thread has no head state (404)", async () => {
     const { sdk } = makeSdkOverHttpBoundary(async () =>
       Response.json({ message: "Thread not found" }, { status: 404 }),
     );

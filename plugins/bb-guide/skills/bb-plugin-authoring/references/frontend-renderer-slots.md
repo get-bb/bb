@@ -210,9 +210,11 @@ message, Original }` — render fenced code blocks of chosen languages in
   public contract and examples.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
-  assistant-message text-selection menu. Slot actions are limited to the main
-  timeline; embedded `ThreadChat` suppresses them on both surfaces. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, icon?, run }`. Activating it calls
+  assistant-message text-selection menu, in bb's thread view and in embedded
+  `ThreadChat`. `experimental_surfaces` limits it to `"thread-view"` and/or
+  `"embedded-chat"` (omitted = both); an empty or unknown list fails
+  registration. Host-rendered chrome, no plugin
+  component — registration: `{ id, title, icon?, experimental_surfaces?, run }`. Activating it calls
   `run(context)` with `{ threadId, message, selectedText?, experimental_panel, composer }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
@@ -250,6 +252,11 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  Registered shortcuts match by physical key when the active layout types a
+  non-Latin character (Cyrillic, Greek, Hebrew, Arabic), and by the typed
+  character on Latin layouts such as Dvorak. A plugin that handles keys
+  itself compares them the same way with
+  `experimental_matchesShortcutKey(event, key)` and checks modifiers itself.
   A command that acts on the composer the user is typing in registers through
   `app.composer.experimental_registerCommand` instead; see the composer
   section of frontend-hooks-and-ui.

@@ -2114,6 +2114,50 @@ describe("acp delta translation (raw payloads and real results)", () => {
     return harness;
   }
 
+  it("settles a call from updates that send the SDK's null fields", () => {
+    const harness = startedHarness();
+    const updates = [
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "call-null",
+        title: "`pnpm test`",
+        kind: "execute",
+        status: "pending",
+        rawInput: { command: "pnpm test" },
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-null",
+        status: "in_progress",
+        title: null,
+        content: null,
+        locations: null,
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-null",
+        status: "failed",
+        title: null,
+        locations: null,
+        content: [
+          { type: "content", content: { type: "text", text: "3 failed\n" } },
+        ],
+      },
+    ];
+    const events = updates.flatMap((update) =>
+      harness.translate(updateEvent(update)),
+    );
+
+    expect(completedItems(events)).toEqual([
+      expect.objectContaining({
+        type: "commandExecution",
+        command: "pnpm test",
+        status: "failed",
+        aggregatedOutput: "3 failed\n",
+      }),
+    ]);
+  });
+
   it("reports the exit code and stderr Cursor sent, not a status guess", () => {
     const events = startedHarness().translate(
       updateEvent({

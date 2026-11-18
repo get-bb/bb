@@ -128,12 +128,6 @@ export async function readJsonResponse<TResponse extends SdkResponseLike>(
   return resolved.json();
 }
 
-export async function readVoidResponse<TResponse extends SdkResponseLike>(
-  response: Promise<TResponse>,
-): Promise<void> {
-  await resolveResponse(response);
-}
-
 export async function resolveResponse<TResponse extends SdkResponseLike>(
   responsePromise: Promise<TResponse>,
 ): Promise<TResponse> {

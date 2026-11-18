@@ -38,6 +38,15 @@ export {
 
 export { experimental_killProcessesWithCwdUnder } from "./kill-processes.js";
 
+/**
+ * Cut text to at most `maxChars` UTF-16 code units from the start or the end
+ * without splitting a surrogate pair. Experimental: see docs/api_to_audit.md.
+ */
+export {
+  sliceUtf16Head as experimental_sliceUtf16Head,
+  sliceUtf16Tail as experimental_sliceUtf16Tail,
+} from "@bb/text-utils";
+
 export {
   experimental_readProcessIdentity,
   type ExperimentalProcessIdentity,

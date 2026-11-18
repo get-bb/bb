@@ -15,6 +15,7 @@ import {
   type CodexOpenAiApiKeyCredentials,
 } from "./codex-auth.js";
 import { AiServiceFailure } from "./failure.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 type InferenceCompleteCommand = CodexAiCompleteInput;
 type VoiceTranscribeCommand = CodexAiTranscribeInput;
@@ -346,7 +347,7 @@ async function readErrorText(
     maxBytes: CODEX_ERROR_TEXT_MAX_BYTES,
     overflowBehavior: "truncate",
   }).catch(() => "");
-  return text.length > 400 ? `${text.slice(0, 400)}...` : text;
+  return text.length > 400 ? `${sliceUtf16Head(text, 400)}...` : text;
 }
 
 type FailureCodes = [generic: CodexAiFailureCode, detail: string];

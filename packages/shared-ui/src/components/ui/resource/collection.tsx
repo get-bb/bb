@@ -308,6 +308,7 @@ type ResourceBrowseCardProps = {
   leading?: ReactNode;
   leadingClassName?: string;
   title: ReactNode;
+  titleDetail?: ReactNode;
   description?: ReactNode;
   descriptionLines?: 2 | 3 | "expandable";
   descriptionAlign?: "center" | "start";
@@ -327,6 +328,7 @@ export function ResourceBrowseCard({
   leading,
   leadingClassName,
   title,
+  titleDetail,
   description,
   descriptionLines = 2,
   descriptionAlign = "center",
@@ -369,7 +371,7 @@ export function ResourceBrowseCard({
         />
       ) : null}
       {hasLeading ? (
-        <span className="pointer-events-none relative col-start-1 row-start-1 flex min-w-0 items-center">
+        <span className="pointer-events-none relative col-start-1 row-start-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center">
           <span
             className={cn(
               "flex size-6 shrink-0 items-center justify-center",
@@ -378,11 +380,17 @@ export function ResourceBrowseCard({
           >
             {leading}
           </span>
-          <span className="ml-3 min-w-0 flex-1">{titleNode}</span>
+          <span className="ml-3 min-w-0">{titleNode}</span>
+          {titleDetail ? (
+            <span className="col-start-2 ml-3 mt-1 min-w-0">{titleDetail}</span>
+          ) : null}
         </span>
       ) : (
         <span className="pointer-events-none relative col-start-1 row-start-1 min-w-0 self-center">
           {titleNode}
+          {titleDetail ? (
+            <span className="mt-1 block min-w-0">{titleDetail}</span>
+          ) : null}
         </span>
       )}
       {headerAction ? (

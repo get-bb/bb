@@ -15,13 +15,17 @@ export type AcpElicitationResponse =
   | { action: "decline" }
   | { action: "cancel" };
 
+export interface AcpElicitationUnmappable {
+  unmappable: string;
+}
+
 export type AcpElicitationPlan =
   | {
       kind: "questions";
       payload: UserQuestionPendingInteractionPayload;
       toResponse(
         resolution: UserQuestionPendingInteractionResolution,
-      ): AcpElicitationResponse;
+      ): AcpElicitationResponse | AcpElicitationUnmappable;
     }
   | { kind: "unsupported"; reason: string };
 
@@ -356,10 +360,14 @@ function planConfirmation(message: string | undefined): AcpElicitationPlan {
     kind: "questions",
     payload,
     toResponse(resolution) {
-      return resolution.answers[CONFIRM_QUESTION_ID]?.selected[0] ===
-        CONFIRM_ACCEPT_VALUE
-        ? { action: "accept", content: {} }
-        : { action: "decline" };
+      const selected = resolution.answers[CONFIRM_QUESTION_ID]?.selected[0];
+      if (selected === CONFIRM_ACCEPT_VALUE) {
+        return { action: "accept", content: {} };
+      }
+      if (selected === CONFIRM_DECLINE_VALUE) {
+        return { action: "decline" };
+      }
+      return { unmappable: "the answer was neither Accept nor Decline" };
     },
   };
 }
@@ -463,7 +471,9 @@ export function planAcpElicitation(params: unknown): AcpElicitationPlan {
       for (const entry of planned) {
         const answered = contentFor(entry, resolution.answers[entry.name]);
         if (!answered) {
-          return { action: "decline" };
+          return {
+            unmappable: `the answer to "${entry.name}" does not fit that field`,
+          };
         }
         Object.assign(content, answered);
       }

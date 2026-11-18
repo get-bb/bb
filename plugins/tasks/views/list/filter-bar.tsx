@@ -22,6 +22,7 @@ import {
   STATUS_LABELS,
   type LabelFilterOption,
 } from "./lib.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 function toggled<T>(values: readonly T[], value: T, checked: boolean): T[] {
   if (checked) return values.includes(value) ? [...values] : [...values, value];
@@ -149,7 +150,7 @@ function SearchInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && value !== "") {
+          if (isNonImeKey(event, "Escape") && value !== "") {
             event.preventDefault();
             onChange("");
           }

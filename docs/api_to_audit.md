@@ -45,6 +45,32 @@ Docs: Plugin Guide, The bb SDK (`plugins/plugin-api-docs/src/surfaces.ts`).
 Before stabilization, audit drive/UNC ambiguity, separator and case rules,
 relative escapes, and whether more callers need resolution rather than joining.
 
+## UTF-16-safe cuts (`@get-bb/plugin-sdk`, `@get-bb/plugin-sdk/app`, `@get-bb/plugin-sdk/host`)
+
+`experimental_sliceUtf16Head(value, maxChars)` keeps at most `maxChars` UTF-16
+code units from the start of `value`, and `experimental_sliceUtf16Tail(value,
+maxChars)` (`@get-bb/plugin-sdk/host` only) keeps them from the end. When the
+cut would land inside a surrogate pair, the whole pair is dropped, so the
+result never holds a lone surrogate (half an emoji). A negative `maxChars`
+returns an empty string. The root and `/app` exports serve server and app
+code; `/host` serves host workers and provider bridges, whose root SDK runtime
+is a stub.
+
+These re-export `sliceUtf16Head` / `sliceUtf16Tail` from `@bb/text-utils`,
+the helpers core uses to cap child-thread output, plugin instructions,
+restart-resume notes, timeline output, terminal titles and queued-message
+failure reasons; the `/app` export is that function, installed by
+`plugin-sdk-app-impl.tsx`. Plugin callers: Account Pool, Ask User Question,
+Automations, Browser Automation, Concurrency Limit, Docs, GitHub, MCP, Push
+Notifications, Secrets, and the Claude Code and Codex providers. Agent
+Annotations keeps an inline copy because its page script is stringified into
+the browser. Docs: Plugin Guide, The bb SDK
+(`plugins/plugin-api-docs/src/surfaces.ts`).
+
+Before stabilization, decide whether callers need grapheme-safe cuts (joined
+emoji, combining marks) rather than surrogate-safe ones, and whether
+`/app` and the root need the tail variant.
+
 ## Application link approvals (`@get-bb/plugin-sdk/app`)
 
 `experimental_getApplicationLinkApprovals()` lists approved URL schemes on the
@@ -291,6 +317,29 @@ Before stabilizing, audit compact and embedded placement, variable-height
 metadata and scroll anchoring, unmount cleanup, asynchronous updates,
 origin filtering, and render isolation during streaming and across messages.
 
+## `PluginMessageActionRegistration.experimental_surfaces` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.161.
+
+`app.slots.messageAction({ ..., experimental_surfaces })` limits the action to
+some thread timelines. `"thread-view"` is bb's thread view, including split panes;
+`"embedded-chat"` is an embedded `ThreadChat` in any variant. Omitted, the action
+shows on both. An empty array or any other value fails registration. Type:
+`ExperimentalMessageActionSurface`.
+
+Each `ThreadScreen` host states its surface (`ThreadScreenTimelineHost.messageActionSurface`),
+and the timeline reads the slots through `useSurfaceMessageActionSlots`
+(`apps/app/src/lib/message-action-surface.tsx`), so every surface filters the same way.
+
+Caller: the bundled Side chat plugin's "Reply in side chat" declares
+`["thread-view"]`. Its side chat tab only exists in the thread view's panel, and a
+side chat is itself an embedded `ThreadChat`, so the action stays out of side
+chats and other plugins' embedded chats.
+
+Before stabilizing, decide whether surfaces should instead follow panel
+capability (whether the surface's panel can host the tab the action opens), and
+whether more surfaces (New thread previews, plugin documents) need names.
+
 ## `app.commands.register`
 
 Unprefixed by explicit request. Registers frontend commands
@@ -304,6 +353,31 @@ Audit command identity, availability outside the palette, shortcut conflicts,
 and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
 extending the context model or default binding policy.
+
+## `experimental_matchesShortcutKey` (`@get-bb/plugin-sdk/app`)
+
+`experimental_matchesShortcutKey(event, key)` says whether a keydown presses
+`key`, compared the way bb compares keys for its own and plugins' keybindings.
+The caller checks modifiers. Letter, digit and punctuation keys match by
+physical position (`event.code`) when the layout types a non-Latin character
+there (or, with Alt held, anything but an ASCII letter or digit); otherwise
+they match the typed character with Shift removed from US punctuation, so
+Latin layouts such as Dvorak and AZERTY keep their own letters. Without Alt,
+the typed character also matches, which keeps shortcuts saved under a
+non-Latin character working.
+
+Docs: `frontend-renderer-slots.md`.
+
+Core callers: `matchesAppShortcut` in `@bb/domain` (app commands, plugin
+commands, the desktop embedded browser and shortcut conflicts), the desktop
+reload shortcut and the terminal copy/paste keys all call the same
+`matchesAppShortcutKey`; the SDK function is that function. Plugin callers:
+the Composer's paste-as-plain-text check, Prompt Library's Mod+S and Tasks'
+single-key shortcuts.
+
+Before stabilizing, decide whether plugins also need a full-chord matcher that
+resolves `mod` per platform, and whether settings should label shortcuts with
+the active layout's characters (`navigator.keyboard.getLayoutMap()`).
 
 ## Discoverable RPC
 
@@ -1469,6 +1543,26 @@ gone) instead of a raw `ChildProcess` plus a fire-and-forget kill. Confirm
 argument quoting for `.cmd` targets with untrusted arguments, and whether
 `detached` belongs in the public shape.
 
+## `experimental_serializeJsonRpcLine` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_serializeJsonRpcLine(message)` returns `JSON.stringify(message)`
+unless the line holds an escaped lone surrogate; then it serializes again with
+every lone surrogate in a string replaced by U+FFFD. A lone surrogate is
+valid in JavaScript but not in UTF-8, and Codex's serde-based app-server
+rejects its `\ud83d` escape and drops the whole message without answering,
+so a bridge writing to a provider's stdin uses this instead of
+`JSON.stringify`. The result has no trailing newline.
+
+Core callers: `bridge-kit/runtime-json-rpc.ts` serializes every request,
+result and error the daemon sends to a bridge with it, and the ACP message
+stream writes to ACP agents with it. Plugin callers: the Codex provider's
+app-server writer. Docs: Plugin Guide, Agent providers
+(`plugins/plugin-api-docs/src/surfaces.ts`).
+
+Before stabilization, decide whether bridges should get a whole stdin writer
+(newline, closed-stdin handling) instead of a serializer, and whether the
+Claude Code bridge's SDK transport needs the same guard.
+
 ## `experimental_BridgeRecoveryError`
 
 **Kept experimental (2026-08-22).** It stabilizes together with
@@ -1551,6 +1645,36 @@ file read, search, web search, web fetch and plan-steps rows, and
    sets `suppress: true` (the todo banner reads the snapshot); codex keeps its
    own uncollapsed variant. Decide which default a third-party bridge should
    get.
+
+## `experimental_unansweredInteractionWarning`, `experimental_unansweredInteractionErrorMessage` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_unansweredInteractionWarning` builds the `provider.warning` delta
+a bridge sends whenever it answers a provider question or permission request
+with something the user did not choose, whatever the provider receives.
+`experimental_unansweredInteractionErrorMessage` is the matching JSON-RPC error
+or deny text for the agent. The five causes are an unshowable request, a
+runtime error (bb stopped waiting), an unreadable resolution, an answer that
+does not fit the question, and a question the bridge withdrew. The `answer`
+names what the provider got (an error or a protocol value such as `cancel`).
+Summary and details wording is bb's, and the delta is vouched to the open turn.
+Core callers: the ACP bridge (`packages/provider-bridge-acp`), the Pi
+extension-dialog coordinator, every Codex question request, and Claude Code's
+canUseTool denials. The `unanswered-interactions` contract test in
+`@bb/provider-bridge-protocol` runs each bridge's question kinds (ACP, Pi and
+Codex rows come from the kinds each bridge routes) through every cause and a
+stopped turn.
+
+**Audit before stabilizing.**
+
+1. **The cause list is closed.** A third-party bridge with a sixth way to
+   answer without the user has no cause to name. Decide whether `cause` takes
+   free text before freezing the union.
+2. **The wording is a product decision**, as with the presentation builders:
+   English summary and details persist on the warning row, and the error text
+   reaches the model.
+3. **Error versus cancel stays the bridge's call.** Decide whether the kit
+   should pick the provider answer too (it cannot without knowing each
+   protocol) or keep only the warning and the message.
 
 ## `experimental_readBoundedLines` (`@get-bb/plugin-sdk/provider-bridge`)
 
@@ -3868,7 +3992,8 @@ retention and bypassing cleanup backoff. It rejects live threads and unmanaged
 environments and succeeds for already-removed ones. Acceptance is not
 completion: read the environment lifecycle fields for progress (CLI:
 `bb environment cleanup`). After five failed attempts, automatic removal stops
-with a "Needs recovery" message in the existing lifecycle fields.
+with a "Needs recovery" message and `lifecycle.teardown.needsRecovery: true`,
+and cleanup without `recover` rejects with `environment_needs_recovery`.
 The additive `recover: true` option acknowledges interrupted hooks and retries
 failed cleanup after an explicit inspection. Core's cleanup route and the CLI
 use this same path. Linux checks cwd and mapped paths for processes owned by
@@ -4106,6 +4231,30 @@ Docs: `backend-sdk.md`, `backend-events.md`.
 Stabilization requires deciding whether a general `thread.updated` event
 should replace it, and a second consumer.
 
+## Thread settled outcomes
+
+`experimental_thread.settled` delivers one `PluginThreadSettledEvent`, a union
+over every way a thread's work ends: `completed` (with `lastAssistantText`),
+`failed` (with `error`), `cancelled` (with the removed queued `entry`, so
+`entry.originPluginId` names whose message it was), `archived` and `deleted`.
+Core emits it from the same seams as `thread.idle`, `thread.failed`,
+`thread.archived`, `thread.deleted` and `message.cancelled`
+(`apps/server/src/services/plugins/plugin-service.ts`), so it is never a
+second, drifting source. Like every thread event it reaches the spawning
+plugin only after that plugin's `threads.spawn` / `threads.fork` returns.
+Automations (agent runs), Workflows (worker calls) and Tasks (delegated
+thread status) close their records from it with one exhaustive `switch`; each
+has a test table typed `Record<outcome, …>`, so a new outcome fails their
+typecheck until handled. The fake plugin host follows the four thread events
+with it; tests emit the `cancelled` outcome directly.
+
+Docs: `backend-events.md`.
+
+Stabilization requires deciding whether it replaces `thread.idle` /
+`thread.failed` for record keeping, whether `cancelled` should also cover rows
+dropped by other paths (a failed drain), and per-message correlation for
+plugins that send several messages to one thread.
+
 ## Host deletion notifications
 
 `experimental_host.deleted` delivers the removed host's public DTO once,
@@ -4203,6 +4352,25 @@ and failure recovery at every step, including a server restart mid-move;
 behavior when the target runs a provider-managed machine; and whether
 `startMove` should return immediately or expose progress through a durable
 operation id instead of the in-memory status.
+
+## Server sweep failures (`bb.sdk.experimental_server.sweepFailures`, `retrySweepFailures`)
+
+`experimental_server.sweepFailures()` returns every failing item of the
+server's periodic sweeps as `{ sweep, itemKey, attempts, firstFailedAt,
+lastError, retryAt, needsRecovery }`. An item retries after 1, 2, 4, 8, 16,
+32, and 60 minutes. From its eighth failure it reports `needsRecovery: true`
+and keeps retrying hourly (`retryAt` is the next probe); its first success
+deletes the record. `retrySweepFailures()` deletes every needs-recovery record
+and returns `{ retried }`, so those items run on the next pass with a fresh
+budget. Backing-off items are listed but not retried early. Both refuse machine credentials. Core's caller is
+`bb server sweeps [retry]`; the delays come from
+`apps/server/src/services/lib/persisted-retry.ts`, the owner every persisted
+retry schedule uses.
+
+Before stabilization, audit: whether sweep and item keys are stable names a
+plugin may depend on, per-item retry instead of all-at-once, whether a
+needs-recovery item should surface in the app (Settings or a notification), and
+whether plugin backends should be able to clear core sweep state at all.
 
 ## `app.experimental_icons.register` and `experimental_Icon`
 

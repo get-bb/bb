@@ -140,6 +140,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
   "sidebar.threadListProvider",
+  "sidebar.updates.providerCli",
   "composer.provider",
   "threadContextCard.pinned",
   "infoPanel.collapsedSections",

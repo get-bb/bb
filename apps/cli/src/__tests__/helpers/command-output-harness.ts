@@ -33,8 +33,6 @@ vi.mock("../../client.js", async () => {
         api: serverClientState.createClient(baseUrl)?.api ?? {},
         readJson: (responsePromise: MockTransportPromise) =>
           realTransport.readJson(responsePromise.then(toResponse)),
-        readVoid: (responsePromise: MockTransportPromise) =>
-          realTransport.readVoid(responsePromise.then(toResponse)),
       },
     });
   });

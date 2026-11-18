@@ -1,3 +1,4 @@
+import { operationComplete } from "../../services/lib/operation-response.js";
 import { countUnarchivedThreadDescendants } from "../../services/threads/thread-archive.js";
 import { listThreadCascades } from "../../services/threads/thread-cascade.js";
 import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
@@ -541,6 +542,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           : getEnvironment(deps.db, deleted.environmentId),
       );
     }
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 }

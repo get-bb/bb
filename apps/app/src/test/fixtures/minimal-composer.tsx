@@ -12,6 +12,7 @@ import {
 import { installPluginRuntime } from "@/lib/plugin-frontend";
 import { setPluginSlotRegistrations } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "./plugins";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export const MINIMAL_COMPOSER_PLUGIN_ID = "minimal-composer";
 
@@ -135,7 +136,7 @@ function MinimalComposer() {
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (renderer.dispatchAppCommandKey(event.nativeEvent)) return;
-    if (event.key !== "Enter" || event.shiftKey) return;
+    if (!isNonImeKey(event, "Enter") || event.shiftKey) return;
     event.preventDefault();
     if (event.metaKey || event.ctrlKey) submission.modifier?.run();
     else submission.enter.run();

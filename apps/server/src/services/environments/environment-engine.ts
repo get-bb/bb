@@ -2,7 +2,16 @@ import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
-import { getLatestThreadSequence, updateThread } from "@bb/db";
+import {
+  getLatestThreadSequence,
+  nextPersistedRetryAt,
+  persistedRetryExhausted,
+  updateThread,
+} from "@bb/db";
+import {
+  TEARDOWN_RETRY_DELAYS_MS,
+  needsRecoveryMessage,
+} from "../lib/persisted-retry.js";
 import {
   assertEnvironmentPathAvailable,
   findBlockingEnvironmentPathClaim,
@@ -60,7 +69,10 @@ import {
   type ThreadStatus,
   threadScope,
 } from "@bb/domain";
-import { type ThreadResponse } from "@bb/server-contract";
+import {
+  type OperationResponse,
+  type ThreadResponse,
+} from "@bb/server-contract";
 import {
   type PluginEnvironmentProviderCreateContext,
   type PluginEnvironmentProviderCreateResult,
@@ -132,7 +144,12 @@ import {
   isHostUnavailableApiError,
 } from "../hosts/online-rpc.js";
 import { ApiError } from "../../errors.js";
+import {
+  operationComplete,
+  operationInProgress,
+} from "../lib/operation-response.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 type Deps = ThreadProvisioningDeps;
 
@@ -289,9 +306,9 @@ function provisioningReporter(
     step: (text) =>
       report(
         (row) => {
-          row.statusMessage = text.slice(0, 200);
+          row.statusMessage = sliceUtf16Head(text, 200);
         },
-        text.slice(0, 200),
+        sliceUtf16Head(text, 200),
       ),
     log: (text) =>
       report((row) => {
@@ -337,8 +354,6 @@ function runTrackedOperation(args: {
   return operation;
 }
 
-const REMOVE_RETRY_MS = 60_000;
-const MAX_REMOVE_ATTEMPTS = 5;
 const PROVIDER_OWNER_MISMATCH_MESSAGE =
   "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.";
 
@@ -822,18 +837,23 @@ function writeEnvironmentTeardownFailure(
 ): void {
   const row = getEnvironment(deps.db, environmentId);
   if (row === null) return;
-  const exhausted = row.teardownAttempt >= MAX_REMOVE_ATTEMPTS;
+  const retireAt = nextPersistedRetryAt(
+    TEARDOWN_RETRY_DELAYS_MS,
+    row.teardownAttempt,
+    Date.now(),
+  );
   const written = deps.db
     .update(environments)
     .set({
       teardownStatus: "failed",
-      teardownMessage: exhausted
-        ? `Needs recovery: ${message} Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`
-        : message,
-      retireAt: exhausted
-        ? null
-        : Date.now() +
-          REMOVE_RETRY_MS * 2 ** Math.max(0, row.teardownAttempt - 1),
+      teardownMessage:
+        retireAt === null
+          ? needsRecoveryMessage(
+              message,
+              `Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`,
+            )
+          : message,
+      retireAt,
       updatedAt: Date.now(),
     })
     .where(
@@ -934,16 +954,15 @@ async function sweepProviderEnvironmentInSlot(
       });
     return;
   }
-  if (row.teardownAttempt >= MAX_REMOVE_ATTEMPTS) {
-    if (
-      row.retireAt !== null ||
-      !row.teardownMessage?.startsWith("Needs recovery:")
-    )
+  if (persistedRetryExhausted(TEARDOWN_RETRY_DELAYS_MS, row.teardownAttempt)) {
+    if (row.teardownStatus !== "failed")
       writeEnvironmentTeardownFailure(
         deps,
         environmentId,
         row.teardownMessage ?? "Cleanup did not complete.",
       );
+    else if (row.retireAt !== null)
+      writeEnvironment(deps, environmentId, { retireAt: null });
     return;
   }
   if (row.retireAt === null) {
@@ -1023,6 +1042,34 @@ async function sweepProviderEnvironmentInSlot(
   }
 }
 
+export function readEnvironmentRecoveryOutcome(
+  deps: Pick<Deps, "db">,
+  environmentId: string,
+): OperationResponse {
+  const row = getEnvironment(deps.db, environmentId);
+  if (row === null || row.teardownStatus === "removed") {
+    return operationComplete();
+  }
+  if (row.teardownStatus === "failed") {
+    throw new ApiError(
+      502,
+      "environment_teardown_failed",
+      row.teardownMessage ?? "Environment cleanup failed",
+    );
+  }
+  return operationInProgress();
+}
+
+export function readEnvironmentRemovalProgress(
+  deps: Pick<Deps, "db">,
+  environmentId: string,
+): OperationResponse {
+  const row = getEnvironment(deps.db, environmentId);
+  return row === null || row.teardownStatus === "removed"
+    ? operationComplete()
+    : operationInProgress();
+}
+
 export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   const row = getEnvironment(deps.db, environmentId);
   if (
@@ -1033,10 +1080,10 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   )
     return false;
   if (row.teardownStatus === "removed") return true;
-  if (row.teardownAttempt >= MAX_REMOVE_ATTEMPTS)
+  if (persistedRetryExhausted(TEARDOWN_RETRY_DELAYS_MS, row.teardownAttempt))
     throw new ApiError(
       409,
-      "invalid_request",
+      "environment_needs_recovery",
       `Needs recovery. Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`,
     );
   writeEnvironment(deps, environmentId, { retireAt: Date.now() });

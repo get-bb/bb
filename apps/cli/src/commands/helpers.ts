@@ -4,7 +4,6 @@ import {
   reasoningLevelValues,
   type ReasoningLevel,
 } from "@bb/domain";
-import { noteJsonPayloadWritten } from "../cli-error-output.js";
 import type { ResolvedId } from "../context-env.js";
 
 export {
@@ -14,17 +13,6 @@ export {
 } from "../context-env.js";
 
 const REASONING_LEVELS: readonly ReasoningLevel[] = reasoningLevelValues;
-
-export interface JsonOutputOptions {
-  json?: boolean;
-}
-
-export function outputJson(opts: JsonOutputOptions, data: unknown): boolean {
-  if (!opts.json) return false;
-  console.log(JSON.stringify(data, null, 2));
-  noteJsonPayloadWritten();
-  return true;
-}
 
 export function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];

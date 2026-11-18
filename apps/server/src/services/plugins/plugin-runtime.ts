@@ -44,12 +44,14 @@ import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
   getInstalledPlugin,
   getPluginSafeMode,
+  getThread,
   listInstalledPlugins,
   prunePluginSchedules,
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
+import { threadOfEvent } from "@get-bb/plugin-sdk/internal/thread-event-gate";
 import {
   brandingAssetHash,
   loadPluginAppBundle,
@@ -1046,7 +1048,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
    * payload is assembled and handlers run on the next macrotask, after the
    * transition (and any surrounding transaction) has settled. Handlers are
    * looked up live at dispatch time, so a plugin disposed in between
-   * receives nothing.
+   * receives nothing. A plugin's events for a thread its own in-flight
+   * `threads.spawn` or `threads.fork` may have created wait in its
+   * `threadEventGate` until that call has returned to it, so the plugin has
+   * recorded the thread before it hears how the thread's turn went.
    *
    * A builder may return null for "on second look there is nothing to
    * announce" — a `turn.failed` on a thread that never dispatched a turn, say.
@@ -1070,12 +1075,27 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       if (payload === null) return;
       const delivered = payload;
+      const thread = threadOfEvent(event, delivered);
+      const subject =
+        thread === null
+          ? null
+          : {
+              threadId: thread.threadId,
+              createdAt: () =>
+                thread.createdAt ??
+                getThread(deps.db, thread.threadId)?.createdAt ??
+                null,
+            };
       for (const plugin of loaded.values()) {
-        for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
-          void invokeWrapped(plugin, `${event} handler`, () =>
-            handler(delivered),
-          );
-        }
+        if (plugin.handle.threadEventHandlers[event].length === 0) continue;
+        plugin.handle.threadEventGate.deliver(subject, () => {
+          if (loaded.get(plugin.pluginId) !== plugin) return;
+          for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
+            void invokeWrapped(plugin, `${event} handler`, () =>
+              handler(delivered),
+            );
+          }
+        });
       }
     });
   }

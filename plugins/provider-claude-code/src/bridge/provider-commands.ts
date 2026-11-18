@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { probeClaudeInitialization } from "./initialization-probe.js";
 import { isClaudeSkillPluginName } from "./skill-plugins.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 export const PROVIDER_COMMANDS_STATE_KIND = "bb/provider-commands";
 
@@ -88,7 +89,7 @@ function isInjectedSkill(name: string): boolean {
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength
     ? value
-    : `${value.slice(0, maxLength - 1).trimEnd()}…`;
+    : `${sliceUtf16Head(value, maxLength - 1).trimEnd()}…`;
 }
 
 export function toProviderCommandsState(

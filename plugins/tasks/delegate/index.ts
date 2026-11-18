@@ -20,7 +20,6 @@ import {
   presetReasoningLevelSchema,
   presetServiceTierSchema,
 } from "../shared/contract";
-import { errorMessage } from "../shared/errors";
 import { truncateToWidth } from "../shared/text-measure";
 import { delegationRpcContract } from "./contract";
 
@@ -337,8 +336,8 @@ export function handlers(
         })
         .catch((error: unknown) => mapSpawnTargetError(error, preset));
 
-      const taskThread = store.transaction(() => {
-        const attached = store.tasks.upsertTaskThread({
+      store.transaction(() => {
+        store.tasks.upsertTaskThread({
           taskId: task.id,
           threadId: thread.id,
           presetName: preset.name,
@@ -362,22 +361,7 @@ export function handlers(
           threadId: thread.id,
           body: `Dispatched to ${preset.name}`,
         });
-        return attached;
       });
-
-      try {
-        const currentThread = await bb.sdk.threads.get({ threadId: thread.id });
-        const currentLiveStatus = taskThreadLiveStatus(currentThread);
-        if (currentLiveStatus !== taskThread.liveStatus) {
-          store.tasks.updateTaskThreadStatus(taskThread.id, currentLiveStatus);
-        }
-      } catch (error) {
-        bb.log.warn(
-          `Could not read delegated thread ${thread.id} after attach: ${errorMessage(
-            error,
-          )}`,
-        );
-      }
 
       invalidateThreads(bb, task.id);
       invalidateTaskChanged(bb, task);

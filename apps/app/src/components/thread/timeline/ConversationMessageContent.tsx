@@ -15,6 +15,7 @@ import type { PromptTextMention } from "@bb/domain";
 import { fileNameFromPath } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  AUTHORED_MARKDOWN_THREAD_MENTIONS,
   MarkdownPreview,
   type MarkdownThreadMentions,
 } from "../../ui/markdown-preview.js";
@@ -120,11 +121,6 @@ const COLLAPSED_MESSAGE_FADE_STYLE: CSSProperties = {
     "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
   WebkitMaskImage:
     "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
-};
-
-const ASSISTANT_THREAD_MENTIONS: MarkdownThreadMentions = {
-  mentions: [],
-  preserveSoftBreaks: false,
 };
 
 const STREAMING_SETTLED_MARKDOWN_CLASS_NAME = "[&>p:last-child]:mb-2";
@@ -562,7 +558,7 @@ function AssistantConversationMessage({
         incrementalBlocks
         linkRouting={linkRouting}
         messageDirectives={messageDirectives}
-        threadMentions={ASSISTANT_THREAD_MENTIONS}
+        threadMentions={AUTHORED_MARKDOWN_THREAD_MENTIONS}
       />
       {streamingSplit === null ? null : (
         <MarkdownPreview
@@ -573,7 +569,7 @@ function AssistantConversationMessage({
           incrementalBlocks
           linkRouting={linkRouting}
           messageDirectives={messageDirectives}
-          threadMentions={ASSISTANT_THREAD_MENTIONS}
+          threadMentions={AUTHORED_MARKDOWN_THREAD_MENTIONS}
         />
       )}
     </>

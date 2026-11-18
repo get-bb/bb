@@ -1219,7 +1219,10 @@ describe("plugin update service and routes", () => {
       ok: true,
       result: { applied: true },
     });
-    await expect(disable).resolves.toMatchObject({ enabled: false });
+    await expect(disable).resolves.toMatchObject({
+      ok: true,
+      plugin: { enabled: false },
+    });
     expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
       version: "1.1.0",
       enabled: false,

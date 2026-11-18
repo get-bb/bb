@@ -120,16 +120,67 @@ export function trimOutput(value: string): string {
   return value.trim().replace(/\n+$/u, "");
 }
 
+type GitConfigEntry = readonly [key: string, value: string];
+
+const MACHINE_READ_GIT_CONFIG: readonly GitConfigEntry[] = [
+  ["color.ui", "never"],
+  ["color.diff", "never"],
+  ["color.branch", "never"],
+  ["color.status", "never"],
+  ["diff.noprefix", "false"],
+  ["diff.mnemonicPrefix", "false"],
+  ["diff.srcPrefix", "a/"],
+  ["diff.dstPrefix", "b/"],
+  ["diff.suppressBlankEmpty", "false"],
+  ["diff.relative", "false"],
+  ["diff.submodule", "short"],
+  ["log.showSignature", "false"],
+];
+
+const GIT_CONFIG_ENV_KEY = /^GIT_CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+)$/u;
+
+function readGitConfigEnv(env: NodeJS.ProcessEnv): GitConfigEntry[] {
+  const count = Number(env.GIT_CONFIG_COUNT ?? "0");
+  if (!Number.isSafeInteger(count) || count < 0) return [];
+  const entries: GitConfigEntry[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const key = env[`GIT_CONFIG_KEY_${index}`];
+    if (key === undefined) continue;
+    entries.push([key, env[`GIT_CONFIG_VALUE_${index}`] ?? ""]);
+  }
+  return entries;
+}
+
+function withoutGitConfigEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(([key]) => !GIT_CONFIG_ENV_KEY.test(key)),
+  );
+}
+
 export function resolveGitProcessEnv(
   args: ResolveGitProcessEnvArgs,
 ): NodeJS.ProcessEnv {
-  return {
-    ...sanitizeInheritedChildProcessEnv({
-      env: process.env,
-      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-    }),
-    ...args.env,
+  const inherited = sanitizeInheritedChildProcessEnv({
+    env: process.env,
+    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+  });
+  const requested = args.env ?? {};
+  const config = [
+    ...readGitConfigEnv(inherited),
+    ...MACHINE_READ_GIT_CONFIG,
+    ...readGitConfigEnv(requested),
+  ];
+  const env: NodeJS.ProcessEnv = {
+    ...withoutGitConfigEnv(inherited),
+    LANGUAGE: "C",
+    ...withoutGitConfigEnv(requested),
+    GIT_CONFIG_COUNT: String(config.length),
   };
+  config.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
 }
 
 function createGitCommandTimedOutError(

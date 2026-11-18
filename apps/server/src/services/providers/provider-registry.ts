@@ -70,6 +70,7 @@ export interface ProviderRegistryService {
     probe: () => Promise<boolean>,
   ): Promise<void>;
   forgetInstalledKey(key: ProviderHealthCacheKey): void;
+  forgetInstalledForHost(hostId: string): void;
   forgetAllInstalled(): void;
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
@@ -285,6 +286,10 @@ export function createProviderRegistryService(
       if (hostEntries === undefined) return;
       hostEntries.delete(key.providerId);
       if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
+    },
+
+    forgetInstalledForHost(hostId) {
+      installedByHostId.delete(hostId);
     },
 
     forgetAllInstalled() {

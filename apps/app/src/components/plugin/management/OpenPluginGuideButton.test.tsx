@@ -55,6 +55,7 @@ const GUIDE_ENTRY: PluginCatalogSearchEntry = {
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
+  listings: [],
   author: { name: "BB", github: "get-bb", url: "https://github.com/get-bb" },
   icon: null,
   iconUrl: null,

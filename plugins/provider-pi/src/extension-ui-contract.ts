@@ -6,7 +6,14 @@ export const PI_EXTENSION_UI_KIND = `${PI_PLUGIN_ID}/extension-ui`;
 
 export const PI_EXTENSION_UI_RENDERER_ID = "extension-ui";
 
-const dialogMethodSchema = z.enum(["select", "confirm", "input", "editor"]);
+export const PI_EXTENSION_DIALOG_METHODS = [
+  "select",
+  "confirm",
+  "input",
+  "editor",
+] as const;
+
+const dialogMethodSchema = z.enum(PI_EXTENSION_DIALOG_METHODS);
 
 const boundedText = (max: number) => z.string().max(max);
 
@@ -92,18 +99,18 @@ export type RuntimeInteractionUiResponse = {
 export function resolveExtensionUiResponseFields(
   request: PiExtensionUiRequest,
   result: PiExtensionUiResolution,
-): PiExtensionUiResponseFields {
+): PiExtensionUiResponseFields | { unmappable: string } {
   const { value } = result;
   if (request.method === "confirm") {
     return typeof value === "boolean"
       ? { confirmed: value }
-      : { cancelled: true };
+      : { unmappable: "a confirm dialog needs yes or no" };
   }
   if (typeof value !== "string") {
-    return { cancelled: true };
+    return { unmappable: `a ${request.method} dialog needs text` };
   }
   if (request.method === "select" && !request.options?.includes(value)) {
-    return { cancelled: true };
+    return { unmappable: "the answer is not one of the dialog's options" };
   }
   return { value };
 }

@@ -239,7 +239,12 @@ prompts, provider or host payloads, or model input.
 inputs) — never both. `threads.spawn` and `threads.fork` auto-fill attribution:
 `origin: "plugin"` and `originPluginId: <your id>` unless you set them. Seeding
 `pluginMetadata` always attributes the new thread to your plugin, overriding an
-explicit `origin` or `originPluginId`. `bb.sdk.threads.send({
+explicit `origin` or `originPluginId`. Your `bb.events` handlers get no event
+for a thread your `spawn` or `fork` may have created until that call returns;
+held events then arrive in order. Store the returned id before your next
+`await` and a turn that ends before the response still reaches your
+`thread.idle` or `thread.failed` handler, with no re-read needed.
+`bb.sdk.threads.send({
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 

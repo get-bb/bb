@@ -28,6 +28,7 @@ interface InteractiveRequestRegistryOptions {
   onRegistrationFailure?: (
     failure: InteractiveRequestRegistrationFailure,
   ) => void;
+  onRequestWithdrawn: (request: PendingInteractionCreate) => void;
   registerRequest: (
     request: PendingInteractionCreate,
   ) => Promise<HostDaemonInteractiveRequestResponse>;
@@ -42,6 +43,7 @@ interface InterruptInteractiveThreadsArgs {
 interface PendingInteractiveRequestEntry {
   interactionId: string | null;
   promise: Promise<PendingInteractionResolution>;
+  registered: Promise<boolean>;
   reject: (error: Error) => void;
   resolve: (resolution: PendingInteractionResolution) => void;
   request: PendingInteractionCreate;
@@ -59,6 +61,13 @@ export class InteractiveRequestRegistryError extends Error {
     super(message);
     this.name = "InteractiveRequestRegistryError";
   }
+}
+
+function buildWithdrawnError(): InteractiveRequestRegistryError {
+  return new InteractiveRequestRegistryError(
+    "interactive_request_withdrawn",
+    "The provider withdrew this interactive request",
+  );
 }
 
 function buildInteractiveRequestKey(
@@ -106,13 +115,18 @@ export class InteractiveRequestRegistry {
 
   constructor(private readonly options: InteractiveRequestRegistryOptions) {}
 
-  async registerAndWait(
+  registerAndWait(
     request: PendingInteractionCreate,
+    signal: AbortSignal,
   ): Promise<PendingInteractionResolution> {
     const key = buildInteractiveRequestKey(request);
     const existing = this.pendingEntries.get(key);
     if (existing) {
       return existing.promise;
+    }
+
+    if (signal.aborted) {
+      return Promise.reject(buildWithdrawnError());
     }
 
     let resolveEntry: (
@@ -129,17 +143,34 @@ export class InteractiveRequestRegistry {
     const entry: PendingInteractiveRequestEntry = {
       interactionId: null,
       promise,
+      registered: Promise.resolve(false),
       reject: (error) => rejectEntry(error),
       resolve: (resolution) => resolveEntry(resolution),
       request,
     };
     this.pendingEntries.set(key, entry);
+    entry.registered = this.register(key, entry);
+    const onAbort = (): void => this.withdraw(key, entry);
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise
+      .catch(() => undefined)
+      .finally(() => signal.removeEventListener("abort", onAbort));
+    return promise;
+  }
 
+  private async register(
+    key: string,
+    entry: PendingInteractiveRequestEntry,
+  ): Promise<boolean> {
     try {
-      const response = await this.options.registerRequest(request);
+      const response = await this.options.registerRequest(entry.request);
       if (this.pendingEntries.get(key) === entry) {
         this.applyRegistrationResponse(key, entry, response);
       }
+      return (
+        response.outcome !== "rejected" &&
+        (response.status === "pending" || response.status === "resolving")
+      );
     } catch (error) {
       if (this.pendingEntries.get(key) === entry) {
         this.pendingEntries.delete(key);
@@ -147,12 +178,24 @@ export class InteractiveRequestRegistry {
       const registrationError = normalizeCaughtError(error);
       this.options.onRegistrationFailure?.({
         error: registrationError,
-        request,
+        request: entry.request,
       });
       entry.reject(registrationError);
+      return false;
     }
+  }
 
-    return promise;
+  private withdraw(key: string, entry: PendingInteractiveRequestEntry): void {
+    if (this.pendingEntries.get(key) !== entry) {
+      return;
+    }
+    this.pendingEntries.delete(key);
+    entry.reject(buildWithdrawnError());
+    void entry.registered.then((registered) => {
+      if (registered) {
+        this.options.onRequestWithdrawn(entry.request);
+      }
+    });
   }
 
   private applyRegistrationResponse(

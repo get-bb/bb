@@ -682,14 +682,32 @@ describe("bb settings commands", () => {
         message: "OpenRouter: bad key",
         durationMs: 40,
       } as never);
-      await runCommand(
-        ["settings", "ai-services", "test", "thread-title"],
-        register,
+      await expect(
+        runCommand(
+          ["settings", "ai-services", "test", "thread-title"],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+      expect(console.error).toHaveBeenCalledWith(
+        "Error: Failed after 40ms: OpenRouter: bad key",
       );
-      expect(console.log).toHaveBeenLastCalledWith(
-        "Failed after 40ms: OpenRouter: bad key",
-      );
-      expect(process.exitCode).toBe(1);
+
+      const failure = {
+        ok: false,
+        message: "OpenRouter: bad key",
+        durationMs: 40,
+      };
+      test.mockResolvedValueOnce(failure as never);
+      vi.mocked(console.log).mockClear();
+      await expect(
+        runCommand(
+          ["settings", "ai-services", "test", "thread-title", "--json"],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+      expect(
+        JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+      ).toEqual(failure);
 
       await expect(
         runCommand(["settings", "ai-services", "test", "voice"], register),

@@ -83,6 +83,7 @@ export interface AgentRuntimeOptions {
 
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
+    signal: AbortSignal,
   ) => Promise<PendingInteractionResolution>;
 
   onStderr?: (line: string, threadId?: string) => void;

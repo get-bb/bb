@@ -378,6 +378,21 @@ function requestFromClient(method, params) {
   });
 }
 
+async function withdrawnRequestFromClient(method, params, withdrawAfterMs) {
+  outboundRequestCounter += 1;
+  const id = `fx-req-${outboundRequestCounter}`;
+  pendingOutboundRequests.set(id, () => {});
+  send({ jsonrpc: "2.0", id, method, params });
+  await new Promise((resolve) => setTimeout(resolve, withdrawAfterMs));
+  if (!pendingOutboundRequests.delete(id)) {
+    return;
+  }
+  notify("serverRequest/resolved", {
+    threadId: params.threadId,
+    requestId: id,
+  });
+}
+
 const turnCursorPath = script?.turnCursorPath ?? null;
 const goalsByThreadId = new Map();
 
@@ -415,6 +430,14 @@ async function runScriptFileTurn(threadId) {
   for (const entry of turn) {
     const params = withThreadId(entry.params ?? {}, threadId);
     if (entry.kind === "request") {
+      if (typeof entry.withdrawAfterMs === "number") {
+        await withdrawnRequestFromClient(
+          entry.method,
+          params,
+          entry.withdrawAfterMs,
+        );
+        continue;
+      }
       await requestFromClient(entry.method, params);
       continue;
     }

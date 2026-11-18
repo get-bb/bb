@@ -172,7 +172,12 @@ export function Header() {
             lifecycle: lifecycle({
               phase: "removing",
 
-              teardown: { status: "running", attempt: 1 },
+              teardown: {
+                status: "running",
+                attempt: 1,
+                needsRecovery: false,
+                blockedByEnvironmentId: null,
+              },
             }),
           })}
         />
@@ -189,7 +194,12 @@ export function Header() {
             lifecycle: lifecycle({
               phase: "removing",
 
-              teardown: { status: "failed", attempt: 3 },
+              teardown: {
+                status: "failed",
+                attempt: 3,
+                needsRecovery: false,
+                blockedByEnvironmentId: null,
+              },
             }),
           })}
           lifecycleNotice={{

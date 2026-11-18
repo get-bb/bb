@@ -86,6 +86,7 @@ export interface PluginServiceDeps {
   pluginHostArtifacts?: PluginHostArtifactRegistry;
   aiServices: AiServiceRegistry;
   onSettingsChanged?: (pluginId: string) => void;
+  onPluginsChanged?: () => void;
   /**
    * Fired after a plugin stops being a registered owner — disabled or
    * uninstalled, but *not* reloaded. Core state keyed by `plugin:<id>` (queue

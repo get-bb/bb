@@ -196,6 +196,46 @@ describe("runtime JSON-RPC transport", () => {
     }
   });
 
+  it("never sends a lone surrogate to the provider process", async () => {
+    const child = spawnEchoChild();
+    const linesPromise = readChildStdoutLines(child, 2);
+    const emoji = "\u{1F600}";
+    const cutEmoji = `cut ${emoji.slice(0, 1)}`;
+    const pending = new Map<string | number, PendingJsonRpcRequest>();
+    try {
+      const request = sendJsonRpcRequest({
+        child,
+        getNextId: () => 1,
+        message: {
+          kind: "request",
+          method: "turn/start",
+          params: { input: [{ type: "text", text: `${cutEmoji} ${emoji}` }] },
+        },
+        pending,
+        resultSchema: z.unknown(),
+      });
+      sendJsonRpcResult({ child, id: 2, result: { output: cutEmoji } });
+
+      const lines = await linesPromise;
+      for (const line of lines) {
+        expect(line).not.toMatch(/\\ud[89a-f][0-9a-f]{2}/iu);
+      }
+      expect(lines.map((line) => JSON.parse(line))).toEqual([
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "turn/start",
+          params: { input: [{ type: "text", text: `cut \uFFFD ${emoji}` }] },
+        },
+        { jsonrpc: "2.0", id: 2, result: { output: "cut \uFFFD" } },
+      ]);
+      settleJsonRpcResponse({ id: 1, pending, response: { result: null } });
+      await expect(request).resolves.toBeNull();
+    } finally {
+      await stopChild(child);
+    }
+  });
+
   it("serializes requests and validates their settled results", async () => {
     const child = spawnEchoChild();
     const linesPromise = readChildStdoutLines(child, 2);

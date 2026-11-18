@@ -44,6 +44,7 @@ const live = vi.hoisted(() => ({
   },
   pluginJobs: [] as PluginUpdateJob[],
 }));
+const preferences = vi.hoisted(() => ({ showProviderCliUpdates: true }));
 const startInstallMock = vi.hoisted(() => vi.fn());
 const appUpdateState = vi.hoisted(() => ({
   status: undefined as SystemAppUpdateStatus | undefined,
@@ -143,6 +144,13 @@ vi.mock("@/lib/sdk", async () => {
   };
 });
 
+vi.mock("./sidebar-update-preferences", async () => {
+  const { atom } = await import("jotai");
+  return {
+    showProviderCliUpdatesAtom: atom(() => preferences.showProviderCliUpdates),
+  };
+});
+
 vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
@@ -163,6 +171,7 @@ afterEach(() => {
   startPluginUpdateMock.mockReset();
   desktopState.isDesktop = false;
   desktopState.installUpdate.mockClear();
+  preferences.showProviderCliUpdates = true;
 });
 
 const UPDATE_ACTION: ProviderCliInstallAction = {
@@ -504,6 +513,38 @@ describe("SidebarUpdatesBadge", () => {
     });
     expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
     expect(applyAppUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves provider CLI updates out of the button when the preference hides them", async () => {
+    preferences.showProviderCliUpdates = false;
+    const codex = providerIssue("codex", "Codex");
+    renderBadge({ machines: [machine({ issues: [codex] })] });
+    expect(screen.queryByTestId("sidebar-update-button")).toBeNull();
+    cleanup();
+
+    live.providerJobs = { ...live.providerJobs, runningJobKey: "host-1:codex" };
+    startPluginUpdateMock.mockResolvedValue({
+      id: "job-1",
+      pluginId: "linear",
+      displayName: "linear",
+      state: "queued",
+    });
+    renderBadge({
+      machines: [machine({ issues: [codex] })],
+      plugins: {
+        trackedCount: 1,
+        items: [{ kind: "update", plugin: plugin("linear"), version: "1.2.0" }],
+      },
+    });
+
+    expect(updateButton().getAttribute("aria-label")).toBe(
+      "1 update available",
+    );
+    const card = await openCard();
+    expect(rowStates(card)).toEqual([["linear1.0.0 → 1.2.0", "available"]]);
+    fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
+    expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
+    expect(startInstallMock).not.toHaveBeenCalled();
   });
 
   it("opens the card in a drawer on a phone instead of leaving for Settings", async () => {

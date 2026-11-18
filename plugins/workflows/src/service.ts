@@ -362,6 +362,7 @@ export interface WorkflowService {
   runWorker(signal: AbortSignal): Promise<void>;
   onThreadIdle(threadId: string, output: string | null): void;
   onThreadFailed(threadId: string, error: string | null): void;
+  onWorkerMessageCancelled(threadId: string): void;
   onThreadArchived(threadId: string): void;
   onThreadDeleted(threadId: string): void;
   onOriginUnavailable(threadId: string): Promise<void>;
@@ -1086,39 +1087,38 @@ export function createWorkflowService(
   ): Promise<JsonValue> {
     const stopOnAbort = () => void stopChild(threadId);
     signal.addEventListener("abort", stopOnAbort, { once: true });
-    try {
-      const current = await bb.sdk.threads.get({ threadId });
-      throwIfCancelled(signal);
-      if (current.status === "idle") {
-        const output = await bb.sdk.threads.output({ threadId });
+    if (origin === "handed-off") {
+      try {
+        const current = await bb.sdk.threads.get({ threadId });
         throwIfCancelled(signal);
-        onThreadIdle(threadId, output.output);
-      } else if (
-        current.status === "error" &&
-        (origin === "spawned" ||
+        if (current.status === "idle") {
+          const output = await bb.sdk.threads.output({ threadId });
+          throwIfCancelled(signal);
+          onThreadIdle(threadId, output.output);
+        } else if (
+          current.status === "error" &&
           (
             await readRetryHandoff(bb, {
               threadId,
               failedAt: Date.now(),
               now: Date.now(),
             })
-          ).kind !== "stand-down")
-      ) {
-        failWorkerThread(
-          threadId,
-          origin === "spawned"
-            ? "Workflow worker failed before attachment completed"
-            : "Workflow worker failed while its retry was handed off",
+          ).kind !== "stand-down"
+        ) {
+          failWorkerThread(
+            threadId,
+            "Workflow worker failed while its retry was handed off",
+          );
+        }
+      } catch (error) {
+        if (signal.aborted) {
+          await stopChild(threadId);
+          throw error;
+        }
+        bb.log.warn(
+          `Could not reconcile workflow worker ${threadId}: ${message(error)}`,
         );
       }
-    } catch (error) {
-      if (signal.aborted) {
-        await stopChild(threadId);
-        throw error;
-      }
-      bb.log.warn(
-        `Could not reconcile workflow worker ${threadId}: ${message(error)}`,
-      );
     }
     try {
       return await waitForCall(call, signal);
@@ -1854,6 +1854,11 @@ export function createWorkflowService(
     onOriginUnavailable,
     onThreadFailed: (threadId, error) =>
       failWorkerThread(threadId, error ?? "Workflow worker failed"),
+    onWorkerMessageCancelled: (threadId) =>
+      failThreadCall(
+        threadId,
+        "The workflow worker's message was deleted before it ran",
+      ),
     onThreadArchived: (threadId) =>
       failThreadCall(threadId, "Workflow worker was archived"),
     onThreadDeleted: (threadId) =>

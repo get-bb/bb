@@ -305,9 +305,11 @@ Sidebar preferences
 
 `bb settings ui` reads and writes server-side sidebar preferences shared by
 every window, device, and the CLI. The same registry stores which thread Info
-panel sections are collapsed (`infoPanel.collapsedSections`) and whether a
-thread pane's thread context card stays pinned open (`threadContextCard.pinned`)
-and which of its sections are open (`threadContextCard.openSections`).
+panel sections are collapsed (`infoPanel.collapsedSections`), whether a
+thread pane's thread context card stays pinned open (`threadContextCard.pinned`),
+which of its sections are open (`threadContextCard.openSections`), and whether
+the sidebar update button includes provider CLI updates
+(`sidebar.updates.providerCli`).
 
 bb settings ui list [--json]
 bb settings ui get <key> [--json]

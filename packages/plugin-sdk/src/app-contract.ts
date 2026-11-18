@@ -3636,6 +3636,9 @@ export interface ExperimentalMessageMetadataRegistration {
   component: ComponentType<ExperimentalMessageMetadataProps>;
 }
 
+/** A timeline a `messageAction` can show in; see {@link PluginMessageActionRegistration.experimental_surfaces}. */
+export type ExperimentalMessageActionSurface = "thread-view" | "embedded-chat";
+
 /** Context handed to a `messageAction`'s `run`. */
 export interface PluginMessageActionContext {
   /** The thread whose timeline surfaced the action. */
@@ -3657,12 +3660,13 @@ export interface PluginMessageActionContext {
 }
 
 /**
- * An action on chat messages in the main thread timeline: an icon button in
- * the per-message action bar (user and assistant messages) and an entry in
- * the assistant-message text-selection menu. Embedded `ThreadChat` timelines
- * do not show slot-registered actions. Host-rendered chrome — the plugin
- * supplies title, icon, and `run` behavior only. Resolved icon names take precedence over
- * plugin branding; omitted or unknown names fall back to branding.
+ * An action on chat messages in every thread timeline, including embedded
+ * `ThreadChat` timelines unless `experimental_surfaces` narrows it: an icon
+ * button in the per-message action bar (user and assistant messages) and an
+ * entry in the assistant-message text-selection menu. Host-rendered chrome —
+ * the plugin supplies title, icon, and `run` behavior only. Resolved icon
+ * names take precedence over plugin branding; omitted or unknown names fall
+ * back to branding.
  */
 export interface PluginMessageActionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -3670,6 +3674,12 @@ export interface PluginMessageActionRegistration {
   /** Tooltip / menu label for the action. */
   title: string;
   icon?: BbIconName;
+  /**
+   * Timelines that show the action: `"thread-view"` is bb's thread view and
+   * `"embedded-chat"` an embedded `ThreadChat`. Omit for both. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_surfaces?: readonly ExperimentalMessageActionSurface[];
   /**
    * Runs when the user activates the action. Errors (sync or async) are
    * contained and logged; they never break the timeline.
@@ -3703,6 +3713,14 @@ export interface PluginCommandShortcut {
   control?: boolean;
   alt?: boolean;
   shift?: boolean;
+}
+
+/** The fields of a keydown that {@link PluginSdkApp.experimental_matchesShortcutKey} reads; DOM and React keyboard events both fit. */
+export interface ExperimentalShortcutKeyEvent {
+  key: string;
+  code: string;
+  altKey: boolean;
+  shiftKey: boolean;
 }
 
 /**
@@ -4342,6 +4360,13 @@ export interface ComposerCustomization {
   id: string;
   /** Composer kinds where this customization is active; omit for all kinds. */
   scopes?: readonly PluginComposerScope["kind"][];
+  /**
+   * Controls rendered in the composer's action row, before the voice, stop
+   * and submit controls. The collapsed single-line layout leaves them out,
+   * as it does bb's `+` menu and model picker; they show once the composer
+   * expands. bb shows the first three plugins' actions inline and the rest
+   * behind a "More plugin actions" button.
+   */
   actions?: readonly { id: string; component: ComponentType }[];
   banners?: readonly {
     id: string;
@@ -4876,8 +4901,8 @@ export type ExperimentalComposerSubmitOptions = ComposerSubmitOptions;
 /**
  * A consumer-supplied action on the messages of one `ThreadChat` instance,
  * rendered in the embedded timeline's per-message action bar alongside the
- * native actions. Slot-registered `messageAction`s do not appear there. Unlike
- * the `messageAction` slot this is scoped to the rendering component, not
+ * native and slot-registered `messageAction` actions. Unlike the
+ * `messageAction` slot this is scoped to the rendering component, not
  * registered globally.
  */
 export interface ThreadChatMessageAction {
@@ -5136,9 +5161,10 @@ export interface NewThreadRequest {
  */
 export interface NewThreadComposerProps {
   /**
-   * Seeds the project picker. The user can change it, including choosing
-   * "Don't work in a project"; see {@link NewThreadRequest.projectId} for the
-   * submitted projectless shape.
+   * Seeds the project picker. Omitted, the picker starts on the project the
+   * user last picked in bb's New thread view. The user can change it,
+   * including choosing "Don't work in a project"; see
+   * {@link NewThreadRequest.projectId} for the submitted projectless shape.
    */
   defaultProjectId?: string;
   /**
@@ -6329,6 +6355,25 @@ export interface PluginSdkApp {
   experimental_VoiceRecordingBar: ComponentType<ExperimentalVoiceRecordingBarProps>;
   experimental_FailedVoiceRecordings: ComponentType<ExperimentalFailedVoiceRecordingsProps>;
   experimental_ShortcutHint: ComponentType<ExperimentalShortcutHintProps>;
+  /**
+   * Whether `event` presses `key` (a `PluginCommandShortcut` key such as
+   * `"k"`, `"["` or `"Enter"`), compared the way bb compares keys for its own
+   * keybindings; the caller checks modifiers. Letter, digit and punctuation
+   * keys match by physical position when the active layout types a non-Latin
+   * character there, so Ctrl+K is found on Cyrillic, Greek, Hebrew or Arabic
+   * layouts, while Latin layouts such as Dvorak keep their own letters.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_matchesShortcutKey(
+    event: ExperimentalShortcutKeyEvent,
+    key: string,
+  ): boolean;
+  /**
+   * Cuts `value` to at most `maxChars` UTF-16 code units without splitting a
+   * surrogate pair, so an emoji at the cut is dropped whole instead of leaving
+   * half of it. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sliceUtf16Head(value: string, maxChars: number): string;
   experimental_ImageLightbox: ComponentType<ExperimentalImageLightboxProps>;
   experimental_PromptMentionIcon: ComponentType<ExperimentalPromptMentionIconProps>;
   /**

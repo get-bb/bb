@@ -26,7 +26,11 @@ function renderGoal(state: unknown) {
     {
       composer: { scope: { kind: "thread", threadId: THREAD_ID } },
       threadExtensionStates: { [THREAD_ID]: { goal: state } },
-      sdk: { threads: { clearGoal: async () => ({ ok: true }) } },
+      sdk: {
+        threads: {
+          clearGoal: async () => ({ ok: true, progress: "complete" }),
+        },
+      },
     },
   );
 }

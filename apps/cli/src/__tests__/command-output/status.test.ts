@@ -16,15 +16,29 @@ describe("bb status command output", () => {
   const register: CommandRegistrar = (program) =>
     registerStatusCommand(program, () => "http://server");
 
-  it("bb status prints project/thread context", async () => {
+  it("bb status prints the context it has and fails when the server does not know it", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thread-1");
+    const missing = async () =>
+      new Response(JSON.stringify({ code: "not_found", error: "Not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    stubServerApi({
+      "v1.projects.:id.$get": vi.fn(missing),
+      "v1.threads.:id.$get": vi.fn(missing),
+    });
 
-    await runCommand(["status"], register);
+    await expect(runCommand(["status"], register)).rejects.toThrow(
+      "process.exit:1",
+    );
 
     const lines = collectLogLines(vi.mocked(console.log));
     expect(lines).toContain("Project: proj-1");
     expect(lines).toContain("Thread: thread-1");
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: The context project proj-1 and thread thread-1 was not found on the server",
+    );
   });
 
   it("bb status prints environment without fetching hosts", async () => {
@@ -54,6 +68,10 @@ describe("bb status command output", () => {
       "v1.projects.:id.$get": getProject,
       "v1.threads.:id.$get": getThread,
       "v1.environments.:id.$get": getEnvironment,
+      "v1.threads.:id.head-state.$get": vi.fn(async () => ({
+        pendingTodos: null,
+      })),
+      "v1.threads.$get": vi.fn(async () => []),
     });
 
     await runCommand(["status"], register);
@@ -82,6 +100,10 @@ describe("bb status command output", () => {
     stubServerApi({
       "v1.projects.:id.$get": getProject,
       "v1.threads.:id.$get": getThread,
+      "v1.threads.:id.head-state.$get": vi.fn(async () => ({
+        pendingTodos: null,
+      })),
+      "v1.threads.$get": vi.fn(async () => []),
     });
 
     await runCommand(["status"], register);

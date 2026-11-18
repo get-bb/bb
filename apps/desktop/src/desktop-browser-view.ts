@@ -66,6 +66,7 @@ import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
 } from "./desktop-browser-policy.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const HIDDEN_PAGE_LIMIT = 4;
 const HIDDEN_PAGE_IDLE_MS = 5 * 60_000;
@@ -88,7 +89,7 @@ const RENDERER_RECOVERY_DELAY_MS = 250;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 2;
 
 function truncate(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
+  return sliceUtf16Head(value, max);
 }
 
 function clampPopupDimension(

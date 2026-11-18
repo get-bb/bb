@@ -27,6 +27,7 @@ import {
   installCancellationSignal,
   PluginInstallCancelledError,
 } from "./install-cancellation.js";
+import { sliceUtf16Tail } from "@bb/text-utils";
 
 type ParsedGitSelector =
   | { kind: "ref"; ref: string }
@@ -642,7 +643,7 @@ export async function runInstallCommand(
     stdoutBytes += chunk.byteLength;
     const limit = options?.maxStdoutBytes;
     if (limit === undefined) {
-      if (stdout.length > 8192) stdout = stdout.slice(-8192);
+      if (stdout.length > 8192) stdout = sliceUtf16Tail(stdout, 8192);
     } else if (stdoutBytes > limit && !overflowed) {
       overflowed = true;
       killCommand();
@@ -650,7 +651,7 @@ export async function runInstallCommand(
   });
   child.stderr.on("data", (chunk: Buffer) => {
     stderr += chunk.toString("utf8");
-    if (stderr.length > 8192) stderr = stderr.slice(-8192);
+    if (stderr.length > 8192) stderr = sliceUtf16Tail(stderr, 8192);
   });
   let cancelled = false;
   const cancel = () => {
@@ -696,7 +697,7 @@ export async function runInstallCommand(
         resolve();
         return;
       }
-      const tail = stderr.trim().slice(-1000);
+      const tail = sliceUtf16Tail(stderr.trim(), 1000);
       reject(
         new Error(
           `${command} ${args[0]} failed (exit ${code ?? "signal"})${tail ? `: ${tail}` : ""}`,

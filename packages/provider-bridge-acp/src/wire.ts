@@ -96,20 +96,24 @@ const acpToolCallLocationSchema = z
   })
   .passthrough();
 
-const acpToolCallNameSchema = z
-  .union([z.string(), z.null()])
-  .transform((value) => value ?? undefined)
-  .optional();
+function acpNullAsAbsent<Schema extends z.ZodType>(schema: Schema) {
+  return schema
+    .nullable()
+    .transform((value) => value ?? undefined)
+    .optional();
+}
+
+const acpOptionalString = acpNullAsAbsent(z.string());
 
 const acpToolCallFieldsSchema = z.object({
   toolCallId: z.string(),
-  title: z.string().optional(),
-  name: acpToolCallNameSchema,
+  title: acpOptionalString,
+  name: acpOptionalString,
   kind: acpToolKindSchema.optional(),
   rawKind: z.string().optional(),
   status: acpToolCallStatusSchema.optional(),
-  content: acpToolCallContentListSchema.optional(),
-  locations: z.array(acpToolCallLocationSchema).optional(),
+  content: acpNullAsAbsent(acpToolCallContentListSchema),
+  locations: acpNullAsAbsent(z.array(acpToolCallLocationSchema)),
   rawInput: z.unknown().optional(),
   rawOutput: z.unknown().optional(),
 });
@@ -251,11 +255,6 @@ export const acpSessionNotificationParamsSchema = z
     update: acpSessionUpdateSchema,
   })
   .passthrough();
-
-const acpOptionalString = z
-  .union([z.string(), z.null()])
-  .transform((value) => value ?? undefined)
-  .optional();
 
 const acpConfigOptionSelectOptionSchema = z
   .object({

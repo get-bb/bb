@@ -40,6 +40,7 @@ import {
   visibleServerPanel,
   type ServerPanel,
 } from "@/lib/dashboard-live-state";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface DashboardSearch {
   returnTo?: string;
@@ -466,7 +467,7 @@ function ServerRow({
           tabIndex={0}
           onClick={() => setPanel((p) => (p === "setup" ? "none" : "setup"))}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
+            if (isNonImeKey(e, "Enter") || e.key === " ") {
               e.preventDefault();
               setPanel((p) => (p === "setup" ? "none" : "setup"));
             }
@@ -658,7 +659,7 @@ function DeleteAccountDialog({
         disabled={busy}
         onChange={(e) => setTyped(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && matches && !busy) void confirm();
+          if (isNonImeKey(e, "Enter") && matches && !busy) void confirm();
         }}
       />
       {failed && (

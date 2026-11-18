@@ -173,7 +173,12 @@ it("finishes removing a machine whose workspace cleanup cannot reach it", async 
       destroyedAt: null,
     });
     const removals = captureEnvironmentRemovals();
-    await retryMachineCleanup(harness.deps, target.host.id);
+    await expect(
+      retryMachineCleanup(harness.deps, target.host.id),
+    ).rejects.toMatchObject({
+      status: 502,
+      body: { code: "machine_teardown_failed" },
+    });
     expect(getHost(harness.db, target.host.id)).toMatchObject({
       phase: "removing",
       teardownStatus: "failed",
@@ -251,7 +256,11 @@ it("exposes forced removal as a forced machine delete", async () =>
       { method: "DELETE" },
     );
     expect(response.status).toBe(200);
-    expect(await readJson(response)).toEqual({ ok: true });
+    expect(await readJson(response)).toEqual({
+      ok: true,
+      progress: "complete",
+      warnings: [],
+    });
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledOnce();
     const missing = await harness.app.request(
@@ -312,7 +321,15 @@ it("leaves a provider removal failure retryable after skipping cleanup", async (
       },
     );
     await strandRemoval(harness, target.host.id, target.session.id);
-    await forceMachineRemoval(harness.deps, target.host.id);
+    await expect(
+      forceMachineRemoval(harness.deps, target.host.id),
+    ).rejects.toMatchObject({
+      status: 502,
+      body: {
+        code: "machine_teardown_failed",
+        message: "Provider API unavailable",
+      },
+    });
     expect(getHost(harness.db, target.host.id)).toMatchObject({
       phase: "removing",
       teardownStatus: "failed",
@@ -329,7 +346,9 @@ it("leaves a provider removal failure retryable after skipping cleanup", async (
       body: { code: "machine_cleanup_not_blocked" },
     });
     providerDown = false;
-    await retryMachineCleanup(harness.deps, target.host.id);
+    await expect(
+      retryMachineCleanup(harness.deps, target.host.id),
+    ).resolves.toEqual({ ok: true, progress: "complete", warnings: [] });
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledTimes(2);
   }));
@@ -358,4 +377,61 @@ it("skips cleanup for a stranded machine that was suspended without resuming it"
     );
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledOnce();
+  }));
+
+it("names the environment whose cleanup needs recovery as the machine's blocker", async () =>
+  withTestHarness(async (harness) => {
+    const { target, environment } = seedMachineWithWorkspace(harness);
+    const teardown = async () => {
+      const response = await harness.app.request(
+        `${API}/hosts/${target.host.id}`,
+      );
+      return z
+        .object({
+          lifecycle: z.object({
+            teardown: z
+              .object({
+                needsRecovery: z.boolean(),
+                blockedByEnvironmentId: z.string().nullable(),
+              })
+              .nullable(),
+          }),
+        })
+        .parse(await readJson(response)).lifecycle.teardown;
+    };
+    const retryEnvironment = async (attempt: number) => {
+      harness.db
+        .update(environments)
+        .set({ teardownAttempt: attempt, retireAt: Date.now() })
+        .where(eq(environments.id, environment.id))
+        .run();
+      updateHost(harness.db, harness.hub, target.host.id, {
+        removeRetryAt: Date.now(),
+      });
+      await sweepProviderMachine(harness.deps, target.host.id);
+    };
+    await strandRemoval(harness, target.host.id, target.session.id);
+    expect(await teardown()).toMatchObject({
+      needsRecovery: false,
+      blockedByEnvironmentId: null,
+    });
+
+    await retryEnvironment(4);
+
+    expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+      teardownAttempt: 5,
+      teardownStatus: "failed",
+      retireAt: null,
+    });
+    expect(await teardown()).toMatchObject({
+      needsRecovery: true,
+      blockedByEnvironmentId: environment.id,
+    });
+
+    await retryEnvironment(0);
+
+    expect(await teardown()).toMatchObject({
+      needsRecovery: false,
+      blockedByEnvironmentId: null,
+    });
   }));

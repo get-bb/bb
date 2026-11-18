@@ -722,10 +722,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const firstPane = panes[0];
   const singlePane =
     panes.length === 1 && firstPane !== undefined ? firstPane : null;
-  const keepsSinglePane =
-    singlePane !== null &&
-    (currentContent.kind === "thread" || currentContent.kind === "new-thread");
-  if (!splitWorkspaceActive && !keepsSinglePane) {
+  if (!splitWorkspaceActive && singlePane === null) {
     return (
       <StandalonePaneContent
         content={currentContent}

@@ -15,6 +15,7 @@ import {
 } from "../lib/file-tree-height.js";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu.js";
 import { cn } from "@/lib/utils";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 export interface FileTreePanelProps {
   entries: readonly FlatEntry[];
@@ -162,7 +163,7 @@ export function FileTreePanel({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
+            if (!isNonImeKey(event, "Escape")) return;
             event.stopPropagation();
             if (query !== "") setQuery("");
             else onClose();

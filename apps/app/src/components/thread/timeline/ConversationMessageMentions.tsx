@@ -12,6 +12,7 @@ import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMention
 import { promptMentionClipboardDataAttributes } from "@bb/client-core";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { useThreadRoutePath } from "@/components/thread/ThreadTitleMentions";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface PromptMentionPillProps {
   interactive?: boolean;
@@ -169,7 +170,7 @@ export function PromptMentionPill({
           onActivate();
         }}
         onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
-          if (event.key === "Enter" || event.key === " ") {
+          if (isNonImeKey(event, "Enter") || event.key === " ") {
             event.preventDefault();
             event.stopPropagation();
             onActivate();

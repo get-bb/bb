@@ -1,40 +1,22 @@
 import type { ThreadEvent } from "@bb/domain";
+import { createItemRecordStore, type ItemRecordStore } from "./item-records.js";
 import type {
   BuildEventProjectionMessagesOptions,
   EventProjectionMessage,
   EventProjectionTurnStatus,
 } from "./event-projection-types.js";
 import {
-  flushBufferedAssistantMessages,
-  flushBufferedAssistantMessagesForTurn,
-  type AssistantStreamProjectionState,
-} from "./assistant-stream-projection.js";
-import {
   finalizeOperationMessage,
   interruptOperationMessage,
 } from "./parse-operation-message.js";
-import { flushActiveToolCell } from "./tool-activity-cells.js";
-import {
-  createToolActivityState,
-  flushPendingToolActivityOutput,
-  interruptPendingToolActivity,
-} from "./tool-activity-projection.js";
 import {
   createOperationProjectionState,
-  flushPendingFileEditOutput,
   interruptOpenCompactions,
   type CompactionTurnFinalizationStatus,
   type OperationProjectionState,
 } from "./operation-projection.js";
 import type { EventMeta } from "./event-decode.js";
-import {
-  createReasoningProjectionState,
-  finalizeOpenReasoningLifecycles,
-  finalizeOpenReasoningLifecyclesForTurn,
-  type ReasoningProjectionState,
-} from "./reasoning-lifecycle-projection.js";
 import { shouldPreservePendingMessages } from "./user-message-parsing.js";
-import type { BackgroundTaskProjectionState } from "./background-task-projection.js";
 
 export interface CompactionTurnFinalization {
   status: CompactionTurnFinalizationStatus;
@@ -72,19 +54,14 @@ interface ThreadInterruptedArgs {
   threadId: string;
 }
 
-export interface ProjectionState
-  extends
-    AssistantStreamProjectionState,
-    OperationProjectionState,
-    ReasoningProjectionState,
-    BackgroundTaskProjectionState {
+export interface ProjectionState extends OperationProjectionState {
+  items: ItemRecordStore;
   seenUserKeys: Set<string>;
   openTurnIds: Set<string>;
   closedTurnIds: Set<string>;
   pendingFinalizationByTurnId: Map<string, TurnPendingFinalization>;
   threadInterruptedAt: number | null;
   delegationParentToolCallIdsByTurnId: Map<string, string>;
-  delegationTurnIdsByCallId: Map<string, string>;
   suppressedAcceptedRootParentToolCallIdsByTurnId: Map<string, string>;
 }
 
@@ -97,16 +74,9 @@ export function createProjectionState(): ProjectionState {
     closedTurnIds: new Set(),
     pendingFinalizationByTurnId: new Map(),
     threadInterruptedAt: null,
-    openAssistantMessagesByKey: new Map(),
-    assistantTextBuffersByKey: new Map(),
-    visibleAssistantMessageKeys: new Set(),
-    finalizedAssistantMessageKeys: new Set(),
-    ...createReasoningProjectionState(),
+    items: createItemRecordStore(),
     delegationParentToolCallIdsByTurnId: new Map(),
-    delegationTurnIdsByCallId: new Map(),
     suppressedAcceptedRootParentToolCallIdsByTurnId: new Map(),
-    toolActivity: createToolActivityState(),
-    backgroundTasksByItemId: new Map(),
   };
 }
 
@@ -130,12 +100,6 @@ export function onTurnCompleted(args: CompleteTurnArgs): void {
       status: "interrupted",
     });
   }
-  finalizeOpenReasoningLifecyclesForTurn({
-    meta: args.meta,
-    state: args.state,
-    status: args.status === "completed" ? "completed" : "interrupted",
-    turnId: args.turnId,
-  });
 }
 
 export function onThreadInterrupted(args: ThreadInterruptedArgs): void {
@@ -152,55 +116,78 @@ export function onThreadInterrupted(args: ThreadInterruptedArgs): void {
     });
   }
   closeOpenTurns(args.state);
-  finalizeOpenReasoningLifecycles({
-    meta: args.meta,
-    state: args.state,
-    status: "interrupted",
-  });
 }
 
-export function flushProjectionBufferedOutputs(state: ProjectionState): void {
-  flushBufferedAssistantMessages(state);
-  flushPendingToolActivityOutput(state);
-  flushPendingFileEditOutput(state);
-}
-
-export function flushProjectionBufferedOutputsAfterTurnCompleted(
+function interruptPendingToolMessages(
   state: ProjectionState,
-  turnId: string,
+  completedAt: number | null,
+  turnId: string | null,
 ): void {
-  flushBufferedAssistantMessagesForTurn(state, turnId);
-  flushPendingToolActivityOutput(state);
-  flushPendingFileEditOutput(state);
+  for (const message of state.messages) {
+    if (
+      turnId !== null &&
+      (message.scope.kind !== "turn" || message.scope.turnId !== turnId)
+    ) {
+      continue;
+    }
+    switch (message.kind) {
+      case "command":
+      case "tool-call":
+      case "delegation":
+        if (message.status === "pending") {
+          message.status = "interrupted";
+          message.completedAt = completedAt;
+          if (message.kind === "command") {
+            message.output =
+              state.items.currentByItemId.get(message.callId)?.output ??
+              message.output;
+          }
+          message.output ||= "Tool execution interrupted";
+          if (
+            message.kind !== "delegation" &&
+            message.approvalStatus === "waiting_for_approval"
+          ) {
+            message.approvalStatus = null;
+          }
+        }
+        break;
+      case "web-search":
+      case "web-fetch":
+      case "image-generation":
+      case "image-view":
+      case "file-read":
+      case "search":
+      case "plan-steps":
+      case "extension":
+        if (message.status === "pending") {
+          message.status = "interrupted";
+          message.completedAt = completedAt;
+        }
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 function finalizePendingMessages(args: FinalizeProjectionMessagesArgs): void {
   const shouldPreservePending = shouldPreservePendingMessages(
     args.options?.threadStatus,
   );
-  const shouldFinalizeBufferedAssistants =
-    args.options?.threadStatus !== undefined && !shouldPreservePending;
   if (shouldPreservePending) {
-    flushActiveToolCell(args.state);
     return;
   }
 
-  flushPendingToolActivityOutput(args.state);
-  flushPendingFileEditOutput(args.state);
-  interruptPendingToolActivity(args.state, {
-    completedAt: args.state.threadInterruptedAt,
-  });
+  interruptPendingToolMessages(
+    args.state,
+    args.state.threadInterruptedAt,
+    null,
+  );
 
-  for (const fileEdits of args.state.fileEditsByCallId.values()) {
-    for (const fileEdit of fileEdits) {
-      if (fileEdit.status === "pending") {
-        fileEdit.status = "interrupted";
-      }
+  for (const message of args.state.messages) {
+    if (message.kind === "file-edit" && message.status === "pending") {
+      message.status = "interrupted";
     }
-  }
-
-  if (shouldFinalizeBufferedAssistants) {
-    flushBufferedAssistantMessages(args.state);
   }
 
   for (const message of args.state.messages) {
@@ -215,8 +202,6 @@ function finalizePendingMessages(args: FinalizeProjectionMessagesArgs): void {
     }
     finalizeOperationMessage(message, args.options);
   }
-
-  flushActiveToolCell(args.state);
 }
 
 function getMessageTurnFinalization(
@@ -292,24 +277,13 @@ function isPendingInTurns(
 
 export function interruptedTurnFinalizationChangesState(
   state: ProjectionState,
+  itemMessages: readonly EventProjectionMessage[],
 ): boolean {
   const turnIds = state.pendingFinalizationByTurnId;
-  if (turnIds.size === 0) {
-    return false;
-  }
-  for (const call of state.toolActivity.runningCallsById.values()) {
-    if (call.scope.kind === "turn" && turnIds.has(call.scope.turnId)) {
-      return true;
-    }
-  }
-  const activeCell = state.toolActivity.activeCell;
-  if (activeCell !== null && isPendingInTurns(activeCell, turnIds)) {
-    return true;
-  }
   return (
-    state.toolActivity.historyCells.some((cell) =>
-      isPendingInTurns(cell, turnIds),
-    ) || state.messages.some((message) => isPendingInTurns(message, turnIds))
+    turnIds.size > 0 &&
+    (state.messages.some((message) => isPendingInTurns(message, turnIds)) ||
+      itemMessages.some((message) => isPendingInTurns(message, turnIds)))
   );
 }
 
@@ -319,10 +293,7 @@ function finalizeInterruptedTurnPendingMessages(state: ProjectionState): void {
   }
 
   for (const [turnId, finalization] of state.pendingFinalizationByTurnId) {
-    interruptPendingToolActivity(state, {
-      completedAt: finalization.completedAt,
-      turnIds: new Set([turnId]),
-    });
+    interruptPendingToolMessages(state, finalization.completedAt, turnId);
   }
 
   for (const message of state.messages) {

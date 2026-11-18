@@ -181,12 +181,14 @@ describe("plugin settings + storage", () => {
 
     it("round-trips secrets through 0600 files and fires onChange with next/prev", async () => {
       await installConfigurable();
-      const view = await service.updateSettings("configurable", {
-        apiKey: "sk-secret-123",
-        autoSync: false,
-        retries: 4.5,
-        note: "hello",
-      });
+      const view = (
+        await service.updateSettings("configurable", {
+          apiKey: "sk-secret-123",
+          autoSync: false,
+          retries: 4.5,
+          note: "hello",
+        })
+      )?.view;
 
       const secretPath = join(
         dataDir,
@@ -225,9 +227,11 @@ describe("plugin settings + storage", () => {
       await service.updateSettings("configurable", { note: "hello" });
       expect(state().changes).toHaveLength(1);
 
-      const cleared = await service.updateSettings("configurable", {
-        apiKey: null,
-      });
+      const cleared = (
+        await service.updateSettings("configurable", {
+          apiKey: null,
+        })
+      )?.view;
       await expect(stat(secretPath)).rejects.toThrow();
       expect(cleared?.values.apiKey).toEqual({ set: false });
       expect((await state().settings.get()).apiKey).toBeUndefined();

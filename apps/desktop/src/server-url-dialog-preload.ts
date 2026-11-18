@@ -47,7 +47,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+    if (event.key === "Escape" && !event.isComposing) {
       ipcRenderer.send(BB_DESKTOP_SERVER_URL_DIALOG_CANCEL_CHANNEL);
     }
   });

@@ -314,6 +314,22 @@ describe("asking a question", () => {
     expect(await resultText(result)).toContain("dismissed the question");
   });
 
+  it("does not tell the model the user dismissed a question the host closed (#7347)", async () => {
+    const host = createHost();
+    const call = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    await host.harness.dispose();
+
+    const result = await call;
+    expect(result).toMatchObject({ isError: true });
+    const text = await resultText(result);
+    expect(text).not.toContain("dismissed");
+    expect(text).toContain("plugin-disposed");
+    expect(text).toContain("the user has not responded");
+  });
+
   it("reports an empty submission as an error instead of a blank answer", async () => {
     const host = createHost();
     const call = host.harness.callAgentTool(TOOL_NAME, { questions });

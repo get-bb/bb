@@ -17,6 +17,7 @@ import {
 } from "@/hooks/queries/plugin-install-job-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCard, PluginCardGrid, PluginCardAuthor } from "./PluginCard";
+import { PluginMarketplaceBadges } from "./PluginMarketplaceListing";
 import {
   catalogEntryDetailKey,
   catalogEntryInstallBlocker,
@@ -105,6 +106,11 @@ export function PluginCatalogCard({
     <PluginCard
       leading={<CatalogEntryIconChip entry={entry} compact />}
       title={entry.displayName}
+      titleDetail={
+        entry.listings.length > 1 ? (
+          <PluginMarketplaceBadges entry={entry} />
+        ) : undefined
+      }
       description={entry.description || undefined}
       byline={<PluginCardAuthor entry={entry} />}
       footerAction={

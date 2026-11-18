@@ -34,6 +34,7 @@ import {
   PaletteShortcut,
 } from "./PaletteShell";
 import { COMMAND_PALETTE_INPUT } from "./PaletteInputBand";
+import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const THREAD_SEARCH_ACTION_ID = paletteActionIdForCommand("thread.search");
 
@@ -161,7 +162,7 @@ export function CommandPaletteBody({
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (event.nativeEvent.isComposing) return;
+      if (isImeComposing(event)) return;
       if (visibleEntries.length === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -191,7 +192,7 @@ export function CommandPaletteBody({
         setHighlightedIndex(visibleEntries.length - 1);
         return;
       }
-      if (event.key === "Enter") {
+      if (isNonImeKey(event, "Enter")) {
         const choice = visibleEntries[activeIndex];
         if (choice === undefined) return;
         event.preventDefault();

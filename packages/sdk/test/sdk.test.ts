@@ -1661,7 +1661,7 @@ describe("@bb/sdk", () => {
     const queue = createFetchQueue([
       { body: [] },
       { body: { ok: true, delivery: "sent" } },
-      { body: null, status: 204 },
+      { body: { ok: true, progress: "complete" } },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({

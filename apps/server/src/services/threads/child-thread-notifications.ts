@@ -28,6 +28,7 @@ import {
   systemMessageKindForTemplate,
 } from "./system-message-kind.js";
 import { getTurnFinalOutput } from "./thread-data.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export type ChildThreadNotificationSource = ParentSystemThreadMentionSource;
 
@@ -152,7 +153,7 @@ function truncateChildThreadOutput(text: string, limit: number): string {
   if (retainedLength === 0) {
     return CHILD_THREAD_OUTPUT_TRUNCATION_MARKER.trimStart();
   }
-  return `${text.slice(0, retainedLength).trimEnd()}${CHILD_THREAD_OUTPUT_TRUNCATION_MARKER}`;
+  return `${sliceUtf16Head(text, retainedLength).trimEnd()}${CHILD_THREAD_OUTPUT_TRUNCATION_MARKER}`;
 }
 
 function formatChildThreadCompletionOutputExcerpt(

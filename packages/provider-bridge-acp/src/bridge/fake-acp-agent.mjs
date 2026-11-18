@@ -79,6 +79,13 @@
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_LOST_SESSION_ERROR
+ *                            → JSON-RPC error object; the first launched
+ *                              process rejects every session/prompt with it,
+ *                              as an agent that lost its session does
+ * - FAKE_ACP_LOST_SESSION_FILE
+ *                            → marker that limits the lost session to the
+ *                              first launch
  * - FAKE_ACP_GROK_CONTEXT=1  → advertise Grok model _meta.totalContextTokens
  *                              and prompt-result _meta.usage
  * - FAKE_ACP_COMPACT_STOP_REASON
@@ -105,6 +112,7 @@
  * Prompt texts that script agent-initiated work after the turn has ended:
  * - "then-unprompted-stream"     → message chunks and a finished tool call
  * - "then-unprompted-permission" → a permission request, then its outcome
+ * - "then-unprompted-ask-form"   → a form question after the turn ended
  * - "then-unprompted-open-tool"  → a tool call that stays in progress
  * - "then-unprompted-compaction" → a compaction_update in_progress, then
  *                                  completed
@@ -116,6 +124,8 @@
  * - "advertise-commands"         → advertise two slash commands, twice
  * - "ask-form"                   → ask a two-field form question
  * - "ask-form-too-large"         → ask a form with more fields than bb shows
+ * - "request-permission-reject-only"
+ *                                → ask permission offering only reject options
  */
 
 import { spawn } from "node:child_process";
@@ -163,6 +173,15 @@ const modelConfigReply = process.env.FAKE_ACP_MODEL_CONFIG_REPLY;
 const cursorParameterizedModels =
   process.env.FAKE_ACP_CURSOR_PARAMETERIZED_MODELS === "1";
 const requestLog = process.env.FAKE_ACP_REQUEST_LOG;
+
+function logPermissionResult(outcome) {
+  if (requestLog) {
+    appendFileSync(
+      requestLog,
+      `${JSON.stringify({ permissionResult: outcome })}\n`,
+    );
+  }
+}
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
 const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
@@ -292,6 +311,16 @@ if (process.env.FAKE_ACP_READY_FILE) {
 
 if (process.env.FAKE_ACP_LAUNCH_LOG) {
   appendFileSync(process.env.FAKE_ACP_LAUNCH_LOG, `launch ${process.pid}\n`);
+}
+
+let lostSessionError = null;
+if (
+  process.env.FAKE_ACP_LOST_SESSION_ERROR &&
+  process.env.FAKE_ACP_LOST_SESSION_FILE &&
+  !existsSync(process.env.FAKE_ACP_LOST_SESSION_FILE)
+) {
+  writeFileSync(process.env.FAKE_ACP_LOST_SESSION_FILE, "");
+  lostSessionError = JSON.parse(process.env.FAKE_ACP_LOST_SESSION_ERROR);
 }
 
 function send(message) {
@@ -614,6 +643,12 @@ async function handlePrompt(message) {
     return;
   }
 
+  if (lostSessionError !== null) {
+    activePromptId = null;
+    send({ jsonrpc: "2.0", id: message.id, error: lostSessionError });
+    return;
+  }
+
   if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {
     activePromptId = null;
     send({
@@ -720,11 +755,17 @@ async function handlePrompt(message) {
           kind: "execute",
           rawInput: { command },
         },
-        options: [
-          { optionId: "yes", name: "Allow", kind: "allow_once" },
-          { optionId: "always", name: "Always allow", kind: "allow_always" },
-          { optionId: "no", name: "Deny", kind: "reject_once" },
-        ],
+        options: text.includes("request-permission-reject-only")
+          ? [{ optionId: "no", name: "Deny", kind: "reject_once" }]
+          : [
+              { optionId: "yes", name: "Allow", kind: "allow_once" },
+              {
+                optionId: "always",
+                name: "Always allow",
+                kind: "allow_always",
+              },
+              { optionId: "no", name: "Deny", kind: "reject_once" },
+            ],
       });
       outcome =
         result?.outcome?.outcome === "selected"
@@ -733,6 +774,7 @@ async function handlePrompt(message) {
     } catch {
       outcome = "error";
     }
+    logPermissionResult(outcome);
     notifyUpdate(messageChunk(`permission:${outcome}`));
   } else if (text.includes("permission-probe")) {
     let wrote = false;
@@ -797,14 +839,38 @@ async function handlePrompt(message) {
       }).then(
         (result) => {
           const outcome = result?.outcome;
-          notifyUpdate(
-            messageChunk(
-              `permission:${outcome?.outcome === "selected" ? outcome.optionId : (outcome?.outcome ?? "none")}`,
-            ),
-          );
+          const text = `${outcome?.outcome === "selected" ? outcome.optionId : (outcome?.outcome ?? "none")}`;
+          logPermissionResult(text);
+          notifyUpdate(messageChunk(`permission:${text}`));
         },
-        () => notifyUpdate(messageChunk("permission:error")),
+        () => {
+          logPermissionResult("error");
+          notifyUpdate(messageChunk("permission:error"));
+        },
       );
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("then-unprompted-ask-form")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      void requestClient("elicitation/create", {
+        sessionId: activeSessionId,
+        mode: "form",
+        message: "Which environment?",
+        requestedSchema: {
+          type: "object",
+          properties: { target: { type: "string", enum: ["staging", "prod"] } },
+          required: ["target"],
+        },
+      })
+        .catch((error) => ({ error: String(error) }))
+        .then((result) => {
+          if (requestLog) {
+            appendFileSync(
+              requestLog,
+              `${JSON.stringify({ elicitationResult: result })}\n`,
+            );
+          }
+        });
     }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("advertise-commands")) {
     const availableCommands = [

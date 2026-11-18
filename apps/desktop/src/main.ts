@@ -269,6 +269,10 @@ import {
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
+  type RendererCrashRecovery,
+  watchRendererCrashes,
+} from "./desktop-renderer-recovery.js";
+import {
   createLogTailer,
   createLogLineBuffer,
   createLogViewerViewUrl,
@@ -424,6 +428,7 @@ let systemConfigSync: SystemConfigSync | null = null;
 let systemConfigRefreshToken = 0;
 let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
+const windowCrashRecoveries = new Map<number, RendererCrashRecovery>();
 const splitNavigationEnabledWebContentsIds = new Set<number>();
 const splitNavigationCommandsByWebContentsId = new Map<
   number,
@@ -597,6 +602,11 @@ function reloadApplicationWindow(
   ignoreCache: boolean,
 ): void {
   desktopBrowserViewManager?.prepareWindowReload(browserWindow);
+  if (
+    windowCrashRecoveries.get(browserWindow.webContents.id)?.restoreCrashPage()
+  ) {
+    return;
+  }
   if (ignoreCache) {
     browserWindow.webContents.reloadIgnoringCache();
   } else {
@@ -2157,12 +2167,14 @@ async function loadLogViewerWindow(
     lineBuffer.stop();
   });
 
-  await browserWindow.loadURL(createLogViewerViewUrl({ logDir: args.logDir }));
-  sendLogViewerSnapshot({
-    browserWindow,
-    lines: lineBuffer.lines(),
-    logDir: args.logDir,
+  browserWindow.webContents.on("did-finish-load", () => {
+    sendLogViewerSnapshot({
+      browserWindow,
+      lines: lineBuffer.lines(),
+      logDir: args.logDir,
+    });
   });
+  await browserWindow.loadURL(createLogViewerViewUrl({ logDir: args.logDir }));
   await tailer.start();
 }
 
@@ -2950,6 +2962,23 @@ async function runDesktopApp(): Promise<void> {
     connectSessionRenewal?.renewIfDue();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
+    const webContentsId = browserWindow.webContents.id;
+    windowCrashRecoveries.set(
+      webContentsId,
+      watchRendererCrashes({
+        describeWindow: () => `window "${browserWindow.getTitle()}"`,
+        logger: desktopLogger,
+        onRendererGone() {
+          if (applicationWindowWebContentsIds.has(webContentsId)) {
+            desktopBrowserViewManager?.prepareWindowReload(browserWindow);
+          }
+        },
+        webContents: browserWindow.webContents,
+      }),
+    );
+    browserWindow.once("closed", () => {
+      windowCrashRecoveries.delete(webContentsId);
+    });
     if (desktopBrowserViewManager === null) {
       return;
     }
@@ -3195,6 +3224,7 @@ async function runDesktopApp(): Promise<void> {
   });
   registerDesktopUpdateIpc();
   desktopFindViewManager = createDesktopFindViewManager({
+    logger: desktopLogger,
     preloadPath: findBarPreloadPath,
   });
   ipcMain.on(BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL, (event, payload: unknown) => {

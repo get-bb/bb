@@ -22,7 +22,6 @@ import { appendSystemErrorEvent } from "../threads/thread-events.js";
 import { threadScope } from "@bb/domain";
 import { stopThreadForCurrentState } from "../threads/thread-lifecycle.js";
 
-const RETRY_MS = 10_000;
 const preparingPauses = new WeakMap<
   WorkSessionDeps["db"],
   Map<string, { cancelled: boolean }>
@@ -74,12 +73,6 @@ export async function maintainMachine(
   const host = getHost(deps.db, hostId);
   if (host === null)
     throw new ApiError(404, "host_not_found", "Host not found");
-  if (host.suspendRetryAt !== null && host.suspendRetryAt > Date.now())
-    throw new ApiError(
-      409,
-      "machine_maintenance",
-      "Machine already has a lifecycle operation or is waiting for retry.",
-    );
   const pending = { cancelled: false };
   const pauses =
     preparingPauses.get(deps.db) ?? new Map<string, { cancelled: boolean }>();
@@ -91,7 +84,6 @@ export async function maintainMachine(
     machineOperationId: operationId,
     statusMessage:
       "Preserving this machine. Active turns will be interrupted and open terminals closed before the filesystem is saved.",
-    suspendRetryAt: null,
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
   try {
@@ -200,10 +192,7 @@ export async function maintainMachine(
     });
     deps.hub.notifyHost(hostId, ["host-disconnected"]);
     await save();
-    updateHost(deps.db, deps.hub, hostId, {
-      statusMessage: null,
-      suspendRetryAt: null,
-    });
+    updateHost(deps.db, deps.hub, hostId, { statusMessage: null });
   } catch (error) {
     const cancelled =
       error instanceof ApiError &&
@@ -221,7 +210,6 @@ export async function maintainMachine(
     updateHost(deps.db, deps.hub, hostId, {
       phase,
       statusMessage: cancelled ? null : `Machine suspension failed: ${message}`,
-      suspendRetryAt: cancelled ? null : Date.now() + RETRY_MS,
     });
     deps.hub.notifyHost(hostId, ["host-disconnected"]);
     throw error;

@@ -10,6 +10,7 @@ import {
 } from "@/components/promptbox/NewThreadComposer";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 
 export function PluginNewThreadComposer({
   defaultProjectId,
@@ -29,14 +30,15 @@ export function PluginNewThreadComposer({
 }: PluginComposerProps) {
   const pluginId = useContext(PluginContext);
   const quickCreateProject = useQuickCreateProjectController();
-  const [pickedProjectId, setPickedProjectId] = useState<string | null>(
-    defaultProjectId ?? null,
+  const [rememberedProjectId] = useRootComposeProjectId();
+  const [pickedProjectId, setPickedProjectId] = useState<string>(
+    defaultProjectId ?? rememberedProjectId,
   );
   const [seededDefaultProjectId, setSeededDefaultProjectId] =
     useState(defaultProjectId);
   if (seededDefaultProjectId !== defaultProjectId) {
     setSeededDefaultProjectId(defaultProjectId);
-    setPickedProjectId(defaultProjectId ?? null);
+    setPickedProjectId(defaultProjectId ?? rememberedProjectId);
   }
 
   const seed: NewThreadComposerSeed = {

@@ -57,6 +57,7 @@ import {
   threadResponse,
   type DemoThreadView,
 } from "./fixtures/world.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
@@ -147,10 +148,12 @@ async function readJson(request: Request): Promise<unknown> {
 }
 
 function promptText(input: readonly PromptInput[]): string {
-  return input
-    .flatMap((part) => (part.type === "text" ? [part.text] : []))
-    .join("\n")
-    .slice(0, MAX_MESSAGE_CHARS);
+  return sliceUtf16Head(
+    input
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .join("\n"),
+    MAX_MESSAGE_CHARS,
+  );
 }
 
 function uiPreferenceEntry<Key extends UiPreferenceKey>(key: Key) {
@@ -184,6 +187,9 @@ function createUiPreferences(): UiPreferenceEntries {
     ),
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
+    ),
+    "sidebar.updates.providerCli": uiPreferenceEntry(
+      "sidebar.updates.providerCli",
     ),
     "composer.provider": uiPreferenceEntry("composer.provider"),
     "infoPanel.collapsedSections": uiPreferenceEntry(
@@ -556,6 +562,7 @@ export class DemoWorld {
       activeThinking: null,
       activeWorkflows: [],
       activeBackgroundCommands: [],
+      pendingSteers: [],
       pendingTodos: null,
       extensionStates: {},
       providerCommands: null,

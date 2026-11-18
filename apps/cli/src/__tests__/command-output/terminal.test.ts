@@ -322,6 +322,26 @@ describe("bb terminal command output", () => {
     });
   });
 
+  it("bb terminal close --if-clean fails when the terminal is left open", async () => {
+    const close = vi.fn(async () =>
+      makeTerminalSession({ status: "running", lastUserInputAt: 2 }),
+    );
+    stubServerApi({ "v1.terminals.:terminalId.close.$post": close });
+
+    await expect(
+      runCommand(["terminal", "close", "term-1", "--if-clean"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(close).toHaveBeenCalledWith({
+      param: { terminalId: "term-1" },
+      json: { mode: "if-clean", reason: "user" },
+    });
+    expect(console.log).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Terminal term-1 was left open because it received user input",
+    );
+  });
+
   it("preserves arbitrary stdin bytes and presses Enter with a carriage return", async () => {
     const input = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
 

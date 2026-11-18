@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import { threadPaneActionSchema } from "@bb/server-contract";
 import { action } from "../../action.js";
@@ -6,11 +7,7 @@ import {
   resolveContextThreadId,
   resolveExplicitIdFlag,
 } from "../../context-env.js";
-import {
-  outputJson,
-  printThreadContextLabel,
-  type ResolvedId,
-} from "../helpers.js";
+import { printThreadContextLabel, type ResolvedId } from "../helpers.js";
 
 interface ThreadPaneCommandOptions {
   json?: boolean;

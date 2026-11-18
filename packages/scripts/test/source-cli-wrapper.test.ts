@@ -71,7 +71,7 @@ afterEach(() => {
 
 describe("source CLI wrapper", () => {
   it("keeps --json stdout parseable when the prepare build writes progress", async () => {
-    const result = await runSourceBb(["status", "--json"]);
+    const result = await runSourceBb(["guide", "--json"]);
 
     if (result.code !== 0 || result.signal !== null) {
       throw new Error(

@@ -78,6 +78,7 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { childThreadNoun } from "@/lib/child-thread-copy";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export interface ThreadPromptParentThreadSection {
   parentThreadTitle: string;
@@ -741,9 +742,8 @@ function ActiveChildThreadsCard({
   }
   const closeQuestionOnEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (
-      event.key !== "Escape" ||
+      !isNonImeKey(event, "Escape") ||
       event.defaultPrevented ||
-      event.nativeEvent.isComposing ||
       !currentQuestion
     ) {
       return;

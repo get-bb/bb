@@ -9,6 +9,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { applyPluginInstallJob } from "../cache-owners/plugin-cache-owner";
+import {
+  catalogEntryListings,
+  type PluginCatalogSearchEntry,
+} from "./plugin-catalog-queries";
 import { createPluginsClient } from "./plugin-client";
 import { pluginInstallJobsQueryKey } from "./query-keys";
 
@@ -65,21 +69,21 @@ export function useCancelPluginInstallJob() {
   });
 }
 
-export function useCatalogEntryInstallJob(entry: {
-  marketplace: string;
-  entryId: string;
-}): ActivePluginInstallJob | null {
+export function useCatalogEntryInstallJob(
+  entry: Pick<PluginCatalogSearchEntry, "marketplace" | "entryId" | "listings">,
+): ActivePluginInstallJob | null {
+  const listings = catalogEntryListings(entry);
   const { data } = useQuery({
     ...pluginInstallJobsQueryOptions,
     select: (jobs) =>
-      jobs
-        .filter(isActivePluginInstallJob)
-        .find(
-          (job) =>
-            job.target.kind === "catalog" &&
-            job.target.marketplace === entry.marketplace &&
-            job.target.entryId === entry.entryId,
-        ) ?? null,
+      jobs.filter(isActivePluginInstallJob).find(({ target }) => {
+        if (target.kind !== "catalog") return false;
+        return listings.some(
+          (listing) =>
+            listing.marketplace === target.marketplace &&
+            listing.entryId === target.entryId,
+        );
+      }) ?? null,
   });
   return data ?? null;
 }

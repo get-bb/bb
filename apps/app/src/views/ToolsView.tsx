@@ -1,5 +1,5 @@
 import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
   useAppPanelController,
   type AppFixedTabDestination,
@@ -425,6 +425,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         <PluginDetailBanners
           plugin={selectedPlugin}
           configurationPath={configurationPath}
+          catalogEntry={selectedCatalogEntry}
           catalogEntries={catalogQuery.data?.entries ?? []}
           onOpenPlugin={handleOpenCatalogPlugin}
         />
@@ -658,7 +659,6 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
     activeTabId: isPanelOpen ? (activeTab?.id ?? null) : null,
     close: closePanel,
     destinations: NO_PANEL_DESTINATIONS,
-    isFocused: paneContext?.isFocused ?? true,
   });
   const navigationCapabilities = useMemo(
     () => ({ panel: panelController }),
@@ -701,7 +701,10 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   );
 
   return (
-    <AppNavigationHostProvider capabilities={navigationCapabilities}>
+    <AppNavigationSurfaceProvider
+      capabilities={navigationCapabilities}
+      isFocused={paneContext?.isFocused ?? true}
+    >
       <AppPanelTabsPublisher
         publish={panelController.publishTabs}
         activeTabId={activeTab?.id ?? null}
@@ -731,7 +734,7 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
           widthPercentAtom={secondaryPanelWidthPercentAtom}
         />
       </div>
-    </AppNavigationHostProvider>
+    </AppNavigationSurfaceProvider>
   );
 }
 

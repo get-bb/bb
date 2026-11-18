@@ -1,4 +1,13 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   ExperimentalFileOpenOptions,
   JsonValue,
@@ -100,4 +109,85 @@ export function AppNavigationHostProvider({
 
 export function useAppNavigationHost() {
   return useContext(AppNavigationHostContext);
+}
+
+const focusedSurfaces = new Map<
+  symbol,
+  { current: ResolvedAppNavigationHostCapabilities }
+>();
+
+function FocusedSurfaceRegistration({ isFocused }: { isFocused: boolean }) {
+  const host = useAppNavigationHost();
+  const latest = useRef(host);
+  useLayoutEffect(() => {
+    latest.current = host;
+  });
+  useEffect(() => {
+    if (!isFocused) return;
+    const token = Symbol("app-navigation-surface");
+    focusedSurfaces.set(token, latest);
+    return () => {
+      focusedSurfaces.delete(token);
+    };
+  }, [isFocused]);
+  return null;
+}
+
+export function AppNavigationSurfaceProvider({
+  capabilities,
+  isFocused,
+  children,
+}: {
+  capabilities: AppNavigationHostCapabilities;
+  isFocused: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <AppNavigationHostProvider capabilities={capabilities}>
+      <FocusedSurfaceRegistration isFocused={isFocused} />
+      {children}
+    </AppNavigationHostProvider>
+  );
+}
+
+function getFocusedAppNavigationSurface(): ResolvedAppNavigationHostCapabilities | null {
+  let focused: ResolvedAppNavigationHostCapabilities | null = null;
+  for (const surface of focusedSurfaces.values()) focused = surface.current;
+  return focused;
+}
+
+export function getFocusedAppPanelController(): AppPanelController | null {
+  return getFocusedAppNavigationSurface()?.panel ?? null;
+}
+
+export function resetFocusedAppNavigationSurfacesForTest(): void {
+  focusedSurfaces.clear();
+}
+
+export function FocusedAppNavigationSurfaceProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const parent = useAppNavigationHost();
+  const latestParent = useRef(parent);
+  useLayoutEffect(() => {
+    latestParent.current = parent;
+  });
+  const [capabilities] = useState(() => {
+    const host = () => getFocusedAppNavigationSurface() ?? latestParent.current;
+    return {
+      openFileExternally: (intent: ExperimentalFileOpenOptions) =>
+        host().openFileExternally(intent),
+      openFilePreview: (intent: AppFilePreviewIntent) =>
+        host().openFilePreview(intent),
+      openTerminal: (session: TerminalSession) => host().openTerminal(session),
+      openUrl: (intent: AppUrlOpenIntent) => host().openUrl(intent),
+    };
+  });
+  return (
+    <AppNavigationHostProvider capabilities={capabilities}>
+      {children}
+    </AppNavigationHostProvider>
+  );
 }

@@ -27,6 +27,10 @@ const electronMock = vi.hoisted(() => {
     public destroyed = false;
     public focusCount = 0;
     public readonly sendCalls: { channel: string; payload?: unknown }[] = [];
+    public readonly rendererGoneListeners: ((
+      event: object,
+      details: { exitCode: number; reason: string },
+    ) => void)[] = [];
     public readonly webContents;
 
     constructor() {
@@ -42,6 +46,17 @@ const electronMock = vi.hoisted(() => {
         loadURL: async () => {},
         close: () => {
           this.destroyed = true;
+        },
+        on: (
+          event: string,
+          listener: (
+            event: object,
+            details: { exitCode: number; reason: string },
+          ) => void,
+        ) => {
+          if (event === "render-process-gone") {
+            this.rendererGoneListeners.push(listener);
+          }
         },
       };
     }
@@ -95,6 +110,7 @@ class FakeContentView implements FindViewHostContentView {
 }
 
 class FakeHostWindow implements FindViewHostWindow {
+  public stopFindCount = 0;
   private destroyed = false;
   private readonly liveContentView = new FakeContentView();
   private readonly liveWebContents = {
@@ -102,7 +118,9 @@ class FakeHostWindow implements FindViewHostWindow {
     focus: () => {},
     isDestroyed: () => this.destroyed,
     findInPage: () => 1,
-    stopFindInPage: () => {},
+    stopFindInPage: () => {
+      this.stopFindCount += 1;
+    },
     on: () => {},
   };
 
@@ -151,7 +169,10 @@ describe("createFindBarViewUrl", () => {
 });
 
 describe("createDesktopFindViewManager", () => {
+  const logger = { warn: vi.fn() };
+
   beforeEach(() => {
+    logger.warn.mockClear();
     electronMock.listeners.clear();
     electronMock.createdViews.length = 0;
   });
@@ -159,6 +180,7 @@ describe("createDesktopFindViewManager", () => {
   it("opens the find bar clear of the window chrome the renderer reported", () => {
     const host = new FakeHostWindow();
     const manager = createDesktopFindViewManager({
+      logger,
       preloadPath: "/tmp/find-bar-preload.cjs",
     });
 
@@ -182,6 +204,7 @@ describe("createDesktopFindViewManager", () => {
   it("releases a window after Electron has destroyed it", () => {
     const host = new FakeHostWindow();
     const manager = createDesktopFindViewManager({
+      logger,
       preloadPath: "/tmp/find-bar-preload.cjs",
     });
     manager.open(host, { topOffset: 48 });
@@ -198,5 +221,34 @@ describe("createDesktopFindViewManager", () => {
     expect(nextHost.contentView.views).toEqual([
       electronMock.createdViews.at(-1),
     ]);
+  });
+
+  it("replaces a crashed find bar on the next open instead of showing a blank bar", () => {
+    const host = new FakeHostWindow();
+    const manager = createDesktopFindViewManager({
+      logger,
+      preloadPath: "/tmp/find-bar-preload.cjs",
+    });
+    manager.open(host, { topOffset: 48 });
+    const crashed = electronMock.createdViews.at(-1);
+    const stopFindBeforeCrash = host.stopFindCount;
+
+    for (const listener of crashed?.rendererGoneListeners ?? []) {
+      listener({}, { exitCode: 9, reason: "oom" });
+    }
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("find bar renderer gone (reason oom"),
+    );
+    expect(host.stopFindCount).toBe(stopFindBeforeCrash + 1);
+    expect(crashed?.destroyed).toBe(true);
+    expect(host.contentView.views).toEqual([]);
+
+    manager.open(host, { topOffset: 48 });
+
+    const replacement = electronMock.createdViews.at(-1);
+    expect(electronMock.createdViews).toHaveLength(2);
+    expect(host.contentView.views).toEqual([replacement]);
+    expect(replacement?.visible).toBe(true);
   });
 });

@@ -80,28 +80,5 @@ export function resolveBufferedTextIdentity(
     return null;
   }
 
-  if (
-    args.decoded.type === "item/reasoning/summaryTextDelta" ||
-    args.decoded.type === "item/reasoning/textDelta"
-  ) {
-    return {
-      itemId: args.decoded.itemId,
-      kind: "reasoning",
-      parentToolCallId,
-      turnId,
-    };
-  }
-  if (
-    (args.decoded.type === "item/started" ||
-      args.decoded.type === "item/completed") &&
-    args.decoded.item.type === "reasoning"
-  ) {
-    return {
-      itemId: args.decoded.item.id,
-      kind: "reasoning",
-      parentToolCallId,
-      turnId,
-    };
-  }
   return null;
 }

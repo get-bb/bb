@@ -1007,6 +1007,23 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
+export const hostDaemonInteractiveWithdrawRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  request: hostDaemonInteractiveRequestKeySchema,
+  reason: z.string().min(1),
+});
+export type HostDaemonInteractiveWithdrawRequest = z.infer<
+  typeof hostDaemonInteractiveWithdrawRequestSchema
+>;
+
+export const hostDaemonInteractiveWithdrawResponseSchema = z.object({
+  ok: z.literal(true),
+  interactionId: z.string().min(1).nullable(),
+});
+export type HostDaemonInteractiveWithdrawResponse = z.infer<
+  typeof hostDaemonInteractiveWithdrawResponseSchema
+>;
+
 const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 const hostDaemonSkillTreeFileSchema = z
   .object({
@@ -1103,6 +1120,12 @@ export type HostDaemonInternalSchema = {
     $post: Endpoint<
       { json: HostDaemonInteractiveInterruptRequest },
       HostDaemonInteractiveInterruptResponse
+    >;
+  };
+  "/session/interactive-request/withdraw": {
+    $post: Endpoint<
+      { json: HostDaemonInteractiveWithdrawRequest },
+      HostDaemonInteractiveWithdrawResponse
     >;
   };
 };
