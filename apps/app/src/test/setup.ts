@@ -1,30 +1,45 @@
 /// <reference types="vitest/jsdom" />
 
 import "@bb/shared-ui/icon-extended";
-import { afterEach, beforeEach } from "vitest";
-import {
-  holdLazyImports,
-  installLazyImportTracking,
-  releaseLazyImports,
-  settleLazyModulesBeforeWaiting,
-  unsettledLazyImports,
-} from "./lazy-modules";
+import type { ComponentType } from "react";
+import { vi } from "vitest";
+import { installLazyModuleHold } from "./lazy-modules";
 
-installLazyImportTracking();
+installLazyModuleHold();
 
-beforeEach(async (context) => {
-  await settleLazyModulesBeforeWaiting();
-  holdLazyImports();
-  context.onTestFailed(({ task }) => {
-    const unsettled = unsettledLazyImports();
-    const [error] = task.result?.errors ?? [];
-    if (unsettled.length === 0 || error === undefined) return;
-    error.message += `\n\nLazy imports had not settled when this test failed: ${unsettled.join(", ")}. In app tests a lazy import resolves when the test awaits settleLazyModules() from @/test/lazy-modules or a Testing Library findBy/waitFor; synchronous assertions after the render or interaction that starts it see the loading state.`;
-  });
+vi.mock("react", async (importOriginal) => {
+  const { gateReactLazy } = await import("./lazy-modules");
+  return gateReactLazy(await importOriginal<typeof import("react")>());
 });
 
-afterEach(() => {
-  releaseLazyImports();
+vi.mock("@/lib/define-split", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/define-split")>();
+  const { gateLoadedComponent, prepareLazyModuleForFile } =
+    await import("./lazy-modules");
+  const defineSplit: typeof actual.defineSplit = (options) => {
+    const key = `split:${options.id}`;
+    const split = actual.defineSplit({
+      ...options,
+      load: () =>
+        options
+          .load()
+          .then(
+            (View) =>
+              gateLoadedComponent(
+                key,
+                View as ComponentType<object>,
+              ) as typeof View,
+          ),
+    });
+    const preload = split.preload;
+    return Object.assign(split, {
+      preload: async () => {
+        await preload();
+        prepareLazyModuleForFile(key);
+      },
+    });
+  };
+  return { ...actual, defineSplit };
 });
 
 if (typeof globalThis.navigator === "undefined") {

@@ -2,7 +2,8 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { lazy, Suspense, type ComponentType } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defineSplit } from "@/lib/define-split";
 import { settleLazyModules } from "./lazy-modules";
 
 afterEach(cleanup);
@@ -79,4 +80,64 @@ it("lets findBy wait for an import that starts a microtask after render and outl
   );
 
   expect(await screen.findByText("Slow")).toBeTruthy();
+});
+
+const CachedSplit = defineSplit<{ label: string }>({
+  id: "lazy-modules-test-cached",
+  load: () =>
+    trackedImport(({ label }: { label: string }) => <p>{label}</p>, "./Cached"),
+  loading: () => <p>Loading cached</p>,
+  tier: "intent",
+});
+
+const PreparedSplit = defineSplit<{ label: string }>({
+  id: "lazy-modules-test-prepared",
+  load: () =>
+    trackedImport(
+      ({ label }: { label: string }) => <p>{label}</p>,
+      "./Prepared",
+    ),
+  loading: () => <p>Loading prepared</p>,
+  tier: "intent",
+});
+
+const CachedLazy = lazy(() =>
+  trackedImport({ default: () => <p>Lazy ready</p> }, "./CachedLazy"),
+);
+
+await PreparedSplit.preload();
+
+describe("modules loaded before the current test", { shuffle: false }, () => {
+  it("loads a split and a lazy component in one test", async () => {
+    render(<CachedSplit label="First" />);
+    render(
+      <Suspense fallback={<p>Loading lazy</p>}>
+        <CachedLazy />
+      </Suspense>,
+    );
+    expect(await screen.findByText("First")).toBeTruthy();
+    expect(await screen.findByText("Lazy ready")).toBeTruthy();
+    render(<CachedSplit label="Same test" />);
+    expect(screen.getByText("Same test")).toBeTruthy();
+  });
+
+  it("holds an already-loaded split and lazy component until this test settles", async () => {
+    render(<CachedSplit label="Second" />);
+    render(
+      <Suspense fallback={<p>Loading lazy</p>}>
+        <CachedLazy />
+      </Suspense>,
+    );
+    expect(screen.getByText("Loading cached")).toBeTruthy();
+    expect(screen.getByText("Loading lazy")).toBeTruthy();
+
+    await settleLazyModules();
+    expect(screen.getByText("Second")).toBeTruthy();
+    expect(screen.getByText("Lazy ready")).toBeTruthy();
+  });
+
+  it("renders a split the file preloaded during collection immediately", () => {
+    render(<PreparedSplit label="Prepared" />);
+    expect(screen.getByText("Prepared")).toBeTruthy();
+  });
 });
