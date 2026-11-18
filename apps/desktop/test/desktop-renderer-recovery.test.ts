@@ -13,6 +13,7 @@ const LOCAL_VIEW_PREFIX = "data:text/html;charset=utf-8,";
 
 class FakeWebContents extends EventEmitter {
   public destroyed = false;
+  public crashed = false;
   public url = APP_URL;
   public readonly loads: string[] = [];
   public reloads = 0;
@@ -21,22 +22,29 @@ class FakeWebContents extends EventEmitter {
     return this.url;
   }
 
+  isCrashed(): boolean {
+    return this.crashed;
+  }
+
   isDestroyed(): boolean {
     return this.destroyed;
   }
 
   async loadURL(url: string): Promise<void> {
+    this.crashed = false;
     this.loads.push(url);
     this.url = url;
     this.emit("did-navigate");
   }
 
   reload(): void {
+    this.crashed = false;
     this.reloads += 1;
     this.emit("did-navigate");
   }
 
   crash(reason: RenderProcessGoneDetails["reason"] = "oom"): void {
+    this.crashed = true;
     this.emit("render-process-gone", {}, { exitCode: 9, reason });
   }
 
@@ -184,6 +192,17 @@ describe("watchRendererCrashes", () => {
 
     webContents.crash();
     await webContents.loadURL("http://127.0.0.1:19233/");
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(webContents.reloads).toBe(0);
+  });
+
+  it("does not abort a main-process load that is still in flight when the backoff ends", async () => {
+    const { webContents } = setup();
+
+    webContents.crash();
+    await vi.advanceTimersByTimeAsync(RENDERER_RELOAD_DELAYS_MS[0] - 50);
+    webContents.crashed = false;
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(webContents.reloads).toBe(0);

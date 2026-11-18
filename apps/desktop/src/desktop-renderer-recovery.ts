@@ -29,6 +29,7 @@ const REASON_DESCRIPTIONS: Record<RendererGoneReason, string> = {
 
 export interface RecoverableWebContents {
   getURL(): string;
+  isCrashed(): boolean;
   isDestroyed(): boolean;
   loadURL(url: string): Promise<void>;
   reload(): void;
@@ -163,7 +164,9 @@ export function watchRendererCrashes(
     );
     reloadTimer = setTimeout(() => {
       reloadTimer = null;
-      if (!webContents.isDestroyed()) webContents.reload();
+      if (!webContents.isDestroyed() && webContents.isCrashed()) {
+        webContents.reload();
+      }
     }, delayMs);
   });
 
