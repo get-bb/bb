@@ -1,20 +1,20 @@
 export const MAX_PARKED_TERMINAL_RUNTIMES = 8;
 
-interface ParkedTerminalRuntime {
+export interface ParkedTerminalRuntime {
   dispose(): void;
 }
 
 const parkedTerminalRuntimes = new Map<string, ParkedTerminalRuntime>();
 
-export function takeParkedTerminalRuntime<R extends ParkedTerminalRuntime>(
+export function takeParkedTerminalRuntime(
   terminalId: string,
-): R | null {
+): ParkedTerminalRuntime | null {
   const runtime = parkedTerminalRuntimes.get(terminalId);
   if (runtime === undefined) {
     return null;
   }
   parkedTerminalRuntimes.delete(terminalId);
-  return runtime as R;
+  return runtime;
 }
 
 export function parkTerminalRuntime(

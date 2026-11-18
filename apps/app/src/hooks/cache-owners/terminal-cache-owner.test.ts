@@ -4,7 +4,7 @@ import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import {
   parkTerminalRuntime,
   takeParkedTerminalRuntime,
-} from "@/components/thread/terminal/terminal-runtime-cache";
+} from "@/lib/terminal-runtime-cache";
 import {
   applyTerminalSessionClose,
   applyTerminalSessionMissing,
