@@ -1848,6 +1848,7 @@ export interface UpdateThreadInput {
   lastReadAt?: number | null;
   parentThreadId?: string | null;
   title?: string | null;
+  titleFallback?: string | null;
   visibility?: ThreadVisibility;
   parentNotifications?: ThreadParentNotifications;
 }
@@ -1864,7 +1865,9 @@ export function updateThread(
     return null;
   }
   const changes: ThreadChangeKind[] = [];
-  if ("title" in input || "sectionId" in input) changes.push("title-changed");
+  if ("title" in input || "titleFallback" in input || "sectionId" in input) {
+    changes.push("title-changed");
+  }
   if ("lastReadAt" in input) changes.push("read-state-changed");
   if ("visibility" in input && input.visibility !== existing.visibility) {
     changes.push("title-changed");
@@ -1890,6 +1893,7 @@ export function updateThread(
 
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
   if ("title" in input) set.title = input.title;
+  if ("titleFallback" in input) set.titleFallback = input.titleFallback;
   if ("sectionId" in input) {
     set.sectionId = input.sectionId;
   }
@@ -1909,7 +1913,7 @@ export function updateThread(
     .where(eq(threads.id, id))
     .returning()
     .get();
-  if (updated && "title" in input) {
+  if (updated && ("title" in input || "titleFallback" in input)) {
     upsertThreadTitleSearchSegments(db, {
       threadId: updated.id,
       title: updated.title,

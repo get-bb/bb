@@ -357,6 +357,37 @@ describe("thread title regeneration", () => {
     },
   );
 
+  it("uses the first real task after an empty initialization request", async () => {
+    completeTitle.mockResolvedValue("Fix Login Redirect Loop");
+    await withTitleService(async (harness) => {
+      const thread = seedTitledThread(harness, "Voice conversation");
+      seedTurnRequest(harness, {
+        threadId: thread.id,
+        sequence: 1,
+        initiator: "user",
+        target: { kind: "thread-start" },
+        input: [],
+      });
+      seedTurnRequest(harness, {
+        threadId: thread.id,
+        sequence: 2,
+        initiator: "user",
+        target: { kind: "new-turn" },
+        input: textInput("Please fix the login redirect loop on settings"),
+      });
+
+      const response = await regenerate(harness, thread.id);
+
+      expect(response.status).toBe(200);
+      expect(sentPrompt()).toContain(
+        "Task:\nPlease fix the login redirect loop on settings",
+      );
+      expect(getThread(harness.db, thread.id)?.title).toBe(
+        "Fix Login Redirect Loop",
+      );
+    });
+  });
+
   it("refuses a thread without a task message", async () => {
     await withTitleService(async (harness) => {
       const thread = seedTitledThread(harness, "Empty thread");

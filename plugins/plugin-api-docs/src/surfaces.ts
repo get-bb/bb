@@ -1636,6 +1636,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
+          'Initialize a thread with start: "initialize" and input: [] before its first task; the provider becomes ready without starting a model turn. The default start: "run" still requires a first message',
           "Normalize and resolve host paths with experimental_normalizeHostPath(path) and experimental_resolveHostPath({ rootPath, path }) from @get-bb/plugin-sdk; invalid paths return null",
           "Recognize drive roots (including C:) and UNC paths with either Windows separator, regardless of the server OS; reject rootless backslashes and drive-relative paths such as C:foo during resolution",
           "Join relative paths, obtain dirname/basename, derive a slash-separated relative path within a root, and create case-insensitive Windows comparison keys with the experimental host-path helpers; invalid absolute inputs return null",

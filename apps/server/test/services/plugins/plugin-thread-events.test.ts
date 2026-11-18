@@ -382,6 +382,7 @@ describe("plugin thread lifecycle events", () => {
       const request: ThreadCreateServiceRequest = {
         environment: { type: "reuse", environmentId: environment.id },
         input: [],
+        start: "initialize",
         origin: null,
         pluginMetadata: null,
         projectId: project.id,
@@ -425,6 +426,7 @@ describe("plugin thread lifecycle events", () => {
             request: {
               environment: { type: "reuse", environmentId: environment.id },
               input: [],
+              start: "initialize",
               origin: "plugin",
               originPluginId,
               pluginMetadata: null,

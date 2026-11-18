@@ -25,6 +25,7 @@ import {
   startedOnBehalfOfSchema,
   threadCreateOriginSchema,
   threadOriginKindSchema,
+  type ThreadOriginKind,
   threadListEntrySchema,
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
@@ -127,6 +128,9 @@ export type ExistingThreadExecutionInputSources = z.infer<
   typeof existingThreadExecutionInputSourcesSchema
 >;
 
+export const threadCreateStartSchema = z.enum(["run", "initialize"]);
+export type ThreadCreateStart = z.infer<typeof threadCreateStartSchema>;
+
 export const createThreadRequestSchema = z
   .object({
     projectId: z.string().min(1),
@@ -138,6 +142,7 @@ export const createThreadRequestSchema = z
     visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     input: z.array(promptInputSchema),
+    start: threadCreateStartSchema.optional(),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
@@ -204,12 +209,11 @@ export const createThreadRequestSchema = z
         path: ["originPluginId"],
       });
     }
-    if (value.originKind === null && value.input.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "input must contain at least one entry",
-        path: ["input"],
-      });
+    for (const issue of threadCreateStartIssues({
+      ...value,
+      start: value.start ?? "run",
+    })) {
+      ctx.addIssue({ code: "custom", ...issue });
     }
     if (value.originKind === null && value.sourceSeqEnd !== undefined) {
       ctx.addIssue({
@@ -220,6 +224,48 @@ export const createThreadRequestSchema = z
     }
   });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
+
+export function threadCreateStartIssues(request: {
+  start: ThreadCreateStart;
+  input: readonly unknown[];
+  originKind: ThreadOriginKind | null;
+  sourceThreadId?: string;
+  sendAt?: number;
+  pluginSubmission?: unknown;
+}): { message: string; path: string[] }[] {
+  if (request.start === "run") {
+    const issues: { message: string; path: string[] }[] = [];
+    if (request.originKind === null && request.input.length === 0) {
+      issues.push({
+        message: "input must contain at least one entry",
+        path: ["input"],
+      });
+    }
+    if (request.input.length === 0 && request.sendAt !== undefined) {
+      issues.push({
+        message: "sendAt requires an initial message",
+        path: ["sendAt"],
+      });
+    }
+    return issues;
+  }
+  const unsupported: [string, boolean][] = [
+    ["input", request.input.length > 0],
+    ["sendAt", request.sendAt !== undefined],
+    ["originKind", request.originKind !== null],
+    ["sourceThreadId", request.sourceThreadId !== undefined],
+    ["pluginSubmission", request.pluginSubmission !== undefined],
+  ];
+  return unsupported
+    .filter(([, present]) => present)
+    .map(([field]) => ({
+      message:
+        field === "input"
+          ? 'start "initialize" requires empty input'
+          : `start "initialize" cannot be combined with ${field}`,
+      path: [field],
+    }));
+}
 
 const agentOnlyPromptInputSchema = promptInputSchema.and(
   z.object({ visibility: z.literal("agent-only") }),

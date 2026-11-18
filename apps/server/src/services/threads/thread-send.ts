@@ -1,4 +1,9 @@
-import { getEnvironment, getThread } from "@bb/db";
+import {
+  getEnvironment,
+  getLastStoredTurnRequestEvent,
+  getThread,
+  updateThread,
+} from "@bb/db";
 import type { DbConnection, DbTransaction, EnvironmentRow } from "@bb/db";
 import type {
   ClientTurnRequestId,
@@ -32,8 +37,13 @@ import {
   type AppendedClientTurnRequestWithNotification,
   createClientTurnRequestId,
   getActiveTurnId,
+  parseStoredTurnRequestEvent,
   type TurnRequestRetryMarker,
 } from "./thread-events.js";
+import {
+  deriveTitleFallback,
+  titleUntitledThreadFromInput,
+} from "./title-generation.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import {
   ensureThreadCanStartRequest,
@@ -520,6 +530,45 @@ function recordSentTurnRequestInTransaction(
   return outcome;
 }
 
+function isFirstTaskOfInitializedUntitledThread(
+  deps: Pick<AppDeps, "db">,
+  thread: Thread,
+): boolean {
+  if (thread.title !== null || thread.originKind !== null) {
+    return false;
+  }
+  const lastRequest = getLastStoredTurnRequestEvent(deps.db, thread.id);
+  return (
+    lastRequest !== null &&
+    parseStoredTurnRequestEvent(lastRequest).input.length === 0
+  );
+}
+
+function titleInitializedThreadFromFirstTask(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: { threadId: string; input: PromptInput[] },
+): void {
+  const visibleInput = args.input.filter(
+    (part) => part.visibility !== "agent-only",
+  );
+  const fallback = deriveTitleFallback(visibleInput);
+  const current = getThread(deps.db, args.threadId);
+  if (fallback !== null && current?.titleFallback === null) {
+    updateThread(deps.db, deps.hub, args.threadId, {
+      titleFallback: fallback,
+    });
+  }
+  void titleUntitledThreadFromInput(deps, {
+    threadId: args.threadId,
+    input: visibleInput,
+  }).catch((error: unknown) => {
+    deps.logger.warn(
+      { err: error, threadId: args.threadId },
+      "Failed to generate thread title",
+    );
+  });
+}
+
 export async function sendThreadMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendThreadMessageArgs,
@@ -665,6 +714,15 @@ async function sendThreadMessageWithoutContextClear(
     initiator,
   });
 
+  const titlesInitializedThread =
+    args.systemNotice === undefined &&
+    isFirstTaskOfInitializedUntitledThread(deps, thread);
+  const titleFirstTask = () => {
+    if (titlesInitializedThread) {
+      titleInitializedThreadFromFirstTask(deps, { threadId: thread.id, input });
+    }
+  };
+
   const reprovisionDispatch = await dispatchTurnDuringReprovision({
     beforeRequestAppendInTransaction: beforeAppendInTransaction,
     deps,
@@ -685,6 +743,7 @@ async function sendThreadMessageWithoutContextClear(
     thread,
   });
   if (reprovisionDispatch !== null) {
+    titleFirstTask();
     if (shouldCaptureUserMessageSent) {
       captureUserMessageSentTelemetry(deps, {
         isChildThread: thread.parentThreadId !== null,
@@ -791,6 +850,7 @@ async function sendThreadMessageWithoutContextClear(
       queuedRequest.request.notificationMetadata,
     );
     finishThreadLifecycleInBackground(deps, queuedRequest.lifecycle);
+    titleFirstTask();
     const onHistoryReplacementSettled =
       args.historyReplacement?.onCommandSettled;
     startLiveHostCommand(deps, {
@@ -875,6 +935,7 @@ async function sendThreadMessageWithoutContextClear(
     queuedRequest.request.notificationMetadata,
   );
   finishThreadLifecycleInBackground(deps, queuedRequest.lifecycle);
+  titleFirstTask();
   startLiveHostCommand(deps, {
     command,
     hostId: readyEnvironment.hostId,

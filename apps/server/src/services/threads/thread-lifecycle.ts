@@ -307,7 +307,7 @@ export function settleThreadStartCommandResult(
     ? {
         kind: "accepted",
         threadStart: {
-          emptyFork: command.fork !== null && command.input.length === 0,
+          emptyInput: command.input.length === 0,
           executionId: args.execution.id,
           providerThreadId: report.result.providerThreadId,
           stale:
