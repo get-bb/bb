@@ -11,6 +11,7 @@ import {
   OAUTH_REFRESH_REUSE_GRACE_MS,
   OAUTH_REVOKED_GRANT_RETENTION_MS,
   OAUTH_REFRESH_TOKEN_TTL_MS,
+  OAUTH_ROTATED_REFRESH_RETENTION_MS,
   auditLog,
   oauthCode,
   oauthGrant,
@@ -1135,20 +1136,23 @@ describe("token endpoint: refresh_token", () => {
   });
 
   it("keeps a bounded number of refresh rows for a long-lived grant", async () => {
+    const intervalMs = OAUTH_ROTATED_REFRESH_RETENTION_MS / 6;
     let current = await exchange();
-    for (let hour = 0; hour < 72; hour += 1) {
-      now += 60 * 60 * 1000;
+    for (let refreshes = 0; refreshes < 18; refreshes += 1) {
+      now += intervalMs;
       current = await tokens(await refresh(current.refresh_token));
     }
-    expect(await db.$count(oauthRefreshToken)).toBeLessThanOrEqual(26);
+    expect(await db.$count(oauthRefreshToken)).toBeLessThanOrEqual(
+      OAUTH_ROTATED_REFRESH_RETENTION_MS / intervalMs + 2,
+    );
     expect((await grantRows())[0]?.revokedAt).toBeNull();
   });
 
   it("still detects reuse of a token rotated within the retention window", async () => {
     const first = await exchange();
     let current = await tokens(await refresh(first.refresh_token));
-    for (let hour = 0; hour < 20; hour += 1) {
-      now += 60 * 60 * 1000;
+    for (let step = 0; step < 4; step += 1) {
+      now += 5 * 60 * 60 * 1000;
       current = await tokens(await refresh(current.refresh_token));
     }
     await expectTokenError(await refresh(first.refresh_token), "invalid_grant");

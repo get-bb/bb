@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
-import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../../helpers/thread-status.js";
 import { beginProjectDeletion } from "../../../src/services/projects/project-deletion.js";
 import { createThreadRecord } from "../../../src/services/threads/thread-create-helpers.js";
 import { archiveThreadAndReleaseChildren } from "../../../src/services/threads/thread-ownership.js";
@@ -105,19 +105,16 @@ describe("plugin thread lifecycle events", () => {
         thread: { status: "starting" },
       });
 
-      const started = applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+      const started = moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.started",
         threadId: thread.id,
-        event: { type: "run.started" },
       });
       expect(started.applied).toBe(true);
 
-      const duplicate = applyLoggedThreadLifecycleEvent(
-        lifecycleDeps(harness),
-        {
-          threadId: thread.id,
-          event: { type: "run.started" },
-        },
-      );
+      const duplicate = moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.started",
+        threadId: thread.id,
+      });
       expect(duplicate.applied).toBe(false);
 
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
@@ -160,15 +157,15 @@ describe("plugin thread lifecycle events", () => {
         },
       });
 
-      const outcome = applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+      const outcome = moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.succeeded",
         threadId: thread.id,
-        event: { type: "run.succeeded" },
       });
       expect(outcome.applied).toBe(true);
       expect(
-        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        moveThreadStatus(lifecycleDeps(harness), {
+          move: "run.succeeded",
           threadId: thread.id,
-          event: { type: "run.succeeded" },
         }).applied,
       ).toBe(false);
 
@@ -234,9 +231,9 @@ describe("plugin thread lifecycle events", () => {
             },
           });
         }
-        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        moveThreadStatus(lifecycleDeps(harness), {
+          move: "run.succeeded",
           threadId: thread.id,
-          event: { type: "run.succeeded" },
         });
         await vi.waitFor(() => expect(recorded.length).toBeGreaterThan(0));
         const response = await harness.app.request(
@@ -244,9 +241,9 @@ describe("plugin thread lifecycle events", () => {
         );
         const { output } = (await response.json()) as { output: string | null };
         const idleText = recorded.pop()?.lastAssistantText;
-        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        moveThreadStatus(lifecycleDeps(harness), {
+          move: "run.started",
           threadId: thread.id,
-          event: { type: "run.started" },
         });
         return { idleText, output };
       };
@@ -298,15 +295,15 @@ describe("plugin thread lifecycle events", () => {
         data: { code: "provider_process_exited", message: "provider exploded" },
       });
 
-      const outcome = applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+      const outcome = moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.failed",
         threadId: thread.id,
-        event: { type: "run.failed" },
       });
       expect(outcome.applied).toBe(true);
       expect(
-        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        moveThreadStatus(lifecycleDeps(harness), {
+          move: "run.failed",
           threadId: thread.id,
-          event: { type: "run.failed" },
         }).applied,
       ).toBe(false);
 
@@ -796,9 +793,9 @@ describe("plugin thread lifecycle events", () => {
         thread: { status: "active" },
       });
 
-      const outcome = applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+      const outcome = moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.succeeded",
         threadId: thread.id,
-        event: { type: "run.succeeded" },
       });
       expect(outcome.applied).toBe(true);
 
@@ -845,20 +842,20 @@ describe("plugin thread lifecycle events", () => {
       const { thread } = seedThreadFixture(harness, {
         thread: { status: "active" },
       });
-      applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+      moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.succeeded",
         threadId: thread.id,
-        event: { type: "run.succeeded" },
       });
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
 
       await harness.pluginService.setEnabled("observer", false);
-      applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+      moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.started",
         threadId: thread.id,
-        event: { type: "run.started" },
       });
-      applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+      moveThreadStatus(lifecycleDeps(harness), {
+        move: "run.succeeded",
         threadId: thread.id,
-        event: { type: "run.succeeded" },
       });
       await new Promise((resolve) => setTimeout(resolve, 25));
       expect(recorded).toHaveLength(1);
@@ -890,9 +887,9 @@ it("coalesces thread appends and delivers current status without reading history
     for (let i = 0; i < 20; i++) emitPluginThreadEvents(thread.id);
     await vi.advanceTimersByTimeAsync(999);
     expect(recorded).toHaveLength(0);
-    applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+    moveThreadStatus(lifecycleDeps(harness), {
+      move: "run.started",
       threadId: thread.id,
-      event: { type: "run.started" },
     });
     await vi.advanceTimersByTimeAsync(1);
     expect(recorded).toMatchObject([

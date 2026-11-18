@@ -104,3 +104,4 @@ provider-recordings/raw/
 /plugins/*/.bundled-runtime/
 
 .ci-health/
+.test-durations/

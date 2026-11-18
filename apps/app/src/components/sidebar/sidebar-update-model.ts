@@ -164,7 +164,3 @@ export function buildSidebarUpdateModel(input: {
       rows.some((row) => row.state === "updating"),
   };
 }
-
-export function sidebarUpdateModelIsEmpty(model: SidebarUpdateModel): boolean {
-  return model.bb === null && model.rows.length === 0;
-}

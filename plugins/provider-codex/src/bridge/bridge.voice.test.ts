@@ -1,8 +1,12 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import {
+  experimental_trackChildProcesses,
+  type ExperimentalChildProcessTracker,
+} from "@get-bb/plugin-sdk/testing";
 import { handleLine } from "./bridge.js";
 import { cleanupBridgeProcessTest } from "./bridge-process.test-support.js";
 import {
@@ -15,6 +19,10 @@ const providerThreadId = "native-voice-thread";
 const sessionId = "11111111-1111-4111-8111-111111111111";
 let harness: ReturnType<typeof createHarness> | undefined;
 let workspaceDir = "";
+let children: ExperimentalChildProcessTracker | undefined;
+beforeEach(() => {
+  children = experimental_trackChildProcesses();
+});
 let processLogPath = "";
 
 afterEach(async () => {
@@ -23,7 +31,7 @@ afterEach(async () => {
     cleanupId: 99,
     threadId,
     providerThreadId,
-    processLogPath,
+    children,
     workspaceDir,
     unstubEnvs: vi.unstubAllEnvs,
   });

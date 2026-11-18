@@ -1,4 +1,5 @@
 import { spawnHostProcess as spawn, execHostFile } from "@bb/process-utils";
+import type { ChildProcessTracker } from "@bb/test-helpers";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -339,13 +340,15 @@ export async function waitFor<T>(
   );
 }
 
-export function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+export function runningChild(
+  children: ChildProcessTracker,
+  pid: number | null,
+): ChildProcess {
+  const child = children.running().find((candidate) => candidate.pid === pid);
+  if (child === undefined) {
+    throw new Error(`No running tracked child process has pid ${pid}`);
   }
+  return child;
 }
 
 export async function opensslAvailable(): Promise<boolean> {

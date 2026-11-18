@@ -196,3 +196,9 @@ export function pluginRowSignals(plugin: PluginListItem): {
   }
   return { status, update: null };
 }
+
+export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
+  if (plugin.source.startsWith("builtin:") || plugin.source.startsWith("path:"))
+    return false;
+  return plugin.provenance === "direct" || plugin.provenance === "catalog";
+}

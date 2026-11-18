@@ -385,22 +385,14 @@ describe("ThreadDetailSecondaryContent", () => {
     );
 
     expect(
-      await screen.findByRole(
-        "button",
-        { name: "Hide right panel" },
-        { timeout: 5_000 },
-      ),
+      await screen.findByRole("button", { name: "Hide right panel" }),
     ).not.toBeNull();
   });
 
   it("keeps the thread header inside the timeline column beside the panel", async () => {
     renderThreadDetail(false);
 
-    const sidePanel = await screen.findByTestId(
-      "inline-secondary-panel",
-      {},
-      { timeout: 5_000 },
-    );
+    const sidePanel = await screen.findByTestId("inline-secondary-panel");
     const timelinePanel = screen.getByTestId("panel");
     const panelGroup = screen.getByTestId("panel-group");
     expect(timelinePanel.contains(screen.getByTestId("header"))).toBe(true);
@@ -487,11 +479,7 @@ describe("ThreadDetailSecondaryContent", () => {
       </MemoryRouter>,
     );
 
-    const sidePanel = await screen.findByTestId(
-      "inline-secondary-panel",
-      {},
-      { timeout: 5_000 },
-    );
+    const sidePanel = await screen.findByTestId("inline-secondary-panel");
     const panelGroup = screen.getByTestId("panel-group");
 
     const nextProps = createProps();
@@ -596,7 +584,7 @@ describe("ThreadDetailSecondaryContent", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByTestId("inline-secondary-panel", {}, { timeout: 5_000 });
+    await screen.findByTestId("inline-secondary-panel");
     expect(screen.getByTestId("footer-composer-draft").textContent).toBe("");
     const paneRendersAfterMount = timelinePaneRenders.mock.calls.length;
 

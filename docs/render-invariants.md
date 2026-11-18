@@ -44,14 +44,14 @@ work happens that should not happen at all.
 
 ## Invariants
 
-| Test                                                                         | Region that must stay quiet                                            | CI      |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------- |
-| renders nothing while the app sits idle for 10 s                             | every component, mounts included                                       | on      |
-| typing an Ask User Question answer renders nothing outside the question form | everything outside `[data-question-form]` (keystrokes after the first) | on      |
-| typing in the composer renders nothing outside the composer box              | everything outside `[data-composer-box]` (keystrokes after the first)  | on      |
-| renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | on      |
-| a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | on      |
-| a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | on      |
+| Test                                                                         | Region that must stay quiet                                            | CI  |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --- |
+| renders nothing while the app sits idle for 10 s                             | every component, mounts included                                       | on  |
+| typing an Ask User Question answer renders nothing outside the question form | everything outside `[data-question-form]` (keystrokes after the first) | on  |
+| typing in the composer renders nothing outside the composer box              | everything outside `[data-composer-box]` (keystrokes after the first)  | on  |
+| renaming thread X re-renders no sidebar row but X's                          | sidebar rows of other threads                                          | on  |
+| a turn in thread X re-renders no sidebar row but X's                         | sidebar rows of other threads                                          | on  |
+| a streaming push re-renders no finished timeline row                         | timeline rows other than the streaming one                             | on  |
 
 Re-render invariants ignore mounts: windowed lists mount rows as they scroll,
 and a mounted child is always accompanied by its re-rendered parent. Typing
@@ -141,5 +141,12 @@ that change `apps/app`, `packages/client-core`, `packages/core-ui`,
 whose `package.json` declares `bb.app`, the suite itself, the scripted echo
 provider, or the integration harness helpers. Selection lives in
 `scripts/plan-ci.mjs`. The job installs the Chromium headless shell pinned by
-`playwright-core` and runs the Turbo task above; the invariant run itself takes
-about a minute.
+`playwright-core` and runs the Turbo task above.
+
+Idle, typing, and push invariants live in separate files. Vitest runs those
+files concurrently with at most three workers on the existing four-vCPU
+runner. Each file owns its server, database, provider, browser, and cleanup.
+Within each file, scenarios remain sequential with fresh browser contexts and
+the original settling and observation windows. The job count and runner size
+are unchanged. Fixture setup repeats across the three groups, but browser
+waits overlap and dependency installation and the profiling build run once.

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { act } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { settleLazyModules } from "@/test/lazy-modules";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 
 const download = await vi.hoisted(async () => {
@@ -50,10 +50,9 @@ it("keeps Done, Escape and compact Back usable through a held import, failure an
       <SidebarVisibilityCustomize {...props} variant="compact" />
     </CompactViewportOverrideProvider>,
   );
-  await act(async () => {
-    download.reject(new Error("module initialization failed"));
-  });
-  expect(await screen.findByRole("alert")).toBeDefined();
+  download.reject(new Error("module initialization failed"));
+  await settleLazyModules();
+  expect(screen.getByRole("alert")).toBeDefined();
   const back = screen.getByRole("button", { name: "Done" });
   expect(document.activeElement).toBe(back);
   fireEvent.click(back);
@@ -63,8 +62,9 @@ it("keeps Done, Escape and compact Back usable through a held import, failure an
     importOriginal(),
   );
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await settleLazyModules();
   fireEvent.click(
-    await screen.findByRole("checkbox", { name: "Show Review in sidebar" }),
+    screen.getByRole("checkbox", { name: "Show Review in sidebar" }),
   );
   expect(props.onVisibleChange).toHaveBeenCalledWith("section:review", true);
   expect(screen.queryByRole("alert")).toBeNull();

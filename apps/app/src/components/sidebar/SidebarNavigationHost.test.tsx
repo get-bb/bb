@@ -8,15 +8,7 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalSidebarNavigationProps,
   PluginAppBuilder,
@@ -185,9 +177,7 @@ function region(): HTMLElement {
   return element;
 }
 
-beforeAll(async () => {
-  await SidebarVisibilityCustomize.preload();
-});
+await SidebarVisibilityCustomize.preload();
 
 beforeEach(async () => {
   vi.clearAllMocks();

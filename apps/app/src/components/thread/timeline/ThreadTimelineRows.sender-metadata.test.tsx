@@ -21,6 +21,7 @@ import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 const renderRecorder = await vi.hoisted(async () => {
   const { installRenderRecorder } = await import("@/test/render-recorder");
@@ -70,7 +71,7 @@ afterAll(() => {
 });
 
 describe("ThreadTimelineRows sender thread titles", () => {
-  it("re-renders only the rows sent by a renamed thread", () => {
+  it("re-renders only the rows sent by a renamed thread", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(threadsQueryKey(), threadList({}));
     render(
@@ -85,6 +86,7 @@ describe("ThreadTimelineRows sender thread titles", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("Title of thr_sender_b")).toBeDefined();
+    await settleLazyModules();
 
     renderRecorder.reset();
     act(() => {

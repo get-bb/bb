@@ -451,7 +451,7 @@ app.slots.experimental_timelineRenderer({ kind, component });
 
 Core kinds always use core renderers, customized through `presentation` only.
 A provider plugin's frontend bundle loads like every other plugin's: in the
-deferred boot pass after the first route paints, not on first paint and not
+deferred boot pass after the first screen paints, not on first paint and not
 only when one of its providers is in use. Everything its `app.tsx` registers —
 a settings section, nav panel, palette action, provider icon,
 pending-interaction form, or `app.composer.customize` chrome — is present from

@@ -10,7 +10,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  createProcessLifeline,
+  trackChildProcesses,
+  waitForExit,
+  type ChildProcessTracker,
+  type ProcessLifeline,
+} from "@bb/test-helpers";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isProcessGroupAlive,
   killProcessGroup,
@@ -21,15 +28,6 @@ import {
 } from "../src/index.js";
 
 const posixOnly = process.platform === "win32" ? describe.skip : describe;
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function waitFor(check: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -47,50 +45,75 @@ async function readFirstLine(stream: NodeJS.ReadableStream): Promise<string> {
 }
 
 posixOnly("process tree helpers", () => {
-  const cleanupPids: number[] = [];
   const cleanupDirs: string[] = [];
+  let children: ChildProcessTracker;
+  let lifeline: ProcessLifeline;
 
-  afterEach(() => {
-    for (const pid of cleanupPids) {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {}
-    }
-    cleanupPids.length = 0;
+  beforeEach(async () => {
+    children = trackChildProcesses();
+    lifeline = await createProcessLifeline();
+  });
+
+  afterEach(async () => {
+    children.killRunning();
+    children.dispose();
+    await lifeline.close();
     for (const dir of cleanupDirs) {
       rmSync(dir, { recursive: true, force: true });
     }
     cleanupDirs.length = 0;
   });
 
+  function tempDir(prefix: string): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+    cleanupDirs.push(dir);
+    return dir;
+  }
+
+  function writeHolder(
+    dir: string,
+    label: string,
+    options: { ignoreTerm?: boolean } = {},
+  ): string {
+    const path = join(dir, `${label}.cjs`);
+    writeFileSync(
+      path,
+      `${options.ignoreTerm === true ? 'process.on("SIGTERM", () => {});' : ""}${lifeline.holdSource(label)}setInterval(() => {}, 1000);`,
+    );
+    return `"${process.execPath}" "${path}"`;
+  }
+
   it("kills the grandchild when the leader is signalled by process group", async () => {
+    const holder = writeHolder(tempDir("bb-group-kill-"), "grandchild");
     const child = spawnPortablePipedProcess({
       command: "sh",
-      args: ["-c", "sleep 300 & echo $!; wait"],
+      args: ["-c", `${holder} & wait`],
       detached: true,
     });
-    const grandchildPid = Number(await readFirstLine(child.stdout));
-    cleanupPids.push(grandchildPid);
-    expect(isAlive(grandchildPid)).toBe(true);
-    const exited = once(child, "exit");
+    const [grandchild] = await lifeline.waitForHolders(1);
+    expect(grandchild?.alive()).toBe(true);
+    const exited = waitForExit(child);
 
     killProcessGroup({ child, signal: "SIGKILL" });
 
-    await waitFor(() => !isAlive(grandchildPid));
+    await grandchild?.exited;
     await exited;
   });
 
   it("finds and kills processes whose cwd is inside a directory", async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bb-cwd-sweep-")));
-    cleanupDirs.push(dir);
-    const child = spawn("sh", ["-c", "sleep 300 & echo $!; wait"], {
-      cwd: dir,
-      detached: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    const dir = tempDir("bb-cwd-sweep-");
+    const child = spawn(
+      "sh",
+      ["-c", `${writeHolder(dir, "grandchild")} & wait`],
+      {
+        cwd: dir,
+        detached: true,
+        stdio: "ignore",
+      },
+    );
     child.unref();
-    const grandchildPid = Number(await readFirstLine(child.stdout));
-    cleanupPids.push(child.pid ?? 0, grandchildPid);
+    const [grandchild] = await lifeline.waitForHolders(1);
+    const grandchildPid = grandchild?.pid;
 
     const found = await listProcessesWithCwdUnder({ directories: [dir] });
     expect(found.map((entry) => entry.pid)).toEqual(
@@ -105,7 +128,7 @@ posixOnly("process tree helpers", () => {
     expect(killed.map((entry) => entry.pid)).toEqual(
       expect.arrayContaining([child.pid, grandchildPid]),
     );
-    await waitFor(() => !isAlive(grandchildPid) && !isAlive(child.pid ?? 0));
+    await Promise.all([grandchild?.exited, waitForExit(child)]);
 
     expect(
       await listProcessesWithCwdUnder({ directories: [`${dir}-other`] }),
@@ -113,23 +136,23 @@ posixOnly("process tree helpers", () => {
   });
 
   it("reports a live group after the leader exits and an empty one after the members die", async () => {
+    const holder = writeHolder(tempDir("bb-group-alive-"), "member");
     const child = spawnPortablePipedProcess({
       command: "sh",
-      args: ["-c", "sleep 300 & echo $!"],
+      args: ["-c", `${holder} &`],
       detached: true,
     });
-    const grandchildPid = Number(await readFirstLine(child.stdout));
-    cleanupPids.push(grandchildPid);
-    await once(child, "exit");
+    const [member] = await lifeline.waitForHolders(1);
+    await waitForExit(child);
 
     expect(isProcessGroupAlive(child)).toBe(true);
-    process.kill(grandchildPid, "SIGKILL");
+    member?.kill("SIGKILL");
+    await member?.exited;
     await waitFor(() => !isProcessGroupAlive(child));
   });
 
   it("rescans and kills processes that appear while the first targets shut down", async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bb-cwd-respawn-")));
-    cleanupDirs.push(dir);
+    const dir = tempDir("bb-cwd-respawn-");
     const respawnerPath = join(dir, "respawner.cjs");
     writeFileSync(
       respawnerPath,
@@ -137,7 +160,7 @@ posixOnly("process tree helpers", () => {
         'const { spawn } = require("node:child_process");',
         'process.on("SIGTERM", () => {',
         "  spawn(process.execPath,",
-        '    ["-e", "setInterval(() => {}, 30_000)"],',
+        `    ["-e", ${JSON.stringify(`${lifeline.holdSource("respawned")}setInterval(() => {}, 30_000)`)}],`,
         '    { cwd: process.cwd(), detached: true, stdio: "ignore" },',
         "  ).unref();",
         "  process.exit(0);",
@@ -153,7 +176,6 @@ posixOnly("process tree helpers", () => {
     });
     child.unref();
     await readFirstLine(child.stdout);
-    cleanupPids.push(child.pid ?? 0);
 
     const killed = await killProcessesWithCwdUnder({
       directories: [dir],
@@ -161,11 +183,15 @@ posixOnly("process tree helpers", () => {
     });
 
     expect(killed.length).toBeGreaterThanOrEqual(2);
-    for (const target of killed) {
-      cleanupPids.push(target.pid);
-    }
-    await waitFor(() => killed.every((target) => !isAlive(target.pid)));
-    expect(await listProcessesWithCwdUnder({ directories: [dir] })).toEqual([]);
+    await waitForExit(child);
+    await Promise.all(lifeline.holders.map((holder) => holder.exited));
+    await vi.waitFor(
+      async () =>
+        expect(await listProcessesWithCwdUnder({ directories: [dir] })).toEqual(
+          [],
+        ),
+      { timeout: 5000 },
+    );
   });
 
   it("does not follow a symlinked workspace root", async () => {
@@ -175,7 +201,6 @@ posixOnly("process tree helpers", () => {
     const link = join(linkParent, "workspace");
     symlinkSync(target, link);
     const child = spawn("sleep", ["300"], { cwd: target, stdio: "ignore" });
-    cleanupPids.push(child.pid ?? 0);
     await waitFor(() => (child.pid ?? 0) > 0);
 
     expect(await listProcessesWithCwdUnder({ directories: [target] })).toEqual([
@@ -187,8 +212,7 @@ posixOnly("process tree helpers", () => {
   });
 
   it("stops the leader first so it can shut its own child down", async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bb-leader-first-")));
-    cleanupDirs.push(dir);
+    const dir = tempDir("bb-leader-first-");
     const log = join(dir, "log");
     writeFileSync(
       join(dir, "child.cjs"),
@@ -224,7 +248,6 @@ posixOnly("process tree helpers", () => {
       ],
       detached: true,
     });
-    cleanupPids.push(child.pid ?? 0);
     expect(await readFirstLine(child.stdout)).toBe("ready");
 
     await stopProcessGroupLeaderFirst({
@@ -239,16 +262,18 @@ posixOnly("process tree helpers", () => {
   });
 
   it("escalates to the group when a member outlives the leader", async () => {
+    const holder = writeHolder(tempDir("bb-group-escalate-"), "member", {
+      ignoreTerm: true,
+    });
     const child = spawnPortablePipedProcess({
       command: "sh",
       args: [
         "-c",
-        'trap "exit 0" TERM; sh -c \'trap "" TERM; while :; do sleep 0.1; done\' & echo $!; while :; do sleep 0.1; done',
+        `trap "exit 0" TERM; ${holder} & while :; do sleep 0.1; done`,
       ],
       detached: true,
     });
-    const memberPid = Number(await readFirstLine(child.stdout));
-    cleanupPids.push(child.pid ?? 0, memberPid);
+    const [member] = await lifeline.waitForHolders(1);
     const startedAt = Date.now();
 
     await stopProcessGroupLeaderFirst({
@@ -259,7 +284,7 @@ posixOnly("process tree helpers", () => {
 
     expect(Date.now() - startedAt).toBeLessThan(2000);
     expect(child.exitCode).toBe(0);
-    await waitFor(() => !isAlive(memberPid));
-    expect(isProcessGroupAlive(child)).toBe(false);
+    await member?.exited;
+    await waitFor(() => !isProcessGroupAlive(child));
   });
 });

@@ -2,7 +2,7 @@ import { listQueuedThreadMessages } from "@bb/db";
 import { queuedMessageWaitingOnSchema } from "@bb/domain";
 import { sendMessageResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
@@ -195,8 +195,8 @@ describe("offline host follow-ups", () => {
       ).toEqual(testCase.waitingOn);
 
       if (testCase.status === "active") {
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.succeeded" },
+        moveThreadStatus(harness.deps, {
+          move: "run.succeeded",
           threadId: thread.id,
         });
         await runQueuedMessageDispatch(harness.deps, {
@@ -216,7 +216,7 @@ describe("offline host follow-ups", () => {
       expect(dispatched.command).toMatchObject({
         threadId: thread.id,
         input,
-        target: { mode: "start" },
+        target: { mode: "auto", expectedTurnId: null },
       });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(

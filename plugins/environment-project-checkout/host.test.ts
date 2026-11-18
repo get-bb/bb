@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
+import {
+  BRANCH_REF_CASES,
+  createBranchRefFixture,
+} from "bb-environment-provider-host/testing/branch-ref-cases";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCheckoutHostEntry } from "./host.js";
 
@@ -341,5 +345,40 @@ describe("checkout host entry", () => {
       message: expect.stringContaining("does not exist"),
     });
     await harness.experimental_dispose();
+  });
+});
+
+describe("new branch base resolution", () => {
+  it.each(BRANCH_REF_CASES)("$name", async (testCase) => {
+    const root = await mkdtemp(join(tmpdir(), "bb-checkout-base-ref-"));
+    temporaryRoots.push(root);
+    const repo = join(root, "repo");
+    const dataDir = join(root, "plugin-data");
+    await mkdir(repo, { recursive: true });
+    await mkdir(dataDir, { recursive: true });
+    const fixture = await createBranchRefFixture(repo, testCase);
+    const harness = createHarness(dataDir);
+    const result = await harness.experimental_call("attach", {
+      operationId: "new-from-base",
+      path: repo,
+      branch: {
+        kind: "new",
+        name: "bb/new-thr_1",
+        baseBranch: testCase.requested,
+      },
+    });
+    await harness.experimental_dispose();
+    if (fixture.expectedCommit === null) {
+      expect(result.status).toBe("failed");
+      return;
+    }
+    expect(result).toMatchObject({
+      status: "attached",
+      branchName: "bb/new-thr_1",
+      mergeBaseBranch: testCase.expected.ref,
+    });
+    expect((await git(repo, "rev-parse", "HEAD")).trim()).toBe(
+      fixture.expectedCommit,
+    );
   });
 });

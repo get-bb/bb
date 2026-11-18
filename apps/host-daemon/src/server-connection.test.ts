@@ -848,6 +848,7 @@ describe("ServerConnection", () => {
           requestId: "invalid-transcription",
           command: {
             type: "thread.stop",
+            aimedAt: null,
             intent: "interrupt",
             environmentId: "",
             threadId: "",

@@ -25,11 +25,13 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { useNavigate } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
-import { reviewableRangeUpgrade } from "@/components/plugin/management/plugin-status";
+import {
+  pluginHasUpdateSurfaces,
+  reviewableRangeUpgrade,
+} from "@/components/plugin/management/plugin-status";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
-  pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
   CatalogEntryIconChip,

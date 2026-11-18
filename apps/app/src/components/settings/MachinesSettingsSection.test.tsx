@@ -114,27 +114,28 @@ function systemConfig(): SystemConfigResponse {
 function stubSidebarBootstrapFetch(): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          projects: [
-            {
-              id: "proj_1",
-              sources: [
-                { id: "src_1", hostId: "host_primary" },
-                { id: "src_2", hostId: "host_remote" },
-              ],
-              threads: [],
-            },
-            {
-              id: "proj_2",
-              sources: [{ id: "src_3", hostId: "host_primary" }],
-              threads: [],
-            },
-          ],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            projects: [
+              {
+                id: "proj_1",
+                sources: [
+                  { id: "src_1", hostId: "host_primary" },
+                  { id: "src_2", hostId: "host_remote" },
+                ],
+                threads: [],
+              },
+              {
+                id: "proj_2",
+                sources: [{ id: "src_3", hostId: "host_primary" }],
+                threads: [],
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
     ),
   );
 }

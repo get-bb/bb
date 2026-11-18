@@ -60,7 +60,6 @@ function fakeTerminals() {
 }
 
 function renderSignIns(
-  concurrent: boolean,
   states: SystemProviderState[] = [provider("codex"), provider("claude-code")],
   hostId: string | null = "host_1",
 ) {
@@ -69,7 +68,6 @@ function renderSignIns(
   const view = renderHook(
     (props: { states: SystemProviderState[]; statesSettledAt: number }) =>
       useAgentSignIns({
-        redesign: concurrent,
         entry: "first_run",
         hostId,
         states: props.states,
@@ -102,7 +100,7 @@ afterEach(() => {
 
 describe("useAgentSignIns", () => {
   it("keeps two sign-ins open at once and cancels only the one asked for", async () => {
-    const { result, terminals } = renderSignIns(true);
+    const { result, terminals } = renderSignIns();
 
     await act(async () => {
       await result.current.start("codex");
@@ -120,7 +118,7 @@ describe("useAgentSignIns", () => {
   });
 
   it("starts a second sign-in while the first is still creating its terminal", async () => {
-    const { result, terminals } = renderSignIns(true);
+    const { result, terminals } = renderSignIns();
     let finishFirst: (() => void) | undefined;
     vi.mocked(terminals.create).mockImplementationOnce(
       () =>
@@ -151,7 +149,7 @@ describe("useAgentSignIns", () => {
   });
 
   it("cancels a sign-in whose terminal is still being created", async () => {
-    const { result, terminals } = renderSignIns(true);
+    const { result, terminals } = renderSignIns();
     let finish: (() => void) | undefined;
     vi.mocked(terminals.create).mockImplementationOnce(
       () =>
@@ -178,7 +176,7 @@ describe("useAgentSignIns", () => {
   });
 
   it("ends only the sign-in whose agent became ready", async () => {
-    const { result, rerender, terminals } = renderSignIns(true);
+    const { result, rerender, terminals } = renderSignIns();
     await act(async () => {
       await result.current.start("codex");
       await result.current.start("claude-code");
@@ -194,7 +192,7 @@ describe("useAgentSignIns", () => {
   });
 
   it("ends a sign-in whose agent reported a failure while still running", async () => {
-    const { result, terminals } = renderSignIns(true, [provider("pi")]);
+    const { result, terminals } = renderSignIns([provider("pi")]);
     await act(async () => {
       await result.current.start("pi");
     });
@@ -206,35 +204,9 @@ describe("useAgentSignIns", () => {
     expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
   });
 
-  it("keeps today's one-at-a-time sign-in in the control guide", async () => {
-    const { result, terminals } = renderSignIns(false);
-
-    await act(async () => {
-      await result.current.start("codex");
-      await result.current.start("claude-code");
-    });
-
-    expect([...result.current.signIns.keys()]).toEqual(["claude-code"]);
-    expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
-  });
-
-  it("clears every failed sign-in when the control guide starts another", async () => {
-    const { result } = renderSignIns(false);
-    await act(async () => {
-      await result.current.start("codex");
-    });
-    act(() => result.current.handleExit("codex", 1));
-    expect(result.current.failedProviderIds.has("codex")).toBe(true);
-
-    await act(async () => {
-      await result.current.start("claude-code");
-    });
-    expect(result.current.failedProviderIds.size).toBe(0);
-  });
-
-  it("keeps another agent's failed sign-in in the redesign", async () => {
+  it("keeps another agent's failed sign-in", async () => {
     const states = [provider("codex"), provider("claude-code")];
-    const { result, rerender } = renderSignIns(true, states);
+    const { result, rerender } = renderSignIns(states);
     await act(async () => {
       await result.current.start("codex");
     });
@@ -247,10 +219,7 @@ describe("useAgentSignIns", () => {
     expect([...result.current.failedProviderIds]).toEqual(["codex"]);
   });
 
-  describe.each([
-    ["the redesign", true],
-    ["today's guide", false],
-  ] as const)("telemetry in %s", (_variant, concurrent) => {
+  describe("telemetry", () => {
     function recorded() {
       return vi
         .mocked(recordTelemetryEvent)
@@ -259,7 +228,7 @@ describe("useAgentSignIns", () => {
 
     it("names the agent and records a non-zero exit as a failed command", async () => {
       const states = [provider("codex"), provider("claude-code")];
-      const { result, rerender } = renderSignIns(concurrent, states);
+      const { result, rerender } = renderSignIns(states);
       await act(async () => {
         await result.current.start("codex");
       });
@@ -289,7 +258,7 @@ describe("useAgentSignIns", () => {
       "classifies a sign-in exit of $exitCode without sending output",
       async ({ exitCode, detail }) => {
         const states = [provider("codex")];
-        const { result, rerender } = renderSignIns(concurrent, states);
+        const { result, rerender } = renderSignIns(states);
         await act(async () => {
           await result.current.start("codex");
         });
@@ -308,7 +277,7 @@ describe("useAgentSignIns", () => {
 
     it("records a sign-in the agent reported as failed", async () => {
       const states = [provider("codex")];
-      const { result } = renderSignIns(concurrent, states);
+      const { result } = renderSignIns(states);
       await act(async () => {
         await result.current.start("codex");
       });
@@ -324,7 +293,7 @@ describe("useAgentSignIns", () => {
     });
 
     it("records why the sign-in terminal could not be created", async () => {
-      const { result, terminals } = renderSignIns(concurrent);
+      const { result, terminals } = renderSignIns();
       vi.mocked(terminals.create).mockRejectedValueOnce(
         new BbHttpError({
           body: null,
@@ -355,11 +324,7 @@ describe("useAgentSignIns", () => {
     ] as const)(
       "records a sign-in that could not start as %s",
       async (failureReason, hostId, states) => {
-        const { result, terminals } = renderSignIns(
-          concurrent,
-          [...states],
-          hostId,
-        );
+        const { result, terminals } = renderSignIns([...states], hostId);
         await act(async () => {
           await result.current.start("codex");
         });
@@ -379,10 +344,8 @@ describe("useAgentSignIns", () => {
 
   it("shows the failed state when the sign-in exits cleanly before the agent is ready", async () => {
     const states = [provider("pi")];
-    const { result, rerender, terminals, refetchStates } = renderSignIns(
-      true,
-      states,
-    );
+    const { result, rerender, terminals, refetchStates } =
+      renderSignIns(states);
     await act(async () => {
       await result.current.start("pi");
     });
@@ -403,7 +366,7 @@ describe("useAgentSignIns", () => {
   });
 
   it("ends as ready when the agent is ready once its sign-in exits", async () => {
-    const { result, rerender } = renderSignIns(true, [provider("codex")]);
+    const { result, rerender } = renderSignIns([provider("codex")]);
     await act(async () => {
       await result.current.start("codex");
     });
@@ -421,7 +384,7 @@ describe("useAgentSignIns", () => {
 
   it("shows no failure when the user cancels with X as the sign-in exits", async () => {
     const states = [provider("codex")];
-    const { result, rerender } = renderSignIns(true, states);
+    const { result, rerender } = renderSignIns(states);
     await act(async () => {
       await result.current.start("codex");
     });
@@ -435,10 +398,7 @@ describe("useAgentSignIns", () => {
     expect(recordedOutcomes()).toEqual(["started", "cancelled"]);
   });
 
-  describe.each([
-    ["the redesign", true],
-    ["today's guide", false],
-  ] as const)("an exited sign-in in %s", (_variant, redesign) => {
+  describe("an exited sign-in", () => {
     it.each([
       [0, true, "ready"],
       [1, true, "ready"],
@@ -449,9 +409,7 @@ describe("useAgentSignIns", () => {
     ] as const)(
       "exiting with %s when the agent is ready=%s records %s once a fresh state lands",
       async (exitCode, ready, outcome) => {
-        const { result, rerender } = renderSignIns(redesign, [
-          provider("codex"),
-        ]);
+        const { result, rerender } = renderSignIns([provider("codex")]);
         await act(async () => {
           await result.current.start("codex");
         });
@@ -468,43 +426,21 @@ describe("useAgentSignIns", () => {
     );
   });
 
-  it("keeps today's failed row after a non-zero exit even when the agent turns out ready", async () => {
-    const { result, rerender } = renderSignIns(false, [provider("codex")]);
+  it("polls provider states while signing in without aborting a slow response", async () => {
+    vi.useFakeTimers();
+    const { result, refetchStates } = renderSignIns();
     await act(async () => {
       await result.current.start("codex");
     });
 
-    act(() => result.current.handleExit("codex", 1));
-    expect(result.current.signIns.size).toBe(0);
-    expect([...result.current.failedProviderIds]).toEqual(["codex"]);
-    rerender({
-      states: [provider("codex", { status: "ready" })],
-      statesSettledAt: settledAfterNow(),
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
     });
 
-    expect([...result.current.failedProviderIds]).toEqual(["codex"]);
-    expect(recordedOutcomes()).toEqual(["started", "ready"]);
+    expect(refetchStates).toHaveBeenCalledExactlyOnceWith({
+      cancelRefetch: false,
+    });
   });
-
-  it.each([
-    ["the redesign", true, false],
-    ["today's guide, as on main", false, true],
-  ] as const)(
-    "polls provider states while signing in, in %s",
-    async (_variant, redesign, cancelRefetch) => {
-      vi.useFakeTimers();
-      const { result, refetchStates } = renderSignIns(redesign);
-      await act(async () => {
-        await result.current.start("codex");
-      });
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(3_000);
-      });
-
-      expect(refetchStates).toHaveBeenCalledExactlyOnceWith({ cancelRefetch });
-    },
-  );
 
   it("settles an exited sign-in on one slow provider-states response without aborting it", async () => {
     vi.useFakeTimers();
@@ -547,7 +483,6 @@ describe("useAgentSignIns", () => {
           [refetch],
         );
         return useAgentSignIns({
-          redesign: true,
           entry: "first_run",
           hostId: "host_1",
           states: query.data,
@@ -584,17 +519,5 @@ describe("useAgentSignIns", () => {
     });
     expect(server.fetches).toBe(fetchesBeforeExit + 1);
     queryClient.clear();
-  });
-
-  it("keeps today's quiet return to Sign in after a clean exit in the control guide", async () => {
-    const { result } = renderSignIns(false);
-    await act(async () => {
-      await result.current.start("codex");
-    });
-
-    act(() => result.current.handleExit("codex", 0));
-
-    expect(result.current.signIns.size).toBe(0);
-    expect(result.current.failedProviderIds.size).toBe(0);
   });
 });

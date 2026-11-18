@@ -10,14 +10,11 @@ import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { DetailsDisclosure } from "./plugin-ui";
-import { reviewableRangeUpgrade } from "./plugin-status";
+import {
+  pluginHasUpdateSurfaces,
+  reviewableRangeUpgrade,
+} from "./plugin-status";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
-
-export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
-  if (plugin.source.startsWith("builtin:") || plugin.source.startsWith("path:"))
-    return false;
-  return plugin.provenance === "direct" || plugin.provenance === "catalog";
-}
 
 function pluginCompatibilityBlockedVersion(
   plugin: PluginListItem,

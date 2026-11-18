@@ -1,21 +1,20 @@
-import { afterEach, expect, it } from "vitest";
+import {
+  trackChildProcesses,
+  type ChildProcessTracker,
+} from "@bb/test-helpers";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import { runCommand } from "../src/app-update/run-command.js";
 
-const runningPids = new Set<number>();
+let children: ChildProcessTracker;
 
-afterEach(() => {
-  for (const pid of runningPids) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch (error) {
-      if (
-        !(error instanceof Error && "code" in error && error.code === "ESRCH")
-      ) {
-        throw error;
-      }
-    }
-  }
-  runningPids.clear();
+beforeEach(() => {
+  children = trackChildProcesses();
+});
+
+afterEach(async () => {
+  children.dispose();
+  children.killRunning();
+  await children.waitForExit();
 });
 
 it.skipIf(process.platform === "win32")(
@@ -30,14 +29,11 @@ it.skipIf(process.platform === "win32")(
       command: process.execPath,
       cwd: process.cwd(),
       onLine: (line) => {
-        const pid = Number(line);
-        expect(Number.isInteger(pid)).toBe(true);
-        runningPids.add(pid);
+        expect(Number.isInteger(Number(line))).toBe(true);
         controller.abort();
       },
       signal: controller.signal,
     });
-    runningPids.clear();
 
     expect(result.code).toBeNull();
     expect(result.signal).toBe("SIGKILL");

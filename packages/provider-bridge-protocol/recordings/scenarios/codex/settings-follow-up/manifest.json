@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "settings-follow-up",
+  "threadId": "thr_fff430d3b6",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.169.0",
+  "recordedAt": "2026-11-14",
+  "description": "Follow-up turns that each change one setting: model, env var, permission mode, reasoning level.",
+  "note": "config/read responses trimmed to config.model; the rest was the recording machine's Codex config.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 6,
+    "bridge\u2192runtime": 87,
+    "provider\u2192bridge": 181,
+    "bridge\u2192provider": 17
+  }
+}

@@ -6,9 +6,7 @@ import type {
   HostDiscoveredRepo,
   RecordTelemetryEventRequest,
   ServerAccessStatus,
-  SetupGuideVariant,
   SystemProviderState,
-  SystemSetupGuideResponse,
 } from "@bb/server-contract";
 
 export type OnboardingStepId = "agent" | "projects" | "plugins" | "devices";
@@ -61,67 +59,35 @@ export function agentRowSetup({
   return connect && !awaitingSession ? "connect" : "signIn";
 }
 
-export type SetupGuide = SystemSetupGuideResponse;
-
 interface StepCopy {
   title: string;
   description: string;
   primaryLabel: string;
 }
 
-export const STEP_COPY: Readonly<
-  Record<SetupGuideVariant, Readonly<Record<OnboardingStepId, StepCopy>>>
-> = {
-  control: {
-    agent: {
-      title: "Connect a coding agent",
-      description:
-        "bb runs the agents you already use. You need one that is installed and signed in on this computer.",
-      primaryLabel: "Continue",
-    },
-    projects: {
-      title: "Add your projects",
-      description:
-        "Git repos on this computer that you've worked in over the last 30 days.",
-      primaryLabel: "Continue",
-    },
-    plugins: {
-      title: "Make bb yours",
-      description:
-        "Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins.",
-      primaryLabel: "Continue",
-    },
-    devices: {
-      title: "Use bb from anywhere",
-      description:
-        "All optional. Everything here also lives in Settings → Machines.",
-      primaryLabel: "Start using bb",
-    },
+export const STEP_COPY: Readonly<Record<OnboardingStepId, StepCopy>> = {
+  agent: {
+    title: "Connect a coding agent",
+    description:
+      "Agents run on your machine. bb needs one installed and signed in.",
+    primaryLabel: "Continue",
   },
-  new: {
-    agent: {
-      title: "Connect a coding agent",
-      description:
-        "Agents run on your machine. bb needs one installed and signed in.",
-      primaryLabel: "Continue",
-    },
-    projects: {
-      title: "Add your projects",
-      description: "Choose local Git repos used in the last 30 days.",
-      primaryLabel: "Continue",
-    },
-    plugins: {
-      title: "Make bb yours",
-      description:
-        "Customize almost everything in bb with plugins. Turn on a few, change them anytime.",
-      primaryLabel: "Continue",
-    },
-    devices: {
-      title: "Use bb away from this computer",
-      description:
-        "Start a task at your desk, then check on it from anywhere. Change these later in Settings.",
-      primaryLabel: "Start using bb",
-    },
+  projects: {
+    title: "Add your projects",
+    description: "Choose local Git repos used in the last 30 days.",
+    primaryLabel: "Continue",
+  },
+  plugins: {
+    title: "Make bb yours",
+    description:
+      "Customize almost everything in bb with plugins. Turn on a few, change them anytime.",
+    primaryLabel: "Continue",
+  },
+  devices: {
+    title: "Use bb away from this computer",
+    description:
+      "Start a task at your desk, then check on it from anywhere. Change these later in Settings.",
+    primaryLabel: "Start using bb",
   },
 };
 
@@ -138,7 +104,6 @@ export function skippedStepIds(
 }
 
 export type AgentSetupState =
-  | { status: "checking" }
   | { status: "ready"; detail: string | null }
   | {
       status: "signIn";
@@ -150,7 +115,13 @@ export type AgentSetupState =
   | { status: "update"; detail: string | null; canInstall: boolean }
   | { status: "installing"; update: boolean }
   | { status: "installFailed"; message: string; canInstall: boolean }
-  | { status: "unknown"; message: string | null };
+  | { status: "unknown"; message: string | null }
+  | {
+      status: "checkFailed";
+      message: string;
+      detail: string | null;
+      retrying: boolean;
+    };
 
 interface ResolveAgentSetupStateArgs {
   health: SystemProviderState;
@@ -160,7 +131,6 @@ interface ResolveAgentSetupStateArgs {
   signingIn: boolean;
   signInFailed: boolean;
   installInfoPending: boolean;
-  whileInstallInfoPending: "checking" | "offerInstall";
 }
 
 export function setupGuidePlanHealth(
@@ -181,7 +151,6 @@ export function resolveAgentSetupState({
   signingIn,
   signInFailed,
   installInfoPending,
-  whileInstallInfoPending,
 }: ResolveAgentSetupStateArgs): AgentSetupState {
   if (health.status === "ready") {
     const detail = [health.accountEmail, health.planLabel]
@@ -197,21 +166,16 @@ export function resolveAgentSetupState({
   }
   const awaitingInstallInfo = cliStatus === undefined && installInfoPending;
   const canInstall =
-    (awaitingInstallInfo && whileInstallInfoPending === "offerInstall") ||
+    awaitingInstallInfo ||
     (cliStatus?.installAction !== null &&
       cliStatus?.installAction !== undefined);
   if (installFailure !== null) {
     return { status: "installFailed", message: installFailure, canInstall };
   }
-  const checking =
-    awaitingInstallInfo && whileInstallInfoPending === "checking";
   switch (health.status) {
     case "not_installed":
-      return checking
-        ? { status: "checking" }
-        : { status: "install", canInstall };
+      return { status: "install", canInstall };
     case "unsupported_version":
-      if (checking) return { status: "checking" };
       return {
         status: "update",
         detail:
@@ -260,18 +224,6 @@ export function resolveSignInCommand(
     : health.loginCommand;
 }
 
-export function agentContinueDisabled({
-  redesign,
-  agentReady,
-  statesLoading,
-}: {
-  redesign: boolean;
-  agentReady: boolean;
-  statesLoading: boolean;
-}): boolean {
-  return redesign ? statesLoading : !agentReady;
-}
-
 export function projectsPrimaryAction({
   selectedCount,
   existingProjectIds,
@@ -288,35 +240,173 @@ export function projectsPrimaryAction({
   return added ? "completed" : "skipped";
 }
 
-export interface AgentCheckSoFar {
-  providerId: string;
-  state: SystemProviderState | null | undefined;
-}
+export type AgentCheck =
+  | { providerId: string; kind: "pending" }
+  | { providerId: string; kind: "unchecked" }
+  | {
+      providerId: string;
+      kind: "answered";
+      state: SystemProviderState;
+      settledAt: number;
+    }
+  | { providerId: string; kind: "absent"; settledAt: number }
+  | { providerId: string; kind: "failed"; error: unknown; settledAt: number };
+
+export type AgentCheckFailure = "timed_out" | "other";
 
 export type AgentRowSoFar =
   | { kind: "agent"; state: SystemProviderState }
+  | {
+      kind: "failed";
+      providerId: string;
+      name: string;
+      failure: AgentCheckFailure;
+      detail: string | null;
+      retrying: boolean;
+    }
   | { kind: "loading"; key: string };
 
-export function agentRowsSoFar(
-  checks: readonly AgentCheckSoFar[],
-): AgentRowSoFar[] | undefined {
+export function agentCheckFailedMessage(failure: AgentCheckFailure): string {
+  return failure === "timed_out"
+    ? "Didn't respond in time."
+    : "Couldn't load agent";
+}
+
+export type AgentListFailure = "host_unavailable" | "other";
+
+export function agentListFailure({
+  hostConnected,
+  errors,
+}: {
+  hostConnected: boolean;
+  errors: readonly unknown[];
+}): AgentListFailure {
+  return !hostConnected ||
+    errors.some((error) => operationFailureReason(error) === "host_unavailable")
+    ? "host_unavailable"
+    : "other";
+}
+
+export function agentListFailedMessage({
+  failure,
+  machineName,
+}: {
+  failure: AgentListFailure;
+  machineName: string | null;
+}): string {
+  return failure === "host_unavailable"
+    ? `Can't reach ${machineName ?? "this computer"}. Make sure bb is running there, then retry.`
+    : "Couldn't load agents";
+}
+
+function checkFailure(error: unknown): AgentCheckFailure {
+  return operationFailureReason(error) === "timed_out" ? "timed_out" : "other";
+}
+
+function stateRow(
+  state: SystemProviderState,
+  retrying: boolean,
+): AgentRowSoFar {
+  return state.status === "unknown"
+    ? {
+        kind: "failed",
+        providerId: state.providerId,
+        name: state.displayName,
+        failure: "other",
+        detail: state.statusMessage,
+        retrying,
+      }
+    : { kind: "agent", state };
+}
+
+function checkRow(
+  check: Exclude<AgentCheck, { kind: "pending" | "unchecked" }>,
+  names: ReadonlyMap<string, string>,
+): AgentRowSoFar | null {
+  switch (check.kind) {
+    case "answered":
+      return stateRow(check.state, false);
+    case "absent":
+      return null;
+    case "failed":
+      return {
+        kind: "failed",
+        providerId: check.providerId,
+        name: names.get(check.providerId) ?? check.providerId,
+        failure: checkFailure(check.error),
+        detail: null,
+        retrying: false,
+      };
+  }
+}
+
+export function resolveAgentRows({
+  states,
+  statesSettledAt,
+  checks,
+  names,
+}: {
+  states: readonly SystemProviderState[] | undefined;
+  statesSettledAt: number;
+  checks: readonly AgentCheck[];
+  names: ReadonlyMap<string, string>;
+}): AgentRowSoFar[] | undefined {
+  if (states !== undefined) {
+    return states.flatMap((state) => {
+      const check = checks.find(
+        (candidate) => candidate.providerId === state.providerId,
+      );
+      if (
+        check !== undefined &&
+        check.kind !== "pending" &&
+        check.kind !== "unchecked" &&
+        check.settledAt > statesSettledAt
+      ) {
+        const row = checkRow(check, names);
+        return row === null ? [] : [row];
+      }
+      return [stateRow(state, check?.kind === "pending")];
+    });
+  }
   let lastShown = -1;
   checks.forEach((check, index) => {
-    if (check.state != null) lastShown = index;
+    if (check.kind === "answered" || check.kind === "failed") {
+      lastShown = index;
+    }
   });
   if (lastShown === -1) return undefined;
   const rows: AgentRowSoFar[] = [];
-  checks.slice(0, lastShown + 1).forEach((check) => {
-    if (check.state === undefined) {
+  for (const check of checks.slice(0, lastShown + 1)) {
+    if (check.kind === "pending" || check.kind === "unchecked") {
       rows.push({ kind: "loading", key: check.providerId });
-    } else if (check.state !== null) {
-      rows.push({ kind: "agent", state: check.state });
+      continue;
     }
-  });
-  if (checks.slice(lastShown + 1).some((check) => check.state === undefined)) {
+    const row = checkRow(check, names);
+    if (row !== null) rows.push(row);
+  }
+  if (
+    checks
+      .slice(lastShown + 1)
+      .some((check) => check.kind === "pending" || check.kind === "unchecked")
+  ) {
     rows.push({ kind: "loading", key: "more" });
   }
   return rows;
+}
+
+export function failedAgentProviderIds(
+  rows: readonly AgentRowSoFar[] | undefined,
+  checks: readonly AgentCheck[],
+): string[] {
+  const failed =
+    rows === undefined
+      ? checks.flatMap((check) =>
+          check.kind === "failed" ? [check.providerId] : [],
+        )
+      : rows.flatMap((row) => (row.kind === "failed" ? [row.providerId] : []));
+  return failed.length > 0 || rows !== undefined
+    ? failed
+    : checks.map((check) => check.providerId);
 }
 
 export function hasReadyAgent(
@@ -377,11 +467,7 @@ export function defaultSelectedRepoPaths(
 }
 
 export type OperationFailureReason =
-  | "host_unavailable"
-  | "timed_out"
-  | "not_found"
-  | "permission"
-  | "other";
+  "host_unavailable" | "timed_out" | "not_found" | "permission" | "other";
 
 export function operationFailureReason(error: unknown): OperationFailureReason {
   if (error instanceof BbRequestTimeoutError) return "timed_out";
@@ -450,8 +536,6 @@ export interface SignInGuide {
   acceptsPastedCode: boolean;
 }
 
-export type SignInLinkChoice = "first" | "last";
-
 export interface AgentSignInView {
   guide: SignInGuide | null;
   terminalVisible: boolean;
@@ -464,19 +548,15 @@ export function agentSignInView({
   outputText,
   fallbackDue,
   terminalChoice,
-  signInLink,
 }: {
   parsed: boolean;
   connect: boolean;
   outputText: string | null;
   fallbackDue: boolean;
   terminalChoice: boolean | null;
-  signInLink: SignInLinkChoice;
 }): AgentSignInView {
   const guide =
-    parsed && outputText !== null
-      ? parseSignInOutput(outputText, signInLink)
-      : null;
+    parsed && outputText !== null ? parseSignInOutput(outputText) : null;
   const hasOutput = outputText !== null && outputText.length > 0;
   return {
     guide,
@@ -514,14 +594,12 @@ export function connectFlowFailed(
   return flow.failure.test(stripTerminalSequences(output));
 }
 
-export function parseSignInOutput(
-  output: string,
-  signInLink: SignInLinkChoice,
-): SignInGuide {
+export function parseSignInOutput(output: string): SignInGuide {
   const text = stripTerminalSequences(output);
-  const hyperlinks = [...output.matchAll(TERMINAL_HYPERLINK)];
-  const hyperlink = signInLink === "last" ? hyperlinks.at(-1) : hyperlinks[0];
-  const url = hyperlink?.[1] ?? SIGN_IN_URL.exec(text)?.[0] ?? null;
+  const url =
+    [...output.matchAll(TERMINAL_HYPERLINK)].at(-1)?.[1] ??
+    SIGN_IN_URL.exec(text)?.[0] ??
+    null;
   const withoutUrls = text.replace(new RegExp(SIGN_IN_URL.source, "gu"), " ");
   return {
     url,

@@ -1,3 +1,8 @@
+import { experimental_killPortableProcess } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  experimental_trackChildProcesses,
+  type ExperimentalChildProcessTracker,
+} from "@get-bb/plugin-sdk/testing";
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,8 +17,17 @@ import {
 } from "./provider-maintenance.js";
 
 const temporaryDirectories: string[] = [];
+let shimChildren: ExperimentalChildProcessTracker | undefined;
 
 afterEach(async () => {
+  if (shimChildren !== undefined) {
+    shimChildren.dispose();
+    for (const child of shimChildren.running()) {
+      experimental_killPortableProcess(child, "SIGKILL");
+    }
+    await shimChildren.waitForClose();
+    shimChildren = undefined;
+  }
   vi.unstubAllEnvs();
   resetPiInstallGateForTests();
   await Promise.all(
@@ -82,7 +96,7 @@ describe("Pi version probe", () => {
 
   it.skipIf(process.platform !== "win32")(
     "probes a Pi .cmd shim on PATH and passes the install gate",
-    async () => {
+    async ({ signal }) => {
       const root = await mkdtemp(path.join(os.tmpdir(), "bb pi version-"));
       temporaryDirectories.push(root);
       const pkg = path.join(
@@ -110,14 +124,13 @@ describe("Pi version probe", () => {
       vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);
       vi.stubEnv(PI_BRIDGE_COMMAND_ENV, "pi");
       vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
-      expect(await probePiVersion()).toEqual({
-        version: "0.85.1",
-        failure: null,
-      });
+      signal.throwIfAborted();
+      shimChildren = experimental_trackChildProcesses();
       expect(await getPiInstallGate()).toEqual({
         ok: true,
         installedVersion: "0.85.1",
       });
+      signal.throwIfAborted();
       expect(await getPiProviderInstallationStatus(false)).toMatchObject({
         executablePath: path.join(root, "pi.cmd"),
         currentVersion: "0.85.1",

@@ -13,7 +13,7 @@ jobs:
   report:
     if: github.repository == 'get-bb/bb'
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -25,6 +25,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/report-ci-health.mjs
+      - name: Report tests near their time limit
+        if: ${{ always() }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .ci-health/test-durations
+          for run in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push --status completed --limit 20 --json databaseId --jq '.[].databaseId'); do
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --pattern 'test-timings-*' --dir ".ci-health/test-durations/$run" || rm -rf ".ci-health/test-durations/$run"
+          done
+          node scripts/report-test-headroom.mjs .ci-health/test-durations .ci-health/test-headroom.md
+          rm -rf .ci-health/test-durations
       - if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         timeout-minutes: 1

@@ -1,4 +1,8 @@
 import {
+  calibrateProfileClock,
+  type ProfileClockReading,
+} from "./profile-clock.js";
+import {
   PROFILE_SAMPLING_INTERVAL_MS,
   summarizeStallWindows,
 } from "./stall-attribution.js";
@@ -54,8 +58,7 @@ async function runProfileWorker(): Promise<void> {
   };
   let startedAt = "";
   let title = "";
-  type ClockReading = { beforeMs: number; afterMs: number };
-  let profileStartClock: ClockReading | undefined;
+  let profileStartClock: ProfileClockReading | undefined;
   let finishedProfile: Profiler.Profile | undefined;
   session.on("Profiler.consoleProfileFinished", (event) => {
     if (event.params.title === title) finishedProfile = event.params.profile;
@@ -68,7 +71,7 @@ async function runProfileWorker(): Promise<void> {
   const profileCommand = async (
     method: "profile" | "profileEnd",
     name: string,
-  ): Promise<ClockReading> => {
+  ): Promise<ProfileClockReading> => {
     const { result, exceptionDetails } = await session.post(
       "Runtime.evaluate",
       {
@@ -173,22 +176,19 @@ async function runProfileWorker(): Promise<void> {
     if (!profile) throw new Error("CPU profile completion was not received");
     title = nextTitle;
     const endedAt = new Date().toISOString();
-    const minimumOffsetMs = Math.max(
-      beginningClock.beforeMs - profile.startTime / 1_000,
-      endingClock.beforeMs - profile.endTime / 1_000,
-    );
-    const maximumOffsetMs = Math.min(
-      beginningClock.afterMs - profile.startTime / 1_000,
-      endingClock.afterMs - profile.endTime / 1_000,
-    );
-    const offsetUs = ((minimumOffsetMs + maximumOffsetMs) / 2) * 1_000;
+    const clockCalibration = calibrateProfileClock({
+      startClock: beginningClock,
+      endClock: endingClock,
+      profileStartTimeUs: profile.startTime,
+      profileEndTimeUs: profile.endTime,
+      maximumUncertaintyMs: PROFILE_SAMPLING_INTERVAL_MS,
+    });
     const attributionProfile =
-      minimumOffsetMs <= maximumOffsetMs &&
-      maximumOffsetMs - minimumOffsetMs <= PROFILE_SAMPLING_INTERVAL_MS
+      clockCalibration.status === "calibrated"
         ? {
             ...profile,
-            startTime: profile.startTime + offsetUs,
-            endTime: profile.endTime + offsetUs,
+            startTime: profile.startTime + clockCalibration.offsetUs,
+            endTime: profile.endTime + clockCalibration.offsetUs,
           }
         : { ...profile, samples: [], timeDeltas: [] };
     for (const fields of summarizeStallWindows(
@@ -196,7 +196,12 @@ async function runProfileWorker(): Promise<void> {
       stalls,
       codeOwners,
     )) {
-      respond(fields, "Event loop stall attribution", "info", false);
+      respond(
+        { ...fields, clockCalibration },
+        "Event loop stall attribution",
+        "info",
+        false,
+      );
     }
     const contents = JSON.stringify(profile);
     const bytes = Buffer.byteLength(contents);
@@ -228,6 +233,7 @@ async function runProfileWorker(): Promise<void> {
         pid: process.pid,
         sampleTimeBasis: "elapsed",
         nativeFramesMayIncludeWaiting: true,
+        clockCalibration,
       },
       "Server CPU profile saved",
       "info",

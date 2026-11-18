@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -60,19 +61,18 @@ function AppTitleMentionResources({ children }: { children: ReactNode }) {
   );
 }
 
-async function prepareThreadList() {
+function prepareThreadList() {
   resetThreadActionRegistryForTest();
   stubPluginRpcFetch((method) => ({
     result: method === "listPreferences" ? { preferences: {} } : null,
   }));
   vi.stubGlobal("IntersectionObserver", undefined);
-  replacement = await loadPluginThreadListReplacement({
-    withNotifications: false,
-  });
   return seedSidebarQueryClient(60);
 }
 
-let replacement: Awaited<ReturnType<typeof loadPluginThreadListReplacement>>;
+const replacement = await loadPluginThreadListReplacement({
+  withNotifications: false,
+});
 
 function ThreadList() {
   return (
@@ -99,31 +99,33 @@ async function settle() {
 }
 
 it("renders only the changed row on a thread update, and no row while typing an answer", async () => {
-  const queryClient = await prepareThreadList();
+  const queryClient = prepareThreadList();
   render(
     <SidebarThreadListHarness queryClient={queryClient}>
       <ThreadList />
-      <QuestionForm
-        draftKey="thr_question:pint_1"
-        questions={[
-          {
-            id: "q1",
-            prompt: "Which color?",
-            shortLabel: "Color",
-            multiSelect: false,
-            required: true,
-            allowFreeText: true,
-            options: [
-              { value: "red", label: "Red" },
-              { value: "blue", label: "Blue" },
-            ],
-          },
-        ]}
-        disabled={false}
-        cancelDisabled={false}
-        onSubmit={async () => {}}
-        onCancel={async () => {}}
-      />
+      <section aria-label="Question">
+        <QuestionForm
+          draftKey="thr_question:pint_1"
+          questions={[
+            {
+              id: "q1",
+              prompt: "Which color?",
+              shortLabel: "Color",
+              multiSelect: false,
+              required: true,
+              allowFreeText: true,
+              options: [
+                { value: "red", label: "Red" },
+                { value: "blue", label: "Blue" },
+              ],
+            },
+          ]}
+          disabled={false}
+          cancelDisabled={false}
+          onSubmit={async () => {}}
+          onCancel={async () => {}}
+        />
+      </section>
     </SidebarThreadListHarness>,
   );
   await settle();
@@ -138,8 +140,9 @@ it("renders only the changed row on a thread update, and no row while typing an 
   expect(screen.getByText("Renamed thread")).toBeTruthy();
   expect([...renderedRows]).toEqual(["thr_1"]);
 
-  fireEvent.click(screen.getByRole("button", { name: /Other/ }));
-  const answer = screen.getByRole("textbox");
+  const question = within(screen.getByRole("region", { name: "Question" }));
+  fireEvent.click(question.getByRole("button", { name: /Other/ }));
+  const answer = question.getByRole("textbox");
   renderedRows.clear();
   for (const value of ["b", "bl", "blu", "blue"]) {
     fireEvent.change(answer, { target: { value } });
@@ -150,7 +153,7 @@ it("renders only the changed row on a thread update, and no row while typing an 
 });
 
 it("moves a row when its sort order changes while nothing is being dragged", async () => {
-  const queryClient = await prepareThreadList();
+  const queryClient = prepareThreadList();
   render(
     <SidebarThreadListHarness queryClient={queryClient}>
       <ThreadList />

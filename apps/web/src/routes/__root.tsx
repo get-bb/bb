@@ -6,18 +6,12 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 
-import {
-  RouteExperimentsProvider,
-  useExperiment,
-  experimentsBeforeLoad,
-} from "../experiments/use-experiment";
 import { readVisitIds } from "../landing/analytics";
 import { carryUtmToDownloadLinks } from "../landing/download-utm";
 import { canonicalHref } from "../lib/canonical";
 import { THEME_INIT, watchSystemTheme } from "../lib/theme";
 
 export const Route = createRootRoute({
-  beforeLoad: experimentsBeforeLoad,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -65,15 +59,6 @@ export const Route = createRootRoute({
 
 const JS_INIT = `document.documentElement.classList.add("js")`;
 
-function SiteBody({ children }: { children: React.ReactNode }) {
-  const siteFontButtons = useExperiment("homepage-download-path") === "test";
-  return (
-    <body data-download-area={siteFontButtons ? "test" : undefined}>
-      {children}
-    </body>
-  );
-}
-
 function RootDocument({ children }: { children: React.ReactNode }) {
   useEffect(() => watchSystemTheme(), []);
   useEffect(() => carryUtmToDownloadLinks(readVisitIds), []);
@@ -81,33 +66,29 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     select: (state) => canonicalHref(state.matches),
   });
   return (
-    <RouteExperimentsProvider>
-      <html lang="en" suppressHydrationWarning>
-        <head>
-          {}
-          <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
-          <script dangerouslySetInnerHTML={{ __html: JS_INIT }} />
-          {}
-          <meta
-            name="theme-color"
-            media="(prefers-color-scheme: light)"
-            content="#ffffff"
-          />
-          <meta
-            name="theme-color"
-            media="(prefers-color-scheme: dark)"
-            content="#151515"
-          />
-          {canonical === null ? null : (
-            <link rel="canonical" href={canonical} />
-          )}
-          <HeadContent />
-        </head>
-        <SiteBody>
-          {children}
-          <Scripts />
-        </SiteBody>
-      </html>
-    </RouteExperimentsProvider>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+        <script dangerouslySetInnerHTML={{ __html: JS_INIT }} />
+        {}
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: light)"
+          content="#ffffff"
+        />
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: dark)"
+          content="#151515"
+        />
+        {canonical === null ? null : <link rel="canonical" href={canonical} />}
+        <HeadContent />
+      </head>
+      <body>
+        {children}
+        <Scripts />
+      </body>
+    </html>
   );
 }

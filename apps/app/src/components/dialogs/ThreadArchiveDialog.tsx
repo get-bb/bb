@@ -17,7 +17,9 @@ export interface ThreadArchiveDialogTarget {
   stopsRunningWork: boolean;
 }
 
-interface ThreadArchiveDialogProps<Target extends ThreadArchiveDialogTarget> {
+export interface ThreadArchiveDialogProps<
+  Target extends ThreadArchiveDialogTarget,
+> {
   target: Target | null;
   pending: boolean;
   onOpenChange: (open: boolean) => void;

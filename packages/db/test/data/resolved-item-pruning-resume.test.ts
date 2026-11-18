@@ -272,7 +272,7 @@ describe("resolved-item pruning passes", () => {
     }
   });
 
-  it.each([1, 2, 3, 4, 5, 6, 7, 8])(
+  it.each(Array.from({ length: 16 }, (_, index) => index + 1))(
     "keeps the same rows as rescanning every pass from the start (seed %i)",
     (seed) => {
       const random = createRandom(seed);
@@ -299,7 +299,7 @@ describe("resolved-item pruning passes", () => {
             else advanceThreadPruning(f.db, "resolved-items");
           }
         };
-        for (let step = 0; step < 400; step += 1) {
+        for (let step = 0; step < 200; step += 1) {
           const roll = random();
           if (roll < 0.12 || openItems.length === 0) {
             const kinds = Object.keys(DELTA_BY_KIND) as TextKind[];

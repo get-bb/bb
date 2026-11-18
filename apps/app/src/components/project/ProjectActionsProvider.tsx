@@ -18,16 +18,41 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
-import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
-import {
-  ProjectDeleteDialog,
-  type ProjectDeleteDialogTarget,
+import { LazyProjectPathDialog } from "@/components/dialogs/LazyProjectPathDialog";
+import type {
+  ProjectDeleteDialogProps,
+  ProjectDeleteDialogTarget,
 } from "@/components/dialogs/ProjectDeleteDialog";
-import {
-  ProjectRenameDialog,
-  type ProjectRenameDialogTarget,
+import type {
+  ProjectRenameDialogProps,
+  ProjectRenameDialogTarget,
 } from "@/components/dialogs/ProjectRenameDialog";
+import { defineSplit } from "@/lib/define-split";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
+
+const ProjectRenameDialog = defineSplit<ProjectRenameDialogProps>({
+  id: "project-rename-dialog",
+  tier: "preload",
+  load: () =>
+    import("@/components/dialogs/ProjectRenameDialog").then(
+      (module) => module.ProjectRenameDialog,
+    ),
+  loading: () => null,
+  mountWhen: (props) => props.target !== null,
+  keepMounted: true,
+});
+
+const ProjectDeleteDialog = defineSplit<ProjectDeleteDialogProps>({
+  id: "project-delete-dialog",
+  tier: "preload",
+  load: () =>
+    import("@/components/dialogs/ProjectDeleteDialog").then(
+      (module) => module.ProjectDeleteDialog,
+    ),
+  loading: () => null,
+  mountWhen: (props) => props.target !== null,
+  keepMounted: true,
+});
 
 interface ProjectActionsContextValue {
   requestRename: (project: ProjectResponse) => void;
@@ -121,12 +146,7 @@ export function ProjectActionsProvider({
         },
       });
     },
-    [
-      closeDeleteDialog,
-      deleteProjectMutate,
-      navigate,
-      routeProjectId,
-    ],
+    [closeDeleteDialog, deleteProjectMutate, navigate, routeProjectId],
   );
 
   const requestAddLocalPath = useCallback(
@@ -164,7 +184,7 @@ export function ProjectActionsProvider({
         onOpenChange={deleteDialog.onOpenChange}
         onDelete={confirmDelete}
       />
-      <ProjectPathDialog
+      <LazyProjectPathDialog
         target={addLocalSourcePicker.projectPathDialog.target}
         pending={addLocalSource.isPending}
         platform={addLocalSourcePicker.platform}

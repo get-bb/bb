@@ -287,8 +287,10 @@ it("cancels an over-budget squash command and returns basic comparison data", as
     typeof import("bb-environment-provider-host/workspace-git")
   >("bb-environment-provider-host/workspace-git");
   let canceled = false;
+  const hashingStarted = createDeferredPromise<void>();
   vi.mocked(runGit).mockImplementation((args, options) => {
     if (options.cwd === repo && args[0] === "patch-id" && options.signal) {
+      hashingStarted.resolve();
       return new Promise((_, reject) => {
         const onAbort = () => {
           canceled = true;
@@ -301,10 +303,14 @@ it("cancels an over-budget squash command and returns basic comparison data", as
     return actual.runGit(args, options);
   });
   try {
-    const status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const reading = new WorkspaceReads(repo, tmpdir()).getStatus({
       freshness: fresh(),
       mergeBaseBranch: "main",
     });
+    await hashingStarted.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    const status = await reading;
     expect(canceled).toBe(true);
     expect(status.mergeBase).toMatchObject({
       squashMergeCheckComplete: false,
@@ -313,6 +319,7 @@ it("cancels an over-budget squash command and returns basic comparison data", as
     });
     expect(status.workingTree.hasUncommittedChanges).toBe(false);
   } finally {
+    vi.useRealTimers();
     vi.mocked(runGit).mockImplementation(actual.runGit);
   }
 }, 10_000);
