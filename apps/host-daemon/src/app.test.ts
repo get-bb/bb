@@ -12,6 +12,7 @@ import {
 import {
   hostDaemonEventBatchRequestSchema,
   hostDaemonInteractiveInterruptRequestSchema,
+  hostDaemonInteractiveWithdrawRequestSchema,
   type HostDaemonInteractiveRequestKey,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonContributedEnvEntry,
@@ -190,6 +191,9 @@ function createFetchRecorder(
           status: "pending",
         };
       return Response.json(response);
+    }
+    if (url.pathname === "/internal/session/interactive-request/withdraw") {
+      return Response.json({ ok: true, interactionId: "pint_app_test" });
     }
     if (url.pathname === "/internal/session/interactive-request/interrupt") {
       const scripted = args.interruptResponses?.[interruptCount];
@@ -1213,7 +1217,10 @@ describe("createHostDaemonApp", () => {
       if (!options?.onInteractiveRequest) {
         throw new Error("Expected runtime callbacks to be captured");
       }
-      const pending = options.onInteractiveRequest(request);
+      const pending = options.onInteractiveRequest(
+        request,
+        new AbortController().signal,
+      );
       const rejection = expect(pending).rejects.toMatchObject({
         code: "interactive_request_ended",
       });
@@ -1441,7 +1448,10 @@ describe("createHostDaemonApp", () => {
       }
 
       const request = createCommandApprovalRequest();
-      const pending = options.onInteractiveRequest(request);
+      const pending = options.onInteractiveRequest(
+        request,
+        new AbortController().signal,
+      );
       await vi.waitFor(() => {
         expect(
           fetchRecorder.requests.filter(
@@ -1495,6 +1505,71 @@ describe("createHostDaemonApp", () => {
         providerId: "codex",
         threadIds: [request.threadId],
         reason: 'Provider "codex" exited while awaiting user interaction',
+      });
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
+  });
+
+  it("tells the server to close an interactive request the provider withdraws", async () => {
+    const { app, fetchRecorder, runtimeOptions } = await createAppFixture();
+    try {
+      const workspacePath = await makeTempDir("bb-host-daemon-app-workspace-");
+      await app.connection.start();
+      await app.runtimeManager.ensureEnvironment({
+        environmentId: "env-app-interactive",
+        workspacePath,
+      });
+      const options = runtimeOptions.current;
+      if (!options?.onInteractiveRequest) {
+        throw new Error("Expected runtime callbacks to be captured");
+      }
+
+      const request = createCommandApprovalRequest();
+      const provider = new AbortController();
+      const pending = options.onInteractiveRequest(request, provider.signal);
+      await vi.waitFor(() => {
+        expect(
+          fetchRecorder.requests.filter(
+            (record) =>
+              record.pathname === "/internal/session/interactive-request",
+          ),
+        ).toHaveLength(1);
+      });
+
+      provider.abort();
+      await expect(pending).rejects.toMatchObject({
+        code: "interactive_request_withdrawn",
+      });
+      await vi.waitFor(() => {
+        expect(
+          fetchRecorder.requests.filter(
+            (record) =>
+              record.pathname ===
+              "/internal/session/interactive-request/withdraw",
+          ),
+        ).toHaveLength(1);
+      });
+      const withdrawRequest = fetchRecorder.requests.find(
+        (record) =>
+          record.pathname === "/internal/session/interactive-request/withdraw",
+      );
+      if (!withdrawRequest?.body) {
+        throw new Error("Expected interactive withdraw request body");
+      }
+      expect(
+        hostDaemonInteractiveWithdrawRequestSchema.parse(
+          JSON.parse(withdrawRequest.body),
+        ),
+      ).toEqual({
+        sessionId: "session-app-test",
+        request: {
+          threadId: request.threadId,
+          providerId: request.providerId,
+          providerThreadId: request.providerThreadId,
+          providerRequestId: request.providerRequestId,
+        },
+        reason: "The agent stopped waiting for this answer",
       });
     } finally {
       await app.daemon.shutdown("test", 0);
@@ -1718,9 +1793,9 @@ describe("createHostDaemonApp", () => {
       }
 
       const request = createCommandApprovalRequest();
-      await expect(options.onInteractiveRequest(request)).rejects.toThrow(
-        "registration transport failed",
-      );
+      await expect(
+        options.onInteractiveRequest(request, new AbortController().signal),
+      ).rejects.toThrow("registration transport failed");
 
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1760,9 +1835,9 @@ describe("createHostDaemonApp", () => {
       }
 
       const request = createCommandApprovalRequest();
-      await expect(options.onInteractiveRequest(request)).rejects.toThrow(
-        "Ask User Question feature is disabled",
-      );
+      await expect(
+        options.onInteractiveRequest(request, new AbortController().signal),
+      ).rejects.toThrow("Ask User Question feature is disabled");
 
       expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -18,6 +18,7 @@ const CLOSED_STDIN_ERROR_CODES = new Set([
 ]);
 
 export interface CodexAppServerRequestResponder {
+  readonly requestId: string | number;
   result(value: unknown): void;
   error(code: number, message: string): void;
 }
@@ -299,6 +300,7 @@ export function createCodexAppServerConnection(
       if (typeof id === "string" || typeof id === "number") {
         let settled = false;
         options.onRequest(message.method, message.params, {
+          requestId: id,
           result(value) {
             if (settled || finalized) return;
             settled = true;

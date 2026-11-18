@@ -7,7 +7,14 @@ export const BRIDGE_NOTIFICATION_METHODS = {
   providerRaw: "provider/raw",
   providerRecovery: "provider/recovery",
   error: "error",
+  requestCancelled: "notifications/cancelled",
 } as const;
+
+export const requestCancelledNotificationSchema = z
+  .object({
+    requestId: z.union([z.string(), z.number().int()]),
+  })
+  .passthrough();
 
 export const threadIdentityNotificationSchema = z
   .object({

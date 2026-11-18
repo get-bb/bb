@@ -271,8 +271,8 @@ bridge published as `bb/session-options`
 
 **Bridge → runtime**: notifications `thread/delta` (one streaming dialect, one
 usage dialect), `thread/identity`, `session/replaced`, `provider/recovery`,
-`provider/raw`, and `error`, plus the request channels `item/tool/call` and
-`interaction/request`.
+`provider/raw`, `notifications/cancelled`, and `error`, plus the request
+channels `item/tool/call` and `interaction/request`.
 
 Recovery is typed, never text-matched:
 
@@ -422,8 +422,13 @@ back as `{ kind: "request_answer", value }` — the form's submitted value,
 capped at 64 KiB (`PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES`, the same cap on the
 request's `data`). The server accepts a request only while the plugin named
 by the prefix is loaded; a request for an unknown plugin is refused with an
-error the bridge sees. A provider's request has no cancel; backing out stops
-the turn, as with a provider's question. `value` is untrusted input to the
+error the bridge sees. The user cannot cancel a provider's request; backing out
+stops the turn, as with a provider's question. When the provider stops waiting
+on its own (a hook answered it, it timed out, or the provider resolved it), the
+bridge sends `notifications/cancelled` (`BRIDGE_NOTIFICATION_METHODS.requestCancelled`)
+with `{ requestId }`, the JSON-RPC id of its `interaction/request`, and
+does not expect a response. bb closes the card as interrupted, and the next
+queued message can dispatch. `value` is untrusted input to the
 bridge: no form schema exists for the server to validate it against, so a
 bridge parses it as it would any client-supplied JSON.
 

@@ -670,6 +670,93 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
+  it("interrupts only the interaction whose provider request was withdrawn", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-interaction-withdraw",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const body = buildCommandApprovalInteractiveRequest({
+        sessionId: session.id,
+        suffix: "withdraw",
+        threadId: thread.id,
+      });
+      const registered = await registerInteractiveRequest({ body, harness });
+      expect(registered.status).toBe(200);
+      const interactionId = await waitForPendingInteractionId({
+        harness,
+        threadId: thread.id,
+      });
+      const key = {
+        threadId: thread.id,
+        providerId: body.interaction.providerId,
+        providerThreadId: body.interaction.providerThreadId,
+        providerRequestId: body.interaction.providerRequestId,
+      };
+      const withdraw = (providerRequestId: string) =>
+        harness.app.request("/internal/session/interactive-request/withdraw", {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId: session.id,
+            request: { ...key, providerRequestId },
+            reason: "The agent withdrew this request",
+          }),
+        });
+
+      const unrelated = await withdraw("request-someone-else");
+      expect(unrelated.status).toBe(200);
+      await expect(readJson(unrelated)).resolves.toEqual({
+        ok: true,
+        interactionId: null,
+      });
+      expect(
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        ),
+      ).toEqual([expect.objectContaining({ id: interactionId })]);
+
+      const withdrawn = await withdraw(key.providerRequestId);
+      expect(withdrawn.status).toBe(200);
+      await expect(readJson(withdrawn)).resolves.toEqual({
+        ok: true,
+        interactionId,
+      });
+      expect(
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction),
+      ).toEqual([
+        expect.objectContaining({
+          id: interactionId,
+          status: "interrupted",
+          statusReason: "The agent withdrew this request",
+        }),
+      ]);
+      expect(
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        ),
+      ).toEqual([]);
+
+      const repeated = await withdraw(key.providerRequestId);
+      await expect(readJson(repeated)).resolves.toEqual({
+        ok: true,
+        interactionId: null,
+      });
+    });
+  });
+
   it("skips deleted threads in interrupt batches and still interrupts live threads", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

@@ -1779,12 +1779,27 @@ function findSessionByPendingInteractiveRequest(
   return undefined;
 }
 
+function withdrawInteractiveRequest(
+  threadSession: ThreadSession,
+  requestId: string | number,
+): boolean {
+  if (!threadSession.pendingInteractiveRequests.delete(requestId)) {
+    return false;
+  }
+  send({
+    jsonrpc: "2.0",
+    method: BRIDGE_NOTIFICATION_METHODS.requestCancelled,
+    params: { requestId },
+  });
+  return true;
+}
+
 function resolvePendingInteractiveRequests(
   threadSession: ThreadSession,
   message: string,
 ): void {
   for (const [requestId, pending] of threadSession.pendingInteractiveRequests) {
-    threadSession.pendingInteractiveRequests.delete(requestId);
+    withdrawInteractiveRequest(threadSession, requestId);
     pending.resolve({
       behavior: "deny",
       interrupt: true,
@@ -2045,7 +2060,7 @@ function createForwardInteractiveRequest(
       };
 
       const onAbort = (): void => {
-        if (!threadSession.pendingInteractiveRequests.delete(requestId)) {
+        if (!withdrawInteractiveRequest(threadSession, requestId)) {
           return;
         }
         finish({
@@ -2109,7 +2124,7 @@ function createForwardUserQuestionRequest(
       };
 
       const onAbort = (): void => {
-        if (!threadSession.pendingInteractiveRequests.delete(requestId)) {
+        if (!withdrawInteractiveRequest(threadSession, requestId)) {
           return;
         }
         finish({

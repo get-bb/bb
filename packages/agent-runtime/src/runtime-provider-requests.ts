@@ -20,7 +20,13 @@ import {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { shouldAutoDenyInteractiveRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 
-export class RuntimeToolCalls {
+interface RuntimeProviderRequestOwner {
+  requestId: string | number;
+  threadId: string;
+  turnId: string;
+}
+
+export class RuntimeProviderRequests {
   private readonly pending = new Map<
     string,
     Map<
@@ -33,7 +39,10 @@ export class RuntimeToolCalls {
     >
   >();
 
-  start(scope: string, request: ToolCallRequest): AbortController | null {
+  start(
+    scope: string,
+    request: RuntimeProviderRequestOwner,
+  ): AbortController | null {
     let calls = this.pending.get(scope);
     if (!calls) {
       calls = new Map();
@@ -60,11 +69,12 @@ export class RuntimeToolCalls {
     if (calls?.size === 0) this.pending.delete(scope);
   }
 
-  cancel(scope: string, requestId: string | number): void {
+  cancel(scope: string, requestId: string | number): boolean {
     const call = this.pending.get(scope)?.get(requestId);
-    if (!call) return;
+    if (!call) return false;
     this.finish(scope, requestId, call.controller);
     call.controller.abort();
+    return true;
   }
 
   cancelThread(threadId: string, turnId?: string): void {
@@ -110,7 +120,8 @@ interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
   ) => AgentRuntimeExecutionOptions | undefined;
   onInteractiveRequest: AgentRuntimeOptions["onInteractiveRequest"];
   onToolCall: AgentRuntimeOptions["onToolCall"];
-  toolCalls: RuntimeToolCalls;
+  interactiveRequests: RuntimeProviderRequests;
+  toolCalls: RuntimeProviderRequests;
   resolveThreadId: (
     args: ResolveRuntimeProviderRequestThreadIdArgs,
   ) => string | null;
@@ -342,9 +353,17 @@ function handleInteractiveProviderRequest(
     return true;
   }
 
+  const scope = args.providerProcess.interactiveRequestScope;
+  const controller = args.interactiveRequests.start(scope, {
+    requestId: interactiveReq.requestId,
+    threadId: resolvedThreadId,
+    turnId: resolvedTurnId,
+  });
+  if (!controller) return true;
   void args
-    .onInteractiveRequest(scopedInteractiveReq)
+    .onInteractiveRequest(scopedInteractiveReq, controller.signal)
     .then((resolution) => {
+      if (controller.signal.aborted) return;
       const result = buildInteractiveResponse({
         request: resolvedInteractiveReq,
         resolution,
@@ -356,6 +375,7 @@ function handleInteractiveProviderRequest(
       });
     })
     .catch((err) => {
+      if (controller.signal.aborted) return;
       if (
         sendProviderResponseEncodeErrorIfKnown({
           child: args.providerProcess.child,
@@ -370,7 +390,14 @@ function handleInteractiveProviderRequest(
         id: args.parsedId,
         message: err instanceof Error ? err.message : String(err),
       });
-    });
+    })
+    .finally(() =>
+      args.interactiveRequests.finish(
+        scope,
+        interactiveReq.requestId,
+        controller,
+      ),
+    );
   return true;
 }
 
