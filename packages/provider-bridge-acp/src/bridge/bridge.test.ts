@@ -7777,6 +7777,70 @@ describe("acp bridge: questions the agent asks", () => {
     expect(setConfig).toBeLessThan(tellPrompt);
   });
 
+  it("refuses a subagent action that would restart the parent session", async () => {
+    const requestLog = join(workspaceDir, "subagent-restart-action.log");
+    const envVars = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const thread = await startThread({
+      dialectId: "grok",
+      envVars,
+      permissionCli: {
+        full: ["--always-approve"],
+        insertAfterArgs: 1,
+      },
+    });
+    const turnId = sendTurnRequest("turn/start", thread.providerThreadId, {
+      input: [{ type: "text", text: "grok-subagent-spawn", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+    const requestsBefore = loggedAcpRequests(requestLog);
+    const promptsBefore = requestsBefore.filter(
+      (request) => request.method === "session/prompt",
+    ).length;
+    const setupsBefore = requestsBefore.filter(
+      (request) =>
+        request.method === "session/load" || request.method === "session/new",
+    ).length;
+
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", thread.providerThreadId, {
+        childRef: "child-alpha",
+        text: "after permission change",
+        options: executionOptions({ permissionMode: "accept-edits" }),
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      "The parent session must restart before the subagent action can run",
+    );
+    const requestsAfter = loggedAcpRequests(requestLog);
+    expect(
+      requestsAfter.filter((request) => request.method === "session/prompt"),
+    ).toHaveLength(promptsBefore);
+    expect(
+      requestsAfter.filter(
+        (request) =>
+          request.method === "session/load" || request.method === "session/new",
+      ),
+    ).toHaveLength(setupsBefore);
+    expect(notifications("session/replaced")).toHaveLength(0);
+    const listed = await waitForResponse(
+      subagentRequest("subagent/list", thread.providerThreadId),
+    );
+    expect(listed.result).toMatchObject({
+      subagents: expect.arrayContaining([
+        expect.objectContaining({
+          childRef: "child-alpha",
+          status: "running",
+        }),
+      ]),
+    });
+  });
+
   it("settles a running grok subagent when a later turn replaces the session", async () => {
     const envVars = { FAKE_ACP_LOAD_SESSION: "1" };
     const { providerThreadId } = await startGrokSubagentThread(envVars);

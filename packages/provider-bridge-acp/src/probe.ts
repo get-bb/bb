@@ -87,48 +87,56 @@ async function probeGrokExtensionFork(
   });
   const sessionIds: string[] = [];
   try {
-    const methodId = grokAuthMethodId(capabilities, env);
-    if (methodId !== undefined) {
-      await connection.request({
-        method: "authenticate",
-        params: { methodId, _meta: { headless: true } },
-        resultSchema: z.unknown(),
+    let createdSessionId: string;
+    try {
+      const methodId = grokAuthMethodId(capabilities, env);
+      if (methodId !== undefined) {
+        await connection.request({
+          method: "authenticate",
+          params: { methodId, _meta: { headless: true } },
+          resultSchema: z.unknown(),
+          timeoutMs: request.timeoutMs ?? PROBE_TIMEOUT_MS,
+        });
+      }
+      const created = await connection.request({
+        method: "session/new",
+        params: { cwd: request.cwd, mcpServers: [] },
+        resultSchema: acpSessionNewResultSchema,
         timeoutMs: request.timeoutMs ?? PROBE_TIMEOUT_MS,
       });
+      createdSessionId = created.sessionId;
+      sessionIds.push(created.sessionId);
+    } catch (error) {
+      return { reachable: false, reason: describe(error) };
     }
-    const created = await connection.request({
-      method: "session/new",
-      params: { cwd: request.cwd, mcpServers: [] },
-      resultSchema: acpSessionNewResultSchema,
-      timeoutMs: request.timeoutMs ?? PROBE_TIMEOUT_MS,
-    });
-    sessionIds.push(created.sessionId);
-    const result = decodeGrokForkResult(
-      await connection.request({
-        method: "_x.ai/session/fork",
-        params: buildGrokForkParams({
-          sourceSessionId: created.sessionId,
-          sourceCwd: request.cwd,
-          newCwd: request.cwd,
-          mcpServers: [],
+    try {
+      const result = decodeGrokForkResult(
+        await connection.request({
+          method: "_x.ai/session/fork",
+          params: buildGrokForkParams({
+            sourceSessionId: createdSessionId,
+            sourceCwd: request.cwd,
+            newCwd: request.cwd,
+            mcpServers: [],
+          }),
+          resultSchema: z.unknown(),
+          timeoutMs: request.timeoutMs ?? PROBE_TIMEOUT_MS,
         }),
-        resultSchema: z.unknown(),
-        timeoutMs: request.timeoutMs ?? PROBE_TIMEOUT_MS,
-      }),
-    );
-    assertGrokForkIdentity(result, created.sessionId, [created.sessionId]);
-    sessionIds.push(result.newSessionId);
-    return {
-      reachable: true,
-      fork: capabilities.session.fork,
-      extensionFork: true,
-    };
-  } catch {
-    return {
-      reachable: true,
-      fork: capabilities.session.fork,
-      extensionFork: false,
-    };
+      );
+      assertGrokForkIdentity(result, createdSessionId, [createdSessionId]);
+      sessionIds.push(result.newSessionId);
+      return {
+        reachable: true,
+        fork: capabilities.session.fork,
+        extensionFork: true,
+      };
+    } catch {
+      return {
+        reachable: true,
+        fork: capabilities.session.fork,
+        extensionFork: false,
+      };
+    }
   } finally {
     await closeProbeSessions(connection, capabilities, sessionIds);
   }
